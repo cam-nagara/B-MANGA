@@ -73,6 +73,45 @@ def main() -> None:
         assert counts["camera"] == 1, counts
         assert counts["view_update"] == 1, counts
         print(f"[PASS] batch apply refresh count: {counts}")
+
+        refresh_counts = {"apply": 0, "intersection": 0, "camera": 0}
+        real_apply = presets.apply_line_settings
+        real_intersection = intersection_lines.refresh_scene_intersections
+        real_camera = camera_comp.refresh
+
+        def counted_apply(obj, context, **kwargs):
+            refresh_counts["apply"] += 1
+            return real_apply(obj, context, **kwargs)
+
+        def counted_intersection(scene):
+            refresh_counts["intersection"] += 1
+            return real_intersection(scene)
+
+        def counted_camera(context):
+            refresh_counts["camera"] += 1
+            return real_camera(context)
+
+        presets.apply_line_settings = counted_apply
+        intersection_lines.refresh_scene_intersections = counted_intersection
+        camera_comp.refresh = counted_camera
+        try:
+            objects[0].bmanga_line_settings.use_uniform_line_width = True
+            assert all(obj.bmanga_line_settings.use_uniform_line_width for obj in objects)
+            assert refresh_counts["apply"] == 0, refresh_counts
+            assert refresh_counts["intersection"] == 0, refresh_counts
+            assert refresh_counts["camera"] <= 2, refresh_counts
+
+            refresh_counts.update({"apply": 0, "intersection": 0, "camera": 0})
+            objects[0].bmanga_line_settings.use_uniform_line_width = False
+            assert not any(obj.bmanga_line_settings.use_uniform_line_width for obj in objects)
+            assert refresh_counts["apply"] == 0, refresh_counts
+            assert refresh_counts["intersection"] == 0, refresh_counts
+            assert refresh_counts["camera"] <= 2, refresh_counts
+        finally:
+            presets.apply_line_settings = real_apply
+            intersection_lines.refresh_scene_intersections = real_intersection
+            camera_comp.refresh = real_camera
+        print(f"[PASS] uniform width toggle refresh count: {refresh_counts}")
     finally:
         try:
             b_manga_line.unregister()

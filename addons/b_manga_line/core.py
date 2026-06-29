@@ -99,6 +99,7 @@ def _propagate(self, context, prop_name):
     global _propagating
     if _propagating:
         return
+    changed: list[bpy.types.Object] = []
     _propagating = True
     try:
         owner = self.id_data
@@ -110,10 +111,15 @@ def _propagate(self, context, prop_name):
             s = getattr(obj, "bmanga_line_settings", None)
             if s is not None:
                 setattr(s, prop_name, value)
-                _refresh_full_line_settings(obj, context)
+                if has_line(obj):
+                    changed.append(obj)
     finally:
         _propagating = False
-    _refresh_print_widths(context)
+    if changed:
+        from . import batch_update
+        batch_update.refresh_propagated_property(prop_name, changed, context)
+    else:
+        _refresh_print_widths(context)
 
 
 def _refresh_full_line_settings(obj: bpy.types.Object, context) -> None:
@@ -131,6 +137,8 @@ def _refresh_print_widths(context) -> None:
 def _make_propagator(prop_name):
     """伝搬のみ行うコールバックを生成."""
     def _callback(self, context):
+        if _propagating:
+            return
         _propagate(self, context, prop_name)
     return _callback
 
@@ -138,6 +146,8 @@ def _make_propagator(prop_name):
 def _make_weight_refresh_propagator(prop_name):
     """線幅ウェイトを再計算してから選択中オブジェクトへ伝搬."""
     def _callback(self, context):
+        if _propagating:
+            return
         _refresh_line_width_weights(self, context, _line_width_target_for_prop(prop_name))
         _propagate(self, context, prop_name)
     return _callback
@@ -219,6 +229,8 @@ def _curve_point_property(prop_name: str, label: str, description: str, default:
 # ------------------------------------------------------------------
 
 def _on_color_changed(self, context):
+    if _propagating:
+        return
     from . import outline_setup
     owner = self.id_data
     if owner.type == "MESH":
@@ -227,6 +239,8 @@ def _on_color_changed(self, context):
 
 
 def _on_thickness_changed(self, context):
+    if _propagating:
+        return
     from . import outline_setup
     owner = self.id_data
     if owner.type == "MESH":
@@ -238,6 +252,8 @@ def _on_thickness_changed(self, context):
 
 
 def _on_even_thickness_changed(self, context):
+    if _propagating:
+        return
     owner = self.id_data
     if owner.type == "MESH":
         mod = owner.modifiers.get(MODIFIER_NAME)
@@ -247,6 +263,8 @@ def _on_even_thickness_changed(self, context):
 
 
 def _on_rim_changed(self, context):
+    if _propagating:
+        return
     owner = self.id_data
     if owner.type == "MESH":
         mod = owner.modifiers.get(MODIFIER_NAME)
@@ -256,6 +274,8 @@ def _on_rim_changed(self, context):
 
 
 def _on_transparent_protection_changed(self, context):
+    if _propagating:
+        return
     from . import outline_setup
     owner = self.id_data
     if owner.type == "MESH":
@@ -287,12 +307,16 @@ def _sync_inner_line_creation(owner: bpy.types.Object, settings, context) -> Non
 
 
 def _on_inner_line_enabled_changed(self, context):
+    if _propagating:
+        return
     owner = self.id_data
     _sync_inner_line_creation(owner, self, context)
     _propagate(self, context, "inner_line_enabled")
 
 
 def _on_inner_angle_changed(self, context):
+    if _propagating:
+        return
     from . import inner_lines
     owner = self.id_data
     if owner.type == "MESH":
@@ -302,6 +326,8 @@ def _on_inner_angle_changed(self, context):
 
 
 def _on_inner_thickness_changed(self, context):
+    if _propagating:
+        return
     from . import inner_lines
     owner = self.id_data
     if owner.type == "MESH":
@@ -311,12 +337,16 @@ def _on_inner_thickness_changed(self, context):
 
 
 def _on_inner_creation_limit_changed(self, context):
+    if _propagating:
+        return
     owner = self.id_data
     _sync_inner_line_creation(owner, self, context)
     _propagate(self, context, "use_inner_line_creation_limit")
 
 
 def _on_inner_creation_distance_changed(self, context):
+    if _propagating:
+        return
     owner = self.id_data
     _sync_inner_line_creation(owner, self, context)
     _propagate(self, context, "inner_line_creation_max_distance")
@@ -347,6 +377,8 @@ def _refresh_intersection_scene(context) -> None:
 
 
 def _on_intersection_enabled_changed(self, context):
+    if _propagating:
+        return
     owner = self.id_data
     _sync_intersection_creation(owner, self, context)
     _refresh_intersection_scene(context)
@@ -354,6 +386,8 @@ def _on_intersection_enabled_changed(self, context):
 
 
 def _on_intersection_method_changed(self, context):
+    if _propagating:
+        return
     owner = self.id_data
     _sync_intersection_creation(owner, self, context)
     _refresh_intersection_scene(context)
@@ -361,6 +395,8 @@ def _on_intersection_method_changed(self, context):
 
 
 def _on_intersection_thickness_changed(self, context):
+    if _propagating:
+        return
     from . import intersection_lines
     owner = self.id_data
     if owner.type == "MESH":
@@ -372,6 +408,8 @@ def _on_intersection_thickness_changed(self, context):
 
 
 def _on_intersection_creation_limit_changed(self, context):
+    if _propagating:
+        return
     owner = self.id_data
     _sync_intersection_creation(owner, self, context)
     _refresh_intersection_scene(context)
@@ -379,6 +417,8 @@ def _on_intersection_creation_limit_changed(self, context):
 
 
 def _on_intersection_creation_distance_changed(self, context):
+    if _propagating:
+        return
     owner = self.id_data
     _sync_intersection_creation(owner, self, context)
     _refresh_intersection_scene(context)
@@ -431,16 +471,22 @@ def _refresh_generated_width_weights(owner, settings, target, vertex_analysis) -
 
 
 def _on_edge_smooth_changed(self, context):
+    if _propagating:
+        return
     _refresh_line_width_weights(self, context, "outline")
     _propagate(self, context, "edge_smooth_factor")
 
 
 def _on_edge_midpoint_jitter_changed(self, context):
+    if _propagating:
+        return
     _refresh_line_width_weights(self, context, "outline")
     _propagate(self, context, "edge_midpoint_jitter_percent")
 
 
 def _on_camera_comp_changed(self, context):
+    if _propagating:
+        return
     from . import camera_comp
     owner = self.id_data
     if self.use_camera_compensation:
@@ -461,6 +507,8 @@ def _on_camera_comp_changed(self, context):
 
 
 def _on_camera_influence_changed(self, context):
+    if _propagating:
+        return
     from . import camera_comp
     owner = self.id_data
     if owner.type == "MESH" and self.use_camera_compensation:
@@ -469,6 +517,8 @@ def _on_camera_influence_changed(self, context):
 
 
 def _on_uniform_line_width_changed(self, context):
+    if _propagating:
+        return
     from . import camera_comp
     owner = self.id_data
     if owner.type == "MESH":
@@ -493,26 +543,36 @@ def _on_uniform_line_width_changed(self, context):
 
 
 def _on_culling_changed(self, context):
+    if _propagating:
+        return
     _refresh_visibility_rules(self, context)
     _propagate(self, context, "use_camera_culling")
 
 
 def _on_culling_margin_changed(self, context):
+    if _propagating:
+        return
     _refresh_visibility_rules(self, context)
     _propagate(self, context, "culling_margin")
 
 
 def _on_inner_distance_changed(self, context):
+    if _propagating:
+        return
     _refresh_visibility_rules(self, context)
     _propagate(self, context, "use_inner_line_distance_limit")
 
 
 def _on_outline_distance_changed(self, context):
+    if _propagating:
+        return
     _refresh_visibility_rules(self, context)
     _propagate(self, context, "use_outline_distance_limit")
 
 
 def _on_intersection_distance_changed(self, context):
+    if _propagating:
+        return
     _refresh_visibility_rules(self, context)
     _propagate(self, context, "use_intersection_distance_limit")
 
@@ -520,6 +580,8 @@ def _on_intersection_distance_changed(self, context):
 def _make_visibility_value_propagator(prop_name):
     """表示距離の数値変更を即時反映してから選択中へ伝搬."""
     def _callback(self, context):
+        if _propagating:
+            return
         _refresh_visibility_rules(self, context)
         _propagate(self, context, prop_name)
     return _callback

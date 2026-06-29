@@ -3,6 +3,48 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-29 — B-MANGA Lineの全選択チェックボックス反映を軽量化 (B-MANGA Line v0.3.29)
+
+### 症状
+
+- 大規模背景素材の全メッシュへラインを適用したあと、全選択状態で「線幅の均一化」などのチェックボックスを切り替えると、画面が戻らない場合があった。
+- チェックボックスの値を選択中オブジェクトへコピーするたびに、各オブジェクト側で重い更新処理が走っていた。
+
+### 原因
+
+- 複数選択への設定反映中も、1 オブジェクトごとにカメラ更新、ライン再適用、交差線更新、線幅計算が実行されていた。
+- 単純なチェックボックスでも、全ラインを再適用する汎用経路に入り、不要な評価が発生していた。
+
+### 修正
+
+- 複数選択への値コピー中は各オブジェクトの個別更新を止め、最後に必要な処理だけを一括実行するようにした。
+- 「面の厚みを均一に」「リム面を生成」「遠距離ラインを非表示」などは、該当する表示・モディファイア設定だけを更新するようにした。
+- 「線幅の均一化」は全ライン再適用を避け、線幅用の頂点グループとカメラ基準の線幅更新だけを行うようにした。
+- B-MANGA Lineパネル上のチェックボックスを全件洗い出し、指定背景ファイルの全メッシュ選択相当でオン・オフ時間を実測した。
+
+### 対象チェックボックス
+
+- アウトライン設定: 「面の厚みを均一に」「線幅の均一化」「リム面を生成」「透明面の塗りつぶしを防ぐ」「頂点カラーで線幅を制御」「遠距離ラインを非表示」
+- カメラ設定: 「カメラ距離で線幅を補正」「カメラ範囲外を非表示」
+- 線幅の詳細制御: 「AOで線幅を制御」
+- 内部線: 「内部線を追加」「作成範囲を制限」「遠距離ラインを非表示」
+- 交差線: 「交差線を追加」「作成範囲を制限」「遠距離ラインを非表示」
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\batch_update.py test\blender_b_manga_line_batch_apply_refresh_check.py test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_inner_creation_range_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_intersection_creation_range_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_auto_intersection_targets_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_uniform_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_midpoint_targets_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_register_reenable_check.py`
+- `D:\TM Dropbox\Share\Assets\Japanese Streetscape Tokyo 0004\Japanese_Streetscape_Tokyo_0004.blend` の 917 メッシュを対象に全チェックボックスのオン・オフを実測。最大は「内部線 > 作成範囲を制限」の約 89 秒で、全項目 20 分以内。
+
+---
+
 ## 2026-06-29 — B-MANGA Lineの一括適用と作成範囲判定を軽量化 (B-MANGA Line v0.3.28)
 
 ### 症状
