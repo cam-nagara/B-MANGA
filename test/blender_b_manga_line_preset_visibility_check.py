@@ -248,6 +248,13 @@ def _assert_multi_select_manual_setting_propagation(
     source.inner_line_thickness_mm = 70.0
     assert math.isclose(target.inner_line_thickness_mm, 70.0, rel_tol=0.001)
 
+    source.inner_line_creation_max_distance = 6.5
+    assert math.isclose(target.inner_line_creation_max_distance, 6.5, rel_tol=0.001)
+    source.use_inner_line_creation_limit = False
+    assert target.use_inner_line_creation_limit is False
+    source.use_inner_line_creation_limit = True
+    assert target.use_inner_line_creation_limit is True
+
     source.intersection_enabled = False
     assert target.intersection_enabled is False
     assert not _intersection_mods(second)
@@ -307,6 +314,8 @@ def _assert_multi_select_manual_setting_propagation(
     source.use_outline_distance_limit = False
     source.use_inner_line_distance_limit = False
     source.use_intersection_distance_limit = False
+    source.use_inner_line_creation_limit = True
+    source.inner_line_creation_max_distance = 10.0
     source.use_camera_compensation = False
     source.use_uniform_line_width = False
     source.use_vertex_color = False

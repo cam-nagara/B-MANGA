@@ -267,20 +267,28 @@ def _on_transparent_protection_changed(self, context):
     _propagate(self, context, "hide_through_transparent")
 
 
+def _sync_inner_line_creation(owner: bpy.types.Object, settings, context) -> None:
+    from . import camera_comp, inner_lines, outline_setup
+    if owner.type != "MESH":
+        return
+    if not settings.inner_line_enabled:
+        inner_lines.remove_inner_lines(owner)
+        return
+    if camera_comp.inner_line_creation_in_range(owner, getattr(context, "scene", None), settings):
+        mat = outline_setup.get_outline_material(owner)
+        inner_lines.apply_inner_lines(
+            owner,
+            angle=settings.inner_line_angle,
+            thickness=settings.inner_line_thickness,
+            material=mat,
+        )
+    else:
+        inner_lines.remove_inner_lines(owner)
+
+
 def _on_inner_line_enabled_changed(self, context):
-    from . import inner_lines, outline_setup
     owner = self.id_data
-    if owner.type == "MESH":
-        if self.inner_line_enabled:
-            mat = outline_setup.get_outline_material(owner)
-            inner_lines.apply_inner_lines(
-                owner,
-                angle=self.inner_line_angle,
-                thickness=self.inner_line_thickness,
-                material=mat,
-            )
-        else:
-            inner_lines.remove_inner_lines(owner)
+    _sync_inner_line_creation(owner, self, context)
     _propagate(self, context, "inner_line_enabled")
 
 
@@ -300,6 +308,18 @@ def _on_inner_thickness_changed(self, context):
         inner_lines.update_parameters(owner, thickness=self.inner_line_thickness)
         _refresh_print_widths(context)
     _propagate(self, context, "inner_line_thickness")
+
+
+def _on_inner_creation_limit_changed(self, context):
+    owner = self.id_data
+    _sync_inner_line_creation(owner, self, context)
+    _propagate(self, context, "use_inner_line_creation_limit")
+
+
+def _on_inner_creation_distance_changed(self, context):
+    owner = self.id_data
+    _sync_inner_line_creation(owner, self, context)
+    _propagate(self, context, "inner_line_creation_max_distance")
 
 
 def _on_intersection_enabled_changed(self, context):
@@ -649,6 +669,23 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         max=1000.0,
         precision=2,
         step=5,
+    )  # type: ignore[valid-type]
+
+    use_inner_line_creation_limit: BoolProperty(
+        name="作成範囲を制限",
+        description="カメラから指定距離以内のオブジェクトにだけ内部線を作成する",
+        default=True,
+        update=_on_inner_creation_limit_changed,
+    )  # type: ignore[valid-type]
+
+    inner_line_creation_max_distance: FloatProperty(
+        name="作成する距離 (m)",
+        description="この距離以内のオブジェクトにだけ内部線を作成する",
+        default=10.0,
+        min=0.1,
+        max=1000.0,
+        subtype="DISTANCE",
+        update=_on_inner_creation_distance_changed,
     )  # type: ignore[valid-type]
 
     # --- 交差線設定 ---

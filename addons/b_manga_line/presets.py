@@ -27,6 +27,8 @@ _SETTING_FIELDS = (
     "inner_line_enabled",
     "inner_line_angle",
     "inner_line_thickness",
+    "use_inner_line_creation_limit",
+    "inner_line_creation_max_distance",
     "intersection_method",
     "intersection_enabled",
     "intersection_thickness",
@@ -140,7 +142,9 @@ def apply_line_settings(obj: bpy.types.Object, context) -> bool:
         return False
 
     mat = outline_setup.get_outline_material(obj)
-    if settings.inner_line_enabled:
+    if settings.inner_line_enabled and camera_comp.inner_line_creation_in_range(
+        obj, context.scene, settings,
+    ):
         inner_lines.apply_inner_lines(
             obj,
             angle=settings.inner_line_angle,
@@ -204,6 +208,8 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     inner_line_enabled: BoolProperty(default=True)
     inner_line_angle: FloatProperty(default=0.5235987756, min=0.0174532925, max=3.1415926536)
     inner_line_thickness: FloatProperty(default=0.0005, min=0.0001, max=1.0)
+    use_inner_line_creation_limit: BoolProperty(default=True)
+    inner_line_creation_max_distance: FloatProperty(default=10.0, min=0.1, max=1000.0)
 
     intersection_method: EnumProperty(
         items=[

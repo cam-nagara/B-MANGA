@@ -3,6 +3,38 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-29 — B-MANGA Lineの内部線作成範囲を追加 (B-MANGA Line v0.3.26)
+
+### 症状
+
+- 大規模な背景素材で多数のオブジェクトへ内部線を一括適用すると、カメラから遠いオブジェクトにも内部線の生成処理が走り、完了まで極端に時間がかかっていた。
+- 既存の「遠距離ラインを非表示」は作成後の表示切り替えであり、内部線の初回作成負荷を減らせていなかった。
+
+### 原因
+
+- 内部線を追加する処理が、カメラからの距離に関係なく選択中の全メッシュへ内部線モディファイアを作成していた。
+- 表示範囲と作成範囲が分かれておらず、遠距離オブジェクトを生成対象から外す設定がなかった。
+
+### 修正
+
+- 内部線に「作成範囲を制限」を追加し、初期値をオン、作成する距離を 10m にした。
+- ライン適用時と内部線オン時に、カメラから指定距離以内のオブジェクトにだけ内部線を作成するようにした。範囲外のオブジェクトには内部線を作らず、既にある場合は削除する。
+- 距離判定はオブジェクト原点ではなく、カメラからオブジェクト境界までの最短距離で行うようにした。
+- 作成範囲の設定を複数選択反映、プリセット保存、パネル再登録テストへ通した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\camera_comp.py addons\b_manga_line\core.py addons\b_manga_line\presets.py addons\b_manga_line\panels.py test\blender_b_manga_line_inner_creation_range_check.py test\blender_b_manga_line_preset_visibility_check.py test\blender_b_manga_line_register_reenable_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_inner_creation_range_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_register_reenable_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_inner_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_uniform_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_midpoint_targets_check.py`
+- `git diff --check`
+
+---
+
 ## 2026-06-29 — B-MANGA Lineのライン用マテリアルAOVを自動補修 (B-MANGA Line v0.3.25)
 
 ### 症状

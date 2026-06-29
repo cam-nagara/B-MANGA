@@ -217,6 +217,13 @@ def _draw_inner_line(layout, context, settings) -> None:
     sub_label.alignment = "RIGHT"
     sub_label.label(text=_mm_to_px_label(settings.inner_line_thickness_mm, dpi))
     col.separator()
+    sub_create = col.column(align=True)
+    sub_create.enabled = settings.inner_line_enabled
+    sub_create.prop(settings, "use_inner_line_creation_limit")
+    sub_create2 = sub_create.column(align=True)
+    sub_create2.enabled = settings.use_inner_line_creation_limit
+    sub_create2.prop(settings, "inner_line_creation_max_distance")
+    col.separator()
     sub_dist = col.column(align=True)
     sub_dist.enabled = settings.inner_line_enabled
     sub_dist.prop(settings, "use_inner_line_distance_limit")

@@ -35,10 +35,47 @@ _FALLBACK_DPI = 600
 
 def get_line_camera(scene) -> bpy.types.Object | None:
     """B-MANGA Line が基準にするカメラを返す."""
+    if scene is None:
+        return None
     camera = getattr(scene, "bmanga_line_camera", None)
     if camera is not None and getattr(camera, "type", None) == "CAMERA":
         return camera
     return scene.camera
+
+
+def object_distance_from_camera(obj: bpy.types.Object, camera: bpy.types.Object) -> float:
+    """カメラ位置からオブジェクトのワールド境界までの最短距離."""
+    cam_loc = camera.matrix_world.translation
+    if obj.bound_box:
+        corners = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
+        min_x = min(corner.x for corner in corners)
+        max_x = max(corner.x for corner in corners)
+        min_y = min(corner.y for corner in corners)
+        max_y = max(corner.y for corner in corners)
+        min_z = min(corner.z for corner in corners)
+        max_z = max(corner.z for corner in corners)
+        closest = Vector((
+            min(max(cam_loc.x, min_x), max_x),
+            min(max(cam_loc.y, min_y), max_y),
+            min(max(cam_loc.z, min_z), max_z),
+        ))
+        return (closest - cam_loc).length
+    return (obj.matrix_world.translation - cam_loc).length
+
+
+def inner_line_creation_in_range(obj: bpy.types.Object, scene, settings=None) -> bool:
+    """内部線を作成してよいカメラ距離内か判定."""
+    if settings is None:
+        settings = getattr(obj, "bmanga_line_settings", None)
+    if settings is None:
+        return True
+    if not getattr(settings, "use_inner_line_creation_limit", False):
+        return True
+    camera = get_line_camera(scene)
+    if camera is None:
+        return True
+    limit = max(0.0, float(getattr(settings, "inner_line_creation_max_distance", 10.0)))
+    return object_distance_from_camera(obj, camera) <= limit
 
 
 # ------------------------------------------------------------------
