@@ -379,7 +379,7 @@ def main() -> None:
     assert abs(scene.bmanga_line_presets[0].outline_thickness - 0.018) < 1.0e-7
 
     first = _make_cube("BML_適用先A", (2.0, 0.0, 0.0))
-    second = _make_cube("BML_適用先B", (4.0, 0.0, 0.0))
+    second = _make_cube("BML_適用先B", (2.35, 0.0, 0.0))
     _select(first, [first, second])
     assert bpy.ops.bmanga_line.preset_apply_selected() == {"FINISHED"}
     for obj in (first, second):

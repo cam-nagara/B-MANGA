@@ -45,6 +45,8 @@ def _expected_targets(obj: bpy.types.Object, objects: list[bpy.types.Object]) ->
     for item in objects:
         if item == obj:
             continue
+        if not intersection_lines._bounds_overlap(obj, item, 0.01):
+            continue
         item_enabled = item.bmanga_line_settings.intersection_enabled
         if item_enabled and obj.name >= item.name:
             continue
@@ -59,7 +61,8 @@ def main() -> None:
     first = _make_cube("BML_auto_target_A", (-0.35, 0.0, 0.0))
     second = _make_cube("BML_auto_target_B", (0.35, 0.0, 0.0))
     third = _make_cube("BML_auto_target_C", (0.0, 0.35, 0.0))
-    objects = [first, second, third]
+    distant = _make_cube("BML_auto_target_D_no_overlap", (4.0, 0.0, 0.0))
+    objects = [first, second, third, distant]
 
     for obj in objects:
         settings = obj.bmanga_line_settings

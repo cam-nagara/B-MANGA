@@ -112,9 +112,32 @@ def copy_settings_to_settings(source, target) -> None:
         core._propagating = old
 
 
-def apply_line_settings(obj: bpy.types.Object, context) -> bool:
+def _update_view_layer(context) -> None:
+    view_layer = getattr(context, "view_layer", None)
+    update = getattr(view_layer, "update", None)
+    if callable(update):
+        update()
+
+
+def _refresh_after_line_settings(context) -> None:
+    from . import camera_comp, intersection_lines, outline_setup
+
+    intersection_lines.refresh_scene_intersections(context.scene)
+    camera_comp.refresh(context)
+    outline_setup.ensure_aov_passes(context.scene)
+
+
+def apply_line_settings(
+    obj: bpy.types.Object,
+    context,
+    *,
+    refresh_scene: bool = True,
+    transforms_fresh: bool = False,
+) -> bool:
     if obj.type != "MESH":
         return False
+    if not transforms_fresh:
+        _update_view_layer(context)
 
     from . import (
         camera_comp,
@@ -156,16 +179,18 @@ def apply_line_settings(obj: bpy.types.Object, context) -> bool:
     else:
         inner_lines.remove_inner_lines(obj)
 
-    if settings.intersection_enabled and camera_comp.intersection_line_creation_in_range(
+    intersection_in_range = camera_comp.intersection_line_creation_in_range(
         obj, context.scene, settings,
-    ):
-        intersection_lines.apply_intersection_lines(
-            obj,
-            thickness=settings.intersection_thickness,
-            material=mat,
-            method=settings.intersection_method,
-            scene=context.scene,
-        )
+    )
+    if settings.intersection_enabled and intersection_in_range:
+        if refresh_scene:
+            intersection_lines.apply_intersection_lines(
+                obj,
+                thickness=settings.intersection_thickness,
+                material=mat,
+                method=settings.intersection_method,
+                scene=context.scene,
+            )
     else:
         intersection_lines.remove_intersection_lines(obj)
 
@@ -185,9 +210,8 @@ def apply_line_settings(obj: bpy.types.Object, context) -> bool:
     else:
         core.set_line_visibility(obj, True)
 
-    intersection_lines.refresh_scene_intersections(context.scene)
-    camera_comp.refresh(context)
-    outline_setup.ensure_aov_passes(context.scene)
+    if refresh_scene:
+        _refresh_after_line_settings(context)
 
     return True
 
@@ -316,10 +340,17 @@ class BMANGA_LINE_OT_preset_apply_selected(bpy.types.Operator):
             self.report({"WARNING"}, "プリセットが選択されていません")
             return {"CANCELLED"}
         count = 0
+        _update_view_layer(context)
         for obj in _selected_meshes(context):
             copy_preset_to_settings(preset, obj.bmanga_line_settings)
-            if apply_line_settings(obj, context):
+            if apply_line_settings(
+                obj,
+                context,
+                refresh_scene=False,
+                transforms_fresh=True,
+            ):
                 count += 1
+        _refresh_after_line_settings(context)
         self.report({"INFO"}, f"{count} オブジェクトにプリセットを適用しました")
         return {"FINISHED"}
 

@@ -22,6 +22,7 @@ SDF 法:
 from __future__ import annotations
 
 import bpy
+from mathutils import Vector
 
 from .core import (
     GENERATED_LINE_ATTR,
@@ -612,6 +613,44 @@ def _creation_in_range(
     )
 
 
+def _world_bounds(obj: bpy.types.Object):
+    if not obj.bound_box:
+        loc = obj.matrix_world.translation
+        return (loc.x, loc.x, loc.y, loc.y, loc.z, loc.z)
+    corners = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
+    return (
+        min(corner.x for corner in corners),
+        max(corner.x for corner in corners),
+        min(corner.y for corner in corners),
+        max(corner.y for corner in corners),
+        min(corner.z for corner in corners),
+        max(corner.z for corner in corners),
+    )
+
+
+def _bounds_overlap(source: bpy.types.Object, target: bpy.types.Object, margin: float) -> bool:
+    a_min_x, a_max_x, a_min_y, a_max_y, a_min_z, a_max_z = _world_bounds(source)
+    b_min_x, b_max_x, b_min_y, b_max_y, b_min_z, b_max_z = _world_bounds(target)
+    return (
+        a_min_x <= b_max_x + margin and a_max_x + margin >= b_min_x
+        and a_min_y <= b_max_y + margin and a_max_y + margin >= b_min_y
+        and a_min_z <= b_max_z + margin and a_max_z + margin >= b_min_z
+    )
+
+
+def _intersection_margin(
+    obj: bpy.types.Object,
+    target: bpy.types.Object,
+    thickness: float,
+) -> float:
+    return max(
+        abs(float(thickness)),
+        _target_outline_thickness(obj),
+        _target_outline_thickness(target),
+        0.001,
+    )
+
+
 def _modifier_suffix(target: bpy.types.Object) -> str:
     raw = target.name_full or target.name or "Object"
     cleaned = "".join(ch if ch.isalnum() else "_" for ch in raw)
@@ -730,7 +769,11 @@ def apply_intersection_lines(
     _ensure_intersection_width_group(obj)
 
     target_candidates = [target] if target is not None else _auto_targets(obj, scene)
-    targets = [item for item in target_candidates if _creation_in_range(item, scene)]
+    targets = [
+        item for item in target_candidates
+        if _creation_in_range(item, scene)
+        and _bounds_overlap(obj, item, _intersection_margin(obj, item, thickness))
+    ]
     expected_names = {_modifier_name_for_target(item) for item in targets}
     for mod in list(iter_intersection_modifiers(obj)):
         if mod.name not in expected_names:

@@ -39,17 +39,28 @@ class BMANGA_LINE_OT_apply(bpy.types.Operator):
         return any(obj.type == "MESH" for obj in context.selected_objects)
 
     def execute(self, context):
-        from .presets import apply_line_settings
+        from .presets import (
+            apply_line_settings,
+            _refresh_after_line_settings,
+            _update_view_layer,
+        )
         from . import outline_setup
 
         outline_setup.ensure_aov_passes(context.scene)
 
         count = 0
+        _update_view_layer(context)
         for obj in context.selected_objects:
             if obj.type != "MESH":
                 continue
-            if apply_line_settings(obj, context):
+            if apply_line_settings(
+                obj,
+                context,
+                refresh_scene=False,
+                transforms_fresh=True,
+            ):
                 count += 1
+        _refresh_after_line_settings(context)
 
         self.report({"INFO"}, f"{count} オブジェクトにラインを適用しました")
         return {"FINISHED"}
@@ -233,15 +244,22 @@ class BMANGA_LINE_OT_apply_active_to_linked(bpy.types.Operator):
         applied = 0
         failed = 0
         source_settings = source.bmanga_line_settings
+        presets._update_view_layer(context)
         for obj in linked:
             try:
                 presets.copy_settings_to_settings(source_settings, obj.bmanga_line_settings)
-                if presets.apply_line_settings(obj, context):
+                if presets.apply_line_settings(
+                    obj,
+                    context,
+                    refresh_scene=False,
+                    transforms_fresh=True,
+                ):
                     applied += 1
                 else:
                     failed += 1
             except Exception:  # noqa: BLE001
                 failed += 1
+        presets._refresh_after_line_settings(context)
 
         if failed:
             self.report(

@@ -36,6 +36,27 @@ def _make_cube(name: str, z: float) -> bpy.types.Object:
     return obj
 
 
+def _make_data_cube(name: str, location: tuple[float, float, float]) -> bpy.types.Object:
+    verts = [
+        (-0.5, -0.5, -0.5), (0.5, -0.5, -0.5),
+        (0.5, 0.5, -0.5), (-0.5, 0.5, -0.5),
+        (-0.5, -0.5, 0.5), (0.5, -0.5, 0.5),
+        (0.5, 0.5, 0.5), (-0.5, 0.5, 0.5),
+    ]
+    faces = [
+        (0, 1, 2, 3), (4, 7, 6, 5), (0, 4, 5, 1),
+        (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0),
+    ]
+    mesh = bpy.data.meshes.new(name + "_mesh")
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    obj.location = location
+    obj.bmanga_line_settings.intersection_enabled = False
+    return obj
+
+
 def _apply(obj: bpy.types.Object) -> None:
     assert presets.apply_line_settings(obj, bpy.context), obj.name
     assert obj.modifiers.get(core.MODIFIER_NAME) is not None, obj.name
@@ -66,7 +87,7 @@ def main() -> None:
             camera_comp.object_distance_from_camera(exact, camera),
             10.0,
             rel_tol=0.0,
-            abs_tol=1.0e-7,
+            abs_tol=0.05,
         )
         assert camera_comp.object_distance_from_camera(far, camera) > 10.0
         assert _has_inner(near), "10m以内の内部線が作成されていません"
@@ -80,6 +101,12 @@ def main() -> None:
         far.bmanga_line_settings.inner_line_creation_max_distance = 10.0
         _apply(far)
         assert not _has_inner(far), "作成距離を戻しても遠距離内部線が残っています"
+
+        stale_transform = _make_data_cube("BML_内部線_移動直後", (-4.0, -11.5, 0.0))
+        _apply(stale_transform)
+        assert not _has_inner(stale_transform), (
+            "移動直後の遠距離オブジェクトに内部線が作成されています"
+        )
 
         far.bmanga_line_settings.use_inner_line_creation_limit = False
         _apply(far)

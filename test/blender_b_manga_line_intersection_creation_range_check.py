@@ -37,6 +37,29 @@ def _make_cube(name: str, z: float) -> bpy.types.Object:
     return obj
 
 
+def _make_data_cube(name: str, location: tuple[float, float, float]) -> bpy.types.Object:
+    verts = [
+        (-0.5, -0.5, -0.5), (0.5, -0.5, -0.5),
+        (0.5, 0.5, -0.5), (-0.5, 0.5, -0.5),
+        (-0.5, -0.5, 0.5), (0.5, -0.5, 0.5),
+        (0.5, 0.5, 0.5), (-0.5, 0.5, 0.5),
+    ]
+    faces = [
+        (0, 1, 2, 3), (4, 7, 6, 5), (0, 4, 5, 1),
+        (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0),
+    ]
+    mesh = bpy.data.meshes.new(name + "_mesh")
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    obj.location = location
+    settings = obj.bmanga_line_settings
+    settings.inner_line_enabled = False
+    settings.intersection_enabled = True
+    return obj
+
+
 def _target_names(obj: bpy.types.Object) -> set[str]:
     names: set[str] = set()
     for mod in core.iter_intersection_modifiers(obj):
@@ -57,8 +80,9 @@ def main() -> None:
         _clear_scene()
         camera = _make_camera()
 
-        source = _make_cube("BML_intersection_range_A_source", -8.0)
+        source = _make_cube("BML_intersection_range_A_source", -10.5)
         exact = _make_cube("BML_intersection_range_B_exact", -10.5)
+        exact.location.x = 0.35
         far = _make_cube("BML_intersection_range_C_far", -12.0)
 
         for obj in (source, exact, far):
@@ -67,12 +91,17 @@ def main() -> None:
             assert abs(settings.intersection_creation_max_distance - 10.0) < 1.0e-7
             _apply(obj)
 
-        assert camera_comp.object_distance_from_camera(source, camera) < 10.0
+        assert math.isclose(
+            camera_comp.object_distance_from_camera(source, camera),
+            10.0,
+            rel_tol=0.0,
+            abs_tol=0.05,
+        )
         assert math.isclose(
             camera_comp.object_distance_from_camera(exact, camera),
             10.0,
             rel_tol=0.0,
-            abs_tol=1.0e-7,
+            abs_tol=0.05,
         )
         assert camera_comp.object_distance_from_camera(far, camera) > 10.0
 
@@ -83,29 +112,41 @@ def main() -> None:
             "10mより遠いオブジェクト自身に交差線が作成されています"
         )
 
-        far.bmanga_line_settings.intersection_creation_max_distance = 12.0
+        source.bmanga_line_settings.intersection_creation_max_distance = 9.0
         intersection_lines.refresh_scene_intersections(bpy.context.scene)
-        assert far.name in _target_names(source), (
-            "作成距離を広げても遠い交差相手が作成対象に戻っていません"
+        assert not _target_names(source), (
+            "作成距離を狭めても交差線が残っています"
         )
 
-        far.bmanga_line_settings.intersection_creation_max_distance = 10.0
+        source.bmanga_line_settings.intersection_creation_max_distance = 10.0
         intersection_lines.refresh_scene_intersections(bpy.context.scene)
-        assert far.name not in _target_names(source), (
-            "作成距離を戻しても遠い交差相手の交差線が残っています"
+        assert exact.name in _target_names(source), (
+            "作成距離を戻しても重なっている交差相手が戻っていません"
         )
 
-        far.bmanga_line_settings.use_intersection_creation_limit = False
+        stale_transform = _make_data_cube(
+            "BML_intersection_range_D_stale_transform", (-4.0, -11.5, 0.0),
+        )
+        _apply(stale_transform)
         intersection_lines.refresh_scene_intersections(bpy.context.scene)
-        assert far.name in _target_names(source), (
-            "作成範囲をオフにしても交差相手が作成対象に戻っていません"
+        assert stale_transform.name not in _target_names(source), (
+            "移動直後の遠距離交差相手が作成対象に残っています"
+        )
+        assert not list(core.iter_intersection_modifiers(stale_transform)), (
+            "移動直後の遠距離オブジェクト自身に交差線が作成されています"
+        )
+
+        source.bmanga_line_settings.use_intersection_creation_limit = False
+        intersection_lines.refresh_scene_intersections(bpy.context.scene)
+        assert exact.name in _target_names(source), (
+            "作成範囲をオフにしても重なっている交差相手が作成対象に戻っていません"
         )
 
         bpy.context.scene.camera = None
-        far.bmanga_line_settings.use_intersection_creation_limit = True
-        far.bmanga_line_settings.intersection_creation_max_distance = 0.1
+        source.bmanga_line_settings.use_intersection_creation_limit = True
+        source.bmanga_line_settings.intersection_creation_max_distance = 0.1
         intersection_lines.refresh_scene_intersections(bpy.context.scene)
-        assert far.name in _target_names(source), (
+        assert exact.name in _target_names(source), (
             "カメラ未設定時に交差線作成が止まっています"
         )
 

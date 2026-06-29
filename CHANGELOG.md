@@ -3,6 +3,40 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-29 — B-MANGA Lineの一括適用と作成範囲判定を軽量化 (B-MANGA Line v0.3.28)
+
+### 症状
+
+- 内部線・交差線の作成範囲を 10m に制限しても、大規模背景素材で全メッシュへ一括適用すると長時間戻らない場合があった。
+- データ作成直後や移動直後のオブジェクトで、距離判定に古い位置が使われる余地があった。
+- 交差線は 10m 内の全候補に近い数の組み合わせを作る余地があり、近いが重ならない相手にも作成候補が残っていた。
+
+### 原因
+
+- 一括適用中にオブジェクトごとへシーン全体の交差線更新とカメラ更新が走っていた。
+- 作成後にビュー全体を強制更新しており、重いメッシュの内部線・交差線評価までボタン処理内で待っていた。
+- 交差線の候補絞り込みが距離だけで、オブジェクト境界の重なりを見ていなかった。
+
+### 修正
+
+- 一括適用、プリセット一括適用、リンク素材への一括上書きでは、位置更新を最初の 1 回、交差線更新とカメラ更新を最後の 1 回だけにした。
+- 距離判定前に位置を更新し、作成後の重いビュー全体評価はボタン処理内で強制しないようにした。
+- 交差線は作成範囲内で、かつ境界が重なる相手だけを候補にするようにした。
+- 境界距離、移動直後、一括適用の更新回数を実機テストへ追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\operators.py addons\b_manga_line\presets.py addons\b_manga_line\intersection_lines.py test\blender_b_manga_line_batch_apply_refresh_check.py test\blender_b_manga_line_inner_creation_range_check.py test\blender_b_manga_line_intersection_creation_range_check.py test\blender_b_manga_line_auto_intersection_targets_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_inner_creation_range_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_intersection_creation_range_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_auto_intersection_targets_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `D:\TM Dropbox\Share\Assets\Japanese Streetscape Tokyo 0004\Japanese_Streetscape_Tokyo_0004.blend` の 917 メッシュを対象に、選択済み相当の一括適用を計測: 適用本体は約 2 秒、交差線・カメラ更新まで約 11 秒、交差線数集計込みで約 39 秒。
+- AI目視: `_verify\b_manga_line_creation_range_visual\creation_range_visual.png` で 8m / 10m は作成、12m は非作成を確認。
+
+---
+
 ## 2026-06-29 — B-MANGA Lineの交差線作成範囲を追加 (B-MANGA Line v0.3.27)
 
 ### 症状
