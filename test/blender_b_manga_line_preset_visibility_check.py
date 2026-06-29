@@ -275,6 +275,13 @@ def _assert_multi_select_manual_setting_propagation(
     source.intersection_thickness_mm = 80.0
     assert math.isclose(target.intersection_thickness_mm, 80.0, rel_tol=0.001)
 
+    source.intersection_creation_max_distance = 7.5
+    assert math.isclose(target.intersection_creation_max_distance, 7.5, rel_tol=0.001)
+    source.use_intersection_creation_limit = False
+    assert target.use_intersection_creation_limit is False
+    source.use_intersection_creation_limit = True
+    assert target.use_intersection_creation_limit is True
+
     source.use_camera_compensation = True
     source.camera_compensation_influence = 0.35
     assert target.use_camera_compensation is True
@@ -316,6 +323,8 @@ def _assert_multi_select_manual_setting_propagation(
     source.use_intersection_distance_limit = False
     source.use_inner_line_creation_limit = True
     source.inner_line_creation_max_distance = 10.0
+    source.use_intersection_creation_limit = True
+    source.intersection_creation_max_distance = 10.0
     source.use_camera_compensation = False
     source.use_uniform_line_width = False
     source.use_vertex_color = False

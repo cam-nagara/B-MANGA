@@ -245,6 +245,11 @@ def _draw_intersection(layout, context, settings) -> None:
     sub_label.alignment = "RIGHT"
     sub_label.label(text=_mm_to_px_label(settings.intersection_thickness_mm, dpi))
     sub.separator()
+    sub.prop(settings, "use_intersection_creation_limit")
+    sub_create = sub.column(align=True)
+    sub_create.enabled = settings.use_intersection_creation_limit
+    sub_create.prop(settings, "intersection_creation_max_distance")
+    sub.separator()
     sub.prop(settings, "use_intersection_distance_limit")
     sub_dist = sub.column(align=True)
     sub_dist.enabled = settings.use_intersection_distance_limit

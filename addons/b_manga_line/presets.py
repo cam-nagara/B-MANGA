@@ -32,6 +32,8 @@ _SETTING_FIELDS = (
     "intersection_method",
     "intersection_enabled",
     "intersection_thickness",
+    "use_intersection_creation_limit",
+    "intersection_creation_max_distance",
     "use_camera_compensation",
     "camera_compensation_influence",
     "use_ao_influence",
@@ -154,7 +156,9 @@ def apply_line_settings(obj: bpy.types.Object, context) -> bool:
     else:
         inner_lines.remove_inner_lines(obj)
 
-    if settings.intersection_enabled:
+    if settings.intersection_enabled and camera_comp.intersection_line_creation_in_range(
+        obj, context.scene, settings,
+    ):
         intersection_lines.apply_intersection_lines(
             obj,
             thickness=settings.intersection_thickness,
@@ -220,6 +224,8 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     )
     intersection_enabled: BoolProperty(default=True)
     intersection_thickness: FloatProperty(default=0.0005, min=0.0001, max=1.0)
+    use_intersection_creation_limit: BoolProperty(default=True)
+    intersection_creation_max_distance: FloatProperty(default=10.0, min=0.1, max=1000.0)
 
     use_camera_compensation: BoolProperty(default=False)
     camera_compensation_influence: FloatProperty(default=1.0, min=0.0, max=1.0)

@@ -3,6 +3,38 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-29 — B-MANGA Lineの交差線作成範囲を追加 (B-MANGA Line v0.3.27)
+
+### 症状
+
+- 大規模な背景素材で多数のオブジェクトへ交差線を一括適用すると、カメラから遠いオブジェクト同士にも交差線の生成候補が作られ、処理が重くなる余地があった。
+- 既存の「遠距離ラインを非表示」は作成後の表示切り替えであり、交差線の初回作成負荷を減らせていなかった。
+
+### 原因
+
+- 交差線の自動対象生成が、カメラからの距離に関係なくライン適用済みメッシュを候補にしていた。
+- 内部線には作成範囲を追加したが、交差線には同じ作成前の制限がまだ無かった。
+
+### 修正
+
+- 交差線に「作成範囲を制限」を追加し、初期値をオン、作成する距離を 10m にした。
+- 交差線を持つ側と交差相手側の両方をカメラ距離で判定し、範囲外のオブジェクトを交差線の作成対象から外すようにした。
+- 範囲外になったオブジェクトの古い交差線は削除し、距離を広げるか作成範囲をオフにすると再び作成対象へ戻るようにした。
+- 作成範囲の設定を複数選択反映、プリセット保存、パネル再登録テストへ通した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\camera_comp.py addons\b_manga_line\core.py addons\b_manga_line\intersection_lines.py addons\b_manga_line\presets.py addons\b_manga_line\panels.py test\blender_b_manga_line_intersection_creation_range_check.py test\blender_b_manga_line_preset_visibility_check.py test\blender_b_manga_line_register_reenable_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_intersection_creation_range_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_auto_intersection_targets_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_register_reenable_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_uniform_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_midpoint_targets_check.py`
+- `git diff --check`
+
+---
+
 ## 2026-06-29 — B-MANGA Lineの内部線作成範囲を追加 (B-MANGA Line v0.3.26)
 
 ### 症状

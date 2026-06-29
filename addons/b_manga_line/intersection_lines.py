@@ -599,6 +599,19 @@ def _auto_targets(
     return targets
 
 
+def _creation_in_range(
+    obj: bpy.types.Object,
+    scene: bpy.types.Scene | None,
+) -> bool:
+    from . import camera_comp
+
+    return camera_comp.intersection_line_creation_in_range(
+        obj,
+        scene,
+        getattr(obj, "bmanga_line_settings", None),
+    )
+
+
 def _modifier_suffix(target: bpy.types.Object) -> str:
     raw = target.name_full or target.name or "Object"
     cleaned = "".join(ch if ch.isalnum() else "_" for ch in raw)
@@ -707,13 +720,17 @@ def apply_intersection_lines(
     """交差線 GN モディファイアを適用. 成功時 True."""
     if obj.type != "MESH":
         return False
+    if not _creation_in_range(obj, scene):
+        remove_intersection_lines(obj)
+        return True
 
     tree = _get_or_create_tree(method)
     if material is not None:
         _ensure_material_slot(obj, material)
     _ensure_intersection_width_group(obj)
 
-    targets = [target] if target is not None else _auto_targets(obj, scene)
+    target_candidates = [target] if target is not None else _auto_targets(obj, scene)
+    targets = [item for item in target_candidates if _creation_in_range(item, scene)]
     expected_names = {_modifier_name_for_target(item) for item in targets}
     for mod in list(iter_intersection_modifiers(obj)):
         if mod.name not in expected_names:
@@ -766,6 +783,9 @@ def refresh_scene_intersections(scene: bpy.types.Scene) -> None:
         if settings is None:
             continue
         if not getattr(settings, "intersection_enabled", False):
+            remove_intersection_lines(obj)
+            continue
+        if not _creation_in_range(obj, scene):
             remove_intersection_lines(obj)
             continue
         apply_intersection_lines(

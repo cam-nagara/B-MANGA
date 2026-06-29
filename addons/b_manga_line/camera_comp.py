@@ -78,6 +78,21 @@ def inner_line_creation_in_range(obj: bpy.types.Object, scene, settings=None) ->
     return object_distance_from_camera(obj, camera) <= limit
 
 
+def intersection_line_creation_in_range(obj: bpy.types.Object, scene, settings=None) -> bool:
+    """交差線を作成してよいカメラ距離内か判定."""
+    if settings is None:
+        settings = getattr(obj, "bmanga_line_settings", None)
+    if settings is None:
+        return True
+    if not getattr(settings, "use_intersection_creation_limit", False):
+        return True
+    camera = get_line_camera(scene)
+    if camera is None:
+        return True
+    limit = max(0.0, float(getattr(settings, "intersection_creation_max_distance", 10.0)))
+    return object_distance_from_camera(obj, camera) <= limit
+
+
 # ------------------------------------------------------------------
 # カメラ画角ユーティリティ
 # ------------------------------------------------------------------

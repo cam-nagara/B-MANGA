@@ -322,38 +322,41 @@ def _on_inner_creation_distance_changed(self, context):
     _propagate(self, context, "inner_line_creation_max_distance")
 
 
-def _on_intersection_enabled_changed(self, context):
+def _sync_intersection_creation(owner: bpy.types.Object, settings, context) -> None:
     from . import intersection_lines, outline_setup
+    if owner.type != "MESH":
+        return
+    if not settings.intersection_enabled:
+        intersection_lines.remove_intersection_lines(owner)
+        return
+    mat = outline_setup.get_outline_material(owner)
+    intersection_lines.apply_intersection_lines(
+        owner,
+        thickness=settings.intersection_thickness,
+        material=mat,
+        method=settings.intersection_method,
+        scene=getattr(context, "scene", None),
+    )
+
+
+def _refresh_intersection_scene(context) -> None:
+    from . import intersection_lines
+    scene = getattr(context, "scene", None)
+    if scene is not None:
+        intersection_lines.refresh_scene_intersections(scene)
+
+
+def _on_intersection_enabled_changed(self, context):
     owner = self.id_data
-    if owner.type == "MESH":
-        if self.intersection_enabled:
-            mat = outline_setup.get_outline_material(owner)
-            intersection_lines.apply_intersection_lines(
-                owner,
-                thickness=self.intersection_thickness,
-                material=mat,
-                method=self.intersection_method,
-                scene=context.scene,
-            )
-        else:
-            intersection_lines.remove_intersection_lines(owner)
-        intersection_lines.refresh_scene_intersections(context.scene)
+    _sync_intersection_creation(owner, self, context)
+    _refresh_intersection_scene(context)
     _propagate(self, context, "intersection_enabled")
 
 
 def _on_intersection_method_changed(self, context):
-    from . import intersection_lines, outline_setup
     owner = self.id_data
-    if owner.type == "MESH" and self.intersection_enabled:
-        mat = outline_setup.get_outline_material(owner)
-        intersection_lines.apply_intersection_lines(
-            owner,
-            thickness=self.intersection_thickness,
-            material=mat,
-            method=self.intersection_method,
-            scene=context.scene,
-        )
-        intersection_lines.refresh_scene_intersections(context.scene)
+    _sync_intersection_creation(owner, self, context)
+    _refresh_intersection_scene(context)
     _propagate(self, context, "intersection_method")
 
 
@@ -366,6 +369,20 @@ def _on_intersection_thickness_changed(self, context):
         )
         _refresh_print_widths(context)
     _propagate(self, context, "intersection_thickness")
+
+
+def _on_intersection_creation_limit_changed(self, context):
+    owner = self.id_data
+    _sync_intersection_creation(owner, self, context)
+    _refresh_intersection_scene(context)
+    _propagate(self, context, "use_intersection_creation_limit")
+
+
+def _on_intersection_creation_distance_changed(self, context):
+    owner = self.id_data
+    _sync_intersection_creation(owner, self, context)
+    _refresh_intersection_scene(context)
+    _propagate(self, context, "intersection_creation_max_distance")
 
 
 def _refresh_line_width_weights(self, context, target: str | None = None) -> None:
@@ -730,6 +747,23 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         max=1000.0,
         precision=2,
         step=5,
+    )  # type: ignore[valid-type]
+
+    use_intersection_creation_limit: BoolProperty(
+        name="作成範囲を制限",
+        description="カメラから指定距離以内のオブジェクトにだけ交差線を作成する",
+        default=True,
+        update=_on_intersection_creation_limit_changed,
+    )  # type: ignore[valid-type]
+
+    intersection_creation_max_distance: FloatProperty(
+        name="作成する距離 (m)",
+        description="この距離以内のオブジェクトにだけ交差線を作成する",
+        default=10.0,
+        min=0.1,
+        max=1000.0,
+        subtype="DISTANCE",
+        update=_on_intersection_creation_distance_changed,
     )  # type: ignore[valid-type]
 
     # --- カメラ距離補正 ---

@@ -127,6 +127,8 @@ def _assert_panels_draw_items() -> None:
         "use_inner_line_creation_limit",
         "inner_line_creation_max_distance",
         "intersection_enabled",
+        "use_intersection_creation_limit",
+        "intersection_creation_max_distance",
     ):
         assert prop_name in records["props"], f"{prop_name} がパネルにありません"
     assert "intersection_target" not in records["props"], "交差対象欄が残っています"
