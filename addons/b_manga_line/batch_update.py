@@ -152,6 +152,7 @@ def _update_inner_lines(objects: list[bpy.types.Object], context) -> None:
                 angle=settings.inner_line_angle,
                 thickness=settings.inner_line_thickness,
                 material=outline_setup.get_outline_material(obj),
+                use_marked_edges=settings.use_marked_inner_edges,
             )
         else:
             inner_lines.remove_inner_lines(obj)
@@ -200,7 +201,11 @@ def refresh_propagated_property(
     }:
         _refresh_camera(context)
         return
-    if prop_name in {"inner_line_enabled", "use_inner_line_creation_limit"}:
+    if prop_name in {
+        "inner_line_enabled",
+        "use_marked_inner_edges",
+        "use_inner_line_creation_limit",
+    }:
         _update_inner_lines(line_objects, context)
         return
     if prop_name in {"intersection_enabled", "use_intersection_creation_limit"}:

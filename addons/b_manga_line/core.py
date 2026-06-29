@@ -301,6 +301,7 @@ def _sync_inner_line_creation(owner: bpy.types.Object, settings, context) -> Non
             angle=settings.inner_line_angle,
             thickness=settings.inner_line_thickness,
             material=mat,
+            use_marked_edges=settings.use_marked_inner_edges,
         )
     else:
         inner_lines.remove_inner_lines(owner)
@@ -323,6 +324,14 @@ def _on_inner_angle_changed(self, context):
         inner_lines.update_parameters(owner, angle=self.inner_line_angle)
         _refresh_line_width_weights(self, context)
     _propagate(self, context, "inner_line_angle")
+
+
+def _on_marked_inner_edges_changed(self, context):
+    if _propagating:
+        return
+    owner = self.id_data
+    _sync_inner_line_creation(owner, self, context)
+    _propagate(self, context, "use_marked_inner_edges")
 
 
 def _on_inner_thickness_changed(self, context):
@@ -726,6 +735,13 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         max=math.radians(180),
         subtype="ANGLE",
         update=_on_inner_angle_changed,
+    )  # type: ignore[valid-type]
+
+    use_marked_inner_edges: BoolProperty(
+        name="指定済みの辺だけ線にする",
+        description="シャープまたはクリースを指定した辺だけを内部線にする",
+        default=False,
+        update=_on_marked_inner_edges_changed,
     )  # type: ignore[valid-type]
 
     inner_line_thickness: FloatProperty(

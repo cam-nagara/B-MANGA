@@ -26,6 +26,7 @@ _SETTING_FIELDS = (
     "hide_through_transparent",
     "inner_line_enabled",
     "inner_line_angle",
+    "use_marked_inner_edges",
     "inner_line_thickness",
     "use_inner_line_creation_limit",
     "inner_line_creation_max_distance",
@@ -175,6 +176,7 @@ def apply_line_settings(
             angle=settings.inner_line_angle,
             thickness=settings.inner_line_thickness,
             material=mat,
+            use_marked_edges=settings.use_marked_inner_edges,
         )
     else:
         inner_lines.remove_inner_lines(obj)
@@ -235,6 +237,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
 
     inner_line_enabled: BoolProperty(default=True)
     inner_line_angle: FloatProperty(default=0.5235987756, min=0.0174532925, max=3.1415926536)
+    use_marked_inner_edges: BoolProperty(default=False)
     inner_line_thickness: FloatProperty(default=0.0005, min=0.0001, max=1.0)
     use_inner_line_creation_limit: BoolProperty(default=True)
     inner_line_creation_max_distance: FloatProperty(default=10.0, min=0.1, max=1000.0)

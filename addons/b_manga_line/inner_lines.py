@@ -22,6 +22,10 @@ from .core import (
 
 _GENERATED_LINE_NODE_LABEL = "BML_GeneratedLineMark"
 _RADIUS_HALF_NODE_LABEL = "BML_InnerLineRadiusHalf"
+_MARKED_ONLY_SOCKET_NAME = "指定済みの辺だけ線にする"
+_MARKED_SELECTION_SWITCH_LABEL = "BML_MarkedInnerEdgeSelection"
+_SHARP_EDGE_ATTR = "sharp_edge"
+_CREASE_EDGE_ATTR = "crease_edge"
 
 
 # ------------------------------------------------------------------
@@ -63,6 +67,12 @@ def _create_node_tree() -> bpy.types.NodeTree:
     )
     line_material_sock.default_value = 999
     line_material_sock.min_value = 0
+    marked_only_sock = tree.interface.new_socket(
+        name=_MARKED_ONLY_SOCKET_NAME,
+        in_out="INPUT",
+        socket_type="NodeSocketBool",
+    )
+    marked_only_sock.default_value = False
 
     nodes = tree.nodes
     links = tree.links
@@ -120,11 +130,54 @@ def _create_node_tree() -> bpy.types.NodeTree:
     links.new(edge_angle.outputs[0], compare.inputs["A"])  # Unsigned Angle
     links.new(gin.outputs[1], compare.inputs["B"])  # 検出角度
 
+    sharp_attr = nodes.new("GeometryNodeInputNamedAttribute")
+    sharp_attr.location = (-600, 40)
+    sharp_attr.data_type = "BOOLEAN"
+    sharp_attr.inputs["Name"].default_value = _SHARP_EDGE_ATTR
+
+    sharp_marked = nodes.new("FunctionNodeBooleanMath")
+    sharp_marked.location = (-400, 40)
+    sharp_marked.operation = "AND"
+    links.new(sharp_attr.outputs["Exists"], sharp_marked.inputs[0])
+    links.new(sharp_attr.outputs["Attribute"], sharp_marked.inputs[1])
+
+    crease_attr = nodes.new("GeometryNodeInputNamedAttribute")
+    crease_attr.location = (-600, -40)
+    crease_attr.data_type = "FLOAT"
+    crease_attr.inputs["Name"].default_value = _CREASE_EDGE_ATTR
+
+    crease_positive = nodes.new("FunctionNodeCompare")
+    crease_positive.location = (-400, -60)
+    crease_positive.data_type = "FLOAT"
+    crease_positive.operation = "GREATER_THAN"
+    crease_positive.inputs["B"].default_value = 0.0
+    links.new(crease_attr.outputs["Attribute"], crease_positive.inputs["A"])
+
+    crease_marked = nodes.new("FunctionNodeBooleanMath")
+    crease_marked.location = (-220, -40)
+    crease_marked.operation = "AND"
+    links.new(crease_attr.outputs["Exists"], crease_marked.inputs[0])
+    links.new(crease_positive.outputs[0], crease_marked.inputs[1])
+
+    marked_selection = nodes.new("FunctionNodeBooleanMath")
+    marked_selection.location = (-40, 0)
+    marked_selection.operation = "OR"
+    links.new(sharp_marked.outputs[0], marked_selection.inputs[0])
+    links.new(crease_marked.outputs[0], marked_selection.inputs[1])
+
+    selection_switch = nodes.new("GeometryNodeSwitch")
+    selection_switch.label = _MARKED_SELECTION_SWITCH_LABEL
+    selection_switch.location = (-20, -200)
+    selection_switch.input_type = "BOOLEAN"
+    links.new(gin.outputs[5], selection_switch.inputs["Switch"])
+    links.new(compare.outputs[0], selection_switch.inputs["False"])
+    links.new(marked_selection.outputs[0], selection_switch.inputs["True"])
+
     # Mesh to Curve: 選択エッジをカーブに変換
     m2c = nodes.new("GeometryNodeMeshToCurve")
     m2c.location = (-200, -200)
     links.new(del_shell.outputs["Geometry"], m2c.inputs[0])  # 元メッシュのみ
-    links.new(compare.outputs[0], m2c.inputs[1])  # Selection
+    links.new(selection_switch.outputs["Output"], m2c.inputs[1])  # Selection
 
     # 内部線専用の線幅値を反映する。
     width_attr = nodes.new("GeometryNodeInputNamedAttribute")
@@ -211,6 +264,9 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
         if _find_socket_id(tree, "ライン素材番号") is None:
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
+        if _find_socket_id(tree, _MARKED_ONLY_SOCKET_NAME) is None:
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
         if not any(n.bl_idname == "GeometryNodeDeleteGeometry" for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
@@ -220,10 +276,19 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
         if not _uses_named_attribute(tree, VG_INNER_LINE_WIDTH):
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
+        if not _uses_named_attribute(tree, _SHARP_EDGE_ATTR):
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
+        if not _uses_named_attribute(tree, _CREASE_EDGE_ATTR):
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
         if not any(getattr(n, "label", "") == _GENERATED_LINE_NODE_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
         if not any(getattr(n, "label", "") == _RADIUS_HALF_NODE_LABEL for n in tree.nodes):
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
+        if not any(getattr(n, "label", "") == _MARKED_SELECTION_SWITCH_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
         if any(n.bl_idname == "GeometryNodeSetCurveRadius" for n in tree.nodes):
@@ -288,6 +353,7 @@ def apply_inner_lines(
     angle: float = 0.5236,
     thickness: float = 0.0005,
     material: bpy.types.Material | None = None,
+    use_marked_edges: bool = False,
 ) -> bool:
     """内部線 GN モディファイアを適用. 成功時 True."""
     if obj.type != "MESH":
@@ -304,10 +370,13 @@ def apply_inner_lines(
     # パラメータ設定
     sid_angle = _find_socket_id(tree, "検出角度")
     sid_thickness = _find_socket_id(tree, "線の太さ")
+    sid_marked_only = _find_socket_id(tree, _MARKED_ONLY_SOCKET_NAME)
     if sid_angle is not None:
         mod[sid_angle] = angle
     if sid_thickness is not None:
         mod[sid_thickness] = thickness
+    if sid_marked_only is not None:
+        mod[sid_marked_only] = bool(use_marked_edges)
 
     # マテリアル
     line_material_index = 999
@@ -359,6 +428,7 @@ def update_parameters(
     obj: bpy.types.Object,
     angle: float | None = None,
     thickness: float | None = None,
+    use_marked_edges: bool | None = None,
 ) -> bool:
     """既存モディファイアのパラメータを更新."""
     mod = obj.modifiers.get(GN_MODIFIER_NAME)
@@ -373,4 +443,8 @@ def update_parameters(
         sid = _find_socket_id(tree, "線の太さ")
         if sid is not None:
             mod[sid] = thickness
+    if use_marked_edges is not None:
+        sid = _find_socket_id(tree, _MARKED_ONLY_SOCKET_NAME)
+        if sid is not None:
+            mod[sid] = bool(use_marked_edges)
     return True

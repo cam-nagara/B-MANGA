@@ -234,8 +234,10 @@ def _assert_multi_select_manual_setting_propagation(
     assert core.GN_MODIFIER_NAME not in second.modifiers
     source.inner_line_enabled = True
     source.inner_line_angle = math.radians(45.0)
+    source.use_marked_inner_edges = True
     source.inner_line_thickness_mm = 1.2
     assert target.inner_line_enabled is True
+    assert target.use_marked_inner_edges is True
     inner_mod = second.modifiers.get(core.GN_MODIFIER_NAME)
     assert inner_mod is not None
     assert math.isclose(
@@ -243,6 +245,7 @@ def _assert_multi_select_manual_setting_propagation(
         math.radians(45.0),
         rel_tol=0.001,
     )
+    assert _modifier_input(inner_mod, "指定済みの辺だけ線にする") is True
     assert math.isclose(target.inner_line_thickness_mm, 1.2, rel_tol=0.001)
 
     source.inner_line_thickness_mm = 70.0
@@ -331,6 +334,7 @@ def _assert_multi_select_manual_setting_propagation(
     source.use_ao_influence = False
     source.edge_smooth_factor = 0.0
     source.inner_line_enabled = True
+    source.use_marked_inner_edges = False
     source.inner_line_thickness_mm = 1.2
     source.intersection_enabled = True
     source.intersection_thickness_mm = 1.4

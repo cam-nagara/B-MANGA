@@ -210,7 +210,10 @@ def _draw_inner_line(layout, context, settings) -> None:
     col.prop(settings, "inner_line_enabled")
     sub = col.column(align=True)
     sub.enabled = settings.inner_line_enabled
-    sub.prop(settings, "inner_line_angle")
+    sub.prop(settings, "use_marked_inner_edges")
+    angle_row = sub.row(align=True)
+    angle_row.enabled = not settings.use_marked_inner_edges
+    angle_row.prop(settings, "inner_line_angle")
     row = sub.row(align=True)
     row.prop(settings, "inner_line_thickness_mm")
     sub_label = row.row(align=True)

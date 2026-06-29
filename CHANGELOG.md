@@ -3,6 +3,34 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-29 — B-MANGA Lineの内部線に指定済み辺モードを追加 (B-MANGA Line v0.3.30)
+
+### 症状
+
+- 内部線はメッシュの折れ目角度を元に自動検出する方式だけで、シャープやクリースで明示した辺だけを線にする選択肢がなかった。
+- 大規模な背景素材では、不要な細かい折れ目まで内部線候補になり、手動で線を出したい辺を絞り込みにくかった。
+
+### 原因
+
+- 内部線の生成条件が「検出角度」だけで、メッシュ側で指定済みの辺情報を読む経路がなかった。
+- プリセット保存や複数選択反映の設定一覧にも、内部線の検出方式を切り替える項目がなかった。
+
+### 修正
+
+- 内部線に「指定済みの辺だけ線にする」を追加し、初期値をオフにした。
+- オンの時はシャープまたはクリースを指定した辺だけを内部線にし、オフの時は従来通り「検出角度」で折れ目を検出するようにした。
+- 新しい設定をライン適用、プリセット保存、複数選択への一括反映、B-MANGA Lineパネルへ通した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\inner_lines.py addons\b_manga_line\core.py addons\b_manga_line\presets.py addons\b_manga_line\panels.py addons\b_manga_line\batch_update.py test\blender_b_manga_line_marked_inner_edges_check.py test\blender_b_manga_line_batch_apply_refresh_check.py test\blender_b_manga_line_preset_visibility_check.py test\blender_b_manga_line_register_reenable_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_marked_inner_edges_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_register_reenable_check.py`
+
+---
+
 ## 2026-06-29 — B-MANGA Lineの全選択チェックボックス反映を軽量化 (B-MANGA Line v0.3.29)
 
 ### 症状
