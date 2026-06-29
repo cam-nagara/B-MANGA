@@ -81,6 +81,9 @@ def _update_camera_compensation(objects: list[bpy.types.Object], context) -> Non
 def _update_uniform_line_width(objects: list[bpy.types.Object], context) -> None:
     from . import vertex_analysis
 
+    if camera_comp.refresh_objects(context, objects):
+        return
+
     for obj in objects:
         settings = obj.bmanga_line_settings
         mod = _outline_modifier(obj)
@@ -100,16 +103,15 @@ def _update_uniform_line_width(objects: list[bpy.types.Object], context) -> None
             vertex_analysis.compute_and_apply_weights(obj, settings, "outline")
         else:
             mod.vertex_group = ""
-            vertex_analysis.reset_width_weights(obj, group_name=core.VG_LINE_WIDTH)
+            vertex_analysis.clear_width_weights(obj, group_name=core.VG_LINE_WIDTH)
         for target in ("inner", "intersection"):
             group_name = vertex_analysis.width_group_name(target)
             if vertex_analysis.has_width_controls(settings, target):
                 vertex_analysis.compute_and_apply_weights(obj, settings, target)
             else:
-                vertex_analysis.reset_width_weights(obj, group_name=group_name)
+                vertex_analysis.clear_width_weights(obj, group_name=group_name)
         inner_lines.update_parameters(obj, thickness=settings.inner_line_thickness)
         intersection_lines.update_parameters(obj, thickness=settings.intersection_thickness)
-    _refresh_camera(context)
 
 
 def _update_width_controls(objects: list[bpy.types.Object], context) -> None:
@@ -134,7 +136,7 @@ def _update_width_controls(objects: list[bpy.types.Object], context) -> None:
             vertex_analysis.compute_and_apply_weights(obj, settings, "outline")
         else:
             mod.vertex_group = ""
-            vertex_analysis.reset_width_weights(obj, group_name=core.VG_LINE_WIDTH)
+            vertex_analysis.clear_width_weights(obj, group_name=core.VG_LINE_WIDTH)
     _refresh_camera(context)
 
 

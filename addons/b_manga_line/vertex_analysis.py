@@ -331,6 +331,20 @@ def reset_width_weights(
     return _write_vertex_group_weights(obj, [_clamp01(value)] * count, group_name)
 
 
+def clear_width_weights(
+    obj: bpy.types.Object,
+    group_name: str = VG_LINE_WIDTH,
+) -> bool:
+    """線幅用頂点グループを使わない状態に戻す."""
+    if obj.type != "MESH":
+        return False
+    vg = obj.vertex_groups.get(group_name)
+    if vg is None:
+        return False
+    obj.vertex_groups.remove(vg)
+    return True
+
+
 def multiply_width_weights(
     obj: bpy.types.Object,
     multipliers: list[float],

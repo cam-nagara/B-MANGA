@@ -3,6 +3,36 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-30 — B-MANGA Lineの線幅均一化オフを再軽量化 (B-MANGA Line v0.3.31)
+
+### 症状
+
+- 大規模背景素材の全メッシュへラインと内部線を適用したあと、「線幅の均一化」をオフにすると画面が戻らない場合があった。
+- 「線幅の均一化」の初期値をオフにしているはずでも、既存ファイルや選択中オブジェクトの状態によってオンからオフへ戻す操作が必要になり、その時に長時間停止していた。
+
+### 原因
+
+- 「線幅の均一化」をオフに戻す時、古い線幅情報を消すためにアウトライン・内部線・交差線の頂点グループへ全頂点分の値を書き戻していた。
+- チェックボックス変更時に最初のオブジェクトだけで全シーンのカメラ基準更新へ入り、複数選択向けの軽量一括更新へ進む前に重い処理が走る余地があった。
+
+### 修正
+
+- 線幅情報を使わない時は全頂点へ値を書き戻さず、線幅用の頂点グループを削除して既定の線幅へ戻すようにした。
+- 「線幅の均一化」のオン・オフ切り替えでは、全シーンではなく対象オブジェクトだけをカメラ基準で更新するようにした。
+- 「線幅の均一化」の初期値がオフであることを一括反映テストで明示確認するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\batch_update.py addons\b_manga_line\camera_comp.py addons\b_manga_line\presets.py addons\b_manga_line\vertex_analysis.py test\blender_b_manga_line_batch_apply_refresh_check.py test\blender_b_manga_line_uniform_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_uniform_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_register_reenable_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_inner_creation_range_check.py`
+- `D:\TM Dropbox\Share\Assets\Japanese Streetscape Tokyo 0004\Japanese_Streetscape_Tokyo_0004.blend` の全916メッシュ選択相当で、「線幅の均一化」オフ操作が0.294秒で終わり、全シーン更新0回、線幅用情報の残り0件になることを確認。
+
+---
+
 ## 2026-06-29 — B-MANGA Lineの内部線に指定済み辺モードを追加 (B-MANGA Line v0.3.30)
 
 ### 症状

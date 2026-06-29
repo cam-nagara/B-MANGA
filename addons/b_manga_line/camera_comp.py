@@ -248,7 +248,7 @@ def _prepare_style_weights(obj, settings, target: str) -> bool:
     if vertex_analysis.has_width_controls(settings, target):
         vertex_analysis.compute_and_apply_weights(obj, settings, target)
         return True
-    vertex_analysis.reset_width_weights(obj, group_name=group_name)
+    vertex_analysis.clear_width_weights(obj, group_name=group_name)
     return False
 
 
@@ -327,16 +327,27 @@ def _apply_reference_line_width(scene, camera, obj, settings, mod) -> None:
 # 各機能の更新ロジック（オブジェクトごとの設定を参照）
 # ------------------------------------------------------------------
 
-def _update_camera_compensation(scene, camera):
+def _line_width_objects(scene, objects=None):
+    source = scene.objects if objects is None else objects
+    seen: set[int] = set()
+    for obj in source:
+        if obj is None or getattr(obj, "type", None) != "MESH":
+            continue
+        pointer = obj.as_pointer()
+        if pointer in seen:
+            continue
+        seen.add(pointer)
+        yield obj
+
+
+def _update_camera_compensation(scene, camera, objects=None):
     """線幅 (mm) をカメラビュー基準の太さとして各オブジェクトへ反映."""
     from . import inner_lines, intersection_lines
 
     cam_loc = camera.matrix_world.translation
     current_fov = _get_fov_factor(camera.data, scene)
 
-    for obj in scene.objects:
-        if obj.type != "MESH":
-            continue
+    for obj in _line_width_objects(scene, objects):
         settings = getattr(obj, "bmanga_line_settings", None)
         if settings is None:
             continue
@@ -349,6 +360,14 @@ def _update_camera_compensation(scene, camera):
         if not settings.use_camera_compensation:
             _apply_reference_line_width(scene, camera, obj, settings, mod)
             continue
+
+        if _prepare_style_weights(obj, settings, "outline"):
+            mod.vertex_group = VG_LINE_WIDTH
+            mod.thickness_vertex_group = 0.0
+        else:
+            mod.vertex_group = ""
+        _prepare_style_weights(obj, settings, "inner")
+        _prepare_style_weights(obj, settings, "intersection")
 
         influence = settings.camera_compensation_influence
         base_t = settings.outline_thickness
@@ -376,13 +395,11 @@ def _update_camera_compensation(scene, camera):
         intersection_lines.update_parameters(obj, thickness=abs(intersection_adjusted))
 
 
-def _update_visibility(scene, camera, cam_loc, cam_fwd):
+def _update_visibility(scene, camera, cam_loc, cam_fwd, objects=None):
     """ビューカリングと線種別の距離制限を統合処理."""
     half_angle_cache = None
 
-    for obj in scene.objects:
-        if obj.type != "MESH":
-            continue
+    for obj in _line_width_objects(scene, objects):
         settings = getattr(obj, "bmanga_line_settings", None)
         if settings is None:
             continue
@@ -496,6 +513,30 @@ def refresh(context):
         cam_loc = camera.matrix_world.translation
         cam_fwd = camera.matrix_world.to_quaternion() @ Vector((0, 0, -1))
         _update_visibility(scene, camera, cam_loc, cam_fwd)
+    finally:
+        _updating = False
+
+
+def refresh_objects(context, objects, *, update_visibility: bool = False) -> bool:
+    """指定オブジェクトだけカメラ基準の線幅を更新."""
+    global _updating
+    if _updating:
+        return False
+    _updating = True
+    try:
+        scene = context.scene
+        camera = get_line_camera(scene)
+        if camera is None:
+            return False
+        targets = list(_line_width_objects(scene, objects))
+        if not targets:
+            return True
+        _update_camera_compensation(scene, camera, targets)
+        if update_visibility:
+            cam_loc = camera.matrix_world.translation
+            cam_fwd = camera.matrix_world.to_quaternion() @ Vector((0, 0, -1))
+            _update_visibility(scene, camera, cam_loc, cam_fwd, targets)
+        return True
     finally:
         _updating = False
 

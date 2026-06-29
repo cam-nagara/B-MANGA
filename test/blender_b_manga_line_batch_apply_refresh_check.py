@@ -11,7 +11,14 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import camera_comp, inner_lines, intersection_lines, presets  # noqa: E402
+from b_manga_line import (  # noqa: E402
+    camera_comp,
+    core,
+    inner_lines,
+    intersection_lines,
+    presets,
+    vertex_analysis,
+)
 
 
 def _clear_scene() -> None:
@@ -74,11 +81,21 @@ def main() -> None:
         assert counts["view_update"] == 1, counts
         print(f"[PASS] batch apply refresh count: {counts}")
 
-        refresh_counts = {"apply": 0, "inner_apply": 0, "intersection": 0, "camera": 0}
+        assert objects[0].bmanga_line_settings.use_uniform_line_width is False
+
+        refresh_counts = {
+            "apply": 0,
+            "inner_apply": 0,
+            "intersection": 0,
+            "camera": 0,
+            "camera_objects": 0,
+        }
         real_apply = presets.apply_line_settings
         real_inner_apply = inner_lines.apply_inner_lines
         real_intersection = intersection_lines.refresh_scene_intersections
         real_camera = camera_comp.refresh
+        real_camera_objects = camera_comp.refresh_objects
+        real_reset_weights = vertex_analysis.reset_width_weights
 
         def counted_apply(obj, context, **kwargs):
             refresh_counts["apply"] += 1
@@ -96,36 +113,64 @@ def main() -> None:
             refresh_counts["camera"] += 1
             return real_camera(context)
 
+        def counted_camera_objects(context, refresh_objects, **kwargs):
+            refresh_counts["camera_objects"] += 1
+            return real_camera_objects(context, refresh_objects, **kwargs)
+
+        def forbidden_reset_weights(*args, **kwargs):
+            raise AssertionError("線幅の均一化オフ時に全頂点の書き戻しが走っています")
+
         presets.apply_line_settings = counted_apply
         inner_lines.apply_inner_lines = counted_inner_apply
         intersection_lines.refresh_scene_intersections = counted_intersection
         camera_comp.refresh = counted_camera
+        camera_comp.refresh_objects = counted_camera_objects
+        vertex_analysis.reset_width_weights = forbidden_reset_weights
         try:
             objects[0].bmanga_line_settings.use_uniform_line_width = True
             assert all(obj.bmanga_line_settings.use_uniform_line_width for obj in objects)
             assert refresh_counts["apply"] == 0, refresh_counts
             assert refresh_counts["intersection"] == 0, refresh_counts
-            assert refresh_counts["camera"] <= 2, refresh_counts
+            assert refresh_counts["camera"] == 0, refresh_counts
+            assert refresh_counts["camera_objects"] == 2, refresh_counts
 
-            refresh_counts.update({"apply": 0, "inner_apply": 0, "intersection": 0, "camera": 0})
+            refresh_counts.update({
+                "apply": 0,
+                "inner_apply": 0,
+                "intersection": 0,
+                "camera": 0,
+                "camera_objects": 0,
+            })
             objects[0].bmanga_line_settings.use_uniform_line_width = False
             assert not any(obj.bmanga_line_settings.use_uniform_line_width for obj in objects)
+            assert not any(obj.vertex_groups.get(core.VG_LINE_WIDTH) for obj in objects)
+            assert not any(obj.vertex_groups.get(core.VG_INNER_LINE_WIDTH) for obj in objects)
+            assert not any(obj.vertex_groups.get(core.VG_INTERSECTION_LINE_WIDTH) for obj in objects)
             assert refresh_counts["apply"] == 0, refresh_counts
             assert refresh_counts["intersection"] == 0, refresh_counts
-            assert refresh_counts["camera"] <= 2, refresh_counts
+            assert refresh_counts["camera"] == 0, refresh_counts
+            assert refresh_counts["camera_objects"] == 2, refresh_counts
 
-            refresh_counts.update({"apply": 0, "inner_apply": 0, "intersection": 0, "camera": 0})
+            refresh_counts.update({
+                "apply": 0,
+                "inner_apply": 0,
+                "intersection": 0,
+                "camera": 0,
+                "camera_objects": 0,
+            })
             objects[0].bmanga_line_settings.use_marked_inner_edges = True
             assert all(obj.bmanga_line_settings.use_marked_inner_edges for obj in objects)
             assert refresh_counts["apply"] == 0, refresh_counts
             assert refresh_counts["inner_apply"] == len(objects), refresh_counts
             assert refresh_counts["intersection"] == 0, refresh_counts
-            assert refresh_counts["camera"] <= 2, refresh_counts
+            assert refresh_counts["camera"] <= 1, refresh_counts
         finally:
             presets.apply_line_settings = real_apply
             inner_lines.apply_inner_lines = real_inner_apply
             intersection_lines.refresh_scene_intersections = real_intersection
             camera_comp.refresh = real_camera
+            camera_comp.refresh_objects = real_camera_objects
+            vertex_analysis.reset_width_weights = real_reset_weights
         print(f"[PASS] uniform width toggle refresh count: {refresh_counts}")
     finally:
         try:

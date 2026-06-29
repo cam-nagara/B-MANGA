@@ -205,7 +205,7 @@ def apply_line_settings(
             if vertex_analysis.has_width_controls(settings, target):
                 vertex_analysis.compute_and_apply_weights(obj, settings, target)
             else:
-                vertex_analysis.reset_width_weights(obj, group_name=group_name)
+                vertex_analysis.clear_width_weights(obj, group_name=group_name)
 
     if bool(obj.get(core.PROP_LINES_HIDDEN, False)):
         core.set_line_visibility(obj, False)
