@@ -28,6 +28,8 @@ Blender 5.1.1 を対象としています。
 - `blender.exe --factory-startup --background --python test\blender_b_manga_line_batch_apply_refresh_check.py`
 - `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
 - `blender.exe --factory-startup --background --python test\blender_b_manga_line_register_reenable_check.py`
+- 徹底チェック: 単体切り替え、複数選択への一括反映、ライン適用、プリセット保存/適用、作成範囲との併用、角度検出との往復切り替えを確認。
+- AI目視: `_verify\b_manga_line_marked_inner_edges_visual\marked_inner_edges_visual.png` で、角度検出は連続線、指定済み辺のみは1辺だけ、未指定は線なしになることを確認。
 
 ---
 

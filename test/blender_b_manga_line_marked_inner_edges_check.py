@@ -123,6 +123,14 @@ def _assert_line_span(
     assert abs(actual_max - expected_max) < 0.08, (actual_min, actual_max)
 
 
+def _assert_line_exists(obj: bpy.types.Object, line_mat: bpy.types.Material) -> None:
+    assert _line_coords(obj, line_mat), f"{obj.name}: 内部線が生成されていません"
+
+
+def _assert_no_line(obj: bpy.types.Object, line_mat: bpy.types.Material) -> None:
+    assert not _line_coords(obj, line_mat), f"{obj.name}: 不要な内部線が生成されています"
+
+
 def _apply(
     obj: bpy.types.Object,
     line_mat: bpy.types.Material,
@@ -147,14 +155,14 @@ def main() -> None:
         angle_obj, angle_mat, _ = _make_folded_strip("BML_marked_angle_mode")
         assert angle_obj.bmanga_line_settings.use_marked_inner_edges is False
         _apply(angle_obj, angle_mat, marked_only=False)
-        assert _line_coords(angle_obj, angle_mat), "初期状態の角度検出で内部線が出ていません"
+        _assert_line_exists(angle_obj, angle_mat)
         angle_mod = angle_obj.modifiers.get(core.GN_MODIFIER_NAME)
         assert angle_mod is not None
         assert _modifier_input(angle_mod, "指定済みの辺だけ線にする") is False
 
         empty_obj, empty_mat, _ = _make_folded_strip("BML_marked_empty")
         _apply(empty_obj, empty_mat, marked_only=True)
-        assert not _line_coords(empty_obj, empty_mat), "未指定の辺に内部線が生成されています"
+        _assert_no_line(empty_obj, empty_mat)
 
         sharp_obj, sharp_mat, sharp_ridges = _make_folded_strip("BML_marked_sharp")
         _set_edge_value(sharp_obj.data, "sharp_edge", "BOOLEAN", sharp_ridges[1], True)
@@ -168,6 +176,25 @@ def main() -> None:
         _set_edge_value(crease_obj.data, "crease_edge", "FLOAT", crease_ridges[2], 0.75)
         _apply(crease_obj, crease_mat, marked_only=True)
         _assert_line_span(crease_obj, crease_mat, 0.0, 1.0)
+
+        toggle_obj, _, toggle_ridges = _make_folded_strip("BML_marked_property_toggle")
+        toggle_mat = _make_material(core.MATERIAL_NAME, (0, 0, 0, 1))
+        toggle_obj.data.materials.append(toggle_mat)
+        settings = toggle_obj.bmanga_line_settings
+        settings.inner_line_angle = math.radians(10.0)
+        settings.inner_line_thickness = 0.04
+        _apply(toggle_obj, toggle_mat, marked_only=False)
+        _assert_line_span(toggle_obj, toggle_mat, -2.0, 2.0)
+
+        settings.use_marked_inner_edges = True
+        _assert_no_line(toggle_obj, toggle_mat)
+
+        _set_edge_value(toggle_obj.data, "sharp_edge", "BOOLEAN", toggle_ridges[3], True)
+        settings.use_marked_inner_edges = False
+        _assert_line_span(toggle_obj, toggle_mat, -2.0, 2.0)
+
+        settings.use_marked_inner_edges = True
+        _assert_line_span(toggle_obj, toggle_mat, 1.0, 2.0)
 
         print("[PASS] marked inner edges use sharp_edge / crease_edge only")
     finally:
