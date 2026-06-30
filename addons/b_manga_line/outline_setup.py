@@ -402,7 +402,7 @@ def _mesh_has_open_edges(mesh: bpy.types.Mesh) -> bool:
             v2 = vertices[(index + 1) % len(vertices)]
             key = (v1, v2) if v1 <= v2 else (v2, v1)
             edge_counts[key] = edge_counts.get(key, 0) + 1
-    return any(count != 2 for count in edge_counts.values())
+    return any(count == 1 for count in edge_counts.values())
 
 
 def _configure_solidify_shape(
@@ -417,28 +417,39 @@ def _configure_solidify_shape(
     mod.use_rim = True if open_mesh else use_rim
 
 
-def _configure_line_only_solidify_shape(obj: bpy.types.Object) -> None:
+def _configure_line_only_solidify_shape(
+    obj: bpy.types.Object,
+    use_rim: bool | None = None,
+) -> None:
     mod = obj.modifiers.get(MODIFIER_NAME)
     if obj.type != "MESH" or mod is None:
         return
+    if use_rim is None:
+        settings = getattr(obj, "bmanga_line_settings", None)
+        use_rim = bool(getattr(settings, "use_rim", False))
     open_mesh = _mesh_has_open_edges(obj.data)
     mod.offset = 1.0 if open_mesh else -1.0
     if hasattr(mod, "use_rim_only"):
         mod.use_rim_only = open_mesh
-    if open_mesh:
-        mod.use_rim = True
+    mod.use_rim = True if open_mesh else bool(use_rim)
 
 
 def _restore_solidify_shape(obj: bpy.types.Object) -> None:
+    mod = obj.modifiers.get(MODIFIER_NAME)
+    if obj.type != "MESH" or mod is None:
+        return
     settings = getattr(obj, "bmanga_line_settings", None)
     use_rim = bool(getattr(settings, "use_rim", False))
-    update_modifier_rim(obj, use_rim)
+    _configure_solidify_shape(obj, mod, use_rim)
 
 
 def update_modifier_rim(obj: bpy.types.Object, use_rim: bool) -> None:
     mod = obj.modifiers.get(MODIFIER_NAME)
     if obj.type == "MESH" and mod is not None:
-        _configure_solidify_shape(obj, mod, use_rim)
+        if bool(obj.get(PROP_LINE_ONLY, False)):
+            _configure_line_only_solidify_shape(obj, use_rim)
+        else:
+            _configure_solidify_shape(obj, mod, use_rim)
 
 
 # ------------------------------------------------------------------
@@ -510,6 +521,14 @@ def apply_outline(
 
     if scene is not None:
         ensure_aov_passes(scene)
+
+    if bool(obj.get(PROP_LINE_ONLY, False)):
+        _restore_outline_materials(
+            obj,
+            obj.data,
+            hide_through_transparent_override=True,
+        )
+        _configure_line_only_solidify_shape(obj, use_rim)
 
     return True
 

@@ -38,6 +38,36 @@ def _apply_line(obj: bpy.types.Object, *, use_rim: bool) -> bpy.types.Modifier:
     return mod
 
 
+def _add_closed_non_manifold_mesh() -> bpy.types.Object:
+    mesh = bpy.data.meshes.new("BML_closed_non_manifold_mesh")
+    verts = [
+        (0.0, 0.0, 0.0),
+        (1.0, 0.0, 0.0),
+        (0.0, 1.0, 0.0),
+        (0.0, 0.0, 1.0),
+        (0.0, -1.0, 0.0),
+        (0.0, 0.0, -1.0),
+    ]
+    faces = [
+        (0, 1, 2),
+        (1, 0, 3),
+        (0, 2, 3),
+        (1, 3, 2),
+        (0, 1, 4),
+        (1, 0, 5),
+        (0, 4, 5),
+        (1, 5, 4),
+    ]
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    obj = bpy.data.objects.new("BML_closed_non_manifold", mesh)
+    bpy.context.collection.objects.link(obj)
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    obj.data.materials.append(_surface_material("BML_closed_non_manifold_surface"))
+    return obj
+
+
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     b_manga_line.register()
@@ -69,6 +99,15 @@ def main() -> None:
 
         assert outline_setup.set_line_only(cube, True)
         assert cube_mod.offset == -1.0, "ラインのみ表示で黒い面を避ける形状に切り替わっていません"
+        cube.bmanga_line_settings.use_rim = True
+        assert cube_mod.offset == -1.0, "ラインのみ表示中の設定変更で通常形状に戻っています"
+        assert cube_mod.use_rim, "ラインのみ表示中のリム面設定が反映されていません"
+        cube.bmanga_line_settings.use_rim = False
+        assert cube_mod.offset == -1.0, "ラインのみ表示中の設定変更で通常形状に戻っています"
+        assert not cube_mod.use_rim, "ラインのみ表示中のリム面設定オフが反映されていません"
+        assert presets.apply_line_settings(cube, bpy.context)
+        assert cube_mod.offset == -1.0, "ラインのみ表示中の再適用で通常形状に戻っています"
+        assert bool(cube.get(core.PROP_LINE_ONLY, False)), "ラインのみ表示中の再適用で状態が解除されています"
         assert outline_setup.set_line_only(cube, False)
         assert cube_mod.offset == 1.0, "通常表示へ戻した後もラインのみ表示の形状が残っています"
 
@@ -77,6 +116,14 @@ def main() -> None:
         if hasattr(plane_mod, "use_rim_only"):
             assert plane_mod.use_rim_only
         assert outline_setup.set_line_only(plane, False)
+
+        non_manifold = _add_closed_non_manifold_mesh()
+        non_manifold_mod = _apply_line(non_manifold, use_rim=False)
+
+        if hasattr(non_manifold_mod, "use_rim_only"):
+            assert not non_manifold_mod.use_rim_only, "閉じた特殊メッシュを板ポリ扱いしています"
+        assert not non_manifold_mod.use_rim, "閉じた特殊メッシュでリム面が強制されています"
+        assert non_manifold_mod.offset == 1.0
 
         cube_mod = _apply_line(cube, use_rim=True)
         assert cube_mod.use_rim, "閉じた立体のリム面設定が反映されていません"

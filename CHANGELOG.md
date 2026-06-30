@@ -3,6 +3,32 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-01 — B-MANGA Lineのラインのみ表示中の設定変更を安定化 (B-MANGA Line v0.3.43)
+
+### 症状
+
+- 「ラインのみ表示」中に、リム面の切り替えやライン設定の再適用を行うと、黒い面を避けるための一時形状が通常形状へ戻る経路があった。
+- 閉じているが特殊なメッシュを、板状メッシュと同じ扱いにしてしまう場合があった。
+
+### 原因
+
+- ラインのみ表示中の設定更新処理が、通常表示用のアウトライン形状を再設定していた。
+- 開いた辺の判定で、閉じている特殊メッシュの辺まで「開いている」とみなしていた。
+
+### 修正
+
+- ラインのみ表示中にリム面を切り替えたりライン設定を再適用しても、ラインのみ表示用の形状を維持するようにした。
+- 通常表示へ戻すときは、ラインのみ表示中の一時形状ではなく通常表示用の形状へ確実に戻すようにした。
+- 板状メッシュ判定を開いた辺だけに限定し、閉じた特殊メッシュを板状扱いしないようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\outline_setup.py addons\b_manga_line\core.py addons\b_manga_line\batch_update.py addons\b_manga_line\operators.py addons\b_manga_line\presets.py test\blender_b_manga_line_open_mesh_outline_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_open_mesh_outline_check.py`
+- `Japanese_Streetscape_Tokyo_0004.blend` の全917メッシュにアウトラインと内部線を印刷サイズ0.3mmで適用し、交差線オフ・Cyclesレンダーモードの実画面で「ラインのみ表示」オン/オフを取得。黒い箱状の面が出ないことと、通常表示へ戻ることをAI目視確認。
+
+---
+
 ## 2026-07-01 — B-MANGA Lineのラインのみ表示で黒い面が出る問題を修正 (B-MANGA Line v0.3.42)
 
 ### 症状
