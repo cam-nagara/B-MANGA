@@ -348,10 +348,10 @@ class BMANGA_LINE_OT_refresh_camera(bpy.types.Operator):
 
 
 class BMANGA_LINE_OT_reset_camera_ref(bpy.types.Operator):
-    """現在のカメラ距離を基準にリセット"""
+    """アクティブオブジェクトの現在距離を線幅基準距離にする"""
 
     bl_idname = "bmanga_line.reset_camera_ref"
-    bl_label = "基準距離をリセット"
+    bl_label = "現在距離を基準にする"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -364,16 +364,37 @@ class BMANGA_LINE_OT_reset_camera_ref(bpy.types.Operator):
         )
 
     def execute(self, context):
-        from . import camera_comp
+        from . import camera_comp, core
 
-        count = 0
-        for obj in context.selected_objects:
-            if obj.type != "MESH":
-                continue
-            if camera_comp.store_reference(obj, context.scene):
-                count += 1
+        camera = camera_comp.get_line_camera(context.scene)
+        if camera is None:
+            self.report({"WARNING"}, "カメラがありません")
+            return {"CANCELLED"}
 
-        self.report({"INFO"}, f"{count} オブジェクトの基準距離をリセットしました")
+        targets = [
+            obj for obj in context.selected_objects
+            if obj.type == "MESH" and has_outline(obj)
+        ]
+        if not targets:
+            self.report({"WARNING"}, "ライン設定のあるオブジェクトを選択してください")
+            return {"CANCELLED"}
+
+        source = context.active_object if context.active_object in targets else targets[0]
+        distance = max(
+            0.001,
+            (camera.matrix_world.translation - source.matrix_world.translation).length,
+        )
+        old = core._propagating
+        core._propagating = True
+        try:
+            for obj in targets:
+                obj.bmanga_line_settings.line_width_reference_distance = distance
+                camera_comp.store_unit_reference(obj, context.scene)
+        finally:
+            core._propagating = old
+        camera_comp.refresh_objects(context, targets)
+
+        self.report({"INFO"}, f"{len(targets)} オブジェクトの線幅基準距離を更新しました")
         return {"FINISHED"}
 
 

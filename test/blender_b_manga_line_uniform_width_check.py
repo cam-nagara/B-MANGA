@@ -134,7 +134,7 @@ def _test_uniform_width_depth_and_resolution() -> None:
     )
 
     settings.use_uniform_line_width = False
-    center_thick = _expected_world_width(scene, 5.0, 1.0)
+    center_thick = _expected_world_width(scene, 2.0, 1.0)
     assert math.isclose(mod.thickness, center_thick, rel_tol=0.001), (
         mod.thickness,
         center_thick,
@@ -166,6 +166,50 @@ def _test_uniform_width_saved_in_preset() -> None:
     assert math.isclose(actual, expected, rel_tol=0.001), (actual, expected)
 
 
+def _test_batch_apply_uses_reference_distance_not_object_distance() -> None:
+    scene = bpy.context.scene
+    _clear_scene()
+    _configure_scene(scene)
+
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(-1.0, 0.0, -2.0))
+    near = bpy.context.object
+    near.name = "BML_reference_near"
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(1.0, 0.0, -8.0))
+    far = bpy.context.object
+    far.name = "BML_reference_far"
+
+    _select_many(near, [near, far])
+    near.bmanga_line_settings.outline_thickness_mm = 0.6
+    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+
+    near_width = near.modifiers[core.MODIFIER_NAME].thickness
+    far_width = far.modifiers[core.MODIFIER_NAME].thickness
+    expected = _expected_world_width(scene, 2.0, 0.6)
+    assert math.isclose(near_width, far_width, rel_tol=0.001), (
+        near_width,
+        far_width,
+    )
+    assert math.isclose(near_width, expected, rel_tol=0.001), (near_width, expected)
+    assert math.isclose(
+        near.bmanga_line_settings.line_width_reference_distance,
+        2.0,
+        rel_tol=0.001,
+    )
+
+    near.bmanga_line_settings.line_width_reference_distance = 4.0
+    near_width_4m = near.modifiers[core.MODIFIER_NAME].thickness
+    far_width_4m = far.modifiers[core.MODIFIER_NAME].thickness
+    expected_4m = _expected_world_width(scene, 4.0, 0.6)
+    assert math.isclose(near_width_4m, far_width_4m, rel_tol=0.001), (
+        near_width_4m,
+        far_width_4m,
+    )
+    assert math.isclose(near_width_4m, expected_4m, rel_tol=0.001), (
+        near_width_4m,
+        expected_4m,
+    )
+
+
 def _test_multi_select_mm_change_updates_all_modifiers() -> None:
     scene = bpy.context.scene
     _clear_scene()
@@ -187,9 +231,22 @@ def _test_multi_select_mm_change_updates_all_modifiers() -> None:
     source.bmanga_line_settings.outline_thickness_mm = 1.2
 
     assert math.isclose(target.bmanga_line_settings.outline_thickness_mm, 1.2, rel_tol=0.001)
-    expected = _expected_world_width(scene, 4.0, 1.2)
+    expected = _expected_world_width(scene, 2.0, 1.2)
     actual = target.modifiers[core.MODIFIER_NAME].thickness
     assert math.isclose(actual, expected, rel_tol=0.001), (actual, expected)
+
+    source.bmanga_line_settings.line_width_reference_distance = 3.5
+    assert math.isclose(
+        target.bmanga_line_settings.line_width_reference_distance,
+        3.5,
+        rel_tol=0.001,
+    )
+    expected_reference = _expected_world_width(scene, 3.5, 1.2)
+    actual_reference = target.modifiers[core.MODIFIER_NAME].thickness
+    assert math.isclose(actual_reference, expected_reference, rel_tol=0.001), (
+        actual_reference,
+        expected_reference,
+    )
 
     source.bmanga_line_settings.use_uniform_line_width = True
     source.bmanga_line_settings.outline_thickness_mm = 0.8
@@ -296,6 +353,7 @@ def main() -> None:
     _clear_scene()
     _test_uniform_width_depth_and_resolution()
     _test_uniform_width_saved_in_preset()
+    _test_batch_apply_uses_reference_distance_not_object_distance()
     _test_multi_select_mm_change_updates_all_modifiers()
     _test_evaluated_orthographic_width()
     _test_linked_uniform_width_refresh_does_not_crash()

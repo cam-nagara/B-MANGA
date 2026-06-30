@@ -125,6 +125,7 @@ def _assert_panels_draw_items() -> None:
         "outline_color",
         "exclude_sheet_meshes",
         "use_camera_compensation",
+        "line_width_reference_distance",
         "use_uniform_line_width",
         "edge_smooth_factor",
         "inner_edge_smooth_factor",
@@ -161,6 +162,7 @@ def _assert_panels_draw_items() -> None:
             f"プリセットの {prop_name} の初期値がオフではありません"
         )
     camera_props = [
+        "line_width_reference_distance",
         "use_camera_compensation",
         "use_uniform_line_width",
         "use_camera_culling",

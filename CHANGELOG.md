@@ -3,6 +3,35 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-01 — B-MANGA Lineの線幅基準距離を追加 (B-MANGA Line v0.3.44)
+
+### 症状
+
+- 距離が異なる複数オブジェクトへラインを適用すると、通常設定でもモディファイアの「幅」がオブジェクトごとに大きく異なっていた。
+- 線幅欄の値を、どのカメラ距離の太さとして扱うかを指定できなかった。
+
+### 原因
+
+- 通常のライン適用でも、各オブジェクトのカメラ距離を使って線幅を換算していた。
+- カメラ距離補正の基準距離が内部値に閉じていて、画面上で数値入力できなかった。
+
+### 修正
+
+- カメラ設定に「線幅基準距離 (m)」を追加し、初期値を 2m にした。
+- 通常のライン適用では、オブジェクトごとの距離ではなく線幅基準距離で換算した同じ幅を使うようにした。
+- 「現在距離を基準にする」は、アクティブな選択物の距離を共通の線幅基準距離へ反映するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\camera_comp.py addons\b_manga_line\outline_setup.py addons\b_manga_line\panels.py addons\b_manga_line\presets.py addons\b_manga_line\batch_update.py addons\b_manga_line\operators.py test\blender_b_manga_line_uniform_width_check.py test\blender_b_manga_line_preset_visibility_check.py test\blender_b_manga_line_batch_apply_refresh_check.py test\blender_b_manga_line_register_reenable_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_uniform_width_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_preset_visibility_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_register_reenable_check.py`
+- `Japanese_Streetscape_Tokyo_0004.blend` を UI なしで開き、全917メッシュに線幅0.3mm・線幅基準距離2m・通常設定でラインを適用。モディファイアの「幅」が全917オブジェクトで同一 (`0.000847111`) になることを確認。
+
+---
+
 ## 2026-07-01 — B-MANGA Lineのラインのみ表示中の設定変更を安定化 (B-MANGA Line v0.3.43)
 
 ### 症状

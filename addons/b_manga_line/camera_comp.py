@@ -13,6 +13,7 @@ import bpy
 from mathutils import Vector
 
 from .core import (
+    DEFAULT_LINE_WIDTH_REFERENCE_DISTANCE,
     GN_MODIFIER_NAME,
     MODIFIER_NAME,
     PROP_LINES_HIDDEN,
@@ -232,6 +233,35 @@ def _reference_point_for_mesh(obj) -> Vector:
     return obj.matrix_world.translation
 
 
+def _line_width_reference_distance(settings) -> float:
+    raw = getattr(
+        settings,
+        "line_width_reference_distance",
+        DEFAULT_LINE_WIDTH_REFERENCE_DISTANCE,
+    )
+    return max(0.001, float(raw or DEFAULT_LINE_WIDTH_REFERENCE_DISTANCE))
+
+
+def _reference_point_for_distance(camera, distance: float) -> Vector:
+    cam_loc = camera.matrix_world.translation
+    cam_fwd = camera.matrix_world.to_quaternion() @ Vector((0.0, 0.0, -1.0))
+    return cam_loc + cam_fwd * max(0.001, float(distance))
+
+
+def _reference_width_for_distance(
+    scene,
+    camera,
+    width_m: float,
+    distance: float,
+) -> float:
+    target_px = _target_pixels(scene, width_m)
+    return target_px * _world_per_pixel(
+        scene,
+        camera,
+        _reference_point_for_distance(camera, distance),
+    )
+
+
 def _reference_width_for_mesh(scene, camera, obj, width_m: float) -> float:
     target_px = _target_pixels(scene, width_m)
     return target_px * _world_per_pixel(
@@ -309,8 +339,14 @@ def _apply_uniform_line_width(scene, camera, obj, settings, mod) -> None:
 def _apply_reference_line_width(scene, camera, obj, settings, mod) -> None:
     from . import inner_lines, intersection_lines, vertex_analysis
 
+    ref_distance = _line_width_reference_distance(settings)
     outline_width = max(
-        _reference_width_for_mesh(scene, camera, obj, settings.outline_thickness),
+        _reference_width_for_distance(
+            scene,
+            camera,
+            settings.outline_thickness,
+            ref_distance,
+        ),
         1.0e-9,
     )
     mod.thickness = outline_width
@@ -380,8 +416,6 @@ def _update_camera_compensation(scene, camera, objects=None):
     from . import inner_lines, intersection_lines, vertex_analysis
 
     cam_loc = camera.matrix_world.translation
-    current_fov = _get_fov_factor(camera.data, scene)
-
     for obj in _line_width_objects(scene, objects):
         settings = getattr(obj, "bmanga_line_settings", None)
         if settings is None:
@@ -413,25 +447,28 @@ def _update_camera_compensation(scene, camera, objects=None):
             vertex_analysis.clear_width_weights(obj, group_name=VG_INTERSECTION_LINE_WIDTH)
 
         influence = settings.camera_compensation_influence
-        base_t = settings.outline_thickness
-        ref_d = obj.get(PROP_REF_DISTANCE, 1.0)
-        if ref_d <= 0:
-            ref_d = 1.0
+        ref_d = _line_width_reference_distance(settings)
+        base_t = max(
+            _reference_width_for_distance(
+                scene,
+                camera,
+                settings.outline_thickness,
+                ref_d,
+            ),
+            1.0e-9,
+        )
         dist = (cam_loc - obj.matrix_world.translation).length
         factor = dist / ref_d
-        mode = obj.get(PROP_REF_MODE)
-        if mode is None:
-            mode = REF_MODE_VIEW if abs(ref_d - 1.0) < 1e-6 else REF_MODE_LOCKED
-        ref_fov = obj.get(PROP_REF_FOV_TAN)
-        if mode == REF_MODE_LOCKED and ref_fov and ref_fov > 0:
-            factor *= current_fov / ref_fov
         adjusted = base_t * (1.0 + (factor - 1.0) * influence)
         mod.thickness = abs(adjusted)
 
-        inner_adjusted = settings.inner_line_thickness * (
+        outline_base = max(abs(float(settings.outline_thickness)), 1.0e-9)
+        inner_scale = abs(float(settings.inner_line_thickness)) / outline_base
+        intersection_scale = abs(float(settings.intersection_thickness)) / outline_base
+        inner_adjusted = base_t * inner_scale * (
             1.0 + (factor - 1.0) * influence
         )
-        intersection_adjusted = settings.intersection_thickness * (
+        intersection_adjusted = base_t * intersection_scale * (
             1.0 + (factor - 1.0) * influence
         )
         if has_inner:
@@ -617,8 +654,11 @@ def store_reference(obj, scene):
     if mod is None:
         return False
     dist = (camera.matrix_world.translation - obj.matrix_world.translation).length
-    obj[PROP_REF_DISTANCE] = max(dist, 0.001)
+    ref_distance = max(dist, 0.001)
     settings = getattr(obj, "bmanga_line_settings", None)
+    if settings is not None:
+        settings.line_width_reference_distance = ref_distance
+    obj[PROP_REF_DISTANCE] = ref_distance
     obj[PROP_BASE_THICKNESS] = settings.outline_thickness if settings else abs(mod.thickness)
     obj[PROP_REF_FOV_TAN] = _get_fov_factor(camera.data, scene)
     obj[PROP_REF_MODE] = REF_MODE_LOCKED
@@ -626,7 +666,7 @@ def store_reference(obj, scene):
 
 
 def store_unit_reference(obj, scene):
-    """カメラビューのカメラを基準に、1m距離を補正基準として保存."""
+    """設定された線幅基準距離を補正基準として保存."""
     camera = get_line_camera(scene)
     if camera is None:
         return False
@@ -634,9 +674,9 @@ def store_unit_reference(obj, scene):
     if mod is None:
         return False
     settings = getattr(obj, "bmanga_line_settings", None)
-    obj[PROP_REF_DISTANCE] = 1.0
+    obj[PROP_REF_DISTANCE] = _line_width_reference_distance(settings)
     obj[PROP_BASE_THICKNESS] = settings.outline_thickness if settings else abs(mod.thickness)
-    obj[PROP_REF_FOV_TAN] = 1.0
+    obj[PROP_REF_FOV_TAN] = _get_fov_factor(camera.data, scene)
     obj[PROP_REF_MODE] = REF_MODE_VIEW
     return True
 

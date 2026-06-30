@@ -38,6 +38,7 @@ _SETTING_FIELDS = (
     "intersection_creation_max_distance",
     "use_camera_compensation",
     "camera_compensation_influence",
+    "line_width_reference_distance",
     "use_ao_influence",
     "ao_influence_strength",
     "edge_smooth_factor",
@@ -203,8 +204,7 @@ def apply_line_settings(
     else:
         intersection_lines.remove_intersection_lines(obj)
 
-    if settings.use_camera_compensation:
-        camera_comp.store_unit_reference(obj, context.scene)
+    camera_comp.store_unit_reference(obj, context.scene)
 
     if not settings.use_uniform_line_width:
         for target in ("outline", "inner", "intersection"):
@@ -264,6 +264,11 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
 
     use_camera_compensation: BoolProperty(default=False)
     camera_compensation_influence: FloatProperty(default=1.0, min=0.0, max=1.0)
+    line_width_reference_distance: FloatProperty(
+        default=core.DEFAULT_LINE_WIDTH_REFERENCE_DISTANCE,
+        min=0.001,
+        max=1000.0,
+    )
 
     use_ao_influence: BoolProperty(default=False)
     ao_influence_strength: FloatProperty(default=0.5, min=0.0, max=1.0)

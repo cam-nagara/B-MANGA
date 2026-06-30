@@ -212,6 +212,7 @@ def main() -> None:
                 ("intersection_enabled", True),
                 ("use_camera_compensation", True),
                 ("camera_compensation_influence", 0.6),
+                ("line_width_reference_distance", 3.0),
                 ("use_camera_compensation", False),
                 ("use_camera_culling", True),
                 ("culling_margin", 0.05),

@@ -157,6 +157,15 @@ def _update_camera_influence(objects: list[bpy.types.Object], context) -> None:
     _refresh_camera_objects(objects, context)
 
 
+def _update_line_width_reference_distance(
+    objects: list[bpy.types.Object],
+    context,
+) -> None:
+    for obj in objects:
+        camera_comp.store_unit_reference(obj, context.scene)
+    _refresh_camera_objects(objects, context)
+
+
 def _update_uniform_line_width(objects: list[bpy.types.Object], context) -> None:
     from . import vertex_analysis
 
@@ -400,6 +409,9 @@ def refresh_propagated_property(
         return
     if prop_name == "camera_compensation_influence":
         _update_camera_influence(line_objects, context)
+        return
+    if prop_name == "line_width_reference_distance":
+        _update_line_width_reference_distance(line_objects, context)
         return
     if prop_name == "use_uniform_line_width":
         _update_uniform_line_width(line_objects, context)

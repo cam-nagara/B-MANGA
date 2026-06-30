@@ -144,11 +144,25 @@ def _assert_multi_select_manual_setting_propagation(
 
     source.outline_thickness_mm = 0.9
     assert math.isclose(target.outline_thickness_mm, 0.9, rel_tol=0.001)
-    expected = camera_comp._reference_width_for_mesh(
+    expected = camera_comp._reference_width_for_distance(
         scene,
         scene.camera,
-        second,
         target.outline_thickness,
+        target.line_width_reference_distance,
+    )
+    assert math.isclose(
+        second.modifiers[core.MODIFIER_NAME].thickness,
+        expected,
+        rel_tol=0.001,
+    )
+
+    source.line_width_reference_distance = 4.25
+    assert math.isclose(target.line_width_reference_distance, 4.25, rel_tol=0.001)
+    expected = camera_comp._reference_width_for_distance(
+        scene,
+        scene.camera,
+        target.outline_thickness,
+        4.25,
     )
     assert math.isclose(
         second.modifiers[core.MODIFIER_NAME].thickness,
@@ -373,6 +387,7 @@ def main() -> None:
     settings.inner_edge_width_curve_50 = 0.45
     settings.intersection_edge_smooth_factor = -0.65
     settings.intersection_edge_width_curve_50 = 0.35
+    settings.line_width_reference_distance = 3.5
 
     scene = bpy.context.scene
     scene.bmanga_line_preset_name = "太線テスト"
@@ -401,6 +416,7 @@ def main() -> None:
         assert abs(applied.inner_edge_width_curve_50 - 0.45) < 1.0e-7
         assert abs(applied.intersection_edge_smooth_factor + 0.65) < 1.0e-7
         assert abs(applied.intersection_edge_width_curve_50 - 0.35) < 1.0e-7
+        assert abs(applied.line_width_reference_distance - 3.5) < 1.0e-7
         _assert_line_state(obj, visible=True)
 
     _assert_multi_select_manual_setting_propagation(scene, first, second)

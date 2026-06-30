@@ -15,6 +15,7 @@ import bpy
 from .core import (
     AOV_NAME,
     COLOR_ATTR_NAME,
+    DEFAULT_LINE_WIDTH_REFERENCE_DISTANCE,
     MATERIAL_NAME,
     MODIFIER_NAME,
     PROP_LINE_ONLY,
@@ -512,12 +513,10 @@ def apply_outline(
     else:
         mod.vertex_group = ""
 
-    # カメラ距離補正の基準値を保存
+    # 線幅入力値の基準距離を保存
     if scene is not None and scene.camera is not None:
-        dist = (scene.camera.matrix_world.translation
-                - obj.matrix_world.translation).length
         obj[PROP_BASE_THICKNESS] = abs(thickness)
-        obj[PROP_REF_DISTANCE] = max(dist, 0.001)
+        obj[PROP_REF_DISTANCE] = DEFAULT_LINE_WIDTH_REFERENCE_DISTANCE
 
     if scene is not None:
         ensure_aov_passes(scene)

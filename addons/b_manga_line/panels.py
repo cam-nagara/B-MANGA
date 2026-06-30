@@ -149,6 +149,8 @@ def _draw_camera(layout, context, settings) -> None:
     col.label(text=f"基準: {basis} ({camera_name})", icon="CAMERA_DATA")
     col.prop(context.scene, "bmanga_line_camera")
     col.separator()
+    col.prop(settings, "line_width_reference_distance")
+    col.separator()
     col.prop(settings, "use_camera_compensation")
     sub = col.column(align=True)
     sub.enabled = settings.use_camera_compensation and not settings.use_uniform_line_width

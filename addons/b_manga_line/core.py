@@ -42,6 +42,7 @@ PROP_REF_FOV_TAN = "bml_ref_fov_tan"
 PROP_REF_MODE = "bml_ref_mode"
 REF_MODE_VIEW = "VIEW"
 REF_MODE_LOCKED = "LOCKED"
+DEFAULT_LINE_WIDTH_REFERENCE_DISTANCE = 2.0
 LINE_MODIFIER_NAMES = (
     MODIFIER_NAME,
     GN_MODIFIER_NAME,
@@ -582,6 +583,17 @@ def _on_camera_influence_changed(self, context):
     _propagate(self, context, "camera_compensation_influence")
 
 
+def _on_line_width_reference_distance_changed(self, context):
+    if _propagating:
+        return
+    from . import camera_comp
+    owner = self.id_data
+    if owner.type == "MESH":
+        camera_comp.store_unit_reference(owner, context.scene)
+        camera_comp.refresh_objects(context, [owner])
+    _propagate(self, context, "line_width_reference_distance")
+
+
 def _on_uniform_line_width_changed(self, context):
     if _propagating:
         return
@@ -922,6 +934,17 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         max=1.0,
         subtype="FACTOR",
         update=_on_camera_influence_changed,
+    )  # type: ignore[valid-type]
+
+    line_width_reference_distance: FloatProperty(
+        name="線幅基準距離 (m)",
+        description="線幅欄に入力した太さとして扱う、カメラからのワールド内距離",
+        default=DEFAULT_LINE_WIDTH_REFERENCE_DISTANCE,
+        min=0.001,
+        max=1000.0,
+        precision=2,
+        subtype="DISTANCE",
+        update=_on_line_width_reference_distance_changed,
     )  # type: ignore[valid-type]
 
     # --- AO 線幅制御 ---
