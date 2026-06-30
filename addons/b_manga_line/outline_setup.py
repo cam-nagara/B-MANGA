@@ -160,7 +160,7 @@ def _build_line_only_outline_nodes(
     mat: bpy.types.Material,
     color: tuple[float, ...],
 ) -> None:
-    """ライン確認中は線素材の面を塗りつぶさず、線状に描く."""
+    """ライン確認中はライン素材の輪郭方向だけを黒く描く."""
     mat.use_nodes = True
     nodes = mat.node_tree.nodes
     links = mat.node_tree.links
@@ -179,21 +179,23 @@ def _build_line_only_outline_nodes(
     emission.inputs["Strength"].default_value = 1.0
     links.new(rgb.outputs[0], emission.inputs["Color"])
 
-    wire = nodes.new("ShaderNodeWireframe")
-    wire.location = (-300, -80)
-    try:
-        wire.use_pixel_size = True
-    except (AttributeError, TypeError):
-        pass
-    if "Size" in wire.inputs:
-        wire.inputs["Size"].default_value = 1.25
+    layer = nodes.new("ShaderNodeLayerWeight")
+    layer.location = (-300, -60)
+    if "Blend" in layer.inputs:
+        layer.inputs["Blend"].default_value = 0.25
+
+    silhouette = nodes.new("ShaderNodeMath")
+    silhouette.location = (-80, -60)
+    silhouette.operation = "LESS_THAN"
+    links.new(layer.outputs["Facing"], silhouette.inputs[0])
+    silhouette.inputs[1].default_value = 0.08
 
     surface_transparent = nodes.new("ShaderNodeBsdfTransparent")
     surface_transparent.location = (100, -80)
 
     surface_mix = nodes.new("ShaderNodeMixShader")
     surface_mix.location = (420, 0)
-    links.new(wire.outputs["Fac"], surface_mix.inputs[0])
+    links.new(silhouette.outputs[0], surface_mix.inputs[0])
     links.new(surface_transparent.outputs["BSDF"], surface_mix.inputs[1])
     links.new(emission.outputs["Emission"], surface_mix.inputs[2])
 
@@ -214,7 +216,7 @@ def _build_line_only_outline_nodes(
     aov.location = (700, -220)
     aov.aov_name = AOV_NAME
     links.new(rgb.outputs[0], aov.inputs["Color"])
-    links.new(wire.outputs["Fac"], aov.inputs["Value"])
+    links.new(silhouette.outputs[0], aov.inputs["Value"])
 
 
 def _has_aov_node(mat: bpy.types.Material) -> bool:
