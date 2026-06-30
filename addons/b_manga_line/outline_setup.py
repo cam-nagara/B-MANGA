@@ -160,7 +160,7 @@ def _build_line_only_outline_nodes(
     mat: bpy.types.Material,
     color: tuple[float, ...],
 ) -> None:
-    """ライン確認中は背面判定を使わず、線素材を常に黒く描く."""
+    """ライン確認中は線素材の面を塗りつぶさず、線状に描く."""
     mat.use_nodes = True
     nodes = mat.node_tree.nodes
     links = mat.node_tree.links
@@ -179,24 +179,42 @@ def _build_line_only_outline_nodes(
     emission.inputs["Strength"].default_value = 1.0
     links.new(rgb.outputs[0], emission.inputs["Color"])
 
+    wire = nodes.new("ShaderNodeWireframe")
+    wire.location = (-300, -80)
+    try:
+        wire.use_pixel_size = True
+    except (AttributeError, TypeError):
+        pass
+    if "Size" in wire.inputs:
+        wire.inputs["Size"].default_value = 1.25
+
+    surface_transparent = nodes.new("ShaderNodeBsdfTransparent")
+    surface_transparent.location = (100, -80)
+
+    surface_mix = nodes.new("ShaderNodeMixShader")
+    surface_mix.location = (420, 0)
+    links.new(wire.outputs["Fac"], surface_mix.inputs[0])
+    links.new(surface_transparent.outputs["BSDF"], surface_mix.inputs[1])
+    links.new(emission.outputs["Emission"], surface_mix.inputs[2])
+
     lightpath = nodes.new("ShaderNodeLightPath")
-    lightpath.location = (-300, -120)
+    lightpath.location = (-300, -260)
 
     transparent = nodes.new("ShaderNodeBsdfTransparent")
-    transparent.location = (100, -120)
+    transparent.location = (420, -220)
 
     mix = nodes.new("ShaderNodeMixShader")
-    mix.location = (420, 0)
+    mix.location = (660, 0)
     links.new(lightpath.outputs["Is Camera Ray"], mix.inputs[0])
     links.new(transparent.outputs["BSDF"], mix.inputs[1])
-    links.new(emission.outputs["Emission"], mix.inputs[2])
+    links.new(surface_mix.outputs["Shader"], mix.inputs[2])
     links.new(mix.outputs["Shader"], output.inputs["Surface"])
 
     aov = nodes.new("ShaderNodeOutputAOV")
     aov.location = (700, -220)
     aov.aov_name = AOV_NAME
     links.new(rgb.outputs[0], aov.inputs["Color"])
-    aov.inputs["Value"].default_value = 1.0
+    links.new(wire.outputs["Fac"], aov.inputs["Value"])
 
 
 def _has_aov_node(mat: bpy.types.Material) -> bool:
@@ -567,24 +585,10 @@ def _get_line_only_material() -> bpy.types.Material:
     links = mat.node_tree.links
     nodes.clear()
     output = nodes.new("ShaderNodeOutputMaterial")
-    try:
-        glossy = nodes.new("ShaderNodeBsdfGlossy")
-        glossy.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
-        glossy.inputs["Roughness"].default_value = 0.0
-        links.new(glossy.outputs["BSDF"], output.inputs["Surface"])
-    except Exception:
-        principled = nodes.new("ShaderNodeBsdfPrincipled")
-        if "Base Color" in principled.inputs:
-            principled.inputs["Base Color"].default_value = (1.0, 1.0, 1.0, 1.0)
-        if "Roughness" in principled.inputs:
-            principled.inputs["Roughness"].default_value = 0.0
-        if "Alpha" in principled.inputs:
-            principled.inputs["Alpha"].default_value = 1.0
-        if "Metallic" in principled.inputs:
-            principled.inputs["Metallic"].default_value = 0.0
-        if "Specular IOR Level" in principled.inputs:
-            principled.inputs["Specular IOR Level"].default_value = 1.0
-        links.new(principled.outputs["BSDF"], output.inputs["Surface"])
+    emission = nodes.new("ShaderNodeEmission")
+    emission.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
+    emission.inputs["Strength"].default_value = 1.0
+    links.new(emission.outputs["Emission"], output.inputs["Surface"])
     return mat
 
 
@@ -649,7 +653,7 @@ def set_line_only(obj: bpy.types.Object, enabled: bool) -> bool:
             return True
         stored = []
         hidden = _get_line_only_material()
-        _restore_outline_materials(obj, mesh)
+        _set_outline_materials_for_line_only(mesh, _line_only_color(obj))
         _remove_line_only_wire(obj)
         for index, mat in enumerate(mesh.materials):
             if mat is not None and _is_outline_material(mat):
