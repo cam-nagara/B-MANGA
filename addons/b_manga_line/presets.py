@@ -21,6 +21,7 @@ _SETTING_FIELDS = (
     "outline_color",
     "use_vertex_color",
     "even_thickness",
+    "exclude_sheet_meshes",
     "use_uniform_line_width",
     "use_rim",
     "hide_through_transparent",
@@ -145,6 +146,7 @@ def apply_line_settings(
         inner_lines,
         intersection_lines,
         outline_setup,
+        plane_filter,
         vertex_analysis,
     )
 
@@ -168,8 +170,13 @@ def apply_line_settings(
         return False
 
     mat = outline_setup.get_outline_material(obj)
-    if settings.inner_line_enabled and camera_comp.inner_line_creation_in_range(
-        obj, context.scene, settings,
+    exclude_generated = plane_filter.should_exclude_generated_lines(obj, settings)
+    if (
+        settings.inner_line_enabled
+        and not exclude_generated
+        and camera_comp.inner_line_creation_in_range(
+            obj, context.scene, settings,
+        )
     ):
         inner_lines.apply_inner_lines(
             obj,
@@ -184,7 +191,7 @@ def apply_line_settings(
     intersection_in_range = camera_comp.intersection_line_creation_in_range(
         obj, context.scene, settings,
     )
-    if settings.intersection_enabled and intersection_in_range:
+    if settings.intersection_enabled and not exclude_generated and intersection_in_range:
         if refresh_scene:
             intersection_lines.apply_intersection_lines(
                 obj,
@@ -231,6 +238,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     )
     use_vertex_color: BoolProperty(default=False)
     even_thickness: BoolProperty(default=True)
+    exclude_sheet_meshes: BoolProperty(default=True)
     use_uniform_line_width: BoolProperty(default=False)
     use_rim: BoolProperty(default=True)
     hide_through_transparent: BoolProperty(default=False)

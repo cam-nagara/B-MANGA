@@ -578,6 +578,8 @@ def _auto_targets(
     obj: bpy.types.Object,
     scene: bpy.types.Scene | None = None,
 ) -> list[bpy.types.Object]:
+    from . import plane_filter
+
     targets: list[bpy.types.Object] = []
     source_key = obj.name_full
     for src_scene in _iter_source_scenes(obj, scene):
@@ -589,6 +591,8 @@ def _auto_targets(
             if candidate.modifiers.get(MODIFIER_NAME) is None:
                 continue
             candidate_settings = getattr(candidate, "bmanga_line_settings", None)
+            if plane_filter.should_exclude_generated_lines(candidate, candidate_settings):
+                continue
             candidate_enabled = bool(
                 getattr(candidate_settings, "intersection_enabled", False)
             )
@@ -759,6 +763,12 @@ def apply_intersection_lines(
     """交差線 GN モディファイアを適用. 成功時 True."""
     if obj.type != "MESH":
         return False
+    from . import plane_filter
+
+    settings = getattr(obj, "bmanga_line_settings", None)
+    if plane_filter.should_exclude_generated_lines(obj, settings):
+        remove_intersection_lines(obj)
+        return True
     if not _creation_in_range(obj, scene):
         remove_intersection_lines(obj)
         return True
@@ -797,6 +807,31 @@ def remove_intersection_lines(obj: bpy.types.Object) -> bool:
     return removed
 
 
+def prune_excluded_intersections(scene: bpy.types.Scene | None) -> int:
+    """Remove existing intersection modifiers that involve excluded sheet meshes."""
+    if scene is None:
+        return 0
+    from . import plane_filter
+
+    removed = 0
+    for obj in scene.objects:
+        if obj.type != "MESH":
+            continue
+        obj_settings = getattr(obj, "bmanga_line_settings", None)
+        source_excluded = plane_filter.should_exclude_generated_lines(obj, obj_settings)
+        for mod in list(iter_intersection_modifiers(obj)):
+            target = _modifier_target(mod)
+            target_settings = getattr(target, "bmanga_line_settings", None)
+            target_excluded = (
+                target is not None
+                and plane_filter.should_exclude_generated_lines(target, target_settings)
+            )
+            if source_excluded or target_excluded:
+                obj.modifiers.remove(mod)
+                removed += 1
+    return removed
+
+
 def update_parameters(
     obj: bpy.types.Object,
     target: bpy.types.Object | None = ...,
@@ -815,7 +850,7 @@ def update_parameters(
 
 def refresh_scene_intersections(scene: bpy.types.Scene) -> None:
     """シーン内の交差線を、現在のメッシュ構成に合わせて作り直す."""
-    from . import outline_setup
+    from . import outline_setup, plane_filter
 
     for obj in scene.objects:
         if obj.type != "MESH":
@@ -824,6 +859,9 @@ def refresh_scene_intersections(scene: bpy.types.Scene) -> None:
             continue
         settings = getattr(obj, "bmanga_line_settings", None)
         if settings is None:
+            continue
+        if plane_filter.should_exclude_generated_lines(obj, settings):
+            remove_intersection_lines(obj)
             continue
         if not getattr(settings, "intersection_enabled", False):
             remove_intersection_lines(obj)

@@ -293,6 +293,29 @@ def _on_transparent_protection_changed(self, context):
     _propagate(self, context, "hide_through_transparent")
 
 
+def _on_sheet_exclusion_changed(self, context):
+    if _propagating:
+        return
+    from . import inner_lines, intersection_lines, plane_filter
+    owner = self.id_data
+    refreshed_owner = False
+    if owner.type == "MESH" and has_line(owner):
+        sheet_mesh = plane_filter.is_sheet_mesh(owner)
+        if self.exclude_sheet_meshes and sheet_mesh:
+            refreshed_owner = bool(owner.modifiers.get(GN_MODIFIER_NAME))
+            refreshed_owner |= any(iter_intersection_modifiers(owner))
+            inner_lines.remove_inner_lines(owner)
+            intersection_lines.remove_intersection_lines(owner)
+            intersection_lines.prune_excluded_intersections(getattr(context, "scene", None))
+        elif not self.exclude_sheet_meshes and sheet_mesh:
+            refreshed_owner = _sync_inner_line_creation(owner, self, context)
+            _sync_intersection_creation(owner, self, context)
+            _refresh_intersection_scene(context)
+    _propagate(self, context, "exclude_sheet_meshes")
+    if refreshed_owner:
+        _refresh_print_widths_for(context, [owner], update_visibility=True)
+
+
 def _sync_inner_line_creation(
     owner: bpy.types.Object,
     settings,
@@ -300,11 +323,14 @@ def _sync_inner_line_creation(
     *,
     create_missing: bool = True,
 ) -> bool:
-    from . import camera_comp, inner_lines, outline_setup
+    from . import camera_comp, inner_lines, outline_setup, plane_filter
     if owner.type != "MESH":
         return False
     if not settings.inner_line_enabled:
         inner_lines.disable_inner_lines(owner)
+        return False
+    if plane_filter.should_exclude_generated_lines(owner, settings):
+        inner_lines.remove_inner_lines(owner)
         return False
     if camera_comp.inner_line_creation_in_range(owner, getattr(context, "scene", None), settings):
         if not create_missing and owner.modifiers.get(GN_MODIFIER_NAME) is None:
@@ -379,11 +405,15 @@ def _on_inner_creation_distance_changed(self, context):
 
 
 def _sync_intersection_creation(owner: bpy.types.Object, settings, context) -> None:
-    from . import intersection_lines, outline_setup
+    from . import intersection_lines, outline_setup, plane_filter
     if owner.type != "MESH":
         return
     if not settings.intersection_enabled:
         intersection_lines.remove_intersection_lines(owner)
+        return
+    if plane_filter.should_exclude_generated_lines(owner, settings):
+        intersection_lines.remove_intersection_lines(owner)
+        intersection_lines.prune_excluded_intersections(getattr(context, "scene", None))
         return
     mat = outline_setup.get_outline_material(owner)
     intersection_lines.apply_intersection_lines(
@@ -741,6 +771,13 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         description="透明・半透明の面越しに見える裏面側のラインを透明にする",
         default=False,
         update=_on_transparent_protection_changed,
+    )  # type: ignore[valid-type]
+
+    exclude_sheet_meshes: BoolProperty(
+        name="板ポリは内部線・交差線を作らない",
+        description="薄い板状のメッシュではアウトラインだけを作り、内部線と交差線を作らない",
+        default=True,
+        update=_on_sheet_exclusion_changed,
     )  # type: ignore[valid-type]
 
     inner_line_enabled: BoolProperty(
@@ -1124,9 +1161,17 @@ def _line_modifier_enabled_by_settings(obj: bpy.types.Object, mod: bpy.types.Mod
     if settings is None:
         return True
     if mod.name == GN_MODIFIER_NAME:
-        return bool(getattr(settings, "inner_line_enabled", False))
+        from . import plane_filter
+        return (
+            bool(getattr(settings, "inner_line_enabled", False))
+            and not plane_filter.should_exclude_generated_lines(obj, settings)
+        )
     if is_intersection_modifier_name(mod.name):
-        return bool(getattr(settings, "intersection_enabled", False))
+        from . import plane_filter
+        return (
+            bool(getattr(settings, "intersection_enabled", False))
+            and not plane_filter.should_exclude_generated_lines(obj, settings)
+        )
     return True
 
 

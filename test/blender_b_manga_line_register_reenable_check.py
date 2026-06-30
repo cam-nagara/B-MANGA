@@ -37,6 +37,7 @@ def _assert_registered() -> None:
     assert getattr(bpy.types, "BMANGA_LINE_PT_main", None) is not None
     subpanels = (
         "BMANGA_LINE_PT_presets",
+        "BMANGA_LINE_PT_basic",
         "BMANGA_LINE_PT_outline",
         "BMANGA_LINE_PT_camera",
         "BMANGA_LINE_PT_inner_line",
@@ -110,6 +111,7 @@ def _assert_panels_draw_items() -> None:
     for panel_cls in (
         panels.BMANGA_LINE_PT_main,
         panels.BMANGA_LINE_PT_presets,
+        panels.BMANGA_LINE_PT_basic,
         panels.BMANGA_LINE_PT_outline,
         panels.BMANGA_LINE_PT_camera,
         panels.BMANGA_LINE_PT_inner_line,
@@ -121,6 +123,7 @@ def _assert_panels_draw_items() -> None:
     for prop_name in (
         "outline_thickness_mm",
         "outline_color",
+        "exclude_sheet_meshes",
         "use_camera_compensation",
         "use_uniform_line_width",
         "edge_smooth_factor",
@@ -136,6 +139,7 @@ def _assert_panels_draw_items() -> None:
     ):
         assert prop_name in records["props"], f"{prop_name} がパネルにありません"
     assert "BMANGA_LINE_PT_width_details" not in dir(panels)
+    assert obj.bmanga_line_settings.exclude_sheet_meshes is True
     camera_props = [
         "use_camera_compensation",
         "use_uniform_line_width",

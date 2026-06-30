@@ -9,6 +9,7 @@ from . import camera_comp, core, inner_lines, intersection_lines, outline_setup,
 MAX_IMMEDIATE_VISIBILITY_OBJECTS = 64
 MAX_IMMEDIATE_GENERATED_WIDTH_OBJECTS = 64
 MAX_IMMEDIATE_INTERSECTION_REBUILD_OBJECTS = 64
+MAX_IMMEDIATE_SHEET_REBUILD_OBJECTS = 64
 _GENERATED_WIDTH_DETAIL_PROPS = {
     "inner_edge_midpoint_jitter_percent",
     "inner_edge_width_curve_25",
@@ -318,6 +319,31 @@ def _update_intersections(objects: list[bpy.types.Object], context) -> None:
         _refresh_camera_objects(refresh_targets, context, update_visibility=True)
 
 
+def _update_sheet_exclusion(objects: list[bpy.types.Object], context) -> None:
+    from . import plane_filter
+
+    removed_targets = []
+    rebuild_targets = []
+    for obj in objects:
+        settings = obj.bmanga_line_settings
+        if plane_filter.should_exclude_generated_lines(obj, settings):
+            removed = inner_lines.remove_inner_lines(obj)
+            removed |= intersection_lines.remove_intersection_lines(obj)
+            if removed:
+                removed_targets.append(obj)
+        elif (
+            not bool(getattr(settings, "exclude_sheet_meshes", True))
+            and plane_filter.is_sheet_mesh(obj)
+        ):
+            rebuild_targets.append(obj)
+    intersection_lines.prune_excluded_intersections(context.scene)
+    if rebuild_targets and len(objects) <= MAX_IMMEDIATE_SHEET_REBUILD_OBJECTS:
+        _update_inner_lines(rebuild_targets, context)
+        _update_intersections(rebuild_targets, context)
+    if removed_targets:
+        _refresh_camera_objects(removed_targets, context, update_visibility=True)
+
+
 def _update_visibility_rules(objects: list[bpy.types.Object], context) -> None:
     needs_refresh = []
     for obj in objects:
@@ -355,6 +381,9 @@ def refresh_propagated_property(
         return
     if prop_name == "hide_through_transparent":
         _update_transparent_protection(line_objects)
+        return
+    if prop_name == "exclude_sheet_meshes":
+        _update_sheet_exclusion(line_objects, context)
         return
     if prop_name == "outline_color":
         _update_outline_color(line_objects)

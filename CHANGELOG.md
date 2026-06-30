@@ -3,6 +3,38 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-30 — B-MANGA Lineの板ポリ除外を追加 (B-MANGA Line v0.3.34)
+
+### 症状
+
+- 大規模背景素材へ一括でラインを適用すると、テクスチャ用の板状メッシュにも内部線・交差線が作成され、不要な生成処理と表示負荷が増えていた。
+- 板ポリを手作業で対象外にする運用では、Japanese_Streetscape_Tokyo_0004.blend のような多数メッシュ素材で実用的ではなかった。
+
+### 原因
+
+- アウトライン、内部線、交差線の作成対象が同じメッシュ選択に揃っており、板状メッシュだけを軽く扱う上位設定がなかった。
+- 交差線では、板状メッシュ自身だけでなく、他オブジェクト側から板状メッシュを交差対象にする経路も残っていた。
+
+### 修正
+
+- 「基本設定」に「板ポリは内部線・交差線を作らない」を追加し、初期値をオンにした。
+- 面の向きがほぼ揃い、頂点がほぼ同一平面上にあるメッシュを軽量に判定し、結果をオブジェクトへ保存して再利用するようにした。
+- 板ポリ扱いのメッシュにはアウトラインだけを作り、内部線と交差線は作成しないようにした。
+- 交差線の自動対象から板ポリ扱いのメッシュを外し、既存の交差線に板ポリ対象が残った場合も掃除するようにした。
+- 「板ポリは内部線・交差線を作らない」をプリセット保存・適用と複数選択反映の対象にした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\panels.py addons\b_manga_line\operators.py addons\b_manga_line\presets.py addons\b_manga_line\batch_update.py addons\b_manga_line\intersection_lines.py addons\b_manga_line\plane_filter.py test\blender_b_manga_line_sheet_mesh_exclusion_check.py test\blender_b_manga_line_register_reenable_check.py test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_sheet_mesh_exclusion_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_register_reenable_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_auto_intersection_targets_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_inner_creation_range_check.py`
+
+---
+
 ## 2026-06-30 — B-MANGA Lineの線幅設定名と配置を整理 (B-MANGA Line v0.3.33)
 
 ### 症状

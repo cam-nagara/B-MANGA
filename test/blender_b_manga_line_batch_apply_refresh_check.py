@@ -170,6 +170,8 @@ def main() -> None:
                 ("even_thickness", False),
                 ("use_rim", False),
                 ("hide_through_transparent", True),
+                ("exclude_sheet_meshes", False),
+                ("exclude_sheet_meshes", True),
                 ("use_vertex_color", True),
                 ("use_vertex_color", False),
                 ("use_ao_influence", True),

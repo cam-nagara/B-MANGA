@@ -136,6 +136,11 @@ def _draw_outline(layout, context, settings) -> None:
     row.operator("bmanga_line.sync_weights", icon="VPAINT_HLT")
 
 
+def _draw_basic(layout, _context, settings) -> None:
+    col = layout.column(align=True)
+    col.prop(settings, "exclude_sheet_meshes")
+
+
 def _draw_camera(layout, context, settings) -> None:
     from . import camera_comp
 
@@ -329,6 +334,14 @@ class BMANGA_LINE_PT_presets(_BMangaLineMeshPanel, bpy.types.Panel):
         _draw_presets(self.layout, context)
 
 
+class BMANGA_LINE_PT_basic(_BMangaLineMeshPanel, bpy.types.Panel):
+    bl_label = "基本設定"
+    bl_idname = "BMANGA_LINE_PT_basic"
+
+    def draw(self, context):
+        _draw_basic(self.layout, context, _active_settings(context))
+
+
 class BMANGA_LINE_PT_outline(_BMangaLineMeshPanel, bpy.types.Panel):
     bl_label = "アウトライン設定"
     bl_idname = "BMANGA_LINE_PT_outline"
@@ -367,6 +380,7 @@ class BMANGA_LINE_PT_intersection(_BMangaLineMeshPanel, bpy.types.Panel):
 _CLASSES = (
     BMANGA_LINE_PT_main,
     BMANGA_LINE_PT_presets,
+    BMANGA_LINE_PT_basic,
     BMANGA_LINE_PT_outline,
     BMANGA_LINE_PT_camera,
     BMANGA_LINE_PT_inner_line,

@@ -78,7 +78,7 @@ class BMANGA_LINE_OT_remove(bpy.types.Operator):
         return any(has_line(obj) for obj in context.selected_objects)
 
     def execute(self, context):
-        from . import intersection_lines, outline_setup, inner_lines
+        from . import intersection_lines, outline_setup, inner_lines, plane_filter
         from .core import (
             PROP_BASE_THICKNESS,
             PROP_REF_DISTANCE,
@@ -106,6 +106,7 @@ class BMANGA_LINE_OT_remove(bpy.types.Operator):
                     del obj[key]
             if PROP_LINES_HIDDEN in obj:
                 del obj[PROP_LINES_HIDDEN]
+            plane_filter.clear_cache(obj)
 
         intersection_lines.refresh_scene_intersections(context.scene)
         self.report({"INFO"}, f"{count} オブジェクトからラインを削除しました")
