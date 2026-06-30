@@ -723,8 +723,8 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     )  # type: ignore[valid-type]
 
     use_uniform_line_width: BoolProperty(
-        name="線幅の均一化",
-        description="カメラビューと出力解像度に合わせて、指定したmm幅で描画する",
+        name="線幅の均一化（頂点単位）",
+        description="同じメッシュ内の奥行き差も見て、頂点ごとに画面上の線幅を揃える",
         default=False,
         update=_on_uniform_line_width_changed,
     )  # type: ignore[valid-type]
@@ -870,8 +870,8 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     # --- カメラ距離補正 ---
 
     use_camera_compensation: BoolProperty(
-        name="カメラ距離で線幅を補正",
-        description="カメラから離れても画面上の線幅を維持する",
+        name="線幅の均一化（オブジェクト単位）",
+        description="オブジェクトごとのカメラ距離に合わせて画面上の線幅を揃える",
         default=False,
         update=_on_camera_comp_changed,
     )  # type: ignore[valid-type]

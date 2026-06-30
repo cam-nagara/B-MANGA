@@ -339,7 +339,7 @@ class BMANGA_LINE_OT_refresh_camera(bpy.types.Operator):
     """現在のカメラ位置でライン幅を再計算"""
 
     bl_idname = "bmanga_line.refresh_camera"
-    bl_label = "カメラ補正を更新"
+    bl_label = "線幅を更新"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -352,7 +352,7 @@ class BMANGA_LINE_OT_refresh_camera(bpy.types.Operator):
         from . import camera_comp
 
         camera_comp.refresh(context)
-        self.report({"INFO"}, "カメラ補正を更新しました")
+        self.report({"INFO"}, "線幅を更新しました")
         return {"FINISHED"}
 
 

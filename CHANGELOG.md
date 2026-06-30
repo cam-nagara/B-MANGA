@@ -3,6 +3,37 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-30 — B-MANGA Lineの線幅設定名と配置を整理 (B-MANGA Line v0.3.33)
+
+### 症状
+
+- 「カメラ距離で線幅を補正」と「線幅の均一化」の違いが画面上で分かりにくかった。
+- 線幅の詳細項目が独立パネルにまとまっており、アウトライン・内部線・交差線のどれに効く設定か判別しにくかった。
+
+### 原因
+
+- オブジェクト単位の線幅補正と頂点単位の線幅補正が別名で表示され、同系統の設定として並んでいなかった。
+- アウトライン用、内部線用、交差線用の線幅詳細が「線幅の詳細制御」へ集められていた。
+
+### 修正
+
+- 「カメラ距離で線幅を補正」を「線幅の均一化（オブジェクト単位）」へ改名した。
+- 「線幅の均一化」を「線幅の均一化（頂点単位）」へ改名した。
+- カメラ設定内で「線幅の均一化（オブジェクト単位）」を上、「線幅の均一化（頂点単位）」を下に並べた。
+- アウトライン用の頂点カラー、AO、中間頂点グラフ、遠距離非表示をアウトライン設定へまとめた。
+- 内部線用の中間頂点グラフを内部線設定へ、交差線用の中間頂点グラフを交差線設定へ移した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\panels.py addons\b_manga_line\operators.py addons\b_manga_line\__init__.py test\blender_b_manga_line_register_reenable_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_register_reenable_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_uniform_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_aov_line_only_check.py`
+
+---
+
 ## 2026-06-30 — B-MANGA Lineの全設定反映を大規模選択向けに再軽量化 (B-MANGA Line v0.3.32)
 
 ### 症状

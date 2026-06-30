@@ -97,6 +97,7 @@ def _draw_presets(layout, context) -> None:
 
 def _draw_outline(layout, context, settings) -> None:
     dpi = _get_paper_dpi(context.scene)
+    has_any = any(has_outline(o) for o in context.selected_objects)
     col = layout.column(align=True)
     row = col.row(align=True)
     row.prop(settings, "outline_thickness_mm")
@@ -105,15 +106,34 @@ def _draw_outline(layout, context, settings) -> None:
     sub_label.label(text=_mm_to_px_label(settings.outline_thickness_mm, dpi))
     col.prop(settings, "outline_color")
     col.prop(settings, "even_thickness")
-    col.prop(settings, "use_uniform_line_width")
     col.prop(settings, "use_rim")
     col.prop(settings, "hide_through_transparent")
     col.prop(settings, "use_vertex_color")
+    col.separator()
+    col.prop(settings, "use_ao_influence")
+    sub = col.column(align=True)
+    sub.enabled = settings.use_ao_influence
+    sub.prop(settings, "ao_influence_strength")
+    row = sub.row(align=True)
+    row.operator("bmanga_line.bake_ao", icon="SHADING_RENDERED")
+    col.separator()
+    _draw_midpoint_width_controls(
+        col,
+        settings,
+        "outline",
+        "線幅の詳細",
+        "edge_smooth_factor",
+        "edge_midpoint_jitter_percent",
+    )
     col.separator()
     col.prop(settings, "use_outline_distance_limit")
     sub = col.column(align=True)
     sub.enabled = settings.use_outline_distance_limit
     sub.prop(settings, "outline_max_distance")
+    col.separator()
+    row = col.row(align=True)
+    row.enabled = has_any
+    row.operator("bmanga_line.sync_weights", icon="VPAINT_HLT")
 
 
 def _draw_camera(layout, context, settings) -> None:
@@ -126,6 +146,7 @@ def _draw_camera(layout, context, settings) -> None:
     basis = "別カメラ指定" if override_camera else "カメラビュー"
     col.label(text=f"基準: {basis} ({camera_name})", icon="CAMERA_DATA")
     col.prop(context.scene, "bmanga_line_camera")
+    col.separator()
     col.prop(settings, "use_camera_compensation")
     sub = col.column(align=True)
     sub.enabled = settings.use_camera_compensation and not settings.use_uniform_line_width
@@ -135,50 +156,13 @@ def _draw_camera(layout, context, settings) -> None:
     row.operator("bmanga_line.refresh_camera", icon="PLAY")
 
     col.separator()
+    col.prop(settings, "use_uniform_line_width")
+
+    col.separator()
     col.prop(settings, "use_camera_culling")
     sub = col.column(align=True)
     sub.enabled = settings.use_camera_culling
     sub.prop(settings, "culling_margin")
-
-
-def _draw_width_details(layout, context, settings) -> None:
-    has_any = any(has_outline(o) for o in context.selected_objects)
-    col = layout.column(align=True)
-    _draw_midpoint_width_controls(
-        col,
-        settings,
-        "outline",
-        "アウトライン",
-        "edge_smooth_factor",
-        "edge_midpoint_jitter_percent",
-    )
-    _draw_midpoint_width_controls(
-        col,
-        settings,
-        "inner",
-        "内部線",
-        "inner_edge_smooth_factor",
-        "inner_edge_midpoint_jitter_percent",
-    )
-    _draw_midpoint_width_controls(
-        col,
-        settings,
-        "intersection",
-        "交差線",
-        "intersection_edge_smooth_factor",
-        "intersection_edge_midpoint_jitter_percent",
-    )
-    col.separator()
-    col.prop(settings, "use_ao_influence")
-    sub = col.column(align=True)
-    sub.enabled = settings.use_ao_influence
-    sub.prop(settings, "ao_influence_strength")
-    row = sub.row(align=True)
-    row.operator("bmanga_line.bake_ao", icon="SHADING_RENDERED")
-    col.separator()
-    row = col.row(align=True)
-    row.enabled = has_any
-    row.operator("bmanga_line.sync_weights", icon="VPAINT_HLT")
 
 
 def _draw_midpoint_width_controls(
@@ -233,6 +217,17 @@ def _draw_inner_line(layout, context, settings) -> None:
     sub_dist2 = sub_dist.column(align=True)
     sub_dist2.enabled = settings.use_inner_line_distance_limit
     sub_dist2.prop(settings, "inner_line_max_distance")
+    col.separator()
+    sub_width = col.column(align=True)
+    sub_width.enabled = settings.inner_line_enabled
+    _draw_midpoint_width_controls(
+        sub_width,
+        settings,
+        "inner",
+        "線幅の詳細",
+        "inner_edge_smooth_factor",
+        "inner_edge_midpoint_jitter_percent",
+    )
 
 
 def _draw_intersection(layout, context, settings) -> None:
@@ -257,6 +252,15 @@ def _draw_intersection(layout, context, settings) -> None:
     sub_dist = sub.column(align=True)
     sub_dist.enabled = settings.use_intersection_distance_limit
     sub_dist.prop(settings, "intersection_max_distance")
+    sub.separator()
+    _draw_midpoint_width_controls(
+        sub,
+        settings,
+        "intersection",
+        "線幅の詳細",
+        "intersection_edge_smooth_factor",
+        "intersection_edge_midpoint_jitter_percent",
+    )
 
 
 def _draw_actions(layout, context, obj) -> None:
@@ -342,15 +346,6 @@ class BMANGA_LINE_PT_camera(_BMangaLineMeshPanel, bpy.types.Panel):
         _draw_camera(self.layout, context, _active_settings(context))
 
 
-class BMANGA_LINE_PT_width_details(_BMangaLineMeshPanel, bpy.types.Panel):
-    bl_label = "線幅の詳細制御"
-    bl_idname = "BMANGA_LINE_PT_width_details"
-    bl_options = {"DEFAULT_CLOSED"}
-
-    def draw(self, context):
-        _draw_width_details(self.layout, context, _active_settings(context))
-
-
 class BMANGA_LINE_PT_inner_line(_BMangaLineMeshPanel, bpy.types.Panel):
     bl_label = "内部線（稜線・谷線）"
     bl_idname = "BMANGA_LINE_PT_inner_line"
@@ -374,7 +369,6 @@ _CLASSES = (
     BMANGA_LINE_PT_presets,
     BMANGA_LINE_PT_outline,
     BMANGA_LINE_PT_camera,
-    BMANGA_LINE_PT_width_details,
     BMANGA_LINE_PT_inner_line,
     BMANGA_LINE_PT_intersection,
 )
