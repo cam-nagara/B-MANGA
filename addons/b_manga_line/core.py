@@ -275,7 +275,8 @@ def _on_rim_changed(self, context):
     if owner.type == "MESH":
         mod = owner.modifiers.get(MODIFIER_NAME)
         if mod is not None:
-            mod.use_rim = self.use_rim
+            from . import outline_setup
+            outline_setup.update_modifier_rim(owner, self.use_rim)
     _propagate(self, context, "use_rim")
 
 

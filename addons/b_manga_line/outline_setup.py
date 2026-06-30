@@ -392,6 +392,55 @@ def _ensure_color_attribute(obj: bpy.types.Object):
     return attr
 
 
+def _mesh_has_open_edges(mesh: bpy.types.Mesh) -> bool:
+    edge_counts: dict[tuple[int, int], int] = {}
+    for poly in mesh.polygons:
+        vertices = list(poly.vertices)
+        if len(vertices) < 2:
+            continue
+        for index, v1 in enumerate(vertices):
+            v2 = vertices[(index + 1) % len(vertices)]
+            key = (v1, v2) if v1 <= v2 else (v2, v1)
+            edge_counts[key] = edge_counts.get(key, 0) + 1
+    return any(count != 2 for count in edge_counts.values())
+
+
+def _configure_solidify_shape(
+    obj: bpy.types.Object,
+    mod: bpy.types.Modifier,
+    use_rim: bool,
+) -> None:
+    open_mesh = _mesh_has_open_edges(obj.data)
+    mod.offset = 1.0
+    if hasattr(mod, "use_rim_only"):
+        mod.use_rim_only = open_mesh
+    mod.use_rim = True if open_mesh else use_rim
+
+
+def _configure_line_only_solidify_shape(obj: bpy.types.Object) -> None:
+    mod = obj.modifiers.get(MODIFIER_NAME)
+    if obj.type != "MESH" or mod is None:
+        return
+    open_mesh = _mesh_has_open_edges(obj.data)
+    mod.offset = 1.0 if open_mesh else -1.0
+    if hasattr(mod, "use_rim_only"):
+        mod.use_rim_only = open_mesh
+    if open_mesh:
+        mod.use_rim = True
+
+
+def _restore_solidify_shape(obj: bpy.types.Object) -> None:
+    settings = getattr(obj, "bmanga_line_settings", None)
+    use_rim = bool(getattr(settings, "use_rim", False))
+    update_modifier_rim(obj, use_rim)
+
+
+def update_modifier_rim(obj: bpy.types.Object, use_rim: bool) -> None:
+    mod = obj.modifiers.get(MODIFIER_NAME)
+    if obj.type == "MESH" and mod is not None:
+        _configure_solidify_shape(obj, mod, use_rim)
+
+
 # ------------------------------------------------------------------
 # 適用 / 削除
 # ------------------------------------------------------------------
@@ -437,7 +486,7 @@ def apply_outline(
     mod.offset = 1.0
     mod.use_flip_normals = True
     mod.use_even_offset = even_thickness
-    mod.use_rim = use_rim
+    _configure_solidify_shape(obj, mod, use_rim)
     mod.material_offset = material_offset
     mod.material_offset_rim = material_offset
 
@@ -612,10 +661,18 @@ def _set_outline_materials_for_line_only(
                 pass
 
 
-def _restore_outline_materials(obj: bpy.types.Object, mesh: bpy.types.Mesh) -> None:
+def _restore_outline_materials(
+    obj: bpy.types.Object,
+    mesh: bpy.types.Mesh,
+    *,
+    hide_through_transparent_override: bool | None = None,
+) -> None:
     settings = getattr(obj, "bmanga_line_settings", None)
     color = _line_only_color(obj)
-    hide_transparent = bool(getattr(settings, "hide_through_transparent", False))
+    if hide_through_transparent_override is None:
+        hide_transparent = bool(getattr(settings, "hide_through_transparent", False))
+    else:
+        hide_transparent = bool(hide_through_transparent_override)
     for mat in mesh.materials:
         if mat is not None and _is_outline_material(mat):
             _build_outline_nodes(
@@ -652,10 +709,21 @@ def set_line_only(obj: bpy.types.Object, enabled: bool) -> bool:
     mesh = obj.data
     if enabled:
         if bool(obj.get(PROP_LINE_ONLY, False)):
+            _restore_outline_materials(
+                obj,
+                mesh,
+                hide_through_transparent_override=True,
+            )
+            _configure_line_only_solidify_shape(obj)
             return True
         stored = []
         hidden = _get_line_only_material()
-        _set_outline_materials_for_line_only(mesh, _line_only_color(obj))
+        _restore_outline_materials(
+            obj,
+            mesh,
+            hide_through_transparent_override=True,
+        )
+        _configure_line_only_solidify_shape(obj)
         _remove_line_only_wire(obj)
         for index, mat in enumerate(mesh.materials):
             if mat is not None and _is_outline_material(mat):
@@ -682,6 +750,7 @@ def set_line_only(obj: bpy.types.Object, enabled: bool) -> bool:
         if 0 <= index < len(mesh.materials):
             mesh.materials[index] = bpy.data.materials.get(mat_name)
     _restore_outline_materials(obj, mesh)
+    _restore_solidify_shape(obj)
     _remove_line_only_wire(obj)
     if PROP_LINE_ONLY_MATERIALS in obj:
         del obj[PROP_LINE_ONLY_MATERIALS]

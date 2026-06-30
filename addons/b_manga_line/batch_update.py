@@ -83,7 +83,11 @@ def _update_outline_flag(objects: list[bpy.types.Object], attr: str, prop_name: 
     for obj in objects:
         mod = _outline_modifier(obj)
         if mod is not None:
-            setattr(mod, attr, bool(getattr(obj.bmanga_line_settings, prop_name)))
+            value = bool(getattr(obj.bmanga_line_settings, prop_name))
+            if prop_name == "use_rim":
+                outline_setup.update_modifier_rim(obj, value)
+            else:
+                setattr(mod, attr, value)
 
 
 def _update_transparent_protection(objects: list[bpy.types.Object]) -> None:

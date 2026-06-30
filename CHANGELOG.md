@@ -3,6 +3,32 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-01 — B-MANGA Lineのラインのみ表示で黒い面が出る問題を修正 (B-MANGA Line v0.3.42)
+
+### 症状
+
+- 「ラインのみ表示」中に、単純なキューブでもライン用の面が黒い塗りつぶしとして見えることがあった。
+- 指定シーンの実画面で、ラインのみ確認のための白表示中に黒い箱状の面が出ていた。
+
+### 原因
+
+- 閉じた立体のアウトライン用外側面が、ラインのみ表示の白い面と重なると、Cycles画面表示で線ではなく面として見える場合があった。
+- 板状メッシュでは開いた辺の扱いが通常の閉じた立体と同じになり、黒い面を作りやすい状態が残っていた。
+
+### 修正
+
+- 通常表示では従来のアウトライン生成を維持し、「ラインのみ表示」中だけ閉じた立体のライン確認形状を黒い面が出にくい状態へ一時切り替えするようにした。
+- 通常表示へ戻したときに、ライン確認中の形状が残らないように復帰処理を追加した。
+- 板状メッシュは開いた辺の線だけを作る扱いにし、黒い外側面を作らないようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\outline_setup.py addons\b_manga_line\core.py addons\b_manga_line\batch_update.py test\blender_b_manga_line_open_mesh_outline_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_open_mesh_outline_check.py`
+- `Japanese_Streetscape_Tokyo_0004.blend` の全917メッシュにアウトラインを印刷サイズ0.3mmで適用し、交差線オフ・Cyclesレンダーモードの実画面で「ラインのみ表示」オン/オフを取得。ラインのみ表示中の黒いキューブ塗りつぶしが消え、通常表示へ戻ることをAI目視確認。
+
+---
+
 ## 2026-07-01 — B-MANGA Lineのラインのみ表示で三角分割が見える問題を修正 (B-MANGA Line v0.3.41)
 
 ### 症状
