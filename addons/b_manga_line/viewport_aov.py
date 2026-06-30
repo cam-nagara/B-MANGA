@@ -16,6 +16,18 @@ def _view3d_spaces(context) -> list[bpy.types.SpaceView3D]:
     spaces: list[bpy.types.SpaceView3D] = []
     seen: set[int] = set()
 
+    def _add_from_screen(screen) -> None:
+        for area in getattr(screen, "areas", ()) or ():
+            if getattr(area, "type", None) != "VIEW_3D":
+                continue
+            for space in area.spaces:
+                if getattr(space, "type", None) != "VIEW_3D":
+                    continue
+                key = space.as_pointer()
+                if key not in seen:
+                    seen.add(key)
+                    spaces.append(space)
+
     area = getattr(context, "area", None)
     if area is not None and getattr(area, "type", None) == "VIEW_3D":
         for space in area.spaces:
@@ -23,17 +35,11 @@ def _view3d_spaces(context) -> list[bpy.types.SpaceView3D]:
                 seen.add(space.as_pointer())
                 spaces.append(space)
 
-    screen = getattr(context, "screen", None)
-    for area in getattr(screen, "areas", ()) or ():
-        if getattr(area, "type", None) != "VIEW_3D":
-            continue
-        for space in area.spaces:
-            if getattr(space, "type", None) != "VIEW_3D":
-                continue
-            key = space.as_pointer()
-            if key not in seen:
-                seen.add(key)
-                spaces.append(space)
+    _add_from_screen(getattr(context, "screen", None))
+
+    wm = getattr(context, "window_manager", None)
+    for window in getattr(wm, "windows", ()) or ():
+        _add_from_screen(getattr(window, "screen", None))
     return spaces
 
 
@@ -94,11 +100,11 @@ def _space_is_line_aov(space: bpy.types.SpaceView3D) -> bool:
 
 
 def _set_line_aov_pass(shading) -> None:
-    shading.aov_name = AOV_NAME
     try:
-        shading.render_pass = AOV_NAME
-    except (TypeError, ValueError):
         shading.render_pass = "AOV"
+    except (TypeError, ValueError):
+        shading.render_pass = AOV_NAME
+    shading.aov_name = AOV_NAME
 
 
 def enable_line_aov(context) -> bool:

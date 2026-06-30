@@ -3,6 +3,33 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-30 — B-MANGA Lineのラインのみ表示をAOVへ確実に反映 (B-MANGA Line v0.3.37)
+
+### 症状
+
+- B-MANGA Lineで「ラインのみを表示」を押しても、通常表示の色面が残り、ラインだけの表示に切り替わらないことがあった。
+- 画面上は「ラインのみ表示にしました」と出ても、実際の3DビューがラインAOV表示へ切り替わらない場合があった。
+
+### 原因
+
+- ラインAOV表示へ切り替える際、AOV名と表示パスの設定順がBlender 5.1系の3Dビューで安定していなかった。
+- 別ウィンドウやプリファレンス表示が絡む状態では、現在の画面だけを見て3Dビューを探していたため、実際に表示している3Dビューへ切り替えが届かない場合があった。
+
+### 修正
+
+- 「ラインのみを表示」時は、先に3DビューをAOV表示へ切り替えてから、B-MANGA LineのラインAOV名を指定するようにした。
+- 開いている全ウィンドウの3Dビューを対象にし、表示中の3Dビューへラインのみ表示が反映されるようにした。
+- 実機テストで通常表示とラインのみ表示の画像を出力し、色面が消えてラインだけが残ることを確認するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\viewport_aov.py test\blender_b_manga_line_aov_view_line_only_check.py`
+- `blender.exe --factory-startup --python test\blender_b_manga_line_aov_view_line_only_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_aov_line_only_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_curve_and_linked_batch_check.py`
+
+---
+
 ## 2026-06-30 — B-MANGA Lineのラインのみ表示時のパネルエラーを修正 (B-MANGA Line v0.3.36)
 
 ### 症状
