@@ -170,7 +170,11 @@ class BMANGA_LINE_OT_set_line_only(bpy.types.Operator):
         if self.line_only:
             for obj in line_objects:
                 set_line_visibility(obj, True)
-            if viewport_aov.enable_line_aov(context):
+            aov_enabled = (
+                viewport_aov.enable_line_aov(context)
+                and viewport_aov.context_view_is_line_aov(context)
+            )
+            if aov_enabled:
                 for obj in line_objects:
                     if bool(obj.get(PROP_LINE_ONLY, False)):
                         outline_setup.set_line_only(obj, False)

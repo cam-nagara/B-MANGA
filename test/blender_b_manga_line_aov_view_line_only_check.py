@@ -56,6 +56,24 @@ def _view3d_override() -> tuple[dict, bpy.types.SpaceView3D]:
     raise AssertionError("View3D area is not available")
 
 
+def _non_view3d_override() -> dict:
+    screen = bpy.context.screen
+    assert screen is not None, "Screen is not available"
+    for area in screen.areas:
+        if area.type == "VIEW_3D":
+            continue
+        region = next((item for item in area.regions if item.type == "WINDOW"), None)
+        if region is None:
+            continue
+        return {
+            "window": bpy.context.window,
+            "screen": screen,
+            "area": area,
+            "region": region,
+        }
+    raise AssertionError("Non-View3D area is not available")
+
+
 def _look_at(obj: bpy.types.Object, target: Vector) -> None:
     direction = target - obj.location
     obj.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
@@ -167,7 +185,8 @@ def main() -> None:
     _render_view(before_path, override)
     before_counts = _image_counts(before_path)
 
-    assert bpy.ops.bmanga_line.set_line_only(line_only=True) == {"FINISHED"}
+    with bpy.context.temp_override(**override):
+        assert bpy.ops.bmanga_line.set_line_only(line_only=True) == {"FINISHED"}
     assert viewport_aov.is_line_aov_active(bpy.context)
     assert space.shading.type == "RENDERED"
     assert space.shading.render_pass in {"AOV", core.AOV_NAME}
@@ -189,11 +208,21 @@ def main() -> None:
         assert mod is not None
         assert mod.show_viewport and mod.show_render
 
-    assert bpy.ops.bmanga_line.set_line_only(line_only=False) == {"FINISHED"}
+    with bpy.context.temp_override(**override):
+        assert bpy.ops.bmanga_line.set_line_only(line_only=False) == {"FINISHED"}
     assert not viewport_aov.is_line_aov_active(bpy.context)
     assert space.shading.type == original_type
     assert space.shading.render_pass == original_pass
     assert space.shading.aov_name == original_aov
+
+    with bpy.context.temp_override(**_non_view3d_override()):
+        assert bpy.ops.bmanga_line.set_line_only(line_only=True) == {"FINISHED"}
+    assert bool(obj.get(core.PROP_LINE_ONLY, False))
+    assert [mat.name if mat else "" for mat in obj.data.materials] != original_materials
+    with bpy.context.temp_override(**_non_view3d_override()):
+        assert bpy.ops.bmanga_line.set_line_only(line_only=False) == {"FINISHED"}
+    assert not bool(obj.get(core.PROP_LINE_ONLY, False))
+    assert [mat.name if mat else "" for mat in obj.data.materials] == original_materials
     print("[PASS] B-MANGA Line line-only display uses the BML_Line AOV")
 
 

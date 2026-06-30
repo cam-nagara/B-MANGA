@@ -3,6 +3,31 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-30 — B-MANGA Lineのラインのみ表示フォールバックを修正 (B-MANGA Line v0.3.38)
+
+### 症状
+
+- `Japanese_Streetscape_Tokyo_0004.blend` のように別ウィンドウやプリファレンスが開いた状態で「ラインのみを表示」を押すと、画面上は「ラインのみ表示にしました」と出ても、通常表示の色面が残ることがあった。
+
+### 原因
+
+- どこかの3DビューがラインAOVへ切り替わると成功扱いにしていたため、ボタン実行時の画面自身がAOV表示へ切り替わっていない場合でも、素材側のラインのみ表示へフォールバックしていなかった。
+
+### 修正
+
+- ボタン実行時の画面自身がラインAOV表示になった場合だけAOV成功扱いにした。
+- 3Dビュー以外の文脈、または表示中の画面がAOVへ切り替わらない文脈では、素材側のラインのみ表示へフォールバックし、通常表示の色面が残らないようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\viewport_aov.py addons\b_manga_line\operators.py test\blender_b_manga_line_aov_view_line_only_check.py test\blender_b_manga_line_camera_aov_line_only_check.py`
+- `blender.exe --factory-startup --python test\blender_b_manga_line_aov_view_line_only_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_aov_line_only_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_curve_and_linked_batch_check.py`
+- `Japanese_Streetscape_Tokyo_0004.blend` は直接読み込みで保存済みラインのAOV切り替えを確認。保存済み状態ではライン適用済みが1オブジェクトのみだったため、917オブジェクト適用済み状態の再作成は全メッシュ適用処理がタイムアウトし未完了。
+
+---
+
 ## 2026-06-30 — B-MANGA Lineのラインのみ表示をAOVへ確実に反映 (B-MANGA Line v0.3.37)
 
 ### 症状

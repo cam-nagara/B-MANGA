@@ -90,6 +90,16 @@ def is_line_aov_active(context) -> bool:
     return False
 
 
+def context_view_is_line_aov(context) -> bool:
+    area = getattr(context, "area", None)
+    if area is None or getattr(area, "type", None) != "VIEW_3D":
+        return False
+    for space in area.spaces:
+        if getattr(space, "type", None) == "VIEW_3D" and _space_is_line_aov(space):
+            return True
+    return False
+
+
 def _space_is_line_aov(space: bpy.types.SpaceView3D) -> bool:
     shading = space.shading
     return (

@@ -18,7 +18,6 @@ from b_manga_line import (  # noqa: E402
     inner_lines,
     outline_setup,
     presets,
-    viewport_aov,
 )
 
 
@@ -133,10 +132,9 @@ def _test_line_only_restore() -> None:
     for mod in line_mods:
         assert mod.show_viewport and mod.show_render
     hidden = [mat.name if mat else "" for mat in obj.data.materials[:2]]
-    if viewport_aov.is_line_aov_active(bpy.context):
+    if not bool(obj.get(core.PROP_LINE_ONLY, False)):
         assert hidden == before, hidden
         assert obj.modifiers.get(outline_setup.LINE_ONLY_WIREFRAME_NAME) is None
-        assert not bool(obj.get(core.PROP_LINE_ONLY, False))
     else:
         assert hidden == [outline_setup.LINE_ONLY_MATERIAL_NAME] * 2, hidden
         assert obj.modifiers.get(outline_setup.LINE_ONLY_WIREFRAME_NAME) is not None
