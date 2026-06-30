@@ -354,6 +354,7 @@ def apply_inner_lines(
     thickness: float = 0.0005,
     material: bpy.types.Material | None = None,
     use_marked_edges: bool = False,
+    enable: bool = True,
 ) -> bool:
     """内部線 GN モディファイアを適用. 成功時 True."""
     if obj.type != "MESH":
@@ -365,7 +366,12 @@ def apply_inner_lines(
     mod = obj.modifiers.get(GN_MODIFIER_NAME)
     if mod is None:
         mod = obj.modifiers.new(name=GN_MODIFIER_NAME, type="NODES")
+    if not enable:
+        mod.show_viewport = False
+        mod.show_render = False
     mod.node_group = tree
+    mod.show_viewport = enable
+    mod.show_render = enable
 
     # パラメータ設定
     sid_angle = _find_socket_id(tree, "検出角度")
@@ -422,6 +428,36 @@ def remove_inner_lines(obj: bpy.types.Object) -> bool:
         return False
     obj.modifiers.remove(mod)
     return True
+
+
+def disable_inner_lines(obj: bpy.types.Object) -> bool:
+    """内部線を削除せず無効化する."""
+    if obj.type != "MESH":
+        return False
+    mod = obj.modifiers.get(GN_MODIFIER_NAME)
+    if mod is None:
+        return False
+    changed = bool(mod.show_viewport or mod.show_render)
+    if not changed:
+        return False
+    mod.show_viewport = False
+    mod.show_render = False
+    return changed
+
+
+def enable_inner_lines(obj: bpy.types.Object) -> bool:
+    """内部線を表示・レンダー有効に戻す."""
+    if obj.type != "MESH":
+        return False
+    mod = obj.modifiers.get(GN_MODIFIER_NAME)
+    if mod is None:
+        return False
+    changed = not bool(mod.show_viewport and mod.show_render)
+    if not changed:
+        return False
+    mod.show_viewport = True
+    mod.show_render = True
+    return changed
 
 
 def update_parameters(

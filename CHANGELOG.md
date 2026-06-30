@@ -3,6 +3,52 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-30 — B-MANGA Lineの全設定反映を大規模選択向けに再軽量化 (B-MANGA Line v0.3.32)
+
+### 症状
+
+- 大規模背景素材の全メッシュへラインを適用したあと、「線幅の均一化」以外のチェックボックスや設定でも、切り替え後に長時間戻らない経路が残っていた。
+- 特に「遠距離ラインを非表示」「作成範囲を制限」「交差線」の検出方式や内部線・交差線の詳細グラフで、全シーン更新や全頂点解析へ落ちる場合があった。
+
+### 原因
+
+- 複数選択への値コピー後に、設定の種類を問わず全シーンのカメラ補正、交差線再構築、内部線再生成、線幅用頂点情報の再計算が走る経路が残っていた。
+- 作成範囲の設定変更が「次に作る範囲」ではなく既存線の有効化・再表示に近い挙動になり、遠距離オブジェクトの重い評価を再開していた。
+- 内部線・交差線の詳細グラフ変更時に、該当線が無いオブジェクトまで線幅解析の対象にしていた。
+
+### 修正
+
+- 設定ごとの軽量更新経路を追加し、色・太さ・表示距離・作成範囲・内部線・交差線・線幅詳細を必要最小限の処理へ分離した。
+- 「内部線を追加」オフ時は内部線を削除せず無効化し、再オン時の再構築負荷を抑えた。
+- 作成範囲のオン・オフや距離変更では既存線の新規生成・交差線再構築を行わず、次回の「ラインを適用」で作成範囲として使うようにした。
+- 大規模選択時は、表示距離の即時表示書き戻し、内部線・交差線の詳細グラフ再計算、交差線の検出方式再構築を遅延し、UIが戻ることを優先した。
+- カメラ補正と線幅均一化では、内部線・交差線が存在しないオブジェクトの不要な線幅解析をスキップするようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile` で B-MANGA Line 変更ファイルと tracked Python 583件の構文チェックを確認。
+- tracked スクリプト587件・210,828行を全件読み込み、読み込みエラーなしを確認。
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_inner_creation_range_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_intersection_creation_range_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_marked_inner_edges_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_uniform_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_register_reenable_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_auto_intersection_targets_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_midpoint_targets_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_inner_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_intersection_fill_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_transparent_surface_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_aov_view_line_only_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_aov_line_only_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_curve_and_linked_batch_check.py`
+- `D:\TM Dropbox\Share\Assets\Japanese Streetscape Tokyo 0004\Japanese_Streetscape_Tokyo_0004.blend` の全916メッシュ選択相当でチェックボックス16件を往復監査し、最大は「内部線を追加」約121.7秒、「交差線を追加」約43.6秒、「作成範囲を制限」約44.0秒で、いずれも20分以内に完了することを確認。
+- 同ファイルの代表設定変更では、「交差線」の検出方式変更が最大約21.2秒で戻ることを確認。
+- AI目視: `_verify\b_manga_line_full_visual_audit\01_outline_inner_intersection.png` でアウトラインと接触部の黒線を確認。`02_uniform_line_only_distance.png` は画像生成できたが、既存のラインのみ表示用アサートが失敗したため別途確認対象として残した。
+
+---
+
 ## 2026-06-30 — B-MANGA Lineの線幅均一化オフを再軽量化 (B-MANGA Line v0.3.31)
 
 ### 症状

@@ -98,7 +98,7 @@ def _propagate(self, context, prop_name):
     """変更されたプロパティを選択中の他オブジェクトにも反映."""
     global _propagating
     if _propagating:
-        return
+        return False
     changed: list[bpy.types.Object] = []
     _propagating = True
     try:
@@ -118,8 +118,9 @@ def _propagate(self, context, prop_name):
     if changed:
         from . import batch_update
         batch_update.refresh_propagated_property(prop_name, changed, context)
+        return True
     else:
-        _refresh_print_widths(context)
+        return False
 
 
 def _refresh_full_line_settings(obj: bpy.types.Object, context) -> None:
@@ -132,6 +133,11 @@ def _refresh_full_line_settings(obj: bpy.types.Object, context) -> None:
 def _refresh_print_widths(context) -> None:
     from . import camera_comp
     camera_comp.refresh(context)
+
+
+def _refresh_print_widths_for(context, objects, *, update_visibility: bool = False) -> bool:
+    from . import camera_comp
+    return camera_comp.refresh_objects(context, objects, update_visibility=update_visibility)
 
 
 def _make_propagator(prop_name):
@@ -247,7 +253,7 @@ def _on_thickness_changed(self, context):
         outline_setup.update_modifier_thickness(owner, self.outline_thickness)
         if self.use_camera_compensation and PROP_BASE_THICKNESS in owner:
             owner[PROP_BASE_THICKNESS] = self.outline_thickness
-        _refresh_print_widths(context)
+        _refresh_print_widths_for(context, [owner])
     _propagate(self, context, "outline_thickness")
 
 
@@ -287,32 +293,45 @@ def _on_transparent_protection_changed(self, context):
     _propagate(self, context, "hide_through_transparent")
 
 
-def _sync_inner_line_creation(owner: bpy.types.Object, settings, context) -> None:
+def _sync_inner_line_creation(
+    owner: bpy.types.Object,
+    settings,
+    context,
+    *,
+    create_missing: bool = True,
+) -> bool:
     from . import camera_comp, inner_lines, outline_setup
     if owner.type != "MESH":
-        return
+        return False
     if not settings.inner_line_enabled:
-        inner_lines.remove_inner_lines(owner)
-        return
+        inner_lines.disable_inner_lines(owner)
+        return False
     if camera_comp.inner_line_creation_in_range(owner, getattr(context, "scene", None), settings):
+        if not create_missing and owner.modifiers.get(GN_MODIFIER_NAME) is None:
+            return False
+        if not create_missing:
+            inner_lines.enable_inner_lines(owner)
+            return False
         mat = outline_setup.get_outline_material(owner)
-        inner_lines.apply_inner_lines(
+        return inner_lines.apply_inner_lines(
             owner,
             angle=settings.inner_line_angle,
             thickness=settings.inner_line_thickness,
             material=mat,
             use_marked_edges=settings.use_marked_inner_edges,
         )
-    else:
-        inner_lines.remove_inner_lines(owner)
+    inner_lines.disable_inner_lines(owner)
+    return False
 
 
 def _on_inner_line_enabled_changed(self, context):
     if _propagating:
         return
     owner = self.id_data
-    _sync_inner_line_creation(owner, self, context)
+    refreshed_owner = _sync_inner_line_creation(owner, self, context)
     _propagate(self, context, "inner_line_enabled")
+    if refreshed_owner:
+        _refresh_print_widths_for(context, [owner], update_visibility=True)
 
 
 def _on_inner_angle_changed(self, context):
@@ -330,8 +349,10 @@ def _on_marked_inner_edges_changed(self, context):
     if _propagating:
         return
     owner = self.id_data
-    _sync_inner_line_creation(owner, self, context)
+    refreshed_owner = _sync_inner_line_creation(owner, self, context)
     _propagate(self, context, "use_marked_inner_edges")
+    if refreshed_owner:
+        _refresh_print_widths_for(context, [owner], update_visibility=True)
 
 
 def _on_inner_thickness_changed(self, context):
@@ -341,23 +362,19 @@ def _on_inner_thickness_changed(self, context):
     owner = self.id_data
     if owner.type == "MESH":
         inner_lines.update_parameters(owner, thickness=self.inner_line_thickness)
-        _refresh_print_widths(context)
+        _refresh_print_widths_for(context, [owner])
     _propagate(self, context, "inner_line_thickness")
 
 
 def _on_inner_creation_limit_changed(self, context):
     if _propagating:
         return
-    owner = self.id_data
-    _sync_inner_line_creation(owner, self, context)
     _propagate(self, context, "use_inner_line_creation_limit")
 
 
 def _on_inner_creation_distance_changed(self, context):
     if _propagating:
         return
-    owner = self.id_data
-    _sync_inner_line_creation(owner, self, context)
     _propagate(self, context, "inner_line_creation_max_distance")
 
 
@@ -390,8 +407,13 @@ def _on_intersection_enabled_changed(self, context):
         return
     owner = self.id_data
     _sync_intersection_creation(owner, self, context)
-    _refresh_intersection_scene(context)
-    _propagate(self, context, "intersection_enabled")
+    if _propagate(self, context, "intersection_enabled"):
+        if any(iter_intersection_modifiers(owner)):
+            _refresh_print_widths_for(context, [owner], update_visibility=True)
+    else:
+        _refresh_intersection_scene(context)
+        if any(iter_intersection_modifiers(owner)):
+            _refresh_print_widths_for(context, [owner], update_visibility=True)
 
 
 def _on_intersection_method_changed(self, context):
@@ -399,8 +421,13 @@ def _on_intersection_method_changed(self, context):
         return
     owner = self.id_data
     _sync_intersection_creation(owner, self, context)
-    _refresh_intersection_scene(context)
-    _propagate(self, context, "intersection_method")
+    if _propagate(self, context, "intersection_method"):
+        if any(iter_intersection_modifiers(owner)):
+            _refresh_print_widths_for(context, [owner], update_visibility=True)
+    else:
+        _refresh_intersection_scene(context)
+        if any(iter_intersection_modifiers(owner)):
+            _refresh_print_widths_for(context, [owner], update_visibility=True)
 
 
 def _on_intersection_thickness_changed(self, context):
@@ -412,25 +439,19 @@ def _on_intersection_thickness_changed(self, context):
         intersection_lines.update_parameters(
             owner, thickness=self.intersection_thickness,
         )
-        _refresh_print_widths(context)
+        _refresh_print_widths_for(context, [owner])
     _propagate(self, context, "intersection_thickness")
 
 
 def _on_intersection_creation_limit_changed(self, context):
     if _propagating:
         return
-    owner = self.id_data
-    _sync_intersection_creation(owner, self, context)
-    _refresh_intersection_scene(context)
     _propagate(self, context, "use_intersection_creation_limit")
 
 
 def _on_intersection_creation_distance_changed(self, context):
     if _propagating:
         return
-    owner = self.id_data
-    _sync_intersection_creation(owner, self, context)
-    _refresh_intersection_scene(context)
     _propagate(self, context, "intersection_creation_max_distance")
 
 
@@ -445,7 +466,7 @@ def _refresh_line_width_weights(self, context, target: str | None = None) -> Non
                 if vg is not None:
                     mod.vertex_group = vg.name
                     mod.thickness_vertex_group = 0.0
-            _refresh_print_widths(context)
+            _refresh_print_widths_for(context, [owner])
             return
 
         targets = ("outline", "inner", "intersection") if target is None else (target,)
@@ -472,6 +493,10 @@ def _refresh_outline_width_weights(owner, settings, vertex_analysis) -> None:
 
 
 def _refresh_generated_width_weights(owner, settings, target, vertex_analysis) -> None:
+    if target == "inner" and owner.modifiers.get(GN_MODIFIER_NAME) is None:
+        return
+    if target == "intersection" and not any(iter_intersection_modifiers(owner)):
+        return
     group_name = vertex_analysis.width_group_name(target)
     if _needs_line_width_weights(settings, target):
         vertex_analysis.compute_and_apply_weights(owner, settings, target)
@@ -501,7 +526,7 @@ def _on_camera_comp_changed(self, context):
     if self.use_camera_compensation:
         if owner.type == "MESH":
             camera_comp.store_unit_reference(owner, context.scene)
-            camera_comp.refresh(context)
+            camera_comp.refresh_objects(context, [owner])
     else:
         if owner.type == "MESH":
             mod = owner.modifiers.get(MODIFIER_NAME)
@@ -512,6 +537,7 @@ def _on_camera_comp_changed(self, context):
             intersection_lines.update_parameters(
                 owner, thickness=self.intersection_thickness,
             )
+            camera_comp.refresh_objects(context, [owner])
     _propagate(self, context, "use_camera_compensation")
 
 
@@ -521,7 +547,7 @@ def _on_camera_influence_changed(self, context):
     from . import camera_comp
     owner = self.id_data
     if owner.type == "MESH" and self.use_camera_compensation:
-        camera_comp.refresh(context)
+        camera_comp.refresh_objects(context, [owner])
     _propagate(self, context, "camera_compensation_influence")
 
 
@@ -605,12 +631,10 @@ def _refresh_visibility_rules(self, context):
             or self.use_inner_line_distance_limit
             or self.use_intersection_distance_limit
         ):
-            camera_comp.refresh(context)
+            camera_comp.refresh_visibility_objects(context, [owner])
         else:
             visible = not bool(owner.get(PROP_LINES_HIDDEN, False))
-            for mod in iter_line_modifiers(owner):
-                mod.show_viewport = visible
-                mod.show_render = visible
+            set_line_visibility(owner, visible)
 
 
 # ------------------------------------------------------------------
@@ -1095,13 +1119,27 @@ def has_line(obj: bpy.types.Object) -> bool:
     return obj.type == "MESH" and any(iter_line_modifiers(obj))
 
 
+def _line_modifier_enabled_by_settings(obj: bpy.types.Object, mod: bpy.types.Modifier) -> bool:
+    settings = getattr(obj, "bmanga_line_settings", None)
+    if settings is None:
+        return True
+    if mod.name == GN_MODIFIER_NAME:
+        return bool(getattr(settings, "inner_line_enabled", False))
+    if is_intersection_modifier_name(mod.name):
+        return bool(getattr(settings, "intersection_enabled", False))
+    return True
+
+
 def set_line_visibility(obj: bpy.types.Object, visible: bool) -> bool:
     mods = list(iter_line_modifiers(obj))
     if not mods:
         return False
     for mod in mods:
-        mod.show_viewport = visible
-        mod.show_render = visible
+        mod_visible = visible and _line_modifier_enabled_by_settings(obj, mod)
+        if mod.show_viewport != mod_visible:
+            mod.show_viewport = mod_visible
+        if mod.show_render != mod_visible:
+            mod.show_render = mod_visible
     obj[PROP_LINES_HIDDEN] = not visible
     return True
 

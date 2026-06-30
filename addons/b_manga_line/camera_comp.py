@@ -272,32 +272,42 @@ def _apply_uniform_line_width(scene, camera, obj, settings, mod) -> None:
         group_name=VG_LINE_WIDTH,
     )
 
-    _prepare_style_weights(obj, settings, "inner")
-    vertex_analysis.multiply_width_weights(
-        obj,
-        [width / max_outline for width in outline_widths],
-        group_name=VG_INNER_LINE_WIDTH,
-    )
+    has_inner = _has_inner_modifier(obj)
+    has_intersection = _has_intersection_modifier(obj)
+    if has_inner:
+        _prepare_style_weights(obj, settings, "inner")
+        vertex_analysis.multiply_width_weights(
+            obj,
+            [width / max_outline for width in outline_widths],
+            group_name=VG_INNER_LINE_WIDTH,
+        )
+    else:
+        vertex_analysis.clear_width_weights(obj, group_name=VG_INNER_LINE_WIDTH)
 
-    _prepare_style_weights(obj, settings, "intersection")
-    vertex_analysis.multiply_width_weights(
-        obj,
-        [width / max_outline for width in outline_widths],
-        group_name=VG_INTERSECTION_LINE_WIDTH,
-    )
+    if has_intersection:
+        _prepare_style_weights(obj, settings, "intersection")
+        vertex_analysis.multiply_width_weights(
+            obj,
+            [width / max_outline for width in outline_widths],
+            group_name=VG_INTERSECTION_LINE_WIDTH,
+        )
+    else:
+        vertex_analysis.clear_width_weights(obj, group_name=VG_INTERSECTION_LINE_WIDTH)
 
     outline_base = max(abs(float(settings.outline_thickness)), 1.0e-9)
     inner_scale = abs(float(settings.inner_line_thickness)) / outline_base
     intersection_scale = abs(float(settings.intersection_thickness)) / outline_base
-    inner_lines.update_parameters(obj, thickness=max_outline * inner_scale)
-    intersection_lines.update_parameters(
-        obj,
-        thickness=max_outline * intersection_scale,
-    )
+    if has_inner:
+        inner_lines.update_parameters(obj, thickness=max_outline * inner_scale)
+    if has_intersection:
+        intersection_lines.update_parameters(
+            obj,
+            thickness=max_outline * intersection_scale,
+        )
 
 
 def _apply_reference_line_width(scene, camera, obj, settings, mod) -> None:
-    from . import inner_lines, intersection_lines
+    from . import inner_lines, intersection_lines, vertex_analysis
 
     outline_width = max(
         _reference_width_for_mesh(scene, camera, obj, settings.outline_thickness),
@@ -310,17 +320,27 @@ def _apply_reference_line_width(scene, camera, obj, settings, mod) -> None:
         mod.thickness_vertex_group = 0.0
     else:
         mod.vertex_group = ""
-    _prepare_style_weights(obj, settings, "inner")
-    _prepare_style_weights(obj, settings, "intersection")
+    has_inner = _has_inner_modifier(obj)
+    has_intersection = _has_intersection_modifier(obj)
+    if has_inner:
+        _prepare_style_weights(obj, settings, "inner")
+    else:
+        vertex_analysis.clear_width_weights(obj, group_name=VG_INNER_LINE_WIDTH)
+    if has_intersection:
+        _prepare_style_weights(obj, settings, "intersection")
+    else:
+        vertex_analysis.clear_width_weights(obj, group_name=VG_INTERSECTION_LINE_WIDTH)
 
     outline_base = max(abs(float(settings.outline_thickness)), 1.0e-9)
     inner_scale = abs(float(settings.inner_line_thickness)) / outline_base
     intersection_scale = abs(float(settings.intersection_thickness)) / outline_base
-    inner_lines.update_parameters(obj, thickness=outline_width * inner_scale)
-    intersection_lines.update_parameters(
-        obj,
-        thickness=outline_width * intersection_scale,
-    )
+    if has_inner:
+        inner_lines.update_parameters(obj, thickness=outline_width * inner_scale)
+    if has_intersection:
+        intersection_lines.update_parameters(
+            obj,
+            thickness=outline_width * intersection_scale,
+        )
 
 
 # ------------------------------------------------------------------
@@ -340,9 +360,24 @@ def _line_width_objects(scene, objects=None):
         yield obj
 
 
+def _set_modifier_visibility(mod, visible: bool) -> None:
+    if mod.show_viewport != visible:
+        mod.show_viewport = visible
+    if mod.show_render != visible:
+        mod.show_render = visible
+
+
+def _has_inner_modifier(obj) -> bool:
+    return obj.modifiers.get(GN_MODIFIER_NAME) is not None
+
+
+def _has_intersection_modifier(obj) -> bool:
+    return any(iter_intersection_modifiers(obj))
+
+
 def _update_camera_compensation(scene, camera, objects=None):
     """線幅 (mm) をカメラビュー基準の太さとして各オブジェクトへ反映."""
-    from . import inner_lines, intersection_lines
+    from . import inner_lines, intersection_lines, vertex_analysis
 
     cam_loc = camera.matrix_world.translation
     current_fov = _get_fov_factor(camera.data, scene)
@@ -366,8 +401,16 @@ def _update_camera_compensation(scene, camera, objects=None):
             mod.thickness_vertex_group = 0.0
         else:
             mod.vertex_group = ""
-        _prepare_style_weights(obj, settings, "inner")
-        _prepare_style_weights(obj, settings, "intersection")
+        has_inner = _has_inner_modifier(obj)
+        has_intersection = _has_intersection_modifier(obj)
+        if has_inner:
+            _prepare_style_weights(obj, settings, "inner")
+        else:
+            vertex_analysis.clear_width_weights(obj, group_name=VG_INNER_LINE_WIDTH)
+        if has_intersection:
+            _prepare_style_weights(obj, settings, "intersection")
+        else:
+            vertex_analysis.clear_width_weights(obj, group_name=VG_INTERSECTION_LINE_WIDTH)
 
         influence = settings.camera_compensation_influence
         base_t = settings.outline_thickness
@@ -391,8 +434,10 @@ def _update_camera_compensation(scene, camera, objects=None):
         intersection_adjusted = settings.intersection_thickness * (
             1.0 + (factor - 1.0) * influence
         )
-        inner_lines.update_parameters(obj, thickness=abs(inner_adjusted))
-        intersection_lines.update_parameters(obj, thickness=abs(intersection_adjusted))
+        if has_inner:
+            inner_lines.update_parameters(obj, thickness=abs(inner_adjusted))
+        if has_intersection:
+            intersection_lines.update_parameters(obj, thickness=abs(intersection_adjusted))
 
 
 def _update_visibility(scene, camera, cam_loc, cam_fwd, objects=None):
@@ -425,8 +470,7 @@ def _update_visibility(scene, camera, cam_loc, cam_fwd, objects=None):
         if bool(obj.get(PROP_LINES_HIDDEN, False)):
             for mod in (outline_mod, inner_mod, *intersection_mods):
                 if mod is not None:
-                    mod.show_viewport = False
-                    mod.show_render = False
+                    _set_modifier_visibility(mod, False)
             continue
 
         to_obj = obj.matrix_world.translation - cam_loc
@@ -447,27 +491,28 @@ def _update_visibility(scene, camera, cam_loc, cam_fwd, objects=None):
             not do_outline_distance or dist < settings.outline_max_distance
         )
         inner_in_range = (
-            not do_inner_distance or dist < settings.inner_line_max_distance
+            settings.inner_line_enabled
+            and (not do_inner_distance or dist < settings.inner_line_max_distance)
         )
         intersection_in_range = (
-            not do_intersection_distance
-            or dist < settings.intersection_max_distance
+            settings.intersection_enabled
+            and (
+                not do_intersection_distance
+                or dist < settings.intersection_max_distance
+            )
         )
 
         if outline_mod is not None:
             visible = in_view and outline_in_range
-            outline_mod.show_viewport = visible
-            outline_mod.show_render = visible
+            _set_modifier_visibility(outline_mod, visible)
 
         for intersection_mod in intersection_mods:
             visible = in_view and intersection_in_range
-            intersection_mod.show_viewport = visible
-            intersection_mod.show_render = visible
+            _set_modifier_visibility(intersection_mod, visible)
 
         if inner_mod is not None:
             visible = in_view and inner_in_range
-            inner_mod.show_viewport = visible
-            inner_mod.show_render = visible
+            _set_modifier_visibility(inner_mod, visible)
 
 
 # ------------------------------------------------------------------
@@ -536,6 +581,28 @@ def refresh_objects(context, objects, *, update_visibility: bool = False) -> boo
             cam_loc = camera.matrix_world.translation
             cam_fwd = camera.matrix_world.to_quaternion() @ Vector((0, 0, -1))
             _update_visibility(scene, camera, cam_loc, cam_fwd, targets)
+        return True
+    finally:
+        _updating = False
+
+
+def refresh_visibility_objects(context, objects) -> bool:
+    """指定オブジェクトだけ表示距離・カメラ範囲外の表示状態を更新."""
+    global _updating
+    if _updating:
+        return False
+    _updating = True
+    try:
+        scene = context.scene
+        camera = get_line_camera(scene)
+        if camera is None:
+            return False
+        targets = list(_line_width_objects(scene, objects))
+        if not targets:
+            return True
+        cam_loc = camera.matrix_world.translation
+        cam_fwd = camera.matrix_world.to_quaternion() @ Vector((0, 0, -1))
+        _update_visibility(scene, camera, cam_loc, cam_fwd, targets)
         return True
     finally:
         _updating = False

@@ -231,7 +231,10 @@ def _assert_multi_select_manual_setting_propagation(
 
     source.inner_line_enabled = False
     assert target.inner_line_enabled is False
-    assert core.GN_MODIFIER_NAME not in second.modifiers
+    disabled_inner = second.modifiers.get(core.GN_MODIFIER_NAME)
+    assert disabled_inner is None or (
+        not disabled_inner.show_viewport and not disabled_inner.show_render
+    )
     source.inner_line_enabled = True
     source.inner_line_angle = math.radians(45.0)
     source.use_marked_inner_edges = True
