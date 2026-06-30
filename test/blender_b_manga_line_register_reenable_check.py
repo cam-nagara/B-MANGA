@@ -139,7 +139,27 @@ def _assert_panels_draw_items() -> None:
     ):
         assert prop_name in records["props"], f"{prop_name} がパネルにありません"
     assert "BMANGA_LINE_PT_width_details" not in dir(panels)
-    assert obj.bmanga_line_settings.exclude_sheet_meshes is True
+    bool_props = [
+        prop.identifier
+        for prop in props
+        if getattr(prop, "type", None) == "BOOLEAN"
+        and prop.identifier != "rna_type"
+    ]
+    for prop_name in bool_props:
+        assert getattr(obj.bmanga_line_settings, prop_name) is False, (
+            f"{prop_name} の初期値がオフではありません"
+        )
+    preset = bpy.context.scene.bmanga_line_presets.add()
+    preset_bool_props = [
+        prop.identifier
+        for prop in preset.bl_rna.properties
+        if getattr(prop, "type", None) == "BOOLEAN"
+        and prop.identifier != "rna_type"
+    ]
+    for prop_name in preset_bool_props:
+        assert getattr(preset, prop_name) is False, (
+            f"プリセットの {prop_name} の初期値がオフではありません"
+        )
     camera_props = [
         "use_camera_compensation",
         "use_uniform_line_width",

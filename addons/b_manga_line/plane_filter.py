@@ -32,7 +32,7 @@ def should_exclude_generated_lines(obj: bpy.types.Object, settings=None) -> bool
         settings = getattr(obj, "bmanga_line_settings", None)
     if settings is None:
         return False
-    if not bool(getattr(settings, "exclude_sheet_meshes", True)):
+    if not bool(getattr(settings, "exclude_sheet_meshes", False)):
         return False
     return is_sheet_mesh(obj)
 

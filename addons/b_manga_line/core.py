@@ -748,7 +748,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     even_thickness: BoolProperty(
         name="面の厚みを均一に",
         description="凸凹した面でも均一な線幅にする",
-        default=True,
+        default=False,
         update=_on_even_thickness_changed,
     )  # type: ignore[valid-type]
 
@@ -762,7 +762,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     use_rim: BoolProperty(
         name="リム面を生成",
         description="開いた辺にリム面を生成する（OFFで開いたメッシュのアーティファクト防止）",
-        default=True,
+        default=False,
         update=_on_rim_changed,
     )  # type: ignore[valid-type]
 
@@ -776,14 +776,14 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     exclude_sheet_meshes: BoolProperty(
         name="板ポリは内部線・交差線を作らない",
         description="薄い板状のメッシュではアウトラインだけを作り、内部線と交差線を作らない",
-        default=True,
+        default=False,
         update=_on_sheet_exclusion_changed,
     )  # type: ignore[valid-type]
 
     inner_line_enabled: BoolProperty(
         name="内部線を追加",
         description="折れ目（稜線・谷線）を検出して線を追加する",
-        default=True,
+        default=False,
         update=_on_inner_line_enabled_changed,
     )  # type: ignore[valid-type]
 
@@ -829,7 +829,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     use_inner_line_creation_limit: BoolProperty(
         name="作成範囲を制限",
         description="カメラから指定距離以内のオブジェクトにだけ内部線を作成する",
-        default=True,
+        default=False,
         update=_on_inner_creation_limit_changed,
     )  # type: ignore[valid-type]
 
@@ -861,7 +861,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     intersection_enabled: BoolProperty(
         name="交差線を追加",
         description="他のオブジェクトとの交差部分に線を描画する",
-        default=True,
+        default=False,
         update=_on_intersection_enabled_changed,
     )  # type: ignore[valid-type]
 
@@ -890,7 +890,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     use_intersection_creation_limit: BoolProperty(
         name="作成範囲を制限",
         description="カメラから指定距離以内のオブジェクトにだけ交差線を作成する",
-        default=True,
+        default=False,
         update=_on_intersection_creation_limit_changed,
     )  # type: ignore[valid-type]
 

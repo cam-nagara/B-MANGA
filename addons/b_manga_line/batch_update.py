@@ -332,7 +332,7 @@ def _update_sheet_exclusion(objects: list[bpy.types.Object], context) -> None:
             if removed:
                 removed_targets.append(obj)
         elif (
-            not bool(getattr(settings, "exclude_sheet_meshes", True))
+            not bool(getattr(settings, "exclude_sheet_meshes", False))
             and plane_filter.is_sheet_mesh(obj)
         ):
             rebuild_targets.append(obj)

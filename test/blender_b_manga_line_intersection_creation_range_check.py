@@ -87,8 +87,8 @@ def main() -> None:
 
         for obj in (source, exact, far):
             settings = obj.bmanga_line_settings
-            assert settings.use_intersection_creation_limit is True
             assert abs(settings.intersection_creation_max_distance - 10.0) < 1.0e-7
+            settings.use_intersection_creation_limit = True
             _apply(obj)
 
         assert math.isclose(

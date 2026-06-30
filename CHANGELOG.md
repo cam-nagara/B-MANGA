@@ -3,6 +3,39 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-30 — B-MANGA Lineのチェック項目初期値を全オフ化 (B-MANGA Line v0.3.35)
+
+### 症状
+
+- B-MANGA Lineの一部チェック項目が初期状態でオンになっており、「ラインを適用」直後から内部線・交差線・作成範囲制限などが自動で有効になっていた。
+- 大規模背景素材では、ユーザーが明示的に必要な線だけをオンにする前に、重い線生成が走りやすかった。
+
+### 原因
+
+- 「面の厚みを均一に」「リム面を生成」「内部線を追加」「交差線を追加」「作成範囲を制限」「板ポリは内部線・交差線を作らない」などの初期値がオンになっていた。
+- プリセット保存用の初期値も同じオン状態を持っており、設定本体だけを変えると保存・適用時に初期状態が食い違う可能性があった。
+
+### 修正
+
+- B-MANGA Lineの設定チェック項目の初期値をすべてオフにした。
+- プリセット保存用のチェック項目初期値もすべてオフに揃えた。
+- 初期状態の検証テストで、オブジェクト設定とプリセット設定の全チェック項目がオフであることを確認するようにした。
+- 内部線・交差線・作成範囲・板ポリ除外の検証では、必要なチェック項目だけをテスト内で明示的にオンにするようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\presets.py addons\b_manga_line\batch_update.py addons\b_manga_line\plane_filter.py addons\b_manga_line\__init__.py test\blender_b_manga_line_register_reenable_check.py test\blender_b_manga_line_sheet_mesh_exclusion_check.py test\blender_b_manga_line_inner_creation_range_check.py test\blender_b_manga_line_intersection_creation_range_check.py test\blender_b_manga_line_batch_apply_refresh_check.py test\blender_b_manga_line_preset_visibility_check.py test\blender_b_manga_line_uniform_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_register_reenable_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_sheet_mesh_exclusion_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_inner_creation_range_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_intersection_creation_range_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_auto_intersection_targets_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_uniform_width_check.py`
+
+---
+
 ## 2026-06-30 — B-MANGA Lineの板ポリ除外を追加 (B-MANGA Line v0.3.34)
 
 ### 症状

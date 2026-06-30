@@ -230,6 +230,8 @@ def _test_evaluated_orthographic_width() -> None:
     obj.data.materials.append(mat)
     settings = obj.bmanga_line_settings
     settings.outline_thickness_mm = 0.5
+    settings.even_thickness = True
+    settings.use_rim = True
     settings.use_uniform_line_width = True
     _select(obj)
     assert presets.apply_line_settings(obj, bpy.context)
