@@ -567,10 +567,24 @@ def _get_line_only_material() -> bpy.types.Material:
     links = mat.node_tree.links
     nodes.clear()
     output = nodes.new("ShaderNodeOutputMaterial")
-    emission = nodes.new("ShaderNodeEmission")
-    emission.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
-    emission.inputs["Strength"].default_value = 1.0
-    links.new(emission.outputs["Emission"], output.inputs["Surface"])
+    try:
+        glossy = nodes.new("ShaderNodeBsdfGlossy")
+        glossy.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
+        glossy.inputs["Roughness"].default_value = 0.0
+        links.new(glossy.outputs["BSDF"], output.inputs["Surface"])
+    except Exception:
+        principled = nodes.new("ShaderNodeBsdfPrincipled")
+        if "Base Color" in principled.inputs:
+            principled.inputs["Base Color"].default_value = (1.0, 1.0, 1.0, 1.0)
+        if "Roughness" in principled.inputs:
+            principled.inputs["Roughness"].default_value = 0.0
+        if "Alpha" in principled.inputs:
+            principled.inputs["Alpha"].default_value = 1.0
+        if "Metallic" in principled.inputs:
+            principled.inputs["Metallic"].default_value = 0.0
+        if "Specular IOR Level" in principled.inputs:
+            principled.inputs["Specular IOR Level"].default_value = 1.0
+        links.new(principled.outputs["BSDF"], output.inputs["Surface"])
     return mat
 
 
@@ -626,7 +640,7 @@ def _remove_line_only_wire(obj: bpy.types.Object) -> None:
 
 
 def set_line_only(obj: bpy.types.Object, enabled: bool) -> bool:
-    """元の面素材を一時的に白い確認面へ置き換え、ラインを見やすくする."""
+    """ライン用以外の素材を一時的に白い光沢素材へ置き換える."""
     if obj.type != "MESH":
         return False
     mesh = obj.data
@@ -635,7 +649,8 @@ def set_line_only(obj: bpy.types.Object, enabled: bool) -> bool:
             return True
         stored = []
         hidden = _get_line_only_material()
-        _set_outline_materials_for_line_only(mesh, _line_only_color(obj))
+        _restore_outline_materials(obj, mesh)
+        _remove_line_only_wire(obj)
         for index, mat in enumerate(mesh.materials):
             if mat is not None and _is_outline_material(mat):
                 continue
@@ -644,10 +659,9 @@ def set_line_only(obj: bpy.types.Object, enabled: bool) -> bool:
         mod = obj.modifiers.get(MODIFIER_NAME)
         if mod is not None and hasattr(mod, "material_offset_rim"):
             mod.material_offset_rim = mod.material_offset
-        _ensure_line_only_wire(obj)
         obj[PROP_LINE_ONLY_MATERIALS] = json.dumps(stored, ensure_ascii=False)
         obj[PROP_LINE_ONLY] = True
-        return bool(stored)
+        return True
 
     if not bool(obj.get(PROP_LINE_ONLY, False)):
         return True

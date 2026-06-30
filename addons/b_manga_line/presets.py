@@ -246,7 +246,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     inner_line_enabled: BoolProperty(default=False)
     inner_line_angle: FloatProperty(default=0.5235987756, min=0.0174532925, max=3.1415926536)
     use_marked_inner_edges: BoolProperty(default=False)
-    inner_line_thickness: FloatProperty(default=0.0005, min=0.0001, max=1.0)
+    inner_line_thickness: FloatProperty(default=0.0003, min=0.0001, max=1.0)
     use_inner_line_creation_limit: BoolProperty(default=False)
     inner_line_creation_max_distance: FloatProperty(default=10.0, min=0.1, max=1000.0)
 
@@ -258,7 +258,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
         default="BOOLEAN",
     )
     intersection_enabled: BoolProperty(default=False)
-    intersection_thickness: FloatProperty(default=0.0005, min=0.0001, max=1.0)
+    intersection_thickness: FloatProperty(default=0.0003, min=0.0001, max=1.0)
     use_intersection_creation_limit: BoolProperty(default=False)
     intersection_creation_max_distance: FloatProperty(default=10.0, min=0.1, max=1000.0)
 

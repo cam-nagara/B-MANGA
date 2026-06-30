@@ -807,7 +807,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     inner_line_thickness: FloatProperty(
         name="内部線の太さ",
         description="印刷時の内部線の太さを保持する内部値",
-        default=0.0005,
+        default=0.0003,
         min=0.0001,
         max=1.0,
         precision=4,
@@ -868,7 +868,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     intersection_thickness: FloatProperty(
         name="交差線の太さ",
         description="印刷時の交差線の太さを保持する内部値",
-        default=0.0005,
+        default=0.0003,
         min=0.0001,
         max=1.0,
         precision=4,

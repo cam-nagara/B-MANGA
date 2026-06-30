@@ -142,7 +142,7 @@ class BMANGA_LINE_OT_set_visibility(bpy.types.Operator):
 
 
 class BMANGA_LINE_OT_set_line_only(bpy.types.Operator):
-    """ラインAOVのみを表示するビューポート状態に切り替え"""
+    """一時マテリアル差し替えでラインのみ表示に切り替え"""
 
     bl_idname = "bmanga_line.set_line_only"
     bl_label = "ラインのみ表示を切り替え"
@@ -152,12 +152,7 @@ class BMANGA_LINE_OT_set_line_only(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        from . import viewport_aov
-
-        return (
-            any(has_line(obj) for obj in context.selected_objects)
-            or viewport_aov.is_line_aov_active(context)
-        )
+        return any(has_line(obj) for obj in context.selected_objects)
 
     def execute(self, context):
         from . import outline_setup, viewport_aov
@@ -168,24 +163,15 @@ class BMANGA_LINE_OT_set_line_only(bpy.types.Operator):
         line_objects = [obj for obj in context.selected_objects if has_line(obj)]
 
         if self.line_only:
+            viewport_aov.disable_line_aov(context)
             for obj in line_objects:
                 set_line_visibility(obj, True)
-            aov_enabled = (
-                viewport_aov.enable_line_aov(context)
-                and viewport_aov.context_view_is_line_aov(context)
-            )
-            if aov_enabled:
-                for obj in line_objects:
-                    if bool(obj.get(PROP_LINE_ONLY, False)):
-                        outline_setup.set_line_only(obj, False)
-                    changed_objects.add(obj.as_pointer())
-            else:
-                for obj in line_objects:
-                    try:
-                        if outline_setup.set_line_only(obj, True):
-                            changed_objects.add(obj.as_pointer())
-                    except Exception:
-                        failed += 1
+            for obj in line_objects:
+                try:
+                    if outline_setup.set_line_only(obj, True):
+                        changed_objects.add(obj.as_pointer())
+                except Exception:
+                    failed += 1
         else:
             if viewport_aov.disable_line_aov(context):
                 changed_objects.update(obj.as_pointer() for obj in line_objects)
