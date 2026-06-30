@@ -124,15 +124,13 @@ def _test_line_only_restore() -> None:
     obj = bpy.data.objects["BML_two_material_cube"]
     _select(obj)
     before = [mat.name if mat else "" for mat in obj.data.materials[:2]]
+    line_mods = list(core.iter_line_modifiers(obj))
+    assert any(mod.name == core.MODIFIER_NAME for mod in line_mods), line_mods
     assert bpy.ops.bmanga_line.set_visibility(visible=False) == {"FINISHED"}
-    for mod_name in core.LINE_MODIFIER_NAMES:
-        mod = obj.modifiers.get(mod_name)
-        assert mod is not None
+    for mod in line_mods:
         assert not mod.show_viewport and not mod.show_render
     assert bpy.ops.bmanga_line.set_line_only(line_only=True) == {"FINISHED"}
-    for mod_name in core.LINE_MODIFIER_NAMES:
-        mod = obj.modifiers.get(mod_name)
-        assert mod is not None
+    for mod in line_mods:
         assert mod.show_viewport and mod.show_render
     hidden = [mat.name if mat else "" for mat in obj.data.materials[:2]]
     if viewport_aov.is_line_aov_active(bpy.context):

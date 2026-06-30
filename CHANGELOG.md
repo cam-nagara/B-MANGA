@@ -3,6 +3,33 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-30 — B-MANGA Lineのラインのみ表示時のパネルエラーを修正 (B-MANGA Line v0.3.36)
+
+### 症状
+
+- B-MANGA Lineで「ラインのみを表示」を押すと、B-MANGA Lineパネルの再描画時にPythonエラーが発生することがあった。
+- エラー後もライン表示自体は切り替わる場合があるが、パネル表示のたびに同じエラーが繰り返される可能性があった。
+
+### 原因
+
+- パネル描画中に、線幅グラフ用の表示素材とノードを作成・同期していた。
+- Blender 5.1系ではパネル描画中のデータ作成・書き込みが禁止される文脈があり、「ラインのみを表示」で画面が再描画されたタイミングでその制限に当たっていた。
+
+### 修正
+
+- B-MANGA Lineパネルの描画中は既存の線幅グラフだけを参照し、素材作成・設定同期は描画後の安全なタイミングへ送るようにした。
+- メインパネル描画中にAOVを作成しないようにし、ライン適用・ラインのみ表示など実行操作側で必要な準備を行う流れに揃えた。
+- 「内部線」「交差線」が初期オフでも、ラインのみ表示テストが存在するラインだけを確認するように更新した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\edge_width_curve.py addons\b_manga_line\panels.py test\blender_b_manga_line_curve_and_linked_batch_check.py test\blender_b_manga_line_camera_aov_line_only_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_curve_and_linked_batch_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_aov_line_only_check.py`
+- `blender.exe --factory-startup --python test\blender_b_manga_line_aov_view_line_only_check.py`
+
+---
+
 ## 2026-06-30 — B-MANGA Lineのチェック項目初期値を全オフ化 (B-MANGA Line v0.3.35)
 
 ### 症状

@@ -45,9 +45,6 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
     bl_category = "B-MANGA Line"
 
     def draw(self, context):
-        from . import outline_setup
-
-        outline_setup.ensure_aov_passes(context.scene)
         layout = self.layout
         obj = context.active_object
         if obj is None or obj.type != "MESH":
@@ -185,12 +182,12 @@ def _draw_midpoint_width_controls(
     col.prop(settings, jitter_prop)
     curve = col.column(align=True)
     curve.label(text="中間頂点への変化グラフ")
-    edge_width_curve.sync_node_to_settings(settings, target)
-    curve_node = edge_width_curve.ensure_node(settings, target)
+    edge_width_curve.schedule_node_sync(settings, target)
+    curve_node = edge_width_curve.get_node(target)
     if curve_node is not None:
         curve.template_curve_mapping(curve_node, "mapping", type="NONE")
     else:
-        curve.label(text="グラフを表示できません", icon="ERROR")
+        curve.label(text="グラフを準備中です", icon="TIME")
 
 
 def _draw_inner_line(layout, context, settings) -> None:

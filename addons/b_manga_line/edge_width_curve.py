@@ -33,6 +33,7 @@ DEFAULT_POINTS = (
     (0.75, 0.75),
     (1.0, 1.0),
 )
+_PENDING_SYNC: set[tuple[int, str]] = set()
 
 
 def _normalize_target(target: str) -> str:
@@ -62,7 +63,8 @@ def points_from_settings(settings, target: str = "outline") -> tuple[tuple[float
 
 def ensure_node(settings, target: str = "outline"):
     mat = bpy.data.materials.get(MATERIAL_NAME) or bpy.data.materials.new(MATERIAL_NAME)
-    mat.use_nodes = True
+    if not mat.use_nodes:
+        mat.use_nodes = True
     nt = mat.node_tree
     if nt is None:
         return None
@@ -76,13 +78,57 @@ def ensure_node(settings, target: str = "outline"):
     if node is None:
         node = nt.nodes.new("ShaderNodeFloatCurve")
         node.name = node_name
-    node.label = "中間頂点への変化グラフ"
+    if node.label != "中間頂点への変化グラフ":
+        node.label = "中間頂点への変化グラフ"
     source = _points_text(points_from_settings(settings, target))
     last_source = str(mat.get(source_prop, "") or "")
     if last_source != source:
         _apply_points_to_node(node, points_from_settings(settings, target))
         mat[source_prop] = source
     return node
+
+
+def get_node(target: str = "outline"):
+    mat = bpy.data.materials.get(MATERIAL_NAME)
+    nt = getattr(mat, "node_tree", None) if mat is not None else None
+    if nt is None:
+        return None
+    node = nt.nodes.get(_node_name(target))
+    if node is None or node.bl_idname != "ShaderNodeFloatCurve":
+        return None
+    return node
+
+
+def sync_settings_and_node(settings, target: str = "outline") -> None:
+    sync_node_to_settings(settings, target)
+    ensure_node(settings, target)
+
+
+def schedule_node_sync(settings, target: str = "outline") -> bool:
+    target = _normalize_target(target)
+    try:
+        owner_key = settings.id_data.as_pointer()
+    except (AttributeError, ReferenceError, RuntimeError):
+        return False
+    key = (owner_key, target)
+    if key in _PENDING_SYNC:
+        return False
+    _PENDING_SYNC.add(key)
+
+    def _run():
+        _PENDING_SYNC.discard(key)
+        try:
+            sync_settings_and_node(settings, target)
+        except ReferenceError:
+            pass
+        return None
+
+    try:
+        bpy.app.timers.register(_run, first_interval=0.0)
+    except ValueError:
+        _PENDING_SYNC.discard(key)
+        return False
+    return True
 
 
 def sync_node_to_settings(settings, target: str = "outline") -> bool:
