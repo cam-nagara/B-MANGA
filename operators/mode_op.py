@@ -63,7 +63,7 @@ def _auto_render_thumb_before_return(context, work) -> None:
     try:
         from ..utils import coma_thumb_output
 
-        coma_thumb_output.render_thumb_png(context, skip_if_recent_seconds=2.0)
+        coma_thumb_output.render_thumb_png(context)
     except Exception:  # noqa: BLE001
         _logger.exception("exit_coma_mode: thumb auto render failed")
 

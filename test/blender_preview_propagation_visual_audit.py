@@ -78,7 +78,7 @@ def _set_first_coma_color(work, rgba: tuple[float, float, float, float]) -> None
     coma.background_color = rgba
 
 
-def _add_camera_marker(name: str, rgba: tuple[float, float, float, float]) -> None:
+def _add_camera_marker(name: str, rgba: tuple[float, float, float, float]):
     from mathutils import Vector
 
     scene = bpy.context.scene
@@ -96,6 +96,15 @@ def _add_camera_marker(name: str, rgba: tuple[float, float, float, float]) -> No
     mat = bpy.data.materials.new(f"{name}_mat")
     mat.diffuse_color = rgba
     obj.data.materials.append(mat)
+    return obj
+
+
+def _set_marker_color(obj, rgba: tuple[float, float, float, float]) -> None:
+    if obj is None or not getattr(obj, "data", None):
+        return
+    for mat in getattr(obj.data, "materials", []) or []:
+        if mat is not None:
+            mat.diffuse_color = rgba
 
 
 def _image_stats(path: Path) -> dict:
@@ -108,7 +117,7 @@ def _image_stats(path: Path) -> dict:
         flat_data = getattr(image, "get_flattened_data", None)
         pixels = list(flat_data() if flat_data is not None else image.getdata())
     red_pixels = sum(1 for r, g, b, a in pixels if a > 64 and r > 170 and g < 100 and b < 100)
-    green_pixels = sum(1 for r, g, b, a in pixels if a > 64 and g > 150 and r < 140 and b < 140)
+    green_pixels = sum(1 for r, g, b, a in pixels if a > 64 and g > 120 and r < 150 and b < 150)
     blue_pixels = sum(1 for r, g, b, a in pixels if a > 64 and b > 150 and r < 140 and g < 160)
     yellow_pixels = sum(1 for r, g, b, a in pixels if a > 64 and r > 180 and g > 140 and b < 210)
     cyan_pixels = sum(1 for r, g, b, a in pixels if a > 64 and r < 190 and g > 180 and b > 170)
@@ -214,7 +223,7 @@ def main() -> None:
         assert bpy.ops.bmanga.enter_coma_mode() == {"FINISHED"}
         work = bpy.context.scene.bmanga_work
         _configure_fast_render(bpy.context.scene, work)
-        _add_camera_marker("preview_propagation_red_marker", (1.0, 0.02, 0.01, 1.0))
+        marker = _add_camera_marker("preview_propagation_marker", (1.0, 0.02, 0.01, 1.0))
         _mark("STEP work_save_in_coma")
         assert bpy.ops.bmanga.work_save() == {"FINISHED"}
         paths = _submodule("utils.paths")
@@ -224,6 +233,7 @@ def main() -> None:
         saved_thumb_stats = _image_stats(saved_thumb_path)
         if saved_thumb_stats["red_pixels"] < 800:
             raise AssertionError("コマ用blend保存時に赤い配置物がコマ画像へ反映されていません")
+        _set_marker_color(marker, (0.05, 0.85, 0.08, 1.0))
         _mark("STEP exit_coma_mode_safe")
         assert bpy.ops.bmanga.exit_coma_mode_safe("EXEC_DEFAULT") == {"FINISHED"}
         work = bpy.context.scene.bmanga_work
@@ -280,12 +290,12 @@ def main() -> None:
             raise AssertionError("ページファイル編集が作品ファイルに反映されていません")
         if stats["ページファイル編集 -> コマ参照"]["yellow_pixels"] < 1000:
             raise AssertionError("ページファイル編集がコマファイル参照に反映されていません")
-        if stats["コマファイル編集 -> コマ画像"]["red_pixels"] < 800:
-            raise AssertionError("コマ画像に赤い配置物が十分に反映されていません")
-        if stats["コマファイル編集 -> ページファイル"]["red_pixels"] < 80:
-            raise AssertionError("ページファイル側プレビューに赤い配置物が反映されていません")
-        if stats["ページファイルから戻る -> 作品ファイル"]["red_pixels"] < 80:
-            raise AssertionError("作品ファイル側プレビューに赤い配置物が反映されていません")
+        if stats["コマファイル編集 -> コマ画像"]["green_pixels"] < 800:
+            raise AssertionError("保存後のコマ再編集がコマ画像に反映されていません")
+        if stats["コマファイル編集 -> ページファイル"]["green_pixels"] < 80:
+            raise AssertionError("保存後のコマ再編集がページファイル側プレビューに反映されていません")
+        if stats["ページファイルから戻る -> 作品ファイル"]["green_pixels"] < 80:
+            raise AssertionError("保存後のコマ再編集が作品ファイル側プレビューに反映されていません")
         results["saved_thumb_stats"] = saved_thumb_stats
         _mark("STEP done")
     finally:

@@ -538,10 +538,7 @@ class BMANGA_OT_work_save(Operator):
                 try:
                     from ..utils import coma_thumb_output
 
-                    if not coma_thumb_output.render_thumb_png(
-                        context,
-                        skip_if_recent_seconds=2.0,
-                    ):
+                    if not coma_thumb_output.render_thumb_png(context):
                         self.report({"WARNING"}, "コマ画像の更新に失敗しました")
                 except Exception:  # noqa: BLE001
                     _logger.exception("work_save: coma thumb refresh failed")

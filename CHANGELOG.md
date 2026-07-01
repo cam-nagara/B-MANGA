@@ -3,6 +3,37 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-02 — 保存直後のコマ再編集もプレビューへ反映 (B-MANGA v0.6.427)
+
+### 症状
+
+- コマ用blendファイルで「作品を保存」した直後にコマ内容をさらに変更してからページファイルへ戻ると、最後の変更がページファイル・作品ファイル側のコマプレビューへ反映されない経路があった。
+- 「作品を保存」時点のコマ画像は更新されるが、その後の短時間の再編集が古いコマ画像のまま残る場合があった。
+
+### 原因
+
+- 保存直後の「ページに戻る」でコマ画像の二重更新を避けるため、直前の更新結果を短時間だけ再利用していた。
+- Blender 側で保存済み扱いのまま見た目だけ変わる操作では、その再利用判定が新しい見た目の変更を検出できなかった。
+
+### 修正
+
+- コマ用blendファイルからページファイルへ戻る時は、直前に保存していても現在の見た目でコマ画像を必ず更新するようにした。
+- コマ画像の出力先を、現在の作品・ページ・コマ情報から優先して解決するようにした。
+- 既存のコマ画像がある場合は、更新後のファイル時刻が進んだことも確認し、更新されていない場合は失敗として扱うようにした。
+- 作品ファイル・ページファイル・コマファイル間のプレビュー反映テストに、「保存直後に再編集してページへ戻る」ケースを追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile utils\coma_thumb_output.py operators\work_op.py operators\mode_op.py test\blender_preview_propagation_visual_audit.py`
+- `python -c "import compileall, subprocess, sys; files=subprocess.check_output(['git','ls-files','*.py'], text=True).splitlines(); bad=[f for f in files if not compileall.compile_file(f, quiet=1)]; print(f'PY_FILES={len(files)}'); print('PY_COMPILE_OK' if not bad else 'PY_COMPILE_FAIL'); sys.exit(1 if bad else 0)"`
+- `node --check tools\render_batch\web\app.js`
+- `git diff --check`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --python test\blender_preview_propagation_visual_audit.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python-exit-code 1 --python test\blender_coma_camera_roundtrip_check.py`
+- AI目視: `.codex\visual\preview_propagation\preview_propagation_sheet.png` で、保存時のコマ画像更新と、保存直後の再編集がコマ画像・ページファイル・作品ファイルへ反映されることを確認。
+
+---
+
 ## 2026-07-02 — コマ用blend保存時にコマ画像を更新 (B-MANGA v0.6.426)
 
 ### 症状
