@@ -699,7 +699,7 @@ def _ensure_line_only_wire(obj: bpy.types.Object) -> None:
         wire = obj.modifiers.new(name=LINE_ONLY_WIREFRAME_NAME, type="WIREFRAME")
     wire.use_replace = False
     wire.use_even_offset = True
-    wire.thickness = 0.025
+    wire.thickness = modifier_thickness_for_world_width(obj, 0.025)
     wire.material_offset = max(0, outline_slot)
 
 

@@ -3,6 +3,33 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-01 — B-MANGA Lineの線種別スケール補正を検証・補完 (B-MANGA Line v0.3.47)
+
+### 症状
+
+- 未適用スケールによる線幅ズレは、アウトラインだけでなく内部線・交差線など、オブジェクトローカル寸法で生成する線にも関係する可能性があった。
+- ラインのみ表示で使う補助ワイヤーの固定幅も、スケール付き素材では見た目の太さが変わる余地があった。
+
+### 原因
+
+- Blender のモディファイアやジオメトリノードの線幅入力は、オブジェクトのローカル寸法として評価される。
+- スケール 1.0 の Cube と、スケール 0.0254 の街並み素材を同じ画面上の太さにするには、線種ごとにローカル幅へ換算する必要がある。
+
+### 修正
+
+- ラインのみ表示の補助ワイヤー幅も、オブジェクトスケールに合わせて換算するようにした。
+- 内部線と交差線について、スケール 1.0 と 0.0254 のオブジェクトでワールド上の線幅が一致する回帰テストを追加した。
+- アウトラインだけでなく、内部線・交差線・ラインのみ表示の補助線までスケール補正対象として扱うことを明確化した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\outline_setup.py test\blender_b_manga_line_uniform_width_check.py test\blender_b_manga_line_open_mesh_outline_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_uniform_width_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_open_mesh_outline_check.py`
+- スケール 1.0 と 0.0254 のテストオブジェクトで、アウトライン・内部線・交差線・ラインのみ表示の補助ワイヤーが同じワールド上の線幅になることを確認。
+
+---
+
 ## 2026-07-01 — B-MANGA Lineの未適用スケール線幅を補正 (B-MANGA Line v0.3.46)
 
 ### 症状

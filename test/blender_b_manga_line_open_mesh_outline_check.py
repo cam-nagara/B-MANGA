@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import core, outline_setup, presets  # noqa: E402
+from b_manga_line import core, outline_setup, presets, scale_utils  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -139,6 +139,19 @@ def main() -> None:
         assert bool(cube.get(core.PROP_LINE_ONLY, False)), "ラインのみ表示中の再適用で状態が解除されています"
         assert outline_setup.set_line_only(cube, False)
         assert cube_mod.offset == 1.0, "通常表示へ戻した後もラインのみ表示の形状が残っています"
+
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(4.5, 0.0, 0.0))
+        scaled_cube = bpy.context.object
+        scaled_cube.name = "BML_scaled_line_only_wire_cube"
+        scaled_cube.scale = (0.0254, 0.0254, 0.0254)
+        scaled_cube.data.materials.append(_surface_material("BML_scaled_wire_surface"))
+        _apply_line(scaled_cube, use_rim=False)
+        outline_setup._ensure_line_only_wire(scaled_cube)
+        wire = scaled_cube.modifiers.get(outline_setup.LINE_ONLY_WIREFRAME_NAME)
+        assert wire is not None, "ラインのみ表示の補助ワイヤーが作成されていません"
+        wire_world_width = abs(wire.thickness) * scale_utils.object_width_scale(scaled_cube)
+        assert abs(wire_world_width - 0.025) < 1.0e-6, wire_world_width
+        outline_setup._remove_line_only_wire(scaled_cube)
 
         open_box = _add_open_box_mesh()
         open_box_mod = _apply_line(open_box, use_rim=False)

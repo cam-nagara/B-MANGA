@@ -13,7 +13,14 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import camera_comp, core, inner_lines, presets, scale_utils  # noqa: E402
+from b_manga_line import (  # noqa: E402
+    camera_comp,
+    core,
+    inner_lines,
+    intersection_lines,
+    presets,
+    scale_utils,
+)
 
 
 def _clear_scene() -> None:
@@ -93,6 +100,18 @@ def _line_world_width(obj: bpy.types.Object) -> float:
         obj,
         obj.modifiers[core.MODIFIER_NAME].thickness,
     )
+
+
+def _socket_world_width(obj: bpy.types.Object, thickness: float) -> float:
+    return abs(float(thickness)) * scale_utils.object_width_scale(obj)
+
+
+def _intersection_thickness(obj: bpy.types.Object) -> float:
+    mod = next(core.iter_intersection_modifiers(obj), None)
+    assert mod is not None
+    sid = intersection_lines._find_socket_id(mod.node_group, "線の太さ")
+    assert sid is not None
+    return float(mod[sid])
 
 
 def _evaluated_outline_world_width(obj: bpy.types.Object) -> float:
@@ -307,9 +326,12 @@ def _test_object_scale_compensates_modifier_width() -> None:
     for obj in (normal, scaled):
         _select(obj)
         obj.bmanga_line_settings.outline_thickness_mm = 0.6
+        obj.bmanga_line_settings.inner_line_enabled = True
+        obj.bmanga_line_settings.inner_line_thickness_mm = 0.3
         assert presets.apply_line_settings(obj, bpy.context)
 
     expected = _expected_world_width(scene, 2.0, 0.6)
+    expected_inner = _expected_world_width(scene, 2.0, 0.3)
     normal_mod = normal.modifiers[core.MODIFIER_NAME].thickness
     scaled_mod = scaled.modifiers[core.MODIFIER_NAME].thickness
     assert math.isclose(normal_mod, expected, rel_tol=0.001), (normal_mod, expected)
@@ -324,6 +346,51 @@ def _test_object_scale_compensates_modifier_width() -> None:
     assert math.isclose(_line_world_width(scaled), expected, rel_tol=0.001), (
         _line_world_width(scaled),
         expected,
+    )
+    assert math.isclose(
+        _socket_world_width(normal, _inner_thickness(normal)),
+        expected_inner,
+        rel_tol=0.001,
+    )
+    assert math.isclose(
+        _socket_world_width(scaled, _inner_thickness(scaled)),
+        expected_inner,
+        rel_tol=0.001,
+    )
+
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(-1.5, 0.0, -4.0))
+    normal_target = bpy.context.object
+    normal_target.name = "BML_scale_normal_target"
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(1.5, 0.0, -4.0))
+    scaled_target = bpy.context.object
+    scaled_target.name = "BML_scale_0254_target"
+    scaled_target.scale = (0.0254, 0.0254, 0.0254)
+
+    for obj in (normal_target, scaled_target):
+        _select(obj)
+        obj.bmanga_line_settings.outline_thickness_mm = 0.6
+        assert presets.apply_line_settings(obj, bpy.context)
+
+    normal.bmanga_line_settings.intersection_enabled = True
+    normal.bmanga_line_settings.intersection_thickness_mm = 0.2
+    _select(normal)
+    assert presets.apply_line_settings(normal, bpy.context)
+
+    scaled.bmanga_line_settings.intersection_enabled = True
+    scaled.bmanga_line_settings.intersection_thickness_mm = 0.2
+    _select(scaled)
+    assert presets.apply_line_settings(scaled, bpy.context)
+
+    expected_intersection = _expected_world_width(scene, 2.0, 0.2)
+    assert math.isclose(
+        _socket_world_width(normal, _intersection_thickness(normal)),
+        expected_intersection,
+        rel_tol=0.001,
+    )
+    assert math.isclose(
+        _socket_world_width(scaled, _intersection_thickness(scaled)),
+        expected_intersection,
+        rel_tol=0.001,
     )
 
 
