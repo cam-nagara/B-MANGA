@@ -3,6 +3,47 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-02 — B-MANGA Line交差線をライン素材方式へ切り替え (B-MANGA Line v0.3.67)
+
+### 症状
+
+- 交差線をオンにすると、交差相手の候補検出と交差計算が重く、対象が多いシーンでは「ラインを適用」が長時間終わらないことがあった。
+- 交差線が欲しい場所に安定して出ず、交差相手の検出方式そのものがユーザーの期待と合っていなかった。
+
+### 原因
+
+- 既定の交差線が、交差相手の列挙、範囲判定、重なり判定、Boolean/SDF 生成を前提にしていた。
+- 「ラインを持つオブジェクト同士のライン幅ぶんの重なりを線色で見せる」という用途に対して、交差相手を探す処理が過剰だった。
+
+### 修正
+
+- 交差線の既定の「作成方式」を「ライン素材（高速）」に変更した。
+- 新方式では、交差相手を探さず、各オブジェクト自身にライン幅ぶんの線色シェルを作るようにした。
+- 新方式の交差線は、線幅・オフセット・線の色の変更時に既存ラインの入力だけを更新し、交差相手の再検索や旧方式の再生成を行わないようにした。
+- 既存の「Boolean（精密）」「SDF（高速）」は選択肢として残し、旧方式を検証するテストでは明示的に旧方式を指定するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\__init__.py addons\b_manga_line\core.py addons\b_manga_line\intersection_shell.py addons\b_manga_line\intersection_lines.py addons\b_manga_line\batch_update.py addons\b_manga_line\presets.py addons\b_manga_line\panels.py test\blender_b_manga_line_intersection_shell_method_check.py test\blender_b_manga_line_multi_intersection_modifier_check.py test\blender_b_manga_line_intersection_creation_range_check.py test\blender_b_manga_line_sheet_mesh_exclusion_check.py test\blender_b_manga_line_uniform_width_check.py test\blender_b_manga_line_intersection_fill_check.py test\blender_b_manga_line_outline_enable_with_intersections_check.py test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_intersection_shell_method_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_offset_controls_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_separate_line_colors_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_generated_update_scope_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_control_update_scope_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_auto_intersection_targets_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_multi_intersection_modifier_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_intersection_fill_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_intersection_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_sheet_mesh_exclusion_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_uniform_width_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_outline_enable_with_intersections_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_toggle_matrix_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_register_reenable_check.py`
+- `git diff --check`
+
+---
+
 ## 2026-07-02 — B-MANGA Lineのライン色を線種別に設定可能化 (B-MANGA Line v0.3.66)
 
 ### 症状

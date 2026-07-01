@@ -209,6 +209,7 @@ def main() -> None:
                 ("intersection_edge_smooth_factor", 0.0),
                 ("intersection_method", "SDF"),
                 ("intersection_method", "BOOLEAN"),
+                ("intersection_method", "SHELL"),
                 ("use_intersection_creation_limit", False),
                 ("use_intersection_creation_limit", True),
                 ("intersection_creation_max_distance", 12.0),

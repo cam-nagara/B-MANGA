@@ -71,8 +71,10 @@ def main() -> None:
         assert not plane_filter.is_sheet_mesh(thin_box), "薄い箱が板ポリ扱いされています"
         sheet.bmanga_line_settings.inner_line_enabled = True
         sheet.bmanga_line_settings.intersection_enabled = True
+        sheet.bmanga_line_settings.intersection_method = "BOOLEAN"
         sheet.bmanga_line_settings.exclude_sheet_meshes = True
         cube.bmanga_line_settings.intersection_enabled = True
+        cube.bmanga_line_settings.intersection_method = "BOOLEAN"
 
         _apply_line(sheet, cube)
         assert core.has_outline(sheet), "板ポリのアウトラインが作成されていません"
@@ -85,7 +87,9 @@ def main() -> None:
         assert included_sheet.bmanga_line_settings.exclude_sheet_meshes is False
         included_sheet.bmanga_line_settings.inner_line_enabled = True
         included_sheet.bmanga_line_settings.intersection_enabled = True
+        included_sheet.bmanga_line_settings.intersection_method = "BOOLEAN"
         included_cube.bmanga_line_settings.intersection_enabled = True
+        included_cube.bmanga_line_settings.intersection_method = "BOOLEAN"
         _apply_line(included_sheet, included_cube)
         assert included_sheet.modifiers.get(core.GN_MODIFIER_NAME) is not None
         assert _has_intersection(included_sheet) or _has_intersection(included_cube)

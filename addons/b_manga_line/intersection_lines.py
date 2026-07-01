@@ -1,6 +1,11 @@
 """B-MANGA Line — 交差線（オブジェクト間の貫通部分）のジオメトリノードセットアップ.
 
-2 つの検出方式を提供する:
+3 つの作成方式を提供する:
+
+ライン素材方式:
+  交差相手を探さず、各オブジェクト自身のライン幅ぶんのシェルを
+  線色で生成する。ラインを持つオブジェクト同士が重なったとき、
+  シェル同士の重なりが交差線として見える。
 
 Boolean 法:
   Mesh Boolean (Exact) の Intersecting Edges 出力で
@@ -48,6 +53,7 @@ _MATERIAL_SOCKET = "マテリアル"
 _GROUPED_MODIFIER_NAME = f"{INTERSECTION_MODIFIER_PREFIX}Targets"
 _GROUPED_TARGET_THRESHOLD = 4
 _MULTI_TREE_PREFIX = f"{INTERSECTION_TREE_BOOLEAN}_Multi_"
+_SHELL_METHOD = "SHELL"
 _DEFERRED_VIEWPORT_PROP = "bml_deferred_intersection_viewport"
 _DEFERRED_VIEWPORT_THRESHOLD = 12
 _DEFERRED_VIEWPORT_INTERVAL = 0.4
@@ -987,6 +993,12 @@ def _is_grouped_modifier(mod: bpy.types.Modifier) -> bool:
     return mod.name.startswith(_GROUPED_MODIFIER_NAME)
 
 
+def _is_shell_modifier(mod: bpy.types.Modifier) -> bool:
+    from . import intersection_shell
+
+    return intersection_shell.is_shell_modifier(mod)
+
+
 def is_deferred_viewport_modifier(mod: bpy.types.Modifier) -> bool:
     """ビューポート表示の復帰待ち交差線か返す."""
     try:
@@ -1194,6 +1206,7 @@ def _defer_heavy_viewport_refresh(objects: list[bpy.types.Object]) -> None:
         (obj, mod)
         for obj in objects
         for mod in iter_intersection_modifiers(obj)
+        if not _is_shell_modifier(mod)
     ]
     if len(mods) <= _DEFERRED_VIEWPORT_THRESHOLD:
         return
@@ -1256,9 +1269,23 @@ def apply_intersection_lines(
         remove_intersection_lines(obj)
         return True
 
+    _ensure_intersection_width_group(obj)
+
+    if method == _SHELL_METHOD:
+        from . import intersection_shell
+
+        for mod in list(iter_intersection_modifiers(obj)):
+            if not intersection_shell.is_shell_modifier(mod):
+                obj.modifiers.remove(mod)
+        return intersection_shell.apply_intersection_shell(
+            obj,
+            thickness,
+            offset,
+            material,
+        )
+
     if material is not None:
         _ensure_material_slot(obj, material)
-    _ensure_intersection_width_group(obj)
 
     target_candidates = [target] if target is not None else _auto_targets(obj, scene)
     targets = [
@@ -1383,6 +1410,17 @@ def update_parameters(
     changed = False
     for mod in iter_intersection_modifiers(obj):
         if mod.node_group is None:
+            continue
+        if _is_shell_modifier(mod):
+            from . import intersection_shell
+
+            intersection_shell.update_modifier_parameters(
+                mod,
+                thickness,
+                offset,
+                material,
+            )
+            changed = True
             continue
         if _is_grouped_modifier(mod):
             _set_multi_modifier_parameters(

@@ -1138,15 +1138,17 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     # --- 交差線設定 ---
 
     intersection_method: EnumProperty(
-        name="検出方式",
-        description="交差線の検出に使用するアルゴリズム",
+        name="作成方式",
+        description="交差線の作り方",
         items=[
+            ("SHELL", "ライン素材（高速）",
+             "交差相手を探さず、ライン幅ぶんの面を線色で表示"),
             ("BOOLEAN", "Boolean（精密）",
              "Mesh Boolean で正確な交差曲線を生成。低密度メッシュでも滑らか"),
             ("SDF", "SDF（高速）",
              "SDF で交差を検出。トポロジーエラーが起きない。高密度メッシュ向き"),
         ],
-        default="BOOLEAN",
+        default="SHELL",
         update=_on_intersection_method_changed,
     )  # type: ignore[valid-type]
 

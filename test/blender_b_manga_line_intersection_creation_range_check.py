@@ -34,6 +34,7 @@ def _make_cube(name: str, z: float) -> bpy.types.Object:
     settings = obj.bmanga_line_settings
     settings.inner_line_enabled = False
     settings.intersection_enabled = True
+    settings.intersection_method = "BOOLEAN"
     return obj
 
 
@@ -57,6 +58,7 @@ def _make_data_cube(name: str, location: tuple[float, float, float]) -> bpy.type
     settings = obj.bmanga_line_settings
     settings.inner_line_enabled = False
     settings.intersection_enabled = True
+    settings.intersection_method = "BOOLEAN"
     return obj
 
 

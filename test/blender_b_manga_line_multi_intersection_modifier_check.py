@@ -35,6 +35,7 @@ def _make_cube(name: str, location: tuple[float, float, float], size: float) -> 
     obj.name = name
     settings = obj.bmanga_line_settings
     settings.intersection_enabled = True
+    settings.intersection_method = "BOOLEAN"
     settings.use_intersection_creation_limit = False
     return obj
 
@@ -45,6 +46,7 @@ def _make_plane(name: str, location: tuple[float, float, float], size: float) ->
     obj.name = name
     settings = obj.bmanga_line_settings
     settings.intersection_enabled = True
+    settings.intersection_method = "BOOLEAN"
     settings.use_intersection_creation_limit = False
     return obj
 

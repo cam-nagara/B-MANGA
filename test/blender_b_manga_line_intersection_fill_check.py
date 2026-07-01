@@ -83,6 +83,7 @@ def _make_gap_cube(name: str, location: tuple[float, float, float], white_mat):
     settings.outline_thickness_mm = 0.6
     settings.intersection_thickness_mm = 0.2
     settings.intersection_enabled = True
+    settings.intersection_method = "BOOLEAN"
     return obj
 
 

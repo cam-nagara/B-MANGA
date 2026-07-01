@@ -380,11 +380,13 @@ def _test_object_scale_compensates_modifier_width() -> None:
         assert presets.apply_line_settings(obj, bpy.context)
 
     normal.bmanga_line_settings.intersection_enabled = True
+    normal.bmanga_line_settings.intersection_method = "BOOLEAN"
     normal.bmanga_line_settings.intersection_thickness_mm = 0.2
     _select(normal)
     assert presets.apply_line_settings(normal, bpy.context)
 
     scaled.bmanga_line_settings.intersection_enabled = True
+    scaled.bmanga_line_settings.intersection_method = "BOOLEAN"
     scaled.bmanga_line_settings.intersection_thickness_mm = 0.2
     _select(scaled)
     assert presets.apply_line_settings(scaled, bpy.context)
@@ -426,6 +428,7 @@ def _test_intersection_target_scale_conversion() -> None:
         _select(source)
         source.bmanga_line_settings.outline_thickness_mm = 0.6
         source.bmanga_line_settings.intersection_enabled = True
+        source.bmanga_line_settings.intersection_method = "BOOLEAN"
         source.bmanga_line_settings.intersection_thickness_mm = 0.2
         assert presets.apply_line_settings(source, bpy.context)
 

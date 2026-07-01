@@ -27,6 +27,7 @@ def _make_cube(index: int) -> bpy.types.Object:
     settings = obj.bmanga_line_settings
     settings.outline_enabled = False
     settings.intersection_enabled = True
+    settings.intersection_method = "BOOLEAN"
     settings.use_intersection_creation_limit = False
     return obj
 
