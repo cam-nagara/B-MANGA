@@ -3,6 +3,37 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-01 — B-MANGA Lineの生成済みライン更新対象を限定 (B-MANGA Line v0.3.52)
+
+### 症状
+
+- すべてのオブジェクトを選択中に、内部線や交差線の線幅などを変更すると、内部線・交差線が未生成のオブジェクトまで更新処理の対象になり、操作が重くなっていた。
+- 生成済みラインだけを変えたい場面でも、選択中のライン適用済みオブジェクト全体にカメラ基準の更新や線幅詳細の処理が走っていた。
+
+### 原因
+
+- 内部線・交差線の線幅変更と線幅詳細変更の一括更新で、対象を「ライン適用済み」までしか絞っていなかった。
+- アクティブオブジェクト自身の線幅変更でも、該当ラインが未生成の場合に不要なカメラ基準更新を呼ぶ経路があった。
+
+### 修正
+
+- 内部線の線幅・検出角度・線幅詳細は、内部線が生成済みの選択オブジェクトだけを更新対象にした。
+- 交差線の線幅・線幅詳細は、交差線が生成済みの選択オブジェクトだけを更新対象にした。
+- 該当ラインが未生成のアクティブオブジェクトでは、内部線・交差線の線幅変更時に不要なカメラ基準更新を行わないようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\batch_update.py addons\b_manga_line\core.py test\blender_b_manga_line_generated_update_scope_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_generated_update_scope_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_inner_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_intersection_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_preset_visibility_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_register_reenable_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_camera_view_creation_range_check.py`
+
+---
+
 ## 2026-07-01 — B-MANGA Lineの作成範囲をカメラ画面内に制限 (B-MANGA Line v0.3.51)
 
 ### 症状

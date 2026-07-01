@@ -371,7 +371,7 @@ def _on_inner_angle_changed(self, context):
         return
     from . import inner_lines
     owner = self.id_data
-    if owner.type == "MESH":
+    if owner.type == "MESH" and owner.modifiers.get(GN_MODIFIER_NAME) is not None:
         inner_lines.update_parameters(owner, angle=self.inner_line_angle)
         _refresh_line_width_weights(self, context)
     _propagate(self, context, "inner_line_angle")
@@ -393,14 +393,15 @@ def _on_inner_thickness_changed(self, context):
     from . import inner_lines
     owner = self.id_data
     if owner.type == "MESH":
-        inner_lines.update_parameters(
+        changed = inner_lines.update_parameters(
             owner,
             thickness=modifier_thickness_for_world_width(
                 owner,
                 self.inner_line_thickness,
             ),
         )
-        _refresh_print_widths_for(context, [owner])
+        if changed:
+            _refresh_print_widths_for(context, [owner])
     _propagate(self, context, "inner_line_thickness")
 
 
@@ -481,14 +482,15 @@ def _on_intersection_thickness_changed(self, context):
     from . import intersection_lines
     owner = self.id_data
     if owner.type == "MESH":
-        intersection_lines.update_parameters(
+        changed = intersection_lines.update_parameters(
             owner,
             thickness=modifier_thickness_for_world_width(
                 owner,
                 self.intersection_thickness,
             ),
         )
-        _refresh_print_widths_for(context, [owner])
+        if changed:
+            _refresh_print_widths_for(context, [owner])
     _propagate(self, context, "intersection_thickness")
 
 

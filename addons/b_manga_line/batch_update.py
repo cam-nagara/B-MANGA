@@ -42,6 +42,15 @@ def _target_modifier_exists(obj: bpy.types.Object, target: str) -> bool:
     return _outline_modifier(obj) is not None
 
 
+def _generated_line_objects(
+    objects: list[bpy.types.Object],
+    target: str,
+) -> list[bpy.types.Object]:
+    if target == "outline":
+        return [obj for obj in objects if _outline_modifier(obj) is not None]
+    return [obj for obj in objects if _target_modifier_exists(obj, target)]
+
+
 def _ensure_vertex_group(obj: bpy.types.Object, name: str):
     vg = obj.vertex_groups.get(name)
     if vg is None:
@@ -123,9 +132,12 @@ def _update_generated_thickness(
     context,
     target: str,
 ) -> None:
-    if _refresh_camera_objects(objects, context):
+    targets = _generated_line_objects(objects, target)
+    if not targets:
         return
-    for obj in objects:
+    if _refresh_camera_objects(targets, context):
+        return
+    for obj in targets:
         settings = obj.bmanga_line_settings
         if target == "inner":
             inner_lines.update_parameters(
@@ -282,15 +294,16 @@ def _update_width_target(
 ) -> None:
     from . import vertex_analysis
 
-    if any(obj.bmanga_line_settings.use_uniform_line_width for obj in objects):
-        if _refresh_camera_objects(objects, context):
+    targets = _generated_line_objects(objects, target)
+    if not targets:
+        return
+
+    if any(obj.bmanga_line_settings.use_uniform_line_width for obj in targets):
+        if _refresh_camera_objects(targets, context):
             return
 
     group_name = vertex_analysis.width_group_name(target)
-    for obj in objects:
-        if not _target_modifier_exists(obj, target):
-            vertex_analysis.clear_width_weights(obj, group_name=group_name)
-            continue
+    for obj in targets:
         settings = obj.bmanga_line_settings
         if vertex_analysis.has_width_controls(settings, target):
             if target == "outline":
@@ -308,17 +321,16 @@ def _update_width_target(
 
 
 def _update_inner_angle(objects: list[bpy.types.Object], context) -> None:
-    for obj in objects:
+    targets = _generated_line_objects(objects, "inner")
+    for obj in targets:
         inner_lines.update_parameters(
             obj,
             angle=obj.bmanga_line_settings.inner_line_angle,
         )
-    if any(obj.bmanga_line_settings.use_uniform_line_width for obj in objects):
-        if _refresh_camera_objects(objects, context):
+    if any(obj.bmanga_line_settings.use_uniform_line_width for obj in targets):
+        if _refresh_camera_objects(targets, context):
             return
-    _update_width_target(objects, context, "outline")
-    _update_width_target(objects, context, "inner")
-    _update_width_target(objects, context, "intersection")
+    _update_width_target(targets, context, "inner")
 
 
 def _update_inner_lines(
