@@ -3,6 +3,31 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-01 — B-MANGA Lineのラインのみ表示オフセットを固定 (B-MANGA Line v0.3.49)
+
+### 症状
+
+- 「ラインのみ表示」にすると、立体メッシュのライン用ソリッドモディファイアの「オフセット」が `1.0` から `-1.0` に変わっていた。
+- 「オフセット」の反転により、通常表示とラインのみ表示で線の出方が変わって見えることがあった。
+
+### 原因
+
+- 黒い塗りつぶしを避けるため、ラインのみ表示中だけ立体メッシュの「オフセット」を反転していた。
+
+### 修正
+
+- ラインのみ表示中も、ライン用ソリッドモディファイアの「オフセット」を `1.0` のままにした。
+- ラインのみ表示中のリム面設定変更や設定再適用でも、「オフセット」が変わらないようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\outline_setup.py test\blender_b_manga_line_open_mesh_outline_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_open_mesh_outline_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_uniform_width_check.py`
+- 追加確認: `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_full_visual_audit_check.py` は、ラインのみ表示中の中央立体の線検出が `0` になり失敗。`_verify\b_manga_line_full_visual_audit\02_uniform_line_only_distance.png` では中央立体が白面のみになり、線が出ていないことを確認。
+
+---
+
 ## 2026-07-01 — B-MANGA Lineの交差対象スケール補正を修正 (B-MANGA Line v0.3.48)
 
 ### 症状

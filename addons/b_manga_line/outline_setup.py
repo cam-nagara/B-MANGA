@@ -418,7 +418,7 @@ def _configure_line_only_solidify_shape(
         settings = getattr(obj, "bmanga_line_settings", None)
         use_rim = bool(getattr(settings, "use_rim", False))
     is_sheet = plane_filter.is_sheet_mesh(obj)
-    mod.offset = 1.0 if is_sheet else -1.0
+    mod.offset = 1.0
     if hasattr(mod, "use_rim_only"):
         mod.use_rim_only = is_sheet
     mod.use_rim = True if is_sheet else bool(use_rim)
