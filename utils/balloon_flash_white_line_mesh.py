@@ -205,6 +205,7 @@ def ensure_balloon_flash_white_line_mesh(
     enabled = bool(getattr(entry, "flash_white_line_enabled", True))
     if (
         not balloon_id
+        or shape_norm == "none"
         or not balloon_shapes.is_flash_line_style(line_style)
         or not enabled
         or line_style == "none"

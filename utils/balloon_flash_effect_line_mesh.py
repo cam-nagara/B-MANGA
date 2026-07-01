@@ -491,9 +491,11 @@ def ensure_balloon_flash_effect_line_mesh(
 ) -> Optional[bpy.types.Object]:
     del work, page
     balloon_id = str(getattr(entry, "id", "") or "")
+    shape_norm = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
     line_style = balloon_shapes.normalize_line_style(str(getattr(entry, "line_style", "") or ""))
     if (
         not balloon_id
+        or shape_norm == "none"
         or not balloon_shapes.is_flash_line_style(line_style)
         or line_style == "none"
         or (
