@@ -153,6 +153,23 @@ def ensure_camera(scene) -> bpy.types.Object:
 
 
 def configure_render(scene) -> None:
+    for engine in ("BLENDER_EEVEE_NEXT", "BLENDER_EEVEE", "BLENDER_WORKBENCH"):
+        try:
+            scene.render.engine = engine
+            break
+        except TypeError:
+            continue
+    eevee = getattr(scene, "eevee", None)
+    if eevee is not None:
+        for attr, value in (
+            ("taa_render_samples", 16),
+            ("taa_samples", 16),
+        ):
+            if hasattr(eevee, attr):
+                try:
+                    setattr(eevee, attr, value)
+                except (TypeError, ValueError):
+                    pass
     scene.render.resolution_x = 1280
     scene.render.resolution_y = 720
     scene.render.resolution_percentage = 100
