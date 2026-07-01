@@ -148,6 +148,7 @@ def apply_line_settings(
         intersection_lines,
         outline_setup,
         plane_filter,
+        scale_utils,
         vertex_analysis,
     )
 
@@ -182,7 +183,10 @@ def apply_line_settings(
         inner_lines.apply_inner_lines(
             obj,
             angle=settings.inner_line_angle,
-            thickness=settings.inner_line_thickness,
+            thickness=scale_utils.modifier_thickness_for_world_width(
+                obj,
+                settings.inner_line_thickness,
+            ),
             material=mat,
             use_marked_edges=settings.use_marked_inner_edges,
         )
@@ -196,7 +200,10 @@ def apply_line_settings(
         if refresh_scene:
             intersection_lines.apply_intersection_lines(
                 obj,
-                thickness=settings.intersection_thickness,
+                thickness=scale_utils.modifier_thickness_for_world_width(
+                    obj,
+                    settings.intersection_thickness,
+                ),
                 material=mat,
                 method=settings.intersection_method,
                 scene=context.scene,

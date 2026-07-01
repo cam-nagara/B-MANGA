@@ -28,6 +28,7 @@ from .core import (
     VG_LINE_WIDTH,
     iter_intersection_modifiers,
 )
+from .scale_utils import modifier_thickness_for_world_width
 
 
 _updating = False
@@ -292,13 +293,13 @@ def _apply_uniform_line_width(scene, camera, obj, settings, mod) -> None:
     outline_widths = _uniform_widths_for_mesh(
         scene, camera, obj, settings.outline_thickness,
     )
-    max_outline = max(max(outline_widths), 1.0e-9)
-    mod.thickness = max_outline
+    max_outline_world = max(max(outline_widths), 1.0e-9)
+    mod.thickness = modifier_thickness_for_world_width(obj, max_outline_world)
     mod.vertex_group = VG_LINE_WIDTH
     mod.thickness_vertex_group = 0.0
     vertex_analysis.multiply_width_weights(
         obj,
-        [width / max_outline for width in outline_widths],
+        [width / max_outline_world for width in outline_widths],
         group_name=VG_LINE_WIDTH,
     )
 
@@ -308,7 +309,7 @@ def _apply_uniform_line_width(scene, camera, obj, settings, mod) -> None:
         _prepare_style_weights(obj, settings, "inner")
         vertex_analysis.multiply_width_weights(
             obj,
-            [width / max_outline for width in outline_widths],
+            [width / max_outline_world for width in outline_widths],
             group_name=VG_INNER_LINE_WIDTH,
         )
     else:
@@ -318,7 +319,7 @@ def _apply_uniform_line_width(scene, camera, obj, settings, mod) -> None:
         _prepare_style_weights(obj, settings, "intersection")
         vertex_analysis.multiply_width_weights(
             obj,
-            [width / max_outline for width in outline_widths],
+            [width / max_outline_world for width in outline_widths],
             group_name=VG_INTERSECTION_LINE_WIDTH,
         )
     else:
@@ -328,11 +329,20 @@ def _apply_uniform_line_width(scene, camera, obj, settings, mod) -> None:
     inner_scale = abs(float(settings.inner_line_thickness)) / outline_base
     intersection_scale = abs(float(settings.intersection_thickness)) / outline_base
     if has_inner:
-        inner_lines.update_parameters(obj, thickness=max_outline * inner_scale)
+        inner_lines.update_parameters(
+            obj,
+            thickness=modifier_thickness_for_world_width(
+                obj,
+                max_outline_world * inner_scale,
+            ),
+        )
     if has_intersection:
         intersection_lines.update_parameters(
             obj,
-            thickness=max_outline * intersection_scale,
+            thickness=modifier_thickness_for_world_width(
+                obj,
+                max_outline_world * intersection_scale,
+            ),
         )
 
 
@@ -340,7 +350,7 @@ def _apply_reference_line_width(scene, camera, obj, settings, mod) -> None:
     from . import inner_lines, intersection_lines, vertex_analysis
 
     ref_distance = _line_width_reference_distance(settings)
-    outline_width = max(
+    outline_width_world = max(
         _reference_width_for_distance(
             scene,
             camera,
@@ -349,7 +359,7 @@ def _apply_reference_line_width(scene, camera, obj, settings, mod) -> None:
         ),
         1.0e-9,
     )
-    mod.thickness = outline_width
+    mod.thickness = modifier_thickness_for_world_width(obj, outline_width_world)
 
     if _prepare_style_weights(obj, settings, "outline"):
         mod.vertex_group = VG_LINE_WIDTH
@@ -371,11 +381,20 @@ def _apply_reference_line_width(scene, camera, obj, settings, mod) -> None:
     inner_scale = abs(float(settings.inner_line_thickness)) / outline_base
     intersection_scale = abs(float(settings.intersection_thickness)) / outline_base
     if has_inner:
-        inner_lines.update_parameters(obj, thickness=outline_width * inner_scale)
+        inner_lines.update_parameters(
+            obj,
+            thickness=modifier_thickness_for_world_width(
+                obj,
+                outline_width_world * inner_scale,
+            ),
+        )
     if has_intersection:
         intersection_lines.update_parameters(
             obj,
-            thickness=outline_width * intersection_scale,
+            thickness=modifier_thickness_for_world_width(
+                obj,
+                outline_width_world * intersection_scale,
+            ),
         )
 
 
@@ -460,7 +479,7 @@ def _update_camera_compensation(scene, camera, objects=None):
         dist = (cam_loc - obj.matrix_world.translation).length
         factor = dist / ref_d
         adjusted = base_t * (1.0 + (factor - 1.0) * influence)
-        mod.thickness = abs(adjusted)
+        mod.thickness = modifier_thickness_for_world_width(obj, adjusted)
 
         outline_base = max(abs(float(settings.outline_thickness)), 1.0e-9)
         inner_scale = abs(float(settings.inner_line_thickness)) / outline_base
@@ -472,9 +491,18 @@ def _update_camera_compensation(scene, camera, objects=None):
             1.0 + (factor - 1.0) * influence
         )
         if has_inner:
-            inner_lines.update_parameters(obj, thickness=abs(inner_adjusted))
+            inner_lines.update_parameters(
+                obj,
+                thickness=modifier_thickness_for_world_width(obj, inner_adjusted),
+            )
         if has_intersection:
-            intersection_lines.update_parameters(obj, thickness=abs(intersection_adjusted))
+            intersection_lines.update_parameters(
+                obj,
+                thickness=modifier_thickness_for_world_width(
+                    obj,
+                    intersection_adjusted,
+                ),
+            )
 
 
 def _update_visibility(scene, camera, cam_loc, cam_fwd, objects=None):

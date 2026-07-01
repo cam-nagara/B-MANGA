@@ -14,6 +14,7 @@ from bpy.props import (
 )
 
 from . import registration
+from .scale_utils import modifier_thickness_for_world_width
 
 # ------------------------------------------------------------------
 # 命名規則 — モディファイア・マテリアル・頂点グループ等の識別子
@@ -344,7 +345,10 @@ def _sync_inner_line_creation(
         return inner_lines.apply_inner_lines(
             owner,
             angle=settings.inner_line_angle,
-            thickness=settings.inner_line_thickness,
+            thickness=modifier_thickness_for_world_width(
+                owner,
+                settings.inner_line_thickness,
+            ),
             material=mat,
             use_marked_edges=settings.use_marked_inner_edges,
         )
@@ -389,7 +393,13 @@ def _on_inner_thickness_changed(self, context):
     from . import inner_lines
     owner = self.id_data
     if owner.type == "MESH":
-        inner_lines.update_parameters(owner, thickness=self.inner_line_thickness)
+        inner_lines.update_parameters(
+            owner,
+            thickness=modifier_thickness_for_world_width(
+                owner,
+                self.inner_line_thickness,
+            ),
+        )
         _refresh_print_widths_for(context, [owner])
     _propagate(self, context, "inner_line_thickness")
 
@@ -420,7 +430,10 @@ def _sync_intersection_creation(owner: bpy.types.Object, settings, context) -> N
     mat = outline_setup.get_outline_material(owner)
     intersection_lines.apply_intersection_lines(
         owner,
-        thickness=settings.intersection_thickness,
+        thickness=modifier_thickness_for_world_width(
+            owner,
+            settings.intersection_thickness,
+        ),
         material=mat,
         method=settings.intersection_method,
         scene=getattr(context, "scene", None),
@@ -469,7 +482,11 @@ def _on_intersection_thickness_changed(self, context):
     owner = self.id_data
     if owner.type == "MESH":
         intersection_lines.update_parameters(
-            owner, thickness=self.intersection_thickness,
+            owner,
+            thickness=modifier_thickness_for_world_width(
+                owner,
+                self.intersection_thickness,
+            ),
         )
         _refresh_print_widths_for(context, [owner])
     _propagate(self, context, "intersection_thickness")
@@ -563,11 +580,24 @@ def _on_camera_comp_changed(self, context):
         if owner.type == "MESH":
             mod = owner.modifiers.get(MODIFIER_NAME)
             if mod is not None:
-                mod.thickness = abs(self.outline_thickness)
+                mod.thickness = modifier_thickness_for_world_width(
+                    owner,
+                    self.outline_thickness,
+                )
             from . import inner_lines, intersection_lines
-            inner_lines.update_parameters(owner, thickness=self.inner_line_thickness)
+            inner_lines.update_parameters(
+                owner,
+                thickness=modifier_thickness_for_world_width(
+                    owner,
+                    self.inner_line_thickness,
+                ),
+            )
             intersection_lines.update_parameters(
-                owner, thickness=self.intersection_thickness,
+                owner,
+                thickness=modifier_thickness_for_world_width(
+                    owner,
+                    self.intersection_thickness,
+                ),
             )
             camera_comp.refresh_objects(context, [owner])
     _propagate(self, context, "use_camera_compensation")
@@ -603,7 +633,10 @@ def _on_uniform_line_width_changed(self, context):
         mod = owner.modifiers.get(MODIFIER_NAME)
         if mod is not None:
             if not camera_comp.refresh_objects(context, [owner]):
-                mod.thickness = abs(self.outline_thickness)
+                mod.thickness = modifier_thickness_for_world_width(
+                    owner,
+                    self.outline_thickness,
+                )
                 if self.use_uniform_line_width:
                     vg = _ensure_vertex_group(owner, VG_LINE_WIDTH)
                     if vg is not None:
@@ -612,9 +645,19 @@ def _on_uniform_line_width_changed(self, context):
                 else:
                     _refresh_line_width_weights(self, context)
                 from . import inner_lines, intersection_lines
-                inner_lines.update_parameters(owner, thickness=self.inner_line_thickness)
+                inner_lines.update_parameters(
+                    owner,
+                    thickness=modifier_thickness_for_world_width(
+                        owner,
+                        self.inner_line_thickness,
+                    ),
+                )
                 intersection_lines.update_parameters(
-                    owner, thickness=self.intersection_thickness,
+                    owner,
+                    thickness=modifier_thickness_for_world_width(
+                        owner,
+                        self.intersection_thickness,
+                    ),
                 )
     _propagate(self, context, "use_uniform_line_width")
 

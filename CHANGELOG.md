@@ -3,6 +3,32 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-01 — B-MANGA Lineの未適用スケール線幅を補正 (B-MANGA Line v0.3.46)
+
+### 症状
+
+- 指定シーンで全オブジェクトへラインは表示されるようになったが、街並み素材側の線が Cube より大幅に細く見えていた。
+- Cube だけが、線幅欄に入力した太さに近い見た目になっていた。
+
+### 原因
+
+- 街並み素材の多くはオブジェクトスケールが 0.0254 のまま残っていた。
+- Solidify の「幅」はオブジェクトローカル単位で効くため、同じ幅を入れても、街並み素材側は画面上で約 1/39.37 の太さになっていた。
+
+### 修正
+
+- B-MANGA Line が計算したワールド上の線幅を、各オブジェクトの未適用スケールに合わせてモディファイア用のローカル幅へ換算するようにした。
+- アウトライン、内部線、交差線の生成と更新経路を同じスケール換算に揃えた。
+- スケール 1.0 の Cube とスケール 0.0254 の素材で、画面上の線幅が一致する回帰テストを追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\scale_utils.py addons\b_manga_line\camera_comp.py addons\b_manga_line\outline_setup.py addons\b_manga_line\core.py addons\b_manga_line\batch_update.py addons\b_manga_line\presets.py addons\b_manga_line\intersection_lines.py test\blender_b_manga_line_uniform_width_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_uniform_width_check.py`
+- `Japanese_Streetscape_Tokyo_0004.blend` を UI なしで開き、街並み素材の代表オブジェクトがスケール 0.0254 であることを確認。全917メッシュに線幅100mm・線幅基準距離2m・通常設定でラインを適用し、カメラ更新後のワールド上の線幅が全917メッシュで同一 (`0.28237`) になることを確認。
+
+---
+
 ## 2026-07-01 — B-MANGA Lineの開いた立体アウトラインを復旧 (B-MANGA Line v0.3.45)
 
 ### 症状

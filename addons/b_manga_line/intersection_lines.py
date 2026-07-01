@@ -850,7 +850,7 @@ def update_parameters(
 
 def refresh_scene_intersections(scene: bpy.types.Scene) -> None:
     """シーン内の交差線を、現在のメッシュ構成に合わせて作り直す."""
-    from . import outline_setup, plane_filter
+    from . import outline_setup, plane_filter, scale_utils
 
     for obj in scene.objects:
         if obj.type != "MESH":
@@ -871,7 +871,10 @@ def refresh_scene_intersections(scene: bpy.types.Scene) -> None:
             continue
         apply_intersection_lines(
             obj,
-            thickness=settings.intersection_thickness,
+            thickness=scale_utils.modifier_thickness_for_world_width(
+                obj,
+                settings.intersection_thickness,
+            ),
             material=outline_setup.get_outline_material(obj),
             method=settings.intersection_method,
             scene=scene,

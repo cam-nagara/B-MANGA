@@ -27,6 +27,7 @@ from .core import (
     VG_INTERSECTION_LINE_WIDTH,
     VG_LINE_WIDTH,
 )
+from .scale_utils import modifier_thickness_for_world_width
 
 
 LINE_ONLY_MATERIAL_NAME = "BML_LineOnly_SurfaceHidden"
@@ -482,7 +483,7 @@ def apply_outline(
     mod = obj.modifiers.get(MODIFIER_NAME)
     if mod is None:
         mod = obj.modifiers.new(name=MODIFIER_NAME, type="SOLIDIFY")
-    mod.thickness = abs(thickness)
+    mod.thickness = modifier_thickness_for_world_width(obj, thickness)
     mod.offset = 1.0
     mod.use_flip_normals = True
     mod.use_even_offset = even_thickness
@@ -589,7 +590,7 @@ def remove_outline(obj: bpy.types.Object) -> bool:
 def update_modifier_thickness(obj: bpy.types.Object, thickness: float) -> None:
     mod = obj.modifiers.get(MODIFIER_NAME)
     if mod is not None:
-        mod.thickness = abs(thickness)
+        mod.thickness = modifier_thickness_for_world_width(obj, thickness)
 
 
 # ------------------------------------------------------------------

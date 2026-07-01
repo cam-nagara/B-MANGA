@@ -8,13 +8,12 @@ import tempfile
 from pathlib import Path
 
 import bpy
-from mathutils import Vector
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import camera_comp, core, inner_lines, presets  # noqa: E402
+from b_manga_line import camera_comp, core, inner_lines, presets, scale_utils  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -87,6 +86,38 @@ def _inner_thickness(obj: bpy.types.Object) -> float:
     sid = inner_lines._find_socket_id(mod.node_group, "線の太さ")
     assert sid is not None
     return float(mod[sid])
+
+
+def _line_world_width(obj: bpy.types.Object) -> float:
+    return scale_utils.world_width_from_modifier(
+        obj,
+        obj.modifiers[core.MODIFIER_NAME].thickness,
+    )
+
+
+def _evaluated_outline_world_width(obj: bpy.types.Object) -> float:
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    mesh = bpy.data.meshes.new_from_object(obj.evaluated_get(depsgraph))
+    try:
+        line_slot_start = min(
+            i for i, mat in enumerate(mesh.materials)
+            if mat and mat.name.startswith(core.MATERIAL_NAME)
+        )
+        line_x = [
+            (obj.matrix_world @ mesh.vertices[vi].co).x
+            for poly in mesh.polygons
+            if poly.material_index >= line_slot_start
+            for vi in poly.vertices
+        ]
+        assert line_x, "評価済みメッシュからアウトライン面を検出できませんでした"
+        original_left = min(
+            (obj.matrix_world @ vertex.co).x
+            for vertex in obj.data.vertices
+        )
+        shell_left = min(line_x)
+        return abs(original_left - shell_left)
+    finally:
+        bpy.data.meshes.remove(mesh)
 
 
 def _configure_scene(scene: bpy.types.Scene) -> None:
@@ -260,6 +291,42 @@ def _test_multi_select_mm_change_updates_all_modifiers() -> None:
     )
 
 
+def _test_object_scale_compensates_modifier_width() -> None:
+    scene = bpy.context.scene
+    _clear_scene()
+    _configure_scene(scene)
+
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(-1.5, 0.0, -4.0))
+    normal = bpy.context.object
+    normal.name = "BML_scale_normal_cube"
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(1.5, 0.0, -4.0))
+    scaled = bpy.context.object
+    scaled.name = "BML_scale_0254_cube"
+    scaled.scale = (0.0254, 0.0254, 0.0254)
+
+    for obj in (normal, scaled):
+        _select(obj)
+        obj.bmanga_line_settings.outline_thickness_mm = 0.6
+        assert presets.apply_line_settings(obj, bpy.context)
+
+    expected = _expected_world_width(scene, 2.0, 0.6)
+    normal_mod = normal.modifiers[core.MODIFIER_NAME].thickness
+    scaled_mod = scaled.modifiers[core.MODIFIER_NAME].thickness
+    assert math.isclose(normal_mod, expected, rel_tol=0.001), (normal_mod, expected)
+    assert math.isclose(scaled_mod, expected / 0.0254, rel_tol=0.001), (
+        scaled_mod,
+        expected / 0.0254,
+    )
+    assert math.isclose(_line_world_width(normal), expected, rel_tol=0.001), (
+        _line_world_width(normal),
+        expected,
+    )
+    assert math.isclose(_line_world_width(scaled), expected, rel_tol=0.001), (
+        _line_world_width(scaled),
+        expected,
+    )
+
+
 def _test_evaluated_orthographic_width() -> None:
     scene = bpy.context.scene
     _clear_scene()
@@ -293,29 +360,30 @@ def _test_evaluated_orthographic_width() -> None:
     _select(obj)
     assert presets.apply_line_settings(obj, bpy.context)
 
-    depsgraph = bpy.context.evaluated_depsgraph_get()
-    mesh = bpy.data.meshes.new_from_object(obj.evaluated_get(depsgraph))
-    try:
-        line_slot_start = min(
-            i for i, mat in enumerate(mesh.materials)
-            if mat and mat.name.startswith(core.MATERIAL_NAME)
-        )
-        line_x = [
-            mesh.vertices[vi].co.x
-            for poly in mesh.polygons
-            if poly.material_index >= line_slot_start
-            for vi in poly.vertices
-        ]
-        assert line_x, "評価済みメッシュからアウトライン面を検出できませんでした"
-        original_left = min((obj.matrix_world @ vertex.co).x for vertex in obj.data.vertices)
-        shell_left = min((obj.matrix_world @ Vector((x, 0.0, 0.0))).x for x in line_x)
-        world_width = abs(original_left - shell_left)
-    finally:
-        bpy.data.meshes.remove(mesh)
-
-    measured = world_width / (camera.data.ortho_scale / scene.render.resolution_y)
+    measured = (
+        _evaluated_outline_world_width(obj)
+        / (camera.data.ortho_scale / scene.render.resolution_y)
+    )
     expected = _target_pixels(0.5)
     assert abs(measured - expected) <= 1.0, (measured, expected)
+
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(1.0, 0.0, 0.0))
+    scaled = bpy.context.object
+    scaled.name = "BML_uniform_render_scaled_cube"
+    scaled.scale = (0.0254, 0.0254, 0.0254)
+    scaled.data.materials.append(mat)
+    scaled_settings = scaled.bmanga_line_settings
+    scaled_settings.outline_thickness_mm = 0.5
+    scaled_settings.even_thickness = True
+    scaled_settings.use_rim = True
+    scaled_settings.use_uniform_line_width = True
+    _select(scaled)
+    assert presets.apply_line_settings(scaled, bpy.context)
+    scaled_measured = (
+        _evaluated_outline_world_width(scaled)
+        / (camera.data.ortho_scale / scene.render.resolution_y)
+    )
+    assert abs(scaled_measured - expected) <= 1.0, (scaled_measured, expected)
 
 
 def _test_linked_uniform_width_refresh_does_not_crash() -> None:
@@ -355,6 +423,7 @@ def main() -> None:
     _test_uniform_width_saved_in_preset()
     _test_batch_apply_uses_reference_distance_not_object_distance()
     _test_multi_select_mm_change_updates_all_modifiers()
+    _test_object_scale_compensates_modifier_width()
     _test_evaluated_orthographic_width()
     _test_linked_uniform_width_refresh_does_not_crash()
     print("[PASS] B-MANGA Line uniform width follows mm, DPI, and resolution")

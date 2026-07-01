@@ -5,6 +5,7 @@ from __future__ import annotations
 import bpy
 
 from . import camera_comp, core, inner_lines, intersection_lines, outline_setup, presets
+from .scale_utils import modifier_thickness_for_world_width
 
 MAX_IMMEDIATE_VISIBILITY_OBJECTS = 64
 MAX_IMMEDIATE_GENERATED_WIDTH_OBJECTS = 64
@@ -127,11 +128,20 @@ def _update_generated_thickness(
     for obj in objects:
         settings = obj.bmanga_line_settings
         if target == "inner":
-            inner_lines.update_parameters(obj, thickness=settings.inner_line_thickness)
+            inner_lines.update_parameters(
+                obj,
+                thickness=modifier_thickness_for_world_width(
+                    obj,
+                    settings.inner_line_thickness,
+                ),
+            )
         elif target == "intersection":
             intersection_lines.update_parameters(
                 obj,
-                thickness=settings.intersection_thickness,
+                thickness=modifier_thickness_for_world_width(
+                    obj,
+                    settings.intersection_thickness,
+                ),
             )
 
 
@@ -144,11 +154,23 @@ def _update_camera_compensation(objects: list[bpy.types.Object], context) -> Non
         if settings.use_camera_compensation:
             camera_comp.store_unit_reference(obj, context.scene)
         else:
-            mod.thickness = abs(settings.outline_thickness)
-            inner_lines.update_parameters(obj, thickness=settings.inner_line_thickness)
+            mod.thickness = modifier_thickness_for_world_width(
+                obj,
+                settings.outline_thickness,
+            )
+            inner_lines.update_parameters(
+                obj,
+                thickness=modifier_thickness_for_world_width(
+                    obj,
+                    settings.inner_line_thickness,
+                ),
+            )
             intersection_lines.update_parameters(
                 obj,
-                thickness=settings.intersection_thickness,
+                thickness=modifier_thickness_for_world_width(
+                    obj,
+                    settings.intersection_thickness,
+                ),
             )
     _refresh_camera_objects(objects, context)
 
@@ -183,7 +205,10 @@ def _update_uniform_line_width(objects: list[bpy.types.Object], context) -> None
             mod.thickness_vertex_group = 0.0
             continue
 
-        mod.thickness = abs(settings.outline_thickness)
+        mod.thickness = modifier_thickness_for_world_width(
+            obj,
+            settings.outline_thickness,
+        )
         if vertex_analysis.has_width_controls(settings, "outline"):
             vg = _ensure_vertex_group(obj, core.VG_LINE_WIDTH)
             mod.vertex_group = vg.name
@@ -201,8 +226,20 @@ def _update_uniform_line_width(objects: list[bpy.types.Object], context) -> None
                 vertex_analysis.compute_and_apply_weights(obj, settings, target)
             else:
                 vertex_analysis.clear_width_weights(obj, group_name=group_name)
-        inner_lines.update_parameters(obj, thickness=settings.inner_line_thickness)
-        intersection_lines.update_parameters(obj, thickness=settings.intersection_thickness)
+        inner_lines.update_parameters(
+            obj,
+            thickness=modifier_thickness_for_world_width(
+                obj,
+                settings.inner_line_thickness,
+            ),
+        )
+        intersection_lines.update_parameters(
+            obj,
+            thickness=modifier_thickness_for_world_width(
+                obj,
+                settings.intersection_thickness,
+            ),
+        )
 
 
 def _update_width_controls(objects: list[bpy.types.Object], context) -> None:
@@ -306,7 +343,10 @@ def _update_inner_lines(
             if inner_lines.apply_inner_lines(
                 obj,
                 angle=settings.inner_line_angle,
-                thickness=settings.inner_line_thickness,
+                thickness=modifier_thickness_for_world_width(
+                    obj,
+                    settings.inner_line_thickness,
+                ),
                 material=outline_setup.get_outline_material(obj),
                 use_marked_edges=settings.use_marked_inner_edges,
                 enable=False,
