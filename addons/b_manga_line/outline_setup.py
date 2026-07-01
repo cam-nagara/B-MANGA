@@ -12,6 +12,7 @@ import json
 
 import bpy
 
+from . import plane_filter
 from .core import (
     AOV_NAME,
     COLOR_ATTR_NAME,
@@ -393,29 +394,16 @@ def _ensure_color_attribute(obj: bpy.types.Object):
     return attr
 
 
-def _mesh_has_open_edges(mesh: bpy.types.Mesh) -> bool:
-    edge_counts: dict[tuple[int, int], int] = {}
-    for poly in mesh.polygons:
-        vertices = list(poly.vertices)
-        if len(vertices) < 2:
-            continue
-        for index, v1 in enumerate(vertices):
-            v2 = vertices[(index + 1) % len(vertices)]
-            key = (v1, v2) if v1 <= v2 else (v2, v1)
-            edge_counts[key] = edge_counts.get(key, 0) + 1
-    return any(count == 1 for count in edge_counts.values())
-
-
 def _configure_solidify_shape(
     obj: bpy.types.Object,
     mod: bpy.types.Modifier,
     use_rim: bool,
 ) -> None:
-    open_mesh = _mesh_has_open_edges(obj.data)
+    is_sheet = plane_filter.is_sheet_mesh(obj)
     mod.offset = 1.0
     if hasattr(mod, "use_rim_only"):
-        mod.use_rim_only = open_mesh
-    mod.use_rim = True if open_mesh else use_rim
+        mod.use_rim_only = is_sheet
+    mod.use_rim = True if is_sheet else use_rim
 
 
 def _configure_line_only_solidify_shape(
@@ -428,11 +416,11 @@ def _configure_line_only_solidify_shape(
     if use_rim is None:
         settings = getattr(obj, "bmanga_line_settings", None)
         use_rim = bool(getattr(settings, "use_rim", False))
-    open_mesh = _mesh_has_open_edges(obj.data)
-    mod.offset = 1.0 if open_mesh else -1.0
+    is_sheet = plane_filter.is_sheet_mesh(obj)
+    mod.offset = 1.0 if is_sheet else -1.0
     if hasattr(mod, "use_rim_only"):
-        mod.use_rim_only = open_mesh
-    mod.use_rim = True if open_mesh else bool(use_rim)
+        mod.use_rim_only = is_sheet
+    mod.use_rim = True if is_sheet else bool(use_rim)
 
 
 def _restore_solidify_shape(obj: bpy.types.Object) -> None:

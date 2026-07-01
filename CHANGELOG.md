@@ -3,6 +3,32 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-01 — B-MANGA Lineの開いた立体アウトラインを復旧 (B-MANGA Line v0.3.45)
+
+### 症状
+
+- 指定シーンで全オブジェクトへラインを適用すると、Cube 以外の多くの建物・樹木でアウトライン本体が生成されず、細い内部線だけが見える状態になっていた。
+- モディファイアの線幅値は揃っていても、実画面上のアウトラインが欠けていた。
+
+### 原因
+
+- 黒い面を避けるための板ポリ対策が、開いた辺を持つ立体メッシュまで板ポリとして扱っていた。
+- 指定シーンには一部が開いた建物・樹木メッシュが多く、それらで外側のアウトライン生成が止まっていた。
+
+### 修正
+
+- 板ポリ対策の対象を、実際に薄い板状と判定できるメッシュだけに限定した。
+- 開いた辺を持つ立体メッシュは、通常の立体として外側アウトラインを生成するように戻した。
+- ラインのみ表示中も、板ポリだけを特別扱いし、開いた立体のアウトライン形状は維持するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\outline_setup.py test\blender_b_manga_line_open_mesh_outline_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_open_mesh_outline_check.py`
+- `Japanese_Streetscape_Tokyo_0004.blend` を UI なしで開き、全917メッシュに線幅100mm・線幅基準距離2m・通常設定でラインを適用。薄い板状として扱う111件だけが板ポリ対策の対象になり、板状ではないメッシュを板ポリ扱いする対象が0件であることを確認。
+
+---
+
 ## 2026-07-01 — B-MANGA Lineの線幅基準距離を追加 (B-MANGA Line v0.3.44)
 
 ### 症状

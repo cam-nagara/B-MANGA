@@ -68,6 +68,35 @@ def _add_closed_non_manifold_mesh() -> bpy.types.Object:
     return obj
 
 
+def _add_open_box_mesh() -> bpy.types.Object:
+    mesh = bpy.data.meshes.new("BML_open_box_mesh")
+    verts = [
+        (-0.5, -0.5, -0.5),
+        (0.5, -0.5, -0.5),
+        (0.5, 0.5, -0.5),
+        (-0.5, 0.5, -0.5),
+        (-0.5, -0.5, 0.5),
+        (0.5, -0.5, 0.5),
+        (0.5, 0.5, 0.5),
+        (-0.5, 0.5, 0.5),
+    ]
+    faces = [
+        (0, 1, 2, 3),
+        (0, 4, 5, 1),
+        (1, 5, 6, 2),
+        (2, 6, 7, 3),
+        (3, 7, 4, 0),
+    ]
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    obj = bpy.data.objects.new("BML_open_box", mesh)
+    bpy.context.collection.objects.link(obj)
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    obj.data.materials.append(_surface_material("BML_open_box_surface"))
+    return obj
+
+
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     b_manga_line.register()
@@ -110,6 +139,20 @@ def main() -> None:
         assert bool(cube.get(core.PROP_LINE_ONLY, False)), "ラインのみ表示中の再適用で状態が解除されています"
         assert outline_setup.set_line_only(cube, False)
         assert cube_mod.offset == 1.0, "通常表示へ戻した後もラインのみ表示の形状が残っています"
+
+        open_box = _add_open_box_mesh()
+        open_box_mod = _apply_line(open_box, use_rim=False)
+        if hasattr(open_box_mod, "use_rim_only"):
+            assert not open_box_mod.use_rim_only, "開いた立体を板ポリ扱いしています"
+        assert not open_box_mod.use_rim, "開いた立体でリム面が強制されています"
+        assert open_box_mod.offset == 1.0, "通常表示の開いた立体が内側アウトラインになっています"
+        assert outline_setup.set_line_only(open_box, True)
+        assert open_box_mod.offset == -1.0, "ラインのみ表示の開いた立体が外側形状のままです"
+        if hasattr(open_box_mod, "use_rim_only"):
+            assert not open_box_mod.use_rim_only, "ラインのみ表示で開いた立体を板ポリ扱いしています"
+        assert not open_box_mod.use_rim, "ラインのみ表示の開いた立体でリム面が強制されています"
+        assert outline_setup.set_line_only(open_box, False)
+        assert open_box_mod.offset == 1.0, "通常表示へ戻した開いた立体が内側形状のままです"
 
         assert outline_setup.set_line_only(plane, True)
         assert plane_mod.offset == 1.0
