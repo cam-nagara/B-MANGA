@@ -210,6 +210,53 @@ def _check_page_highlight_outline_only() -> None:
     assert calls == ["outline", "outline"], calls
 
 
+def _check_work_overview_current_page_keeps_preview(context, temp_root: Path) -> None:
+    from bmanga_dev_page_select_reorder.ui import overlay_page_preview
+    from bmanga_dev_page_select_reorder.utils import page_preview_object
+
+    scene = context.scene
+    work = scene.bmanga_work
+    page = work.pages[0]
+    page_id = str(getattr(page, "id", "") or "")
+    preview_path = page_preview_object._preview_png_path(work, page_id)  # noqa: SLF001
+    assert preview_path is not None
+    preview_path.parent.mkdir(parents=True, exist_ok=True)
+    preview_path.write_bytes(b"not-a-real-png")
+
+    calls: list[tuple[str, float, float, float, float, float]] = []
+    original_has_gpu_texture = overlay_page_preview._HAS_GPU_TEXTURE
+    original_draw_textured_quad = overlay_page_preview._draw_textured_quad
+    original_preview_opacity = overlay_page_preview._preview_opacity
+    try:
+        overlay_page_preview._HAS_GPU_TEXTURE = True
+        overlay_page_preview._preview_opacity = lambda _context: 1.0
+
+        def _record(path, x_mm, y_mm, w_mm, h_mm, opacity):
+            calls.append((str(path), float(x_mm), float(y_mm), float(w_mm), float(h_mm), float(opacity)))
+
+        overlay_page_preview._draw_textured_quad = _record
+        overlay_page_preview.draw_for_page(
+            context,
+            work,
+            page,
+            0,
+            0.0,
+            0.0,
+            is_current_page=True,
+        )
+    finally:
+        overlay_page_preview._HAS_GPU_TEXTURE = original_has_gpu_texture
+        overlay_page_preview._draw_textured_quad = original_draw_textured_quad
+        overlay_page_preview._preview_opacity = original_preview_opacity
+        try:
+            preview_path.unlink(missing_ok=True)
+        except Exception:  # noqa: BLE001
+            pass
+    assert calls, "作品ファイルのページ一覧で選択中ページのプレビューが描画されていません"
+    assert calls[-1][0] == str(preview_path), calls
+    assert temp_root.exists(), "一時作品フォルダが途中で消えています"
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_page_select_reorder_"))
     mod = None
@@ -226,6 +273,7 @@ def main() -> None:
         _check_viewport_shift_pick_updates_active(fake_context)
         _check_multi_select_reorder(fake_context)
         _check_page_highlight_outline_only()
+        _check_work_overview_current_page_keeps_preview(bpy.context, temp_root)
         print("BMANGA_PAGE_SELECTION_REORDER_OK")
     finally:
         if mod is not None:

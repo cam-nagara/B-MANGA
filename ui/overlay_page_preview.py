@@ -36,9 +36,15 @@ def draw_for_page(
 ) -> None:
     if not _HAS_GPU_TEXTURE:
         return
-    if is_current_page:
-        return
     from ..utils import page_preview_object, page_range
+    if is_current_page:
+        try:
+            from ..utils import page_file_scene
+
+            if page_file_scene.is_page_edit_scene(getattr(context, "scene", None)):
+                return
+        except Exception:  # noqa: BLE001
+            pass
     if not page_range.page_in_range(page):
         return
     page_id = str(getattr(page, "id", "") or "")

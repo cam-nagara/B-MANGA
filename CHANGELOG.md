@@ -3,6 +3,30 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-02 — ページ一覧で選択ページのプレビューを維持 (B-MANGA v0.6.424)
+
+### 症状
+
+- 作品ファイルのビューポート上のページ一覧でページを選択すると、そのページの表示が白い用紙だけになっていた。
+
+### 原因
+
+- 現在ページのプレビューを描かない判定が、ページファイルだけでなく作品ファイルのページ一覧にも適用されていた。
+- 選択ページが現在ページになると、プレビュー画像がスキップされ、用紙背景だけが残っていた。
+
+### 修正
+
+- 現在ページのプレビューを隠す処理をページファイル内だけに限定した。
+- 作品ファイルのページ一覧では、選択中ページでもページプレビューを描画するようにした。
+- ページ選択・並べ替え実機テストに、作品ファイルの現在ページでもプレビュー描画が呼ばれる確認を追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile __init__.py ui\overlay_page_preview.py test\blender_page_selection_reorder_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python-exit-code 1 --python test\blender_page_selection_reorder_check.py`
+
+---
+
 ## 2026-07-02 — レイヤー移動とフキダシ形状設定を調整 (B-MANGA v0.6.423)
 
 ### 症状
