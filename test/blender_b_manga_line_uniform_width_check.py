@@ -453,6 +453,46 @@ def _test_intersection_target_scale_conversion() -> None:
         )
 
 
+def _make_offset_origin_quad(name: str) -> bpy.types.Object:
+    mesh = bpy.data.meshes.new(name + "_mesh")
+    mesh.from_pydata(
+        [
+            (-0.5, -0.5, -7.5),
+            (0.5, -0.5, -7.5),
+            (0.5, 0.5, -6.5),
+            (-0.5, 0.5, -6.5),
+        ],
+        [],
+        [(0, 1, 2, 3)],
+    )
+    mesh.update()
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    obj.location = (0.0, 0.0, -1.0)
+    mat = bpy.data.materials.new(name + "_mat")
+    mat.diffuse_color = (1.0, 1.0, 1.0, 1.0)
+    obj.data.materials.append(mat)
+    return obj
+
+
+def _test_camera_compensation_uses_mesh_position_not_origin() -> None:
+    scene = bpy.context.scene
+    _clear_scene()
+    _configure_scene(scene)
+
+    obj = _make_offset_origin_quad("BML_origin_offset_visible_mesh")
+    _select(obj)
+    settings = obj.bmanga_line_settings
+    settings.outline_thickness_mm = 0.6
+    settings.use_camera_compensation = True
+    settings.camera_compensation_influence = 1.0
+    assert presets.apply_line_settings(obj, bpy.context)
+
+    expected = _expected_world_width(scene, 8.0, 0.6)
+    actual = _line_world_width(obj)
+    assert math.isclose(actual, expected, rel_tol=0.001), (actual, expected)
+
+
 def _test_evaluated_orthographic_width() -> None:
     scene = bpy.context.scene
     _clear_scene()
@@ -551,6 +591,7 @@ def main() -> None:
     _test_multi_select_mm_change_updates_all_modifiers()
     _test_object_scale_compensates_modifier_width()
     _test_intersection_target_scale_conversion()
+    _test_camera_compensation_uses_mesh_position_not_origin()
     _test_evaluated_orthographic_width()
     _test_linked_uniform_width_refresh_does_not_crash()
     print("[PASS] B-MANGA Line uniform width follows mm, DPI, and resolution")

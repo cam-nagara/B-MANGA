@@ -409,7 +409,14 @@ def _on_sheet_exclusion_changed(self, context):
         elif not self.exclude_sheet_meshes and sheet_mesh:
             refreshed_owner = _sync_inner_line_creation(owner, self, context)
             _sync_intersection_creation(owner, self, context)
-            _refresh_intersection_scene(context)
+            refreshed = _refresh_intersection_scene(context)
+            if refreshed:
+                _refresh_print_widths_for(
+                    context,
+                    refreshed,
+                    update_visibility=True,
+                    width_targets=("intersection",),
+                )
     _propagate(self, context, "exclude_sheet_meshes")
     if refreshed_owner:
         _refresh_print_widths_for(context, [owner], update_visibility=True)
@@ -577,11 +584,12 @@ def _sync_intersection_creation(owner: bpy.types.Object, settings, context) -> N
     )
 
 
-def _refresh_intersection_scene(context) -> None:
+def _refresh_intersection_scene(context) -> list[bpy.types.Object]:
     from . import intersection_lines
     scene = getattr(context, "scene", None)
     if scene is not None:
-        intersection_lines.refresh_scene_intersections(scene)
+        return intersection_lines.refresh_scene_intersections(scene)
+    return []
 
 
 def _on_intersection_enabled_changed(self, context):
@@ -597,7 +605,14 @@ def _on_intersection_enabled_changed(self, context):
             if intersection_lines.scene_has_enabled_intersections(
                 getattr(context, "scene", None),
             ):
-                _refresh_intersection_scene(context)
+                refreshed = _refresh_intersection_scene(context)
+                if refreshed:
+                    _refresh_print_widths_for(
+                        context,
+                        refreshed,
+                        update_visibility=True,
+                        width_targets=("intersection",),
+                    )
         return
     propagated = _propagate(self, context, "intersection_enabled")
     if propagated:
@@ -610,11 +625,13 @@ def _on_intersection_enabled_changed(self, context):
             )
     else:
         _sync_intersection_creation(owner, self, context)
-        _refresh_intersection_scene(context)
-        if any(iter_intersection_modifiers(owner)):
+        refreshed = _refresh_intersection_scene(context)
+        if any(iter_intersection_modifiers(owner)) and owner not in refreshed:
+            refreshed.append(owner)
+        if refreshed:
             _refresh_print_widths_for(
                 context,
-                [owner],
+                refreshed,
                 update_visibility=True,
                 width_targets=("intersection",),
             )
@@ -625,11 +642,15 @@ def _on_intersection_method_changed(self, context):
         return
     owner = self.id_data
     if not _propagate(self, context, "intersection_method"):
-        _refresh_intersection_scene(context)
-    if any(iter_intersection_modifiers(owner)):
+        refreshed = _refresh_intersection_scene(context)
+    else:
+        refreshed = []
+    if any(iter_intersection_modifiers(owner)) and owner not in refreshed:
+        refreshed.append(owner)
+    if refreshed:
         _refresh_print_widths_for(
             context,
-            [owner],
+            refreshed,
             update_visibility=True,
             width_targets=("intersection",),
         )

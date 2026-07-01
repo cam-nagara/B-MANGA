@@ -358,6 +358,25 @@ def _reference_width_for_mesh(scene, camera, obj, width_m: float) -> float:
     )
 
 
+def _compensated_width_for_mesh(
+    scene,
+    camera,
+    obj,
+    settings,
+    width_m: float,
+) -> float:
+    ref_distance = _line_width_reference_distance(settings)
+    reference_width = _reference_width_for_distance(
+        scene,
+        camera,
+        width_m,
+        ref_distance,
+    )
+    mesh_width = _reference_width_for_mesh(scene, camera, obj, width_m)
+    influence = float(getattr(settings, "camera_compensation_influence", 1.0))
+    return reference_width + (mesh_width - reference_width) * influence
+
+
 def _prepare_style_weights(obj, settings, target: str) -> bool:
     from . import vertex_analysis
 
@@ -620,17 +639,13 @@ def _apply_reference_target_line_width(scene, camera, obj, settings, target: str
 
 
 def _apply_compensated_target_line_width(scene, camera, obj, settings, target: str) -> None:
-    cam_loc = camera.matrix_world.translation
-    ref_d = _line_width_reference_distance(settings)
-    base = _reference_width_for_distance(
+    adjusted = _compensated_width_for_mesh(
         scene,
         camera,
+        obj,
+        settings,
         _target_width_setting(settings, target),
-        ref_d,
     )
-    dist = (cam_loc - obj.matrix_world.translation).length
-    factor = dist / ref_d
-    adjusted = base * (1.0 + (factor - 1.0) * settings.camera_compensation_influence)
     _apply_target_style_weights(obj, settings, target)
     _apply_target_width(obj, target, adjusted)
 
@@ -650,7 +665,7 @@ def _update_camera_compensation(scene, camera, objects=None, width_targets=None)
     from . import inner_lines, intersection_lines, vertex_analysis
 
     normalized_targets = _normalize_width_targets(width_targets)
-    cam_loc = camera.matrix_world.translation
+    outline_targets: list[bpy.types.Object] = []
     for obj in _line_width_objects(scene, objects):
         settings = getattr(obj, "bmanga_line_settings", None)
         if settings is None:
@@ -660,12 +675,16 @@ def _update_camera_compensation(scene, camera, objects=None, width_targets=None)
             continue
         if normalized_targets is not None:
             _apply_targeted_line_widths(scene, camera, obj, settings, normalized_targets)
+            if "outline" in normalized_targets:
+                outline_targets.append(obj)
             continue
         if settings.use_uniform_line_width:
             _apply_uniform_line_width(scene, camera, obj, settings, mod)
+            outline_targets.append(obj)
             continue
         if not settings.use_camera_compensation:
             _apply_reference_line_width(scene, camera, obj, settings, mod)
+            outline_targets.append(obj)
             continue
 
         if _prepare_style_weights(obj, settings, "outline"):
@@ -684,7 +703,6 @@ def _update_camera_compensation(scene, camera, objects=None, width_targets=None)
         else:
             vertex_analysis.clear_width_weights(obj, group_name=VG_INTERSECTION_LINE_WIDTH)
 
-        influence = settings.camera_compensation_influence
         ref_d = _line_width_reference_distance(settings)
         base_t = max(
             _reference_width_for_distance(
@@ -695,20 +713,25 @@ def _update_camera_compensation(scene, camera, objects=None, width_targets=None)
             ),
             1.0e-9,
         )
-        dist = (cam_loc - obj.matrix_world.translation).length
-        factor = dist / ref_d
-        adjusted = base_t * (1.0 + (factor - 1.0) * influence)
+        adjusted = max(
+            _compensated_width_for_mesh(
+                scene,
+                camera,
+                obj,
+                settings,
+                settings.outline_thickness,
+            ),
+            1.0e-9,
+        )
         mod.thickness = modifier_thickness_for_world_width(obj, adjusted)
+        outline_targets.append(obj)
 
         outline_base = max(abs(float(settings.outline_thickness)), 1.0e-9)
         inner_scale = abs(float(settings.inner_line_thickness)) / outline_base
         intersection_scale = abs(float(settings.intersection_thickness)) / outline_base
-        inner_adjusted = base_t * inner_scale * (
-            1.0 + (factor - 1.0) * influence
-        )
-        intersection_adjusted = base_t * intersection_scale * (
-            1.0 + (factor - 1.0) * influence
-        )
+        scale = adjusted / base_t
+        inner_adjusted = base_t * inner_scale * scale
+        intersection_adjusted = base_t * intersection_scale * scale
         if has_inner:
             inner_lines.update_parameters(
                 obj,
@@ -722,6 +745,8 @@ def _update_camera_compensation(scene, camera, objects=None, width_targets=None)
                     intersection_adjusted,
                 ),
             )
+    if outline_targets:
+        intersection_lines.update_target_width_references(scene, outline_targets)
 
 
 def _update_visibility(scene, camera, cam_loc, cam_fwd, objects=None):

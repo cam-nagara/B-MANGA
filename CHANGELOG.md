@@ -3,6 +3,47 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-01 — B-MANGA Lineの原点ずれ線幅と近接交差線を修正 (B-MANGA Line v0.3.60)
+
+### 症状
+
+- オブジェクト単位の線幅均一化を使うと、Cubeでは線幅が合う一方、原点が見えているメッシュから離れている素材では線幅が細く見えることがあった。
+- ライン適用直後、カメラ基準なら届く近接・接触相手の交差線が作成対象から落ちることがあった。
+- アウトライン幅が変わった後、既存交差線が参照する交差対象側の線幅が古いまま残る経路があった。
+
+### 原因
+
+- オブジェクト単位の線幅均一化が、実際のメッシュ位置ではなくオブジェクト原点の距離で太さを補正していた。
+- ライン適用後の更新順が、カメラ基準のアウトライン幅を反映する前に交差線候補を作成していた。
+- 交差対象側のアウトライン幅だけを変更した場合、既存交差線の相手側線幅参照を更新していなかった。
+
+### 修正
+
+- 線幅均一化の距離基準を、オブジェクト原点ではなくメッシュ境界の中心位置へ変更した。
+- ライン適用後は、先にカメラ基準のアウトライン幅を反映してから交差線を作成し、生成済み交差線だけを再度現在の幅へ合わせる順序にした。
+- アウトライン幅更新時に、既存交差線の交差対象側線幅参照だけを軽く更新する処理を追加した。
+- 交差線が選択外オブジェクト側へ生成された場合も、生成直後に現在のカメラ基準幅へ更新するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\batch_update.py addons\b_manga_line\camera_comp.py addons\b_manga_line\intersection_lines.py addons\b_manga_line\presets.py test\blender_b_manga_line_uniform_width_check.py test\blender_b_manga_line_intersection_fill_check.py`
+- `git diff --check`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_uniform_width_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_intersection_fill_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_intersection_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_view_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_toggle_matrix_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_auto_intersection_targets_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_generated_update_scope_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_select_range_outline_toggle_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_aov_line_only_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_aov_view_line_only_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_full_visual_audit_check.py`
+- 生成画像 `01_outline_inner_intersection.png` を目視し、アウトライン・内部線・交差線が極端に細くならず表示されることを確認。
+
+---
+
 ## 2026-07-01 — B-MANGA Line更新重複の徹底チェックと全体チェック (B-MANGA Line v0.3.59)
 
 ### 症状

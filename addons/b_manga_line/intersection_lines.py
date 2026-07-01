@@ -930,10 +930,34 @@ def update_parameters(
     return changed
 
 
-def refresh_scene_intersections(scene: bpy.types.Scene) -> None:
+def update_target_width_references(
+    scene: bpy.types.Scene | None,
+    targets: list[bpy.types.Object] | tuple[bpy.types.Object, ...] | None = None,
+) -> int:
+    """交差対象側アウトライン幅の参照値を現在の幅へ更新."""
+    if scene is None:
+        return 0
+    target_set = {target.as_pointer() for target in targets} if targets else None
+    changed = 0
+    for obj in scene.objects:
+        if obj.type != "MESH":
+            continue
+        for mod in iter_intersection_modifiers(obj):
+            target = _modifier_target(mod)
+            if target is None:
+                continue
+            if target_set is not None and target.as_pointer() not in target_set:
+                continue
+            _set_modifier_parameters(mod, target, None, None, None)
+            changed += 1
+    return changed
+
+
+def refresh_scene_intersections(scene: bpy.types.Scene) -> list[bpy.types.Object]:
     """シーン内の交差線を、現在のメッシュ構成に合わせて作り直す."""
     from . import outline_setup, plane_filter
 
+    refreshed: list[bpy.types.Object] = []
     for obj in scene.objects:
         if obj.type != "MESH":
             continue
@@ -962,3 +986,6 @@ def refresh_scene_intersections(scene: bpy.types.Scene) -> None:
             method=settings.intersection_method,
             scene=scene,
         )
+        if any(iter_intersection_modifiers(obj)):
+            refreshed.append(obj)
+    return refreshed

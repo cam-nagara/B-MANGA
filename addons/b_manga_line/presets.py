@@ -129,8 +129,15 @@ def _update_view_layer(context) -> None:
 def _refresh_after_line_settings(context) -> None:
     from . import camera_comp, intersection_lines, outline_setup
 
-    intersection_lines.refresh_scene_intersections(context.scene)
     camera_comp.refresh(context)
+    intersection_targets = intersection_lines.refresh_scene_intersections(context.scene)
+    if intersection_targets:
+        camera_comp.refresh_objects(
+            context,
+            intersection_targets,
+            update_visibility=True,
+            width_targets=("intersection",),
+        )
     outline_setup.ensure_aov_passes(context.scene)
 
 

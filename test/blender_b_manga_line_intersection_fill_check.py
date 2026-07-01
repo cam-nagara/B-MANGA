@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import core, intersection_lines, outline_setup  # noqa: E402
+from b_manga_line import core, intersection_lines, outline_setup, presets  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -74,6 +74,18 @@ def _make_target_cylinder(white_mat):
     return obj
 
 
+def _make_gap_cube(name: str, location: tuple[float, float, float], white_mat):
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=location)
+    obj = bpy.context.object
+    obj.name = name
+    obj.data.materials.append(white_mat)
+    settings = obj.bmanga_line_settings
+    settings.outline_thickness_mm = 0.6
+    settings.intersection_thickness_mm = 0.2
+    settings.intersection_enabled = True
+    return obj
+
+
 def _evaluated_line_stats(
     obj,
     line_mat: bpy.types.Material,
@@ -106,6 +118,44 @@ def _evaluated_line_stats(
         return line_polygons, surface_polygons, coords
     finally:
         bpy.data.meshes.remove(mesh)
+
+
+def _target_names(obj: bpy.types.Object) -> set[str]:
+    names: set[str] = set()
+    for mod in core.iter_intersection_modifiers(obj):
+        target = intersection_lines._modifier_target(mod)
+        if target is not None:
+            names.add(target.name)
+    return names
+
+
+def _assert_near_contact_uses_camera_width_before_generation() -> None:
+    _clear_scene()
+    scene = bpy.context.scene
+    scene.render.resolution_x = 1000
+    scene.render.resolution_y = 1000
+    scene.render.resolution_percentage = 100
+    bpy.ops.object.camera_add(location=(0.0, 0.0, 5.0), rotation=(0.0, 0.0, 0.0))
+    camera = bpy.context.object
+    camera.data.type = "ORTHO"
+    camera.data.ortho_scale = 4.0
+    scene.camera = camera
+
+    white_mat = _emission_material("確認用_近接白", (1.0, 1.0, 1.0, 1.0))
+    source = _make_gap_cube("交差確認_A_近接元", (0.0, 0.0, 0.0), white_mat)
+    target = _make_gap_cube("交差確認_B_近接対象", (1.02, 0.0, 0.0), white_mat)
+    for obj in (source, target):
+        assert presets.apply_line_settings(
+            obj,
+            bpy.context,
+            refresh_scene=False,
+            transforms_fresh=True,
+        )
+    presets._refresh_after_line_settings(bpy.context)
+
+    assert target.name in _target_names(source), (
+        "カメラ基準の線幅なら届く近接交差対象が作成対象から落ちています"
+    )
 
 
 def main() -> None:
@@ -149,6 +199,8 @@ def main() -> None:
     max_y = max(co.y for co in coords)
     assert min_x < -0.60 and max_x > 0.60, (min_x, max_x)
     assert min_y < -0.60 and max_y > 0.60, (min_y, max_y)
+
+    _assert_near_contact_uses_camera_width_before_generation()
 
     print("[OK] 交差対象ライン厚みの評価済みジオメトリを確認", flush=True)
 
