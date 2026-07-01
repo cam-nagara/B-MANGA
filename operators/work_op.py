@@ -534,6 +534,18 @@ class BMANGA_OT_work_save(Operator):
                 self.report({"ERROR"}, "作品メタデータの保存に失敗しました")
                 return {"CANCELLED"}
             mode = get_mode(context)
+            if mode == MODE_COMA and bool(getattr(work, "auto_render_coma_thumb_on_return", True)):
+                try:
+                    from ..utils import coma_thumb_output
+
+                    if not coma_thumb_output.render_thumb_png(
+                        context,
+                        skip_if_recent_seconds=2.0,
+                    ):
+                        self.report({"WARNING"}, "コマ画像の更新に失敗しました")
+                except Exception:  # noqa: BLE001
+                    _logger.exception("work_save: coma thumb refresh failed")
+                    self.report({"WARNING"}, "コマ画像の更新に失敗しました")
             if mode != MODE_COMA:
                 _disable_work_viewport_overlays(context)
             try:

@@ -3,6 +3,33 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-02 — コマ用blend保存時にコマ画像を更新 (B-MANGA v0.6.426)
+
+### 症状
+
+- コマ用blendファイルでオブジェクトなどを配置して保存したあと、ページファイルへ戻っても、ページファイルのコマプレビューに内容が反映されない場合があった。
+- 保存済みのコマ用blendファイルと、ページファイル・作品ファイル側のプレビュー画像がずれる経路が残っていた。
+
+### 原因
+
+- 「ページに戻る」操作ではコマ画像を更新していたが、B-MANGA の「作品を保存」をコマ用blendファイル内で実行した場合は、コマ画像を更新していなかった。
+- その状態でページファイルや作品ファイル側のプレビューを再生成しても、古いコマ画像を元に描画していた。
+
+### 修正
+
+- コマ用blendファイル内で「作品を保存」を実行した時、現在のコマ画像を保存前に更新するようにした。
+- 直後に「ページに戻る」を実行した場合は、同じコマ画像を短時間で二重更新しないようにした。
+- コマ画像の出力先を現在のコマ用blendファイルから検証し、期待する `thumb.png` が生成されない場合は失敗として扱うようにした。
+- 作品ファイル・ページファイル・コマファイル間の主要なプレビュー反映経路を、AI目視シート付きの実機テストとして追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile utils\coma_thumb_output.py operators\work_op.py operators\mode_op.py test\blender_preview_propagation_visual_audit.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --python test\blender_preview_propagation_visual_audit.py`
+- AI目視: `.codex\visual\preview_propagation\preview_propagation_sheet.png` で、作品ファイル編集→ページ一覧/ページファイル、ページファイル編集→ページ画像/作品ファイル/コマ参照、コマファイル編集→コマ画像/ページファイル/作品ファイルの反映を確認。
+
+---
+
 ## 2026-07-02 — コマ用blendのページ画像に輪郭ぼかしを反映 (B-MANGA v0.6.425)
 
 ### 症状

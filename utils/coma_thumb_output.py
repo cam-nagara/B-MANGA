@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import math
+import time
+from pathlib import Path
 
 import bpy
 
-from . import log
+from . import log, paths
 
 _logger = log.get_logger(__name__)
 
@@ -15,6 +17,23 @@ THUMB_SOCKET_NAME = "thumb"
 THUMB_NODE_NAME = THUMB_FILE_NAME
 THUMB_SCALE_NODE_NAME = "BManga_ThumbScale"
 DEFAULT_THUMB_SCALE_PERCENTAGE = 12.5
+LAST_RENDER_TIME_PROP = "_bmanga_last_thumb_render_time"
+LAST_RENDER_PATH_PROP = "_bmanga_last_thumb_render_path"
+
+
+def expected_thumb_path_for_current_file() -> Path | None:
+    """現在の cNN.blend に対応する ``thumb.png`` のパスを返す."""
+    filepath = str(getattr(bpy.data, "filepath", "") or "")
+    if not filepath:
+        return None
+    blend_path = Path(filepath)
+    if blend_path.name != f"{blend_path.parent.name}.blend":
+        return None
+    coma_id = blend_path.parent.name
+    page_id = blend_path.parent.parent.name
+    if not paths.is_valid_coma_id(coma_id) or not paths.is_valid_page_id(page_id):
+        return None
+    return blend_path.parent / THUMB_FILE_NAME
 
 
 def ensure_thumb_output_node(scene=None) -> bool:
@@ -298,12 +317,27 @@ def _restore_node_mutes(states) -> None:
             pass
 
 
-def render_thumb_png(context=None) -> bool:
+def _recent_render_is_usable(scene, path: Path | None, seconds: float) -> bool:
+    if scene is None or path is None or seconds <= 0.0 or not path.is_file():
+        return False
+    try:
+        last_time = float(scene.get(LAST_RENDER_TIME_PROP, 0.0) or 0.0)
+    except (TypeError, ValueError):
+        return False
+    if time.time() - last_time > seconds:
+        return False
+    return str(scene.get(LAST_RENDER_PATH_PROP, "") or "") == str(path)
+
+
+def render_thumb_png(context=None, *, skip_if_recent_seconds: float = 0.0) -> bool:
     """``thumb.png`` だけを現在の「コマ画像縮小率」でレンダリングする."""
     context = context or bpy.context
     scene = getattr(context, "scene", None)
     if scene is None:
         return False
+    expected_path = expected_thumb_path_for_current_file()
+    if _recent_render_is_usable(scene, expected_path, skip_if_recent_seconds):
+        return True
     if not ensure_thumb_output_node(scene):
         return False
     tree = getattr(scene, "compositing_node_group", None)
@@ -313,6 +347,14 @@ def render_thumb_png(context=None) -> bool:
     try:
         scene.render.resolution_percentage = new_percentage
         bpy.ops.render.render(write_still=False)
+        try:
+            scene[LAST_RENDER_TIME_PROP] = time.time()
+            scene[LAST_RENDER_PATH_PROP] = str(expected_path or "")
+        except Exception:  # noqa: BLE001
+            pass
+        if expected_path is not None and not expected_path.is_file():
+            _logger.warning("thumb output: expected file was not written: %s", expected_path)
+            return False
         return True
     except Exception:  # noqa: BLE001
         _logger.exception("thumb output: render failed")
