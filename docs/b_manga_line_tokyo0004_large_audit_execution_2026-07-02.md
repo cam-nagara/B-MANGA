@@ -179,3 +179,25 @@
 - OK: setting_intersection_max_distance (0.0016s)
 - OK: setting_intersection_edge_smooth_factor (0.3636s)
 - OK: setting_intersection_edge_midpoint_jitter_percent (0.0019s)
+
+## phase4
+
+- JSON: `D:\Develop\Blender\B-MANGA\_verify\b_manga_line_tokyo0004_large_audit_2026-07-02\phase4_result.json`
+- Summary: `D:\Develop\Blender\B-MANGA\_verify\b_manga_line_tokyo0004_large_audit_2026-07-02\phase4_summary.md`
+- Errors: 0
+- Warnings: 0
+- Screenshots: 4
+
+### Screenshots
+
+- `D:\Develop\Blender\B-MANGA\_verify\b_manga_line_tokyo0004_large_audit_2026-07-02\screenshots\phase4_outline_midpoint_smooth.png`
+- `D:\Develop\Blender\B-MANGA\_verify\b_manga_line_tokyo0004_large_audit_2026-07-02\screenshots\phase4_inner_midpoint_smooth.png`
+- `D:\Develop\Blender\B-MANGA\_verify\b_manga_line_tokyo0004_large_audit_2026-07-02\screenshots\phase4_intersection_midpoint_smooth.png`
+- `D:\Develop\Blender\B-MANGA\_verify\b_manga_line_tokyo0004_large_audit_2026-07-02\screenshots\phase4_midpoint_jitter_all.png`
+
+### Operations
+
+- OK: ラインを適用 (0.0175s)
+- OK: ラインを適用 (0.0089s)
+- OK: ラインを適用 (0.0124s)
+- OK: ラインを適用 (0.015s)
