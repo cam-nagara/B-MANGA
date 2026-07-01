@@ -80,9 +80,76 @@ def _current_page(work):
     return work.pages[work.active_page_index]
 
 
+def _add_coma_children(work, page, parent_key: str) -> dict[str, object]:
+    scene = bpy.context.scene
+    entries: dict[str, object] = {}
+
+    balloon = page.balloons.add()
+    balloon.id = "merge_child_balloon"
+    balloon.parent_kind = "coma"
+    balloon.parent_key = parent_key
+    balloon.x_mm = 12.0
+    balloon.y_mm = 12.0
+    balloon.width_mm = 12.0
+    balloon.height_mm = 8.0
+    entries["balloon"] = balloon
+
+    text = page.texts.add()
+    text.id = "merge_child_text"
+    text.parent_kind = "coma"
+    text.parent_key = parent_key
+    text.x_mm = 14.0
+    text.y_mm = 14.0
+    text.width_mm = 10.0
+    text.height_mm = 6.0
+    entries["text"] = text
+
+    image = scene.bmanga_image_layers.add()
+    image.id = "merge_child_image"
+    image.parent_kind = "coma"
+    image.parent_key = parent_key
+    entries["image"] = image
+
+    raster = scene.bmanga_raster_layers.add()
+    raster.id = "merge_child_raster"
+    raster.scope = "page"
+    raster.parent_kind = "coma"
+    raster.parent_key = parent_key
+    entries["raster"] = raster
+
+    fill = scene.bmanga_fill_layers.add()
+    fill.id = "merge_child_fill"
+    fill.parent_kind = "coma"
+    fill.parent_key = parent_key
+    entries["fill"] = fill
+
+    image_path = scene.bmanga_image_path_layers.add()
+    image_path.id = "merge_child_image_path"
+    image_path.parent_kind = "coma"
+    image_path.parent_key = parent_key
+    entries["image_path"] = image_path
+
+    folder = work.layer_folders.add()
+    folder.id = "merge_child_folder"
+    folder.parent_key = parent_key
+    entries["folder"] = folder
+
+    return entries
+
+
+def _assert_coma_children_parent(entries: dict[str, object], expected_key: str) -> None:
+    for label, entry in entries.items():
+        actual = str(getattr(entry, "parent_key", "") or "")
+        if actual != expected_key:
+            raise AssertionError(f"{label} parent was not moved: expected {expected_key}, got {actual}")
+        if label != "folder" and str(getattr(entry, "parent_kind", "") or "") != "coma":
+            raise AssertionError(f"{label} parent kind was not kept as panel child")
+
+
 def _test_page_file_basic_frame_and_merge(temp_root: Path) -> None:
     from bmanga_dev.io import page_io
     from bmanga_dev.operators.coma_op import create_rect_coma
+    from bmanga_dev.utils.layer_hierarchy import coma_stack_key
     from bmanga_dev.utils import coma_border_object, coma_plane, object_selection
 
     work_path = temp_root / "PageBasicFrame.bmanga"
@@ -130,6 +197,7 @@ def _test_page_file_basic_frame_and_merge(temp_root: Path) -> None:
 
     first = create_rect_coma(work, page, work_dir, 10.0, 10.0, 20.0, 20.0)
     second = create_rect_coma(work, page, work_dir, 90.0, 10.0, 20.0, 20.0)
+    child_entries = _add_coma_children(work, page, coma_stack_key(page, first))
     before_count = len(page.comas)
     object_selection.set_keys(
         bpy.context,
@@ -141,6 +209,7 @@ def _test_page_file_basic_frame_and_merge(temp_root: Path) -> None:
     if len(page.comas) != before_count - 1:
         raise AssertionError("panel merge did not reduce panel count by one")
     survivor = page.comas[page.active_coma_index]
+    _assert_coma_children_parent(child_entries, coma_stack_key(page, survivor))
     if str(getattr(survivor, "merged_border_mode", "") or "") != "separate":
         raise AssertionError("separate border mode was not stored")
     stored = json.loads(str(getattr(survivor, "merged_border_polygons_json", "") or "[]"))

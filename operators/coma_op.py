@@ -12,7 +12,7 @@ from bpy.types import Operator
 
 from ..core.work import get_active_page, get_work
 from ..io import page_io, coma_io, schema
-from ..utils import edge_selection, object_selection
+from ..utils import coma_child_reparent, edge_selection, object_selection
 from ..utils import layer_stack as layer_stack_utils
 from ..utils import log, page_grid, paths
 from .coma_knife_cut_op import _coma_polygon, _polygon_area, _set_coma_polygon, _split_convex_polygon_by_line
@@ -301,17 +301,6 @@ def _clear_merged_border_shape(panel) -> None:
         panel.merged_border_mode = "shape"
     if hasattr(panel, "merged_border_polygons_json"):
         panel.merged_border_polygons_json = ""
-
-
-def _append_layer_refs(dst, src) -> None:
-    existing = {str(getattr(ref, "layer_id", "") or "") for ref in getattr(dst, "layer_refs", []) or []}
-    for ref in getattr(src, "layer_refs", []) or []:
-        layer_id = str(getattr(ref, "layer_id", "") or "")
-        if not layer_id or layer_id in existing:
-            continue
-        added = dst.layer_refs.add()
-        added.layer_id = layer_id
-        existing.add(layer_id)
 
 
 def _split_polygon_grid(
@@ -877,10 +866,7 @@ class BMANGA_OT_coma_merge_selected(Operator):
                 if not (0 <= idx < len(page.comas)):
                     continue
                 removed = page.comas[idx]
-                old_key = layer_stack_utils.gp_parent_key_for_coma(page, removed)
-                _append_layer_refs(survivor, removed)
-                layer_stack_utils.reparent_gp_layers(context, old_key, survivor_key)
-                layer_stack_utils.reparent_effect_layers(context, old_key, survivor_key)
+                coma_child_reparent.reparent_coma_children(context, page, removed, survivor)
                 try:
                     coma_io.remove_coma_files(work_dir, page.id, removed.coma_id)
                 except Exception:  # noqa: BLE001

@@ -3,6 +3,29 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-02 — コマ結合時のレイヤー所属を補正 (B-MANGA v0.6.422)
+
+### 症状
+
+- 「コマを結合」で複数コマを1つにしたとき、削除される側のコマ内にあった一部レイヤーが、結合後のコマ配下へ移らない可能性があった。
+
+### 原因
+
+- 徹底チェックで、結合処理が下書きと効果線の所属移し替えを優先しており、フキダシ、テキスト、画像、ラスター、塗り、画像パス、フォルダの親コマ更新が不足していることを確認した。
+
+### 修正
+
+- コマ結合時に、削除される側のコマを親にしていた各種レイヤーとフォルダを、残るコマへ移す共通処理を追加した。
+- レイヤー同士は結合せず、表示位置を保ったまま所属コマだけを更新するようにした。
+- 徹底チェック用テストに、各種レイヤーが結合後のコマ配下へ移る確認を追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile __init__.py utils\coma_child_reparent.py operators\coma_op.py test\blender_coma_basic_frame_merge_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python-exit-code 1 --python test\blender_coma_basic_frame_merge_check.py`
+
+---
+
 ## 2026-07-02 — 基本枠コマ復旧とコマ結合を追加 (B-MANGA v0.6.421)
 
 ### 症状
