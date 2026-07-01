@@ -34,6 +34,12 @@ def _outline_modifier(obj: bpy.types.Object):
     return obj.modifiers.get(core.MODIFIER_NAME)
 
 
+def defer_intersection_viewport(objects) -> None:
+    for obj in objects:
+        for mod in core.iter_intersection_modifiers(obj):
+            intersection_lines._queue_deferred_viewport_modifier(obj, mod)
+
+
 def _target_modifier_exists(obj: bpy.types.Object, target: str) -> bool:
     if target == "inner":
         return obj.modifiers.get(core.GN_MODIFIER_NAME) is not None
@@ -129,6 +135,8 @@ def _update_outline_enabled(objects: list[bpy.types.Object], context) -> None:
         obj.bmanga_line_settings.outline_enabled and _outline_modifier(obj) is None
         for obj in objects
     )
+    if any(obj.bmanga_line_settings.outline_enabled for obj in objects):
+        defer_intersection_viewport(objects)
     if needs_view_update:
         presets._update_view_layer(context)
     refresh_targets = []

@@ -3,6 +3,40 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-02 — B-MANGA Line交差線だけの状態からのアウトラインオンを軽量化 (B-MANGA Line v0.3.65)
+
+### 症状
+
+- 交差線だけが表示されている状態で「アウトラインを追加」をオンにすると、アウトライン自体の切り替えなのに非常に重くなることがあった。
+
+### 原因
+
+- アウトラインをオンにする瞬間、既存の交差線モディファイアが表示されたままだった。
+- そのため、アウトラインの表示・作成に合わせて、Blender側が交差線を同時に再評価していた。
+
+### 修正
+
+- アウトラインをオンにする前に、対象オブジェクトの交差線表示をいったん復帰待ちへ退避するようにした。
+- 複数選択時の一括適用経路と、単独オブジェクトの更新経路の両方で同じ退避処理を行うようにした。
+- 交差線だけを持つオブジェクトでアウトラインをオンにする実機テストを追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\batch_update.py test\blender_b_manga_line_outline_enable_with_intersections_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_outline_enable_with_intersections_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_select_range_outline_toggle_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_multi_intersection_modifier_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_intersection_fill_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_auto_intersection_targets_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_toggle_matrix_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_uniform_width_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_intersection_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_sheet_mesh_exclusion_check.py`
+- `D:\TM Dropbox\Share\Assets\Japanese Streetscape Tokyo 0004\Japanese_Streetscape_Tokyo_0004.blend` で、レンダリング範囲内137メッシュに交差線だけを作成後、「アウトラインを追加」オンが約0.013秒で完了し、交差線19個が復帰待ちへ退避することを確認。
+
+---
+
 ## 2026-07-02 — B-MANGA Line交差線高速化後の表示復帰を修正 (B-MANGA Line v0.3.64)
 
 ### 症状

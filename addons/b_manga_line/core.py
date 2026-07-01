@@ -277,10 +277,8 @@ def set_outline_visibility_from_settings(obj: bpy.types.Object) -> bool:
     if mod is None:
         return False
     settings = getattr(obj, "bmanga_line_settings", None)
-    visible = (
-        settings is None
-        or bool(getattr(settings, "outline_enabled", True))
-    ) and not bool(obj.get(PROP_LINES_HIDDEN, False))
+    outline_on = settings is None or bool(getattr(settings, "outline_enabled", True))
+    visible = outline_on and not bool(obj.get(PROP_LINES_HIDDEN, False))
     changed = False
     if mod.show_viewport != visible:
         mod.show_viewport = visible
@@ -305,8 +303,10 @@ def _on_outline_enabled_changed(self, context):
     created_owner = False
     visibility_changed = False
     if owner.type == "MESH" and has_line(owner):
-        if self.outline_enabled and owner.modifiers.get(MODIFIER_NAME) is None:
-            created_owner = _ensure_outline_for_settings(owner, self, context)
+        if self.outline_enabled:
+            from . import batch_update; batch_update.defer_intersection_viewport([owner])
+            if owner.modifiers.get(MODIFIER_NAME) is None:
+                created_owner = _ensure_outline_for_settings(owner, self, context)
         if set_outline_visibility_from_settings(owner):
             visibility_changed = True
     _propagate(self, context, "outline_enabled")
