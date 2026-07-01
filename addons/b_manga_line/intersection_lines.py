@@ -603,6 +603,8 @@ def _auto_targets(
             if candidate.modifiers.get(MODIFIER_NAME) is None:
                 continue
             candidate_settings = getattr(candidate, "bmanga_line_settings", None)
+            if not _creation_in_range(candidate, src_scene):
+                continue
             if plane_filter.should_exclude_generated_lines(candidate, candidate_settings):
                 continue
             candidate_enabled = bool(

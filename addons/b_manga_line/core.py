@@ -884,14 +884,14 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
 
     use_inner_line_creation_limit: BoolProperty(
         name="作成範囲を制限",
-        description="カメラから指定距離以内のオブジェクトにだけ内部線を作成する",
+        description="カメラに写り、指定距離以内にあるオブジェクトにだけ内部線を作成する",
         default=True,
         update=_on_inner_creation_limit_changed,
     )  # type: ignore[valid-type]
 
     inner_line_creation_max_distance: FloatProperty(
         name="作成する距離 (m)",
-        description="この距離以内のオブジェクトにだけ内部線を作成する",
+        description="カメラに写るオブジェクトのうち、この距離以内のものだけに内部線を作成する",
         default=10.0,
         min=0.1,
         max=1000.0,
@@ -945,14 +945,14 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
 
     use_intersection_creation_limit: BoolProperty(
         name="作成範囲を制限",
-        description="カメラから指定距離以内のオブジェクトにだけ交差線を作成する",
+        description="カメラに写り、指定距離以内にあるオブジェクトにだけ交差線を作成する",
         default=True,
         update=_on_intersection_creation_limit_changed,
     )  # type: ignore[valid-type]
 
     intersection_creation_max_distance: FloatProperty(
         name="作成する距離 (m)",
-        description="この距離以内のオブジェクトにだけ交差線を作成する",
+        description="カメラに写るオブジェクトのうち、この距離以内のものだけに交差線を作成する",
         default=10.0,
         min=0.1,
         max=1000.0,

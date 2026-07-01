@@ -249,6 +249,7 @@ def _assert_multi_select_manual_setting_propagation(
     assert disabled_inner is None or (
         not disabled_inner.show_viewport and not disabled_inner.show_render
     )
+    source.use_inner_line_creation_limit = False
     source.inner_line_enabled = True
     source.inner_line_angle = math.radians(45.0)
     source.use_marked_inner_edges = True
@@ -278,6 +279,7 @@ def _assert_multi_select_manual_setting_propagation(
     source.intersection_enabled = False
     assert target.intersection_enabled is False
     assert not _intersection_mods(second)
+    source.use_intersection_creation_limit = False
     source.intersection_enabled = True
     source.intersection_method = "BOOLEAN"
     source.intersection_thickness_mm = 1.4
@@ -446,6 +448,8 @@ def main() -> None:
         _make_camera()
     _assert_distance_threshold_hides_at_exact_distance(target)
     _select(source, [source])
+    settings.use_inner_line_creation_limit = False
+    settings.use_intersection_creation_limit = False
     settings.use_inner_line_distance_limit = True
     settings.inner_line_max_distance = 0.5
     scene.bmanga_line_preset_name = "距離制限テスト"
@@ -459,6 +463,8 @@ def main() -> None:
         _assert_distance_limited_inner(obj)
 
     _select(source, [source])
+    settings.use_inner_line_creation_limit = False
+    settings.use_intersection_creation_limit = False
     settings.use_inner_line_distance_limit = False
     settings.use_outline_distance_limit = True
     settings.outline_max_distance = 0.5
@@ -482,6 +488,8 @@ def main() -> None:
         _assert_distance_limited_outline_and_intersection(obj)
 
     _select(source, [source])
+    settings.use_inner_line_creation_limit = False
+    settings.use_intersection_creation_limit = False
     settings.use_outline_distance_limit = False
     settings.use_intersection_distance_limit = False
     settings.use_camera_culling = True

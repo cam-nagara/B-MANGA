@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 
 import bpy
+from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 
 from .core import (
@@ -65,34 +66,119 @@ def object_distance_from_camera(obj: bpy.types.Object, camera: bpy.types.Object)
     return (obj.matrix_world.translation - cam_loc).length
 
 
-def inner_line_creation_in_range(obj: bpy.types.Object, scene, settings=None) -> bool:
-    """内部線を作成してよいカメラ距離内か判定."""
-    if settings is None:
-        settings = getattr(obj, "bmanga_line_settings", None)
+def _world_bound_points(obj: bpy.types.Object) -> list[Vector]:
+    if obj.bound_box:
+        return [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
+    return [obj.matrix_world.translation.copy()]
+
+
+def _object_world_sphere(obj: bpy.types.Object) -> tuple[Vector, float]:
+    points = _world_bound_points(obj)
+    center = sum(points, Vector()) / max(1, len(points))
+    radius = max((point - center).length for point in points) if points else 0.0
+    return center, radius
+
+
+def _object_overlaps_rect_camera(
+    obj: bpy.types.Object,
+    scene,
+    camera: bpy.types.Object,
+) -> bool:
+    coords = [
+        world_to_camera_view(scene, camera, point)
+        for point in _world_bound_points(obj)
+    ]
+    in_front = [coord for coord in coords if coord.z > 0.0]
+    if not in_front:
+        return False
+    min_x = min(coord.x for coord in in_front)
+    max_x = max(coord.x for coord in in_front)
+    min_y = min(coord.y for coord in in_front)
+    max_y = max(coord.y for coord in in_front)
+    return min_x <= 1.0 and max_x >= 0.0 and min_y <= 1.0 and max_y >= 0.0
+
+
+def _object_overlaps_panorama_camera(
+    obj: bpy.types.Object,
+    scene,
+    camera: bpy.types.Object,
+) -> bool:
+    center, radius = _object_world_sphere(obj)
+    to_center = center - camera.matrix_world.translation
+    dist = to_center.length
+    if dist <= 1.0e-9:
+        return True
+    half_angle = _get_camera_half_angle(camera.data, scene)
+    if half_angle >= math.pi - 1.0e-6:
+        return True
+    cam_fwd = camera.matrix_world.to_quaternion() @ Vector((0.0, 0.0, -1.0))
+    angle = cam_fwd.angle(to_center)
+    angular_radius = math.atan2(radius, dist)
+    return (angle - angular_radius) <= half_angle
+
+
+def object_overlaps_camera_view(
+    obj: bpy.types.Object,
+    scene,
+    camera: bpy.types.Object | None = None,
+) -> bool:
+    """オブジェクトの境界がカメラに写る範囲と重なるかを返す."""
+    if camera is None:
+        camera = get_line_camera(scene)
+    if camera is None or getattr(camera, "type", None) != "CAMERA":
+        return True
+    cam_data = getattr(camera, "data", None)
+    if cam_data is None:
+        return True
+    if getattr(cam_data, "type", None) == "PANO":
+        return _object_overlaps_panorama_camera(obj, scene, camera)
+    return _object_overlaps_rect_camera(obj, scene, camera)
+
+
+def _line_creation_in_range(
+    obj: bpy.types.Object,
+    scene,
+    settings,
+    enabled_prop: str,
+    distance_prop: str,
+) -> bool:
     if settings is None:
         return True
-    if not getattr(settings, "use_inner_line_creation_limit", False):
+    if not getattr(settings, enabled_prop, False):
         return True
     camera = get_line_camera(scene)
     if camera is None:
         return True
-    limit = max(0.0, float(getattr(settings, "inner_line_creation_max_distance", 10.0)))
+    if not object_overlaps_camera_view(obj, scene, camera):
+        return False
+    limit = max(0.0, float(getattr(settings, distance_prop, 10.0)))
     return object_distance_from_camera(obj, camera) <= limit
+
+
+def inner_line_creation_in_range(obj: bpy.types.Object, scene, settings=None) -> bool:
+    """内部線を作成してよいカメラ距離内か判定."""
+    if settings is None:
+        settings = getattr(obj, "bmanga_line_settings", None)
+    return _line_creation_in_range(
+        obj,
+        scene,
+        settings,
+        "use_inner_line_creation_limit",
+        "inner_line_creation_max_distance",
+    )
 
 
 def intersection_line_creation_in_range(obj: bpy.types.Object, scene, settings=None) -> bool:
     """交差線を作成してよいカメラ距離内か判定."""
     if settings is None:
         settings = getattr(obj, "bmanga_line_settings", None)
-    if settings is None:
-        return True
-    if not getattr(settings, "use_intersection_creation_limit", False):
-        return True
-    camera = get_line_camera(scene)
-    if camera is None:
-        return True
-    limit = max(0.0, float(getattr(settings, "intersection_creation_max_distance", 10.0)))
-    return object_distance_from_camera(obj, camera) <= limit
+    return _line_creation_in_range(
+        obj,
+        scene,
+        settings,
+        "use_intersection_creation_limit",
+        "intersection_creation_max_distance",
+    )
 
 
 # ------------------------------------------------------------------

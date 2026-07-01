@@ -3,6 +3,36 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-01 — B-MANGA Lineの作成範囲をカメラ画面内に制限 (B-MANGA Line v0.3.51)
+
+### 症状
+
+- すべてのオブジェクトを選択してラインを適用すると、カメラに写っていないオブジェクトにも内部線・交差線が作成され、特に交差線生成が重くなっていた。
+- 「作成範囲を制限」は距離だけを見ており、カメラ画面外かどうかは作成対象の判定に使っていなかった。
+
+### 原因
+
+- 内部線・交差線の作成範囲判定が、基準カメラからの距離のみだった。
+- 交差線の候補探しでも、カメラ画面外のオブジェクトが候補に残りやすかった。
+
+### 修正
+
+- 「作成範囲を制限」がオンのとき、カメラに写る範囲内かつ指定距離以内のオブジェクトだけに内部線・交差線を作成するようにした。
+- 通常カメラはカメラ画面内の重なりで判定し、魚眼カメラは魚眼の画角内かどうかで判定するようにした。
+- 交差線の候補探しでも、カメラ画面外のオブジェクトを早めに除外するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\camera_comp.py addons\b_manga_line\core.py addons\b_manga_line\intersection_lines.py test\blender_b_manga_line_camera_view_creation_range_check.py test\blender_b_manga_line_preset_visibility_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_camera_view_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_inner_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_intersection_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_preset_visibility_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_register_reenable_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+
+---
+
 ## 2026-07-01 — B-MANGA Lineの内部線と作成範囲の初期値を変更 (B-MANGA Line v0.3.50)
 
 ### 症状

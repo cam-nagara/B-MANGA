@@ -136,6 +136,15 @@ def main() -> None:
         camera_comp.refresh_objects = counted_camera_objects
         vertex_analysis.reset_width_weights = forbidden_reset_weights
         try:
+            expected_inner_apply_count = sum(
+                1
+                for obj in objects
+                if camera_comp.inner_line_creation_in_range(
+                    obj,
+                    bpy.context.scene,
+                    obj.bmanga_line_settings,
+                )
+            )
             objects[0].bmanga_line_settings.use_uniform_line_width = True
             assert all(obj.bmanga_line_settings.use_uniform_line_width for obj in objects)
             assert refresh_counts["apply"] == 0, refresh_counts
@@ -158,7 +167,7 @@ def main() -> None:
             objects[0].bmanga_line_settings.use_marked_inner_edges = True
             assert all(obj.bmanga_line_settings.use_marked_inner_edges for obj in objects)
             assert refresh_counts["apply"] == 0, refresh_counts
-            assert refresh_counts["inner_apply"] == len(objects), refresh_counts
+            assert refresh_counts["inner_apply"] == expected_inner_apply_count, refresh_counts
             assert refresh_counts["intersection"] == 0, refresh_counts
             assert refresh_counts["camera"] == 0, refresh_counts
 
