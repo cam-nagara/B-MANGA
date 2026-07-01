@@ -12,7 +12,7 @@ from typing import Optional
 
 import bpy
 
-from . import free_transform, line_decor_geom, log
+from . import balloon_shapes, free_transform, line_decor_geom, log
 from .balloon_line_mesh import (
     LINE_Z_OFFSET_M,
     SAMPLES_PER_SEGMENT,
@@ -111,7 +111,7 @@ def ensure_balloon_line_shape_mesh(
         spacing=max(0.0, float(getattr(entry, "line_shape_spacing_mm", 1.5) or 0.0)) * 0.001,
         angle_rad=math.radians(float(getattr(entry, "line_shape_angle_deg", 0.0) or 0.0)),
         jitter=float(getattr(entry, "line_shape_jitter", 0.0) or 0.0),
-        seed=int(getattr(entry, "line_shape_seed", 0) or 0),
+        seed=balloon_shapes.unified_seed_for_entry(entry),
         orient=str(getattr(entry, "line_shape_orient", "line") or "line"),
         center=center,
     )

@@ -86,6 +86,25 @@ def _quad_for_key(context, key: str, *, force: bool = False):
     return None
 
 
+def _expanded_quad_for_hit(quad: dict[str, tuple[float, float]]) -> dict[str, tuple[float, float]]:
+    points = free_transform.ordered_quad_points(quad)
+    if not points:
+        return quad
+    cx = sum(x for x, _y in points) / len(points)
+    cy = sum(y for _x, y in points) / len(points)
+    outset = float(getattr(object_tool_selection, "SELECTION_HANDLE_OUTSET_MM", 3.0))
+    expanded = {}
+    for key, (x, y) in quad.items():
+        dx = float(x) - cx
+        dy = float(y) - cy
+        length = math.hypot(dx, dy)
+        if length <= 1.0e-9:
+            expanded[key] = (float(x), float(y))
+        else:
+            expanded[key] = (float(x) + dx / length * outset, float(y) + dy / length * outset)
+    return expanded
+
+
 def _hit_for_selected_key(context, key: str, x_mm: float, y_mm: float, *, force: bool = False) -> dict | None:
     kind, page_id, item_id = object_selection.parse_key(key)
     if kind not in {"balloon", "effect"}:
@@ -93,7 +112,7 @@ def _hit_for_selected_key(context, key: str, x_mm: float, y_mm: float, *, force:
     quad = _quad_for_key(context, key, force=force)
     if not quad:
         return None
-    part = free_transform.hit_quad_corner(quad, x_mm, y_mm, _HANDLE_HIT_MM)
+    part = free_transform.hit_quad_corner(_expanded_quad_for_hit(quad), x_mm, y_mm, _HANDLE_HIT_MM)
     if not part:
         return None
     if kind == "effect":

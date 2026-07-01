@@ -25,6 +25,8 @@ from ..utils.geom import Rect
 from ..utils.layer_hierarchy import OUTSIDE_STACK_KEY
 from . import effect_line_op
 
+SELECTION_HANDLE_OUTSET_MM = 3.0
+
 
 def coma_identity(panel) -> str:
     return str(getattr(panel, "coma_id", "") or getattr(panel, "id", "") or "")
@@ -332,6 +334,10 @@ def rect_contains_point(rect: Rect, x_mm: float, y_mm: float, pad: float = 0.0) 
     )
 
 
+def handle_rect_for_bounds(rect: Rect) -> Rect:
+    return rect.inset(-SELECTION_HANDLE_OUTSET_MM)
+
+
 def object_world_rect_mm(obj) -> Rect | None:
     if obj is None:
         return None
@@ -411,14 +417,15 @@ def rect_contains_rect(outer: Rect, inner: Rect) -> bool:
 
 
 def hit_part_for_rect(rect: Rect, x_mm: float, y_mm: float, threshold: float = 2.5) -> str:
-    if not rect_contains_point(rect, x_mm, y_mm, threshold):
+    handle_rect = handle_rect_for_bounds(rect)
+    if not rect_contains_point(handle_rect, x_mm, y_mm, threshold):
         return ""
-    near_left = abs(x_mm - rect.x) <= threshold
-    near_right = abs(x_mm - rect.x2) <= threshold
-    near_bottom = abs(y_mm - rect.y) <= threshold
-    near_top = abs(y_mm - rect.y2) <= threshold
-    inside_x = rect.x <= x_mm <= rect.x2
-    inside_y = rect.y <= y_mm <= rect.y2
+    near_left = abs(x_mm - handle_rect.x) <= threshold
+    near_right = abs(x_mm - handle_rect.x2) <= threshold
+    near_bottom = abs(y_mm - handle_rect.y) <= threshold
+    near_top = abs(y_mm - handle_rect.y2) <= threshold
+    inside_x = handle_rect.x <= x_mm <= handle_rect.x2
+    inside_y = handle_rect.y <= y_mm <= handle_rect.y2
     if near_left and near_top:
         return "top_left"
     if near_right and near_top:
@@ -435,7 +442,7 @@ def hit_part_for_rect(rect: Rect, x_mm: float, y_mm: float, threshold: float = 2
         return "top"
     if near_bottom and inside_x:
         return "bottom"
-    if inside_x and inside_y:
+    if rect_contains_point(rect, x_mm, y_mm):
         return "body"
     return ""
 

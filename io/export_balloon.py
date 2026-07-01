@@ -933,7 +933,7 @@ def _draw_shape_line_loop(draw, pts, entry, color, width_px: int, dpi: int, cent
         spacing=mm_to_px(max(0.0, float(getattr(entry, "line_shape_spacing_mm", 1.5) or 0.0)), dpi),
         angle_rad=math.radians(float(getattr(entry, "line_shape_angle_deg", 0.0) or 0.0)),
         jitter=float(getattr(entry, "line_shape_jitter", 0.0) or 0.0),
-        seed=int(getattr(entry, "line_shape_seed", 0) or 0),
+        seed=balloon_shapes.unified_seed_for_entry(entry),
         flip_y=True,
         orient=str(getattr(entry, "line_shape_orient", "line") or "line"),
         center=center_px,

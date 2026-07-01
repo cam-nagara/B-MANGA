@@ -1358,7 +1358,7 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "lineShapeAngleDeg": round(float(getattr(entry, "line_shape_angle_deg", 0.0)), 3),
         "lineShapeOrient": str(getattr(entry, "line_shape_orient", "line") or "line"),
         "lineShapeJitter": round(float(getattr(entry, "line_shape_jitter", 0.0)), 3),
-        "lineShapeSeed": int(getattr(entry, "line_shape_seed", 0) or 0),
+        "lineShapeSeed": balloon_shapes.unified_seed_for_entry(entry),
         "lineImagePath": str(getattr(entry, "line_image_path", "") or ""),
         "lineImageIntervalMm": round(float(getattr(entry, "line_image_interval_mm", 20.0)), 3),
         "lineImageAngleDeg": round(float(getattr(entry, "line_image_angle_deg", 0.0)), 3),
@@ -1475,6 +1475,20 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
             "cloudSubHeightJitter": round(entry.shape_params.cloud_sub_height_jitter, 3),
             "cloudValleySharp": bool(entry.shape_params.cloud_valley_sharp),
             "dynamicShapeBaseKind": str(getattr(entry.shape_params, "dynamic_shape_base_kind", "ellipse") or "ellipse"),
+            "dynamicBaseRoundedCornerEnabled": bool(
+                getattr(entry.shape_params, "dynamic_base_rounded_corner_enabled", False)
+            ),
+            "dynamicBaseRoundedCornerRadiusMm": round(
+                float(getattr(entry.shape_params, "dynamic_base_rounded_corner_radius_mm", 0.0) or 0.0),
+                3,
+            ),
+            "dynamicBaseRoundedCornerRadiusUnit": str(
+                getattr(entry.shape_params, "dynamic_base_rounded_corner_radius_unit", "mm") or "mm"
+            ),
+            "dynamicBaseRoundedCornerRadiusPercent": round(
+                float(getattr(entry.shape_params, "dynamic_base_rounded_corner_radius_percent", 0.0) or 0.0),
+                3,
+            ),
             "cloudWaveCount": int(entry.shape_params.cloud_wave_count),
             "cloudWaveAmplitudeMm": round(entry.shape_params.cloud_wave_amplitude_mm, 3),
             "spikeCount": int(entry.shape_params.spike_count),
@@ -1696,7 +1710,13 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     if base_kind not in {"ellipse", "rect"}:
         base_kind = "ellipse"
     entry.shape_params.dynamic_shape_base_kind = base_kind
-    entry.shape_params.shape_seed = int(sp.get("shapeSeed", sp.get("seed", 0)) or 0)
+    line_shape_seed = int(data.get("lineShapeSeed", 0) or 0)
+    raw_shape_seed = sp.get("shapeSeed", sp.get("seed", None))
+    entry.shape_params.shape_seed = int(raw_shape_seed if raw_shape_seed not in {None, ""} else line_shape_seed)
+    if entry.shape_params.shape_seed == 0 and line_shape_seed != 0:
+        entry.shape_params.shape_seed = line_shape_seed
+    if hasattr(entry, "line_shape_seed"):
+        entry.line_shape_seed = int(getattr(entry.shape_params, "shape_seed", 0) or 0)
     if "cloudOffsetPercent" in sp:
         entry.shape_params.cloud_offset_percent = float(sp.get("cloudOffsetPercent", 50.0))
     else:
@@ -1706,7 +1726,18 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
         sp.get("cloudSubWidthRatio", sp.get("cloudSubBumpRatio", 0.0))
     )
     entry.shape_params.cloud_sub_height_ratio = float(
-        sp.get("cloudSubHeightRatio", sp.get("cloudSubBumpRatio", 0.0))
+        sp.get("cloudSubHeightRatio", sp.get("cloudSubBumpRatio", 50.0))
+    )
+    entry.shape_params.dynamic_base_rounded_corner_enabled = bool(
+        sp.get("dynamicBaseRoundedCornerEnabled", False)
+    )
+    entry.shape_params.dynamic_base_rounded_corner_radius_mm = float(
+        sp.get("dynamicBaseRoundedCornerRadiusMm", 3.0)
+    )
+    unit = str(sp.get("dynamicBaseRoundedCornerRadiusUnit", "mm") or "mm")
+    entry.shape_params.dynamic_base_rounded_corner_radius_unit = unit if unit in {"mm", "percent"} else "mm"
+    entry.shape_params.dynamic_base_rounded_corner_radius_percent = float(
+        sp.get("dynamicBaseRoundedCornerRadiusPercent", 30.0)
     )
     entry.shape_params.cloud_wave_count = int(sp.get("cloudWaveCount", 12))
     entry.shape_params.cloud_wave_amplitude_mm = float(sp.get("cloudWaveAmplitudeMm", 3.0))

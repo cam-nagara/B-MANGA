@@ -142,6 +142,24 @@ def main() -> None:
         assert "corner_type" in rect_props, "矩形で角の種類が表示されていません"
         assert "blend_mode" not in rect_props, "フキダシの合成モードが詳細設定に残っています"
 
+        round100 = balloon_op._create_balloon_entry(  # noqa: SLF001
+            context,
+            page,
+            shape="rect",
+            x=115.0,
+            y=30.0,
+            w=90.0,
+            h=10.0,
+        )
+        round100.corner_type = "rounded"
+        round100.rounded_corner_enabled = True
+        round100.rounded_corner_radius_unit = "percent"
+        round100.rounded_corner_radius_percent = 100.0
+        round100_obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=round100, page=page)
+        assert round100_obj is not None and round100_obj.type == "CURVE"
+        round100_anchors = _body_anchor_xy(round100_obj)
+        assert len(round100_anchors) == 4, f"丸角100%の長細い矩形に直線部が残っています: {round100_anchors}"
+
         rect.line_style = "none"
         balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=rect, page=page)
         line_obj = bpy.data.objects.get(balloon_line_mesh._line_mesh_object_name(rect.id))  # noqa: SLF001
@@ -168,6 +186,7 @@ def main() -> None:
             w=60.0,
             h=34.0,
         )
+        assert float(cloud.shape_params.cloud_sub_height_ratio) == 50.0, "小山高の初期値が50%ではありません"
         cloud.shape_params.cloud_bump_width_jitter = 0.65
         cloud.shape_params.cloud_bump_height_jitter = 0.65
         cloud.shape_params.cloud_sub_width_ratio = 45.0
@@ -183,6 +202,28 @@ def main() -> None:
         assert seed0 != seed73, "シードを変えても形状パラメータの乱れが変わりません"
         cloud_props = _draw_props(layer_detail_op, cloud, page)
         assert "shape_seed" in cloud_props, "形状パラメータにシードが表示されていません"
+        assert "cloud_sub_width_jitter" in cloud_props, "小山幅の乱れが表示されていません"
+        assert "cloud_sub_height_jitter" in cloud_props, "小山高の乱れが表示されていません"
+        cloud.shape_params.dynamic_shape_base_kind = "rect"
+        cloud.shape_params.dynamic_base_rounded_corner_enabled = True
+        cloud.shape_params.dynamic_base_rounded_corner_radius_unit = "percent"
+        cloud.shape_params.dynamic_base_rounded_corner_radius_percent = 45.0
+        cloud_props = _draw_props(layer_detail_op, cloud, page)
+        assert "dynamic_base_rounded_corner_enabled" in cloud_props, "矩形ベースの丸角が表示されていません"
+        assert "dynamic_base_rounded_corner_radius_percent" in cloud_props, "矩形ベースの角半径が表示されていません"
+
+        from bmanga_dev_balloon_center_seed_selection.io import schema
+
+        cloud.line_style = "shape"
+        cloud.line_shape_seed = 991
+        payload = schema.balloon_entry_to_dict(cloud)
+        assert payload["lineShapeSeed"] == 73, "図形線のシードが形状パラメータのシードに統一されていません"
+        payload["lineShapeSeed"] = 91
+        payload["shapeParams"].pop("shapeSeed", None)
+        migrated = page.balloons.add()
+        schema.balloon_entry_from_dict(migrated, payload)
+        assert int(migrated.shape_params.shape_seed) == 91, "旧シードが新しいシードへ移行されていません"
+        assert int(migrated.line_shape_seed) == 91, "互換用シードが新しいシードと同期していません"
 
         outside1 = balloon_op._create_balloon_entry(  # noqa: SLF001
             context,

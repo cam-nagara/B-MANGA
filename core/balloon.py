@@ -562,7 +562,7 @@ class BMangaBalloonShapeParams(bpy.types.PropertyGroup):
     shape_seed: IntProperty(name="シード", default=0, min=0, soft_max=9999, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     cloud_sub_width_ratio: FloatProperty(name="小山幅 (%)", default=0.0, min=0.0, max=100.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     cloud_sub_width_jitter: FloatProperty(name="小山幅 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
-    cloud_sub_height_ratio: FloatProperty(name="小山高 (%)", default=0.0, min=0.0, max=100.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
+    cloud_sub_height_ratio: FloatProperty(name="小山高 (%)", default=50.0, min=0.0, max=100.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     cloud_sub_height_jitter: FloatProperty(name="小山高 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     cloud_valley_sharp: BoolProperty(  # type: ignore[valid-type]
         name="角を尖らせる",
@@ -580,6 +580,10 @@ class BMangaBalloonShapeParams(bpy.types.PropertyGroup):
         default="ellipse",
         update=_on_balloon_shape_params_changed,
     )
+    dynamic_base_rounded_corner_enabled: BoolProperty(name="ベース丸角", default=False, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
+    dynamic_base_rounded_corner_radius_mm: FloatProperty(name="ベース角半径 (mm)", default=3.0, min=0.0, soft_max=30.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
+    dynamic_base_rounded_corner_radius_unit: EnumProperty(name="単位", items=corner_radius.RADIUS_UNIT_ITEMS, default="mm", update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
+    dynamic_base_rounded_corner_radius_percent: FloatProperty(name="ベース角半径 (%)", default=30.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
 
     # Legacy parameters kept for older B-MANGA files/presets.
     cloud_wave_count: IntProperty(name="雲の波数", default=12, min=3, soft_max=60, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]

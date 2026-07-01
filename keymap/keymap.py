@@ -520,6 +520,8 @@ class KeymapState:
         # Ctrl+C / Ctrl+V → B-MANGA レイヤーのコピー / 貼り付け
         _add("bmanga.layer_clipboard_copy", "C", ctrl=True)
         _add("bmanga.layer_clipboard_paste", "V", ctrl=True)
+        # Ctrl+Shift+D → 選択中レイヤーを複製
+        _add("bmanga.layer_stack_duplicate", "D", ctrl=True, shift=True)
         # Ctrl+Shift+C / Ctrl+Shift+V → フキダシしっぽのコピー / 貼り付け
         _add("bmanga.balloon_tail_clipboard_copy", "C", ctrl=True, shift=True)
         _add("bmanga.balloon_tail_clipboard_paste", "V", ctrl=True, shift=True)

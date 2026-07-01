@@ -1449,7 +1449,7 @@ def _band_geometry_signature(entry, obj) -> str:
             round(float(getattr(entry, "line_shape_angle_deg", 0.0) or 0.0), 4),
             str(getattr(entry, "line_shape_orient", "") or ""),
             round(float(getattr(entry, "line_shape_jitter", 0.0) or 0.0), 4),
-            int(getattr(entry, "line_shape_seed", 0) or 0),
+            balloon_shapes.unified_seed_for_entry(entry),
             str(getattr(entry, "line_material_name", "") or ""),
             str(getattr(entry, "line_material_mapping", "tile") or "tile"),
             bool(getattr(entry, "line_material_stretch_single", False)),
@@ -1495,6 +1495,18 @@ def _geometry_key_for_entry(entry) -> str:
         "cloud_sub_height_jitter": float(getattr(sp, "cloud_sub_height_jitter", 0.0) or 0.0),
         "cloud_valley_sharp": bool(getattr(sp, "cloud_valley_sharp", False)),
         "dynamic_shape_base_kind": str(getattr(sp, "dynamic_shape_base_kind", "ellipse") or "ellipse"),
+        "dynamic_base_rounded_corner_enabled": bool(
+            getattr(sp, "dynamic_base_rounded_corner_enabled", False)
+        ),
+        "dynamic_base_rounded_corner_radius_mm": float(
+            getattr(sp, "dynamic_base_rounded_corner_radius_mm", 0.0) or 0.0
+        ),
+        "dynamic_base_rounded_corner_radius_unit": str(
+            getattr(sp, "dynamic_base_rounded_corner_radius_unit", "mm") or "mm"
+        ),
+        "dynamic_base_rounded_corner_radius_percent": float(
+            getattr(sp, "dynamic_base_rounded_corner_radius_percent", 0.0) or 0.0
+        ),
         "shape_seed": int(getattr(sp, "shape_seed", 0) or 0),
     }
     tails = []

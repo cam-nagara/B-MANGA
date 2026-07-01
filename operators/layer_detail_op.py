@@ -356,6 +356,11 @@ def _draw_balloon_detail(layout, context, entry=None, page=None) -> None:
         col = shape_box.column(align=True)
         row = col.row(align=True)
         row.prop(sp, "dynamic_shape_base_kind", text="ベース")
+        if str(getattr(sp, "dynamic_shape_base_kind", "ellipse") or "ellipse") == "rect":
+            row.prop(sp, "dynamic_base_rounded_corner_enabled", text="丸角", toggle=True)
+            sub = col.column(align=True)
+            sub.enabled = bool(getattr(sp, "dynamic_base_rounded_corner_enabled", False))
+            _draw_corner_radius(sub, sp, prefix="dynamic_base_rounded_corner", text="ベース角半径")
         row = col.row(align=True)
         row.prop(sp, "cloud_bump_width_mm")
         row.prop(sp, "cloud_bump_width_jitter", text="乱れ")
@@ -420,7 +425,6 @@ def _draw_balloon_detail(layout, context, entry=None, page=None) -> None:
         orient_row.prop(entry, "line_shape_orient", expand=True)
         row = box.row(align=True)
         row.prop(entry, "line_shape_jitter", text="乱れ", slider=True)
-        row.prop(entry, "line_shape_seed", text="シード")
         box.label(text="図形の大きさは「線幅」で決まります", icon="INFO")
     elif line_style == "image":
         box.prop(entry, "line_image_path", text="画像")

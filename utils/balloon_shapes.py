@@ -129,6 +129,7 @@ def outline_for_entry(entry, rect: Rect) -> list[tuple[float, float]]:
         cloud_sub_height_jitter=float(getattr(sp, "cloud_sub_height_jitter", 0.0)),
         jitter_seed=_entry_jitter_seed(entry, sp),
         base_kind=str(getattr(sp, "dynamic_shape_base_kind", "ellipse") or "ellipse"),
+        base_corner_radius_mm=_dynamic_base_radius_for_entry(sp, rect),
     )
 
 
@@ -163,6 +164,7 @@ def outline_with_corners_for_entry(
         cloud_sub_height_jitter=float(getattr(sp, "cloud_sub_height_jitter", 0.0)),
         jitter_seed=_entry_jitter_seed(entry, sp),
         base_kind=str(getattr(sp, "dynamic_shape_base_kind", "ellipse") or "ellipse"),
+        base_corner_radius_mm=_dynamic_base_radius_for_entry(sp, rect),
     )
 
 
@@ -188,6 +190,7 @@ def bezier_loop_for_entry(entry, rect: Rect) -> list[BezierAnchor] | None:
         cloud_sub_height_jitter=float(getattr(sp, "cloud_sub_height_jitter", 0.0)),
         jitter_seed=_entry_jitter_seed(entry, sp),
         base_kind=str(getattr(sp, "dynamic_shape_base_kind", "ellipse") or "ellipse"),
+        base_corner_radius_mm=_dynamic_base_radius_for_entry(sp, rect),
     )
 
 
@@ -241,6 +244,7 @@ def bezier_line_loops_for_entry(
         sub_h_jitter=_clamp01(float(getattr(sp, "cloud_sub_height_jitter", 0.0))),
         rng=random.Random(_entry_jitter_seed(entry, sp)),
         base_kind=str(getattr(sp, "dynamic_shape_base_kind", "ellipse") or "ellipse"),
+        base_corner_radius_mm=_dynamic_base_radius_for_entry(sp, rect),
     )
     return _bezier_cloud_line_loops(rect, opts, float(half_width_mm), body_radii)
 
@@ -333,6 +337,7 @@ def outline_for_shape(
     cloud_sub_height_jitter: float = 0.0,
     jitter_seed: int = 0,
     base_kind: str = "ellipse",
+    base_corner_radius_mm: float = 0.0,
 ) -> list[tuple[float, float]]:
     return outline_with_corners_for_shape(
         shape,
@@ -351,6 +356,7 @@ def outline_for_shape(
         cloud_sub_height_jitter=cloud_sub_height_jitter,
         jitter_seed=jitter_seed,
         base_kind=base_kind,
+        base_corner_radius_mm=base_corner_radius_mm,
     )[0]
 
 
@@ -372,6 +378,7 @@ def outline_with_corners_for_shape(
     cloud_sub_height_jitter: float = 0.0,
     jitter_seed: int = 0,
     base_kind: str = "ellipse",
+    base_corner_radius_mm: float = 0.0,
 ) -> tuple[list[tuple[float, float]], list[int]]:
     s = normalize_shape(shape)
     opts = _DynamicOpts(
@@ -386,6 +393,7 @@ def outline_with_corners_for_shape(
         sub_h_jitter=_clamp01(float(cloud_sub_height_jitter)),
         rng=random.Random(int(jitter_seed) & 0xFFFFFFFF),
         base_kind=str(base_kind or "ellipse"),
+        base_corner_radius_mm=max(0.0, float(base_corner_radius_mm)),
     )
     resolved_corner = str(corner_type or ("rounded" if rounded_corner_enabled else "square"))
     if resolved_corner not in CORNER_TYPES:
@@ -440,6 +448,7 @@ def bezier_loop_for_shape(
     cloud_sub_height_jitter: float = 0.0,
     jitter_seed: int = 0,
     base_kind: str = "ellipse",
+    base_corner_radius_mm: float = 0.0,
 ) -> list[BezierAnchor] | None:
     s = normalize_shape(shape)
     opts = _DynamicOpts(
@@ -454,6 +463,7 @@ def bezier_loop_for_shape(
         sub_h_jitter=_clamp01(float(cloud_sub_height_jitter)),
         rng=random.Random(int(jitter_seed) & 0xFFFFFFFF),
         base_kind=str(base_kind or "ellipse"),
+        base_corner_radius_mm=max(0.0, float(base_corner_radius_mm)),
     )
     resolved_corner = str(corner_type or ("rounded" if rounded_corner_enabled else "square"))
     if resolved_corner not in CORNER_TYPES:
@@ -490,6 +500,7 @@ class _DynamicOpts:
         sub_h_jitter: float,
         rng: random.Random,
         base_kind: str = "ellipse",
+        base_corner_radius_mm: float = 0.0,
     ) -> None:
         self.bump_w = bump_w
         self.bump_w_jitter = bump_w_jitter
@@ -502,20 +513,39 @@ class _DynamicOpts:
         self.sub_h_jitter = sub_h_jitter
         self.rng = rng
         self.base_kind = str(base_kind or "ellipse")
+        self.base_corner_radius_mm = max(0.0, float(base_corner_radius_mm))
 
 
-def _stable_seed(value: str) -> int:
-    seed = 2166136261
-    for char in str(value or ""):
-        seed ^= ord(char)
-        seed = (seed * 16777619) & 0xFFFFFFFF
-    return seed
+def unified_seed_for_entry(entry) -> int:
+    sp = getattr(entry, "shape_params", None)
+    if sp is not None:
+        try:
+            return int(getattr(sp, "shape_seed", 0) or 0)
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        return int(getattr(entry, "line_shape_seed", 0) or 0)
+    except Exception:  # noqa: BLE001
+        return 0
 
 
 def _entry_jitter_seed(entry, shape_params) -> int:
-    base = _stable_seed(str(getattr(entry, "id", "") or getattr(entry, "shape", "") or ""))
-    seed = int(getattr(shape_params, "shape_seed", 0) or 0) & 0xFFFFFFFF
-    return (base ^ ((seed + 0x9E3779B9) * 0x85EBCA6B)) & 0xFFFFFFFF
+    seed = unified_seed_for_entry(entry) & 0xFFFFFFFF
+    return ((seed + 0x9E3779B9) * 0x85EBCA6B) & 0xFFFFFFFF
+
+
+def _dynamic_base_radius_for_entry(shape_params, rect: Rect) -> float:
+    if shape_params is None or not bool(getattr(shape_params, "dynamic_base_rounded_corner_enabled", False)):
+        return 0.0
+    try:
+        return corner_radius.radius_for_owner(
+            shape_params,
+            float(rect.width),
+            float(rect.height),
+            prefix="dynamic_base_rounded_corner",
+        )
+    except Exception:  # noqa: BLE001
+        return 0.0
 
 
 def _clamp01(value: float) -> float:
@@ -538,9 +568,12 @@ def _outline_rect(rect: Rect) -> list[tuple[float, float]]:
 
 
 def _outline_rounded_rect(rect: Rect, radius_mm: float, segments: int = 24) -> list[tuple[float, float]]:
-    radius = max(0.0, min(float(radius_mm), rect.width * 0.5, rect.height * 0.5))
+    max_radius = max(0.0, min(rect.width, rect.height) * 0.5)
+    radius = max(0.0, min(float(radius_mm), max_radius))
     if radius <= 0.0:
         return _outline_rect(rect)
+    if max_radius > 0.0 and radius >= max_radius - 1.0e-6:
+        return _outline_ellipse(rect, segments=max(segments * 4, 160))
     corners = (
         (rect.x2 - radius, rect.y2 - radius, 0.0),
         (rect.x + radius, rect.y2 - radius, math.pi * 0.5),
@@ -597,9 +630,12 @@ def _bezier_ellipse(rect: Rect) -> list[BezierAnchor]:
 
 
 def _bezier_rounded_rect(rect: Rect, radius_mm: float) -> list[BezierAnchor] | None:
-    radius = max(0.0, min(float(radius_mm), rect.width * 0.5, rect.height * 0.5))
+    max_radius = max(0.0, min(rect.width, rect.height) * 0.5)
+    radius = max(0.0, min(float(radius_mm), max_radius))
     if radius <= 0.0:
         return None
+    if max_radius > 0.0 and radius >= max_radius - 1.0e-6:
+        return _bezier_ellipse(rect)
     k = 0.5522847498307936 * radius
     x0, x1, x2, x3 = rect.x, rect.x + radius, rect.x2 - radius, rect.x2
     y0, y1, y2, y3 = rect.y, rect.y + radius, rect.y2 - radius, rect.y2
@@ -689,10 +725,102 @@ def _ellipse_perimeter(rx: float, ry: float) -> float:
     return math.pi * (rx + ry) * (1.0 + (3.0 * h_val) / (10.0 + math.sqrt(max(0.0, 4.0 - 3.0 * h_val))))
 
 
-def _base_perimeter(rx: float, ry: float, base_kind: str = "ellipse") -> float:
-    if base_kind == "rect":
+def _rect_base_radius(rx: float, ry: float, radius: float) -> float:
+    return max(0.0, min(float(radius), max(0.0, rx), max(0.0, ry)))
+
+
+def _rounded_rect_perimeter(rx: float, ry: float, radius: float) -> float:
+    r = _rect_base_radius(rx, ry, radius)
+    if r <= 1.0e-9:
         return 4.0 * (rx + ry)
+    return 4.0 * max(0.0, rx + ry - 2.0 * r) + 2.0 * math.pi * r
+
+
+def _base_perimeter(rx: float, ry: float, base_kind: str = "ellipse", base_radius: float = 0.0) -> float:
+    if base_kind == "rect":
+        return _rounded_rect_perimeter(rx, ry, base_radius)
     return _ellipse_perimeter(rx, ry)
+
+
+def _rounded_rect_position_normal(
+    s: float,
+    cx: float,
+    cy: float,
+    rx: float,
+    ry: float,
+    radius: float,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    r = _rect_base_radius(rx, ry, radius)
+    if r <= 1.0e-9:
+        return _rect_position_normal_by_distance(s, cx, cy, rx, ry)
+    right_half = max(0.0, ry - r)
+    top_len = max(0.0, 2.0 * (rx - r))
+    left_len = max(0.0, 2.0 * (ry - r))
+    bottom_len = top_len
+    arc = math.pi * 0.5 * r
+    total = _rounded_rect_perimeter(rx, ry, r)
+    if total <= 1.0e-12:
+        return (cx, cy), (1.0, 0.0)
+    s = s % total
+    if s < right_half:
+        return (cx + rx, cy + s), (1.0, 0.0)
+    s -= right_half
+    if s < arc:
+        angle = (s / max(arc, 1.0e-12)) * (math.pi * 0.5)
+        ccx, ccy = cx + rx - r, cy + ry - r
+        return (ccx + r * math.cos(angle), ccy + r * math.sin(angle)), (math.cos(angle), math.sin(angle))
+    s -= arc
+    if s < top_len:
+        return (cx + rx - r - s, cy + ry), (0.0, 1.0)
+    s -= top_len
+    if s < arc:
+        angle = math.pi * 0.5 + (s / max(arc, 1.0e-12)) * (math.pi * 0.5)
+        ccx, ccy = cx - rx + r, cy + ry - r
+        return (ccx + r * math.cos(angle), ccy + r * math.sin(angle)), (math.cos(angle), math.sin(angle))
+    s -= arc
+    if s < left_len:
+        return (cx - rx, cy + ry - r - s), (-1.0, 0.0)
+    s -= left_len
+    if s < arc:
+        angle = math.pi + (s / max(arc, 1.0e-12)) * (math.pi * 0.5)
+        ccx, ccy = cx - rx + r, cy - ry + r
+        return (ccx + r * math.cos(angle), ccy + r * math.sin(angle)), (math.cos(angle), math.sin(angle))
+    s -= arc
+    if s < bottom_len:
+        return (cx - rx + r + s, cy - ry), (0.0, -1.0)
+    s -= bottom_len
+    if s < arc:
+        angle = math.pi * 1.5 + (s / max(arc, 1.0e-12)) * (math.pi * 0.5)
+        ccx, ccy = cx + rx - r, cy - ry + r
+        return (ccx + r * math.cos(angle), ccy + r * math.sin(angle)), (math.cos(angle), math.sin(angle))
+    s -= arc
+    return (cx + rx, cy - ry + r + min(s, right_half)), (1.0, 0.0)
+
+
+def _rect_position_normal_by_distance(
+    s: float,
+    cx: float,
+    cy: float,
+    rx: float,
+    ry: float,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    perim = 4.0 * (rx + ry)
+    if perim <= 1.0e-12:
+        return (cx, cy), (1.0, 0.0)
+    s = s % perim
+    if s < ry:
+        return (cx + rx, cy + s), (1.0, 0.0)
+    s -= ry
+    if s < 2.0 * rx:
+        return (cx + rx - s, cy + ry), (0.0, 1.0)
+    s -= 2.0 * rx
+    if s < 2.0 * ry:
+        return (cx - rx, cy + ry - s), (-1.0, 0.0)
+    s -= 2.0 * ry
+    if s < 2.0 * rx:
+        return (cx - rx + s, cy - ry), (0.0, -1.0)
+    s -= 2.0 * rx
+    return (cx + rx, cy - ry + s), (1.0, 0.0)
 
 
 def _base_position(
@@ -702,6 +830,7 @@ def _base_position(
     rx: float,
     ry: float,
     base_kind: str = "ellipse",
+    base_radius: float = 0.0,
 ) -> tuple[float, float]:
     """ベース輪郭 (楕円 or 矩形) 上の点を返す.
 
@@ -710,29 +839,12 @@ def _base_position(
         right-middle (t=0) から CCW に矩形境界を辿った位置を返す.
     """
     if base_kind == "rect":
-        perim = 4.0 * (rx + ry)
+        perim = _base_perimeter(rx, ry, "rect", base_radius)
         if perim <= 1.0e-12:
             return (cx, cy)
         u = (t / (2.0 * math.pi)) % 1.0
-        s = u * perim
-        # 右辺 上半分: 0 〜 ry
-        if s < ry:
-            return (cx + rx, cy + s)
-        s -= ry
-        # 上辺 (右→左): 0 〜 2*rx
-        if s < 2.0 * rx:
-            return (cx + rx - s, cy + ry)
-        s -= 2.0 * rx
-        # 左辺 (上→下): 0 〜 2*ry
-        if s < 2.0 * ry:
-            return (cx - rx, cy + ry - s)
-        s -= 2.0 * ry
-        # 下辺 (左→右): 0 〜 2*rx
-        if s < 2.0 * rx:
-            return (cx - rx + s, cy - ry)
-        s -= 2.0 * rx
-        # 右辺 下半分: 0 〜 ry
-        return (cx + rx, cy - ry + s)
+        pos, _normal = _rounded_rect_position_normal(u * perim, cx, cy, rx, ry, base_radius)
+        return pos
     return (cx + rx * math.cos(t), cy + ry * math.sin(t))
 
 
@@ -741,6 +853,7 @@ def _base_outward_normal(
     rx: float,
     ry: float,
     base_kind: str = "ellipse",
+    base_radius: float = 0.0,
 ) -> tuple[float, float]:
     """ベース輪郭の指定 t における外向き単位法線.
 
@@ -748,23 +861,12 @@ def _base_outward_normal(
     矩形: 現在の辺に応じた純粋な ±x または ±y 方向ベクトル.
     """
     if base_kind == "rect":
-        perim = 4.0 * (rx + ry)
+        perim = _base_perimeter(rx, ry, "rect", base_radius)
         if perim <= 1.0e-12:
             return (1.0, 0.0)
         u = (t / (2.0 * math.pi)) % 1.0
-        s = u * perim
-        if s < ry:
-            return (1.0, 0.0)
-        s -= ry
-        if s < 2.0 * rx:
-            return (0.0, 1.0)
-        s -= 2.0 * rx
-        if s < 2.0 * ry:
-            return (-1.0, 0.0)
-        s -= 2.0 * ry
-        if s < 2.0 * rx:
-            return (0.0, -1.0)
-        return (1.0, 0.0)
+        _pos, normal = _rounded_rect_position_normal(u * perim, 0.0, 0.0, rx, ry, base_radius)
+        return normal
     # 楕円
     c = math.cos(t)
     s = math.sin(t)
@@ -785,11 +887,12 @@ def _base_position_scaled(
     ry: float,
     eff_h: float,
     base_kind: str = "ellipse",
+    base_radius: float = 0.0,
 ) -> tuple[float, float]:
     """ベース輪郭の点から外向きに eff_h * h_mul だけ突き出した位置を返す (山頂点用)."""
-    bx, by = _base_position(t, cx, cy, rx, ry, base_kind=base_kind)
+    bx, by = _base_position(t, cx, cy, rx, ry, base_kind=base_kind, base_radius=base_radius)
     if base_kind == "rect":
-        nx, ny = _base_outward_normal(t, rx, ry, base_kind="rect")
+        nx, ny = _base_outward_normal(t, rx, ry, base_kind="rect", base_radius=base_radius)
         return (bx + nx * eff_h * h_mul, by + ny * eff_h * h_mul)
     # 楕円: rx, ry を eff_h*h_mul 拡張した位置 (= 元の式)
     return (cx + (rx + eff_h * h_mul) * math.cos(t), cy + (ry + eff_h * h_mul) * math.sin(t))
@@ -803,11 +906,12 @@ def _base_position_inset(
     rx: float,
     ry: float,
     base_kind: str = "ellipse",
+    base_radius: float = 0.0,
 ) -> tuple[float, float]:
     """ベース輪郭から内向きに inset だけ入った点を返す (谷頂点用)."""
     if base_kind == "rect":
-        bx, by = _base_position(t, cx, cy, rx, ry, base_kind="rect")
-        nx, ny = _base_outward_normal(t, rx, ry, base_kind="rect")
+        bx, by = _base_position(t, cx, cy, rx, ry, base_kind="rect", base_radius=base_radius)
+        nx, ny = _base_outward_normal(t, rx, ry, base_kind="rect", base_radius=base_radius)
         return (bx - nx * inset, by - ny * inset)
     return (cx + (rx - inset) * math.cos(t), cy + (ry - inset) * math.sin(t))
 
@@ -829,7 +933,12 @@ def _dynamic_base(width: float, height: float, opts: _DynamicOpts, *, fluffy: bo
 
 
 def _bump_sequence(rx: float, ry: float, opts: _DynamicOpts, *, min_slots: int):
-    perimeter = _base_perimeter(rx, ry, getattr(opts, "base_kind", "ellipse"))
+    perimeter = _base_perimeter(
+        rx,
+        ry,
+        getattr(opts, "base_kind", "ellipse"),
+        getattr(opts, "base_corner_radius_mm", 0.0),
+    )
     sub_enabled = opts.sub_w > 0.0 or opts.sub_h > 0.0
     sub_w_ratio = (opts.sub_w if opts.sub_w > 0.0 else 50.0) / 100.0
     sub_h_ratio = (opts.sub_h if opts.sub_h > 0.0 else 50.0) / 100.0
@@ -908,7 +1017,16 @@ def _outline_cloud_with_corners(
         # 谷を基準輪郭より内側へ少し入れ、丸いこぶ同士の境目を
         # 見た目にも鋭いV字にする。
         notch = min(max(0.2, min(rect.width, rect.height) * 0.02), max(0.0, min(rx, ry) - 0.1))
-        return _base_position_inset(t, notch, cx, cy, rx, ry, base_kind=base_kind)
+        return _base_position_inset(
+            t,
+            notch,
+            cx,
+            cy,
+            rx,
+            ry,
+            base_kind=base_kind,
+            base_radius=getattr(opts, "base_corner_radius_mm", 0.0),
+        )
 
     pts = [valley_point(angle)]
     corners: list[int] = []
@@ -949,7 +1067,16 @@ def _bezier_cloud(rect: Rect, opts: _DynamicOpts) -> list[BezierAnchor] | None:
 
     def valley_point(t: float) -> tuple[float, float]:
         notch = min(max(0.2, min(rect.width, rect.height) * 0.02), max(0.0, min(rx, ry) - 0.1))
-        return _base_position_inset(t, notch, cx, cy, rx, ry, base_kind=base_kind)
+        return _base_position_inset(
+            t,
+            notch,
+            cx,
+            cy,
+            rx,
+            ry,
+            base_kind=base_kind,
+            base_radius=getattr(opts, "base_corner_radius_mm", 0.0),
+        )
 
     cubics: list[tuple[tuple[float, float], tuple[float, float], tuple[float, float]]] = []
     for _is_sub, bump_angle, h_mul in segments:
@@ -1190,10 +1317,28 @@ def _outline_thorn_with_corners(
         return _outline_ellipse(rect), []
 
     def ellipse_point(t: float) -> tuple[float, float]:
-        return _base_position(t, cx, cy, rx, ry, base_kind=base_kind)
+        return _base_position(
+            t,
+            cx,
+            cy,
+            rx,
+            ry,
+            base_kind=base_kind,
+            base_radius=getattr(opts, "base_corner_radius_mm", 0.0),
+        )
 
     def peak_at(t: float, h_mul: float) -> tuple[float, float]:
-        return _base_position_scaled(t, h_mul, cx, cy, rx, ry, eff_h, base_kind=base_kind)
+        return _base_position_scaled(
+            t,
+            h_mul,
+            cx,
+            cy,
+            rx,
+            ry,
+            eff_h,
+            base_kind=base_kind,
+            base_radius=getattr(opts, "base_corner_radius_mm", 0.0),
+        )
 
     pts = [ellipse_point(angle)]
     for _is_sub, bump_angle, h_mul in segments:
@@ -1220,10 +1365,28 @@ def _outline_flash_with_corners(
     peak_scale = 1.35
 
     def valley_at(t: float) -> tuple[float, float]:
-        return _base_position(t, cx, cy, rx, ry, base_kind=base_kind)
+        return _base_position(
+            t,
+            cx,
+            cy,
+            rx,
+            ry,
+            base_kind=base_kind,
+            base_radius=getattr(opts, "base_corner_radius_mm", 0.0),
+        )
 
     def peak_at(t: float, h_mul: float) -> tuple[float, float]:
-        return _base_position_scaled(t, max(0.2, h_mul) * peak_scale, cx, cy, rx, ry, eff_h, base_kind=base_kind)
+        return _base_position_scaled(
+            t,
+            max(0.2, h_mul) * peak_scale,
+            cx,
+            cy,
+            rx,
+            ry,
+            eff_h,
+            base_kind=base_kind,
+            base_radius=getattr(opts, "base_corner_radius_mm", 0.0),
+        )
 
     pts = [valley_at(angle)]
     for _is_sub, bump_angle, h_mul in segments:
@@ -1261,8 +1424,26 @@ def _thorn_curve_peaks_valleys(
     valleys: list[tuple[float, float]] = []
     a = angle
     for _is_sub, bump_angle, h_mul in segments:
-        valleys.append(_base_position(a, cx, cy, rx, ry, base_kind=base_kind))
-        peaks.append(_base_position_scaled(a + bump_angle * 0.5, h_mul, cx, cy, rx, ry, eff_h, base_kind=base_kind))
+        valleys.append(_base_position(
+            a,
+            cx,
+            cy,
+            rx,
+            ry,
+            base_kind=base_kind,
+            base_radius=getattr(opts, "base_corner_radius_mm", 0.0),
+        ))
+        peaks.append(_base_position_scaled(
+            a + bump_angle * 0.5,
+            h_mul,
+            cx,
+            cy,
+            rx,
+            ry,
+            eff_h,
+            base_kind=base_kind,
+            base_radius=getattr(opts, "base_corner_radius_mm", 0.0),
+        ))
         a += bump_angle
     if len(peaks) < 3:
         return None
@@ -1366,8 +1547,9 @@ def _fluffy_raw_points(rect: Rect, opts: _DynamicOpts, *, samples_per_bump: int)
         return None
     cx, cy, rx_base, ry_base, eff_h = base
     base_kind = getattr(opts, "base_kind", "ellipse")
+    base_radius = getattr(opts, "base_corner_radius_mm", 0.0)
     amp = eff_h * 0.5
-    perimeter = _base_perimeter(rx_base, ry_base, base_kind)
+    perimeter = _base_perimeter(rx_base, ry_base, base_kind, base_radius)
     width_factor = _jitter_factor(opts.bump_w_jitter, opts.rng, min_factor=0.5)
     num_bumps = max(6, round(perimeter / max(0.001, opts.bump_w * width_factor)))
     # ズラし量 100% = 全周 1 周 (= 2π)。
@@ -1402,8 +1584,8 @@ def _fluffy_raw_points(rect: Rect, opts: _DynamicOpts, *, samples_per_bump: int)
         if sub_freq > 0:
             sub_idx = int(((phase % (2.0 * math.pi)) / (2.0 * math.pi)) * sub_freq) % len(sub_height)
             wave += sub_amp_ratio * math.cos(sub_freq * phase) * sub_height[sub_idx]
-        bx, by = _base_position(t, cx, cy, rx_base, ry_base, base_kind=base_kind)
-        nx, ny = _base_outward_normal(t, rx_base, ry_base, base_kind=base_kind)
+        bx, by = _base_position(t, cx, cy, rx_base, ry_base, base_kind=base_kind, base_radius=base_radius)
+        nx, ny = _base_outward_normal(t, rx_base, ry_base, base_kind=base_kind, base_radius=base_radius)
         raw.append((bx + amp * wave * nx, by + amp * wave * ny))
     return raw
 

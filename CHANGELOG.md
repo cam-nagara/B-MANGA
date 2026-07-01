@@ -3,6 +3,43 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-02 — レイヤー移動とフキダシ形状設定を調整 (B-MANGA v0.6.423)
+
+### 症状
+
+- レイヤー移動ツールでドラッグ中に水平・垂直へ固定できなかった。
+- Ctrl+Shift+D でレイヤーリストの「複製」を実行できなかった。
+- フキダシやコマの選択ハンドルが対象の輪郭に近く、操作対象と重なって見えやすかった。
+- 矩形フキダシの丸角を100%にして長細くすると、直線部が残る場合があった。
+- 小山高の初期値、乱れ設定、図形線のシードと形状パラメータ側のシードが揃っていなかった。
+- 形状パラメータのベースを矩形にしたとき、ベース矩形の丸角を調整できなかった。
+
+### 原因
+
+- レイヤー移動は直前のマウス位置との差分だけで移動しており、ドラッグ開始点からの軸固定量を保持していなかった。
+- キーマップにレイヤー複製用の Ctrl+Shift+D が登録されていなかった。
+- 選択ハンドルの描画と当たり判定が対象の外側へ拡張されていなかった。
+- 角丸矩形の最大半径時も通常の角丸矩形として扱っていたため、長辺側に直線が生じていた。
+- 図形線の乱れが旧来の別シードを参照しており、形状パラメータのシードへ統一されていなかった。
+
+### 修正
+
+- レイヤー移動中に Shift を押している間、ドラッグ開始点からの移動量を水平または垂直の大きい軸へ固定するようにした。
+- Ctrl+Shift+D に「レイヤーを複製」を割り当てた。
+- 通常レイヤーと自由変形対象の選択ハンドルを対象より一回り外側に表示し、外側のハンドル位置でも掴めるようにした。
+- コマ選択表示も対象より少し外側へ出して、枠線と選択表示が重なりにくいようにした。
+- 矩形フキダシの丸角100%は楕円相当の曲線として生成し、長細い形でも直線部が出ないようにした。
+- 小山高の初期値を50%にし、小山幅・小山高の乱れを詳細設定に表示する確認を追加した。
+- ズラし量の右隣にある「シード」を、形状の乱れと図形線の乱れの共通シードとして扱うようにした。複製時も同じシードを維持する。
+- 形状パラメータのベースが矩形のとき、ベース丸角と角半径を設定できるようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile core\balloon.py io\export_balloon.py io\schema.py keymap\keymap.py operators\layer_detail_op.py operators\layer_move_op.py operators\object_tool_free_transform.py operators\object_tool_selection.py ui\overlay.py ui\overlay_coma_selection.py utils\asset_preview.py utils\balloon_curve_object.py utils\balloon_line_decor_mesh.py utils\balloon_merge_object.py utils\balloon_mesh_signature.py utils\balloon_shapes.py test\blender_balloon_center_seed_selection_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python-exit-code 1 --python test\blender_balloon_center_seed_selection_check.py`
+
+---
+
 ## 2026-07-02 — コマ結合時のレイヤー所属を補正 (B-MANGA v0.6.422)
 
 ### 症状

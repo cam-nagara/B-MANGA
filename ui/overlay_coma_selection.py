@@ -15,6 +15,7 @@ _LINE_WIDTH_PX = 4.0
 _VERTEX_MARKER_SIZE_PX = 6.0
 _HANDLE_SIZE_PX = 20.0
 _HANDLE_OFFSET_PX = 21.0
+_SELECTION_OUTSET_MM = 3.0
 # hover 中の ▲ 用ハイライト色 (黄色寄り)
 _COLOR_HANDLE_HIGHLIGHT = (1.0, 0.85, 0.2, 1.0)
 _COLOR_VERTEX_HIGHLIGHT = (1.0, 0.85, 0.2, 1.0)
@@ -59,8 +60,9 @@ def draw(context, work, region, rv3d) -> None:
             continue
         ox, oy = _page_offset(context, work, page_index)
         world_poly = [(x + ox, y + oy) for x, y in poly]
+        display_poly = _expanded_poly_for_selection(world_poly, _SELECTION_OUTSET_MM)
         for edge_index in range(len(world_poly)):
-            _draw_edge(shader, region, rv3d, world_poly, edge_index, pointer=pointer)
+            _draw_edge(shader, region, rv3d, display_poly, edge_index, pointer=pointer)
     if not active_coma_selection:
         return
     kind = getattr(wm, "bmanga_edge_select_kind", "none")
@@ -147,6 +149,35 @@ def _coma_polygon(panel) -> list[tuple[float, float]]:
     if getattr(panel, "shape_type", "") == "polygon":
         return [(float(v.x_mm), float(v.y_mm)) for v in getattr(panel, "vertices", [])]
     return []
+
+
+def _expanded_poly_for_selection(
+    poly: list[tuple[float, float]],
+    outset_mm: float,
+) -> list[tuple[float, float]]:
+    if len(poly) < 3 or outset_mm <= 0.0:
+        return list(poly)
+    xs = [float(x) for x, _y in poly]
+    ys = [float(y) for _x, y in poly]
+    unique_x = sorted({round(x, 6) for x in xs})
+    unique_y = sorted({round(y, 6) for y in ys})
+    if len(poly) == 4 and len(unique_x) == 2 and len(unique_y) == 2:
+        min_x, max_x = min(xs) - outset_mm, max(xs) + outset_mm
+        min_y, max_y = min(ys) - outset_mm, max(ys) + outset_mm
+        return [(min_x, min_y), (max_x, min_y), (max_x, max_y), (min_x, max_y)]
+    cx = sum(xs) / len(xs)
+    cy = sum(ys) / len(ys)
+    out: list[tuple[float, float]] = []
+    for x, y in poly:
+        dx = float(x) - cx
+        dy = float(y) - cy
+        length = math.hypot(dx, dy)
+        if length <= 1.0e-6:
+            out.append((float(x), float(y)))
+        else:
+            scale = (length + outset_mm) / length
+            out.append((cx + dx * scale, cy + dy * scale))
+    return out
 
 
 def _world_to_region(region, rv3d, point: tuple[float, float]) -> tuple[float, float] | None:

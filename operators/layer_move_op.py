@@ -190,6 +190,8 @@ class BMANGA_OT_layer_move_tool(Operator):
     _moved: bool
     _externally_finished: bool
     _cursor_modal_set: bool
+    _drag_origin_world: tuple[float, float] | None
+    _last_applied_total: tuple[float, float]
 
     @classmethod
     def poll(cls, context):
@@ -224,6 +226,8 @@ class BMANGA_OT_layer_move_tool(Operator):
         self._dragging = False
         self._moved = False
         self._externally_finished = False
+        self._drag_origin_world = None
+        self._last_applied_total = (0.0, 0.0)
         self._cursor_modal_set = coma_modal_state.set_modal_cursor(context, "SCROLL_XY")
         context.window_manager.modal_handler_add(self)
         coma_modal_state.set_active("layer_move", self, context)
@@ -331,6 +335,8 @@ class BMANGA_OT_layer_move_tool(Operator):
                 self._target = None
                 self._snapshots = []
                 self._last_world = None
+                self._drag_origin_world = None
+                self._last_applied_total = (0.0, 0.0)
                 self._dragging = False
                 self._moved = False
                 return {"RUNNING_MODAL"}
@@ -342,12 +348,22 @@ class BMANGA_OT_layer_move_tool(Operator):
         coords = coma_picker._event_world_mm(context, event)
         if coords is None or self._last_world is None or not self._dragging:
             return {"PASS_THROUGH"}
-        dx = coords[0] - self._last_world[0]
-        dy = coords[1] - self._last_world[1]
+        if self._drag_origin_world is None:
+            self._drag_origin_world = self._last_world
+        total_dx = coords[0] - self._drag_origin_world[0]
+        total_dy = coords[1] - self._drag_origin_world[1]
+        if bool(getattr(event, "shift", False)):
+            if abs(total_dx) >= abs(total_dy):
+                total_dy = 0.0
+            else:
+                total_dx = 0.0
+        dx = total_dx - self._last_applied_total[0]
+        dy = total_dy - self._last_applied_total[1]
         if dx == 0.0 and dy == 0.0:
             return {"RUNNING_MODAL"}
         if self._apply_delta(context, dx, dy):
             self._last_world = coords
+            self._last_applied_total = (total_dx, total_dy)
             self._moved = True
             layer_stack_utils.apply_stack_order(context)
             page_grid.apply_page_collection_transforms(context, get_work(context))
@@ -364,6 +380,8 @@ class BMANGA_OT_layer_move_tool(Operator):
         self._snapshots = []
         self._capture_snapshot(context, item.kind, resolved)
         self._last_world = coords
+        self._drag_origin_world = coords
+        self._last_applied_total = (0.0, 0.0)
         self._dragging = True
         self._moved = False
         return True

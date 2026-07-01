@@ -806,6 +806,40 @@ def _draw_preview_balloon(
             cloud_sub_height_jitter=float(params.get("cloud_sub_height_jitter", 0.0) or 0.0),
             jitter_seed=int(params.get("shape_seed", 0) or 0),
             base_kind=str(params.get("dynamic_shape_base_kind", "ellipse") or "ellipse"),
+            base_corner_radius_mm=(
+                corner_radius.radius_from_values(
+                    unit=str(
+                        params.get(
+                            "dynamic_base_rounded_corner_radius_unit",
+                            params.get("dynamicBaseRoundedCornerRadiusUnit", "mm"),
+                        )
+                        or "mm"
+                    ),
+                    radius_mm=float(
+                        params.get(
+                            "dynamic_base_rounded_corner_radius_mm",
+                            params.get("dynamicBaseRoundedCornerRadiusMm", 0.0),
+                        )
+                        or 0.0
+                    ),
+                    radius_percent=float(
+                        params.get(
+                            "dynamic_base_rounded_corner_radius_percent",
+                            params.get("dynamicBaseRoundedCornerRadiusPercent", 0.0),
+                        )
+                        or 0.0
+                    ),
+                    width_mm=width_mm,
+                    height_mm=height_mm,
+                )
+                if bool(
+                    params.get(
+                        "dynamic_base_rounded_corner_enabled",
+                        params.get("dynamicBaseRoundedCornerEnabled", False),
+                    )
+                )
+                else 0.0
+            ),
         )
         mapped = _map_points_to_preview_rect(points, rect, width_mm, height_mm)
         if len(mapped) >= 3:

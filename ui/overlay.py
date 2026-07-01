@@ -269,6 +269,27 @@ def _quad_handle_rects(quad: dict[str, tuple[float, float]], size_mm: float = 2.
     ]
 
 
+def _expanded_quad_for_handles(quad: dict[str, tuple[float, float]], outset_mm: float) -> dict[str, tuple[float, float]]:
+    points = free_transform.ordered_quad_points(quad)
+    if not points:
+        return quad
+    cx = sum(x for x, _y in points) / len(points)
+    cy = sum(y for _x, y in points) / len(points)
+    expanded = {}
+    for key, (x, y) in quad.items():
+        dx = float(x) - cx
+        dy = float(y) - cy
+        length = (dx * dx + dy * dy) ** 0.5
+        if length <= 1.0e-9:
+            expanded[key] = (float(x), float(y))
+        else:
+            expanded[key] = (
+                float(x) + dx / length * float(outset_mm),
+                float(y) + dy / length * float(outset_mm),
+            )
+    return expanded
+
+
 def _free_transform_quad_for_key(context, key: str, rect: Rect):
     try:
         from ..operators import object_tool_selection
@@ -311,6 +332,7 @@ def _balloon_flash_center_xy(entry, rect: Rect) -> tuple[float, float] | None:
 def _draw_object_tool_layer_bounds(context) -> None:
     try:
         from ..operators import object_tool_op
+        from ..operators import object_tool_selection
         from ..utils import balloon_tail_geom
     except Exception:  # noqa: BLE001
         return
@@ -329,11 +351,16 @@ def _draw_object_tool_layer_bounds(context) -> None:
             continue
         quad = _free_transform_quad_for_key(context, key, rect)
         if quad:
-            _draw_quad_outline(quad, viewport_colors.SELECTION, line_width=2.0)
-            handle_rects = _quad_handle_rects(quad)
+            display_quad = _expanded_quad_for_handles(
+                quad,
+                float(getattr(object_tool_selection, "SELECTION_HANDLE_OUTSET_MM", 3.0)),
+            )
+            _draw_quad_outline(display_quad, viewport_colors.SELECTION, line_width=2.0)
+            handle_rects = _quad_handle_rects(display_quad)
         else:
-            _draw_rect_outline(rect.inset(-1.0), viewport_colors.SELECTION, width_mm=0.50)
-            handle_rects = _selection_handle_rects(rect)
+            display_rect = object_tool_selection.handle_rect_for_bounds(rect)
+            _draw_rect_outline(display_rect, viewport_colors.SELECTION, width_mm=0.50)
+            handle_rects = _selection_handle_rects(display_rect)
         for handle in handle_rects:
             _draw_rect_fill(handle, viewport_colors.HANDLE_FILL)
             _draw_rect_outline(handle, viewport_colors.HANDLE_OUTLINE, width_mm=0.25)
