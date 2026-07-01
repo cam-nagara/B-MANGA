@@ -640,7 +640,6 @@ def _auto_targets(
     from . import plane_filter
 
     targets: list[bpy.types.Object] = []
-    source_key = obj.name_full
     for src_scene in _iter_source_scenes(obj, scene):
         for candidate in src_scene.objects:
             if candidate == obj or candidate.type != "MESH" or candidate.data is None:
@@ -657,12 +656,33 @@ def _auto_targets(
             candidate_enabled = bool(
                 getattr(candidate_settings, "intersection_enabled", False)
             )
-            if candidate_enabled and source_key >= candidate.name_full:
+            if candidate_enabled and not _source_owns_intersection_pair(
+                obj,
+                candidate,
+                src_scene,
+            ):
                 continue
             if candidate not in targets:
                 targets.append(candidate)
     targets.sort(key=lambda item: item.name_full)
     return targets
+
+
+def _source_owns_intersection_pair(
+    source: bpy.types.Object,
+    target: bpy.types.Object,
+    scene: bpy.types.Scene | None,
+) -> bool:
+    """重複防止時、どちら側に交差線を作るかを決める."""
+    active = getattr(getattr(bpy.context, "view_layer", None), "objects", None)
+    active_obj = getattr(active, "active", None)
+    if active_obj is not None and getattr(active_obj, "type", None) == "MESH":
+        if scene is None or any(item == active_obj for item in scene.objects):
+            if active_obj == source:
+                return True
+            if active_obj == target:
+                return False
+    return source.name_full < target.name_full
 
 
 def _creation_in_range(
@@ -953,39 +973,56 @@ def update_target_width_references(
     return changed
 
 
+def _intersection_refresh_sources(scene: bpy.types.Scene) -> list[bpy.types.Object]:
+    objects = [obj for obj in scene.objects if obj.type == "MESH"]
+    active = getattr(getattr(bpy.context, "view_layer", None), "objects", None)
+    active_obj = getattr(active, "active", None)
+    if active_obj is None or active_obj not in objects:
+        return objects
+    return [obj for obj in objects if obj != active_obj] + [active_obj]
+
+
+def _refresh_source_intersections(
+    obj: bpy.types.Object,
+    scene: bpy.types.Scene,
+    outline_setup,
+    plane_filter,
+) -> bool:
+    if obj.modifiers.get(MODIFIER_NAME) is None:
+        return False
+    settings = getattr(obj, "bmanga_line_settings", None)
+    if settings is None:
+        return False
+    if plane_filter.should_exclude_generated_lines(obj, settings):
+        remove_intersection_lines(obj)
+        return False
+    if not getattr(settings, "intersection_enabled", False):
+        remove_intersection_lines(obj)
+        return False
+    if not _creation_in_range(obj, scene):
+        remove_intersection_lines(obj)
+        return False
+    apply_intersection_lines(
+        obj,
+        thickness=scale_utils.modifier_thickness_for_world_width(
+            obj,
+            settings.intersection_thickness,
+        ),
+        offset=settings.intersection_line_offset,
+        material=outline_setup.get_outline_material(obj),
+        method=settings.intersection_method,
+        scene=scene,
+    )
+    return any(iter_intersection_modifiers(obj))
+
+
 def refresh_scene_intersections(scene: bpy.types.Scene) -> list[bpy.types.Object]:
     """シーン内の交差線を、現在のメッシュ構成に合わせて作り直す."""
     from . import outline_setup, plane_filter
 
     refreshed: list[bpy.types.Object] = []
-    for obj in scene.objects:
-        if obj.type != "MESH":
-            continue
-        if obj.modifiers.get(MODIFIER_NAME) is None:
-            continue
-        settings = getattr(obj, "bmanga_line_settings", None)
-        if settings is None:
-            continue
-        if plane_filter.should_exclude_generated_lines(obj, settings):
-            remove_intersection_lines(obj)
-            continue
-        if not getattr(settings, "intersection_enabled", False):
-            remove_intersection_lines(obj)
-            continue
-        if not _creation_in_range(obj, scene):
-            remove_intersection_lines(obj)
-            continue
-        apply_intersection_lines(
-            obj,
-            thickness=scale_utils.modifier_thickness_for_world_width(
-                obj,
-                settings.intersection_thickness,
-            ),
-            offset=settings.intersection_line_offset,
-            material=outline_setup.get_outline_material(obj),
-            method=settings.intersection_method,
-            scene=scene,
-        )
-        if any(iter_intersection_modifiers(obj)):
+    sources = _intersection_refresh_sources(scene)
+    for obj in sources:
+        if _refresh_source_intersections(obj, scene, outline_setup, plane_filter):
             refreshed.append(obj)
     return refreshed

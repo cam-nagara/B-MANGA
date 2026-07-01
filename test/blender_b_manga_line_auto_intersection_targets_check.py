@@ -54,8 +54,7 @@ def _expected_targets(obj: bpy.types.Object, objects: list[bpy.types.Object]) ->
     return expected
 
 
-def main() -> None:
-    b_manga_line.register()
+def _test_name_fallback_without_camera() -> None:
     _clear_scene()
 
     first = _make_cube("BML_auto_target_A", (-0.35, 0.0, 0.0))
@@ -87,6 +86,33 @@ def main() -> None:
     assert not list(core.iter_intersection_modifiers(first))
     assert first.name in _target_names(second)
     assert first.name in _target_names(third)
+
+
+def _test_active_object_owns_pair() -> None:
+    _clear_scene()
+
+    active_side = _make_cube("Z_active_should_own", (0.0, 0.0, 0.0))
+    name_side = _make_cube("A_name_would_own", (0.35, 0.0, 0.0))
+    for obj in (active_side, name_side):
+        settings = obj.bmanga_line_settings
+        settings.intersection_enabled = True
+        settings.intersection_method = "BOOLEAN"
+
+    bpy.context.view_layer.objects.active = active_side
+    _apply_all([active_side, name_side])
+
+    assert name_side.name in _target_names(active_side), (
+        "アクティブなオブジェクトに交差線が作られていません"
+    )
+    assert active_side.name not in _target_names(name_side), (
+        "名前順で非アクティブ側に交差線が作られています"
+    )
+
+
+def main() -> None:
+    b_manga_line.register()
+    _test_name_fallback_without_camera()
+    _test_active_object_owns_pair()
 
     print("[PASS] intersection targets are detected automatically")
 

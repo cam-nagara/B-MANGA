@@ -130,6 +130,7 @@ def _refresh_after_line_settings(context) -> None:
     from . import camera_comp, intersection_lines, outline_setup
 
     camera_comp.refresh(context)
+    _update_view_layer(context)
     intersection_targets = intersection_lines.refresh_scene_intersections(context.scene)
     if intersection_targets:
         camera_comp.refresh_objects(

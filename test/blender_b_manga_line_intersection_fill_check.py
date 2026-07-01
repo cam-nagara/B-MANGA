@@ -144,6 +144,7 @@ def _assert_near_contact_uses_camera_width_before_generation() -> None:
     white_mat = _emission_material("確認用_近接白", (1.0, 1.0, 1.0, 1.0))
     source = _make_gap_cube("交差確認_A_近接元", (0.0, 0.0, 0.0), white_mat)
     target = _make_gap_cube("交差確認_B_近接対象", (1.02, 0.0, 0.0), white_mat)
+    bpy.context.view_layer.objects.active = source
     for obj in (source, target):
         assert presets.apply_line_settings(
             obj,

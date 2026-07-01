@@ -581,6 +581,7 @@ def _update_intersections(objects: list[bpy.types.Object], context) -> None:
             intersection_lines.refresh_scene_intersections(context.scene)
         return
 
+    presets._update_view_layer(context)
     refresh_targets = intersection_lines.refresh_scene_intersections(context.scene)
     if refresh_targets:
         _refresh_camera_objects(

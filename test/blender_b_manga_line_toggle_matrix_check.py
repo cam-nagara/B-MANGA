@@ -199,12 +199,13 @@ def _assert_transition_counts(
     if prop == "intersection_enabled":
         assert counts["outline_apply"] == 0, (context, counts)
         assert counts["inner_apply"] == 0, (context, counts)
-        assert counts["view_update"] == 0, (context, counts)
         if turning_on:
+            assert counts["view_update"] == 1, (context, counts)
             assert counts["intersection_refresh"] == 1, (context, counts)
             assert counts["intersection_apply"] == 3, (context, counts)
             assert counts["camera_objects"] == 2, (context, counts)
         else:
+            assert counts["view_update"] == 0, (context, counts)
             assert counts["intersection_refresh"] == 0, (context, counts)
             assert counts["intersection_apply"] == 0, (context, counts)
             assert counts["camera_objects"] == 0, (context, counts)

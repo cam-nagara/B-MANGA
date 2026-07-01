@@ -78,7 +78,7 @@ def main() -> None:
 
         assert counts["intersection"] == 1, counts
         assert counts["camera"] == 1, counts
-        assert counts["view_update"] == 1, counts
+        assert counts["view_update"] == 2, counts
         print(f"[PASS] batch apply refresh count: {counts}")
 
         assert objects[0].bmanga_line_settings.use_uniform_line_width is False

@@ -3,6 +3,41 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-01 — B-MANGA Lineの交差線生成先を修正 (B-MANGA Line v0.3.62)
+
+### 症状
+
+- すべてのオブジェクトを選択して「交差線を追加」しても、Cubeなど見ているオブジェクト側に出るべき交差線が一部出なかった。
+- 前回の線幅修正後も、実ファイルでは交差候補に入っている相手が、実際の交差線モディファイアとして作られないケースが残っていた。
+
+### 原因
+
+- 交差線の重複生成を防ぐため、交差線をどちら側のオブジェクトへ作るかを名前順で決めていた。
+- そのため、現在確認しているアクティブなオブジェクトではなく、別のオブジェクト側に交差線が作られ、見た目上「出るべき場所に出ない」状態になっていた。
+- また、カメラ基準の線幅更新直後にBlender側の更新を確定しないまま交差線候補を作っていたため、対象一覧には入るのに作成時だけ落ちる候補があった。
+
+### 修正
+
+- アクティブなメッシュが交差ペアの片側なら、重複防止時もアクティブ側へ交差線を作るようにした。
+- 交差線の全体更新では、アクティブなオブジェクトを最後に処理するようにした。
+- 「ラインを適用」と「交差線を追加」の両経路で、カメラ基準の線幅更新をBlender側へ反映してから交差線を作るようにした。
+- 交差線のオン操作で余分な全体再生成は増やさず、ビュー更新1回と通常の交差線更新1回に抑えた。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\intersection_lines.py addons\b_manga_line\presets.py addons\b_manga_line\batch_update.py test\blender_b_manga_line_auto_intersection_targets_check.py test\blender_b_manga_line_intersection_fill_check.py test\blender_b_manga_line_toggle_matrix_check.py test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_auto_intersection_targets_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_intersection_fill_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_toggle_matrix_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_uniform_width_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_view_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_register_reenable_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_intersection_creation_range_check.py`
+- `D:\TM Dropbox\Share\Assets\Japanese Streetscape Tokyo 0004\Japanese_Streetscape_Tokyo_0004.blend` を実ファイル確認し、Cubeの交差線対象が再適用前から10件すべて生成されることを確認。板ポリ除外対象4件は設定どおり未生成。
+
+---
+
 ## 2026-07-01 — B-MANGA Lineのカメラビュー上の線幅を修正 (B-MANGA Line v0.3.61)
 
 ### 症状
