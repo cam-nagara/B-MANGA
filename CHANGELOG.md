@@ -3,6 +3,38 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-01 — B-MANGA Lineの交差対象スケール補正を修正 (B-MANGA Line v0.3.48)
+
+### 症状
+
+- 徹底チェックで、交差線が参照する「交差対象の線幅」に、交差対象側のローカル幅がそのまま入る経路が残っていた。
+- 自分と交差対象のオブジェクトスケールが異なる場合、交差線の塗り幅や交差判定の余白が実際の見た目の線幅とズレる可能性があった。
+
+### 原因
+
+- 交差線は自分のローカル空間で生成されるが、交差対象のアウトライン幅を自分側のローカル幅へ換算していなかった。
+- 交差候補の境界判定に使う余白も、スケール補正後のローカル幅をワールド幅として扱っていた。
+
+### 修正
+
+- 交差対象のアウトライン幅を一度ワールド上の太さへ戻し、交差線を生成する自分側のローカル幅へ換算してからノードへ渡すようにした。
+- 交差候補の境界判定余白は、ワールド上の太さとして比較するようにした。
+- スケール 1.0 と 0.0254 のオブジェクトを交差対象にする混合スケールの回帰テストを追加した。
+
+### 徹底チェック
+
+- 操作経路: ライン適用、線幅変更、線幅基準距離変更、線幅の均一化切替、内部線の追加・太さ変更、交差線の追加・太さ変更、ラインのみ表示切替、リンク素材への設定上書き。
+- 確認結果: アウトライン・内部線・ラインのみ表示補助線はスケール補正済み。交差対象の線幅と交差判定余白に補正漏れを発見し修正。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\intersection_lines.py addons\b_manga_line\scale_utils.py addons\b_manga_line\camera_comp.py addons\b_manga_line\outline_setup.py addons\b_manga_line\core.py addons\b_manga_line\batch_update.py addons\b_manga_line\presets.py test\blender_b_manga_line_uniform_width_check.py test\blender_b_manga_line_open_mesh_outline_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_uniform_width_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_open_mesh_outline_check.py`
+- `Japanese_Streetscape_Tokyo_0004.blend` を UI なしで開き、全917メッシュに線幅100mm・線幅基準距離2m・通常設定でラインを適用。カメラ更新後のワールド上の線幅が全917メッシュで同一 (`0.28237`) になることを確認。
+
+---
+
 ## 2026-07-01 — B-MANGA Lineの線種別スケール補正を検証・補完 (B-MANGA Line v0.3.47)
 
 ### 症状

@@ -24,6 +24,7 @@ from __future__ import annotations
 import bpy
 from mathutils import Vector
 
+from . import scale_utils
 from .core import (
     GENERATED_LINE_ATTR,
     GN_MODIFIER_NAME,
@@ -551,14 +552,25 @@ def _ensure_material_slot(
         obj.data.materials.append(material)
 
 
-def _target_outline_thickness(target: bpy.types.Object | None) -> float:
-    """交差対象の B-MANGA Line 線幅を取得する."""
+def _outline_world_width(target: bpy.types.Object | None) -> float:
+    """交差対象の B-MANGA Line 線幅をワールド上の太さとして取得する."""
     if target is None or target.type != "MESH":
         return 0.0
     mod = target.modifiers.get(MODIFIER_NAME)
     if mod is None:
         return 0.0
-    return max(0.0, abs(float(mod.thickness)))
+    return scale_utils.world_width_from_modifier(target, mod.thickness)
+
+
+def _target_outline_thickness(
+    source: bpy.types.Object | None,
+    target: bpy.types.Object | None,
+) -> float:
+    """交差対象の線幅を、ソース側のローカル幅へ変換して返す."""
+    world_width = _outline_world_width(target)
+    if source is None or source.type != "MESH":
+        return world_width
+    return scale_utils.modifier_thickness_for_world_width(source, world_width)
 
 
 def _iter_source_scenes(
@@ -648,9 +660,9 @@ def _intersection_margin(
     thickness: float,
 ) -> float:
     return max(
-        abs(float(thickness)),
-        _target_outline_thickness(obj),
-        _target_outline_thickness(target),
+        scale_utils.world_width_from_modifier(obj, thickness),
+        _outline_world_width(obj),
+        _outline_world_width(target),
         0.001,
     )
 
@@ -694,7 +706,8 @@ def _set_modifier_parameters(
         mod[sid_thickness] = thickness
     sid_target_thickness = _find_socket_id(tree, _TARGET_THICKNESS_SOCKET)
     if sid_target_thickness is not None:
-        mod[sid_target_thickness] = _target_outline_thickness(target)
+        source = getattr(mod, "id_data", None)
+        mod[sid_target_thickness] = _target_outline_thickness(source, target)
     sid_mat = _find_socket_id(tree, _MATERIAL_SOCKET)
     if sid_mat is not None and material is not None:
         mod[sid_mat] = material
@@ -850,7 +863,7 @@ def update_parameters(
 
 def refresh_scene_intersections(scene: bpy.types.Scene) -> None:
     """シーン内の交差線を、現在のメッシュ構成に合わせて作り直す."""
-    from . import outline_setup, plane_filter, scale_utils
+    from . import outline_setup, plane_filter
 
     for obj in scene.objects:
         if obj.type != "MESH":

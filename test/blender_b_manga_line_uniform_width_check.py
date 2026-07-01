@@ -114,6 +114,14 @@ def _intersection_thickness(obj: bpy.types.Object) -> float:
     return float(mod[sid])
 
 
+def _intersection_target_thickness(obj: bpy.types.Object) -> float:
+    mod = next(core.iter_intersection_modifiers(obj), None)
+    assert mod is not None
+    sid = intersection_lines._find_socket_id(mod.node_group, "交差対象の線幅")
+    assert sid is not None
+    return float(mod[sid])
+
+
 def _evaluated_outline_world_width(obj: bpy.types.Object) -> float:
     depsgraph = bpy.context.evaluated_depsgraph_get()
     mesh = bpy.data.meshes.new_from_object(obj.evaluated_get(depsgraph))
@@ -394,6 +402,57 @@ def _test_object_scale_compensates_modifier_width() -> None:
     )
 
 
+def _make_scaled_cube(name: str, scale: float) -> bpy.types.Object:
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0.0, 0.0, -4.0))
+    obj = bpy.context.object
+    obj.name = name
+    obj.scale = (scale, scale, scale)
+    return obj
+
+
+def _test_intersection_target_scale_conversion() -> None:
+    scene = bpy.context.scene
+
+    for source_scale, target_scale in ((1.0, 0.0254), (0.0254, 1.0)):
+        _clear_scene()
+        _configure_scene(scene)
+
+        target = _make_scaled_cube("BML_mixed_target", target_scale)
+        _select(target)
+        target.bmanga_line_settings.outline_thickness_mm = 0.6
+        assert presets.apply_line_settings(target, bpy.context)
+
+        source = _make_scaled_cube("BML_mixed_source", source_scale)
+        _select(source)
+        source.bmanga_line_settings.outline_thickness_mm = 0.6
+        source.bmanga_line_settings.intersection_enabled = True
+        source.bmanga_line_settings.intersection_thickness_mm = 0.2
+        assert presets.apply_line_settings(source, bpy.context)
+
+        expected_outline = _expected_world_width(scene, 2.0, 0.6)
+        expected_intersection = _expected_world_width(scene, 2.0, 0.2)
+
+        assert math.isclose(
+            _socket_world_width(source, _intersection_thickness(source)),
+            expected_intersection,
+            rel_tol=0.001,
+        )
+        assert math.isclose(
+            _socket_world_width(source, _intersection_target_thickness(source)),
+            expected_outline,
+            rel_tol=0.001,
+        )
+        margin = intersection_lines._intersection_margin(
+            source,
+            target,
+            _intersection_thickness(source),
+        )
+        assert math.isclose(margin, expected_outline, rel_tol=0.001), (
+            margin,
+            expected_outline,
+        )
+
+
 def _test_evaluated_orthographic_width() -> None:
     scene = bpy.context.scene
     _clear_scene()
@@ -491,6 +550,7 @@ def main() -> None:
     _test_batch_apply_uses_reference_distance_not_object_distance()
     _test_multi_select_mm_change_updates_all_modifiers()
     _test_object_scale_compensates_modifier_width()
+    _test_intersection_target_scale_conversion()
     _test_evaluated_orthographic_width()
     _test_linked_uniform_width_refresh_does_not_crash()
     print("[PASS] B-MANGA Line uniform width follows mm, DPI, and resolution")
