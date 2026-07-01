@@ -490,8 +490,18 @@ def _on_intersection_enabled_changed(self, context):
     if _propagating:
         return
     owner = self.id_data
+    disabling = not bool(self.intersection_enabled)
     _sync_intersection_creation(owner, self, context)
-    if _propagate(self, context, "intersection_enabled"):
+    propagated = _propagate(self, context, "intersection_enabled")
+    if disabling:
+        if not propagated:
+            from . import intersection_lines
+            if intersection_lines.scene_has_enabled_intersections(
+                getattr(context, "scene", None),
+            ):
+                _refresh_intersection_scene(context)
+        return
+    if propagated:
         if any(iter_intersection_modifiers(owner)):
             _refresh_print_widths_for(context, [owner], update_visibility=True)
     else:

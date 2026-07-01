@@ -3,6 +3,33 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-01 — B-MANGA Lineの内部線・交差線オフを軽量化 (B-MANGA Line v0.3.54)
+
+### 症状
+
+- 内部線や交差線をオンにする操作は軽くなった一方、オフにすると選択数が多い場面で待ち時間が長くなっていた。
+- 特にアウトライン・内部線・交差線をまとめて使っている状態で、交差線をオフにすると不要な更新が走りやすかった。
+
+### 原因
+
+- 内部線をオフにする一括更新で、内部線が生成済みかどうかに関係なく、選択中のライン適用済みオブジェクト全体を処理していた。
+- 交差線をオフにする一括更新で、交差線を消すだけでよい場面でも、シーン全体の交差線を作り直す処理を呼んでいた。
+
+### 修正
+
+- 内部線をオフにする場合は、生成済み内部線だけを対象にして、ライン適用済み全体への不要な準備処理を省いた。
+- 交差線を全選択などでまとめてオフにし、シーン内に交差線オンのオブジェクトが残らない場合は、生成済み交差線を外すだけにしてシーン全体の交差線再生成を省いた。
+- 交差線オンのオブジェクトがまだ残る場合は、交差線をオフにしたオブジェクトが他オブジェクト側の交差対象として扱われる既存挙動を維持するため、従来通り再計算する。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `$env:PYTHONDONTWRITEBYTECODE='1'; python -m py_compile addons\b_manga_line\intersection_lines.py addons\b_manga_line\core.py addons\b_manga_line\batch_update.py addons\b_manga_line\__init__.py test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_generated_update_scope_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_auto_intersection_targets_check.py`
+
+---
+
 ## 2026-07-01 — B-MANGA Lineにレンダリング範囲選択とアウトライン切替を追加 (B-MANGA Line v0.3.53)
 
 ### 症状

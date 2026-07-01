@@ -822,6 +822,19 @@ def remove_intersection_lines(obj: bpy.types.Object) -> bool:
     return removed
 
 
+def scene_has_enabled_intersections(scene: bpy.types.Scene | None) -> bool:
+    """シーン内に交差線オンのメッシュが残っているか返す."""
+    if scene is None:
+        return False
+    for obj in scene.objects:
+        if obj.type != "MESH":
+            continue
+        settings = getattr(obj, "bmanga_line_settings", None)
+        if settings is not None and getattr(settings, "intersection_enabled", False):
+            return True
+    return False
+
+
 def prune_excluded_intersections(scene: bpy.types.Scene | None) -> int:
     """Remove existing intersection modifiers that involve excluded sheet meshes."""
     if scene is None:

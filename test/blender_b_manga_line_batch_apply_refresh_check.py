@@ -252,6 +252,14 @@ def main() -> None:
                     assert refresh_counts["inner_apply"] == 0, (prop_name, refresh_counts)
                     assert refresh_counts["intersection"] == 0, (prop_name, refresh_counts)
                     assert refresh_counts["camera_objects"] == 0, (prop_name, refresh_counts)
+                if prop_name == "inner_line_enabled" and value is False:
+                    assert refresh_counts["inner_apply"] == 0, (prop_name, refresh_counts)
+                    assert refresh_counts["intersection"] == 0, (prop_name, refresh_counts)
+                    assert refresh_counts["camera_objects"] == 0, (prop_name, refresh_counts)
+                if prop_name == "intersection_enabled" and value is False:
+                    assert refresh_counts["inner_apply"] == 0, (prop_name, refresh_counts)
+                    assert refresh_counts["intersection"] == 0, (prop_name, refresh_counts)
+                    assert refresh_counts["camera_objects"] == 0, (prop_name, refresh_counts)
         finally:
             presets.apply_line_settings = real_apply
             inner_lines.apply_inner_lines = real_inner_apply

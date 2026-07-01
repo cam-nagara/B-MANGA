@@ -375,6 +375,11 @@ def _update_inner_lines(
     *,
     create_missing: bool = True,
 ) -> None:
+    if not any(obj.bmanga_line_settings.inner_line_enabled for obj in objects):
+        for obj in _generated_line_objects(objects, "inner"):
+            inner_lines.disable_inner_lines(obj)
+        return
+
     presets._update_view_layer(context)
     refresh_targets = []
     for obj in objects:
@@ -411,6 +416,13 @@ def _update_inner_lines(
 def _update_intersections(objects: list[bpy.types.Object], context) -> None:
     if not objects:
         return
+    if not any(obj.bmanga_line_settings.intersection_enabled for obj in objects):
+        for obj in _generated_line_objects(objects, "intersection"):
+            intersection_lines.remove_intersection_lines(obj)
+        if intersection_lines.scene_has_enabled_intersections(context.scene):
+            intersection_lines.refresh_scene_intersections(context.scene)
+        return
+
     intersection_lines.refresh_scene_intersections(context.scene)
     refresh_targets = [
         obj for obj in objects
