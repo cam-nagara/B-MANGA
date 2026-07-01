@@ -3,6 +3,33 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-01 — B-MANGA Lineの内部線と作成範囲の初期値を変更 (B-MANGA Line v0.3.50)
+
+### 症状
+
+- 内部線の「検出角度」の初期値が `30°` になっていた。
+- 内部線と交差線の「作成範囲を制限」が、新規設定とプリセットで初期オフになっていた。
+
+### 原因
+
+- 以前の既定値が、今回の運用で必要な初期状態と合わなくなっていた。
+
+### 修正
+
+- 内部線の「検出角度」の初期値を `60°` に変更した。
+- 内部線と交差線の「作成範囲を制限」を初期オンに変更した。
+- 新規オブジェクト、ラインプリセット、内部線の初期ノード値で同じ初期状態になるようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\inner_lines.py addons\b_manga_line\presets.py test\blender_b_manga_line_register_reenable_check.py test\blender_b_manga_line_inner_creation_range_check.py test\blender_b_manga_line_intersection_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_register_reenable_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_inner_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_intersection_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_preset_visibility_check.py`
+
+---
+
 ## 2026-07-01 — B-MANGA Lineのラインのみ表示オフセットを固定 (B-MANGA Line v0.3.49)
 
 ### 症状

@@ -46,7 +46,7 @@ def _create_node_tree() -> bpy.types.NodeTree:
     angle_sock = tree.interface.new_socket(
         name="検出角度", in_out="INPUT", socket_type="NodeSocketFloat"
     )
-    angle_sock.default_value = math.radians(30)
+    angle_sock.default_value = math.radians(60)
     angle_sock.min_value = math.radians(1)
     angle_sock.max_value = math.radians(180)
     if hasattr(angle_sock, "subtype"):

@@ -846,7 +846,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     inner_line_angle: FloatProperty(
         name="検出角度",
         description="この角度以上の折れ目に線を描画する",
-        default=math.radians(30),
+        default=math.radians(60),
         min=math.radians(1),
         max=math.radians(180),
         subtype="ANGLE",
@@ -885,7 +885,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     use_inner_line_creation_limit: BoolProperty(
         name="作成範囲を制限",
         description="カメラから指定距離以内のオブジェクトにだけ内部線を作成する",
-        default=False,
+        default=True,
         update=_on_inner_creation_limit_changed,
     )  # type: ignore[valid-type]
 
@@ -946,7 +946,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     use_intersection_creation_limit: BoolProperty(
         name="作成範囲を制限",
         description="カメラから指定距離以内のオブジェクトにだけ交差線を作成する",
-        default=False,
+        default=True,
         update=_on_intersection_creation_limit_changed,
     )  # type: ignore[valid-type]
 

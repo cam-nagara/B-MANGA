@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import math
 import sys
 import types
 from pathlib import Path
@@ -146,10 +147,25 @@ def _assert_panels_draw_items() -> None:
         if getattr(prop, "type", None) == "BOOLEAN"
         and prop.identifier != "rna_type"
     ]
+    initially_on_props = {
+        "use_inner_line_creation_limit",
+        "use_intersection_creation_limit",
+    }
     for prop_name in bool_props:
+        if prop_name in initially_on_props:
+            assert getattr(obj.bmanga_line_settings, prop_name) is True, (
+                f"{prop_name} の初期値がオンではありません"
+            )
+            continue
         assert getattr(obj.bmanga_line_settings, prop_name) is False, (
             f"{prop_name} の初期値がオフではありません"
         )
+    assert math.isclose(
+        obj.bmanga_line_settings.inner_line_angle,
+        math.radians(60.0),
+        rel_tol=0.0,
+        abs_tol=1.0e-7,
+    ), "内部線の検出角度の初期値が60度ではありません"
     preset = bpy.context.scene.bmanga_line_presets.add()
     preset_bool_props = [
         prop.identifier
@@ -158,9 +174,20 @@ def _assert_panels_draw_items() -> None:
         and prop.identifier != "rna_type"
     ]
     for prop_name in preset_bool_props:
+        if prop_name in initially_on_props:
+            assert getattr(preset, prop_name) is True, (
+                f"プリセットの {prop_name} の初期値がオンではありません"
+            )
+            continue
         assert getattr(preset, prop_name) is False, (
             f"プリセットの {prop_name} の初期値がオフではありません"
         )
+    assert math.isclose(
+        preset.inner_line_angle,
+        math.radians(60.0),
+        rel_tol=0.0,
+        abs_tol=1.0e-7,
+    ), "プリセットの内部線の検出角度の初期値が60度ではありません"
     camera_props = [
         "line_width_reference_distance",
         "use_camera_compensation",

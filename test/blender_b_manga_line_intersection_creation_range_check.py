@@ -88,7 +88,7 @@ def main() -> None:
         for obj in (source, exact, far):
             settings = obj.bmanga_line_settings
             assert abs(settings.intersection_creation_max_distance - 10.0) < 1.0e-7
-            settings.use_intersection_creation_limit = True
+            assert settings.use_intersection_creation_limit is True
             _apply(obj)
 
         assert math.isclose(
@@ -127,6 +127,7 @@ def main() -> None:
         stale_transform = _make_data_cube(
             "BML_intersection_range_D_stale_transform", (-4.0, -11.5, 0.0),
         )
+        assert stale_transform.bmanga_line_settings.use_intersection_creation_limit is True
         _apply(stale_transform)
         intersection_lines.refresh_scene_intersections(bpy.context.scene)
         assert stale_transform.name not in _target_names(source), (
