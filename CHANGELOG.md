@@ -3,6 +3,33 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-02 — コマ用blendのページ画像に輪郭ぼかしを反映 (B-MANGA v0.6.425)
+
+### 症状
+
+- 枠線が「輪郭ぼかし」のコマでコマ用blendファイルを開くと、ページ画像が単純な枠線なし形状で硬く透明にくり抜かれていた。
+- コマの輪郭ぼかしが、コマ用blendファイル内のページ画像に反映されていなかった。
+
+### 原因
+
+- コマ用blendファイルへ表示する現在ページのページ画像を作る時、コマ形状を単純な多角形として扱い、透明部分を一括で抜いていた。
+- ページ出力側で使っている輪郭ぼかし用の透明度マスクを、コマ用blendファイルのページ画像生成に使っていなかった。
+
+### 修正
+
+- コマ用blendファイルのページ画像を透明にする処理を、輪郭ぼかしの透明度マスクと同じ計算へ統一した。
+- 「輪郭ぼかし」では、ページ画像のコマ境界に途中階調を残し、硬い穴抜きにならないようにした。
+- 旧参照画像の生成経路も同じ処理に揃えた。
+- コマ用blendファイル復旧テストに、ページ画像の輪郭ぼかし階調が残る確認を追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile utils\coma_camera.py utils\coma_camera_refs.py utils\coma_own_page_mask.py test\blender_page_coma_preview_restore_check.py test\blender_coma_underlay_reference_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python-exit-code 1 --python test\blender_page_coma_preview_restore_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python-exit-code 1 --python test\blender_coma_underlay_reference_check.py`
+
+---
+
 ## 2026-07-02 — ページ一覧で選択ページのプレビューを維持 (B-MANGA v0.6.424)
 
 ### 症状

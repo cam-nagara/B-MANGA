@@ -224,6 +224,77 @@ def _assert_current_page_runtime_aligned(work) -> None:
                 )
 
 
+def _image_path(image) -> Path:
+    raw = str(getattr(image, "filepath", "") or "")
+    if not raw:
+        return Path()
+    return Path(bpy.path.abspath(raw))
+
+
+def _own_page_background(camera, page_id: str):
+    cam_data = getattr(camera, "data", None)
+    if cam_data is None:
+        return None
+    for bg in getattr(cam_data, "background_images", []) or []:
+        image = getattr(bg, "image", None)
+        if image is None:
+            continue
+        if (
+            str(image.get("bmanga_kind", "") or "") == "own_page"
+            and str(image.get("bmanga_page_id", "") or "") == page_id
+        ):
+            return bg
+    return None
+
+
+def _alpha_at(alpha, x_mm: float, y_mm: float, canvas_w_mm: float, canvas_h_mm: float) -> int:
+    width, height = alpha.size
+    x = max(0, min(width - 1, int(round(float(x_mm) / canvas_w_mm * width))))
+    y = max(0, min(height - 1, height - int(round(float(y_mm) / canvas_h_mm * height))))
+    return int(alpha.getpixel((x, y)))
+
+
+def _assert_own_page_brush_cutout_is_soft(camera, work, page, coma) -> None:
+    from PIL import Image
+
+    page_id = str(getattr(page, "id", "") or "")
+    bg = _own_page_background(camera, page_id)
+    if bg is None or getattr(bg, "image", None) is None:
+        raise AssertionError("輪郭ぼかし確認用のページ画像下絵が見つかりません")
+    path = _image_path(bg.image)
+    if not path.is_file():
+        raise AssertionError(f"輪郭ぼかし確認用のページ画像が保存されていません: {path}")
+    paper = work.paper
+    canvas_w_mm = max(1.0, float(paper.canvas_width_mm))
+    canvas_h_mm = max(1.0, float(paper.canvas_height_mm))
+    x0 = float(coma.rect_x_mm)
+    y_mid = float(coma.rect_y_mm) + float(coma.rect_height_mm) * 0.5
+    border = coma.border
+    soft_mm = max(1.0, float(border.width_mm) * 0.5 * float(border.blur_amount))
+    with Image.open(str(path)) as opened:
+        alpha = opened.convert("RGBA").getchannel("A")
+        outside = _alpha_at(alpha, x0 - soft_mm * 0.5, y_mid, canvas_w_mm, canvas_h_mm)
+        feather = _alpha_at(alpha, x0 + soft_mm * 0.35, y_mid, canvas_w_mm, canvas_h_mm)
+        inside = _alpha_at(alpha, x0 + soft_mm * 1.5, y_mid, canvas_w_mm, canvas_h_mm)
+        center = _alpha_at(
+            alpha,
+            x0 + float(coma.rect_width_mm) * 0.5,
+            y_mid,
+            canvas_w_mm,
+            canvas_h_mm,
+        )
+    if outside < 200:
+        raise AssertionError(f"輪郭ぼかしの外側ページ画像が不透明ではありません: outside={outside}")
+    if not (20 < feather < outside - 20):
+        raise AssertionError(
+            f"輪郭ぼかしの途中階調がありません: outside={outside}, feather={feather}, inside={inside}, center={center}"
+        )
+    if inside >= feather or center > 20:
+        raise AssertionError(
+            f"輪郭ぼかしの内側が十分に透明化されていません: feather={feather}, inside={inside}, center={center}"
+        )
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_page_coma_preview_restore_"))
     mod = None
@@ -268,6 +339,12 @@ def main() -> None:
         work.paper.show_guides = True
         work.paper.show_safe_line = True
         work.paper.show_inner_frame = True
+        blur_coma = work.pages[0].comas[0]
+        blur_coma.rect_x_mm = 40.0
+        blur_coma.rect_y_mm = 46.0
+        blur_coma.rect_width_mm = 78.0
+        blur_coma.rect_height_mm = 136.0
+        blur_coma.background_color = (1.0, 1.0, 1.0, 1.0)
 
         _mark("work_save")
         result = bpy.ops.bmanga.work_save()
@@ -341,6 +418,14 @@ def main() -> None:
             raise AssertionError("ページファイルを開いた直後にコマ枠線が表示されていません")
         _assert_current_page_runtime_aligned(work)
 
+        blur_coma = work.pages[0].comas[0]
+        blur_coma.border.visible = True
+        blur_coma.border.style = "brush"
+        blur_coma.border.width_mm = 18.0
+        blur_coma.border.blur_amount = 1.0
+        blur_coma.border.blur_dither = False
+        page_preview_object.sync_page_previews(bpy.context, work, force=True)
+
         work.pages[0].active_coma_index = 0
         _mark("enter_coma_mode")
         result = bpy.ops.bmanga.enter_coma_mode("EXEC_DEFAULT")
@@ -379,6 +464,7 @@ def main() -> None:
             if abs(float(getattr(bg, "alpha", 0.0) or 0.0) - 1.0) > 0.001:
                 raise AssertionError("コマファイルのページ画像下絵が100%不透明ではありません")
         work = scene.bmanga_work
+        _assert_own_page_brush_cutout_is_soft(camera, work, work.pages[0], work.pages[0].comas[0])
         spread_page = work.pages[1]
         spread_page_id = str(getattr(spread_page, "id", "") or spread_page_id)
         preview_path = Path(str(work.work_dir)) / spread_page_id / "page_preview.png"

@@ -9,7 +9,7 @@ from typing import Iterable
 import bpy
 
 from ..core.mode import MODE_COMA, get_mode
-from ..core.work import find_page_by_id, get_work
+from ..core.work import get_work
 from ..io import export_pipeline
 from . import log, page_browser, paths, percentage
 from .geom import mm_to_px
@@ -1326,12 +1326,12 @@ def _add_page_overview_backgrounds(scene, work) -> None:
     koma_depth_back = bool(getattr(settings, "koma_depth", False)) if settings else False
 
     coma_id = str(getattr(scene, "bmanga_current_coma_id", "") or "")
-    coma_points_mm = _resolve_coma_points_mm(work, current_page_id, coma_id)
+    coma_panel = _resolve_coma(work, current_page_id, coma_id)
 
     for page_id, (idx, x0, y0, x1, y1) in rects.items():
         if page_id == current_page_id:
             _add_own_page_backgrounds(
-                cam_data, work, page_id, coma_id, coma_points_mm,
+                cam_data, work, page_id, coma_id, coma_panel,
                 canvas_w_mm, canvas_h_mm, user_scale,
                 own_page_alpha, own_page_visible,
                 "BACK" if koma_depth_back else "FRONT",
@@ -1371,30 +1371,8 @@ def _add_page_overview_backgrounds(scene, work) -> None:
     apply_coma_overlay_background_visibility(scene=scene)
 
 
-def _resolve_coma_points_mm(work, page_id: str, coma_id: str) -> list[tuple[float, float]]:
-    """コマのポリゴン頂点を mm 座標で返す."""
-    if not work or not page_id or not coma_id:
-        return []
-    page = find_page_by_id(work, page_id)
-    if page is None:
-        return []
-    for panel in getattr(page, "comas", []):
-        if getattr(panel, "coma_id", "") != coma_id:
-            continue
-        if getattr(panel, "shape_type", "") == "rect":
-            x = float(getattr(panel, "rect_x_mm", 0.0))
-            y = float(getattr(panel, "rect_y_mm", 0.0))
-            w = float(getattr(panel, "rect_width_mm", 0.0))
-            h = float(getattr(panel, "rect_height_mm", 0.0))
-            if w <= 0.0 or h <= 0.0:
-                return []
-            return [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
-        return [(float(v.x_mm), float(v.y_mm)) for v in getattr(panel, "vertices", [])]
-    return []
-
-
 def _add_own_page_backgrounds(
-    cam_data, work, page_id, coma_id, coma_points_mm,
+    cam_data, work, page_id, coma_id, coma_panel,
     canvas_w_mm, canvas_h_mm, user_scale,
     own_page_alpha, own_page_visible,
     depth,
@@ -1409,8 +1387,7 @@ def _add_own_page_backgrounds(
         _add_own_page_fallback(cam_data, png_path, page_id, user_scale, own_page_alpha, own_page_visible, depth)
         return
     Image = export_pipeline.Image
-    ImageDraw = export_pipeline.ImageDraw
-    if Image is None or ImageDraw is None:
+    if Image is None:
         _add_own_page_fallback(cam_data, png_path, page_id, user_scale, own_page_alpha, own_page_visible, depth)
         return
     try:
@@ -1419,23 +1396,21 @@ def _add_own_page_backgrounds(
     except Exception:  # noqa: BLE001
         _add_own_page_fallback(cam_data, png_path, page_id, user_scale, own_page_alpha, own_page_visible, depth)
         return
-    w, h = src.size
-    points_px = _mm_to_image_px(coma_points_mm, canvas_w_mm, canvas_h_mm, w, h)
     work_dir = Path(str(getattr(work, "work_dir", "") or ""))
     cache_dir = paths.assets_dir(work_dir) / "_coma_bg_cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    if points_px and len(points_px) >= 3:
+    if coma_panel is not None:
+        from . import coma_own_page_mask
+
         masked_path = cache_dir / f"own_page_{page_id}_{coma_id}.png"
-        masked = src.copy()
-        mask = Image.new("L", (w, h), 0)
-        ImageDraw.Draw(mask).polygon(points_px, fill=255)
-        alpha_ch = masked.getchannel("A")
-        alpha_ch.paste(0, mask=mask)
-        masked.putalpha(alpha_ch)
-        masked.save(str(masked_path))
-        _load_overview_bg(cam_data, masked_path, page_id, "own_page", user_scale, own_page_alpha, own_page_visible, depth=depth)
-    else:
-        _add_own_page_fallback(cam_data, png_path, page_id, user_scale, own_page_alpha, own_page_visible, depth)
+        masked = coma_own_page_mask.apply_current_coma_cutout(src, coma_panel, canvas_w_mm, canvas_h_mm)
+        if masked is not None:
+            masked.save(str(masked_path))
+            _load_overview_bg(
+                cam_data, masked_path, page_id, "own_page", user_scale, own_page_alpha, own_page_visible, depth=depth,
+            )
+            return
+    _add_own_page_fallback(cam_data, png_path, page_id, user_scale, own_page_alpha, own_page_visible, depth)
 
 
 def _add_own_page_fallback(cam_data, png_path, page_id, user_scale, alpha, visible, depth) -> None:
@@ -1465,20 +1440,6 @@ def _load_overview_bg(cam_data, png_path, page_id, kind, scale, alpha, visible, 
     _set_bg_attr(bg, "display_depth", depth)
     _set_bg_attr(bg, "frame_method", "FIT")
     _set_bg_attr(bg, "show_background_image", bool(visible))
-
-
-def _mm_to_image_px(
-    points_mm: list[tuple[float, float]],
-    canvas_w_mm: float, canvas_h_mm: float,
-    img_w: int, img_h: int,
-) -> list[tuple[int, int]]:
-    """mm 座標を画像ピクセル座標に変換する."""
-    out: list[tuple[int, int]] = []
-    for x_mm, y_mm in points_mm:
-        px = int(round(x_mm / canvas_w_mm * img_w))
-        py = img_h - int(round(y_mm / canvas_h_mm * img_h))
-        out.append((px, py))
-    return out
 
 
 def _is_overview_background(img) -> bool:

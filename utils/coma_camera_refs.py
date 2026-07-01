@@ -356,6 +356,16 @@ def _layer_with_coma_background_hole(layer, panel, dpi: int):
     ImageDraw = export_pipeline.ImageDraw
     if Image is None or ImageDraw is None:
         return layer
+    try:
+        from . import coma_own_page_mask
+
+        width_mm = max(1.0e-6, float(layer.image.width) / max(1, int(dpi)) * 25.4)
+        height_mm = max(1.0e-6, float(layer.image.height) / max(1, int(dpi)) * 25.4)
+        masked = coma_own_page_mask.apply_current_coma_cutout(layer.image, panel, width_mm, height_mm)
+        if masked is not None:
+            return replace(layer, image=masked)
+    except Exception:  # noqa: BLE001
+        _logger.exception("panel camera soft page hole failed")
     points = _coma_points_px(panel, layer.image.height, dpi, 0)
     if len(points) < 3:
         return layer
