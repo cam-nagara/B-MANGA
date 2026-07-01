@@ -583,6 +583,12 @@ def _line_width_objects(scene, objects=None):
 
 
 def _set_modifier_visibility(mod, visible: bool) -> None:
+    if visible:
+        from . import intersection_lines
+        if intersection_lines.is_deferred_viewport_modifier(mod):
+            if mod.show_render != visible:
+                mod.show_render = visible
+            return
     if mod.show_viewport != visible:
         mod.show_viewport = visible
     if mod.show_render != visible:

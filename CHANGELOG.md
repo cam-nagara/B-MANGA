@@ -3,6 +3,39 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-02 — B-MANGA Line交差線一括適用の停止を回避 (B-MANGA Line v0.3.63)
+
+### 症状
+
+- `Japanese_Streetscape_Tokyo_0004.blend` で「レンダリング範囲内メッシュオブジェクトを全選択」後、アウトライン・内部線・交差線をオンにして「ラインを適用」を押すと、30分程度待っても処理が戻らなかった。
+
+### 原因
+
+- ライン設定の適用自体は数秒で終わっていたが、多数の交差線モディファイアを一度にビューポート評価させたため、Blender側の評価で操作が長時間止まっていた。
+- 交差線は「Intersecting Edges」出力を使う必要があり、精密なBoolean方式を維持する必要があったため、方式を単純に軽いものへ差し替えることはできなかった。
+
+### 修正
+
+- 交差対象が多いオブジェクトでは、交差線モディファイアを対象ごとに分けず、複数対象を1つにまとめて作るようにした。
+- 交差線をどちら側のオブジェクトへ持たせるかを、アクティブオブジェクト優先に加えて、非アクティブ同士では軽い側を優先するようにした。
+- 大量の交差線を作った直後は、操作完了を先に返し、ビューポート表示を少しずつ復帰させるようにした。
+- まとめた交差線でも、板ポリ除外などで対象が減った場合は、非除外の交差線だけが残るように作り直すようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\intersection_lines.py addons\b_manga_line\camera_comp.py test\blender_b_manga_line_multi_intersection_modifier_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_multi_intersection_modifier_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_intersection_fill_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_auto_intersection_targets_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_toggle_matrix_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_uniform_width_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_intersection_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_sheet_mesh_exclusion_check.py`
+- `D:\TM Dropbox\Share\Assets\Japanese Streetscape Tokyo 0004\Japanese_Streetscape_Tokyo_0004.blend` で、レンダリング範囲内137メッシュを選択し、アウトライン・内部線・交差線オンの「ラインを適用」が約6.1秒で完了することを確認。交差線モディファイアは19個に抑制。
+
+---
+
 ## 2026-07-01 — B-MANGA Line交差線修正の徹底チェック
 
 ### 症状
