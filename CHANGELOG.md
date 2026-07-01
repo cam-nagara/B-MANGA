@@ -3,6 +3,36 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-02 — B-MANGA Line交差線高速化後の表示復帰を修正 (B-MANGA Line v0.3.64)
+
+### 症状
+
+- v0.3.63 の交差線高速化後、大量の交差線を作った直後の表示復帰待ち中に、遠距離ライン非表示やカメラ範囲外非表示を併用していると、本来非表示の交差線がビューポートへ戻る可能性があった。
+
+### 原因
+
+- 操作完了を先に返すために交差線のビューポート表示を少しずつ復帰させる処理で、交差線オン・ライン非表示状態だけを見ており、距離やカメラ範囲の表示条件を再評価していなかった。
+
+### 修正
+
+- 交差線の表示復帰時、基本のオン・オフ状態を確認したうえで、表示距離やカメラ範囲の制限が有効な場合は既存の表示判定を通してから復帰するようにした。
+- まとめた交差線の実機テストに、表示距離制限つきの復帰待ちケースを追加した。
+- 交差線まわりの変更範囲を徹底チェックし、「ラインを適用」「交差線オン/オフ」「線幅・オフセット変更」「ラインのみ表示」「板ポリ除外」「表示距離制限」の経路を確認した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\intersection_lines.py test\blender_b_manga_line_multi_intersection_modifier_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_multi_intersection_modifier_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_intersection_fill_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_auto_intersection_targets_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_toggle_matrix_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_uniform_width_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_intersection_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_sheet_mesh_exclusion_check.py`
+
+---
+
 ## 2026-07-02 — B-MANGA Line交差線一括適用の停止を回避 (B-MANGA Line v0.3.63)
 
 ### 症状

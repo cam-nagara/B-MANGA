@@ -995,6 +995,22 @@ def is_deferred_viewport_modifier(mod: bpy.types.Modifier) -> bool:
         return False
 
 
+def _basic_deferred_visibility(obj: bpy.types.Object, settings) -> bool:
+    return (
+        settings is None
+        or bool(getattr(settings, "intersection_enabled", False))
+    ) and not bool(obj.get(PROP_LINES_HIDDEN, False))
+
+
+def _deferred_visibility_rules_enabled(settings) -> bool:
+    if settings is None:
+        return False
+    return bool(
+        getattr(settings, "use_camera_culling", False)
+        or getattr(settings, "use_intersection_distance_limit", False)
+    )
+
+
 def _set_modifier_parameters(
     mod: bpy.types.Modifier,
     target: bpy.types.Object | None,
@@ -1159,11 +1175,13 @@ def _restore_deferred_viewport_step():
         except TypeError:
             pass
         settings = getattr(obj, "bmanga_line_settings", None)
-        visible = (
-            settings is None
-            or bool(getattr(settings, "intersection_enabled", False))
-        ) and not bool(obj.get(PROP_LINES_HIDDEN, False))
+        visible = _basic_deferred_visibility(obj, settings)
+        if visible and _deferred_visibility_rules_enabled(settings):
+            from . import camera_comp
+            if camera_comp.refresh_visibility_objects(bpy.context, [obj]):
+                break
         mod.show_viewport = visible
+        mod.show_render = visible
         break
     if _deferred_viewport_queue:
         return _DEFERRED_VIEWPORT_INTERVAL
@@ -1183,10 +1201,7 @@ def _defer_heavy_viewport_refresh(objects: list[bpy.types.Object]) -> None:
         _queue_deferred_viewport_modifier(obj, mod)
 
 
-def _max_target_thickness(
-    source: bpy.types.Object,
-    targets: list[bpy.types.Object],
-) -> float:
+def _max_target_thickness(source: bpy.types.Object, targets: list[bpy.types.Object]) -> float:
     if not targets:
         return 0.0
     return max(_target_outline_thickness(source, target) for target in targets)

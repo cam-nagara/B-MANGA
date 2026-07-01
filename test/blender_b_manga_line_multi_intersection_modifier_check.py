@@ -49,6 +49,14 @@ def _make_plane(name: str, location: tuple[float, float, float], size: float) ->
     return obj
 
 
+def _make_camera() -> bpy.types.Object:
+    bpy.ops.object.camera_add(location=(0.0, -10.0, 0.0))
+    camera = bpy.context.object
+    camera.name = "BML_multi_intersection_camera"
+    bpy.context.scene.camera = camera
+    return camera
+
+
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     b_manga_line.register()
@@ -96,6 +104,27 @@ def main() -> None:
             intersection_lines._restore_deferred_viewport_step()
         assert mod.show_viewport
         assert not intersection_lines.is_deferred_viewport_modifier(mod)
+
+        _make_camera()
+        source.bmanga_line_settings.use_intersection_distance_limit = True
+        source.bmanga_line_settings.intersection_max_distance = 0.5
+        old_threshold = intersection_lines._DEFERRED_VIEWPORT_THRESHOLD
+        intersection_lines._DEFERRED_VIEWPORT_THRESHOLD = 0
+        try:
+            intersection_lines.refresh_scene_intersections(bpy.context.scene)
+        finally:
+            intersection_lines._DEFERRED_VIEWPORT_THRESHOLD = old_threshold
+        deferred_mods = list(core.iter_intersection_modifiers(source))
+        assert deferred_mods
+        assert all(intersection_lines.is_deferred_viewport_modifier(item) for item in deferred_mods)
+        for _ in range(20):
+            if not any(intersection_lines.is_deferred_viewport_modifier(item) for item in deferred_mods):
+                break
+            intersection_lines._restore_deferred_viewport_step()
+        assert all(not item.show_viewport for item in deferred_mods)
+        assert all(not item.show_render for item in deferred_mods)
+        source.bmanga_line_settings.use_intersection_distance_limit = False
+        source.bmanga_line_settings.intersection_max_distance = 20.0
 
         sheet_target.bmanga_line_settings.exclude_sheet_meshes = True
         intersection_lines.prune_excluded_intersections(bpy.context.scene)
