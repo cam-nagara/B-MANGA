@@ -39,6 +39,12 @@ Blender 5.1.1 を対象としています。
 - `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_sheet_mesh_exclusion_check.py`
 - `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_transparent_surface_check.py`
 
+### 徹底チェック (2026-07-01 追記)
+
+- 「レンダリング範囲内を選択」ボタン、アウトラインのオン・オフ、ライン適用時にアウトラインをオフにしている場合、複数選択への設定反映、プリセット保存/適用、ライン表示/非表示、カメラ範囲外・距離制限、ラインのみ表示の各操作経路を追跡した。
+- アウトラインをオフにしても内部線・交差線の表示状態と素材は維持され、ライン表示/非表示やカメラ範囲更新でアウトラインだけが意図せず再表示されないことを確認した。
+- 追加修正が必要な不整合は見つからなかった。
+
 ---
 
 ## 2026-07-01 — B-MANGA Lineの生成済みライン更新対象を限定 (B-MANGA Line v0.3.52)
