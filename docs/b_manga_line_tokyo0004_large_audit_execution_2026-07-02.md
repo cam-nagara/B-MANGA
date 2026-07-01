@@ -115,3 +115,67 @@
 - OK: disable_order_XIO_X (0.1694s)
 - OK: disable_order_XIO_I (0.1s)
 - OK: disable_order_XIO_O (0.1251s)
+
+## phase3
+
+- JSON: `D:\Develop\Blender\B-MANGA\_verify\b_manga_line_tokyo0004_large_audit_2026-07-02\phase3_result.json`
+- Summary: `D:\Develop\Blender\B-MANGA\_verify\b_manga_line_tokyo0004_large_audit_2026-07-02\phase3_summary.md`
+- Errors: 0
+- Warnings: 0
+- Screenshots: 1
+
+### Screenshots
+
+- `D:\Develop\Blender\B-MANGA\_verify\b_manga_line_tokyo0004_large_audit_2026-07-02\screenshots\phase3_settings_after.png`
+
+### Operations
+
+- OK: ラインを適用 (1.0624s)
+- OK: setting_outline_thickness_mm (0.0057s)
+- OK: setting_outline_thickness_mm (0.0041s)
+- OK: setting_outline_offset (0.0014s)
+- OK: setting_outline_offset (0.0014s)
+- OK: setting_outline_color (0.0114s)
+- OK: setting_even_thickness (0.0018s)
+- OK: setting_use_rim (0.1213s)
+- OK: setting_hide_through_transparent (0.1849s)
+- OK: setting_use_vertex_color (0.3404s)
+- OK: setting_use_ao_influence (0.1964s)
+- OK: setting_ao_influence_strength (0.2479s)
+- OK: setting_edge_smooth_factor (0.8231s)
+- OK: setting_edge_midpoint_jitter_percent (0.7755s)
+- OK: setting_edge_width_curve_25 (0.818s)
+- OK: setting_edge_width_curve_50 (0.8016s)
+- OK: setting_edge_width_curve_75 (0.8148s)
+- OK: setting_line_width_reference_distance (0.8229s)
+- OK: setting_line_width_reference_distance (0.8338s)
+- OK: setting_use_camera_compensation (0.8042s)
+- OK: setting_camera_compensation_influence (0.8771s)
+- OK: setting_use_uniform_line_width (1.6364s)
+- OK: setting_use_camera_culling (0.0053s)
+- OK: setting_culling_margin (0.0042s)
+- OK: setting_inner_line_angle (0.2847s)
+- OK: setting_inner_line_angle (0.1968s)
+- OK: setting_inner_line_thickness_mm (0.246s)
+- OK: setting_inner_line_thickness_mm (0.234s)
+- OK: setting_inner_line_offset (0.0029s)
+- OK: setting_inner_line_offset (0.003s)
+- OK: setting_inner_line_color (0.0049s)
+- OK: setting_use_marked_inner_edges (0.1196s)
+- OK: setting_use_inner_line_creation_limit (0.0017s)
+- OK: setting_inner_line_creation_max_distance (0.0016s)
+- OK: setting_use_inner_line_distance_limit (0.0023s)
+- OK: setting_inner_line_max_distance (0.0013s)
+- OK: setting_inner_edge_smooth_factor (0.3393s)
+- OK: setting_inner_edge_midpoint_jitter_percent (0.0019s)
+- OK: setting_intersection_thickness_mm (0.1776s)
+- OK: setting_intersection_thickness_mm (0.2023s)
+- OK: setting_intersection_line_offset (0.0023s)
+- OK: setting_intersection_line_offset (0.0019s)
+- OK: setting_intersection_color (0.0084s)
+- OK: setting_use_intersection_creation_limit (0.0035s)
+- OK: setting_intersection_creation_max_distance (0.0032s)
+- OK: setting_use_intersection_distance_limit (0.003s)
+- OK: setting_intersection_max_distance (0.0016s)
+- OK: setting_intersection_edge_smooth_factor (0.3636s)
+- OK: setting_intersection_edge_midpoint_jitter_percent (0.0019s)
