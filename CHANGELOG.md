@@ -3,6 +3,48 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-01 — B-MANGA Lineの全チェックボックス・スライダー更新を軽量化 (B-MANGA Line v0.3.58)
+
+### 症状
+
+- B-MANGA Line のチェックボックスやスライダー変更時に、実際に変えた線種より広い線幅更新へ入る経路が残っていた。
+- 内部線の「指定済みの辺だけ線にする」は、既に内部線が生成済みでも再生成経路へ入り得た。
+- 「線幅の均一化（頂点単位）」がオンの時、表示上は効かない「線幅の均一化（オブジェクト単位）」や補正関連の変更でも、不要な線幅更新へ入る余地があった。
+
+### 原因
+
+- カメラ基準の線幅更新が、アウトライン・内部線・交差線をまとめて更新する単位でしか呼べなかった。
+- 線幅スライダーのアクティブオブジェクト側処理で、直接更新したあとにカメラ基準更新で同じ線幅を再計算する二重経路があった。
+- 内部線の指定辺切替が、既存の内部線パラメータ変更だけで済む場合も、作成処理へ寄っていた。
+
+### 修正
+
+- カメラ基準の線幅更新を線種別に指定できるようにし、アウトライン・内部線・交差線の各スライダーや線幅詳細は対象線種だけを更新するようにした。
+- 線幅スライダーは、カメラ基準更新が成功した場合は直接更新を省き、カメラがない場合だけ直接更新するようにした。
+- 内部線の指定辺切替は、既存の内部線がある場合、再生成せずパラメータだけ更新するようにした。
+- 頂点単位の線幅均一化がオンの時は、オブジェクト単位の補正・補正影響度・線幅基準距離の変更で不要な線幅更新を行わないようにした。
+- 全チェックボックス/スライダー変更を実機で数え、全設定再適用・全カメラ更新・不要な生成処理に入らないことを確認するテストを追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `$env:PYTHONDONTWRITEBYTECODE='1'; python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\batch_update.py addons\b_manga_line\camera_comp.py test\blender_b_manga_line_control_update_scope_check.py test\blender_b_manga_line_batch_apply_refresh_check.py test\blender_b_manga_line_toggle_matrix_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_control_update_scope_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_toggle_matrix_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_offset_controls_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_uniform_width_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_preset_visibility_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_select_range_outline_toggle_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_generated_update_scope_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_auto_intersection_targets_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_register_reenable_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_intersection_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_camera_view_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_inner_width_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_camera_aov_line_only_check.py`
+
+---
+
 ## 2026-07-01 — B-MANGA Lineのライン切替全パターンを軽量化 (B-MANGA Line v0.3.57)
 
 ### 症状

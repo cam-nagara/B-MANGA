@@ -516,10 +516,140 @@ def _has_intersection_modifier(obj) -> bool:
     return any(iter_intersection_modifiers(obj))
 
 
-def _update_camera_compensation(scene, camera, objects=None):
+def _normalize_width_targets(width_targets) -> tuple[str, ...] | None:
+    if width_targets is None:
+        return None
+    requested = set(width_targets)
+    return tuple(
+        target for target in ("outline", "inner", "intersection")
+        if target in requested
+    )
+
+
+def _target_width_setting(settings, target: str) -> float:
+    if target == "inner":
+        return float(settings.inner_line_thickness)
+    if target == "intersection":
+        return float(settings.intersection_thickness)
+    return float(settings.outline_thickness)
+
+
+def _apply_target_width(
+    obj,
+    target: str,
+    width: float,
+) -> None:
+    from . import inner_lines, intersection_lines
+
+    scaled = modifier_thickness_for_world_width(obj, max(width, 1.0e-9))
+    if target == "inner":
+        if _has_inner_modifier(obj):
+            inner_lines.update_parameters(obj, thickness=scaled)
+        return
+    if target == "intersection":
+        if _has_intersection_modifier(obj):
+            intersection_lines.update_parameters(obj, thickness=scaled)
+        return
+    mod = obj.modifiers.get(MODIFIER_NAME)
+    if mod is not None:
+        mod.thickness = scaled
+
+
+def _apply_target_style_weights(obj, settings, target: str) -> None:
+    from . import vertex_analysis
+
+    group_name = vertex_analysis.width_group_name(target)
+    if target == "outline":
+        mod = obj.modifiers.get(MODIFIER_NAME)
+        if mod is None:
+            return
+        if _prepare_style_weights(obj, settings, target):
+            mod.vertex_group = VG_LINE_WIDTH
+            mod.thickness_vertex_group = 0.0
+        else:
+            mod.vertex_group = ""
+        return
+
+    if target == "inner" and not _has_inner_modifier(obj):
+        vertex_analysis.clear_width_weights(obj, group_name=group_name)
+        return
+    if target == "intersection" and not _has_intersection_modifier(obj):
+        vertex_analysis.clear_width_weights(obj, group_name=group_name)
+        return
+    _prepare_style_weights(obj, settings, target)
+
+
+def _apply_uniform_target_line_width(scene, camera, obj, settings, target: str) -> None:
+    from . import vertex_analysis
+
+    if target == "inner" and not _has_inner_modifier(obj):
+        vertex_analysis.clear_width_weights(obj, group_name=VG_INNER_LINE_WIDTH)
+        return
+    if target == "intersection" and not _has_intersection_modifier(obj):
+        vertex_analysis.clear_width_weights(obj, group_name=VG_INTERSECTION_LINE_WIDTH)
+        return
+
+    width_m = _target_width_setting(settings, target)
+    widths = _uniform_widths_for_mesh(scene, camera, obj, width_m)
+    max_width = max(max(widths), 1.0e-9)
+    _apply_target_style_weights(obj, settings, target)
+    group_name = vertex_analysis.width_group_name(target)
+    vertex_analysis.multiply_width_weights(
+        obj,
+        [width / max_width for width in widths],
+        group_name=group_name,
+    )
+    if target == "outline":
+        mod = obj.modifiers.get(MODIFIER_NAME)
+        if mod is not None:
+            mod.vertex_group = VG_LINE_WIDTH
+            mod.thickness_vertex_group = 0.0
+    _apply_target_width(obj, target, max_width)
+
+
+def _apply_reference_target_line_width(scene, camera, obj, settings, target: str) -> None:
+    ref_distance = _line_width_reference_distance(settings)
+    width = _reference_width_for_distance(
+        scene,
+        camera,
+        _target_width_setting(settings, target),
+        ref_distance,
+    )
+    _apply_target_style_weights(obj, settings, target)
+    _apply_target_width(obj, target, width)
+
+
+def _apply_compensated_target_line_width(scene, camera, obj, settings, target: str) -> None:
+    cam_loc = camera.matrix_world.translation
+    ref_d = _line_width_reference_distance(settings)
+    base = _reference_width_for_distance(
+        scene,
+        camera,
+        _target_width_setting(settings, target),
+        ref_d,
+    )
+    dist = (cam_loc - obj.matrix_world.translation).length
+    factor = dist / ref_d
+    adjusted = base * (1.0 + (factor - 1.0) * settings.camera_compensation_influence)
+    _apply_target_style_weights(obj, settings, target)
+    _apply_target_width(obj, target, adjusted)
+
+
+def _apply_targeted_line_widths(scene, camera, obj, settings, targets: tuple[str, ...]) -> None:
+    for target in targets:
+        if settings.use_uniform_line_width:
+            _apply_uniform_target_line_width(scene, camera, obj, settings, target)
+        elif settings.use_camera_compensation:
+            _apply_compensated_target_line_width(scene, camera, obj, settings, target)
+        else:
+            _apply_reference_target_line_width(scene, camera, obj, settings, target)
+
+
+def _update_camera_compensation(scene, camera, objects=None, width_targets=None):
     """線幅 (mm) をカメラビュー基準の太さとして各オブジェクトへ反映."""
     from . import inner_lines, intersection_lines, vertex_analysis
 
+    normalized_targets = _normalize_width_targets(width_targets)
     cam_loc = camera.matrix_world.translation
     for obj in _line_width_objects(scene, objects):
         settings = getattr(obj, "bmanga_line_settings", None)
@@ -527,6 +657,9 @@ def _update_camera_compensation(scene, camera, objects=None):
             continue
         mod = obj.modifiers.get(MODIFIER_NAME)
         if mod is None:
+            continue
+        if normalized_targets is not None:
+            _apply_targeted_line_widths(scene, camera, obj, settings, normalized_targets)
             continue
         if settings.use_uniform_line_width:
             _apply_uniform_line_width(scene, camera, obj, settings, mod)
@@ -714,7 +847,13 @@ def refresh(context):
         _updating = False
 
 
-def refresh_objects(context, objects, *, update_visibility: bool = False) -> bool:
+def refresh_objects(
+    context,
+    objects,
+    *,
+    update_visibility: bool = False,
+    width_targets=None,
+) -> bool:
     """指定オブジェクトだけカメラ基準の線幅を更新."""
     global _updating
     if _updating:
@@ -728,7 +867,7 @@ def refresh_objects(context, objects, *, update_visibility: bool = False) -> boo
         targets = list(_line_width_objects(scene, objects))
         if not targets:
             return True
-        _update_camera_compensation(scene, camera, targets)
+        _update_camera_compensation(scene, camera, targets, width_targets=width_targets)
         if update_visibility:
             cam_loc = camera.matrix_world.translation
             cam_fwd = camera.matrix_world.to_quaternion() @ Vector((0, 0, -1))

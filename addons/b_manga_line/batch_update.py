@@ -81,11 +81,13 @@ def _refresh_camera_objects(
     context,
     *,
     update_visibility: bool = False,
+    width_targets=None,
 ) -> bool:
     return camera_comp.refresh_objects(
         context,
         objects,
         update_visibility=update_visibility,
+        width_targets=width_targets,
     )
 
 
@@ -154,7 +156,12 @@ def _update_outline_enabled(objects: list[bpy.types.Object], context) -> None:
         if obj.bmanga_line_settings.outline_enabled
     ]
     if enabled_targets and len(enabled_targets) <= MAX_IMMEDIATE_VISIBILITY_OBJECTS:
-        _refresh_camera_objects(enabled_targets, context, update_visibility=True)
+        _refresh_camera_objects(
+            enabled_targets,
+            context,
+            update_visibility=True,
+            width_targets=("outline",),
+        )
 
 
 def _update_transparent_protection(objects: list[bpy.types.Object]) -> None:
@@ -181,7 +188,7 @@ def _update_outline_thickness(objects: list[bpy.types.Object], context) -> None:
         outline_setup.update_modifier_thickness(obj, settings.outline_thickness)
         if settings.use_camera_compensation and core.PROP_BASE_THICKNESS in obj:
             obj[core.PROP_BASE_THICKNESS] = settings.outline_thickness
-    _refresh_camera_objects(objects, context)
+    _refresh_camera_objects(objects, context, width_targets=("outline",))
 
 
 def _update_outline_offset(objects: list[bpy.types.Object]) -> None:
@@ -200,7 +207,7 @@ def _update_generated_thickness(
     targets = _generated_line_objects(objects, target)
     if not targets:
         return
-    if _refresh_camera_objects(targets, context):
+    if _refresh_camera_objects(targets, context, width_targets=(target,)):
         return
     for obj in targets:
         settings = obj.bmanga_line_settings
@@ -236,7 +243,13 @@ def _update_generated_offset(objects: list[bpy.types.Object], target: str) -> No
 
 
 def _update_camera_compensation(objects: list[bpy.types.Object], context) -> None:
-    for obj in objects:
+    targets = [
+        obj for obj in objects
+        if not bool(obj.bmanga_line_settings.use_uniform_line_width)
+    ]
+    if not targets:
+        return
+    for obj in targets:
         settings = obj.bmanga_line_settings
         mod = _outline_modifier(obj)
         if mod is None:
@@ -262,20 +275,32 @@ def _update_camera_compensation(objects: list[bpy.types.Object], context) -> Non
                     settings.intersection_thickness,
                 ),
             )
-    _refresh_camera_objects(objects, context)
+    _refresh_camera_objects(targets, context)
 
 
 def _update_camera_influence(objects: list[bpy.types.Object], context) -> None:
-    _refresh_camera_objects(objects, context)
+    targets = [
+        obj for obj in objects
+        if bool(obj.bmanga_line_settings.use_camera_compensation)
+        and not bool(obj.bmanga_line_settings.use_uniform_line_width)
+    ]
+    if targets:
+        _refresh_camera_objects(targets, context)
 
 
 def _update_line_width_reference_distance(
     objects: list[bpy.types.Object],
     context,
 ) -> None:
-    for obj in objects:
+    targets = [
+        obj for obj in objects
+        if not bool(obj.bmanga_line_settings.use_uniform_line_width)
+    ]
+    if not targets:
+        return
+    for obj in targets:
         camera_comp.store_unit_reference(obj, context.scene)
-    _refresh_camera_objects(objects, context)
+    _refresh_camera_objects(targets, context)
 
 
 def _update_uniform_line_width(objects: list[bpy.types.Object], context) -> None:
@@ -339,11 +364,19 @@ def _update_width_controls(objects: list[bpy.types.Object], context) -> None:
         settings = obj.bmanga_line_settings
         if settings.use_vertex_color:
             outline_setup._ensure_color_attribute(obj)
-    if any(obj.bmanga_line_settings.use_uniform_line_width for obj in objects):
-        if _refresh_camera_objects(objects, context):
-            return
+    pending_objects = objects
+    uniform_targets = [
+        obj for obj in objects
+        if obj.bmanga_line_settings.use_uniform_line_width
+    ]
+    if uniform_targets and _refresh_camera_objects(
+        uniform_targets,
+        context,
+        width_targets=("outline",),
+    ):
+        pending_objects = [obj for obj in objects if obj not in uniform_targets]
 
-    for obj in objects:
+    for obj in pending_objects:
         settings = obj.bmanga_line_settings
         mod = _outline_modifier(obj)
         if mod is None:
@@ -376,12 +409,20 @@ def _update_width_target(
     if not targets:
         return
 
-    if any(obj.bmanga_line_settings.use_uniform_line_width for obj in targets):
-        if _refresh_camera_objects(targets, context):
-            return
+    pending_targets = targets
+    uniform_targets = [
+        obj for obj in targets
+        if obj.bmanga_line_settings.use_uniform_line_width
+    ]
+    if uniform_targets and _refresh_camera_objects(
+        uniform_targets,
+        context,
+        width_targets=(target,),
+    ):
+        pending_targets = [obj for obj in targets if obj not in uniform_targets]
 
     group_name = vertex_analysis.width_group_name(target)
-    for obj in targets:
+    for obj in pending_targets:
         settings = obj.bmanga_line_settings
         if vertex_analysis.has_width_controls(settings, target):
             if target == "outline":
@@ -406,9 +447,60 @@ def _update_inner_angle(objects: list[bpy.types.Object], context) -> None:
             angle=obj.bmanga_line_settings.inner_line_angle,
         )
     if any(obj.bmanga_line_settings.use_uniform_line_width for obj in targets):
-        if _refresh_camera_objects(targets, context):
+        if _refresh_camera_objects(targets, context, width_targets=("inner",)):
             return
     _update_width_target(targets, context, "inner")
+
+
+def _update_marked_inner_edges(objects: list[bpy.types.Object], context) -> None:
+    from . import plane_filter
+
+    create_targets = []
+    refresh_targets = []
+    for obj in objects:
+        settings = obj.bmanga_line_settings
+        if not settings.inner_line_enabled:
+            continue
+        if plane_filter.should_exclude_generated_lines(obj, settings):
+            inner_lines.remove_inner_lines(obj)
+            continue
+        if not camera_comp.inner_line_creation_in_range(obj, context.scene, settings):
+            inner_lines.disable_inner_lines(obj)
+            continue
+        if obj.modifiers.get(core.GN_MODIFIER_NAME) is not None:
+            inner_lines.update_parameters(
+                obj,
+                use_marked_edges=settings.use_marked_inner_edges,
+            )
+        else:
+            create_targets.append(obj)
+    if not create_targets:
+        return
+    presets._update_view_layer(context)
+    for obj in create_targets:
+        settings = obj.bmanga_line_settings
+        if inner_lines.apply_inner_lines(
+            obj,
+            angle=settings.inner_line_angle,
+            thickness=modifier_thickness_for_world_width(
+                obj,
+                settings.inner_line_thickness,
+            ),
+            material=outline_setup.get_outline_material(obj),
+            offset=settings.inner_line_offset,
+            use_marked_edges=settings.use_marked_inner_edges,
+            enable=False,
+        ):
+            refresh_targets.append(obj)
+    for obj in refresh_targets:
+        inner_lines.enable_inner_lines(obj)
+    if refresh_targets:
+        _refresh_camera_objects(
+            refresh_targets,
+            context,
+            update_visibility=True,
+            width_targets=("inner",),
+        )
 
 
 def _update_inner_lines(
@@ -453,7 +545,12 @@ def _update_inner_lines(
     for obj in refresh_targets:
         inner_lines.enable_inner_lines(obj)
     if refresh_targets:
-        _refresh_camera_objects(refresh_targets, context, update_visibility=True)
+        _refresh_camera_objects(
+            refresh_targets,
+            context,
+            update_visibility=True,
+            width_targets=("inner",),
+        )
 
 
 def _update_intersections(objects: list[bpy.types.Object], context) -> None:
@@ -472,7 +569,12 @@ def _update_intersections(objects: list[bpy.types.Object], context) -> None:
         if any(core.iter_intersection_modifiers(obj))
     ]
     if refresh_targets:
-        _refresh_camera_objects(refresh_targets, context, update_visibility=True)
+        _refresh_camera_objects(
+            refresh_targets,
+            context,
+            update_visibility=True,
+            width_targets=("intersection",),
+        )
 
 
 def _update_sheet_exclusion(objects: list[bpy.types.Object], context) -> None:
@@ -617,11 +719,11 @@ def refresh_propagated_property(
     }:
         _update_visibility_rules(line_objects, context)
         return
-    if prop_name in {
-        "inner_line_enabled",
-        "use_marked_inner_edges",
-    }:
+    if prop_name == "inner_line_enabled":
         _update_inner_lines(line_objects, context)
+        return
+    if prop_name == "use_marked_inner_edges":
+        _update_marked_inner_edges(line_objects, context)
         return
     if prop_name in {
         "use_inner_line_creation_limit",
