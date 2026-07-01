@@ -3,6 +3,32 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-01 — B-MANGA Line交差線修正の徹底チェック
+
+### 症状
+
+- v0.3.62 の交差線修正後、出るべき場所の交差線欠落が本当に解消しているか、操作経路ごとの確認が必要だった。
+
+### 原因
+
+- 追加の不具合原因は検出されなかった。
+- 交差線生成先の決定、カメラ基準の線幅更新、交差線生成前のビュー更新、生成済みラインだけを対象にした線幅・オフセット更新の各経路を再確認した。
+
+### 修正
+
+- コード変更はなし。v0.3.62 のまま。
+- 「ラインを適用」「交差線を追加」「交差線を外す」「交差線方式変更」「交差線の線幅・オフセット変更」「板ポリ除外変更」「ラインのみ表示の切り替え」の呼び出し順を確認した。
+- 交差線ON時だけビュー更新1回と交差線更新1回が発生し、線幅・オフセット変更では生成済み交差線だけが更新されることを確認した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_control_update_scope_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_generated_update_scope_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_sheet_mesh_exclusion_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_offset_controls_check.py`
+
+---
+
 ## 2026-07-01 — B-MANGA Lineの交差線生成先を修正 (B-MANGA Line v0.3.62)
 
 ### 症状
