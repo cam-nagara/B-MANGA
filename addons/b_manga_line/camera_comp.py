@@ -641,6 +641,7 @@ def _update_visibility(scene, camera, cam_loc, cam_fwd, objects=None):
         outline_in_range = (
             not do_outline_distance or dist < settings.outline_max_distance
         )
+        outline_enabled = bool(getattr(settings, "outline_enabled", True))
         inner_in_range = (
             settings.inner_line_enabled
             and (not do_inner_distance or dist < settings.inner_line_max_distance)
@@ -654,7 +655,7 @@ def _update_visibility(scene, camera, cam_loc, cam_fwd, objects=None):
         )
 
         if outline_mod is not None:
-            visible = in_view and outline_in_range
+            visible = in_view and outline_in_range and outline_enabled
             _set_modifier_visibility(outline_mod, visible)
 
         for intersection_mod in intersection_mods:

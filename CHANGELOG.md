@@ -3,6 +3,44 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-01 — B-MANGA Lineにレンダリング範囲選択とアウトライン切替を追加 (B-MANGA Line v0.3.53)
+
+### 症状
+
+- カメラに写る範囲内のメッシュだけをまとめて選択する操作がなく、すべて選択してから内部線・交差線の作成範囲で絞る必要があった。
+- 内部線・交差線にはオン・オフがある一方、アウトラインだけを消して内部線・交差線を残す切替がなかった。
+
+### 原因
+
+- B-MANGA Line の UI には、既存のカメラ画面内判定を選択操作へ使う入口がなかった。
+- アウトラインの有効状態が設定として分離されておらず、ライン全体の表示切替か削除でしか制御できなかった。
+
+### 修正
+
+- B-MANGA Line パネルに「レンダリング範囲内を選択」ボタンを追加し、カメラに写る範囲内の選択可能なメッシュだけを選択するようにした。魚眼カメラでも既存の魚眼範囲判定を使う。
+- 「アウトラインを追加」チェックボックスを追加し、オフ時はアウトラインだけを非表示・非レンダーにし、内部線・交差線はそれぞれの設定通りに残すようにした。
+- アウトラインのオン・オフをプリセット保存・選択中オブジェクトへの設定伝搬・距離/カメラ範囲による表示更新にも反映した。
+- ラインのみ表示と透明面の既存テストを、現行仕様の表示結果に合わせて更新した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\batch_update.py addons\b_manga_line\camera_comp.py addons\b_manga_line\operators.py addons\b_manga_line\panels.py addons\b_manga_line\presets.py test\blender_b_manga_line_select_range_outline_toggle_check.py test\blender_b_manga_line_register_reenable_check.py test\blender_b_manga_line_preset_visibility_check.py test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `python -m py_compile test\blender_b_manga_line_camera_aov_line_only_check.py test\blender_b_manga_line_transparent_surface_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_select_range_outline_toggle_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_register_reenable_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_preset_visibility_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_camera_view_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_inner_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_intersection_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_generated_update_scope_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_camera_aov_line_only_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_open_mesh_outline_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_sheet_mesh_exclusion_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_transparent_surface_check.py`
+
+---
+
 ## 2026-07-01 — B-MANGA Lineの生成済みライン更新対象を限定 (B-MANGA Line v0.3.52)
 
 ### 症状

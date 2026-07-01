@@ -174,6 +174,23 @@ def _assert_multi_select_manual_setting_propagation(
     assert tuple(round(v, 3) for v in target.outline_color) == (0.4, 0.5, 0.6, 1.0)
     _assert_line_color(second, (0.4, 0.5, 0.6, 1.0))
 
+    source.outline_enabled = False
+    assert target.outline_enabled is False
+    assert not first.modifiers[core.MODIFIER_NAME].show_viewport
+    assert not first.modifiers[core.MODIFIER_NAME].show_render
+    assert not second.modifiers[core.MODIFIER_NAME].show_viewport
+    assert not second.modifiers[core.MODIFIER_NAME].show_render
+    first_inner = first.modifiers.get(core.GN_MODIFIER_NAME)
+    second_inner = second.modifiers.get(core.GN_MODIFIER_NAME)
+    assert first_inner is not None and first_inner.show_viewport
+    assert second_inner is not None and second_inner.show_viewport
+    source.outline_enabled = True
+    assert target.outline_enabled is True
+    assert first.modifiers[core.MODIFIER_NAME].show_viewport
+    assert first.modifiers[core.MODIFIER_NAME].show_render
+    assert second.modifiers[core.MODIFIER_NAME].show_viewport
+    assert second.modifiers[core.MODIFIER_NAME].show_render
+
     source.hide_through_transparent = True
     mat = outline_setup.get_outline_material(second)
     assert mat is not None
@@ -398,9 +415,14 @@ def main() -> None:
     assert len(scene.bmanga_line_presets) == 1
 
     settings.outline_thickness = 0.018
+    settings.outline_enabled = False
     assert bpy.ops.bmanga_line.preset_save() == {"FINISHED"}
     assert len(scene.bmanga_line_presets) == 1
     assert abs(scene.bmanga_line_presets[0].outline_thickness - 0.018) < 1.0e-7
+    assert scene.bmanga_line_presets[0].outline_enabled is False
+    settings.outline_enabled = True
+    assert bpy.ops.bmanga_line.preset_save() == {"FINISHED"}
+    assert scene.bmanga_line_presets[0].outline_enabled is True
 
     first = _make_cube("BML_適用先A", (2.0, 0.0, 0.0))
     second = _make_cube("BML_適用先B", (2.35, 0.0, 0.0))

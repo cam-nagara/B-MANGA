@@ -122,6 +122,7 @@ def _assert_panels_draw_items() -> None:
         panel_cls.draw(dummy, bpy.context)
 
     for prop_name in (
+        "outline_enabled",
         "outline_thickness_mm",
         "outline_color",
         "exclude_sheet_meshes",
@@ -148,6 +149,7 @@ def _assert_panels_draw_items() -> None:
         and prop.identifier != "rna_type"
     ]
     initially_on_props = {
+        "outline_enabled",
         "use_inner_line_creation_limit",
         "use_intersection_creation_limit",
     }
@@ -199,6 +201,7 @@ def _assert_panels_draw_items() -> None:
     assert "intersection_target" not in records["props"], "交差対象欄が残っています"
     for operator_id in (
         "bmanga_line.apply",
+        "bmanga_line.select_render_range_meshes",
         "bmanga_line.set_visibility",
         "bmanga_line.remove",
     ):

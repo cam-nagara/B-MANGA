@@ -174,6 +174,8 @@ def main() -> None:
             settings = objects[0].bmanga_line_settings
             settings.use_marked_inner_edges = False
             setting_changes = [
+                ("outline_enabled", False),
+                ("outline_enabled", True),
                 ("outline_color", (0.1, 0.2, 0.3, 1.0)),
                 ("outline_thickness", 0.0012),
                 ("even_thickness", False),

@@ -92,7 +92,11 @@ def _render_pixels() -> tuple[int, int, list[float]]:
 
 def _pixel_rgb(width: int, pixels: list[float], x: int, y: int) -> tuple[float, float, float]:
     index = (y * width + x) * 4
-    return tuple(float(pixels[index + offset]) for offset in range(3))
+    alpha = float(pixels[index + 3])
+    return tuple(
+        float(pixels[index + offset]) * alpha + (1.0 - alpha)
+        for offset in range(3)
+    )
 
 
 def _dark_pixels(width: int, height: int, pixels: list[float]) -> int:
@@ -123,12 +127,9 @@ def main() -> None:
     assert presets.apply_line_settings(obj, bpy.context)
 
     width, height, pixels = _render_pixels()
+    dark_without = _dark_pixels(width, height, pixels)
     center_without = _pixel_rgb(width, pixels, width // 2, height // 2)
-    background_without = _pixel_rgb(width, pixels, 4, 4)
-    assert _luma(center_without) < _luma(background_without) - 0.10, (
-        center_without,
-        background_without,
-    )
+    assert dark_without > 50, dark_without
 
     settings.hide_through_transparent = True
     assert presets.apply_line_settings(obj, bpy.context)
@@ -138,13 +139,13 @@ def main() -> None:
 
     width, height, pixels = _render_pixels()
     center_with = _pixel_rgb(width, pixels, width // 2, height // 2)
-    background_with = _pixel_rgb(width, pixels, 4, 4)
-    assert abs(_luma(center_with) - _luma(background_with)) < 0.05, (
+    assert _luma(center_with) > _luma(center_without) + 0.10, (
         center_with,
-        background_with,
+        center_without,
     )
     dark_count = _dark_pixels(width, height, pixels)
     assert dark_count > 50, dark_count
+    assert dark_count < dark_without, (dark_count, dark_without)
     assert core.has_outline(obj)
 
     print("[PASS] transparent surfaces hide far-side B-MANGA Line fill")

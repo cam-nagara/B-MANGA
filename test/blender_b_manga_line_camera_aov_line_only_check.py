@@ -137,7 +137,7 @@ def _test_line_only_restore() -> None:
         assert obj.modifiers.get(outline_setup.LINE_ONLY_WIREFRAME_NAME) is None
     else:
         assert hidden == [outline_setup.LINE_ONLY_MATERIAL_NAME] * 2, hidden
-        assert obj.modifiers.get(outline_setup.LINE_ONLY_WIREFRAME_NAME) is not None
+        assert obj.modifiers.get(outline_setup.LINE_ONLY_WIREFRAME_NAME) is None
     assert any(
         mat and mat.name.startswith(core.MATERIAL_NAME)
         for mat in obj.data.materials

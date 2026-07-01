@@ -100,6 +100,42 @@ def _update_outline_flag(objects: list[bpy.types.Object], attr: str, prop_name: 
                 setattr(mod, attr, value)
 
 
+def _ensure_outline_modifier(obj: bpy.types.Object, context) -> bool:
+    from . import vertex_analysis
+
+    settings = obj.bmanga_line_settings
+    use_vg = (
+        settings.use_uniform_line_width
+        or vertex_analysis.has_width_controls(settings, "outline")
+    )
+    return outline_setup.apply_outline(
+        obj,
+        thickness=settings.outline_thickness,
+        color=tuple(settings.outline_color),
+        use_vertex_color=settings.use_vertex_color,
+        even_thickness=settings.even_thickness,
+        use_rim=settings.use_rim,
+        use_vertex_group=use_vg,
+        hide_through_transparent=settings.hide_through_transparent,
+        scene=getattr(context, "scene", None),
+    )
+
+
+def _update_outline_enabled(objects: list[bpy.types.Object], context) -> None:
+    presets._update_view_layer(context)
+    refresh_targets = []
+    for obj in objects:
+        settings = obj.bmanga_line_settings
+        if settings.outline_enabled and _outline_modifier(obj) is None:
+            if _ensure_outline_modifier(obj, context):
+                refresh_targets.append(obj)
+        visible = not bool(obj.get(core.PROP_LINES_HIDDEN, False))
+        if core.set_line_visibility(obj, visible) and obj not in refresh_targets:
+            refresh_targets.append(obj)
+    if refresh_targets and len(refresh_targets) <= MAX_IMMEDIATE_VISIBILITY_OBJECTS:
+        _refresh_camera_objects(refresh_targets, context, update_visibility=True)
+
+
 def _update_transparent_protection(objects: list[bpy.types.Object]) -> None:
     for obj in objects:
         settings = obj.bmanga_line_settings
@@ -440,6 +476,9 @@ def refresh_propagated_property(
 
     if prop_name == "even_thickness":
         _update_outline_flag(line_objects, "use_even_offset", prop_name)
+        return
+    if prop_name == "outline_enabled":
+        _update_outline_enabled(line_objects, context)
         return
     if prop_name == "use_rim":
         _update_outline_flag(line_objects, "use_rim", prop_name)

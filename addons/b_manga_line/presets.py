@@ -17,6 +17,7 @@ from . import core, registration
 
 
 _SETTING_FIELDS = (
+    "outline_enabled",
     "outline_thickness",
     "outline_color",
     "use_vertex_color",
@@ -235,6 +236,7 @@ def apply_line_settings(
 class BMangaLinePreset(bpy.types.PropertyGroup):
     """Saved B-MANGA Line settings."""
 
+    outline_enabled: BoolProperty(default=True)
     outline_thickness: FloatProperty(default=0.0003, min=0.0001, max=1.0)
     outline_color: FloatVectorProperty(
         subtype="COLOR",

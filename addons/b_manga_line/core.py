@@ -236,6 +236,44 @@ def _curve_point_property(prop_name: str, label: str, description: str, default:
 # 設定変更時のコールバック
 # ------------------------------------------------------------------
 
+def _ensure_outline_for_settings(owner: bpy.types.Object, settings, context) -> bool:
+    if owner.type != "MESH":
+        return False
+    from . import outline_setup, vertex_analysis
+
+    use_vg = (
+        settings.use_uniform_line_width
+        or vertex_analysis.has_width_controls(settings, "outline")
+    )
+    return outline_setup.apply_outline(
+        owner,
+        thickness=settings.outline_thickness,
+        color=tuple(settings.outline_color),
+        use_vertex_color=settings.use_vertex_color,
+        even_thickness=settings.even_thickness,
+        use_rim=settings.use_rim,
+        use_vertex_group=use_vg,
+        hide_through_transparent=settings.hide_through_transparent,
+        scene=getattr(context, "scene", None),
+    )
+
+
+def _on_outline_enabled_changed(self, context):
+    if _propagating:
+        return
+    owner = self.id_data
+    refreshed_owner = False
+    if owner.type == "MESH" and has_line(owner):
+        if self.outline_enabled and owner.modifiers.get(MODIFIER_NAME) is None:
+            refreshed_owner = _ensure_outline_for_settings(owner, self, context)
+        visible = not bool(owner.get(PROP_LINES_HIDDEN, False))
+        if set_line_visibility(owner, visible):
+            refreshed_owner = True
+    _propagate(self, context, "outline_enabled")
+    if refreshed_owner:
+        _refresh_print_widths_for(context, [owner], update_visibility=True)
+
+
 def _on_color_changed(self, context):
     if _propagating:
         return
@@ -763,6 +801,13 @@ def _set_intersection_mm(self, value):
 class BMangaLineSettings(bpy.types.PropertyGroup):
     """オブジェクトごとの B-MANGA Line 設定."""
 
+    outline_enabled: BoolProperty(
+        name="アウトラインを追加",
+        description="外側のアウトラインを描画する",
+        default=True,
+        update=_on_outline_enabled_changed,
+    )  # type: ignore[valid-type]
+
     outline_thickness: FloatProperty(
         name="線幅",
         description="印刷時のアウトラインの太さを保持する内部値",
@@ -1241,6 +1286,8 @@ def _line_modifier_enabled_by_settings(obj: bpy.types.Object, mod: bpy.types.Mod
             bool(getattr(settings, "intersection_enabled", False))
             and not plane_filter.should_exclude_generated_lines(obj, settings)
         )
+    if mod.name == MODIFIER_NAME:
+        return bool(getattr(settings, "outline_enabled", True))
     return True
 
 

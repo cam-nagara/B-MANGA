@@ -47,9 +47,12 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         obj = context.active_object
+        _draw_render_range_selection(layout, context)
         if obj is None or obj.type != "MESH":
+            layout.separator()
             layout.label(text="メッシュオブジェクトを選択してください", icon="INFO")
             return
+        layout.separator()
         _draw_actions(layout, context, obj)
 
 
@@ -92,44 +95,52 @@ def _draw_presets(layout, context) -> None:
         col.label(text="保存されたプリセットはありません", icon="INFO")
 
 
+def _draw_render_range_selection(layout, _context) -> None:
+    row = layout.row(align=True)
+    row.operator("bmanga_line.select_render_range_meshes", icon="VIEW_CAMERA")
+
+
 def _draw_outline(layout, context, settings) -> None:
     dpi = _get_paper_dpi(context.scene)
     has_any = any(has_outline(o) for o in context.selected_objects)
     col = layout.column(align=True)
-    row = col.row(align=True)
+    col.prop(settings, "outline_enabled")
+    sub = col.column(align=True)
+    sub.enabled = settings.outline_enabled
+    row = sub.row(align=True)
     row.prop(settings, "outline_thickness_mm")
     sub_label = row.row(align=True)
     sub_label.alignment = "RIGHT"
     sub_label.label(text=_mm_to_px_label(settings.outline_thickness_mm, dpi))
-    col.prop(settings, "outline_color")
-    col.prop(settings, "even_thickness")
-    col.prop(settings, "use_rim")
-    col.prop(settings, "hide_through_transparent")
-    col.prop(settings, "use_vertex_color")
-    col.separator()
-    col.prop(settings, "use_ao_influence")
-    sub = col.column(align=True)
-    sub.enabled = settings.use_ao_influence
-    sub.prop(settings, "ao_influence_strength")
-    row = sub.row(align=True)
+    sub.prop(settings, "outline_color")
+    sub.prop(settings, "even_thickness")
+    sub.prop(settings, "use_rim")
+    sub.prop(settings, "hide_through_transparent")
+    sub.prop(settings, "use_vertex_color")
+    sub.separator()
+    sub.prop(settings, "use_ao_influence")
+    ao_sub = sub.column(align=True)
+    ao_sub.enabled = settings.outline_enabled and settings.use_ao_influence
+    ao_sub.prop(settings, "ao_influence_strength")
+    row = ao_sub.row(align=True)
     row.operator("bmanga_line.bake_ao", icon="SHADING_RENDERED")
-    col.separator()
+    sub.separator()
     _draw_midpoint_width_controls(
-        col,
+        sub,
         settings,
         "outline",
         "線幅の詳細",
         "edge_smooth_factor",
         "edge_midpoint_jitter_percent",
     )
-    col.separator()
-    col.prop(settings, "use_outline_distance_limit")
-    sub = col.column(align=True)
-    sub.enabled = settings.use_outline_distance_limit
-    sub.prop(settings, "outline_max_distance")
-    col.separator()
-    row = col.row(align=True)
-    row.enabled = has_any
+    sub.separator()
+    sub.prop(settings, "use_outline_distance_limit")
+    dist_sub = sub.column(align=True)
+    dist_sub.enabled = settings.outline_enabled and settings.use_outline_distance_limit
+    dist_sub.prop(settings, "outline_max_distance")
+    sub.separator()
+    row = sub.row(align=True)
+    row.enabled = has_any and settings.outline_enabled
     row.operator("bmanga_line.sync_weights", icon="VPAINT_HLT")
 
 

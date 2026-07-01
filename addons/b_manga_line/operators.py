@@ -66,6 +66,55 @@ class BMANGA_LINE_OT_apply(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class BMANGA_LINE_OT_select_render_range_meshes(bpy.types.Operator):
+    """レンダリング範囲内のメッシュを選択"""
+
+    bl_idname = "bmanga_line.select_render_range_meshes"
+    bl_label = "レンダリング範囲内を選択"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        from . import camera_comp
+
+        return (
+            context.mode == "OBJECT"
+            and camera_comp.get_line_camera(context.scene) is not None
+        )
+
+    def execute(self, context):
+        from . import camera_comp
+
+        scene = context.scene
+        camera = camera_comp.get_line_camera(scene)
+        if camera is None:
+            self.report({"WARNING"}, "カメラがありません")
+            return {"CANCELLED"}
+
+        targets = []
+        for obj in scene.objects:
+            if obj.type != "MESH" or obj.data is None:
+                continue
+            if getattr(obj, "hide_select", False):
+                continue
+            try:
+                if not obj.visible_get():
+                    continue
+            except RuntimeError:
+                continue
+            if camera_comp.object_overlaps_camera_view(obj, scene, camera):
+                targets.append(obj)
+
+        bpy.ops.object.select_all(action="DESELECT")
+        for obj in targets:
+            obj.select_set(True)
+        if targets:
+            context.view_layer.objects.active = targets[0]
+
+        self.report({"INFO"}, f"{len(targets)} オブジェクトを選択しました")
+        return {"FINISHED"}
+
+
 class BMANGA_LINE_OT_remove(bpy.types.Operator):
     """選択オブジェクトからラインを削除"""
 
@@ -418,6 +467,7 @@ class BMANGA_LINE_OT_add_aov(bpy.types.Operator):
 
 _CLASSES = (
     BMANGA_LINE_OT_apply,
+    BMANGA_LINE_OT_select_render_range_meshes,
     BMANGA_LINE_OT_remove,
     BMANGA_LINE_OT_set_visibility,
     BMANGA_LINE_OT_set_line_only,
