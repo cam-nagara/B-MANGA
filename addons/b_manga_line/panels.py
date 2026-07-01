@@ -220,6 +220,7 @@ def _draw_inner_line(layout, context, settings) -> None:
     sub_label.alignment = "RIGHT"
     sub_label.label(text=_mm_to_px_label(settings.inner_line_thickness_mm, dpi))
     sub.prop(settings, "inner_line_offset")
+    sub.prop(settings, "inner_line_color")
     col.separator()
     sub_create = col.column(align=True)
     sub_create.enabled = settings.inner_line_enabled
@@ -260,6 +261,7 @@ def _draw_intersection(layout, context, settings) -> None:
     sub_label.alignment = "RIGHT"
     sub_label.label(text=_mm_to_px_label(settings.intersection_thickness_mm, dpi))
     sub.prop(settings, "intersection_line_offset")
+    sub.prop(settings, "intersection_color")
     sub.separator()
     sub.prop(settings, "use_intersection_creation_limit")
     sub_create = sub.column(align=True)

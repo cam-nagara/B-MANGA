@@ -1,0 +1,85 @@
+"""B-MANGA Line visibility helpers."""
+
+from __future__ import annotations
+
+import bpy
+
+from .core import (
+    GN_MODIFIER_NAME,
+    INTERSECTION_MODIFIER_NAME,
+    INTERSECTION_MODIFIER_PREFIX,
+    LINE_MODIFIER_NAMES,
+    MODIFIER_NAME,
+    PROP_LINES_HIDDEN,
+)
+
+
+def has_outline(obj: bpy.types.Object) -> bool:
+    return obj.type == "MESH" and obj.modifiers.get(MODIFIER_NAME) is not None
+
+
+def is_intersection_modifier_name(name: str) -> bool:
+    return (
+        name == INTERSECTION_MODIFIER_NAME
+        or name.startswith(INTERSECTION_MODIFIER_PREFIX)
+    )
+
+
+def iter_intersection_modifiers(obj: bpy.types.Object):
+    if obj.type != "MESH":
+        return
+    for mod in obj.modifiers:
+        if is_intersection_modifier_name(mod.name):
+            yield mod
+
+
+def iter_line_modifiers(obj: bpy.types.Object):
+    if obj.type != "MESH":
+        return
+    for name in LINE_MODIFIER_NAMES:
+        mod = obj.modifiers.get(name)
+        if mod is not None:
+            yield mod
+    yield from iter_intersection_modifiers(obj)
+
+
+def has_line(obj: bpy.types.Object) -> bool:
+    return obj.type == "MESH" and any(iter_line_modifiers(obj))
+
+
+def _line_modifier_enabled_by_settings(
+    obj: bpy.types.Object,
+    mod: bpy.types.Modifier,
+) -> bool:
+    settings = getattr(obj, "bmanga_line_settings", None)
+    if settings is None:
+        return True
+    if mod.name == GN_MODIFIER_NAME:
+        from . import plane_filter
+        return (
+            bool(getattr(settings, "inner_line_enabled", False))
+            and not plane_filter.should_exclude_generated_lines(obj, settings)
+        )
+    if is_intersection_modifier_name(mod.name):
+        from . import plane_filter
+        return (
+            bool(getattr(settings, "intersection_enabled", False))
+            and not plane_filter.should_exclude_generated_lines(obj, settings)
+        )
+    if mod.name == MODIFIER_NAME:
+        return bool(getattr(settings, "outline_enabled", True))
+    return True
+
+
+def set_line_visibility(obj: bpy.types.Object, visible: bool) -> bool:
+    mods = list(iter_line_modifiers(obj))
+    if not mods:
+        return False
+    for mod in mods:
+        mod_visible = visible and _line_modifier_enabled_by_settings(obj, mod)
+        if mod.show_viewport != mod_visible:
+            mod.show_viewport = mod_visible
+        if mod.show_render != mod_visible:
+            mod.show_render = mod_visible
+    obj[PROP_LINES_HIDDEN] = not visible
+    return True

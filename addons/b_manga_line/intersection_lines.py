@@ -1377,6 +1377,7 @@ def update_parameters(
     target: bpy.types.Object | None = ...,
     thickness: float | None = None,
     offset: float | None = None,
+    material: bpy.types.Material | None = None,
 ) -> bool:
     """既存モディファイアのパラメータを更新."""
     changed = False
@@ -1389,13 +1390,13 @@ def update_parameters(
                 None,
                 thickness,
                 offset,
-                None,
+                material,
                 None,
             )
             changed = True
             continue
         item_target = target if target is not ... else _modifier_target(mod)
-        _set_modifier_parameters(mod, item_target, thickness, offset, None)
+        _set_modifier_parameters(mod, item_target, thickness, offset, material)
         changed = True
     return changed
 
@@ -1478,7 +1479,7 @@ def _refresh_source_intersections(
             settings.intersection_thickness,
         ),
         offset=settings.intersection_line_offset,
-        material=outline_setup.get_outline_material(obj),
+        material=outline_setup.get_line_material(obj, "intersection"),
         method=settings.intersection_method,
         scene=scene,
     )

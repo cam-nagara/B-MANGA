@@ -15,6 +15,7 @@ from bpy.props import (
 
 from . import registration
 from .scale_utils import modifier_thickness_for_world_width
+from .selection import selected_mesh_objects as _selected_mesh_objects
 
 # ------------------------------------------------------------------
 # 命名規則 — モディファイア・マテリアル・頂点グループ等の識別子
@@ -55,45 +56,6 @@ LINE_MODIFIER_NAMES = (
 # ------------------------------------------------------------------
 
 _propagating = False
-
-
-def _add_unique_mesh_object(items: list[bpy.types.Object], obj) -> None:
-    if obj is None or getattr(obj, "type", None) != "MESH":
-        return
-    if obj not in items:
-        items.append(obj)
-
-
-def _selected_mesh_objects(context, owner: bpy.types.Object) -> list[bpy.types.Object]:
-    """パネル更新中の制限付き context でも実選択メッシュを拾う."""
-    items: list[bpy.types.Object] = []
-    for obj in getattr(context, "selected_objects", ()) or ():
-        _add_unique_mesh_object(items, obj)
-
-    global_context = getattr(bpy, "context", None)
-    for obj in getattr(global_context, "selected_objects", ()) or ():
-        _add_unique_mesh_object(items, obj)
-
-    scenes = []
-    for scene in (
-        getattr(context, "scene", None),
-        getattr(global_context, "scene", None),
-    ):
-        if scene is not None and scene not in scenes:
-            scenes.append(scene)
-    for scene in getattr(owner, "users_scene", ()) or ():
-        if scene is not None and scene not in scenes:
-            scenes.append(scene)
-
-    for scene in scenes:
-        for obj in getattr(scene, "objects", ()) or ():
-            try:
-                selected = obj.select_get()
-            except (ReferenceError, RuntimeError):
-                selected = False
-            if selected:
-                _add_unique_mesh_object(items, obj)
-    return items
 
 
 def _propagate(self, context, prop_name):
@@ -243,6 +205,19 @@ def _curve_point_property(prop_name: str, label: str, description: str, default:
     )
 
 
+def _line_color_property(description: str, update):
+    return FloatVectorProperty(
+        name="線の色",
+        description=description,
+        subtype="COLOR",
+        size=4,
+        default=(0.0, 0.0, 0.0, 1.0),
+        min=0.0,
+        max=1.0,
+        update=update,
+    )
+
+
 # ------------------------------------------------------------------
 # 設定変更時のコールバック
 # ------------------------------------------------------------------
@@ -330,6 +305,29 @@ def _on_color_changed(self, context):
     if owner.type == "MESH":
         outline_setup.update_material_color(owner, tuple(self.outline_color))
     _propagate(self, context, "outline_color")
+
+
+def _on_generated_color_changed(self, context, target: str, prop_name: str):
+    if _propagating:
+        return
+    from . import inner_lines, intersection_lines, outline_setup
+    owner = self.id_data
+    if owner.type == "MESH":
+        if target == "inner" and owner.modifiers.get(GN_MODIFIER_NAME) is not None:
+            material = outline_setup.get_line_material(owner, target)
+            inner_lines.update_parameters(owner, material=material)
+        elif target == "intersection" and any(iter_intersection_modifiers(owner)):
+            material = outline_setup.get_line_material(owner, target)
+            intersection_lines.update_parameters(owner, material=material)
+    _propagate(self, context, prop_name)
+
+
+def _on_inner_color_changed(self, context):
+    _on_generated_color_changed(self, context, "inner", "inner_line_color")
+
+
+def _on_intersection_color_changed(self, context):
+    _on_generated_color_changed(self, context, "intersection", "intersection_color")
 
 
 def _on_thickness_changed(self, context):
@@ -444,7 +442,7 @@ def _sync_inner_line_creation(
         if not create_missing:
             inner_lines.enable_inner_lines(owner)
             return False
-        mat = outline_setup.get_outline_material(owner)
+        mat = outline_setup.get_line_material(owner, "inner")
         return inner_lines.apply_inner_lines(
             owner,
             angle=settings.inner_line_angle,
@@ -570,7 +568,7 @@ def _sync_intersection_creation(owner: bpy.types.Object, settings, context) -> N
         intersection_lines.remove_intersection_lines(owner)
         intersection_lines.prune_excluded_intersections(getattr(context, "scene", None))
         return
-    mat = outline_setup.get_outline_material(owner)
+    mat = outline_setup.get_line_material(owner, "intersection")
     intersection_lines.apply_intersection_lines(
         owner,
         thickness=modifier_thickness_for_world_width(
@@ -1011,15 +1009,9 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         update=_on_outline_offset_changed,
     )  # type: ignore[valid-type]
 
-    outline_color: FloatVectorProperty(
-        name="線の色",
-        description="アウトラインの色 (scene-linear RGB)",
-        subtype="COLOR",
-        size=4,
-        default=(0.0, 0.0, 0.0, 1.0),
-        min=0.0,
-        max=1.0,
-        update=_on_color_changed,
+    outline_color: _line_color_property(
+        "アウトラインの色",
+        _on_color_changed,
     )  # type: ignore[valid-type]
 
     use_vertex_color: BoolProperty(
@@ -1121,6 +1113,11 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         update=_on_inner_offset_changed,
     )  # type: ignore[valid-type]
 
+    inner_line_color: _line_color_property(
+        "内部線の色",
+        _on_inner_color_changed,
+    )  # type: ignore[valid-type]
+
     use_inner_line_creation_limit: BoolProperty(
         name="作成範囲を制限",
         description="カメラに写り、指定距離以内にあるオブジェクトにだけ内部線を作成する",
@@ -1191,6 +1188,11 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         precision=3,
         step=10,
         update=_on_intersection_offset_changed,
+    )  # type: ignore[valid-type]
+
+    intersection_color: _line_color_property(
+        "交差線の色",
+        _on_intersection_color_changed,
     )  # type: ignore[valid-type]
 
     use_intersection_creation_limit: BoolProperty(
@@ -1443,69 +1445,14 @@ def get_settings(context) -> BMangaLineSettings | None:
     return getattr(obj, "bmanga_line_settings", None)
 
 
-def has_outline(obj: bpy.types.Object) -> bool:
-    return obj.type == "MESH" and obj.modifiers.get(MODIFIER_NAME) is not None
-
-
-def iter_line_modifiers(obj: bpy.types.Object):
-    if obj.type != "MESH":
-        return
-    for name in LINE_MODIFIER_NAMES:
-        mod = obj.modifiers.get(name)
-        if mod is not None:
-            yield mod
-    yield from iter_intersection_modifiers(obj)
-
-
-def is_intersection_modifier_name(name: str) -> bool:
-    return name == INTERSECTION_MODIFIER_NAME or name.startswith(INTERSECTION_MODIFIER_PREFIX)
-
-
-def iter_intersection_modifiers(obj: bpy.types.Object):
-    if obj.type != "MESH":
-        return
-    for mod in obj.modifiers:
-        if is_intersection_modifier_name(mod.name):
-            yield mod
-
-
-def has_line(obj: bpy.types.Object) -> bool:
-    return obj.type == "MESH" and any(iter_line_modifiers(obj))
-
-
-def _line_modifier_enabled_by_settings(obj: bpy.types.Object, mod: bpy.types.Modifier) -> bool:
-    settings = getattr(obj, "bmanga_line_settings", None)
-    if settings is None:
-        return True
-    if mod.name == GN_MODIFIER_NAME:
-        from . import plane_filter
-        return (
-            bool(getattr(settings, "inner_line_enabled", False))
-            and not plane_filter.should_exclude_generated_lines(obj, settings)
-        )
-    if is_intersection_modifier_name(mod.name):
-        from . import plane_filter
-        return (
-            bool(getattr(settings, "intersection_enabled", False))
-            and not plane_filter.should_exclude_generated_lines(obj, settings)
-        )
-    if mod.name == MODIFIER_NAME:
-        return bool(getattr(settings, "outline_enabled", True))
-    return True
-
-
-def set_line_visibility(obj: bpy.types.Object, visible: bool) -> bool:
-    mods = list(iter_line_modifiers(obj))
-    if not mods:
-        return False
-    for mod in mods:
-        mod_visible = visible and _line_modifier_enabled_by_settings(obj, mod)
-        if mod.show_viewport != mod_visible:
-            mod.show_viewport = mod_visible
-        if mod.show_render != mod_visible:
-            mod.show_render = mod_visible
-    obj[PROP_LINES_HIDDEN] = not visible
-    return True
+from .line_visibility import (  # noqa: E402
+    has_line,
+    has_outline,
+    is_intersection_modifier_name,
+    iter_intersection_modifiers,
+    iter_line_modifiers,
+    set_line_visibility,
+)
 
 
 def _camera_poll(self, obj):

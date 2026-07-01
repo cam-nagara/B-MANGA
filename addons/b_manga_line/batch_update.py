@@ -190,6 +190,16 @@ def _update_outline_color(objects: list[bpy.types.Object]) -> None:
         )
 
 
+def _update_generated_color(objects: list[bpy.types.Object], target: str) -> None:
+    targets = _generated_line_objects(objects, target)
+    for obj in targets:
+        material = outline_setup.get_line_material(obj, target)
+        if target == "inner":
+            inner_lines.update_parameters(obj, material=material)
+        elif target == "intersection":
+            intersection_lines.update_parameters(obj, material=material)
+
+
 def _update_outline_thickness(objects: list[bpy.types.Object], context) -> None:
     for obj in objects:
         settings = obj.bmanga_line_settings
@@ -512,7 +522,7 @@ def _update_marked_inner_edges(objects: list[bpy.types.Object], context) -> None
                 obj,
                 settings.inner_line_thickness,
             ),
-            material=outline_setup.get_outline_material(obj),
+            material=outline_setup.get_line_material(obj, "inner"),
             offset=settings.inner_line_offset,
             use_marked_edges=settings.use_marked_inner_edges,
             enable=False,
@@ -560,7 +570,7 @@ def _update_inner_lines(
                     obj,
                     settings.inner_line_thickness,
                 ),
-                material=outline_setup.get_outline_material(obj),
+                material=outline_setup.get_line_material(obj, "inner"),
                 offset=settings.inner_line_offset,
                 use_marked_edges=settings.use_marked_inner_edges,
                 enable=False,
@@ -671,6 +681,12 @@ def refresh_propagated_property(
         return
     if prop_name == "outline_color":
         _update_outline_color(line_objects)
+        return
+    if prop_name == "inner_line_color":
+        _update_generated_color(line_objects, "inner")
+        return
+    if prop_name == "intersection_color":
+        _update_generated_color(line_objects, "intersection")
         return
     if prop_name == "outline_thickness":
         _update_outline_thickness(line_objects, context)

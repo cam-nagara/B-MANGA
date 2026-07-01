@@ -3,6 +3,40 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-02 — B-MANGA Lineのライン色を線種別に設定可能化 (B-MANGA Line v0.3.66)
+
+### 症状
+
+- B-MANGA Lineでは「線の色」がアウトライン用の1項目だけで、内部線と交差線も同じ色になっていた。
+- 内部線や交差線だけ色を変えたい場合、既存のパネル操作では調整できなかった。
+
+### 原因
+
+- 内部線と交差線の生成時に、アウトライン用のライン素材をそのまま共有していた。
+- 色変更時の更新経路もアウトライン用素材だけを対象にしていた。
+
+### 修正
+
+- 「アウトライン設定」「内部線（稜線・谷線）」「交差線（オブジェクト間）」の各セクションで、それぞれ「線の色」を設定できるようにした。
+- 内部線と交差線に専用のライン素材を持たせ、既存ラインの色変更時はラインを再生成せず素材入力だけを更新するようにした。
+- 複数選択時の一括反映、プリセット保存・適用、ラインのみ表示、透明面越しの抑制でも線種別の色を維持するようにした。
+- `core.py` の肥大化を避けるため、選択中メッシュ収集とライン表示ヘルパーを独立ファイルへ切り出した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\selection.py addons\b_manga_line\line_visibility.py addons\b_manga_line\outline_setup.py addons\b_manga_line\inner_lines.py addons\b_manga_line\intersection_lines.py addons\b_manga_line\batch_update.py addons\b_manga_line\presets.py addons\b_manga_line\panels.py test\blender_b_manga_line_separate_line_colors_check.py test\blender_b_manga_line_register_reenable_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_separate_line_colors_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_register_reenable_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_offset_controls_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_outline_enable_with_intersections_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_toggle_matrix_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_generated_update_scope_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_uniform_width_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_multi_intersection_modifier_check.py`
+
+---
+
 ## 2026-07-02 — B-MANGA Line交差線だけの状態からのアウトラインオンを軽量化 (B-MANGA Line v0.3.65)
 
 ### 症状

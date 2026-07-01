@@ -366,16 +366,12 @@ def _ensure_material_slot(
     material: bpy.types.Material | None,
 ) -> int:
     """生成した線素材を後続処理でも素材番号として扱えるようにする."""
-    if material is None:
-        for index, slot_mat in enumerate(obj.data.materials):
-            if slot_mat and slot_mat.name.startswith(MATERIAL_NAME):
-                return index
-        return 999
+    if material is not None and not any(slot_mat == material for slot_mat in obj.data.materials):
+        obj.data.materials.append(material)
     for index, slot_mat in enumerate(obj.data.materials):
-        if slot_mat == material or (slot_mat and slot_mat.name.startswith(MATERIAL_NAME)):
+        if slot_mat and slot_mat.name.startswith(MATERIAL_NAME):
             return index
-    obj.data.materials.append(material)
-    return len(obj.data.materials) - 1
+    return 999
 
 
 # ------------------------------------------------------------------
@@ -504,6 +500,7 @@ def update_parameters(
     thickness: float | None = None,
     offset: float | None = None,
     use_marked_edges: bool | None = None,
+    material: bpy.types.Material | None = None,
 ) -> bool:
     """既存モディファイアのパラメータを更新."""
     mod = obj.modifiers.get(GN_MODIFIER_NAME)
@@ -526,4 +523,12 @@ def update_parameters(
         sid = _find_socket_id(tree, _MARKED_ONLY_SOCKET_NAME)
         if sid is not None:
             mod[sid] = bool(use_marked_edges)
+    if material is not None:
+        line_material_index = _ensure_material_slot(obj, material)
+        sid_mat = _find_socket_id(tree, "マテリアル")
+        if sid_mat is not None:
+            mod[sid_mat] = material
+        sid_line_material = _find_socket_id(tree, "ライン素材番号")
+        if sid_line_material is not None:
+            mod[sid_line_material] = line_material_index
     return True

@@ -134,9 +134,11 @@ def _assert_panels_draw_items() -> None:
         "intersection_edge_smooth_factor",
         "inner_line_enabled",
         "use_marked_inner_edges",
+        "inner_line_color",
         "use_inner_line_creation_limit",
         "inner_line_creation_max_distance",
         "intersection_enabled",
+        "intersection_color",
         "use_intersection_creation_limit",
         "intersection_creation_max_distance",
     ):

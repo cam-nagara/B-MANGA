@@ -33,6 +33,17 @@ from .scale_utils import modifier_thickness_for_world_width
 LINE_ONLY_MATERIAL_NAME = "BML_LineOnly_SurfaceHidden"
 LINE_ONLY_WIREFRAME_NAME = "BML_LineOnly_Wire"
 PROP_HIDE_THROUGH_TRANSPARENT = "bml_hide_through_transparent"
+PROP_LINE_MATERIAL_TARGET = "bml_line_material_target"
+_LINE_MATERIAL_NAMES = {
+    "outline": MATERIAL_NAME,
+    "inner": f"{MATERIAL_NAME}_Inner",
+    "intersection": f"{MATERIAL_NAME}_Intersection",
+}
+_LINE_COLOR_PROPS = {
+    "outline": "outline_color",
+    "inner": "inner_line_color",
+    "intersection": "intersection_color",
+}
 
 
 # ------------------------------------------------------------------
@@ -41,8 +52,66 @@ PROP_HIDE_THROUGH_TRANSPARENT = "bml_hide_through_transparent"
 
 def _is_outline_material(mat: bpy.types.Material) -> bool:
     """BML アウトラインマテリアルかどうか."""
+    return _line_material_target(mat) == "outline"
+
+
+def _material_name_matches(mat: bpy.types.Material, base_name: str) -> bool:
     name = mat.name
-    return name == MATERIAL_NAME or name.startswith(MATERIAL_NAME + ".")
+    return name == base_name or name.startswith(base_name + ".")
+
+
+def _line_material_target(mat: bpy.types.Material | None) -> str | None:
+    if mat is None:
+        return None
+    try:
+        target = mat.get(PROP_LINE_MATERIAL_TARGET, "")
+    except TypeError:
+        target = ""
+    if target in _LINE_MATERIAL_NAMES:
+        return str(target)
+    for item, base_name in _LINE_MATERIAL_NAMES.items():
+        if _material_name_matches(mat, base_name):
+            return item
+    return None
+
+
+def _is_line_material(mat: bpy.types.Material | None) -> bool:
+    return _line_material_target(mat) is not None
+
+
+def _set_line_material_target(mat: bpy.types.Material, target: str) -> None:
+    try:
+        mat[PROP_LINE_MATERIAL_TARGET] = target
+    except TypeError:
+        pass
+
+
+def _line_color(obj: bpy.types.Object, target: str) -> tuple[float, ...]:
+    settings = getattr(obj, "bmanga_line_settings", None)
+    prop_name = _LINE_COLOR_PROPS.get(target, "outline_color")
+    fallback = getattr(settings, "outline_color", (0.0, 0.0, 0.0, 1.0))
+    return tuple(getattr(settings, prop_name, fallback))
+
+
+def _line_hide_transparent(obj: bpy.types.Object) -> bool:
+    settings = getattr(obj, "bmanga_line_settings", None)
+    return bool(getattr(settings, "hide_through_transparent", False))
+
+
+def _repair_line_material(
+    mat: bpy.types.Material,
+    color: tuple[float, ...],
+    *,
+    target: str,
+    hide_through_transparent: bool,
+) -> bpy.types.Material:
+    _repair_outline_material(
+        mat,
+        color,
+        hide_through_transparent=hide_through_transparent,
+    )
+    _set_line_material_target(mat, target)
+    return mat
 
 
 def _build_outline_nodes(
@@ -268,9 +337,10 @@ def get_or_create_material(
     for slot in obj.material_slots:
         if slot.material and _is_outline_material(slot.material):
             mat = slot.material
-            _repair_outline_material(
+            _repair_line_material(
                 mat,
                 color,
+                target="outline",
                 hide_through_transparent=hide_through_transparent,
             )
             return mat
@@ -281,6 +351,7 @@ def get_or_create_material(
         color,
         hide_through_transparent=hide_through_transparent,
     )
+    _set_line_material_target(mat, "outline")
     _configure_material(mat)
     return mat
 
@@ -317,13 +388,43 @@ def get_outline_material(obj: bpy.types.Object) -> bpy.types.Material | None:
     hide_transparent = bool(getattr(settings, "hide_through_transparent", False))
     for slot in obj.material_slots:
         if slot.material and _is_outline_material(slot.material):
-            _repair_outline_material(
+            _repair_line_material(
                 slot.material,
                 color,
+                target="outline",
                 hide_through_transparent=hide_transparent,
             )
             return slot.material
     return None
+
+
+def get_line_material(obj: bpy.types.Object, target: str) -> bpy.types.Material | None:
+    """指定ライン種別のマテリアルを取得または作成."""
+    if obj.type != "MESH" or obj.data is None:
+        return None
+    target = target if target in _LINE_MATERIAL_NAMES else "outline"
+    color = _line_color(obj, target)
+    hide_transparent = _line_hide_transparent(obj)
+    if target == "outline":
+        return get_or_create_material(
+            obj,
+            color,
+            hide_through_transparent=hide_transparent,
+        )
+    for slot in obj.material_slots:
+        if slot.material and _line_material_target(slot.material) == target:
+            return _repair_line_material(
+                slot.material,
+                color,
+                target=target,
+                hide_through_transparent=hide_transparent,
+            )
+    mat = bpy.data.materials.new(name=_LINE_MATERIAL_NAMES[target])
+    _build_outline_nodes(mat, color, hide_through_transparent=hide_transparent)
+    _set_line_material_target(mat, target)
+    _configure_material(mat)
+    obj.data.materials.append(mat)
+    return mat
 
 
 def _update_emission_color(mat: bpy.types.Material, color: tuple[float, ...]) -> None:
@@ -345,9 +446,10 @@ def update_material_color(obj: bpy.types.Object, color: tuple[float, ...]) -> No
     hide_transparent = bool(getattr(settings, "hide_through_transparent", False))
     for slot in obj.material_slots:
         if slot.material and _is_outline_material(slot.material):
-            _repair_outline_material(
+            _repair_line_material(
                 slot.material,
                 color,
+                target="outline",
                 hide_through_transparent=hide_transparent,
             )
             _update_emission_color(slot.material, color)
@@ -361,14 +463,15 @@ def update_transparent_protection(
 ) -> None:
     """透明面越しに見える裏面ラインの抑制設定を更新."""
     for slot in obj.material_slots:
-        if slot.material and _is_outline_material(slot.material):
+        target = _line_material_target(slot.material)
+        if target is not None:
             _build_outline_nodes(
                 slot.material,
-                color,
+                color if target == "outline" else _line_color(obj, target),
                 hide_through_transparent=enabled,
             )
+            _set_line_material_target(slot.material, target)
             _configure_material(slot.material)
-            return
 
 
 # ------------------------------------------------------------------
@@ -575,7 +678,7 @@ def remove_outline(obj: bpy.types.Object) -> bool:
     # マテリアルスロットを除去（オブジェクト専用マテリアル）
     for i in range(len(obj.data.materials) - 1, -1, -1):
         mat = obj.data.materials[i]
-        if mat and _is_outline_material(mat):
+        if mat and _is_line_material(mat):
             obj.data.materials.pop(index=i)
             if mat.users == 0:
                 bpy.data.materials.remove(mat)
@@ -663,18 +766,15 @@ def _get_line_only_material() -> bpy.types.Material:
     return mat
 
 
-def _line_only_color(obj: bpy.types.Object) -> tuple[float, ...]:
-    settings = getattr(obj, "bmanga_line_settings", None)
-    return tuple(getattr(settings, "outline_color", (0.0, 0.0, 0.0, 1.0)))
-
-
 def _set_outline_materials_for_line_only(
+    obj: bpy.types.Object,
     mesh: bpy.types.Mesh,
-    color: tuple[float, ...],
 ) -> None:
     for mat in mesh.materials:
-        if mat is not None and _is_outline_material(mat):
-            _build_line_only_outline_nodes(mat, color)
+        target = _line_material_target(mat)
+        if target is not None:
+            _build_line_only_outline_nodes(mat, _line_color(obj, target))
+            _set_line_material_target(mat, target)
             try:
                 mat.use_backface_culling = False
             except (AttributeError, TypeError):
@@ -688,18 +788,19 @@ def _restore_outline_materials(
     hide_through_transparent_override: bool | None = None,
 ) -> None:
     settings = getattr(obj, "bmanga_line_settings", None)
-    color = _line_only_color(obj)
     if hide_through_transparent_override is None:
         hide_transparent = bool(getattr(settings, "hide_through_transparent", False))
     else:
         hide_transparent = bool(hide_through_transparent_override)
     for mat in mesh.materials:
-        if mat is not None and _is_outline_material(mat):
+        target = _line_material_target(mat)
+        if target is not None:
             _build_outline_nodes(
                 mat,
-                color,
+                _line_color(obj, target),
                 hide_through_transparent=hide_transparent,
             )
+            _set_line_material_target(mat, target)
             _configure_material(mat)
 
 
@@ -746,7 +847,7 @@ def set_line_only(obj: bpy.types.Object, enabled: bool) -> bool:
         _configure_line_only_solidify_shape(obj)
         _remove_line_only_wire(obj)
         for index, mat in enumerate(mesh.materials):
-            if mat is not None and _is_outline_material(mat):
+            if mat is not None and _is_line_material(mat):
                 continue
             stored.append({"index": index, "material": mat.name if mat else ""})
             mesh.materials[index] = hidden

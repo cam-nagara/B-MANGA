@@ -32,12 +32,14 @@ _SETTING_FIELDS = (
     "use_marked_inner_edges",
     "inner_line_thickness",
     "inner_line_offset",
+    "inner_line_color",
     "use_inner_line_creation_limit",
     "inner_line_creation_max_distance",
     "intersection_method",
     "intersection_enabled",
     "intersection_thickness",
     "intersection_line_offset",
+    "intersection_color",
     "use_intersection_creation_limit",
     "intersection_creation_max_distance",
     "use_camera_compensation",
@@ -69,6 +71,7 @@ _SETTING_FIELDS = (
     "use_intersection_distance_limit",
     "intersection_max_distance",
 )
+_COLOR_FIELDS = {"outline_color", "inner_line_color", "intersection_color"}
 
 
 def _selected_meshes(context) -> list[bpy.types.Object]:
@@ -91,7 +94,7 @@ def _active_preset(scene):
 def copy_settings_to_preset(settings, preset) -> None:
     for name in _SETTING_FIELDS:
         value = getattr(settings, name)
-        if name == "outline_color":
+        if name in _COLOR_FIELDS:
             value = tuple(value)
         setattr(preset, name, value)
 
@@ -112,7 +115,7 @@ def copy_settings_to_settings(source, target) -> None:
     try:
         for name in _SETTING_FIELDS:
             value = getattr(source, name)
-            if name == "outline_color":
+            if name in _COLOR_FIELDS:
                 value = tuple(value)
             setattr(target, name, value)
     finally:
@@ -184,7 +187,6 @@ def apply_line_settings(
     if not ok:
         return False
 
-    mat = outline_setup.get_outline_material(obj)
     exclude_generated = plane_filter.should_exclude_generated_lines(obj, settings)
     if (
         settings.inner_line_enabled
@@ -201,7 +203,7 @@ def apply_line_settings(
                 settings.inner_line_thickness,
             ),
             offset=settings.inner_line_offset,
-            material=mat,
+            material=outline_setup.get_line_material(obj, "inner"),
             use_marked_edges=settings.use_marked_inner_edges,
         )
     else:
@@ -219,7 +221,7 @@ def apply_line_settings(
                     settings.intersection_thickness,
                 ),
                 offset=settings.intersection_line_offset,
-                material=mat,
+                material=outline_setup.get_line_material(obj, "intersection"),
                 method=settings.intersection_method,
                 scene=context.scene,
             )
@@ -272,6 +274,13 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     use_marked_inner_edges: BoolProperty(default=False)
     inner_line_thickness: FloatProperty(default=0.0003, min=0.0001, max=1.0)
     inner_line_offset: FloatProperty(default=0.0, min=-1.0, max=1.0)
+    inner_line_color: FloatVectorProperty(
+        subtype="COLOR",
+        size=4,
+        default=(0.0, 0.0, 0.0, 1.0),
+        min=0.0,
+        max=1.0,
+    )
     use_inner_line_creation_limit: BoolProperty(default=True)
     inner_line_creation_max_distance: FloatProperty(default=10.0, min=0.1, max=1000.0)
 
@@ -285,6 +294,13 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     intersection_enabled: BoolProperty(default=False)
     intersection_thickness: FloatProperty(default=0.0003, min=0.0001, max=1.0)
     intersection_line_offset: FloatProperty(default=0.0, min=-1.0, max=1.0)
+    intersection_color: FloatVectorProperty(
+        subtype="COLOR",
+        size=4,
+        default=(0.0, 0.0, 0.0, 1.0),
+        min=0.0,
+        max=1.0,
+    )
     use_intersection_creation_limit: BoolProperty(default=True)
     intersection_creation_max_distance: FloatProperty(default=10.0, min=0.1, max=1000.0)
 
