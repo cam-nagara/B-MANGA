@@ -24,7 +24,8 @@ Blender 5.1.1 を対象としています。
 - `python -m py_compile addons\b_manga_line\outline_setup.py test\blender_b_manga_line_open_mesh_outline_check.py`
 - `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_open_mesh_outline_check.py`
 - `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_uniform_width_check.py`
-- 追加確認: `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_full_visual_audit_check.py` は、ラインのみ表示中の中央立体の線検出が `0` になり失敗。`_verify\b_manga_line_full_visual_audit\02_uniform_line_only_distance.png` では中央立体が白面のみになり、線が出ていないことを確認。
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_full_visual_audit_check.py`
+- 新仕様に合わせ、ラインのみ表示中の中央立体は黒線検出ではなく、白い確認表示に切り替わることを目視用レンダーで確認。
 
 ---
 

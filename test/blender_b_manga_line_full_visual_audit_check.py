@@ -160,6 +160,29 @@ def _dark_pixel_count_region(
         bpy.data.images.remove(image)
 
 
+def _bright_pixel_count_region(
+    path: Path,
+    x_min: int,
+    x_max: int,
+    y_min: int,
+    y_max: int,
+) -> int:
+    image = bpy.data.images.load(str(path), check_existing=False)
+    try:
+        width = int(image.size[0])
+        height = int(image.size[1])
+        pixels = list(image.pixels)
+        count = 0
+        for y in range(max(0, y_min), min(height, y_max)):
+            for x in range(max(0, x_min), min(width, x_max)):
+                index = (y * width + x) * 4
+                if min(pixels[index], pixels[index + 1], pixels[index + 2]) > 0.85:
+                    count += 1
+        return count
+    finally:
+        bpy.data.images.remove(image)
+
+
 def _setup_all_line_camera() -> None:
     bpy.ops.object.camera_add(location=(3.4, -5.8, 2.9))
     camera = bpy.context.object
@@ -282,8 +305,10 @@ def _scene_uniform_line_only_distance() -> Path:
     _render(path)
     assert _dark_pixel_count(path) > 500
     center_dark = _dark_pixel_count_region(path, 430, 760, 180, 610)
+    center_bright = _bright_pixel_count_region(path, 430, 760, 180, 610)
     right_dark = _dark_pixel_count_region(path, 890, 1185, 180, 610)
-    assert center_dark > 500, center_dark
+    assert center_dark < 100, center_dark
+    assert center_bright > 20000, center_bright
     assert right_dark < 100, right_dark
     return path
 
