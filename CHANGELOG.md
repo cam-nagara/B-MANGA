@@ -3,6 +3,39 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-02 — B-MANGA Line Tokyo0004 大規模監査を実行 (検証記録)
+
+### 症状
+
+- `Japanese_Streetscape_Tokyo_0004.blend` のような大規模シーンで、B-MANGA Line の全機能・全組み合わせ・順序違い・設定変更の軽さをまとめて確認できる証跡が不足していた。
+- アウトライン、内部線、交差線、中間頂点の滑らかさを後から見返せるスクショが不足していた。
+
+### 原因
+
+- 既存確認は個別機能ごとの再現や小規模ケースが中心で、レンダリング範囲内選択からライン適用、各ラインのオン/オフ、設定変更、旧交差線方式、ラインのみ表示、プリセットまでを同一手順で監査する計画と実行ログがなかった。
+
+### 修正
+
+- `Japanese_Streetscape_Tokyo_0004.blend` 用の大規模監査計画書と自己レビューを追加した。
+- 5フェーズ構成の実機監査ランナーを追加し、各フェーズのJSON・Markdown要約・実行ログ・スクショを生成できるようにした。
+- フェーズ4では、生成後のライン面から撮影用の線を抽出し、アウトライン、内部線、交差線、中間頂点の滑らかさを色分けして確認できるスクショを残すようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_tokyo0004_large_audit.py -- --phase phase1`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_tokyo0004_large_audit.py -- --phase phase2`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_tokyo0004_large_audit.py -- --phase phase3`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_tokyo0004_large_audit.py -- --phase phase4`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_tokyo0004_large_audit.py -- --phase phase5`
+- フェーズ1〜5すべてで Errors 0 / Warnings 0。スクショは合計20枚生成。
+- 最大処理時間: フェーズ2 1.0906秒、フェーズ3 1.6364秒、フェーズ4 0.0175秒、フェーズ5 0.2560秒。
+- `python -m py_compile test\blender_b_manga_line_tokyo0004_large_audit.py`
+- 既存のB-MANGA Line実機テスト16本を再実行し、全件PASS。
+- 監査結果: `docs\b_manga_line_tokyo0004_large_audit_execution_2026-07-02.md`
+- スクショ: `_verify\b_manga_line_tokyo0004_large_audit_2026-07-02\screenshots\`
+
+---
+
 ## 2026-07-02 — フキダシ・効果線の全パターン監査と本体なし表示の修正 (B-MANGA v0.6.428)
 
 ### 症状
