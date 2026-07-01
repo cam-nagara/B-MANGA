@@ -486,9 +486,7 @@ def _on_marked_inner_edges_changed(self, context):
     owner = self.id_data
     refreshed_owner = False
     if owner.type == "MESH" and has_line(owner):
-        if not self.inner_line_enabled:
-            refreshed_owner = False
-        elif plane_filter.should_exclude_generated_lines(owner, self):
+        if plane_filter.should_exclude_generated_lines(owner, self):
             inner_lines.remove_inner_lines(owner)
         elif not camera_comp.inner_line_creation_in_range(
             owner,
@@ -501,6 +499,8 @@ def _on_marked_inner_edges_changed(self, context):
                 owner,
                 use_marked_edges=self.use_marked_inner_edges,
             )
+        elif not self.inner_line_enabled:
+            refreshed_owner = False
         else:
             refreshed_owner = _sync_inner_line_creation(owner, self, context)
     _propagate(self, context, "use_marked_inner_edges")
@@ -757,12 +757,13 @@ def _on_camera_comp_changed(self, context):
     if self.use_uniform_line_width:
         _propagate(self, context, "use_camera_compensation")
         return
-    if self.use_camera_compensation:
-        if owner.type == "MESH":
+    if owner.type == "MESH":
+        if self.use_camera_compensation:
             camera_comp.store_unit_reference(owner, context.scene)
-            camera_comp.refresh_objects(context, [owner])
-    else:
-        if owner.type == "MESH":
+        if (
+            not camera_comp.refresh_objects(context, [owner])
+            and not self.use_camera_compensation
+        ):
             mod = owner.modifiers.get(MODIFIER_NAME)
             if mod is not None:
                 mod.thickness = modifier_thickness_for_world_width(
@@ -784,7 +785,6 @@ def _on_camera_comp_changed(self, context):
                     self.intersection_thickness,
                 ),
             )
-            camera_comp.refresh_objects(context, [owner])
     _propagate(self, context, "use_camera_compensation")
 
 

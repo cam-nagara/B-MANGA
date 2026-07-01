@@ -70,6 +70,7 @@ def _install_counters():
     counts = {
         "line_settings_apply": 0,
         "outline_apply": 0,
+        "outline_thickness_update": 0,
         "inner_apply": 0,
         "inner_update": 0,
         "intersection_apply": 0,
@@ -85,6 +86,7 @@ def _install_counters():
     originals = {
         "line_settings_apply": presets.apply_line_settings,
         "outline_apply": outline_setup.apply_outline,
+        "outline_thickness_update": outline_setup.update_modifier_thickness,
         "inner_apply": inner_lines.apply_inner_lines,
         "inner_update": inner_lines.update_parameters,
         "intersection_apply": intersection_lines.apply_intersection_lines,
@@ -104,6 +106,10 @@ def _install_counters():
     def counted_outline_apply(*args, **kwargs):
         counts["outline_apply"] += 1
         return originals["outline_apply"](*args, **kwargs)
+
+    def counted_outline_thickness_update(*args, **kwargs):
+        counts["outline_thickness_update"] += 1
+        return originals["outline_thickness_update"](*args, **kwargs)
 
     def counted_inner_apply(*args, **kwargs):
         counts["inner_apply"] += 1
@@ -150,6 +156,7 @@ def _install_counters():
 
     presets.apply_line_settings = counted_line_settings_apply
     outline_setup.apply_outline = counted_outline_apply
+    outline_setup.update_modifier_thickness = counted_outline_thickness_update
     inner_lines.apply_inner_lines = counted_inner_apply
     inner_lines.update_parameters = counted_inner_update
     intersection_lines.apply_intersection_lines = counted_intersection_apply
@@ -168,6 +175,7 @@ def _install_counters():
     def restore() -> None:
         presets.apply_line_settings = originals["line_settings_apply"]
         outline_setup.apply_outline = originals["outline_apply"]
+        outline_setup.update_modifier_thickness = originals["outline_thickness_update"]
         inner_lines.apply_inner_lines = originals["inner_apply"]
         inner_lines.update_parameters = originals["inner_update"]
         intersection_lines.apply_intersection_lines = originals["intersection_apply"]
@@ -311,6 +319,11 @@ def _run_baseline_cases(settings, counts, reset) -> None:
     for prop_name, value, width_target in width_cases:
         _change(settings, prop_name, value, counts, reset, width_target=width_target)
         _assert_no_generated_rebuild(prop_name, counts)
+        if prop_name in {"outline_thickness", "use_camera_compensation"}:
+            assert counts["outline_thickness_update"] == 0, (prop_name, counts)
+        if prop_name == "use_camera_compensation":
+            assert counts["inner_update"] <= 3, (prop_name, counts)
+            assert counts["intersection_update"] <= 3, (prop_name, counts)
 
     visibility_cases = [
         ("use_camera_culling", True),
@@ -358,6 +371,21 @@ def _run_uniform_mode_cases(settings, counts, reset) -> None:
         _assert_no_generated_rebuild(prop_name, counts)
 
 
+def _run_mixed_uniform_cases(objects, counts, reset) -> None:
+    settings = objects[0].bmanga_line_settings
+    _silent_set(objects[1].bmanga_line_settings, "use_uniform_line_width", True)
+    _silent_set(objects[2].bmanga_line_settings, "use_uniform_line_width", False)
+    _select(objects)
+    _ensure_changed_value(settings, "inner_line_angle", math.radians(75))
+    reset()
+    settings.inner_line_angle = math.radians(75)
+    _assert_common("inner_line_angle_mixed_uniform", counts)
+    _assert_no_generated_rebuild("inner_line_angle_mixed_uniform", counts)
+    assert counts["camera_objects"] == 1, counts
+    assert counts["camera_scopes"] == [("inner",)], counts
+    assert counts["inner_update"] <= 4, counts
+
+
 def main() -> None:
     b_manga_line.register()
     counts, reset, restore = _install_counters()
@@ -368,6 +396,8 @@ def main() -> None:
         objects = _setup_scene()
         settings = objects[0].bmanga_line_settings
         _run_uniform_mode_cases(settings, counts, reset)
+        objects = _setup_scene()
+        _run_mixed_uniform_cases(objects, counts, reset)
         print("BMANGA_LINE_CONTROL_UPDATE_SCOPE_OK")
     finally:
         restore()

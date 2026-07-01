@@ -3,6 +3,67 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-01 — B-MANGA Line更新重複の徹底チェックと全体チェック (B-MANGA Line v0.3.59)
+
+### 症状
+
+- v0.3.58 の軽量化後も、アウトラインの「線幅」や「線幅の均一化（オブジェクト単位）」の変更時に、直接更新とカメラ基準更新が同じ対象へ続けて走る経路が残っていた。
+- 選択中の一部だけ「線幅の均一化（頂点単位）」がオンの状態で内部線の「検出角度」を一括変更すると、均一化オフ側の線幅詳細更新が省略される可能性があった。
+- 既に内部線があるオブジェクトで「内部線を追加」がオフのまま「指定済みの辺だけ線にする」を切り替えると、既存内部線の設定が更新されなかった。
+- 交差線の確認テストが、現在の生成位置では白い元面に隠れる上面レンダーの黒ピクセルを旧条件として見ていた。
+
+### 原因
+
+- 幅更新の保険処理が、カメラ基準更新の成功後にも残っていた。
+- 内部線の角度変更で、均一化オン対象のカメラ更新が成功した時に、同じ選択内の均一化オフ対象まで処理済み扱いにしていた。
+- 「指定済みの辺だけ線にする」の軽量経路が、「内部線を追加」の設定値を既存内部線モディファイアの有無より先に見ていた。
+- 交差線のテストが、評価済みメッシュ上の線ジオメトリ生成ではなく、レンダー上の見え方に依存していた。
+
+### 修正
+
+- カメラ基準更新が成功した場合、アウトライン線幅とオブジェクト単位の線幅均一化では直接更新へ進まないようにした。
+- 内部線の検出角度変更は、均一化オン対象だけをカメラ更新し、残りの生成済み内部線は通常の軽量更新へ進めるようにした。
+- 既存内部線がある場合は、「内部線を追加」の設定がオフでも「指定済みの辺だけ線にする」の入力だけ更新するようにした。
+- 交差線の確認テストを、評価済みメッシュ上で線用素材の面が十分に生成され、元面素材と分離していることを確認する仕様へ更新した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- 全スクリプト 597 ファイル / 213,994 行を読み込み、Python 構文、競合マーカー、NUL 混入を全走査: 問題なし。
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\batch_update.py addons\b_manga_line\camera_comp.py test\blender_b_manga_line_control_update_scope_check.py test\blender_b_manga_line_batch_apply_refresh_check.py test\blender_b_manga_line_toggle_matrix_check.py`
+- `python -m py_compile test\blender_b_manga_line_marked_inner_edges_check.py test\blender_b_manga_line_intersection_fill_check.py`
+- `node --check tools/render_batch/web/app.js`
+- `git diff --check`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_control_update_scope_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_toggle_matrix_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_offset_controls_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_uniform_width_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_select_range_outline_toggle_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_generated_update_scope_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_auto_intersection_targets_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_intersection_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_inner_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_view_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_aov_line_only_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_aov_view_line_only_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_inner_width_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_marked_inner_edges_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_intersection_fill_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_register_reenable_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_sheet_mesh_exclusion_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_open_mesh_outline_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_midpoint_targets_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_midpoint_jitter_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_transparent_surface_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_curve_and_linked_batch_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_full_visual_audit_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\5.1\python\bin\python.exe test\test_paths.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\5.1\python\bin\python.exe test\test_stroke_style.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\5.1\python\bin\python.exe test\test_view_event_region.py`
+
+---
+
 ## 2026-07-01 — B-MANGA Lineの全チェックボックス・スライダー更新を軽量化 (B-MANGA Line v0.3.58)
 
 ### 症状

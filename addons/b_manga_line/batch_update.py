@@ -185,10 +185,15 @@ def _update_outline_color(objects: list[bpy.types.Object]) -> None:
 def _update_outline_thickness(objects: list[bpy.types.Object], context) -> None:
     for obj in objects:
         settings = obj.bmanga_line_settings
-        outline_setup.update_modifier_thickness(obj, settings.outline_thickness)
         if settings.use_camera_compensation and core.PROP_BASE_THICKNESS in obj:
             obj[core.PROP_BASE_THICKNESS] = settings.outline_thickness
-    _refresh_camera_objects(objects, context, width_targets=("outline",))
+    if _refresh_camera_objects(objects, context, width_targets=("outline",)):
+        return
+    for obj in objects:
+        outline_setup.update_modifier_thickness(
+            obj,
+            obj.bmanga_line_settings.outline_thickness,
+        )
 
 
 def _update_outline_offset(objects: list[bpy.types.Object]) -> None:
@@ -256,26 +261,31 @@ def _update_camera_compensation(objects: list[bpy.types.Object], context) -> Non
             continue
         if settings.use_camera_compensation:
             camera_comp.store_unit_reference(obj, context.scene)
-        else:
-            mod.thickness = modifier_thickness_for_world_width(
+    if _refresh_camera_objects(targets, context):
+        return
+    for obj in targets:
+        settings = obj.bmanga_line_settings
+        mod = _outline_modifier(obj)
+        if mod is None or settings.use_camera_compensation:
+            continue
+        mod.thickness = modifier_thickness_for_world_width(
+            obj,
+            settings.outline_thickness,
+        )
+        inner_lines.update_parameters(
+            obj,
+            thickness=modifier_thickness_for_world_width(
                 obj,
-                settings.outline_thickness,
-            )
-            inner_lines.update_parameters(
+                settings.inner_line_thickness,
+            ),
+        )
+        intersection_lines.update_parameters(
+            obj,
+            thickness=modifier_thickness_for_world_width(
                 obj,
-                thickness=modifier_thickness_for_world_width(
-                    obj,
-                    settings.inner_line_thickness,
-                ),
-            )
-            intersection_lines.update_parameters(
-                obj,
-                thickness=modifier_thickness_for_world_width(
-                    obj,
-                    settings.intersection_thickness,
-                ),
-            )
-    _refresh_camera_objects(targets, context)
+                settings.intersection_thickness,
+            ),
+        )
 
 
 def _update_camera_influence(objects: list[bpy.types.Object], context) -> None:
@@ -446,10 +456,18 @@ def _update_inner_angle(objects: list[bpy.types.Object], context) -> None:
             obj,
             angle=obj.bmanga_line_settings.inner_line_angle,
         )
-    if any(obj.bmanga_line_settings.use_uniform_line_width for obj in targets):
-        if _refresh_camera_objects(targets, context, width_targets=("inner",)):
-            return
-    _update_width_target(targets, context, "inner")
+    pending_targets = targets
+    uniform_targets = [
+        obj for obj in targets
+        if obj.bmanga_line_settings.use_uniform_line_width
+    ]
+    if uniform_targets and _refresh_camera_objects(
+        uniform_targets,
+        context,
+        width_targets=("inner",),
+    ):
+        pending_targets = [obj for obj in targets if obj not in uniform_targets]
+    _update_width_target(pending_targets, context, "inner")
 
 
 def _update_marked_inner_edges(objects: list[bpy.types.Object], context) -> None:
@@ -459,8 +477,6 @@ def _update_marked_inner_edges(objects: list[bpy.types.Object], context) -> None
     refresh_targets = []
     for obj in objects:
         settings = obj.bmanga_line_settings
-        if not settings.inner_line_enabled:
-            continue
         if plane_filter.should_exclude_generated_lines(obj, settings):
             inner_lines.remove_inner_lines(obj)
             continue
@@ -472,6 +488,8 @@ def _update_marked_inner_edges(objects: list[bpy.types.Object], context) -> None
                 obj,
                 use_marked_edges=settings.use_marked_inner_edges,
             )
+        elif not settings.inner_line_enabled:
+            continue
         else:
             create_targets.append(obj)
     if not create_targets:
