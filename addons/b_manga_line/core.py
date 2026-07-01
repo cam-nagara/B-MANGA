@@ -258,6 +258,27 @@ def _ensure_outline_for_settings(owner: bpy.types.Object, settings, context) -> 
     )
 
 
+def set_outline_visibility_from_settings(obj: bpy.types.Object) -> bool:
+    if obj.type != "MESH":
+        return False
+    mod = obj.modifiers.get(MODIFIER_NAME)
+    if mod is None:
+        return False
+    settings = getattr(obj, "bmanga_line_settings", None)
+    visible = (
+        settings is None
+        or bool(getattr(settings, "outline_enabled", True))
+    ) and not bool(obj.get(PROP_LINES_HIDDEN, False))
+    changed = False
+    if mod.show_viewport != visible:
+        mod.show_viewport = visible
+        changed = True
+    if mod.show_render != visible:
+        mod.show_render = visible
+        changed = True
+    return changed
+
+
 def _on_outline_enabled_changed(self, context):
     if _propagating:
         return
@@ -266,11 +287,10 @@ def _on_outline_enabled_changed(self, context):
     if owner.type == "MESH" and has_line(owner):
         if self.outline_enabled and owner.modifiers.get(MODIFIER_NAME) is None:
             refreshed_owner = _ensure_outline_for_settings(owner, self, context)
-        visible = not bool(owner.get(PROP_LINES_HIDDEN, False))
-        if set_line_visibility(owner, visible):
+        if set_outline_visibility_from_settings(owner):
             refreshed_owner = True
     _propagate(self, context, "outline_enabled")
-    if refreshed_owner:
+    if refreshed_owner and self.outline_enabled:
         _refresh_print_widths_for(context, [owner], update_visibility=True)
 
 

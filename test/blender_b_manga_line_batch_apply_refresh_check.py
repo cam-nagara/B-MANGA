@@ -243,6 +243,10 @@ def main() -> None:
                 setattr(settings, prop_name, value)
                 assert refresh_counts["apply"] == 0, (prop_name, refresh_counts)
                 assert refresh_counts["camera"] == 0, (prop_name, refresh_counts)
+                if prop_name == "outline_enabled" and value is False:
+                    assert refresh_counts["inner_apply"] == 0, (prop_name, refresh_counts)
+                    assert refresh_counts["intersection"] == 0, (prop_name, refresh_counts)
+                    assert refresh_counts["camera_objects"] == 0, (prop_name, refresh_counts)
                 if prop_name in {
                     "use_inner_line_creation_limit",
                     "inner_line_creation_max_distance",

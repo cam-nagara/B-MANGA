@@ -122,18 +122,26 @@ def _ensure_outline_modifier(obj: bpy.types.Object, context) -> bool:
 
 
 def _update_outline_enabled(objects: list[bpy.types.Object], context) -> None:
-    presets._update_view_layer(context)
+    needs_view_update = any(
+        obj.bmanga_line_settings.outline_enabled and _outline_modifier(obj) is None
+        for obj in objects
+    )
+    if needs_view_update:
+        presets._update_view_layer(context)
     refresh_targets = []
     for obj in objects:
         settings = obj.bmanga_line_settings
         if settings.outline_enabled and _outline_modifier(obj) is None:
             if _ensure_outline_modifier(obj, context):
                 refresh_targets.append(obj)
-        visible = not bool(obj.get(core.PROP_LINES_HIDDEN, False))
-        if core.set_line_visibility(obj, visible) and obj not in refresh_targets:
+        if core.set_outline_visibility_from_settings(obj) and obj not in refresh_targets:
             refresh_targets.append(obj)
-    if refresh_targets and len(refresh_targets) <= MAX_IMMEDIATE_VISIBILITY_OBJECTS:
-        _refresh_camera_objects(refresh_targets, context, update_visibility=True)
+    enabled_targets = [
+        obj for obj in refresh_targets
+        if obj.bmanga_line_settings.outline_enabled
+    ]
+    if enabled_targets and len(enabled_targets) <= MAX_IMMEDIATE_VISIBILITY_OBJECTS:
+        _refresh_camera_objects(enabled_targets, context, update_visibility=True)
 
 
 def _update_transparent_protection(objects: list[bpy.types.Object]) -> None:

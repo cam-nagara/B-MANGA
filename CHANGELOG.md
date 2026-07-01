@@ -3,6 +3,34 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-01 — B-MANGA Lineのアウトラインオフを軽量化 (B-MANGA Line v0.3.55)
+
+### 症状
+
+- アウトライン・内部線・交差線をすべてオンにした状態で、アウトラインだけをオフにすると待ち時間が長くなっていた。
+- 内部線や交差線のオフ操作と同じく、選択中のオブジェクト数が多いほど重さが目立っていた。
+
+### 原因
+
+- アウトラインをオフにするだけの操作でも、ライン全体の表示状態を更新する処理を通っていた。
+- その結果、内部線・交差線の表示状態まで触り、アウトラインを消すだけなら不要なカメラ範囲更新も呼ばれていた。
+
+### 修正
+
+- 「アウトラインを追加」のオン・オフは、アウトラインだけを対象にして表示状態を切り替えるようにした。
+- アウトラインをオフにする場合は、内部線・交差線の再生成とカメラ範囲更新を行わないようにした。
+- アウトラインをオンに戻す場合は、必要なアウトラインがなければ作成し、既存どおり表示更新する。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `$env:PYTHONDONTWRITEBYTECODE='1'; python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\batch_update.py addons\b_manga_line\__init__.py test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_select_range_outline_toggle_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_preset_visibility_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_register_reenable_check.py`
+
+---
+
 ## 2026-07-01 — B-MANGA Lineの内部線・交差線オフを軽量化 (B-MANGA Line v0.3.54)
 
 ### 症状
