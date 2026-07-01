@@ -132,10 +132,22 @@ def _update_outline_enabled(objects: list[bpy.types.Object], context) -> None:
     refresh_targets = []
     for obj in objects:
         settings = obj.bmanga_line_settings
+        created = False
         if settings.outline_enabled and _outline_modifier(obj) is None:
             if _ensure_outline_modifier(obj, context):
+                created = True
                 refresh_targets.append(obj)
-        if core.set_outline_visibility_from_settings(obj) and obj not in refresh_targets:
+        visibility_changed = core.set_outline_visibility_from_settings(obj)
+        if (
+            visibility_changed
+            and obj not in refresh_targets
+            and settings.outline_enabled
+            and (
+                created
+                or settings.use_camera_culling
+                or settings.use_outline_distance_limit
+            )
+        ):
             refresh_targets.append(obj)
     enabled_targets = [
         obj for obj in refresh_targets

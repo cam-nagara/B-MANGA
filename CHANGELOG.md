@@ -3,6 +3,44 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-01 — B-MANGA Lineのライン切替全パターンを軽量化 (B-MANGA Line v0.3.57)
+
+### 症状
+
+- アウトライン・内部線・交差線のオン・オフ組み合わせによって、単純な切替でも不要な更新が残る可能性があった。
+- 特に既に生成済みのアウトラインをオンに戻すだけの操作や、複数選択時に交差線をオンにする操作で、実際に必要な対象より広い処理を通る余地があった。
+
+### 原因
+
+- アウトラインをオンに戻すだけでも、カメラ範囲や距離制限を使っていない場合に不要な表示更新へ進む経路があった。
+- 交差線をオンにする複数選択操作で、アクティブオブジェクト側の処理を行ってから、選択対象全体の交差線更新を行う経路があり、同じ目的の処理が重なっていた。
+
+### 修正
+
+- アウトラインの単純なオン・オフは、既存アウトラインの表示切替だけで済む場合、内部線・交差線・カメラ更新に触れないようにした。
+- アウトラインをオンにした時のカメラ範囲/距離制限更新は、アウトラインを新規作成した場合、または範囲制限が有効な場合だけ行うようにした。
+- 交差線をオンにする複数選択操作は、選択対象全体の交差線更新を先に行い、アクティブオブジェクトだけを先行生成しないようにした。
+- アウトライン・内部線・交差線の8状態×3操作、合計24通りを実機で数え、不要な全設定再適用・アウトライン再生成・カメラ全体更新が0回であることを検証するテストを追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `$env:PYTHONDONTWRITEBYTECODE='1'; python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\batch_update.py test\blender_b_manga_line_toggle_matrix_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_toggle_matrix_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_offset_controls_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_select_range_outline_toggle_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_generated_update_scope_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_auto_intersection_targets_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_intersection_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_camera_view_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_register_reenable_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_inner_width_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_preset_visibility_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_aov_view_line_only_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_camera_aov_line_only_check.py`
+
+---
+
 ## 2026-07-01 — B-MANGA Lineにライン別オフセットを追加 (B-MANGA Line v0.3.56)
 
 ### 症状

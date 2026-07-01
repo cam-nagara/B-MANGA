@@ -280,18 +280,29 @@ def set_outline_visibility_from_settings(obj: bpy.types.Object) -> bool:
     return changed
 
 
+def _outline_visibility_rules_enabled(settings) -> bool:
+    return bool(
+        getattr(settings, "use_camera_culling", False)
+        or getattr(settings, "use_outline_distance_limit", False)
+    )
+
+
 def _on_outline_enabled_changed(self, context):
     if _propagating:
         return
     owner = self.id_data
-    refreshed_owner = False
+    created_owner = False
+    visibility_changed = False
     if owner.type == "MESH" and has_line(owner):
         if self.outline_enabled and owner.modifiers.get(MODIFIER_NAME) is None:
-            refreshed_owner = _ensure_outline_for_settings(owner, self, context)
+            created_owner = _ensure_outline_for_settings(owner, self, context)
         if set_outline_visibility_from_settings(owner):
-            refreshed_owner = True
+            visibility_changed = True
     _propagate(self, context, "outline_enabled")
-    if refreshed_owner and self.outline_enabled:
+    if self.outline_enabled and (
+        created_owner
+        or (visibility_changed and _outline_visibility_rules_enabled(self))
+    ):
         _refresh_print_widths_for(context, [owner], update_visibility=True)
 
 
@@ -534,9 +545,9 @@ def _on_intersection_enabled_changed(self, context):
         return
     owner = self.id_data
     disabling = not bool(self.intersection_enabled)
-    _sync_intersection_creation(owner, self, context)
-    propagated = _propagate(self, context, "intersection_enabled")
     if disabling:
+        _sync_intersection_creation(owner, self, context)
+        propagated = _propagate(self, context, "intersection_enabled")
         if not propagated:
             from . import intersection_lines
             if intersection_lines.scene_has_enabled_intersections(
@@ -544,10 +555,12 @@ def _on_intersection_enabled_changed(self, context):
             ):
                 _refresh_intersection_scene(context)
         return
+    propagated = _propagate(self, context, "intersection_enabled")
     if propagated:
         if any(iter_intersection_modifiers(owner)):
             _refresh_print_widths_for(context, [owner], update_visibility=True)
     else:
+        _sync_intersection_creation(owner, self, context)
         _refresh_intersection_scene(context)
         if any(iter_intersection_modifiers(owner)):
             _refresh_print_widths_for(context, [owner], update_visibility=True)
