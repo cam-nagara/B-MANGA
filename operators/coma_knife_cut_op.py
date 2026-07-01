@@ -225,6 +225,10 @@ def _coma_polygon(panel) -> list[tuple[float, float]]:
 
 def _set_coma_polygon(panel, poly: Sequence[tuple[float, float]]) -> None:
     """panel エントリの形状を多角形 (vertices) に書き換える."""
+    if hasattr(panel, "merged_border_mode"):
+        panel.merged_border_mode = "shape"
+    if hasattr(panel, "merged_border_polygons_json"):
+        panel.merged_border_polygons_json = ""
     panel.shape_type = "polygon"
     panel.vertices.clear()
     for x, y in poly:

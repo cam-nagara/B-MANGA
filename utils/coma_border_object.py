@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 from typing import Optional, Sequence
 
@@ -305,6 +306,80 @@ def _outline_points(coma) -> list[tuple[float, float]]:
         return base
 
 
+def _merged_border_polys(coma) -> list[list[tuple[float, float]]]:
+    if str(getattr(coma, "merged_border_mode", "shape") or "shape") != "separate":
+        return []
+    raw = str(getattr(coma, "merged_border_polygons_json", "") or "")
+    if not raw:
+        return []
+    try:
+        loaded = json.loads(raw)
+    except Exception:  # noqa: BLE001
+        return []
+    if not isinstance(loaded, list):
+        return []
+    polys: list[list[tuple[float, float]]] = []
+    for item in loaded:
+        if not isinstance(item, list):
+            continue
+        poly: list[tuple[float, float]] = []
+        for pair in item:
+            if not isinstance(pair, (list, tuple)) or len(pair) < 2:
+                continue
+            try:
+                poly.append((float(pair[0]), float(pair[1])))
+            except (TypeError, ValueError):
+                continue
+        if len(poly) >= 3:
+            polys.append(poly)
+    return polys
+
+
+def _styled_paths_for_polys(coma, polys: list[list[tuple[float, float]]]) -> list[list[tuple[float, float]]]:
+    border = getattr(coma, "border", None)
+    paths: list[list[tuple[float, float]]] = []
+    for poly in polys:
+        try:
+            paths.append(
+                border_geom.styled_closed_path_mm(
+                    poly,
+                    getattr(border, "corner_type", "square"),
+                    float(getattr(border, "corner_radius_mm", 0.0) or 0.0),
+                )
+            )
+        except Exception:  # noqa: BLE001
+            paths.append(list(poly))
+    return [path for path in paths if len(path) >= 3]
+
+
+def _separate_border_groups(
+    coma,
+    polys: list[list[tuple[float, float]]],
+) -> list[tuple[list[list[tuple[float, float]]], float, tuple[float, float, float, float], str]]:
+    border = getattr(coma, "border", None)
+    base_style = str(getattr(border, "style", "solid") or "solid")
+    base_width = max(0.0, float(getattr(border, "width_mm", 0.5) or 0.0))
+    color = _rgba_from_border(coma)
+    if base_width <= 0.0:
+        return []
+    if base_style == "solid":
+        paths = _styled_paths_for_polys(coma, polys)
+        return [(paths, base_width, color, "solid_closed")] if paths else []
+    if base_style == "brush":
+        groups: list[tuple[list[list[tuple[float, float]]], float, tuple[float, float, float, float], str]] = []
+        blur = float(getattr(border, "blur_amount", 0.5) or 0.0)
+        for path in _styled_paths_for_polys(coma, polys):
+            groups.extend(_brush_halo_groups(path, base_width, color, blur))
+        return groups
+    grouped: list[tuple[list[list[tuple[float, float]]], float, tuple[float, float, float, float], str]] = []
+    for poly in polys:
+        for i in range(len(poly)):
+            paths = _styled_segment_paths(poly[i], poly[(i + 1) % len(poly)], style=base_style, width_mm=base_width)
+            if paths:
+                grouped.append((paths, base_width, color, base_style))
+    return grouped
+
+
 def _rebuild_curve(
     curve: bpy.types.Curve,
     paths_mm: Sequence[Sequence[tuple[float, float]]],
@@ -506,6 +581,9 @@ def _border_paths_by_material(
     border = getattr(coma, "border", None)
     if border is None or not bool(getattr(border, "visible", True)):
         return []
+    separate_polys = _merged_border_polys(coma)
+    if separate_polys:
+        return _separate_border_groups(coma, separate_polys)
     base = _base_poly(coma)
     if len(base) < 2:
         return []

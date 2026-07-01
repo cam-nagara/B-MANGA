@@ -3,6 +3,37 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-02 — 基本枠コマ復旧とコマ結合を追加 (B-MANGA v0.6.421)
+
+### 症状
+
+- 作品作成後にページを追加し、ページファイルを開いたとき、本来あるはずの基本枠に沿ったコマが表示されない場合があった。
+- レイヤーリストの「レイヤーを追加」からコマを追加すると、基本枠ではなく中央の小さい矩形コマが追加されていた。
+- 見開きページでは左右ページの基本枠コマが一体に見えても、実データは左右別々のままで、枠線カット後に左右別の枠線へ戻っていた。
+- ページファイルのメンテナンスに、複数コマをまとめる操作がなかった。
+
+### 原因
+
+- ページ一覧側にコマ件数が残っていても、ページ詳細側のコマ一覧が空のままページファイルを生成・復元できる経路があった。
+- レイヤーリスト経由のコマ追加だけ、古い中央矩形の初期値を使っていた。
+- 見開き統合時、右ページ側のコマを取り込む前に基本枠コマの結合判定を行っていたため、実データの結合条件が成立していなかった。
+- 既存のコマ結合は、隣接コマの外周化だけを想定しており、離れた枠線を元の位置のまま保持する保存情報がなかった。
+
+### 修正
+
+- ページファイルを作成・読み込みするとき、ページ一覧側ではコマありなのにページ詳細側が空の場合だけ、基本枠コマを復旧するようにした。
+- コマ追加の初期形状を、ツールバー経由・レイヤーリスト経由とも基本枠に統一した。
+- 見開き統合後に左右の基本枠コマを実データとして1つにまとめ、不要になった片側のコマファイルも整理するようにした。
+- メンテナンスに「コマを結合」を追加し、ダイアログで「枠線を結合」「枠線を結合しない」を選べるようにした。
+- 「枠線を結合しない」では、マスクは1つのコマにまとめつつ、結合前の複数枠線を同じコマの枠線として保存・表示するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile test\blender_coma_basic_frame_merge_check.py core\coma.py io\schema.py operators\coma_knife_cut_op.py operators\coma_op.py operators\layer_stack_op.py operators\page_file_op.py operators\spread_op.py panels\outliner_layer_panel.py utils\coma_border_object.py utils\handlers.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python-exit-code 1 --python test\blender_coma_basic_frame_merge_check.py`
+
+---
+
 ## 2026-07-02 — B-MANGA Line交差線をライン素材方式へ切り替え (B-MANGA Line v0.3.67)
 
 ### 症状

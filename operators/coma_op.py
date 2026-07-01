@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import math
 
@@ -271,6 +272,48 @@ def _merge_boundary_polygon(polys: list[list[tuple[float, float]]]) -> list[tupl
     return loops[0]
 
 
+def _merge_bbox_polygon(polys: list[list[tuple[float, float]]]) -> list[tuple[float, float]] | None:
+    points = [point for poly in polys for point in poly]
+    if len(points) < 3:
+        return None
+    min_x = min(float(point[0]) for point in points)
+    min_y = min(float(point[1]) for point in points)
+    max_x = max(float(point[0]) for point in points)
+    max_y = max(float(point[1]) for point in points)
+    if max_x - min_x <= _MERGE_TOL_MM or max_y - min_y <= _MERGE_TOL_MM:
+        return None
+    return [(min_x, min_y), (max_x, min_y), (max_x, max_y), (min_x, max_y)]
+
+
+def _serialize_border_polys(polys: list[list[tuple[float, float]]]) -> str:
+    data = []
+    for poly in polys:
+        if len(poly) < 3:
+            continue
+        data.append([[round(float(x), 3), round(float(y), 3)] for x, y in poly])
+    if not data:
+        return ""
+    return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+
+
+def _clear_merged_border_shape(panel) -> None:
+    if hasattr(panel, "merged_border_mode"):
+        panel.merged_border_mode = "shape"
+    if hasattr(panel, "merged_border_polygons_json"):
+        panel.merged_border_polygons_json = ""
+
+
+def _append_layer_refs(dst, src) -> None:
+    existing = {str(getattr(ref, "layer_id", "") or "") for ref in getattr(dst, "layer_refs", []) or []}
+    for ref in getattr(src, "layer_refs", []) or []:
+        layer_id = str(getattr(ref, "layer_id", "") or "")
+        if not layer_id or layer_id in existing:
+            continue
+        added = dst.layer_refs.add()
+        added.layer_id = layer_id
+        existing.add(layer_id)
+
+
 def _split_polygon_grid(
     poly: list[tuple[float, float]],
     rows: int,
@@ -360,6 +403,7 @@ def create_rect_coma(
     entry.rect_y_mm = y_mm
     entry.rect_width_mm = width_mm
     entry.rect_height_mm = height_mm
+    _clear_merged_border_shape(entry)
     try:
         entry.border.width_mm = max(0.0, float(getattr(work.paper, "coma_border_width_mm", entry.border.width_mm) or 0.0))
     except Exception:  # noqa: BLE001
@@ -447,11 +491,7 @@ class BMANGA_OT_coma_add(Operator):
             return {"CANCELLED"}
         work_dir = Path(work.work_dir)
         try:
-            # デフォルトは中央に 60×40mm の矩形
-            p = work.paper
-            x_mm = (p.canvas_width_mm - 60.0) / 2.0
-            y_mm = (p.canvas_height_mm - 40.0) / 2.0
-            entry = create_rect_coma(work, page, work_dir, x_mm, y_mm, 60.0, 40.0)
+            entry = create_basic_frame_coma(work, page, work_dir)
             stem = entry.coma_id
             page_io.save_pages_json(work_dir, work)
             if hasattr(context.scene, "bmanga_active_layer_kind"):
@@ -762,8 +802,17 @@ class BMANGA_OT_coma_merge_selected(Operator):
     """複数選択中のコマ枠を 1 つの多角形コマへ結合."""
 
     bl_idname = "bmanga.coma_merge_selected"
-    bl_label = "コマ結合"
+    bl_label = "コマを結合"
     bl_options = {"REGISTER", "UNDO"}
+
+    border_mode: EnumProperty(  # type: ignore[valid-type]
+        name="枠線",
+        items=(
+            ("merge", "枠線を結合", "選択中のコマ枠を1つの枠線にします"),
+            ("separate", "枠線を結合しない", "結合前の枠線を元の位置に残します"),
+        ),
+        default="merge",
+    )
 
     @classmethod
     def poll(cls, context):
@@ -772,6 +821,17 @@ class BMANGA_OT_coma_merge_selected(Operator):
             return False
         page_ids = {str(getattr(page, "id", "") or "") for _pi, page, _idx, _panel in refs}
         return len(page_ids) == 1
+
+    def invoke(self, context, event):
+        if not self.poll(context):
+            self.report({"ERROR"}, "結合するコマを2つ以上選択してください")
+            return {"CANCELLED"}
+        coma_modal_state.finish_all(context)
+        return context.window_manager.invoke_props_dialog(self, width=360)
+
+    def draw(self, context):
+        layout = self.layout
+        layout.prop(self, "border_mode", expand=True)
 
     def execute(self, context):
         work = get_work(context)
@@ -787,8 +847,10 @@ class BMANGA_OT_coma_merge_selected(Operator):
             return {"CANCELLED"}
         polys = [_coma_polygon(panel) for _pi, _page, _idx, panel in refs]
         merged = _merge_boundary_polygon(polys)
+        if merged is None:
+            merged = _merge_bbox_polygon(polys)
         if merged is None or len(merged) < 3:
-            self.report({"ERROR"}, "選択コマの外周を作れません。隣接しているコマを選択してください")
+            self.report({"ERROR"}, "選択コマの外周を作れません")
             return {"CANCELLED"}
         page_index, page, survivor_index, survivor = refs[0]
         active_index = int(getattr(page, "active_coma_index", -1))
@@ -804,6 +866,11 @@ class BMANGA_OT_coma_merge_selected(Operator):
         )
         try:
             _set_coma_polygon(survivor, merged)
+            if self.border_mode == "separate":
+                survivor.merged_border_mode = "separate"
+                survivor.merged_border_polygons_json = _serialize_border_polys(polys)
+            else:
+                _clear_merged_border_shape(survivor)
             survivor.title = str(getattr(survivor, "title", "") or "")
             survivor.z_order = max((int(getattr(panel, "z_order", 0)) for _pi, _page, _idx, panel in refs), default=survivor.z_order)
             for idx in remove_indices:
@@ -811,6 +878,7 @@ class BMANGA_OT_coma_merge_selected(Operator):
                     continue
                 removed = page.comas[idx]
                 old_key = layer_stack_utils.gp_parent_key_for_coma(page, removed)
+                _append_layer_refs(survivor, removed)
                 layer_stack_utils.reparent_gp_layers(context, old_key, survivor_key)
                 layer_stack_utils.reparent_effect_layers(context, old_key, survivor_key)
                 try:
@@ -826,6 +894,16 @@ class BMANGA_OT_coma_merge_selected(Operator):
             for panel in page.comas:
                 coma_io.save_coma_meta(work_dir, page.id, panel)
             _save_page_and_pages(work, page, work_dir)
+            try:
+                from ..utils import coma_border_object, page_file_scene
+
+                if (
+                    page_file_scene.is_page_edit_scene(context.scene)
+                    and page_file_scene.current_page_id(context.scene) == str(getattr(page, "id", "") or "")
+                ):
+                    coma_border_object.ensure_coma_border_object(context.scene, work, page, survivor)
+            except Exception:  # noqa: BLE001
+                _logger.exception("panel_merge_selected: border refresh failed")
             _sync_layer_stack_after_coma_change(context)
             edge_selection.set_selection(
                 context,

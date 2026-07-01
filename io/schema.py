@@ -10,6 +10,7 @@ utils.json_io で書き出す。
 
 from __future__ import annotations
 
+import json
 from contextlib import ExitStack, contextmanager
 from typing import Any
 
@@ -29,7 +30,7 @@ from ..utils import (
 WORK_SCHEMA_VERSION = 8
 PAGES_SCHEMA_VERSION = 1
 PAGE_SCHEMA_VERSION = 3
-COMA_SCHEMA_VERSION = 2
+COMA_SCHEMA_VERSION = 3
 
 # ---------- 共通変換 ----------
 
@@ -1184,6 +1185,15 @@ def coma_entry_to_dict(entry) -> dict[str, Any]:
         entry.id,
         entry.coma_id,
     )
+    merged_border_polygons = []
+    raw_merged_border_polygons = str(getattr(entry, "merged_border_polygons_json", "") or "")
+    if raw_merged_border_polygons:
+        try:
+            loaded = json.loads(raw_merged_border_polygons)
+            if isinstance(loaded, list):
+                merged_border_polygons = loaded
+        except Exception:  # noqa: BLE001
+            merged_border_polygons = []
     d: dict[str, Any] = {
         "schemaVersion": COMA_SCHEMA_VERSION,
         "id": entry.id,
@@ -1201,6 +1211,8 @@ def coma_entry_to_dict(entry) -> dict[str, Any]:
                 "heightMm": round(entry.rect_height_mm, 3),
             },
             "vertices": [[round(v.x_mm, 3), round(v.y_mm, 3)] for v in entry.vertices],
+            "mergedBorderMode": str(getattr(entry, "merged_border_mode", "shape") or "shape"),
+            "mergedBorderPolygons": merged_border_polygons,
         },
         "zOrder": int(entry.z_order),
         "overlapClipping": bool(entry.overlap_clipping),
@@ -1236,6 +1248,15 @@ def coma_entry_from_dict(entry, data: dict[str, Any]) -> None:
         entry.coma_blend_template_needs_apply = bool(data.get("comaBlendTemplateNeedsApply", False))
     shape = data.get("shape", {})
     entry.shape_type = shape.get("type", "rect")
+    if hasattr(entry, "merged_border_mode"):
+        mode = str(shape.get("mergedBorderMode", data.get("mergedBorderMode", "shape")) or "shape")
+        entry.merged_border_mode = "separate" if mode == "separate" else "shape"
+    if hasattr(entry, "merged_border_polygons_json"):
+        polygons = shape.get("mergedBorderPolygons", data.get("mergedBorderPolygons", []))
+        if isinstance(polygons, list) and polygons:
+            entry.merged_border_polygons_json = json.dumps(polygons, ensure_ascii=False, separators=(",", ":"))
+        else:
+            entry.merged_border_polygons_json = ""
     rect = shape.get("rect", {})
     entry.rect_x_mm = float(rect.get("x", 0.0))
     entry.rect_y_mm = float(rect.get("y", 0.0))

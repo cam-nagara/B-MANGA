@@ -73,11 +73,36 @@ def _load_work_metadata_into_current_scene(work_dir: Path):
     return handlers.sync_scene_work_from_disk(bpy.context, work_dir)
 
 
+def _ensure_expected_basic_frame_coma(work, page_id: str) -> None:
+    if work is None or not page_id:
+        return
+    page = next(
+        (entry for entry in getattr(work, "pages", []) or [] if str(getattr(entry, "id", "") or "") == page_id),
+        None,
+    )
+    if page is None or len(getattr(page, "comas", []) or []) > 0:
+        return
+    if int(getattr(page, "coma_count", 0) or 0) <= 0:
+        return
+    work_dir_text = str(getattr(work, "work_dir", "") or "")
+    if not work_dir_text:
+        return
+    try:
+        from .coma_op import create_basic_frame_coma
+
+        work_dir = Path(work_dir_text)
+        create_basic_frame_coma(work, page, work_dir)
+        page_io.save_pages_json(work_dir, work)
+    except Exception:  # noqa: BLE001
+        _logger.exception("page file: restore basic frame coma failed")
+
+
 def _finalize_page_scene(context, work, page_id: str) -> bool:
     if work is None:
         return False
     if not page_file_scene.set_page_edit_state(context, page_id):
         return False
+    _ensure_expected_basic_frame_coma(work, page_id)
     try:
         from ..utils import display_settings
 

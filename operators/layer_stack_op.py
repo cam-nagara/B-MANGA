@@ -810,16 +810,13 @@ class BMANGA_OT_layer_stack_add(Operator, ImportHelper):
 
     def _add_panel(self, context, anchor_uid: str) -> str:
         from ..io import page_io
-        from .coma_op import create_rect_coma
+        from .coma_op import create_basic_frame_coma
 
         work, page = _active_or_anchor_page(context, anchor_uid)
         if work is None or page is None or not work.work_dir:
             self.report({"ERROR"}, "ページが選択されていません")
             return ""
-        p = work.paper
-        x_mm = (p.canvas_width_mm - 60.0) / 2.0
-        y_mm = (p.canvas_height_mm - 40.0) / 2.0
-        entry = create_rect_coma(work, page, Path(work.work_dir), x_mm, y_mm, 60.0, 40.0)
+        entry = create_basic_frame_coma(work, page, Path(work.work_dir))
         page_io.save_pages_json(Path(work.work_dir), work)
         context.scene.bmanga_active_layer_kind = COMA_KIND
         layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)

@@ -232,6 +232,16 @@ class BMangaComaEntry(bpy.types.PropertyGroup):
     rect_height_mm: FloatProperty(  # type: ignore[valid-type]
         name="高さ", default=50.0, min=0.1, update=_on_coma_geometry_changed
     )
+    merged_border_mode: StringProperty(  # type: ignore[valid-type]
+        name="結合枠線",
+        default="shape",
+        options={"HIDDEN"},
+    )
+    merged_border_polygons_json: StringProperty(  # type: ignore[valid-type]
+        name="結合前の枠線",
+        default="",
+        options={"HIDDEN"},
+    )
 
     # --- Z順序・重なりくり抜き ---
     z_order: IntProperty(  # type: ignore[valid-type]

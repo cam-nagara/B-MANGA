@@ -208,6 +208,27 @@ def _reload_all_pages_panels(work, work_dir: Path) -> None:
             )
 
 
+def _restore_expected_basic_frame_coma(work, work_dir: Path, page_id: str) -> None:
+    if work is None or not page_id:
+        return
+    page = next(
+        (entry for entry in getattr(work, "pages", []) or [] if str(getattr(entry, "id", "") or "") == page_id),
+        None,
+    )
+    if page is None or len(getattr(page, "comas", []) or []) > 0:
+        return
+    if int(getattr(page, "coma_count", 0) or 0) <= 0:
+        return
+    try:
+        from ..operators.coma_op import create_basic_frame_coma
+        from ..io import page_io
+
+        create_basic_frame_coma(work, page, work_dir)
+        page_io.save_pages_json(work_dir, work)
+    except Exception:  # noqa: BLE001
+        _logger.exception("restore expected basic frame coma failed: %s", page_id)
+
+
 def sync_scene_work_from_disk(context, work_dir: Path):
     """現在 scene の ``bmanga_work`` を disk 上の work/pages/page JSON に同期."""
     from ..core.work import get_work
@@ -523,6 +544,7 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
                 and paths.is_valid_page_id(rel.parts[0])
                 and rel.parts[1] == paths.PAGE_BLEND_NAME
             ):
+                _restore_expected_basic_frame_coma(work, work_dir, str(rel.parts[0]))
                 _reconcile_gpencil_collections(bpy.context, work, include_page_content=True)
                 try:
                     from . import balloon_curve_object

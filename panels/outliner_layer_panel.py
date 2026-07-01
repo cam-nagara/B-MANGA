@@ -35,6 +35,7 @@ class BMANGA_PT_outliner_layers(Panel):
 
         col = layout.column(align=True)
         if role == page_file_scene.ROLE_PAGE:
+            col.operator("bmanga.coma_merge_selected", icon="AUTOMERGE_ON")
             col.operator("bmanga.coma_split_ratio", icon="MOD_EDGESPLIT")
             col.operator("bmanga.auto_ruby_apply", icon="FONT_DATA")
             col.separator()

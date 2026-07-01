@@ -176,7 +176,7 @@ def _merge_pages_pp_groups(
             new_entry.parent_balloon_id = balloon_id_map[b_text.parent_balloon_id]
 
 
-def _merge_basic_frame_comas(merged_entry, work, right_offset: float) -> None:
+def _merge_basic_frame_comas(merged_entry, work, right_offset: float) -> list[str]:
     """見開き統合後、左右の基本枠コマが揃っていたら 1 つのフル幅コマに統合する."""
     from ..utils import geom as _geom
 
@@ -213,7 +213,7 @@ def _merge_basic_frame_comas(merged_entry, work, right_offset: float) -> None:
             right_idx = i
 
     if left_idx is None or right_idx is None:
-        return
+        return []
 
     actual_left = merged_entry.comas[left_idx]
     actual_left_x = float(getattr(actual_left, "rect_x_mm", left_rect.x))
@@ -222,14 +222,38 @@ def _merge_basic_frame_comas(merged_entry, work, right_offset: float) -> None:
 
     keep_idx = min(left_idx, right_idx)
     remove_idx = max(left_idx, right_idx)
+    keep = merged_entry.comas[keep_idx]
+    removed = merged_entry.comas[remove_idx]
+    removed_stem = str(getattr(removed, "coma_id", "") or "")
+    removed_z_order = int(getattr(removed, "z_order", 0) or 0)
+    try:
+        existing_refs = {str(getattr(ref, "layer_id", "") or "") for ref in getattr(keep, "layer_refs", []) or []}
+        for ref in getattr(removed, "layer_refs", []) or []:
+            layer_id = str(getattr(ref, "layer_id", "") or "")
+            if not layer_id or layer_id in existing_refs:
+                continue
+            added = keep.layer_refs.add()
+            added.layer_id = layer_id
+            existing_refs.add(layer_id)
+    except Exception:  # noqa: BLE001
+        _logger.exception("merge: basic frame layer refs merge failed")
     merged_entry.comas.remove(remove_idx)
     keep = merged_entry.comas[keep_idx]
+    try:
+        keep.z_order = max(int(getattr(keep, "z_order", 0) or 0), removed_z_order)
+    except Exception:  # noqa: BLE001
+        pass
     keep.shape_type = "rect"
     keep.rect_x_mm = span_x
     keep.rect_y_mm = left_rect.y
     keep.rect_width_mm = span_width
     keep.rect_height_mm = left_rect.height
     keep.vertices.clear()
+    if hasattr(keep, "merged_border_mode"):
+        keep.merged_border_mode = "shape"
+    if hasattr(keep, "merged_border_polygons_json"):
+        keep.merged_border_polygons_json = ""
+    return [removed_stem] if removed_stem else []
 
 
 def _merge_coma_files(
@@ -752,11 +776,20 @@ class BMANGA_OT_pages_merge_spread(Operator):
             # 1) メタデータ統合: a の panels/balloons/texts を +R、b を +0 で追加
             _merge_pages_pp_groups(a, b, right_offset)
 
-            # 1.5) 左右の基本枠コマをフル幅 1 コマに統合
-            _merge_basic_frame_comas(a, work, right_offset)
-
             # 2) ファイル操作: a dir を spread_id にリネームし、b の panels をコピー統合
             _merge_coma_files(work_dir, a, b, a_old_id, b_old_id, spread_id)
+
+            # 2.5) 左右の基本枠コマをフル幅 1 コマに統合
+            removed_basic_stems = _merge_basic_frame_comas(a, work, right_offset)
+            for stem in removed_basic_stems:
+                try:
+                    coma_io.remove_coma_files(work_dir, spread_id, stem)
+                except Exception:  # noqa: BLE001
+                    _logger.exception("merge: remove merged basic frame coma failed for %s", stem)
+            for panel in a.comas:
+                if not panel.coma_id or not paths.is_valid_coma_id(panel.coma_id):
+                    continue
+                coma_io.save_coma_meta(work_dir, spread_id, panel)
 
             # 3) GP: 左/右 GP を spread Collection に再配置、subpage_offset を設定
             _merge_page_gpencil(context.scene, a_old_id, b_old_id, spread_id, right_offset)
