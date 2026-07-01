@@ -41,6 +41,7 @@ _FILL_NODE_LABEL = "BML_TargetLineFill"
 _GENERATED_LINE_NODE_LABEL = "BML_GeneratedLineMark"
 _TARGET_SOCKET = "交差対象"
 _THICKNESS_SOCKET = "線の太さ"
+_OFFSET_SOCKET = "オフセット"
 _TARGET_THICKNESS_SOCKET = "交差対象の線幅"
 _MATERIAL_SOCKET = "マテリアル"
 
@@ -166,6 +167,30 @@ def _add_target_has_line_faces(nodes, links, target_geo_output, loc):
 
 def _add_effective_radius(nodes, links, gin, has_line_faces, loc):
     """対象にライン厚みがある場合、2本線の間が埋まる半径へ広げる."""
+    offset_amount = nodes.new("ShaderNodeMath")
+    offset_amount.location = (loc[0] - 420, loc[1] + 160)
+    offset_amount.operation = "MULTIPLY"
+    links.new(gin.outputs["線の太さ"], offset_amount.inputs[0])
+    links.new(gin.outputs[_OFFSET_SOCKET], offset_amount.inputs[1])
+
+    offset_half = nodes.new("ShaderNodeMath")
+    offset_half.location = (loc[0] - 220, loc[1] + 160)
+    offset_half.operation = "MULTIPLY"
+    offset_half.inputs[1].default_value = 0.5
+    links.new(offset_amount.outputs[0], offset_half.inputs[0])
+
+    own_radius = nodes.new("ShaderNodeMath")
+    own_radius.location = (loc[0], loc[1] + 160)
+    own_radius.operation = "ADD"
+    links.new(gin.outputs["線の太さ"], own_radius.inputs[0])
+    links.new(offset_half.outputs[0], own_radius.inputs[1])
+
+    own_radius_min = nodes.new("ShaderNodeMath")
+    own_radius_min.location = (loc[0] + 200, loc[1] + 160)
+    own_radius_min.operation = "MAXIMUM"
+    own_radius_min.inputs[1].default_value = 0.0
+    links.new(own_radius.outputs[0], own_radius_min.inputs[0])
+
     fill_radius = nodes.new("ShaderNodeMath")
     fill_radius.label = _FILL_NODE_LABEL
     fill_radius.location = loc
@@ -173,17 +198,29 @@ def _add_effective_radius(nodes, links, gin, has_line_faces, loc):
     fill_radius.inputs[1].default_value = 0.55
     links.new(gin.outputs["交差対象の線幅"], fill_radius.inputs[0])
 
+    fill_radius_offset = nodes.new("ShaderNodeMath")
+    fill_radius_offset.location = (loc[0] + 200, loc[1] - 120)
+    fill_radius_offset.operation = "ADD"
+    links.new(fill_radius.outputs[0], fill_radius_offset.inputs[0])
+    links.new(offset_half.outputs[0], fill_radius_offset.inputs[1])
+
+    fill_radius_min = nodes.new("ShaderNodeMath")
+    fill_radius_min.location = (loc[0] + 400, loc[1] - 120)
+    fill_radius_min.operation = "MAXIMUM"
+    fill_radius_min.inputs[1].default_value = 0.0
+    links.new(fill_radius_offset.outputs[0], fill_radius_min.inputs[0])
+
     maximum = nodes.new("ShaderNodeMath")
-    maximum.location = (loc[0] + 200, loc[1])
+    maximum.location = (loc[0] + 600, loc[1])
     maximum.operation = "MAXIMUM"
-    links.new(gin.outputs["線の太さ"], maximum.inputs[0])
-    links.new(fill_radius.outputs[0], maximum.inputs[1])
+    links.new(own_radius_min.outputs[0], maximum.inputs[0])
+    links.new(fill_radius_min.outputs[0], maximum.inputs[1])
 
     switch = nodes.new("GeometryNodeSwitch")
-    switch.location = (loc[0] + 420, loc[1])
+    switch.location = (loc[0] + 820, loc[1])
     switch.input_type = "FLOAT"
     links.new(has_line_faces, switch.inputs[0])
-    links.new(gin.outputs["線の太さ"], switch.inputs[1])
+    links.new(own_radius_min.outputs[0], switch.inputs[1])
     links.new(maximum.outputs[0], switch.inputs[2])
     return switch.outputs[0]
 
@@ -224,6 +261,7 @@ def _add_tube_nodes(nodes, links, curve_output, gin, radius_output, x_offset=0):
     for inp in circle.inputs:
         if inp.name == "Resolution" and inp.enabled:
             inp.default_value = 4
+
     links.new(radius_output, circle.inputs["Radius"])
 
     c2m = nodes.new("GeometryNodeCurveToMesh")
@@ -280,6 +318,12 @@ def _setup_interface(tree):
     radius_sock.default_value = 0.0005
     radius_sock.min_value = 0.0001
     radius_sock.max_value = 1.0
+    offset_sock = tree.interface.new_socket(
+        name=_OFFSET_SOCKET, in_out="INPUT", socket_type="NodeSocketFloat",
+    )
+    offset_sock.default_value = 0.0
+    offset_sock.min_value = -1.0
+    offset_sock.max_value = 1.0
     target_radius_sock = tree.interface.new_socket(
         name=_TARGET_THICKNESS_SOCKET, in_out="INPUT", socket_type="NodeSocketFloat",
     )
@@ -490,6 +534,9 @@ def _get_or_create_tree(method: str = "BOOLEAN") -> bpy.types.NodeTree:
         if _find_socket_id(tree, _TARGET_THICKNESS_SOCKET) is None:
             bpy.data.node_groups.remove(tree)
             return creator()
+        if _find_socket_id(tree, _OFFSET_SOCKET) is None:
+            bpy.data.node_groups.remove(tree)
+            return creator()
         if not any(n.bl_idname == "GeometryNodeExtrudeMesh" for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return creator()
@@ -695,6 +742,7 @@ def _set_modifier_parameters(
     mod: bpy.types.Modifier,
     target: bpy.types.Object | None,
     thickness: float | None,
+    offset: float | None,
     material: bpy.types.Material | None,
 ) -> None:
     tree = mod.node_group
@@ -706,6 +754,9 @@ def _set_modifier_parameters(
     sid_thickness = _find_socket_id(tree, _THICKNESS_SOCKET)
     if sid_thickness is not None and thickness is not None:
         mod[sid_thickness] = thickness
+    sid_offset = _find_socket_id(tree, _OFFSET_SOCKET)
+    if sid_offset is not None and offset is not None:
+        mod[sid_offset] = offset
     sid_target_thickness = _find_socket_id(tree, _TARGET_THICKNESS_SOCKET)
     if sid_target_thickness is not None:
         source = getattr(mod, "id_data", None)
@@ -752,6 +803,7 @@ def _apply_intersection_modifier(
     target: bpy.types.Object,
     tree: bpy.types.NodeTree,
     thickness: float,
+    offset: float,
     material: bpy.types.Material | None,
 ) -> bool:
     name = _modifier_name_for_target(target)
@@ -759,7 +811,7 @@ def _apply_intersection_modifier(
     if mod is None:
         mod = obj.modifiers.new(name=name, type="NODES")
     mod.node_group = tree
-    _set_modifier_parameters(mod, target, thickness, material)
+    _set_modifier_parameters(mod, target, thickness, offset, material)
     return True
 
 
@@ -771,6 +823,7 @@ def apply_intersection_lines(
     obj: bpy.types.Object,
     target: bpy.types.Object | None = None,
     thickness: float = 0.0005,
+    offset: float = 0.0,
     material: bpy.types.Material | None = None,
     method: str = "BOOLEAN",
     scene: bpy.types.Scene | None = None,
@@ -805,7 +858,7 @@ def apply_intersection_lines(
             obj.modifiers.remove(mod)
 
     for item in targets:
-        _apply_intersection_modifier(obj, item, tree, thickness, material)
+        _apply_intersection_modifier(obj, item, tree, thickness, offset, material)
     _position_intersection_modifiers(obj)
 
     return True
@@ -864,6 +917,7 @@ def update_parameters(
     obj: bpy.types.Object,
     target: bpy.types.Object | None = ...,
     thickness: float | None = None,
+    offset: float | None = None,
 ) -> bool:
     """既存モディファイアのパラメータを更新."""
     changed = False
@@ -871,7 +925,7 @@ def update_parameters(
         if mod.node_group is None:
             continue
         item_target = target if target is not ... else _modifier_target(mod)
-        _set_modifier_parameters(mod, item_target, thickness, None)
+        _set_modifier_parameters(mod, item_target, thickness, offset, None)
         changed = True
     return changed
 
@@ -903,6 +957,7 @@ def refresh_scene_intersections(scene: bpy.types.Scene) -> None:
                 obj,
                 settings.intersection_thickness,
             ),
+            offset=settings.intersection_line_offset,
             material=outline_setup.get_outline_material(obj),
             method=settings.intersection_method,
             scene=scene,

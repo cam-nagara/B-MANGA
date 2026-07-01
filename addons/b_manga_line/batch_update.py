@@ -115,6 +115,7 @@ def _ensure_outline_modifier(obj: bpy.types.Object, context) -> bool:
         use_vertex_color=settings.use_vertex_color,
         even_thickness=settings.even_thickness,
         use_rim=settings.use_rim,
+        offset=settings.outline_offset,
         use_vertex_group=use_vg,
         hide_through_transparent=settings.hide_through_transparent,
         scene=getattr(context, "scene", None),
@@ -171,6 +172,14 @@ def _update_outline_thickness(objects: list[bpy.types.Object], context) -> None:
     _refresh_camera_objects(objects, context)
 
 
+def _update_outline_offset(objects: list[bpy.types.Object]) -> None:
+    for obj in objects:
+        outline_setup.update_modifier_offset(
+            obj,
+            obj.bmanga_line_settings.outline_offset,
+        )
+
+
 def _update_generated_thickness(
     objects: list[bpy.types.Object],
     context,
@@ -198,6 +207,19 @@ def _update_generated_thickness(
                     obj,
                     settings.intersection_thickness,
                 ),
+            )
+
+
+def _update_generated_offset(objects: list[bpy.types.Object], target: str) -> None:
+    targets = _generated_line_objects(objects, target)
+    for obj in targets:
+        settings = obj.bmanga_line_settings
+        if target == "inner":
+            inner_lines.update_parameters(obj, offset=settings.inner_line_offset)
+        elif target == "intersection":
+            intersection_lines.update_parameters(
+                obj,
+                offset=settings.intersection_line_offset,
             )
 
 
@@ -409,6 +431,7 @@ def _update_inner_lines(
                     settings.inner_line_thickness,
                 ),
                 material=outline_setup.get_outline_material(obj),
+                offset=settings.inner_line_offset,
                 use_marked_edges=settings.use_marked_inner_edges,
                 enable=False,
             ):
@@ -515,6 +538,9 @@ def refresh_propagated_property(
     if prop_name == "outline_thickness":
         _update_outline_thickness(line_objects, context)
         return
+    if prop_name == "outline_offset":
+        _update_outline_offset(line_objects)
+        return
     if prop_name == "use_camera_compensation":
         _update_camera_compensation(line_objects, context)
         return
@@ -596,6 +622,9 @@ def refresh_propagated_property(
     if prop_name == "inner_line_thickness":
         _update_generated_thickness(line_objects, context, "inner")
         return
+    if prop_name == "inner_line_offset":
+        _update_generated_offset(line_objects, "inner")
+        return
     if prop_name in {
         "intersection_enabled",
     }:
@@ -613,6 +642,9 @@ def refresh_propagated_property(
         return
     if prop_name == "intersection_thickness":
         _update_generated_thickness(line_objects, context, "intersection")
+        return
+    if prop_name == "intersection_line_offset":
+        _update_generated_offset(line_objects, "intersection")
         return
 
     _refresh_full(line_objects, context)

@@ -399,9 +399,10 @@ def _configure_solidify_shape(
     obj: bpy.types.Object,
     mod: bpy.types.Modifier,
     use_rim: bool,
+    offset: float = 1.0,
 ) -> None:
     is_sheet = plane_filter.is_sheet_mesh(obj)
-    mod.offset = 1.0
+    mod.offset = offset
     if hasattr(mod, "use_rim_only"):
         mod.use_rim_only = is_sheet
     mod.use_rim = True if is_sheet else use_rim
@@ -410,15 +411,18 @@ def _configure_solidify_shape(
 def _configure_line_only_solidify_shape(
     obj: bpy.types.Object,
     use_rim: bool | None = None,
+    offset: float | None = None,
 ) -> None:
     mod = obj.modifiers.get(MODIFIER_NAME)
     if obj.type != "MESH" or mod is None:
         return
+    settings = getattr(obj, "bmanga_line_settings", None)
     if use_rim is None:
-        settings = getattr(obj, "bmanga_line_settings", None)
         use_rim = bool(getattr(settings, "use_rim", False))
+    if offset is None:
+        offset = float(getattr(settings, "outline_offset", 1.0))
     is_sheet = plane_filter.is_sheet_mesh(obj)
-    mod.offset = 1.0
+    mod.offset = offset
     if hasattr(mod, "use_rim_only"):
         mod.use_rim_only = is_sheet
     mod.use_rim = True if is_sheet else bool(use_rim)
@@ -430,16 +434,19 @@ def _restore_solidify_shape(obj: bpy.types.Object) -> None:
         return
     settings = getattr(obj, "bmanga_line_settings", None)
     use_rim = bool(getattr(settings, "use_rim", False))
-    _configure_solidify_shape(obj, mod, use_rim)
+    offset = float(getattr(settings, "outline_offset", 1.0))
+    _configure_solidify_shape(obj, mod, use_rim, offset)
 
 
 def update_modifier_rim(obj: bpy.types.Object, use_rim: bool) -> None:
     mod = obj.modifiers.get(MODIFIER_NAME)
     if obj.type == "MESH" and mod is not None:
+        settings = getattr(obj, "bmanga_line_settings", None)
+        offset = float(getattr(settings, "outline_offset", 1.0))
         if bool(obj.get(PROP_LINE_ONLY, False)):
-            _configure_line_only_solidify_shape(obj, use_rim)
+            _configure_line_only_solidify_shape(obj, use_rim, offset)
         else:
-            _configure_solidify_shape(obj, mod, use_rim)
+            _configure_solidify_shape(obj, mod, use_rim, offset)
 
 
 # ------------------------------------------------------------------
@@ -453,6 +460,7 @@ def apply_outline(
     use_vertex_color: bool = False,
     even_thickness: bool = True,
     use_rim: bool = True,
+    offset: float = 1.0,
     *,
     use_vertex_group: bool = False,
     hide_through_transparent: bool = False,
@@ -484,10 +492,9 @@ def apply_outline(
     if mod is None:
         mod = obj.modifiers.new(name=MODIFIER_NAME, type="SOLIDIFY")
     mod.thickness = modifier_thickness_for_world_width(obj, thickness)
-    mod.offset = 1.0
     mod.use_flip_normals = True
     mod.use_even_offset = even_thickness
-    _configure_solidify_shape(obj, mod, use_rim)
+    _configure_solidify_shape(obj, mod, use_rim, offset)
     mod.material_offset = material_offset
     mod.material_offset_rim = material_offset
 
@@ -516,7 +523,7 @@ def apply_outline(
             obj.data,
             hide_through_transparent_override=True,
         )
-        _configure_line_only_solidify_shape(obj, use_rim)
+        _configure_line_only_solidify_shape(obj, use_rim, offset)
 
     return True
 
@@ -591,6 +598,12 @@ def update_modifier_thickness(obj: bpy.types.Object, thickness: float) -> None:
     mod = obj.modifiers.get(MODIFIER_NAME)
     if mod is not None:
         mod.thickness = modifier_thickness_for_world_width(obj, thickness)
+
+
+def update_modifier_offset(obj: bpy.types.Object, offset: float) -> None:
+    mod = obj.modifiers.get(MODIFIER_NAME)
+    if mod is not None:
+        mod.offset = offset
 
 
 # ------------------------------------------------------------------

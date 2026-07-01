@@ -178,6 +178,7 @@ def main() -> None:
                 ("outline_enabled", True),
                 ("outline_color", (0.1, 0.2, 0.3, 1.0)),
                 ("outline_thickness", 0.0012),
+                ("outline_offset", 0.35),
                 ("even_thickness", False),
                 ("use_rim", False),
                 ("hide_through_transparent", True),
@@ -196,6 +197,7 @@ def main() -> None:
                 ("edge_smooth_factor", 0.0),
                 ("inner_line_angle", 0.7),
                 ("inner_line_thickness", 0.0011),
+                ("inner_line_offset", 0.25),
                 ("inner_edge_smooth_factor", 0.12),
                 ("inner_edge_midpoint_jitter_percent", 2.0),
                 ("inner_edge_width_curve_25", 0.22),
@@ -222,6 +224,7 @@ def main() -> None:
                 ("intersection_enabled", False),
                 ("intersection_enabled", True),
                 ("use_camera_compensation", True),
+                ("intersection_line_offset", -0.25),
                 ("camera_compensation_influence", 0.6),
                 ("line_width_reference_distance", 3.0),
                 ("use_camera_compensation", False),
@@ -261,6 +264,14 @@ def main() -> None:
                     assert refresh_counts["intersection"] == 0, (prop_name, refresh_counts)
                     assert refresh_counts["camera_objects"] == 0, (prop_name, refresh_counts)
                 if prop_name == "intersection_enabled" and value is False:
+                    assert refresh_counts["inner_apply"] == 0, (prop_name, refresh_counts)
+                    assert refresh_counts["intersection"] == 0, (prop_name, refresh_counts)
+                    assert refresh_counts["camera_objects"] == 0, (prop_name, refresh_counts)
+                if prop_name in {
+                    "outline_offset",
+                    "inner_line_offset",
+                    "intersection_line_offset",
+                }:
                     assert refresh_counts["inner_apply"] == 0, (prop_name, refresh_counts)
                     assert refresh_counts["intersection"] == 0, (prop_name, refresh_counts)
                     assert refresh_counts["camera_objects"] == 0, (prop_name, refresh_counts)

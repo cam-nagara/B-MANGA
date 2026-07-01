@@ -19,6 +19,7 @@ from . import core, registration
 _SETTING_FIELDS = (
     "outline_enabled",
     "outline_thickness",
+    "outline_offset",
     "outline_color",
     "use_vertex_color",
     "even_thickness",
@@ -30,11 +31,13 @@ _SETTING_FIELDS = (
     "inner_line_angle",
     "use_marked_inner_edges",
     "inner_line_thickness",
+    "inner_line_offset",
     "use_inner_line_creation_limit",
     "inner_line_creation_max_distance",
     "intersection_method",
     "intersection_enabled",
     "intersection_thickness",
+    "intersection_line_offset",
     "use_intersection_creation_limit",
     "intersection_creation_max_distance",
     "use_camera_compensation",
@@ -165,6 +168,7 @@ def apply_line_settings(
         use_vertex_color=settings.use_vertex_color,
         even_thickness=settings.even_thickness,
         use_rim=settings.use_rim,
+        offset=settings.outline_offset,
         use_vertex_group=use_vg,
         hide_through_transparent=settings.hide_through_transparent,
         scene=context.scene,
@@ -188,6 +192,7 @@ def apply_line_settings(
                 obj,
                 settings.inner_line_thickness,
             ),
+            offset=settings.inner_line_offset,
             material=mat,
             use_marked_edges=settings.use_marked_inner_edges,
         )
@@ -205,6 +210,7 @@ def apply_line_settings(
                     obj,
                     settings.intersection_thickness,
                 ),
+                offset=settings.intersection_line_offset,
                 material=mat,
                 method=settings.intersection_method,
                 scene=context.scene,
@@ -238,6 +244,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
 
     outline_enabled: BoolProperty(default=True)
     outline_thickness: FloatProperty(default=0.0003, min=0.0001, max=1.0)
+    outline_offset: FloatProperty(default=1.0, min=-1.0, max=1.0)
     outline_color: FloatVectorProperty(
         subtype="COLOR",
         size=4,
@@ -256,6 +263,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     inner_line_angle: FloatProperty(default=1.0471975512, min=0.0174532925, max=3.1415926536)
     use_marked_inner_edges: BoolProperty(default=False)
     inner_line_thickness: FloatProperty(default=0.0003, min=0.0001, max=1.0)
+    inner_line_offset: FloatProperty(default=0.0, min=-1.0, max=1.0)
     use_inner_line_creation_limit: BoolProperty(default=True)
     inner_line_creation_max_distance: FloatProperty(default=10.0, min=0.1, max=1000.0)
 
@@ -268,6 +276,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     )
     intersection_enabled: BoolProperty(default=False)
     intersection_thickness: FloatProperty(default=0.0003, min=0.0001, max=1.0)
+    intersection_line_offset: FloatProperty(default=0.0, min=-1.0, max=1.0)
     use_intersection_creation_limit: BoolProperty(default=True)
     intersection_creation_max_distance: FloatProperty(default=10.0, min=0.1, max=1000.0)
 

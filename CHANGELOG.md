@@ -3,6 +3,43 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-01 — B-MANGA Lineにライン別オフセットを追加 (B-MANGA Line v0.3.56)
+
+### 症状
+
+- アウトラインのオフセットを B-MANGA Line パネル内で調整できなかった。
+- 内部線・交差線にも、線の出方を個別に調整する入口がなかった。
+- 複数選択時に、各ラインのオフセットをまとめて揃える操作ができなかった。
+
+### 原因
+
+- オフセットがユーザー向け設定として保持されておらず、アウトラインは固定値、内部線・交差線は生成時の既定値に依存していた。
+- 一括選択時の更新対象にも、ライン別オフセットの専用経路がなかった。
+
+### 修正
+
+- アウトライン・内部線・交差線の各セクションに「オフセット」を追加した。
+- 初期値は既存表示を維持するため、アウトラインは `1.0`、内部線・交差線は `0.0` とした。
+- 複数選択時は、アクティブオブジェクトで変更した各ラインのオフセットを選択中のライン適用済みオブジェクトへ一括反映するようにした。
+- プリセット保存/適用にも、3 種類のオフセットを含めるようにした。
+- ラインのみ表示へ切り替えても、アウトラインのオフセット設定値が変わらないことを確認した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `$env:PYTHONDONTWRITEBYTECODE='1'; python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\batch_update.py addons\b_manga_line\inner_lines.py addons\b_manga_line\intersection_lines.py addons\b_manga_line\outline_setup.py addons\b_manga_line\panels.py addons\b_manga_line\presets.py test\blender_b_manga_line_offset_controls_check.py test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_offset_controls_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_preset_visibility_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_select_range_outline_toggle_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_generated_update_scope_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_register_reenable_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_inner_width_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_auto_intersection_targets_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_intersection_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python test\blender_b_manga_line_camera_view_creation_range_check.py`
+
+---
+
 ## 2026-07-01 — B-MANGA Lineのアウトラインオフを軽量化 (B-MANGA Line v0.3.55)
 
 ### 症状

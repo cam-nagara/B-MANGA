@@ -22,10 +22,15 @@ from .core import (
 
 _GENERATED_LINE_NODE_LABEL = "BML_GeneratedLineMark"
 _RADIUS_HALF_NODE_LABEL = "BML_InnerLineRadiusHalf"
+_OFFSET_SOCKET_NAME = "オフセット"
 _MARKED_ONLY_SOCKET_NAME = "指定済みの辺だけ線にする"
 _MARKED_SELECTION_SWITCH_LABEL = "BML_MarkedInnerEdgeSelection"
 _SHARP_EDGE_ATTR = "sharp_edge"
 _CREASE_EDGE_ATTR = "crease_edge"
+
+
+def _vector_scale_input(node):
+    return node.inputs.get("Scale") or node.inputs[min(3, len(node.inputs) - 1)]
 
 
 # ------------------------------------------------------------------
@@ -58,6 +63,12 @@ def _create_node_tree() -> bpy.types.NodeTree:
     radius_sock.default_value = 0.0005
     radius_sock.min_value = 0.0001
     radius_sock.max_value = 1.0
+    offset_sock = tree.interface.new_socket(
+        name=_OFFSET_SOCKET_NAME, in_out="INPUT", socket_type="NodeSocketFloat"
+    )
+    offset_sock.default_value = 0.0
+    offset_sock.min_value = -1.0
+    offset_sock.max_value = 1.0
 
     tree.interface.new_socket(
         name="マテリアル", in_out="INPUT", socket_type="NodeSocketMaterial"
@@ -93,7 +104,7 @@ def _create_node_tree() -> bpy.types.NodeTree:
     is_line_material.data_type = "INT"
     is_line_material.operation = "GREATER_EQUAL"
     links.new(mat_idx.outputs[0], is_line_material.inputs[2])
-    links.new(gin.outputs[4], is_line_material.inputs[3])
+    links.new(gin.outputs["ライン素材番号"], is_line_material.inputs[3])
 
     generated_attr = nodes.new("GeometryNodeInputNamedAttribute")
     generated_attr.location = (-440, -600)
@@ -169,14 +180,34 @@ def _create_node_tree() -> bpy.types.NodeTree:
     selection_switch.label = _MARKED_SELECTION_SWITCH_LABEL
     selection_switch.location = (-20, -200)
     selection_switch.input_type = "BOOLEAN"
-    links.new(gin.outputs[5], selection_switch.inputs["Switch"])
+    links.new(gin.outputs[_MARKED_ONLY_SOCKET_NAME], selection_switch.inputs["Switch"])
     links.new(compare.outputs[0], selection_switch.inputs["False"])
     links.new(marked_selection.outputs[0], selection_switch.inputs["True"])
+
+    offset_amount = nodes.new("ShaderNodeMath")
+    offset_amount.location = (-600, -320)
+    offset_amount.operation = "MULTIPLY"
+    links.new(gin.outputs["線の太さ"], offset_amount.inputs[0])
+    links.new(gin.outputs[_OFFSET_SOCKET_NAME], offset_amount.inputs[1])
+
+    normal = nodes.new("GeometryNodeInputNormal")
+    normal.location = (-600, -440)
+
+    offset_vector = nodes.new("ShaderNodeVectorMath")
+    offset_vector.location = (-400, -360)
+    offset_vector.operation = "SCALE"
+    links.new(normal.outputs[0], offset_vector.inputs[0])
+    links.new(offset_amount.outputs[0], _vector_scale_input(offset_vector))
+
+    set_position = nodes.new("GeometryNodeSetPosition")
+    set_position.location = (-380, -260)
+    links.new(del_shell.outputs["Geometry"], set_position.inputs["Geometry"])
+    links.new(offset_vector.outputs[0], set_position.inputs["Offset"])
 
     # Mesh to Curve: 選択エッジをカーブに変換
     m2c = nodes.new("GeometryNodeMeshToCurve")
     m2c.location = (-200, -200)
-    links.new(del_shell.outputs["Geometry"], m2c.inputs[0])  # 元メッシュのみ
+    links.new(set_position.outputs["Geometry"], m2c.inputs[0])  # 元メッシュのみ
     links.new(selection_switch.outputs["Output"], m2c.inputs[1])  # Selection
 
     # 内部線専用の線幅値を反映する。
@@ -216,7 +247,7 @@ def _create_node_tree() -> bpy.types.NodeTree:
     radius_half.location = (-400, -360)
     radius_half.operation = "MULTIPLY"
     radius_half.inputs[1].default_value = 0.5
-    links.new(gin.outputs[2], radius_half.inputs[0])
+    links.new(gin.outputs["線の太さ"], radius_half.inputs[0])
     links.new(radius_half.outputs[0], circle.inputs["Radius"])  # 線の太さ → 半径
 
     # Curve to Mesh: カーブをチューブメッシュに変換
@@ -242,7 +273,7 @@ def _create_node_tree() -> bpy.types.NodeTree:
     setmat = nodes.new("GeometryNodeSetMaterial")
     setmat.location = (300, -200)
     links.new(mark_generated.outputs["Geometry"], setmat.inputs[0])
-    links.new(gin.outputs[3], setmat.inputs["Material"])
+    links.new(gin.outputs["マテリアル"], setmat.inputs["Material"])
 
     # Join Geometry: 元メッシュ + 内部線ジオメトリ
     join = nodes.new("GeometryNodeJoinGeometry")
@@ -265,6 +296,9 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
         if _find_socket_id(tree, _MARKED_ONLY_SOCKET_NAME) is None:
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
+        if _find_socket_id(tree, _OFFSET_SOCKET_NAME) is None:
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
         if not any(n.bl_idname == "GeometryNodeDeleteGeometry" for n in tree.nodes):
@@ -352,6 +386,7 @@ def apply_inner_lines(
     obj: bpy.types.Object,
     angle: float = 0.5236,
     thickness: float = 0.0005,
+    offset: float = 0.0,
     material: bpy.types.Material | None = None,
     use_marked_edges: bool = False,
     enable: bool = True,
@@ -376,11 +411,14 @@ def apply_inner_lines(
     # パラメータ設定
     sid_angle = _find_socket_id(tree, "検出角度")
     sid_thickness = _find_socket_id(tree, "線の太さ")
+    sid_offset = _find_socket_id(tree, _OFFSET_SOCKET_NAME)
     sid_marked_only = _find_socket_id(tree, _MARKED_ONLY_SOCKET_NAME)
     if sid_angle is not None:
         mod[sid_angle] = angle
     if sid_thickness is not None:
         mod[sid_thickness] = thickness
+    if sid_offset is not None:
+        mod[sid_offset] = offset
     if sid_marked_only is not None:
         mod[sid_marked_only] = bool(use_marked_edges)
 
@@ -464,6 +502,7 @@ def update_parameters(
     obj: bpy.types.Object,
     angle: float | None = None,
     thickness: float | None = None,
+    offset: float | None = None,
     use_marked_edges: bool | None = None,
 ) -> bool:
     """既存モディファイアのパラメータを更新."""
@@ -479,6 +518,10 @@ def update_parameters(
         sid = _find_socket_id(tree, "線の太さ")
         if sid is not None:
             mod[sid] = thickness
+    if offset is not None:
+        sid = _find_socket_id(tree, _OFFSET_SOCKET_NAME)
+        if sid is not None:
+            mod[sid] = offset
     if use_marked_edges is not None:
         sid = _find_socket_id(tree, _MARKED_ONLY_SOCKET_NAME)
         if sid is not None:

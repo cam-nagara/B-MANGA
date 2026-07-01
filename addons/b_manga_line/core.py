@@ -252,6 +252,7 @@ def _ensure_outline_for_settings(owner: bpy.types.Object, settings, context) -> 
         use_vertex_color=settings.use_vertex_color,
         even_thickness=settings.even_thickness,
         use_rim=settings.use_rim,
+        offset=settings.outline_offset,
         use_vertex_group=use_vg,
         hide_through_transparent=settings.hide_through_transparent,
         scene=getattr(context, "scene", None),
@@ -315,6 +316,16 @@ def _on_thickness_changed(self, context):
             owner[PROP_BASE_THICKNESS] = self.outline_thickness
         _refresh_print_widths_for(context, [owner])
     _propagate(self, context, "outline_thickness")
+
+
+def _on_outline_offset_changed(self, context):
+    if _propagating:
+        return
+    from . import outline_setup
+    owner = self.id_data
+    if owner.type == "MESH":
+        outline_setup.update_modifier_offset(owner, self.outline_offset)
+    _propagate(self, context, "outline_offset")
 
 
 def _on_even_thickness_changed(self, context):
@@ -407,6 +418,7 @@ def _sync_inner_line_creation(
                 owner,
                 settings.inner_line_thickness,
             ),
+            offset=settings.inner_line_offset,
             material=mat,
             use_marked_edges=settings.use_marked_inner_edges,
         )
@@ -463,6 +475,16 @@ def _on_inner_thickness_changed(self, context):
     _propagate(self, context, "inner_line_thickness")
 
 
+def _on_inner_offset_changed(self, context):
+    if _propagating:
+        return
+    from . import inner_lines
+    owner = self.id_data
+    if owner.type == "MESH":
+        inner_lines.update_parameters(owner, offset=self.inner_line_offset)
+    _propagate(self, context, "inner_line_offset")
+
+
 def _on_inner_creation_limit_changed(self, context):
     if _propagating:
         return
@@ -493,6 +515,7 @@ def _sync_intersection_creation(owner: bpy.types.Object, settings, context) -> N
             owner,
             settings.intersection_thickness,
         ),
+        offset=settings.intersection_line_offset,
         material=mat,
         method=settings.intersection_method,
         scene=getattr(context, "scene", None),
@@ -560,6 +583,19 @@ def _on_intersection_thickness_changed(self, context):
         if changed:
             _refresh_print_widths_for(context, [owner])
     _propagate(self, context, "intersection_thickness")
+
+
+def _on_intersection_offset_changed(self, context):
+    if _propagating:
+        return
+    from . import intersection_lines
+    owner = self.id_data
+    if owner.type == "MESH":
+        intersection_lines.update_parameters(
+            owner,
+            offset=self.intersection_line_offset,
+        )
+    _propagate(self, context, "intersection_line_offset")
 
 
 def _on_intersection_creation_limit_changed(self, context):
@@ -860,6 +896,17 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         step=5,
     )  # type: ignore[valid-type]
 
+    outline_offset: FloatProperty(
+        name="オフセット",
+        description="アウトラインを元の面からどちら側に出すかを調整する",
+        default=1.0,
+        min=-1.0,
+        max=1.0,
+        precision=3,
+        step=10,
+        update=_on_outline_offset_changed,
+    )  # type: ignore[valid-type]
+
     outline_color: FloatVectorProperty(
         name="線の色",
         description="アウトラインの色 (scene-linear RGB)",
@@ -959,6 +1006,17 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         step=5,
     )  # type: ignore[valid-type]
 
+    inner_line_offset: FloatProperty(
+        name="オフセット",
+        description="内部線を元の面からどれだけ浮かせるかを線幅基準で調整する",
+        default=0.0,
+        min=-1.0,
+        max=1.0,
+        precision=3,
+        step=10,
+        update=_on_inner_offset_changed,
+    )  # type: ignore[valid-type]
+
     use_inner_line_creation_limit: BoolProperty(
         name="作成範囲を制限",
         description="カメラに写り、指定距離以内にあるオブジェクトにだけ内部線を作成する",
@@ -1018,6 +1076,17 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         max=1000.0,
         precision=2,
         step=5,
+    )  # type: ignore[valid-type]
+
+    intersection_line_offset: FloatProperty(
+        name="オフセット",
+        description="交差線の出方を線幅基準で調整する",
+        default=0.0,
+        min=-1.0,
+        max=1.0,
+        precision=3,
+        step=10,
+        update=_on_intersection_offset_changed,
     )  # type: ignore[valid-type]
 
     use_intersection_creation_limit: BoolProperty(

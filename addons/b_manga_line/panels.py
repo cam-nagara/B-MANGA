@@ -112,6 +112,7 @@ def _draw_outline(layout, context, settings) -> None:
     sub_label = row.row(align=True)
     sub_label.alignment = "RIGHT"
     sub_label.label(text=_mm_to_px_label(settings.outline_thickness_mm, dpi))
+    sub.prop(settings, "outline_offset")
     sub.prop(settings, "outline_color")
     sub.prop(settings, "even_thickness")
     sub.prop(settings, "use_rim")
@@ -218,6 +219,7 @@ def _draw_inner_line(layout, context, settings) -> None:
     sub_label = row.row(align=True)
     sub_label.alignment = "RIGHT"
     sub_label.label(text=_mm_to_px_label(settings.inner_line_thickness_mm, dpi))
+    sub.prop(settings, "inner_line_offset")
     col.separator()
     sub_create = col.column(align=True)
     sub_create.enabled = settings.inner_line_enabled
@@ -257,6 +259,7 @@ def _draw_intersection(layout, context, settings) -> None:
     sub_label = row.row(align=True)
     sub_label.alignment = "RIGHT"
     sub_label.label(text=_mm_to_px_label(settings.intersection_thickness_mm, dpi))
+    sub.prop(settings, "intersection_line_offset")
     sub.separator()
     sub.prop(settings, "use_intersection_creation_limit")
     sub_create = sub.column(align=True)
