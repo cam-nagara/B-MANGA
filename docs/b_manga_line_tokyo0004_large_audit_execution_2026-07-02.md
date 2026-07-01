@@ -201,3 +201,39 @@
 - OK: ラインを適用 (0.0089s)
 - OK: ラインを適用 (0.0124s)
 - OK: ラインを適用 (0.015s)
+
+## phase5
+
+- JSON: `D:\Develop\Blender\B-MANGA\_verify\b_manga_line_tokyo0004_large_audit_2026-07-02\phase5_result.json`
+- Summary: `D:\Develop\Blender\B-MANGA\_verify\b_manga_line_tokyo0004_large_audit_2026-07-02\phase5_summary.md`
+- Errors: 0
+- Warnings: 0
+- Screenshots: 5
+
+### Screenshots
+
+- `D:\Develop\Blender\B-MANGA\_verify\b_manga_line_tokyo0004_large_audit_2026-07-02\screenshots\phase5_intersection_shell_default.png`
+- `D:\Develop\Blender\B-MANGA\_verify\b_manga_line_tokyo0004_large_audit_2026-07-02\screenshots\phase5_intersection_boolean_sample.png`
+- `D:\Develop\Blender\B-MANGA\_verify\b_manga_line_tokyo0004_large_audit_2026-07-02\screenshots\phase5_intersection_sdf_sample.png`
+- `D:\Develop\Blender\B-MANGA\_verify\b_manga_line_tokyo0004_large_audit_2026-07-02\screenshots\phase5_line_only.png`
+- `D:\Develop\Blender\B-MANGA\_verify\b_manga_line_tokyo0004_large_audit_2026-07-02\screenshots\phase5_normal_restored.png`
+
+### Operations
+
+- OK: ラインを適用 (0.256s)
+- OK: ラインを適用 (0.1821s)
+- OK: intersection_method_BOOLEAN (0.1971s)
+- OK: ラインを適用 (0.2067s)
+- OK: intersection_method_SDF (0.2185s)
+- OK: ラインを適用 (0.1928s)
+- OK: ラインを非表示 (0.0071s)
+- OK: ラインを表示 (0.0141s)
+- OK: ラインのみを表示 (0.0846s)
+- OK: 通常表示に戻す (0.0852s)
+- OK: AOVパスを追加 (0.0003s)
+- OK: ウェイトを更新 (0.1883s)
+- OK: 線幅を更新 (0.065s)
+- OK: 現在距離を基準にする (0.0163s)
+- OK: プリセット保存 (0.0004s)
+- OK: プリセット適用 (0.1817s)
+- OK: プリセット削除 (0.0002s)

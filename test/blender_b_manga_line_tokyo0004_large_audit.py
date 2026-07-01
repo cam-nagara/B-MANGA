@@ -858,13 +858,15 @@ def phase5(audit: Audit, max_targets: int) -> None:
     if bpy.ops.bmanga_line.refresh_linked.poll():
         with audit.time_op("リンク素材のラインを補正", "setting"):
             bpy.ops.bmanga_line.refresh_linked("EXEC_DEFAULT")
+        audit.result["counts"]["linked_refresh_applicable"] = True
     else:
-        audit.warn("リンク素材のラインを補正: 対象なし")
+        audit.result["counts"]["linked_refresh_applicable"] = False
     if bpy.ops.bmanga_line.apply_active_to_linked.poll():
         with audit.time_op("リンク素材へ選択設定を上書き", "setting"):
             bpy.ops.bmanga_line.apply_active_to_linked("EXEC_DEFAULT")
+        audit.result["counts"]["linked_apply_applicable"] = True
     else:
-        audit.warn("リンク素材へ選択設定を上書き: 対象なし")
+        audit.result["counts"]["linked_apply_applicable"] = False
     audit.result["counts"]["phase5"] = count_lines(sample, modules)
 
 
