@@ -493,6 +493,40 @@ def _test_camera_compensation_uses_mesh_position_not_origin() -> None:
     assert math.isclose(actual, expected, rel_tol=0.001), (actual, expected)
 
 
+def _test_live_camera_view_size_controls_preview_width() -> None:
+    scene = bpy.context.scene
+    _clear_scene()
+    _configure_scene(scene)
+    scene.render.resolution_y = 8000
+
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0.0, 0.0, -5.0))
+    obj = bpy.context.object
+    obj.name = "BML_live_camera_view_size_cube"
+    _select(obj)
+    settings = obj.bmanga_line_settings
+    settings.outline_thickness_mm = 0.5
+    settings.use_camera_compensation = True
+    settings.line_width_reference_distance = 5.0
+    assert presets.apply_line_settings(obj, bpy.context)
+
+    render_width = _line_world_width(obj)
+    camera_comp._set_display_size_override((1000.0, 1000.0))
+    try:
+        camera_comp._update_camera_compensation(scene, scene.camera, [obj])
+    finally:
+        camera_comp._set_display_size_override(None)
+
+    preview_width = _line_world_width(obj)
+    assert preview_width > render_width * 7.5, (preview_width, render_width)
+    expected_preview = _target_pixels(0.5) * (
+        2.0 * 5.0 * math.tan(scene.camera.data.angle_y * 0.5) / 1000.0
+    )
+    assert math.isclose(preview_width, expected_preview, rel_tol=0.001), (
+        preview_width,
+        expected_preview,
+    )
+
+
 def _test_evaluated_orthographic_width() -> None:
     scene = bpy.context.scene
     _clear_scene()
@@ -592,6 +626,7 @@ def main() -> None:
     _test_object_scale_compensates_modifier_width()
     _test_intersection_target_scale_conversion()
     _test_camera_compensation_uses_mesh_position_not_origin()
+    _test_live_camera_view_size_controls_preview_width()
     _test_evaluated_orthographic_width()
     _test_linked_uniform_width_refresh_does_not_crash()
     print("[PASS] B-MANGA Line uniform width follows mm, DPI, and resolution")

@@ -3,6 +3,36 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-01 — B-MANGA Lineのカメラビュー上の線幅を修正 (B-MANGA Line v0.3.61)
+
+### 症状
+
+- v0.3.60 でも、カメラビュー上ではアウトラインや交差線が細いままに見えた。
+- スクショ対象の素材では、最終レンダー高さが 8031px ある一方、画面上のカメラビュー枠はそれより小さいため、0.50mm の `≈ 11.8 px` が画面上では 1〜2px 程度に縮んで見えていた。
+- 交差線の作成判定もその細い画面表示に引きずられ、接触・近接部分の線が出ていないように見える状態だった。
+
+### 原因
+
+- 線幅計算が常に最終レンダー解像度を基準にしており、作業中のカメラビュー枠の画面ピクセルサイズを見ていなかった。
+- そのため、最終レンダーでは指定px相当になっても、Blender上のカメラビューでは縮小表示ぶん細く表示されていた。
+
+### 修正
+
+- パネル操作や「ラインを適用」など作業中の更新では、現在表示中のカメラビュー枠の画面ピクセルサイズを基準に線幅を計算するようにした。
+- 通常レンダー開始前には最終レンダー解像度基準へ戻し、レンダー後・中断後は作業中のカメラビュー表示基準へ戻すようにした。
+- カメラビュー表示サイズを使う線幅計算の実機テストを追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\camera_comp.py test\blender_b_manga_line_uniform_width_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_uniform_width_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_intersection_fill_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_view_creation_range_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python test\blender_b_manga_line_register_reenable_check.py`
+
+---
+
 ## 2026-07-01 — B-MANGA Lineの原点ずれ線幅と近接交差線を修正 (B-MANGA Line v0.3.60)
 
 ### 症状

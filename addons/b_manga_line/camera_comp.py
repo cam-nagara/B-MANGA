@@ -11,6 +11,7 @@ import math
 
 import bpy
 from bpy_extras.object_utils import world_to_camera_view
+from bpy_extras.view3d_utils import location_3d_to_region_2d
 from mathutils import Vector
 
 from .core import (
@@ -34,6 +35,7 @@ from .scale_utils import modifier_thickness_for_world_width
 
 _updating = False
 _FALLBACK_DPI = 600
+_display_size_override: tuple[float, float] | None = None
 
 
 def get_line_camera(scene) -> bpy.types.Object | None:
@@ -264,11 +266,71 @@ def _get_fov_factor(cam_data, scene) -> float:
 
 
 def _effective_render_size(scene) -> tuple[float, float]:
+    if _display_size_override is not None:
+        width, height = _display_size_override
+        return max(1.0, float(width)), max(1.0, float(height))
     render = scene.render
     scale = max(0.001, float(getattr(render, "resolution_percentage", 100)) / 100.0)
     width = max(1.0, float(getattr(render, "resolution_x", 1)) * scale)
     height = max(1.0, float(getattr(render, "resolution_y", 1)) * scale)
     return width, height
+
+
+def _iter_view3d_spaces(context):
+    area = getattr(context, "area", None)
+    if area is not None and getattr(area, "type", None) == "VIEW_3D":
+        yield area
+    screen = getattr(context, "screen", None)
+    if screen is None:
+        return
+    for item in getattr(screen, "areas", ()):
+        if item is area:
+            continue
+        if getattr(item, "type", None) == "VIEW_3D":
+            yield item
+
+
+def _window_region(area):
+    for region in getattr(area, "regions", ()):
+        if getattr(region, "type", None) == "WINDOW":
+            return region
+    return None
+
+
+def _camera_view_display_size(context, scene, camera) -> tuple[float, float] | None:
+    """現在のカメラビュー枠の画面上ピクセルサイズを返す."""
+    if context is None or camera is None or getattr(camera, "type", None) != "CAMERA":
+        return None
+    for area in _iter_view3d_spaces(context):
+        region = _window_region(area)
+        if region is None:
+            continue
+        for space in getattr(area, "spaces", ()):
+            if getattr(space, "type", None) != "VIEW_3D":
+                continue
+            rv3d = getattr(space, "region_3d", None)
+            if rv3d is None or getattr(rv3d, "view_perspective", None) != "CAMERA":
+                continue
+            frame = [
+                camera.matrix_world @ corner
+                for corner in camera.data.view_frame(scene=scene)
+            ]
+            coords = [
+                location_3d_to_region_2d(region, rv3d, corner)
+                for corner in frame
+            ]
+            if any(coord is None for coord in coords):
+                continue
+            width = max(coord.x for coord in coords) - min(coord.x for coord in coords)
+            height = max(coord.y for coord in coords) - min(coord.y for coord in coords)
+            if width > 1.0 and height > 1.0:
+                return (width, height)
+    return None
+
+
+def _set_display_size_override(size: tuple[float, float] | None):
+    global _display_size_override
+    _display_size_override = size
 
 
 def _get_scene_dpi(scene) -> float:
@@ -849,6 +911,59 @@ def _on_frame_change(scene, depsgraph=None):
         _updating = False
 
 
+@bpy.app.handlers.persistent
+def _on_render_pre(scene, depsgraph=None):
+    """最終レンダー前はレンダー解像度基準の線幅へ戻す."""
+    global _updating
+    if _updating:
+        return
+    _updating = True
+    try:
+        _set_display_size_override(None)
+        camera = get_line_camera(scene)
+        if camera is None:
+            return
+        _update_camera_compensation(scene, camera)
+        cam_loc = camera.matrix_world.translation
+        cam_fwd = camera.matrix_world.to_quaternion() @ Vector((0, 0, -1))
+        _update_visibility(scene, camera, cam_loc, cam_fwd)
+    finally:
+        _updating = False
+
+
+def _restore_viewport_widths(scene) -> None:
+    global _updating
+    if _updating:
+        return
+    context = bpy.context
+    camera = get_line_camera(scene)
+    size = _camera_view_display_size(context, scene, camera)
+    if camera is None or size is None:
+        return
+    _updating = True
+    try:
+        _set_display_size_override(size)
+        _update_camera_compensation(scene, camera)
+        cam_loc = camera.matrix_world.translation
+        cam_fwd = camera.matrix_world.to_quaternion() @ Vector((0, 0, -1))
+        _update_visibility(scene, camera, cam_loc, cam_fwd)
+    finally:
+        _set_display_size_override(None)
+        _updating = False
+
+
+@bpy.app.handlers.persistent
+def _on_render_post(scene, depsgraph=None):
+    """レンダー後は作業中のカメラビュー見た目へ戻す."""
+    _restore_viewport_widths(scene)
+
+
+@bpy.app.handlers.persistent
+def _on_render_cancel(scene, depsgraph=None):
+    """レンダー中断時も作業中のカメラビュー見た目へ戻す."""
+    _restore_viewport_widths(scene)
+
+
 # ------------------------------------------------------------------
 # 公開 API
 # ------------------------------------------------------------------
@@ -864,11 +979,13 @@ def refresh(context):
         camera = get_line_camera(scene)
         if camera is None:
             return
+        _set_display_size_override(_camera_view_display_size(context, scene, camera))
         _update_camera_compensation(scene, camera)
         cam_loc = camera.matrix_world.translation
         cam_fwd = camera.matrix_world.to_quaternion() @ Vector((0, 0, -1))
         _update_visibility(scene, camera, cam_loc, cam_fwd)
     finally:
+        _set_display_size_override(None)
         _updating = False
 
 
@@ -892,6 +1009,7 @@ def refresh_objects(
         targets = list(_line_width_objects(scene, objects))
         if not targets:
             return True
+        _set_display_size_override(_camera_view_display_size(context, scene, camera))
         _update_camera_compensation(scene, camera, targets, width_targets=width_targets)
         if update_visibility:
             cam_loc = camera.matrix_world.translation
@@ -899,6 +1017,7 @@ def refresh_objects(
             _update_visibility(scene, camera, cam_loc, cam_fwd, targets)
         return True
     finally:
+        _set_display_size_override(None)
         _updating = False
 
 
@@ -963,8 +1082,20 @@ def store_unit_reference(obj, scene):
 def register() -> None:
     if _on_frame_change not in bpy.app.handlers.frame_change_post:
         bpy.app.handlers.frame_change_post.append(_on_frame_change)
+    if _on_render_pre not in bpy.app.handlers.render_pre:
+        bpy.app.handlers.render_pre.append(_on_render_pre)
+    if _on_render_post not in bpy.app.handlers.render_post:
+        bpy.app.handlers.render_post.append(_on_render_post)
+    if _on_render_cancel not in bpy.app.handlers.render_cancel:
+        bpy.app.handlers.render_cancel.append(_on_render_cancel)
 
 
 def unregister() -> None:
     if _on_frame_change in bpy.app.handlers.frame_change_post:
         bpy.app.handlers.frame_change_post.remove(_on_frame_change)
+    if _on_render_pre in bpy.app.handlers.render_pre:
+        bpy.app.handlers.render_pre.remove(_on_render_pre)
+    if _on_render_post in bpy.app.handlers.render_post:
+        bpy.app.handlers.render_post.remove(_on_render_post)
+    if _on_render_cancel in bpy.app.handlers.render_cancel:
+        bpy.app.handlers.render_cancel.remove(_on_render_cancel)
