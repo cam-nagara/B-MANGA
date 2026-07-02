@@ -29,7 +29,7 @@ from __future__ import annotations
 import bpy
 from mathutils import Vector
 
-from . import scale_utils
+from . import modifier_stack, scale_utils
 from .core import (
     GENERATED_LINE_ATTR,
     GN_MODIFIER_NAME,
@@ -1109,28 +1109,7 @@ def _ensure_intersection_width_group(obj: bpy.types.Object) -> None:
 
 
 def _position_intersection_modifiers(obj: bpy.types.Object) -> None:
-    for mod in list(iter_intersection_modifiers(obj)):
-        outline_idx = None
-        inner_idx = None
-        mod_idx = None
-        for i, item in enumerate(obj.modifiers):
-            if item.name == MODIFIER_NAME:
-                outline_idx = i
-            elif item.name == GN_MODIFIER_NAME:
-                inner_idx = i
-            elif item == mod:
-                mod_idx = i
-        if mod_idx is None:
-            continue
-        if outline_idx is not None and mod_idx < outline_idx:
-            obj.modifiers.move(mod_idx, outline_idx)
-        for i, item in enumerate(obj.modifiers):
-            if item.name == GN_MODIFIER_NAME:
-                inner_idx = i
-            elif item == mod:
-                mod_idx = i
-        if inner_idx is not None and mod_idx is not None and mod_idx > inner_idx:
-            obj.modifiers.move(mod_idx, inner_idx)
+    modifier_stack.reorder_line_modifiers(obj)
 
 
 def _apply_intersection_modifier(

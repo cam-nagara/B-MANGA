@@ -3,6 +3,42 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-02 — B-MANGA Line交差線の線幅反映を徹底チェック (B-MANGA Line v0.3.71)
+
+### 症状
+
+- 「交差線」の中間頂点線幅調整や変化グラフを変えても、「ライン素材（高速）」の交差線チューブへ反映されない場合があった。
+- アウトライン、内部線、交差線を切り替えたあと、生成ライン用モディファイアの並び順がオブジェクトによって不安定になる場合があった。
+- 円柱の端など、鋭角の始点・終点がない閉じた輪郭では、中間頂点線幅調整が効かない場合があった。
+- 既存ファイルに古い高速交差線ノードが残っている場合、新しい生成済み線マークつきノードへ作り直されない可能性があった。
+
+### 原因
+
+- 高速交差線側のノードに、交差線用の中間頂点線幅調整と変化グラフを渡していなかった。
+- アウトライン、内部線、交差線それぞれが個別にモディファイア位置を調整していた。
+- 中間頂点の線幅計算が、鋭角の分岐点を持つ開いた線分だけを対象にしていた。
+- 旧ノードグループ判定が、生成済み線マークではなく別のノードを見ていた。
+
+### 修正
+
+- 高速交差線にも、交差線用の中間頂点線幅調整と変化グラフを反映するようにした。
+- 生成ラインのモディファイア順を、アウトライン、内部線、交差線の順へ一元的に並べ直すようにした。
+- 閉じた輪郭でも、カメラ上の左右端を始点・終点として中間頂点線幅調整を計算するようにした。
+- 古い高速交差線ノードを検出した場合は、新しいノードへ再構築するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\modifier_stack.py addons\b_manga_line\inner_lines.py addons\b_manga_line\intersection_lines.py addons\b_manga_line\intersection_shell.py addons\b_manga_line\presets.py addons\b_manga_line\vertex_analysis.py addons\b_manga_line\batch_update.py test\blender_b_manga_line_intersection_shell_method_check.py test\blender_b_manga_line_midpoint_targets_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python-exit-code 1 --python test\blender_b_manga_line_intersection_shell_method_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python-exit-code 1 --python test\blender_b_manga_line_midpoint_targets_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python-exit-code 1 --python test\blender_b_manga_line_control_update_scope_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python-exit-code 1 --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python-exit-code 1 --python test\blender_b_manga_line_preset_visibility_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python-exit-code 1 --python test\blender_page_file_nav_and_double_click_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python-exit-code 1 --python test\blender_coma_edge_highlight_check.py`
+
+---
+
 ## 2026-07-02 — ページファイルのページ一覧操作を修正 (B-MANGA v0.6.433)
 
 ### 症状

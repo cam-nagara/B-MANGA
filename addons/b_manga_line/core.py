@@ -764,6 +764,9 @@ def _refresh_generated_width_weights(owner, settings, target, vertex_analysis) -
         vertex_analysis.compute_and_apply_weights(owner, settings, target)
     else:
         vertex_analysis.clear_width_weights(owner, group_name=group_name)
+    if target == "intersection":
+        from . import intersection_lines
+        intersection_lines.update_parameters(owner)
 
 
 def _on_edge_smooth_changed(self, context):

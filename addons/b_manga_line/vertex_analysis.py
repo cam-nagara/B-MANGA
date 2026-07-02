@@ -179,6 +179,52 @@ def _iter_anchor_chains(
     return chains
 
 
+def _trace_closed_loop(
+    sharp_neighbors: list[set[int]],
+    start: int,
+    visited_edges: set[tuple[int, int]],
+) -> list[int]:
+    if len(sharp_neighbors[start]) != 2:
+        return []
+    chain = [start]
+    prev = -1
+    current = start
+    while True:
+        candidates = sorted(sharp_neighbors[current])
+        if len(candidates) != 2:
+            return []
+        next_vert = candidates[0] if candidates[0] != prev else candidates[1]
+        edge_key = tuple(sorted((current, next_vert)))
+        if next_vert == start:
+            visited_edges.add(edge_key)
+            return chain if len(chain) >= 4 else []
+        if edge_key in visited_edges or next_vert in chain:
+            return []
+        visited_edges.add(edge_key)
+        prev, current = current, next_vert
+        chain.append(current)
+
+
+def _iter_closed_loops(
+    sharp_neighbors: list[set[int]],
+    anchors: set[int],
+) -> list[list[int]]:
+    loops: list[list[int]] = []
+    visited_edges: set[tuple[int, int]] = set()
+    for start in range(len(sharp_neighbors)):
+        if start in anchors or len(sharp_neighbors[start]) != 2:
+            continue
+        if all(tuple(sorted((start, nxt))) in visited_edges for nxt in sharp_neighbors[start]):
+            continue
+        loop = _trace_closed_loop(sharp_neighbors, start, visited_edges)
+        if not loop:
+            continue
+        if any(vertex in anchors for vertex in loop):
+            continue
+        loops.append(loop)
+    return loops
+
+
 def _chain_positions(obj, chain: list[int]) -> dict[int, float]:
     distances = [0.0]
     total = 0.0
@@ -189,6 +235,49 @@ def _chain_positions(obj, chain: list[int]) -> dict[int, float]:
     if total <= 1e-8:
         return {vi: 0.0 for vi in chain}
     return {vi: distances[i] / total for i, vi in enumerate(chain)}
+
+
+def _camera_projected_x(obj, vertex_index: int) -> float | None:
+    scene = getattr(bpy.context, "scene", None)
+    camera = getattr(scene, "camera", None) if scene is not None else None
+    if camera is None:
+        return None
+    try:
+        from bpy_extras.object_utils import world_to_camera_view
+
+        world = obj.matrix_world @ obj.data.vertices[vertex_index].co
+        projected = world_to_camera_view(scene, camera, world)
+        return float(projected.x)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _loop_endpoint_pair(obj, loop: list[int]) -> tuple[int, int]:
+    projected = [(vi, _camera_projected_x(obj, vi)) for vi in loop]
+    projected = [(vi, x) for vi, x in projected if x is not None]
+    if len(projected) >= 2:
+        left = min(projected, key=lambda item: item[1])[0]
+        right = max(projected, key=lambda item: item[1])[0]
+        if left != right:
+            return left, right
+
+    vertices = obj.data.vertices
+    left = min(loop, key=lambda vi: vertices[vi].co.x)
+    right = max(loop, key=lambda vi: vertices[vi].co.x)
+    if left != right:
+        return left, right
+    return loop[0], loop[len(loop) // 2]
+
+
+def _cycle_path(loop: list[int], start_index: int, end_index: int, step: int) -> list[int]:
+    path = [loop[start_index]]
+    index = start_index
+    guard = 0
+    while index != end_index and guard <= len(loop):
+        index = (index + step) % len(loop)
+        path.append(loop[index])
+        guard += 1
+    return path if path[-1] == loop[end_index] else []
 
 
 def _select_midpoint_vertex(
@@ -462,10 +551,6 @@ def _calc_midpoint_factor(
             if i < n and sharp_neighbors[i]
         }
 
-    if not graph_anchors:
-        bm.free()
-        return {i: 0.0 for i in range(n)}
-
     result = {i: 0.0 for i in range(n)}
     used_midpoint_bins: set[int] = set()
     for chain in _iter_anchor_chains(sharp_neighbors, graph_anchors):
@@ -477,6 +562,28 @@ def _calc_midpoint_factor(
             raw = _chain_factor(positions[vi], midpoint)
             value = _apply_width_curve(raw, curve_points)
             result[vi] = max(result[vi], value)
+
+    for loop in _iter_closed_loops(sharp_neighbors, graph_anchors):
+        start, end = _loop_endpoint_pair(obj, loop)
+        try:
+            start_index = loop.index(start)
+            end_index = loop.index(end)
+        except ValueError:
+            continue
+        for chain in (
+            _cycle_path(loop, start_index, end_index, 1),
+            _cycle_path(loop, start_index, end_index, -1),
+        ):
+            if len(chain) < 3:
+                continue
+            positions = _chain_positions(obj, chain)
+            _, midpoint = _select_midpoint_vertex(
+                obj, chain, positions, jitter_percent, used_midpoint_bins,
+            )
+            for vi in chain:
+                raw = _chain_factor(positions[vi], midpoint)
+                value = _apply_width_curve(raw, curve_points)
+                result[vi] = max(result[vi], value)
 
     bm.free()
     return result

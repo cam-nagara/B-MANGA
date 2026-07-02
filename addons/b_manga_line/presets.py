@@ -13,7 +13,7 @@ from bpy.props import (
     StringProperty,
 )
 
-from . import core, registration
+from . import core, modifier_stack, registration
 
 
 _SETTING_FIELDS = (
@@ -245,6 +245,7 @@ def apply_line_settings(
         core.set_line_visibility(obj, False)
     else:
         core.set_line_visibility(obj, True)
+    modifier_stack.reorder_line_modifiers(obj)
 
     if refresh_scene:
         _refresh_after_line_settings(context)

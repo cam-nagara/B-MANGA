@@ -10,12 +10,12 @@ import math
 
 import bpy
 
+from . import modifier_stack
 from .core import (
     GENERATED_LINE_ATTR,
     GN_MODIFIER_NAME,
     GN_TREE_NAME,
     MATERIAL_NAME,
-    MODIFIER_NAME,
     VG_INNER_LINE_WIDTH,
 )
 
@@ -437,18 +437,8 @@ def apply_inner_lines(
         vg = obj.vertex_groups.new(name=VG_INNER_LINE_WIDTH)
         vg.add(list(range(len(obj.data.vertices))), 1.0, "REPLACE")
 
-    # 内部線は Solidify（アウトライン）の後ろに配置する。
-    # 検出元はノード内で元メッシュ面だけに限定し、内部線自体が再度
-    # Solidify されて白っぽく崩れるのを防ぐ。
-    outline_idx = None
-    inner_idx = None
-    for i, m in enumerate(obj.modifiers):
-        if m.name == MODIFIER_NAME:
-            outline_idx = i
-        elif m.name == GN_MODIFIER_NAME:
-            inner_idx = i
-    if outline_idx is not None and inner_idx is not None and inner_idx < outline_idx:
-        obj.modifiers.move(inner_idx, outline_idx)
+    # 既存のメッシュ調整を先に通し、ライン生成は最後にまとめる。
+    modifier_stack.reorder_line_modifiers(obj)
 
     return True
 

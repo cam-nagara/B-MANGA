@@ -467,6 +467,8 @@ def _update_width_target(
                 if mod is not None:
                     mod.vertex_group = ""
             vertex_analysis.clear_width_weights(obj, group_name=group_name)
+        if target == "intersection":
+            intersection_lines.update_parameters(obj)
 
 
 def _update_inner_angle(objects: list[bpy.types.Object], context) -> None:

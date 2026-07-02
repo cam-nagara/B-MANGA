@@ -8,11 +8,10 @@ from __future__ import annotations
 
 import bpy
 
-from . import intersection_lines, outline_setup, scale_utils
+from . import intersection_lines, modifier_stack, outline_setup, scale_utils
 from .core import (
     INTERSECTION_MODIFIER_PREFIX,
     MODIFIER_NAME,
-    VG_INTERSECTION_LINE_WIDTH,
 )
 
 
@@ -25,11 +24,17 @@ _TARGET_COLLECTION_SOCKET = "交差対象グループ"
 _TARGET_THICKNESS_SOCKET = "交差対象の線幅"
 _LINE_MATERIAL_INDEX_SOCKET = "ライン素材番号"
 _HAS_TARGET_SOCKET = "交差対象あり"
+_MIDPOINT_FACTOR_SOCKET = "中間頂点の線幅調整"
+_WIDTH_CURVE_25_SOCKET = "変化グラフ 25%"
+_WIDTH_CURVE_50_SOCKET = "変化グラフ 50%"
+_WIDTH_CURVE_75_SOCKET = "変化グラフ 75%"
 _SHELL_BOOLEAN_NODE_LABEL = "BML_IntersectionShellBoolean"
 _TARGET_COLLECTION_PROP = "bml_intersection_shell_target_collection"
 _TARGET_COLLECTION_PREFIX = "BML_IntersectionTargets"
 _PROXY_SOURCE_PROP = "bml_intersection_shell_proxy_source"
 _PROXY_PREFIX = "BML_IntersectionProxy"
+_SHELL_RADIUS_NODE_LABEL = "BML_IntersectionShellOwnRadius"
+_CURVE_RADIUS_NORMALIZER_LABEL = "BML_IntersectionShellCurveRadius"
 
 
 def is_shell_modifier(mod: bpy.types.Modifier) -> bool:
@@ -94,6 +99,27 @@ def _setup_interface(tree: bpy.types.NodeTree) -> None:
         socket_type="NodeSocketBool",
     )
     has_target_sock.default_value = False
+    factor_sock = tree.interface.new_socket(
+        name=_MIDPOINT_FACTOR_SOCKET,
+        in_out="INPUT",
+        socket_type="NodeSocketFloat",
+    )
+    factor_sock.default_value = 0.0
+    factor_sock.min_value = -1.0
+    factor_sock.max_value = 1.0
+    for name, default in (
+        (_WIDTH_CURVE_25_SOCKET, 0.25),
+        (_WIDTH_CURVE_50_SOCKET, 0.50),
+        (_WIDTH_CURVE_75_SOCKET, 0.75),
+    ):
+        sock = tree.interface.new_socket(
+            name=name,
+            in_out="INPUT",
+            socket_type="NodeSocketFloat",
+        )
+        sock.default_value = default
+        sock.min_value = 0.0
+        sock.max_value = 1.0
 
 
 def _create_node_tree() -> bpy.types.NodeTree:
@@ -120,12 +146,7 @@ def _create_node_tree() -> bpy.types.NodeTree:
     target_geo = intersection_lines._add_target_solidify(
         nodes, links, realize.outputs["Geometry"], 0.0001, (-640, -460),
     )
-    has_line_faces = intersection_lines._add_target_has_line_faces(
-        nodes, links, target_geo, (-320, -560),
-    )
-    radius = intersection_lines._add_effective_radius(
-        nodes, links, gin, has_line_faces, (80, -820),
-    )
+    radius = _add_shell_radius(nodes, links, gin, (80, -820))
 
     mat_idx = nodes.new("GeometryNodeInputMaterialIndex")
     mat_idx.location = (-1060, 200)
@@ -189,11 +210,232 @@ def _create_node_tree() -> bpy.types.NodeTree:
     m2c.location = (780, -120)
     links.new(separate.outputs["Selection"], m2c.inputs["Mesh"])
 
-    join = intersection_lines._add_tube_nodes(
-        nodes, links, m2c.outputs["Curve"], gin, radius, x_offset=1000,
+    normalized_curve = _add_curve_radius_normalizer(
+        nodes, links, m2c.outputs["Curve"], (980, -120),
+    )
+    join = _add_shell_tube_nodes(
+        nodes, links, normalized_curve, gin, radius, x_offset=1160,
     )
     links.new(join.outputs[0], gout.inputs[0])
     return tree
+
+
+def _add_shell_radius(nodes, links, gin, loc):
+    offset_amount = nodes.new("ShaderNodeMath")
+    offset_amount.location = (loc[0] - 420, loc[1] + 160)
+    offset_amount.operation = "MULTIPLY"
+    links.new(gin.outputs[_THICKNESS_SOCKET], offset_amount.inputs[0])
+    links.new(gin.outputs[_OFFSET_SOCKET], offset_amount.inputs[1])
+
+    offset_half = nodes.new("ShaderNodeMath")
+    offset_half.location = (loc[0] - 220, loc[1] + 160)
+    offset_half.operation = "MULTIPLY"
+    offset_half.inputs[1].default_value = 0.5
+    links.new(offset_amount.outputs[0], offset_half.inputs[0])
+
+    radius = nodes.new("ShaderNodeMath")
+    radius.label = _SHELL_RADIUS_NODE_LABEL
+    radius.location = loc
+    radius.operation = "ADD"
+    links.new(gin.outputs[_THICKNESS_SOCKET], radius.inputs[0])
+    links.new(offset_half.outputs[0], radius.inputs[1])
+
+    radius_min = nodes.new("ShaderNodeMath")
+    radius_min.location = (loc[0] + 220, loc[1])
+    radius_min.operation = "MAXIMUM"
+    radius_min.inputs[1].default_value = 0.0
+    links.new(radius.outputs[0], radius_min.inputs[0])
+    return radius_min.outputs[0]
+
+
+def _add_curve_radius_normalizer(nodes, links, curve_output, loc):
+    set_radius = nodes.new("GeometryNodeSetCurveRadius")
+    set_radius.label = _CURVE_RADIUS_NORMALIZER_LABEL
+    set_radius.location = loc
+    set_radius.inputs["Radius"].default_value = 1.0
+    links.new(curve_output, set_radius.inputs["Curve"])
+    return set_radius.outputs["Curve"]
+
+
+def _add_shell_tube_nodes(nodes, links, curve_output, gin, radius_output, x_offset=0):
+    scale = _add_curve_width_scale(nodes, links, gin, x_offset=x_offset)
+
+    circle = nodes.new("GeometryNodeCurvePrimitiveCircle")
+    circle.location = (x_offset + 0, -550)
+    circle.mode = "RADIUS"
+    for inp in circle.inputs:
+        if inp.name == "Resolution" and inp.enabled:
+            inp.default_value = 4
+    links.new(radius_output, circle.inputs["Radius"])
+
+    c2m = nodes.new("GeometryNodeCurveToMesh")
+    c2m.location = (x_offset + 200, -300)
+    links.new(curve_output, c2m.inputs["Curve"])
+    links.new(circle.outputs["Curve"], c2m.inputs["Profile Curve"])
+    if "Scale" in c2m.inputs:
+        links.new(scale, c2m.inputs["Scale"])
+    if "Fill Caps" in c2m.inputs:
+        c2m.inputs["Fill Caps"].default_value = True
+
+    mark_generated = nodes.new("GeometryNodeStoreNamedAttribute")
+    mark_generated.label = intersection_lines._GENERATED_LINE_NODE_LABEL
+    mark_generated.location = (x_offset + 320, -470)
+    mark_generated.data_type = "BOOLEAN"
+    mark_generated.domain = "FACE"
+    mark_generated.inputs["Name"].default_value = intersection_lines.GENERATED_LINE_ATTR
+    mark_generated.inputs["Value"].default_value = True
+    links.new(c2m.outputs["Mesh"], mark_generated.inputs["Geometry"])
+
+    setmat = nodes.new("GeometryNodeSetMaterial")
+    setmat.location = (x_offset + 500, -300)
+    links.new(mark_generated.outputs["Geometry"], setmat.inputs["Geometry"])
+    links.new(gin.outputs[_MATERIAL_SOCKET], setmat.inputs["Material"])
+
+    join = nodes.new("GeometryNodeJoinGeometry")
+    join.location = (x_offset + 800, 0)
+    links.new(gin.outputs["Geometry"], join.inputs["Geometry"])
+    links.new(setmat.outputs["Geometry"], join.inputs["Geometry"])
+    return join
+
+
+def _math(nodes, operation: str, loc, value0=None, value1=None):
+    node = nodes.new("ShaderNodeMath")
+    node.location = loc
+    node.operation = operation
+    if value0 is not None:
+        node.inputs[0].default_value = value0
+    if value1 is not None and len(node.inputs) > 1:
+        node.inputs[1].default_value = value1
+    return node
+
+
+def _add_curve_width_scale(nodes, links, gin, x_offset=0):
+    spline = nodes.new("GeometryNodeSplineParameter")
+    spline.location = (x_offset - 760, 120)
+
+    doubled = _math(nodes, "MULTIPLY", (x_offset - 560, 120), value1=2.0)
+    links.new(spline.outputs["Factor"], doubled.inputs[0])
+    minus_one = _math(nodes, "SUBTRACT", (x_offset - 380, 120), value1=1.0)
+    links.new(doubled.outputs[0], minus_one.inputs[0])
+    abs_mid = _math(nodes, "ABSOLUTE", (x_offset - 200, 120))
+    links.new(minus_one.outputs[0], abs_mid.inputs[0])
+    midpoint = _math(nodes, "SUBTRACT", (x_offset - 20, 120), value0=1.0)
+    links.new(abs_mid.outputs[0], midpoint.inputs[1])
+
+    curved = _add_width_curve(nodes, links, midpoint.outputs[0], gin, x_offset)
+
+    one_minus_curve = _math(nodes, "SUBTRACT", (x_offset + 500, 160), value0=1.0)
+    links.new(curved, one_minus_curve.inputs[1])
+
+    pos_drop = _math(nodes, "MULTIPLY", (x_offset + 700, 180))
+    links.new(one_minus_curve.outputs[0], pos_drop.inputs[0])
+    links.new(gin.outputs[_MIDPOINT_FACTOR_SOCKET], pos_drop.inputs[1])
+    pos_scale = _math(nodes, "SUBTRACT", (x_offset + 900, 180), value0=1.0)
+    links.new(pos_drop.outputs[0], pos_scale.inputs[1])
+
+    abs_factor = _math(nodes, "ABSOLUTE", (x_offset + 500, -20))
+    links.new(gin.outputs[_MIDPOINT_FACTOR_SOCKET], abs_factor.inputs[0])
+    neg_drop = _math(nodes, "MULTIPLY", (x_offset + 700, -20))
+    links.new(curved, neg_drop.inputs[0])
+    links.new(abs_factor.outputs[0], neg_drop.inputs[1])
+    neg_scale = _math(nodes, "SUBTRACT", (x_offset + 900, -20), value0=1.0)
+    links.new(neg_drop.outputs[0], neg_scale.inputs[1])
+
+    positive = nodes.new("FunctionNodeCompare")
+    positive.location = (x_offset + 700, 360)
+    positive.data_type = "FLOAT"
+    positive.operation = "GREATER_EQUAL"
+    positive.inputs[1].default_value = 0.0
+    links.new(gin.outputs[_MIDPOINT_FACTOR_SOCKET], positive.inputs[0])
+
+    scale_switch = nodes.new("GeometryNodeSwitch")
+    scale_switch.location = (x_offset + 1100, 80)
+    scale_switch.input_type = "FLOAT"
+    links.new(positive.outputs[0], scale_switch.inputs["Switch"])
+    links.new(neg_scale.outputs[0], scale_switch.inputs["False"])
+    links.new(pos_scale.outputs[0], scale_switch.inputs["True"])
+
+    clamped_min = _math(nodes, "MAXIMUM", (x_offset + 1300, 80), value1=0.0)
+    links.new(scale_switch.outputs["Output"], clamped_min.inputs[0])
+    clamped_max = _math(nodes, "MINIMUM", (x_offset + 1480, 80), value1=1.0)
+    links.new(clamped_min.outputs[0], clamped_max.inputs[0])
+    return clamped_max.outputs[0]
+
+
+def _add_width_curve(nodes, links, raw_output, gin, x_offset=0):
+    seg0 = _curve_segment(
+        nodes, links, raw_output, None, gin.outputs[_WIDTH_CURVE_25_SOCKET],
+        0.00, 0.25, x_offset, -240,
+    )
+    seg1 = _curve_segment(
+        nodes, links, raw_output, gin.outputs[_WIDTH_CURVE_25_SOCKET],
+        gin.outputs[_WIDTH_CURVE_50_SOCKET], 0.25, 0.50, x_offset, -420,
+    )
+    seg2 = _curve_segment(
+        nodes, links, raw_output, gin.outputs[_WIDTH_CURVE_50_SOCKET],
+        gin.outputs[_WIDTH_CURVE_75_SOCKET], 0.50, 0.75, x_offset, -600,
+    )
+    seg3 = _curve_segment(
+        nodes, links, raw_output, gin.outputs[_WIDTH_CURVE_75_SOCKET],
+        None, 0.75, 1.00, x_offset, -780,
+    )
+
+    le25 = _compare_le(nodes, links, raw_output, 0.25, (x_offset + 280, -220))
+    le50 = _compare_le(nodes, links, raw_output, 0.50, (x_offset + 280, -400))
+    le75 = _compare_le(nodes, links, raw_output, 0.75, (x_offset + 280, -580))
+
+    switch75 = _switch_float(nodes, links, le75, seg2, seg3, (x_offset + 500, -580))
+    switch50 = _switch_float(nodes, links, le50, seg1, switch75, (x_offset + 700, -400))
+    switch25 = _switch_float(nodes, links, le25, seg0, switch50, (x_offset + 900, -220))
+    return switch25
+
+
+def _curve_segment(nodes, links, raw_output, y0_output, y1_output, x0, x1, x_offset, y):
+    sub = _math(nodes, "SUBTRACT", (x_offset - 600, y), value1=x0)
+    links.new(raw_output, sub.inputs[0])
+    div = _math(nodes, "DIVIDE", (x_offset - 420, y), value1=(x1 - x0))
+    links.new(sub.outputs[0], div.inputs[0])
+    y0_value = _value_or_socket(nodes, links, y0_output, x0, (x_offset - 600, y - 80))
+    y1_value = _value_or_socket(nodes, links, y1_output, x1, (x_offset - 600, y - 160))
+    span = _math(nodes, "SUBTRACT", (x_offset - 240, y - 80))
+    links.new(y1_value, span.inputs[0])
+    links.new(y0_value, span.inputs[1])
+    scaled = _math(nodes, "MULTIPLY", (x_offset - 60, y))
+    links.new(div.outputs[0], scaled.inputs[0])
+    links.new(span.outputs[0], scaled.inputs[1])
+    add = _math(nodes, "ADD", (x_offset + 120, y))
+    links.new(y0_value, add.inputs[0])
+    links.new(scaled.outputs[0], add.inputs[1])
+    return add.outputs[0]
+
+
+def _value_or_socket(nodes, links, socket_output, default, loc):
+    if socket_output is not None:
+        return socket_output
+    value = nodes.new("ShaderNodeValue")
+    value.location = loc
+    value.outputs[0].default_value = default
+    return value.outputs[0]
+
+
+def _compare_le(nodes, links, value_output, threshold, loc):
+    node = nodes.new("FunctionNodeCompare")
+    node.location = loc
+    node.data_type = "FLOAT"
+    node.operation = "LESS_EQUAL"
+    node.inputs[1].default_value = threshold
+    links.new(value_output, node.inputs[0])
+    return node.outputs[0]
+
+
+def _switch_float(nodes, links, switch_output, true_output, false_output, loc):
+    node = nodes.new("GeometryNodeSwitch")
+    node.location = loc
+    node.input_type = "FLOAT"
+    links.new(switch_output, node.inputs["Switch"])
+    links.new(false_output, node.inputs["False"])
+    links.new(true_output, node.inputs["True"])
+    return node.outputs["Output"]
 
 
 def _find_interface_socket(tree: bpy.types.NodeTree, name: str):
@@ -210,7 +452,7 @@ def _find_socket_id(tree: bpy.types.NodeTree, name: str) -> str | None:
 
 def _tree_uses_generated_mark(tree: bpy.types.NodeTree) -> bool:
     return any(
-        getattr(node, "label", "") == _SHELL_BOOLEAN_NODE_LABEL
+        getattr(node, "label", "") == intersection_lines._GENERATED_LINE_NODE_LABEL
         for node in tree.nodes
     )
 
@@ -226,13 +468,24 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
             and _find_socket_id(tree, _TARGET_THICKNESS_SOCKET) is not None
             and _find_socket_id(tree, _LINE_MATERIAL_INDEX_SOCKET) is not None
             and _find_socket_id(tree, _HAS_TARGET_SOCKET) is not None
+            and _find_socket_id(tree, _MIDPOINT_FACTOR_SOCKET) is not None
+            and _find_socket_id(tree, _WIDTH_CURVE_25_SOCKET) is not None
+            and _find_socket_id(tree, _WIDTH_CURVE_50_SOCKET) is not None
+            and _find_socket_id(tree, _WIDTH_CURVE_75_SOCKET) is not None
             and any(
                 node.bl_idname == "GeometryNodeMeshBoolean"
                 and getattr(node, "label", "") == _SHELL_BOOLEAN_NODE_LABEL
                 for node in tree.nodes
             )
+            and any(
+                getattr(node, "label", "") == _SHELL_RADIUS_NODE_LABEL
+                for node in tree.nodes
+            )
+            and any(
+                getattr(node, "label", "") == _CURVE_RADIUS_NORMALIZER_LABEL
+                for node in tree.nodes
+            )
             and _tree_uses_generated_mark(tree)
-            and intersection_lines._uses_named_attribute(tree, VG_INTERSECTION_LINE_WIDTH)
         )
         if ok:
             return tree
@@ -260,10 +513,7 @@ def _ensure_material_slot(
 
 
 def _position_modifier(obj: bpy.types.Object, mod: bpy.types.Modifier) -> None:
-    current = list(obj.modifiers).index(mod)
-    target = len(obj.modifiers) - 1
-    if current < target:
-        obj.modifiers.move(current, target)
+    modifier_stack.reorder_line_modifiers(obj)
 
 
 def update_modifier_parameters(
@@ -293,7 +543,34 @@ def update_modifier_parameters(
     sid_has_target = _find_socket_id(tree, _HAS_TARGET_SOCKET)
     if sid_has_target is not None:
         mod[sid_has_target] = bool(modifier_targets(mod))
+    _set_width_control_parameters(mod)
     _set_line_material_index(mod)
+
+
+def _set_width_control_parameters(mod: bpy.types.Modifier) -> None:
+    tree = getattr(mod, "node_group", None)
+    obj = getattr(mod, "id_data", None)
+    settings = getattr(obj, "bmanga_line_settings", None)
+    if tree is None or settings is None:
+        return
+    values = {
+        _MIDPOINT_FACTOR_SOCKET: float(
+            getattr(settings, "intersection_edge_smooth_factor", 0.0)
+        ),
+        _WIDTH_CURVE_25_SOCKET: float(
+            getattr(settings, "intersection_edge_width_curve_25", 0.25)
+        ),
+        _WIDTH_CURVE_50_SOCKET: float(
+            getattr(settings, "intersection_edge_width_curve_50", 0.50)
+        ),
+        _WIDTH_CURVE_75_SOCKET: float(
+            getattr(settings, "intersection_edge_width_curve_75", 0.75)
+        ),
+    }
+    for name, value in values.items():
+        sid = _find_socket_id(tree, name)
+        if sid is not None:
+            mod[sid] = value
 
 
 def _collection_name(obj: bpy.types.Object) -> str:
@@ -364,6 +641,8 @@ def _target_list(
 ) -> list[bpy.types.Object]:
     targets: list[bpy.types.Object] = []
     for candidate in _target_candidates(obj, scene):
+        if not intersection_lines._source_owns_intersection_pair(obj, candidate, scene):
+            continue
         margin = intersection_lines._intersection_margin(obj, candidate, thickness)
         if intersection_lines._bounds_overlap(obj, candidate, margin):
             targets.append(candidate)

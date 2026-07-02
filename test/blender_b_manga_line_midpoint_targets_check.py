@@ -169,6 +169,24 @@ def _assert_generated_target_uses_detection_angle(
     assert _weight(obj, group_name, center) < 0.001
 
 
+def _assert_closed_cylinder_rim_uses_camera_view_endpoints() -> None:
+    bpy.ops.mesh.primitive_cylinder_add(vertices=32, radius=1.0, depth=1.0)
+    obj = bpy.context.object
+    obj.name = "BML_midpoint_closed_rim"
+    settings = obj.bmanga_line_settings
+    settings.inner_edge_smooth_factor = -1.0
+    settings.inner_edge_midpoint_angle = math.radians(60.0)
+
+    vertex_analysis.compute_and_apply_weights(obj, settings, "inner")
+    top_vertices = [v for v in obj.data.vertices if v.co.z > 0.49]
+    assert top_vertices, "円柱上面の頂点がありません"
+    x_endpoint = max(top_vertices, key=lambda v: abs(v.co.x)).index
+    y_midpoint = max(top_vertices, key=lambda v: abs(v.co.y)).index
+
+    assert _weight(obj, core.VG_INNER_LINE_WIDTH, x_endpoint) > 0.95
+    assert _weight(obj, core.VG_INNER_LINE_WIDTH, y_midpoint) < 0.05
+
+
 def main() -> None:
     b_manga_line.register()
     _clear_scene()
@@ -193,6 +211,7 @@ def main() -> None:
         "intersection_edge_smooth_factor",
         "intersection_edge_midpoint_angle",
     )
+    _assert_closed_cylinder_rim_uses_camera_view_endpoints()
 
     print("[PASS] midpoint width settings are independent per line type")
 

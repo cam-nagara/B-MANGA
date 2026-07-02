@@ -169,8 +169,8 @@ def _assert_shell_contact_line_appears() -> None:
     max_z = max(co.z for co in coords)
     assert min_x < -0.45 and max_x > 0.45, (min_x, max_x)
     assert min_y < -0.45 and max_y > 0.45, (min_y, max_y)
-    assert -0.08 < min_z < 0.08, (min_z, max_z)
-    assert -0.08 < max_z < 0.08, (min_z, max_z)
+    assert -0.08 < min_z < 0.10, (min_z, max_z)
+    assert -0.08 < max_z < 0.12, (min_z, max_z)
 
 
 def _assert_non_intersecting_shell_stays_clean() -> None:
@@ -187,10 +187,97 @@ def _assert_non_intersecting_shell_stays_clean() -> None:
     assert not coords, f"離れたメッシュに交差線素材が出ています: {len(coords)}"
 
 
+def _z_span(coords: list) -> float:
+    if not coords:
+        return 0.0
+    values = [co.z for co in coords]
+    return max(values) - min(values)
+
+
+def _high_z_count(coords: list, threshold: float) -> int:
+    return sum(1 for co in coords if abs(co.z) > threshold)
+
+
+def _assert_shell_width_controls_affect_generated_mesh() -> None:
+    _clear_scene()
+    surface = _make_surface_material("BML_shell_width_surface")
+    slab = _make_source_slab(surface)
+    cylinder = _make_contact_cylinder(surface)
+    cylinder.bmanga_line_settings.intersection_edge_smooth_factor = 0.0
+    _select([slab, cylinder])
+    bpy.context.view_layer.objects.active = cylinder
+
+    assert presets.apply_line_settings(slab, bpy.context, refresh_scene=False)
+    assert presets.apply_line_settings(cylinder, bpy.context, refresh_scene=False)
+    intersection_lines.refresh_scene_intersections(bpy.context.scene)
+
+    base_coords = _intersection_material_vertices(cylinder)
+    assert _z_span(base_coords) > 0.04, _z_span(base_coords)
+    base_high = _high_z_count(base_coords, 0.015)
+
+    intersection_lines.update_parameters(cylinder, thickness=0.08)
+    cylinder.update_tag()
+    bpy.context.view_layer.update()
+    thick_coords = _intersection_material_vertices(cylinder)
+    assert _z_span(thick_coords) > _z_span(base_coords) * 2.0, (
+        _z_span(base_coords),
+        _z_span(thick_coords),
+    )
+
+    cylinder.bmanga_line_settings.intersection_edge_smooth_factor = -1.0
+    intersection_lines.update_parameters(cylinder)
+    cylinder.update_tag()
+    bpy.context.view_layer.update()
+    tapered_coords = _intersection_material_vertices(cylinder)
+    tapered_high = _high_z_count(tapered_coords, 0.015)
+    assert tapered_high < base_high, (base_high, tapered_high)
+
+
+def _assert_stale_shell_tree_is_rebuilt() -> None:
+    old = bpy.data.node_groups.get(intersection_shell.SHELL_TREE_NAME)
+    if old is not None:
+        bpy.data.node_groups.remove(old)
+    stale = bpy.data.node_groups.new(
+        name=intersection_shell.SHELL_TREE_NAME,
+        type="GeometryNodeTree",
+    )
+    for name, socket_type in (
+        ("Geometry", "NodeSocketGeometry"),
+        ("線の太さ", "NodeSocketFloat"),
+        ("オフセット", "NodeSocketFloat"),
+        ("マテリアル", "NodeSocketMaterial"),
+        ("交差対象グループ", "NodeSocketCollection"),
+        ("交差対象の線幅", "NodeSocketFloat"),
+        ("ライン素材番号", "NodeSocketInt"),
+        ("交差対象あり", "NodeSocketBool"),
+        ("中間頂点の線幅調整", "NodeSocketFloat"),
+        ("変化グラフ 25%", "NodeSocketFloat"),
+        ("変化グラフ 50%", "NodeSocketFloat"),
+        ("変化グラフ 75%", "NodeSocketFloat"),
+    ):
+        stale.interface.new_socket(name=name, in_out="INPUT", socket_type=socket_type)
+    stale.interface.new_socket(
+        name="Geometry",
+        in_out="OUTPUT",
+        socket_type="NodeSocketGeometry",
+    )
+    boolean = stale.nodes.new("GeometryNodeMeshBoolean")
+    boolean.label = "BML_IntersectionShellBoolean"
+    radius = stale.nodes.new("ShaderNodeMath")
+    radius.label = "BML_IntersectionShellOwnRadius"
+    normalizer = stale.nodes.new("GeometryNodeSetCurveRadius")
+    normalizer.label = "BML_IntersectionShellCurveRadius"
+
+    rebuilt = intersection_shell._get_or_create_tree()
+    assert rebuilt != stale
+    assert intersection_shell._tree_uses_generated_mark(rebuilt)
+
+
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     b_manga_line.register()
     try:
+        _assert_stale_shell_tree_is_rebuilt()
         _clear_scene()
         objects = [
             _make_cube("BML_shell_intersection_A", (-0.25, 0.0, 0.0)),
@@ -222,10 +309,14 @@ def main() -> None:
         finally:
             intersection_lines._auto_targets = real_auto_targets
 
-        assert set(refreshed) == set(objects), [obj.name for obj in refreshed]
+        assert refreshed, "交差線モディファイアが作成されていません"
+        owned_pairs = set()
+        total_vertices = 0
         for obj in objects:
             mods = list(core.iter_intersection_modifiers(obj))
-            assert len(mods) == 1, (obj.name, [mod.name for mod in mods])
+            assert len(mods) <= 1, (obj.name, [mod.name for mod in mods])
+            if not mods:
+                continue
             mod = mods[0]
             assert mod.name == intersection_shell.SHELL_MODIFIER_NAME
             assert mod.node_group is not None
@@ -238,20 +329,23 @@ def main() -> None:
                 and getattr(node, "label", "") == "BML_IntersectionShellBoolean"
                 for node in mod.node_group.nodes
             )
-            assert intersection_lines._uses_named_attribute(
-                mod.node_group,
-                core.VG_INTERSECTION_LINE_WIDTH,
-            )
             assert intersection_lines._modifier_target(mod) is None
             targets = intersection_shell.modifier_targets(mod)
             assert obj not in targets
-            assert len(targets) == len(objects) - 1
+            assert targets, obj.name
+            for target in targets:
+                pair = tuple(sorted((obj.name, target.name)))
+                assert pair not in owned_pairs, f"交差ペアが二重生成されています: {pair}"
+                owned_pairs.add(pair)
             assert mod.show_viewport
             assert mod.show_render
             assert not intersection_lines.is_deferred_viewport_modifier(mod)
             assert _intersection_material_polygons(obj) > 0
+            total_vertices += len(_intersection_material_vertices(obj))
+        assert len(owned_pairs) == 3, owned_pairs
+        assert total_vertices > 0
 
-        source = objects[0]
+        source = next(obj for obj in objects if list(core.iter_intersection_modifiers(obj)))
         mod = next(core.iter_intersection_modifiers(source))
         mat = outline_setup.get_line_material(source, "intersection")
         intersection_lines.update_parameters(
@@ -266,6 +360,7 @@ def main() -> None:
 
         _assert_shell_contact_line_appears()
         _assert_non_intersecting_shell_stays_clean()
+        _assert_shell_width_controls_affect_generated_mesh()
 
         print("[PASS] default shell intersection lines work without precise pair generation")
     finally:
