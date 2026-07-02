@@ -50,9 +50,14 @@ def draw(context, work, region, rv3d) -> None:
     wm = getattr(context, "window_manager", None)
     if wm is None:
         return
+    kind = getattr(wm, "bmanga_edge_select_kind", "none") if active_coma_selection else "none"
+    active_page_index = int(getattr(wm, "bmanga_edge_select_page", -1)) if kind in {"edge", "border", "vertex"} else -1
+    active_coma_index = int(getattr(wm, "bmanga_edge_select_coma", -1)) if kind in {"edge", "border", "vertex"} else -1
     pointer = edge_selection.get_overlay_pointer(context)
     shader = gpu.shader.from_builtin("UNIFORM_COLOR")
     for page_index, page, _coma_index, panel in selected_refs:
+        if page_index == active_page_index and _coma_index == active_coma_index:
+            continue
         if not overlay_visibility.page_visible(page) or not overlay_visibility.coma_visible(panel):
             continue
         poly = _coma_polygon(panel)
@@ -65,7 +70,6 @@ def draw(context, work, region, rv3d) -> None:
             _draw_edge(shader, region, rv3d, display_poly, edge_index, pointer=pointer)
     if not active_coma_selection:
         return
-    kind = getattr(wm, "bmanga_edge_select_kind", "none")
     if kind not in {"edge", "border", "vertex"}:
         return
     page_index = int(getattr(wm, "bmanga_edge_select_page", -1))
@@ -85,21 +89,22 @@ def draw(context, work, region, rv3d) -> None:
         return
     ox, oy = _page_offset(context, work, page_index)
     world_poly = [(x + ox, y + oy) for x, y in poly]
+    display_poly = _expanded_poly_for_selection(world_poly, _SELECTION_OUTSET_MM)
 
     if kind == "edge":
         edge_index = int(getattr(wm, "bmanga_edge_select_edge", -1))
         # 選択辺だけハイライト + ▲ ハンドル
-        _draw_edge(shader, region, rv3d, world_poly, edge_index, pointer=pointer)
+        _draw_edge(shader, region, rv3d, display_poly, edge_index, pointer=pointer)
         # 他 3 辺の ▲ ハンドルもクリック可能なので、 マーカーだけ描画する
         # (辺ハイライトは行わない、 ▲ のみ)。 これにより kind="edge" のまま
         # でも連続して別辺の ▲ をクリックできる UI を提供する。
-        for other in range(len(world_poly)):
+        for other in range(len(display_poly)):
             if other == edge_index:
                 continue
-            _draw_edge_handles_only(shader, region, rv3d, world_poly, other, pointer=pointer)
+            _draw_edge_handles_only(shader, region, rv3d, display_poly, other, pointer=pointer)
     elif kind == "border":
-        for edge_index in range(len(world_poly)):
-            _draw_edge(shader, region, rv3d, world_poly, edge_index, pointer=pointer)
+        for edge_index in range(len(display_poly)):
+            _draw_edge(shader, region, rv3d, display_poly, edge_index, pointer=pointer)
     elif kind == "vertex":
         vertex_index = int(getattr(wm, "bmanga_edge_select_vertex", -1))
         selected_vertices = edge_selection.selected_vertices(
@@ -110,10 +115,10 @@ def draw(context, work, region, rv3d) -> None:
         if not selected_vertices and vertex_index >= 0:
             selected_vertices = {vertex_index}
         for vi in sorted(selected_vertices):
-            _draw_vertex(shader, region, rv3d, world_poly, vi, pointer=pointer)
+            _draw_vertex(shader, region, rv3d, display_poly, vi, pointer=pointer)
         # vertex 選択中も全辺の ▲ を表示 (連続 ▲ クリック対応)
-        for edge_index in range(len(world_poly)):
-            _draw_edge_handles_only(shader, region, rv3d, world_poly, edge_index, pointer=pointer)
+        for edge_index in range(len(display_poly)):
+            _draw_edge_handles_only(shader, region, rv3d, display_poly, edge_index, pointer=pointer)
 
 
 def _page_offset(context, work, page_index: int) -> tuple[float, float]:

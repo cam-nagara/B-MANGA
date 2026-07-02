@@ -3,6 +3,31 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-02 — コマ選択ハンドルを外側だけ表示 (B-MANGA v0.6.432)
+
+### 症状
+
+- コマを選択した時、対象に沿った内側の操作枠と、一回り外側の操作枠が同時に表示され、ハンドルが二重に見えていた。
+
+### 原因
+
+- コマ選択の表示で、通常の選択表示と現在操作中のコマ表示が同じコマをそれぞれ描画していた。
+- 現在操作中のコマ表示だけ、元のコマ境界に沿った内側の枠を使っていた。
+
+### 修正
+
+- 現在操作中のコマは通常の選択表示側では描かず、操作中の表示だけに一本化した。
+- 操作中の表示も一回り外側の枠を使うようにし、内側のハンドルが出ないようにした。
+- 選択ハンドルの描画テストに、外側4辺だけが描かれる確認を追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile ui\overlay_coma_selection.py test\blender_coma_edge_highlight_check.py`
+- `git diff --check -- ui\overlay_coma_selection.py test\blender_coma_edge_highlight_check.py CHANGELOG.md __init__.py blender_manifest.toml`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python-exit-code 1 --python test\blender_coma_edge_highlight_check.py`
+
+---
+
 ## 2026-07-02 — B-MANGA Lineの高速交差線をライン素材厚み基準へ修正 (B-MANGA v0.6.431 / B-MANGA Line v0.3.70)
 
 ### 症状
