@@ -3,6 +3,37 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-02 — B-MANGA Line保存時の自動スムーズ復旧 (B-MANGA Line v0.3.72)
+
+### 症状
+
+- .blend保存の瞬間に、「自動スムーズ」が壊れて赤い状態になり、意図した自動スムーズ表示ではなくなる場合があった。
+
+### 原因
+
+- B-MANGA Line側には保存時に自動スムーズの状態を保護する処理がなく、特定のファイル状態で自動スムーズの参照が外れた場合に、そのまま壊れた状態が残り得た。
+- 自動スムーズの参照が外れた時点で角度入力が既定値へ戻る場合があり、壊れた後からでは元の角度を復元できない可能性があった。
+
+### 修正
+
+- 保存前、保存後、読み込み後に自動スムーズを確認し、壊れている場合は自動復旧するようにした。
+- 正常な自動スムーズの角度と設定をオブジェクト側にも控え、参照が外れても元の角度で復旧できるようにした。
+- アウトライン、内部線、交差線と自動スムーズを併用した状態で、壊れた状態から保存しても開き直し後に復旧していることを確認する実機テストを追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m compileall -q addons\b_manga_line test\blender_b_manga_line_auto_smooth_save_guard_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python-exit-code 1 --python test\blender_b_manga_line_auto_smooth_save_guard_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python-exit-code 1 --python test\blender_b_manga_line_register_reenable_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python-exit-code 1 --python test\blender_b_manga_line_intersection_shell_method_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python-exit-code 1 --python test\blender_b_manga_line_midpoint_targets_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python-exit-code 1 --python test\blender_b_manga_line_generated_update_scope_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python-exit-code 1 --python test\blender_b_manga_line_toggle_matrix_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python-exit-code 1 --python test\blender_b_manga_line_control_update_scope_check.py`
+- 目視確認: `_verify\b_manga_line_auto_smooth_save_guard\auto_smooth_save_guard.png` で、保存・開き直し後も円柱側面の自動スムーズ表示が維持されることを確認。
+
+---
+
 ## 2026-07-02 — B-MANGA Line交差線の線幅反映を徹底チェック (B-MANGA Line v0.3.71)
 
 ### 症状
