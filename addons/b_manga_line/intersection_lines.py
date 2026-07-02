@@ -3,9 +3,9 @@
 3 つの作成方式を提供する:
 
 ライン素材方式:
-  交差相手を探さず、各オブジェクト自身のライン幅ぶんのシェルを
-  線色で生成する。ラインを持つオブジェクト同士が重なったとき、
-  シェル同士の重なりが交差線として見える。
+  ライン適用済みの他メッシュを参照用オブジェクトとしてまとめ、
+  個別ペアのモディファイアを作らずに交差境界をチューブ化する。
+  参照側を線幅ぶん広げるため、接しているだけの箇所にも線を作る。
 
 Boolean 法:
   Mesh Boolean (Exact) の Intersecting Edges 出力で
@@ -1282,6 +1282,7 @@ def apply_intersection_lines(
             thickness,
             offset,
             material,
+            scene,
         )
 
     if material is not None:
@@ -1306,6 +1307,10 @@ def apply_intersection_lines(
         expected_names = {_modifier_name_for_target(item) for item in targets}
     for mod in list(iter_intersection_modifiers(obj)):
         if mod.name not in expected_names:
+            if _is_shell_modifier(mod):
+                from . import intersection_shell
+
+                intersection_shell.cleanup_target_collection(obj)
             obj.modifiers.remove(mod)
 
     if use_grouped:
@@ -1334,6 +1339,10 @@ def remove_intersection_lines(obj: bpy.types.Object) -> bool:
         item = (obj.name_full, mod.name)
         while item in _deferred_viewport_queue:
             _deferred_viewport_queue.remove(item)
+        if _is_shell_modifier(mod):
+            from . import intersection_shell
+
+            intersection_shell.cleanup_target_collection(obj)
         obj.modifiers.remove(mod)
         removed = True
     return removed
@@ -1386,6 +1395,16 @@ def prune_excluded_intersections(scene: bpy.types.Scene | None) -> int:
                         plane_filter,
                     )
                     removed += 1
+                continue
+            if _is_shell_modifier(mod):
+                from . import intersection_shell
+
+                if source_excluded:
+                    intersection_shell.cleanup_target_collection(obj)
+                    obj.modifiers.remove(mod)
+                    removed += 1
+                else:
+                    intersection_shell.refresh_target_collection(obj, scene)
                 continue
             target = _modifier_target(mod)
             target_settings = getattr(target, "bmanga_line_settings", None)
@@ -1452,6 +1471,20 @@ def update_target_width_references(
         if obj.type != "MESH":
             continue
         for mod in iter_intersection_modifiers(obj):
+            if _is_shell_modifier(mod):
+                from . import intersection_shell
+
+                collection = intersection_shell._modifier_target_collection(mod)
+                collection_targets = intersection_shell.collection_real_targets(collection)
+                if target_set is not None and collection is not None:
+                    if not any(
+                        item.as_pointer() in target_set
+                        for item in collection_targets
+                    ):
+                        continue
+                if intersection_shell.update_target_width_reference(mod):
+                    changed += 1
+                continue
             if _is_grouped_modifier(mod):
                 collection_targets = _multi_modifier_targets(mod)
                 if not collection_targets:

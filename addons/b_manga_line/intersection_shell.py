@@ -1,18 +1,17 @@
-"""B-MANGA Line natural intersection shell.
+"""B-MANGA Line fast material-style intersection lines.
 
-交差相手を探さず、各オブジェクト自身のライン幅ぶんのシェルを作る。
-ラインを持つオブジェクト同士が重なったとき、シェル同士の重なりが
-交差線として見えるようにする軽量方式。
+ライン適用済みの他メッシュを軽量な参照用オブジェクトとしてまとめ、
+個別ペアのモディファイアを作らずに交差境界をチューブ化する。
 """
 
 from __future__ import annotations
 
 import bpy
 
+from . import intersection_lines, scale_utils
 from .core import (
-    GENERATED_LINE_ATTR,
     INTERSECTION_MODIFIER_PREFIX,
-    MATERIAL_NAME,
+    MODIFIER_NAME,
     VG_INTERSECTION_LINE_WIDTH,
 )
 
@@ -22,8 +21,14 @@ SHELL_MODIFIER_NAME = f"{INTERSECTION_MODIFIER_PREFIX}Shell"
 _THICKNESS_SOCKET = "線の太さ"
 _OFFSET_SOCKET = "オフセット"
 _MATERIAL_SOCKET = "マテリアル"
-_LINE_MATERIAL_INDEX_SOCKET = "ライン素材番号"
+_TARGET_COLLECTION_SOCKET = "交差対象グループ"
+_TARGET_THICKNESS_SOCKET = "交差対象の線幅"
 _GENERATED_LINE_NODE_LABEL = "BML_GeneratedLineMark"
+_TARGET_COLLECTION_PROP = "bml_intersection_shell_target_collection"
+_TARGET_COLLECTION_PREFIX = "BML_IntersectionTargets"
+_PROXY_OBJECT_PROP = "bml_intersection_shell_proxy"
+_PROXY_SOURCE_PROP = "bml_intersection_shell_proxy_source"
+_PROXY_PREFIX = "BML_IntersectionProxy"
 
 
 def is_shell_modifier(mod: bpy.types.Modifier) -> bool:
@@ -66,13 +71,19 @@ def _setup_interface(tree: bpy.types.NodeTree) -> None:
         in_out="INPUT",
         socket_type="NodeSocketMaterial",
     )
-    index_sock = tree.interface.new_socket(
-        name=_LINE_MATERIAL_INDEX_SOCKET,
+    tree.interface.new_socket(
+        name=_TARGET_COLLECTION_SOCKET,
         in_out="INPUT",
-        socket_type="NodeSocketInt",
+        socket_type="NodeSocketCollection",
     )
-    index_sock.default_value = 999
-    index_sock.min_value = 0
+    target_radius_sock = tree.interface.new_socket(
+        name=_TARGET_THICKNESS_SOCKET,
+        in_out="INPUT",
+        socket_type="NodeSocketFloat",
+    )
+    target_radius_sock.default_value = 0.0
+    target_radius_sock.min_value = 0.0
+    target_radius_sock.max_value = 1.0
 
 
 def _create_node_tree() -> bpy.types.NodeTree:
@@ -82,129 +93,84 @@ def _create_node_tree() -> bpy.types.NodeTree:
     links = tree.links
 
     gin = nodes.new("NodeGroupInput")
-    gin.location = (-1100, 0)
+    gin.location = (-1500, 0)
     gout = nodes.new("NodeGroupOutput")
-    gout.location = (900, 0)
+    gout.location = (1400, 0)
 
-    mat_idx = nodes.new("GeometryNodeInputMaterialIndex")
-    mat_idx.location = (-1050, -420)
+    source_geo = intersection_lines._add_shell_strip_nodes(nodes, links, gin)
 
-    is_line_material = nodes.new("FunctionNodeCompare")
-    is_line_material.location = (-850, -420)
-    is_line_material.data_type = "INT"
-    is_line_material.operation = "GREATER_EQUAL"
-    links.new(mat_idx.outputs[0], is_line_material.inputs[2])
-    links.new(gin.outputs[_LINE_MATERIAL_INDEX_SOCKET], is_line_material.inputs[3])
+    collection_info = nodes.new("GeometryNodeCollectionInfo")
+    collection_info.location = (-1200, -560)
+    collection_info.inputs["Separate Children"].default_value = True
+    collection_info.inputs["Reset Children"].default_value = False
+    links.new(gin.outputs[_TARGET_COLLECTION_SOCKET], collection_info.inputs["Collection"])
 
-    generated_attr = nodes.new("GeometryNodeInputNamedAttribute")
-    generated_attr.location = (-850, -600)
-    generated_attr.data_type = "BOOLEAN"
-    generated_attr.inputs["Name"].default_value = GENERATED_LINE_ATTR
+    realize = nodes.new("GeometryNodeRealizeInstances")
+    realize.location = (-1000, -560)
+    links.new(collection_info.outputs["Instances"], realize.inputs["Geometry"])
 
-    generated_marked = nodes.new("FunctionNodeBooleanMath")
-    generated_marked.location = (-650, -600)
-    generated_marked.operation = "AND"
-    links.new(generated_attr.outputs["Exists"], generated_marked.inputs[0])
-    links.new(generated_attr.outputs["Attribute"], generated_marked.inputs[1])
+    target_geo = intersection_lines._add_target_solidify(
+        nodes, links, realize.outputs["Geometry"], 0.0001, (-760, -560),
+    )
+    expanded_target = _add_target_expansion(nodes, links, target_geo, gin, (-360, -560))
+    has_line_faces = intersection_lines._add_target_has_line_faces(
+        nodes, links, expanded_target, (-160, -580),
+    )
+    radius = intersection_lines._add_effective_radius(
+        nodes, links, gin, has_line_faces, (280, -820),
+    )
 
-    delete_selection = nodes.new("FunctionNodeBooleanMath")
-    delete_selection.location = (-650, -460)
-    delete_selection.operation = "OR"
-    links.new(is_line_material.outputs[0], delete_selection.inputs[0])
-    links.new(generated_marked.outputs[0], delete_selection.inputs[1])
+    boolean = nodes.new("GeometryNodeMeshBoolean")
+    boolean.location = (-160, -160)
+    boolean.operation = "DIFFERENCE"
+    boolean.solver = "EXACT"
+    links.new(source_geo.outputs["Geometry"], boolean.inputs["Mesh 1"])
+    links.new(expanded_target, boolean.inputs["Mesh 2"])
 
-    del_line = nodes.new("GeometryNodeDeleteGeometry")
-    del_line.location = (-450, -360)
-    del_line.domain = "FACE"
-    links.new(gin.outputs[0], del_line.inputs["Geometry"])
-    links.new(delete_selection.outputs[0], del_line.inputs["Selection"])
+    separate = nodes.new("GeometryNodeSeparateGeometry")
+    separate.location = (80, -160)
+    separate.domain = "EDGE"
+    links.new(boolean.outputs["Mesh"], separate.inputs["Geometry"])
+    links.new(boolean.outputs["Intersecting Edges"], separate.inputs["Selection"])
 
-    width_attr = nodes.new("GeometryNodeInputNamedAttribute")
-    width_attr.location = (-650, 160)
-    width_attr.data_type = "FLOAT"
-    width_attr.inputs["Name"].default_value = VG_INTERSECTION_LINE_WIDTH
+    m2c = nodes.new("GeometryNodeMeshToCurve")
+    m2c.location = (300, -160)
+    links.new(separate.outputs["Selection"], m2c.inputs["Mesh"])
 
-    width_switch = nodes.new("GeometryNodeSwitch")
-    width_switch.location = (-450, 160)
-    width_switch.input_type = "FLOAT"
-    width_switch.inputs["False"].default_value = 1.0
-    links.new(width_attr.outputs["Exists"], width_switch.inputs["Switch"])
-    links.new(width_attr.outputs["Attribute"], width_switch.inputs["True"])
-
-    width_min = nodes.new("ShaderNodeMath")
-    width_min.location = (-260, 160)
-    width_min.operation = "MAXIMUM"
-    width_min.inputs[1].default_value = 0.0
-    links.new(width_switch.outputs["Output"], width_min.inputs[0])
-
-    width_max = nodes.new("ShaderNodeMath")
-    width_max.location = (-80, 160)
-    width_max.operation = "MINIMUM"
-    width_max.inputs[1].default_value = 1.0
-    links.new(width_min.outputs[0], width_max.inputs[0])
-
-    offset_plus = nodes.new("ShaderNodeMath")
-    offset_plus.location = (-450, -80)
-    offset_plus.operation = "ADD"
-    offset_plus.inputs[1].default_value = 1.0
-    links.new(gin.outputs[_OFFSET_SOCKET], offset_plus.inputs[0])
-
-    offset_min = nodes.new("ShaderNodeMath")
-    offset_min.location = (-260, -80)
-    offset_min.operation = "MAXIMUM"
-    offset_min.inputs[1].default_value = 0.0
-    links.new(offset_plus.outputs[0], offset_min.inputs[0])
-
-    radius = nodes.new("ShaderNodeMath")
-    radius.location = (-80, -80)
-    radius.operation = "MULTIPLY"
-    links.new(gin.outputs[_THICKNESS_SOCKET], radius.inputs[0])
-    links.new(offset_min.outputs[0], radius.inputs[1])
-
-    radius_weighted = nodes.new("ShaderNodeMath")
-    radius_weighted.location = (100, 20)
-    radius_weighted.operation = "MULTIPLY"
-    links.new(radius.outputs[0], radius_weighted.inputs[0])
-    links.new(width_max.outputs[0], radius_weighted.inputs[1])
-
-    normal = nodes.new("GeometryNodeInputNormal")
-    normal.location = (-260, -240)
-
-    offset_vector = nodes.new("ShaderNodeVectorMath")
-    offset_vector.location = (100, -200)
-    offset_vector.operation = "SCALE"
-    links.new(normal.outputs[0], offset_vector.inputs[0])
-    links.new(radius_weighted.outputs[0], _vector_scale_input(offset_vector))
-
-    set_position = nodes.new("GeometryNodeSetPosition")
-    set_position.location = (300, -160)
-    links.new(del_line.outputs["Geometry"], set_position.inputs["Geometry"])
-    links.new(offset_vector.outputs[0], set_position.inputs["Offset"])
-
-    flip = nodes.new("GeometryNodeFlipFaces")
-    flip.location = (480, -160)
-    links.new(set_position.outputs["Geometry"], flip.inputs["Mesh"])
-
-    setmat = nodes.new("GeometryNodeSetMaterial")
-    setmat.location = (650, -160)
-    links.new(flip.outputs["Mesh"], setmat.inputs["Geometry"])
-    links.new(gin.outputs[_MATERIAL_SOCKET], setmat.inputs["Material"])
-
-    mark_generated = nodes.new("GeometryNodeStoreNamedAttribute")
-    mark_generated.label = _GENERATED_LINE_NODE_LABEL
-    mark_generated.location = (650, -360)
-    mark_generated.data_type = "BOOLEAN"
-    mark_generated.domain = "FACE"
-    mark_generated.inputs["Name"].default_value = GENERATED_LINE_ATTR
-    mark_generated.inputs["Value"].default_value = True
-    links.new(setmat.outputs["Geometry"], mark_generated.inputs["Geometry"])
-
-    join = nodes.new("GeometryNodeJoinGeometry")
-    join.location = (780, 0)
-    links.new(gin.outputs[0], join.inputs[0])
-    links.new(mark_generated.outputs["Geometry"], join.inputs[0])
+    join = intersection_lines._add_tube_nodes(
+        nodes, links, m2c.outputs["Curve"], gin, radius, x_offset=520,
+    )
     links.new(join.outputs[0], gout.inputs[0])
     return tree
+
+
+def _add_target_expansion(nodes, links, target_geo, gin, loc):
+    target_half = nodes.new("ShaderNodeMath")
+    target_half.location = (loc[0] - 220, loc[1] + 160)
+    target_half.operation = "MULTIPLY"
+    target_half.inputs[1].default_value = 0.5
+    links.new(gin.outputs[_TARGET_THICKNESS_SOCKET], target_half.inputs[0])
+
+    expand_radius = nodes.new("ShaderNodeMath")
+    expand_radius.location = (loc[0], loc[1] + 160)
+    expand_radius.operation = "MAXIMUM"
+    links.new(gin.outputs[_THICKNESS_SOCKET], expand_radius.inputs[0])
+    links.new(target_half.outputs[0], expand_radius.inputs[1])
+
+    normal = nodes.new("GeometryNodeInputNormal")
+    normal.location = (loc[0] - 220, loc[1])
+
+    offset_vector = nodes.new("ShaderNodeVectorMath")
+    offset_vector.location = (loc[0], loc[1])
+    offset_vector.operation = "SCALE"
+    links.new(normal.outputs[0], offset_vector.inputs[0])
+    links.new(expand_radius.outputs[0], _vector_scale_input(offset_vector))
+
+    set_position = nodes.new("GeometryNodeSetPosition")
+    set_position.location = (loc[0] + 240, loc[1])
+    links.new(target_geo, set_position.inputs["Geometry"])
+    links.new(offset_vector.outputs[0], set_position.inputs["Offset"])
+    return set_position.outputs["Geometry"]
 
 
 def _find_interface_socket(tree: bpy.types.NodeTree, name: str):
@@ -233,21 +199,16 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
             _find_socket_id(tree, _THICKNESS_SOCKET) is not None
             and _find_socket_id(tree, _OFFSET_SOCKET) is not None
             and _find_socket_id(tree, _MATERIAL_SOCKET) is not None
-            and _find_socket_id(tree, _LINE_MATERIAL_INDEX_SOCKET) is not None
-            and any(node.bl_idname == "GeometryNodeFlipFaces" for node in tree.nodes)
+            and _find_socket_id(tree, _TARGET_COLLECTION_SOCKET) is not None
+            and _find_socket_id(tree, _TARGET_THICKNESS_SOCKET) is not None
+            and any(node.bl_idname == "GeometryNodeMeshBoolean" for node in tree.nodes)
             and _tree_uses_generated_mark(tree)
+            and intersection_lines._uses_named_attribute(tree, VG_INTERSECTION_LINE_WIDTH)
         )
         if ok:
             return tree
         bpy.data.node_groups.remove(tree)
     return _create_node_tree()
-
-
-def _line_material_index(obj: bpy.types.Object) -> int:
-    for index, mat in enumerate(obj.data.materials):
-        if mat is not None and mat.name.startswith(MATERIAL_NAME):
-            return index
-    return 999
 
 
 def _ensure_surface_slot(obj: bpy.types.Object) -> None:
@@ -297,9 +258,218 @@ def update_modifier_parameters(
     sid_material = _find_socket_id(tree, _MATERIAL_SOCKET)
     if sid_material is not None and material is not None:
         mod[sid_material] = material
-    sid_line_material = _find_socket_id(tree, _LINE_MATERIAL_INDEX_SOCKET)
-    if sid_line_material is not None:
-        mod[sid_line_material] = _line_material_index(obj)
+    collection = _modifier_target_collection(mod)
+    sid_target_thickness = _find_socket_id(tree, _TARGET_THICKNESS_SOCKET)
+    if sid_target_thickness is not None and collection is not None:
+        mod[sid_target_thickness] = _max_target_thickness(obj, list(collection.objects))
+
+
+def _collection_name(obj: bpy.types.Object) -> str:
+    saved = str(obj.get(_TARGET_COLLECTION_PROP, "") or "")
+    if saved:
+        return saved
+    raw = obj.name_full or obj.name or "Object"
+    cleaned = "".join(ch if ch.isalnum() else "_" for ch in raw).strip("_") or "Object"
+    return f"{_TARGET_COLLECTION_PREFIX}_{cleaned[:48]}_{obj.as_pointer():x}"
+
+
+def _get_or_create_target_collection(obj: bpy.types.Object) -> bpy.types.Collection:
+    name = _collection_name(obj)
+    collection = bpy.data.collections.get(name)
+    if collection is None:
+        collection = bpy.data.collections.new(name)
+    obj[_TARGET_COLLECTION_PROP] = collection.name
+    return collection
+
+
+def _iter_source_scenes(
+    obj: bpy.types.Object,
+    scene: bpy.types.Scene | None,
+) -> list[bpy.types.Scene]:
+    scenes: list[bpy.types.Scene] = []
+    if scene is not None:
+        scenes.append(scene)
+    for item in getattr(obj, "users_scene", ()) or ():
+        if item is not None and item not in scenes:
+            scenes.append(item)
+    return scenes
+
+
+def _target_candidates(
+    obj: bpy.types.Object,
+    scene: bpy.types.Scene | None,
+) -> list[bpy.types.Object]:
+    from . import camera_comp, plane_filter
+
+    targets: list[bpy.types.Object] = []
+    for src_scene in _iter_source_scenes(obj, scene):
+        for candidate in src_scene.objects:
+            if candidate == obj or candidate.type != "MESH" or candidate.data is None:
+                continue
+            if bool(candidate.get(_PROXY_SOURCE_PROP, "")):
+                continue
+            if not getattr(candidate.data, "polygons", None):
+                continue
+            if candidate.modifiers.get(MODIFIER_NAME) is None:
+                continue
+            settings = getattr(candidate, "bmanga_line_settings", None)
+            if plane_filter.should_exclude_generated_lines(candidate, settings):
+                continue
+            if not camera_comp.intersection_line_creation_in_range(
+                candidate, src_scene, settings,
+            ):
+                continue
+            if candidate not in targets:
+                targets.append(candidate)
+    targets.sort(key=lambda item: item.name_full)
+    return targets
+
+
+def _sync_target_collection(
+    obj: bpy.types.Object,
+    scene: bpy.types.Scene | None,
+) -> tuple[bpy.types.Collection, list[bpy.types.Object]]:
+    collection = _get_or_create_target_collection(obj)
+    targets = _target_candidates(obj, scene)
+    proxies = [_get_or_create_proxy(target) for target in targets]
+    proxy_set = set(proxies)
+    for item in list(collection.objects):
+        if item not in proxy_set:
+            collection.objects.unlink(item)
+    for item in proxies:
+        if item.name not in collection.objects:
+            collection.objects.link(item)
+    return collection, targets
+
+
+def _proxy_name(obj: bpy.types.Object) -> str:
+    saved = str(obj.get(_PROXY_OBJECT_PROP, "") or "")
+    if saved:
+        return saved
+    raw = obj.name_full or obj.name or "Object"
+    cleaned = "".join(ch if ch.isalnum() else "_" for ch in raw).strip("_") or "Object"
+    return f"{_PROXY_PREFIX}_{cleaned[:48]}_{obj.as_pointer():x}"
+
+
+def _get_or_create_proxy(obj: bpy.types.Object) -> bpy.types.Object:
+    name = _proxy_name(obj)
+    proxy = bpy.data.objects.get(name)
+    if proxy is None:
+        proxy = bpy.data.objects.new(name=name, object_data=obj.data)
+    elif proxy.data is not obj.data:
+        proxy.data = obj.data
+    proxy.matrix_world = obj.matrix_world.copy()
+    proxy.hide_viewport = True
+    proxy.hide_render = True
+    proxy[_PROXY_SOURCE_PROP] = obj.name_full
+    obj[_PROXY_OBJECT_PROP] = proxy.name
+    return proxy
+
+
+def _outline_world_width(target: bpy.types.Object | None) -> float:
+    if target is None or target.type != "MESH":
+        return 0.0
+    mod = target.modifiers.get(MODIFIER_NAME)
+    if mod is None:
+        return 0.0
+    return scale_utils.world_width_from_modifier(target, mod.thickness)
+
+
+def _target_outline_thickness(
+    source: bpy.types.Object | None,
+    target: bpy.types.Object | None,
+) -> float:
+    world_width = _outline_world_width(target)
+    if source is None or source.type != "MESH":
+        return world_width
+    return scale_utils.modifier_thickness_for_world_width(source, world_width)
+
+
+def _max_target_thickness(
+    source: bpy.types.Object | None,
+    targets: list[bpy.types.Object],
+) -> float:
+    if not targets:
+        return 0.0
+    return max(_target_outline_thickness(source, target) for target in targets)
+
+
+def _modifier_target_collection(mod: bpy.types.Modifier) -> bpy.types.Collection | None:
+    tree = getattr(mod, "node_group", None)
+    sid = _find_socket_id(tree, _TARGET_COLLECTION_SOCKET) if tree is not None else None
+    if sid is None:
+        return None
+    try:
+        collection = mod[sid]
+    except (KeyError, TypeError):
+        return None
+    return collection if isinstance(collection, bpy.types.Collection) else None
+
+
+def collection_real_targets(collection: bpy.types.Collection | None) -> list[bpy.types.Object]:
+    if collection is None:
+        return []
+    targets: list[bpy.types.Object] = []
+    for item in collection.objects:
+        source_name = str(item.get(_PROXY_SOURCE_PROP, "") or "")
+        source = bpy.data.objects.get(source_name)
+        if getattr(source, "type", None) == "MESH" and source not in targets:
+            targets.append(source)
+    return targets
+
+
+def _set_target_collection_parameters(
+    mod: bpy.types.Modifier,
+    collection: bpy.types.Collection,
+    targets: list[bpy.types.Object],
+) -> None:
+    tree = getattr(mod, "node_group", None)
+    obj = getattr(mod, "id_data", None)
+    if tree is None or getattr(obj, "type", None) != "MESH":
+        return
+    sid_collection = _find_socket_id(tree, _TARGET_COLLECTION_SOCKET)
+    if sid_collection is not None:
+        mod[sid_collection] = collection
+    sid_target_thickness = _find_socket_id(tree, _TARGET_THICKNESS_SOCKET)
+    if sid_target_thickness is not None:
+        mod[sid_target_thickness] = _max_target_thickness(obj, targets)
+
+
+def update_target_width_reference(mod: bpy.types.Modifier) -> bool:
+    collection = _modifier_target_collection(mod)
+    if collection is None:
+        return False
+    _set_target_collection_parameters(mod, collection, collection_real_targets(collection))
+    return True
+
+
+def refresh_target_collection(
+    obj: bpy.types.Object,
+    scene: bpy.types.Scene | None,
+) -> bool:
+    mod = obj.modifiers.get(SHELL_MODIFIER_NAME)
+    if mod is None:
+        return False
+    collection, targets = _sync_target_collection(obj, scene)
+    _set_target_collection_parameters(mod, collection, targets)
+    return True
+
+
+def cleanup_target_collection(obj: bpy.types.Object) -> None:
+    name = str(obj.get(_TARGET_COLLECTION_PROP, "") or "")
+    if not name:
+        return
+    collection = bpy.data.collections.get(name)
+    if collection is not None:
+        for item in list(collection.objects):
+            collection.objects.unlink(item)
+            if bool(item.get(_PROXY_SOURCE_PROP, "")) and not item.users_collection:
+                bpy.data.objects.remove(item)
+        bpy.data.collections.remove(collection)
+    try:
+        del obj[_TARGET_COLLECTION_PROP]
+    except (KeyError, TypeError):
+        pass
 
 
 def apply_intersection_shell(
@@ -307,16 +477,19 @@ def apply_intersection_shell(
     thickness: float,
     offset: float,
     material: bpy.types.Material | None,
+    scene: bpy.types.Scene | None = None,
 ) -> bool:
     if obj.type != "MESH" or obj.data is None or not obj.data.polygons:
         return False
     tree = _get_or_create_tree()
     _ensure_material_slot(obj, material)
+    collection, targets = _sync_target_collection(obj, scene)
     mod = obj.modifiers.get(SHELL_MODIFIER_NAME)
     if mod is None:
         mod = obj.modifiers.new(name=SHELL_MODIFIER_NAME, type="NODES")
     mod.node_group = tree
     update_modifier_parameters(mod, thickness, offset, material)
+    _set_target_collection_parameters(mod, collection, targets)
 
     mod.show_viewport = True
     mod.show_render = True

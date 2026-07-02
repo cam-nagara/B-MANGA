@@ -3,6 +3,40 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-02 — B-MANGA Lineのライン素材（高速）で交差部分を生成 (B-MANGA v0.6.430 / B-MANGA Line v0.3.69)
+
+### 症状
+
+- 「ライン素材（高速）」で交差線を追加しても、円柱と床、コーンと台などの肝心な接触・交差部分に線が出なかった。
+- 前回修正で既定の作成方式を精密方式へ変更していたが、依頼意図は「ライン素材（高速）」のまま交差線を出すことだった。
+
+### 原因
+
+- 従来の「ライン素材（高速）」は、各オブジェクト自身の線色シェルを追加するだけで、他オブジェクトとの交差境界を切り出していなかった。
+- 実オブジェクト同士を直接まとめて参照すると、互いの交差線モディファイアを読み合う依存サイクルが発生するため、そのままでは安定した高速方式にできなかった。
+
+### 修正
+
+- 交差線の既定の作成方式を「ライン素材（高速）」へ戻した。
+- 「ライン素材（高速）」では、ライン適用済みの他メッシュを参照用オブジェクトとしてまとめ、交差ペアを個別列挙せずに交差境界を作るようにした。
+- 参照側を線幅ぶん広げてから交差境界を取ることで、実体がわずかに接しているだけの箇所にも交差線が出るようにした。
+- 高速方式の交差線チューブにも交差線用の中間頂点線幅を反映し、「中間頂点への変化グラフ」と線種別の「検出角度」が効く経路を維持した。
+- 板ポリ除外などの設定変更時は、既存の高速方式モディファイアを作り直さず、参照対象だけを更新するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\intersection_shell.py addons\b_manga_line\intersection_lines.py addons\b_manga_line\core.py addons\b_manga_line\presets.py test\blender_b_manga_line_intersection_shell_method_check.py test\blender_b_manga_line_auto_intersection_targets_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_intersection_shell_method_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_midpoint_targets_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_curve_and_linked_batch_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_auto_intersection_targets_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_control_update_scope_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_preset_visibility_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_generated_update_scope_check.py`
+
+---
+
 ## 2026-07-02 — B-MANGA Line交差線の既定方式と中間頂点グラフを修正 (B-MANGA v0.6.429 / B-MANGA Line v0.3.68)
 
 ### 症状

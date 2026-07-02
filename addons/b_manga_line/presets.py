@@ -289,11 +289,11 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
 
     intersection_method: EnumProperty(
         items=[
-            ("SHELL", "ライン素材（簡易）", ""),
+            ("SHELL", "ライン素材（高速）", ""),
             ("BOOLEAN", "Boolean（精密）", ""),
             ("SDF", "SDF（高速）", ""),
         ],
-        default="BOOLEAN",
+        default="SHELL",
     )
     intersection_enabled: BoolProperty(default=False)
     intersection_thickness: FloatProperty(default=0.0003, min=0.0001, max=1.0)

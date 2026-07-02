@@ -1,4 +1,4 @@
-"""B-MANGA Line: explicit shell intersection lines avoid target scans."""
+"""B-MANGA Line: default shell intersection lines avoid pair target scans."""
 
 from __future__ import annotations
 
@@ -45,10 +45,45 @@ def _make_cube(name: str, location: tuple[float, float, float]) -> bpy.types.Obj
     obj = bpy.context.object
     obj.name = name
     settings = obj.bmanga_line_settings
-    assert settings.intersection_method == "BOOLEAN"
-    settings.intersection_method = "SHELL"
+    assert settings.intersection_method == "SHELL"
     settings.intersection_enabled = True
     settings.use_intersection_creation_limit = False
+    return obj
+
+
+def _make_surface_material(name: str) -> bpy.types.Material:
+    mat = bpy.data.materials.new(name)
+    mat.diffuse_color = (1.0, 1.0, 1.0, 1.0)
+    return mat
+
+
+def _make_source_slab(surface_mat: bpy.types.Material) -> bpy.types.Object:
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0.0, 0.0, 0.0))
+    obj = bpy.context.object
+    obj.name = "BML_shell_contact_slab"
+    obj.dimensions = (3.0, 3.0, 0.1)
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    obj.data.materials.append(surface_mat)
+    settings = obj.bmanga_line_settings
+    settings.intersection_enabled = True
+    settings.use_intersection_creation_limit = False
+    settings.intersection_thickness = 0.03
+    return obj
+
+
+def _make_contact_cylinder(surface_mat: bpy.types.Material) -> bpy.types.Object:
+    bpy.ops.mesh.primitive_cylinder_add(
+        vertices=48,
+        radius=0.5,
+        depth=1.0,
+        location=(0.0, 0.0, 0.55),
+    )
+    obj = bpy.context.object
+    obj.name = "BML_shell_contact_cylinder"
+    obj.data.materials.append(surface_mat)
+    settings = obj.bmanga_line_settings
+    settings.outline_thickness = 0.03
+    settings.intersection_enabled = False
     return obj
 
 
@@ -90,6 +125,44 @@ def _intersection_material_polygons(obj: bpy.types.Object) -> int:
         return sum(1 for poly in mesh.polygons if poly.material_index == line_index)
     finally:
         bpy.data.meshes.remove(mesh)
+
+
+def _intersection_material_vertices(obj: bpy.types.Object) -> list:
+    mat = outline_setup.get_line_material(obj, "intersection")
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    mesh = bpy.data.meshes.new_from_object(obj.evaluated_get(depsgraph))
+    try:
+        line_index = None
+        for index, item in enumerate(mesh.materials):
+            if item is not None and item.name.startswith(mat.name):
+                line_index = index
+                break
+        assert line_index is not None, "交差線素材が評価済みメッシュにありません"
+        line_vertices = set()
+        for poly in mesh.polygons:
+            if poly.material_index == line_index:
+                line_vertices.update(poly.vertices)
+        return [mesh.vertices[index].co.copy() for index in line_vertices]
+    finally:
+        bpy.data.meshes.remove(mesh)
+
+
+def _assert_shell_contact_line_appears() -> None:
+    _clear_scene()
+    surface = _make_surface_material("BML_shell_contact_surface")
+    source = _make_source_slab(surface)
+    target = _make_contact_cylinder(surface)
+    assert presets.apply_line_settings(target, bpy.context)
+    assert presets.apply_line_settings(source, bpy.context)
+
+    coords = _intersection_material_vertices(source)
+    assert len(coords) > 80, f"接触部の交差線頂点が少なすぎます: {len(coords)}"
+    min_x = min(co.x for co in coords)
+    max_x = max(co.x for co in coords)
+    min_y = min(co.y for co in coords)
+    max_y = max(co.y for co in coords)
+    assert min_x < -0.45 and max_x > 0.45, (min_x, max_x)
+    assert min_y < -0.45 and max_y > 0.45, (min_y, max_y)
 
 
 def main() -> None:
@@ -134,7 +207,15 @@ def main() -> None:
             mod = mods[0]
             assert mod.name == intersection_shell.SHELL_MODIFIER_NAME
             assert mod.node_group is not None
+            assert intersection_lines._uses_named_attribute(
+                mod.node_group,
+                core.VG_INTERSECTION_LINE_WIDTH,
+            )
             assert intersection_lines._modifier_target(mod) is None
+            collection = intersection_shell._modifier_target_collection(mod)
+            assert collection is not None
+            assert obj.name not in collection.objects
+            assert len(collection.objects) == len(objects) - 1
             assert mod.show_viewport
             assert mod.show_render
             assert not intersection_lines.is_deferred_viewport_modifier(mod)
@@ -153,7 +234,9 @@ def main() -> None:
         assert abs(float(_socket_value(mod, OFFSET_SOCKET)) + 0.25) < 1.0e-7
         assert _socket_value(mod, MATERIAL_SOCKET) == mat
 
-        print("[PASS] explicit shell intersection lines work without target scan")
+        _assert_shell_contact_line_appears()
+
+        print("[PASS] default shell intersection lines work without pair target scan")
     finally:
         try:
             b_manga_line.unregister()
