@@ -3,6 +3,42 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-02 — B-MANGA Line交差線の既定方式と中間頂点グラフを修正 (B-MANGA v0.6.429 / B-MANGA Line v0.3.68)
+
+### 症状
+
+- 交差線をオンにしても、立体同士が接している肝心の交差部分に線が出ない場合があった。
+- 「中間頂点への変化グラフ」を編集しても、実際の線幅変化へ反映されない場合があった。
+- アウトライン、内部線、交差線の「中間頂点の線幅調整」で、線種ごとに角の検出角度を調整できなかった。
+
+### 原因
+
+- 交差線の既定の作成方式が、交差相手を探さない簡易方式になっていたため、実際の交差境界を作れなかった。
+- 変化グラフの同期がパネル描画時の一回だけで、グラフ上の点を動かした後の変更を継続して拾えていなかった。
+- 中間頂点の角検出は線種別の設定を持たず、内部線本体の検出角度を共用していた。
+
+### 修正
+
+- 交差線の既定の作成方式を、交差相手を検出して交差部分に線を作る方式へ戻した。
+- 交差相手を探さない方式は「ライン素材（簡易）」として明示選択時だけ使う位置づけにした。
+- アクティブな対象のパネルを開いている間、変化グラフの変更を各線種の線幅設定へ軽く同期し続けるようにした。
+- アウトライン、内部線、交差線それぞれの「線幅の詳細」に「検出角度」を追加し、複数選択時の一括反映とプリセット保存にも対応した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\vertex_analysis.py addons\b_manga_line\edge_width_curve.py addons\b_manga_line\panels.py addons\b_manga_line\presets.py addons\b_manga_line\batch_update.py test\blender_b_manga_line_auto_intersection_targets_check.py test\blender_b_manga_line_intersection_shell_method_check.py test\blender_b_manga_line_midpoint_targets_check.py test\blender_b_manga_line_curve_and_linked_batch_check.py test\blender_b_manga_line_control_update_scope_check.py test\blender_b_manga_line_batch_apply_refresh_check.py test\blender_b_manga_line_preset_visibility_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_auto_intersection_targets_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_intersection_shell_method_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_midpoint_targets_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_curve_and_linked_batch_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_intersection_fill_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_control_update_scope_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_batch_apply_refresh_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --factory-startup --background --python-exit-code 1 --python test\blender_b_manga_line_preset_visibility_check.py`
+- Tokyo0004 大規模監査を除く B-MANGA Line 実機テスト29本を一括実行し、全件PASS。
+
+---
+
 ## 2026-07-02 — B-MANGA Line Tokyo0004 大規模監査を実行 (検証記録)
 
 ### 症状

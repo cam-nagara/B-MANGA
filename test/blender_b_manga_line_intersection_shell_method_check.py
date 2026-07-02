@@ -1,4 +1,4 @@
-"""B-MANGA Line: default intersection lines use object-local line shells."""
+"""B-MANGA Line: explicit shell intersection lines avoid target scans."""
 
 from __future__ import annotations
 
@@ -45,7 +45,8 @@ def _make_cube(name: str, location: tuple[float, float, float]) -> bpy.types.Obj
     obj = bpy.context.object
     obj.name = name
     settings = obj.bmanga_line_settings
-    assert settings.intersection_method == "SHELL"
+    assert settings.intersection_method == "BOOLEAN"
+    settings.intersection_method = "SHELL"
     settings.intersection_enabled = True
     settings.use_intersection_creation_limit = False
     return obj
@@ -152,7 +153,7 @@ def main() -> None:
         assert abs(float(_socket_value(mod, OFFSET_SOCKET)) + 0.25) < 1.0e-7
         assert _socket_value(mod, MATERIAL_SOCKET) == mat
 
-        print("[PASS] default intersection lines use shell method without target scan")
+        print("[PASS] explicit shell intersection lines work without target scan")
     finally:
         try:
             b_manga_line.unregister()

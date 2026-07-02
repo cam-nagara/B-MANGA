@@ -9,6 +9,7 @@ import bpy
 MATERIAL_NAME = "BML_EdgeWidthCurve_UI"
 NODE_NAME = "BML_EdgeWidthCurve"
 SOURCE_PROP = "bml_edge_width_curve_source"
+SYNC_INTERVAL = 0.12
 _TARGET_PROPS = {
     "outline": (
         "edge_width_curve_25",
@@ -107,7 +108,8 @@ def sync_settings_and_node(settings, target: str = "outline") -> None:
 def schedule_node_sync(settings, target: str = "outline") -> bool:
     target = _normalize_target(target)
     try:
-        owner_key = settings.id_data.as_pointer()
+        owner = settings.id_data
+        owner_key = owner.as_pointer()
     except (AttributeError, ReferenceError, RuntimeError):
         return False
     key = (owner_key, target)
@@ -116,12 +118,16 @@ def schedule_node_sync(settings, target: str = "outline") -> bool:
     _PENDING_SYNC.add(key)
 
     def _run():
-        _PENDING_SYNC.discard(key)
         try:
+            active = getattr(bpy.context, "active_object", None)
+            if active is not owner:
+                _PENDING_SYNC.discard(key)
+                return None
             sync_settings_and_node(settings, target)
         except ReferenceError:
-            pass
-        return None
+            _PENDING_SYNC.discard(key)
+            return None
+        return SYNC_INTERVAL
 
     try:
         bpy.app.timers.register(_run, first_interval=0.0)

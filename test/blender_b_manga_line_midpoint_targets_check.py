@@ -107,7 +107,13 @@ def _reset_all_groups(obj: bpy.types.Object) -> None:
 def _assert_target_only(target: str, group_name: str, factor_prop: str) -> None:
     obj = _make_folded_strip("BML_midpoint_" + target)
     settings = obj.bmanga_line_settings
-    settings.inner_line_angle = math.radians(10.0)
+    angle_prop = {
+        "outline": "edge_midpoint_angle",
+        "inner": "inner_edge_midpoint_angle",
+        "intersection": "intersection_edge_midpoint_angle",
+    }[target]
+    settings.inner_line_angle = math.radians(120.0)
+    setattr(settings, angle_prop, math.radians(10.0))
     _reset_all_groups(obj)
     setattr(settings, factor_prop, -1.0)
 
@@ -130,13 +136,37 @@ def _assert_outline_uses_detection_angle() -> None:
     settings.edge_smooth_factor = -1.0
     center = _center_box_corner_vertex()
 
-    settings.inner_line_angle = math.radians(120.0)
+    settings.inner_line_angle = math.radians(10.0)
+    settings.edge_midpoint_angle = math.radians(120.0)
     vertex_analysis.compute_and_apply_weights(obj, settings, "outline")
     assert _weight(obj, core.VG_LINE_WIDTH, center) > 0.999
 
-    settings.inner_line_angle = math.radians(10.0)
+    settings.inner_line_angle = math.radians(120.0)
+    settings.edge_midpoint_angle = math.radians(10.0)
     vertex_analysis.compute_and_apply_weights(obj, settings, "outline")
     assert _weight(obj, core.VG_LINE_WIDTH, center) < 0.001
+
+
+def _assert_generated_target_uses_detection_angle(
+    target: str,
+    group_name: str,
+    factor_prop: str,
+    angle_prop: str,
+) -> None:
+    obj = _make_folded_strip("BML_midpoint_angle_" + target)
+    settings = obj.bmanga_line_settings
+    setattr(settings, factor_prop, -1.0)
+    center = _center_ridge_vertex()
+
+    settings.inner_line_angle = math.radians(10.0)
+    setattr(settings, angle_prop, math.radians(120.0))
+    vertex_analysis.compute_and_apply_weights(obj, settings, target)
+    assert _weight(obj, group_name, center) > 0.999
+
+    settings.inner_line_angle = math.radians(120.0)
+    setattr(settings, angle_prop, math.radians(10.0))
+    vertex_analysis.compute_and_apply_weights(obj, settings, target)
+    assert _weight(obj, group_name, center) < 0.001
 
 
 def main() -> None:
@@ -151,6 +181,18 @@ def main() -> None:
         "intersection_edge_smooth_factor",
     )
     _assert_outline_uses_detection_angle()
+    _assert_generated_target_uses_detection_angle(
+        "inner",
+        core.VG_INNER_LINE_WIDTH,
+        "inner_edge_smooth_factor",
+        "inner_edge_midpoint_angle",
+    )
+    _assert_generated_target_uses_detection_angle(
+        "intersection",
+        core.VG_INTERSECTION_LINE_WIDTH,
+        "intersection_edge_smooth_factor",
+        "intersection_edge_midpoint_angle",
+    )
 
     print("[PASS] midpoint width settings are independent per line type")
 

@@ -193,6 +193,18 @@ def _midpoint_jitter_property(prop_name: str, description: str):
     )
 
 
+def _midpoint_angle_property(prop_name: str, description: str):
+    return FloatProperty(
+        name="検出角度",
+        description=description,
+        default=math.radians(60),
+        min=math.radians(1),
+        max=math.radians(180),
+        subtype="ANGLE",
+        update=_make_weight_refresh_propagator(prop_name),
+    )
+
+
 def _curve_point_property(prop_name: str, label: str, description: str, default: float):
     return FloatProperty(
         name=label,
@@ -1141,14 +1153,14 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         name="作成方式",
         description="交差線の作り方",
         items=[
-            ("SHELL", "ライン素材（高速）",
+            ("SHELL", "ライン素材（簡易）",
              "交差相手を探さず、ライン幅ぶんの面を線色で表示"),
             ("BOOLEAN", "Boolean（精密）",
              "Mesh Boolean で正確な交差曲線を生成。低密度メッシュでも滑らか"),
             ("SDF", "SDF（高速）",
              "SDF で交差を検出。トポロジーエラーが起きない。高密度メッシュ向き"),
         ],
-        default="SHELL",
+        default="BOOLEAN",
         update=_on_intersection_method_changed,
     )  # type: ignore[valid-type]
 
@@ -1287,6 +1299,11 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         update=_on_edge_midpoint_jitter_changed,
     )  # type: ignore[valid-type]
 
+    edge_midpoint_angle: _midpoint_angle_property(
+        "edge_midpoint_angle",
+        "アウトラインの中間頂点線幅調整で角として扱う角度",
+    )  # type: ignore[valid-type]
+
     edge_width_curve_25: FloatProperty(
         name="25%",
         description="角から中間頂点まで25%進んだ地点の細り具合",
@@ -1325,6 +1342,10 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         "inner_edge_midpoint_jitter_percent",
         "内部線の中間頂点位置を辺の中央から前後何%の範囲でずらす",
     )  # type: ignore[valid-type]
+    inner_edge_midpoint_angle: _midpoint_angle_property(
+        "inner_edge_midpoint_angle",
+        "内部線の中間頂点線幅調整で角として扱う角度",
+    )  # type: ignore[valid-type]
     inner_edge_width_curve_25: _curve_point_property(
         "inner_edge_width_curve_25", "25%",
         "内部線の角から中間頂点まで25%進んだ地点の細り具合", 0.25,
@@ -1345,6 +1366,10 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     intersection_edge_midpoint_jitter_percent: _midpoint_jitter_property(
         "intersection_edge_midpoint_jitter_percent",
         "交差線の中間頂点位置を辺の中央から前後何%の範囲でずらす",
+    )  # type: ignore[valid-type]
+    intersection_edge_midpoint_angle: _midpoint_angle_property(
+        "intersection_edge_midpoint_angle",
+        "交差線の中間頂点線幅調整で角として扱う角度",
     )  # type: ignore[valid-type]
     intersection_edge_width_curve_25: _curve_point_property(
         "intersection_edge_width_curve_25", "25%",

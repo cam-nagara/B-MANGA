@@ -49,16 +49,19 @@ _SETTING_FIELDS = (
     "ao_influence_strength",
     "edge_smooth_factor",
     "edge_midpoint_jitter_percent",
+    "edge_midpoint_angle",
     "edge_width_curve_25",
     "edge_width_curve_50",
     "edge_width_curve_75",
     "inner_edge_smooth_factor",
     "inner_edge_midpoint_jitter_percent",
+    "inner_edge_midpoint_angle",
     "inner_edge_width_curve_25",
     "inner_edge_width_curve_50",
     "inner_edge_width_curve_75",
     "intersection_edge_smooth_factor",
     "intersection_edge_midpoint_jitter_percent",
+    "intersection_edge_midpoint_angle",
     "intersection_edge_width_curve_25",
     "intersection_edge_width_curve_50",
     "intersection_edge_width_curve_75",
@@ -286,11 +289,11 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
 
     intersection_method: EnumProperty(
         items=[
-            ("SHELL", "ライン素材（高速）", ""),
+            ("SHELL", "ライン素材（簡易）", ""),
             ("BOOLEAN", "Boolean（精密）", ""),
             ("SDF", "SDF（高速）", ""),
         ],
-        default="SHELL",
+        default="BOOLEAN",
     )
     intersection_enabled: BoolProperty(default=False)
     intersection_thickness: FloatProperty(default=0.0003, min=0.0001, max=1.0)
@@ -318,18 +321,21 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
 
     edge_smooth_factor: FloatProperty(default=0.0, min=-1.0, max=1.0)
     edge_midpoint_jitter_percent: FloatProperty(default=0.0, min=0.0, max=50.0)
+    edge_midpoint_angle: FloatProperty(default=1.0471975512, min=0.0174532925, max=3.1415926536)
     edge_width_curve_25: FloatProperty(default=0.25, min=0.0, max=1.0)
     edge_width_curve_50: FloatProperty(default=0.50, min=0.0, max=1.0)
     edge_width_curve_75: FloatProperty(default=0.75, min=0.0, max=1.0)
 
     inner_edge_smooth_factor: FloatProperty(default=0.0, min=-1.0, max=1.0)
     inner_edge_midpoint_jitter_percent: FloatProperty(default=0.0, min=0.0, max=50.0)
+    inner_edge_midpoint_angle: FloatProperty(default=1.0471975512, min=0.0174532925, max=3.1415926536)
     inner_edge_width_curve_25: FloatProperty(default=0.25, min=0.0, max=1.0)
     inner_edge_width_curve_50: FloatProperty(default=0.50, min=0.0, max=1.0)
     inner_edge_width_curve_75: FloatProperty(default=0.75, min=0.0, max=1.0)
 
     intersection_edge_smooth_factor: FloatProperty(default=0.0, min=-1.0, max=1.0)
     intersection_edge_midpoint_jitter_percent: FloatProperty(default=0.0, min=0.0, max=50.0)
+    intersection_edge_midpoint_angle: FloatProperty(default=1.0471975512, min=0.0174532925, max=3.1415926536)
     intersection_edge_width_curve_25: FloatProperty(default=0.25, min=0.0, max=1.0)
     intersection_edge_width_curve_50: FloatProperty(default=0.50, min=0.0, max=1.0)
     intersection_edge_width_curve_75: FloatProperty(default=0.75, min=0.0, max=1.0)

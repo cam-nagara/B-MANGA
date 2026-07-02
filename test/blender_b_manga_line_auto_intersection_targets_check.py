@@ -65,8 +65,8 @@ def _test_name_fallback_without_camera() -> None:
 
     for obj in objects:
         settings = obj.bmanga_line_settings
+        assert settings.intersection_method == "BOOLEAN"
         settings.intersection_enabled = True
-        settings.intersection_method = "BOOLEAN"
 
     _apply_all(objects)
 
@@ -95,8 +95,8 @@ def _test_active_object_owns_pair() -> None:
     name_side = _make_cube("A_name_would_own", (0.35, 0.0, 0.0))
     for obj in (active_side, name_side):
         settings = obj.bmanga_line_settings
+        assert settings.intersection_method == "BOOLEAN"
         settings.intersection_enabled = True
-        settings.intersection_method = "BOOLEAN"
 
     bpy.context.view_layer.objects.active = active_side
     _apply_all([active_side, name_side])

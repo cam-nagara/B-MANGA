@@ -299,8 +299,16 @@ def _target_midpoint_props(settings, target: str) -> tuple[float, float, tuple[f
     )
 
 
-def _angle_threshold(settings) -> float:
-    return max(0.0, float(getattr(settings, "inner_line_angle", math.pi / 2)))
+def _angle_threshold(settings, target: str = "outline") -> float:
+    target = _normalize_target(target)
+    if target == "inner":
+        prop_name = "inner_edge_midpoint_angle"
+    elif target == "intersection":
+        prop_name = "intersection_edge_midpoint_angle"
+    else:
+        prop_name = "edge_midpoint_angle"
+    fallback = getattr(settings, "inner_line_angle", math.pi / 2)
+    return max(0.0, float(getattr(settings, prop_name, fallback)))
 
 
 def _write_vertex_group_weights(
@@ -526,7 +534,7 @@ def compute_and_apply_weights(obj, settings, target: str = "outline") -> int:
     # 3. 中間頂点の線幅調整
     factor, jitter, curve_points = _target_midpoint_props(settings, target)
     if abs(factor) > 0.001:
-        threshold = _angle_threshold(settings)
+        threshold = _angle_threshold(settings, target)
         before_mesh = obj.data
         before_count = n
         base_anchors = _apply_subsurf_for_midpoint(obj, threshold)

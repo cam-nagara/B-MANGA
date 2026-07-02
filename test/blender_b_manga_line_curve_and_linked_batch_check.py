@@ -125,6 +125,7 @@ def _test_panel_draw_defers_edge_width_curve_writes() -> None:
             "線幅の詳細",
             "edge_smooth_factor",
             "edge_midpoint_jitter_percent",
+            "edge_midpoint_angle",
         )
     finally:
         edge_width_curve.ensure_node = original_ensure

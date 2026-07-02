@@ -13,10 +13,12 @@ MAX_IMMEDIATE_INTERSECTION_REBUILD_OBJECTS = 64
 MAX_IMMEDIATE_SHEET_REBUILD_OBJECTS = 64
 _GENERATED_WIDTH_DETAIL_PROPS = {
     "inner_edge_midpoint_jitter_percent",
+    "inner_edge_midpoint_angle",
     "inner_edge_width_curve_25",
     "inner_edge_width_curve_50",
     "inner_edge_width_curve_75",
     "intersection_edge_midpoint_jitter_percent",
+    "intersection_edge_midpoint_angle",
     "intersection_edge_width_curve_25",
     "intersection_edge_width_curve_50",
     "intersection_edge_width_curve_75",
@@ -712,6 +714,7 @@ def refresh_propagated_property(
     if prop_name in {
         "edge_smooth_factor",
         "edge_midpoint_jitter_percent",
+        "edge_midpoint_angle",
         "edge_width_curve_25",
         "edge_width_curve_50",
         "edge_width_curve_75",
@@ -721,6 +724,7 @@ def refresh_propagated_property(
     if prop_name in {
         "inner_edge_smooth_factor",
         "inner_edge_midpoint_jitter_percent",
+        "inner_edge_midpoint_angle",
         "inner_edge_width_curve_25",
         "inner_edge_width_curve_50",
         "inner_edge_width_curve_75",
@@ -735,6 +739,7 @@ def refresh_propagated_property(
     if prop_name in {
         "intersection_edge_smooth_factor",
         "intersection_edge_midpoint_jitter_percent",
+        "intersection_edge_midpoint_angle",
         "intersection_edge_width_curve_25",
         "intersection_edge_width_curve_50",
         "intersection_edge_width_curve_75",
