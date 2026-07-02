@@ -258,7 +258,6 @@ def _draw_intersection(layout, context, settings) -> None:
     col.prop(settings, "intersection_enabled")
     sub = col.column(align=True)
     sub.enabled = settings.intersection_enabled
-    sub.prop(settings, "intersection_method")
     row = sub.row(align=True)
     row.prop(settings, "intersection_thickness_mm")
     sub_label = row.row(align=True)

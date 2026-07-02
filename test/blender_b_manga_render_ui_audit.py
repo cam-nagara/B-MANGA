@@ -159,14 +159,20 @@ def _assert_panel_access(mod) -> dict:
     assert node.bl_space_type == "NODE_EDITOR"
     assert node.bl_region_type == "UI"
     assert node.bl_category == "B-MANGA Render"
-    assert main.poll(bpy.context) is True
-    assert node.poll(bpy.context) is True
+    # 2026-07-03 ユーザー確定仕様: タブはコマファイルのみ表示する
+    assert main.poll(bpy.context) is False
+    assert node.poll(bpy.context) is False
     assert mod.panels.BMANGA_RENDER_PT_fisheye.poll(bpy.context) is False
     assert mod.panels.BMANGA_RENDER_PT_node_fisheye.poll(bpy.context) is False
-    notice = CaptureLayout()
-    mod.panels.draw_context_notice(notice)
-    assert any("コマファイルで使用します" in label for label in notice.labels)
-    assert any("インストール済み" in label for label in notice.labels)
+    coma_context = SimpleNamespace(
+        scene=SimpleNamespace(
+            bmanga_current_coma_page_id="p0001",
+            bmanga_current_coma_id="c01",
+        )
+    )
+    assert mod.panels._is_bmanga_coma_context(coma_context) is True
+    assert mod.panels.BMANGA_RENDER_PT_main.poll(coma_context) is True
+    assert mod.panels.BMANGA_RENDER_PT_fisheye.poll(coma_context) is True
     result = bpy.ops.bmanga_render.load_builtin_presets(reset=True)
     assert result == {"FINISHED"}, result
     state = bpy.context.scene.bmanga_render_state

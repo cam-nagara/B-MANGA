@@ -7,6 +7,7 @@ from PIL import Image, ImageDraw
 from ..ui import overlay_shared
 from . import page_grid, percentage, spread_merge_geometry, viewport_colors
 from .geom import Rect
+from .paper_guide_object import GUIDE_MAX_WIDTH_MM
 
 _GUIDE_COLORS = {
     "dim": (150, 150, 150, 170),
@@ -360,7 +361,9 @@ def _draw_frame_with_hole(image, outer: Rect, inner: Rect, color, content_width:
 def _draw_guides(image, guide_sets, content_width: float, canvas_height: float) -> None:
     width, height = image.size
     draw = ImageDraw.Draw(image, "RGBA")
-    line_width = max(1, int(round(max(width / max(content_width, 1.0), height / max(canvas_height, 1.0)) * 0.2)))
+    # 焼き込み線幅も実体ガイドの最大幅 (GUIDE_MAX_WIDTH_MM) に揃える
+    px_per_mm = max(width / max(content_width, 1.0), height / max(canvas_height, 1.0))
+    line_width = max(1, int(round(px_per_mm * GUIDE_MAX_WIDTH_MM)))
     line_width = max(1, min(4, line_width))
     for label, loops, segments in guide_sets:
         color = _GUIDE_COLORS.get(label, _GUIDE_COLORS["inner"])

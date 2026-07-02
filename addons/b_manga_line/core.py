@@ -58,6 +58,21 @@ LINE_MODIFIER_NAMES = (
 _propagating = False
 
 
+def record_override_edits(obj) -> None:
+    """Python 書き込みした設定をライブラリオーバーライドの操作として記録する.
+
+    UI からの編集は自動記録されるが、スクリプト経由の setattr は
+    operations_update() を呼ばないと保存時にライブラリ値へ戻ってしまう。
+    """
+    override = getattr(obj, "override_library", None)
+    if override is None:
+        return
+    try:
+        override.operations_update()
+    except Exception:  # noqa: BLE001 - 記録に失敗しても編集自体は有効なまま続行する
+        pass
+
+
 def _propagate(self, context, prop_name):
     """変更されたプロパティを選択中の他オブジェクトにも反映."""
     global _propagating
@@ -75,6 +90,7 @@ def _propagate(self, context, prop_name):
             s = getattr(obj, "bmanga_line_settings", None)
             if s is not None:
                 setattr(s, prop_name, value)
+                record_override_edits(obj)
                 if has_line(obj):
                     changed.append(obj)
     finally:
@@ -1067,7 +1083,8 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     exclude_sheet_meshes: BoolProperty(
         name="板ポリは内部線・交差線を作らない",
         description="薄い板状のメッシュではアウトラインだけを作り、内部線と交差線を作らない",
-        default=False,
+        # 2026-07-03 ユーザー確定: 板ポリ除外だけは「初期値全オフ」の対象外でオン
+        default=True,
         update=_on_sheet_exclusion_changed,
     )  # type: ignore[valid-type]
 
@@ -1493,14 +1510,36 @@ def _camera_poll(self, obj):
 # 登録
 # ------------------------------------------------------------------
 
+def _make_settings_overridable() -> None:
+    # リンク先ファイルでのライン設定上書きが保存されるよう、全プロパティへ
+    # LIBRARY_OVERRIDABLE を一括付与する（未付与だと再読込でライブラリ値へ戻る）。
+    # 本モジュールは PEP 563 (from __future__ import annotations) のため
+    # __annotations__ の値が文字列のまま。評価して実体に戻してから付与する。
+    annotations = getattr(BMangaLineSettings, "__annotations__", {})
+    for name, prop in list(annotations.items()):
+        if isinstance(prop, str):
+            try:
+                prop = eval(prop, globals())  # noqa: S307 - 自モジュール定義の再評価のみ
+            except Exception:  # noqa: BLE001 - 未知の注釈はBlender既定処理に任せる
+                continue
+            annotations[name] = prop
+        keywords = getattr(prop, "keywords", None)
+        if isinstance(keywords, dict):
+            keywords.setdefault("override", {"LIBRARY_OVERRIDABLE"})
+
+
 def register() -> None:
     if hasattr(bpy.types.Scene, "bmanga_line_camera"):
         del bpy.types.Scene.bmanga_line_camera
     if hasattr(bpy.types.Object, "bmanga_line_settings"):
         del bpy.types.Object.bmanga_line_settings
+    _make_settings_overridable()
     for cls in _CLASSES:
         registration.register_class(cls)
-    bpy.types.Object.bmanga_line_settings = PointerProperty(type=BMangaLineSettings)
+    bpy.types.Object.bmanga_line_settings = PointerProperty(
+        type=BMangaLineSettings,
+        override={"LIBRARY_OVERRIDABLE"},
+    )
     bpy.types.Scene.bmanga_line_camera = PointerProperty(
         type=bpy.types.Object,
         name="別カメラ指定",

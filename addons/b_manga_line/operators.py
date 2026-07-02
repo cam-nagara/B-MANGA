@@ -6,7 +6,14 @@ import bpy
 from bpy.props import BoolProperty
 
 from . import registration
-from .core import AOV_NAME, PROP_LINES_HIDDEN, PROP_LINE_ONLY, has_line, has_outline
+from .core import (
+    AOV_NAME,
+    PROP_LINES_HIDDEN,
+    PROP_LINE_ONLY,
+    has_line,
+    has_outline,
+    record_override_edits,
+)
 
 
 def _is_linked_line_object(obj: bpy.types.Object) -> bool:
@@ -24,7 +31,16 @@ def _is_linked_line_object(obj: bpy.types.Object) -> bool:
 
 
 def _linked_line_objects(scene) -> list[bpy.types.Object]:
-    return [obj for obj in scene.objects if _is_linked_line_object(obj)]
+    objs = [obj for obj in scene.objects if _is_linked_line_object(obj)]
+    # オーバーライドが存在するライブラリ元は除外する。元にも書き込むと
+    # オーバーライドと参照の差分が消え、上書きが保存時に破棄されてしまう。
+    refs = {
+        o.override_library.reference
+        for o in objs
+        if getattr(o, "override_library", None) is not None
+        and o.override_library.reference is not None
+    }
+    return [o for o in objs if o not in refs]
 
 
 class BMANGA_LINE_OT_apply(bpy.types.Operator):
@@ -297,6 +313,7 @@ class BMANGA_LINE_OT_apply_active_to_linked(bpy.types.Operator):
                     applied += 1
                 else:
                     failed += 1
+                record_override_edits(obj)
             except Exception:  # noqa: BLE001
                 failed += 1
         presets._refresh_after_line_settings(context)

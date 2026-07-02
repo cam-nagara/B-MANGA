@@ -3,6 +3,39 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-03 — 仕様定点観測の照合結果に基づく確定仕様の反映 (B-MANGA v0.6.434 / B-MANGA Line v0.3.73 / B-MANGA Render v0.1.34)
+
+### 経緯
+
+- 2026-07-03 の仕様定点観測（設計意図更新→実態スナップショット→照合）と、その修正計画書 `docs/spec_audit_fixes_plan_2026-07-03.md` の実行によるもの。ユーザー確定判断4件と、実機確認で見つかった不具合2件を反映した。
+
+### B-MANGA Line v0.3.73
+
+- 交差線の「作成方式」ドロップダウンをパネルから削除し、生成方式を「ライン素材（高速）」に固定した（ユーザー確定 2026-07-03。旧ファイルに他方式が保存されていても高速方式として扱う。BOOLEAN/SDF 実装はUI非公開の内部コードとして残置）。
+- 「板ポリは内部線・交差線を作らない」の初期値をオンに変更した（ユーザー確定 2026-07-03）。
+- リンク素材のライブラリオーバーライドへの「リンク素材へ選択設定を上書き」が、保存後・開き直し後も保持されるようにした。
+  - 原因1: ライン設定プロパティに LIBRARY_OVERRIDABLE が無く、オーバーライドの差分として保存されなかった（PEP 563 により `__annotations__` が文字列で、登録時の一括付与が必要だった）。
+  - 原因2: スクリプト経由の書き込みはオーバーライド操作が自動記録されないため、上書き後に operations_update で明示記録するようにした（複数選択の一括伝搬も同様）。
+  - 原因3: オーバーライドの参照元（ライブラリ実体）にも同じ値を書き込んでいたため差分が消えていた。オーバーライドが存在するライブラリ元は一括上書きの対象から除外した。
+  - 制約: オーバーライドを作らない直接リンクへの上書きは Blender の仕様上保存されない（セッション中のみ有効）。
+
+### B-MANGA v0.6.434
+
+- ページファイルの用紙ガイド線幅の算出を3系統（編集中ページの実体ガイド / 周辺ページのオーバーレイ / ページ一覧プレビュー画像への焼き込み）で統一した。従来は最大幅クランプが 0.12mm / 3.0mm / 0.2mm 固定とバラバラで、ズームによって編集中ページと周辺ページのガイドの太さが食い違って見えた。`paper_guide_object` の定数を単一の正とした。
+
+### B-MANGA Render v0.1.34
+
+- サイドバーの「B-MANGA Render」タブをコマファイルのみ表示に変更した（ユーザー確定 2026-07-03。「常時表示+案内」方式は不採用）。UI監査テストも新仕様へ更新。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile`（変更7ファイル）
+- `blender --background --factory-startup --python test/blender_b_manga_render_ui_audit.py` → OK
+- `blender --background --factory-startup --python test/blender_page_selection_reorder_check.py` → OK
+- B-MANGA Line 影響テスト7本すべて成功: sheet_mesh_exclusion / intersection_shell_method / register_reenable / control_update_scope / preset_visibility / auto_intersection_targets / intersection_fill
+- `_verify/2026-07-03_phase1_line_quality/item10_linked_operators_check.py` → 全18チェック PASS（オーバーライド上書きの再読込後保持を確認）
+- 仕様定点観測 Phase1 実機確認: 枠線カット4挙動 / 円柱フチ内部線の中間頂点 / SHELL交差線品質（中間頂点・変化グラフ含む全16チェック）/ Tokyo0004 一括適用16.3秒 / ウニフラ始点乱れ / 複製時シード維持 / 魚眼グレー帯 — すべて合格（`_verify/2026-07-03_phase1_*/`）
+
 ## 2026-07-02 — B-MANGA Line保存時の自動スムーズ復旧 (B-MANGA Line v0.3.72)
 
 ### 症状

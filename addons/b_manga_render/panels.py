@@ -103,12 +103,10 @@ class BMANGA_RENDER_PT_main(Panel):
 
     @classmethod
     def poll(cls, context):
-        return getattr(context, "scene", None) is not None
+        # 2026-07-03 ユーザー確定: タブはコマファイルのみ表示する
+        return _is_bmanga_coma_context(context)
 
     def draw(self, context):
-        if not _is_bmanga_coma_context(context):
-            draw_context_notice(self.layout)
-            return
         draw_main_panel(self.layout, context)
 
 
@@ -140,12 +138,10 @@ class BMANGA_RENDER_PT_node(Panel):
 
     @classmethod
     def poll(cls, context):
-        return getattr(context, "scene", None) is not None
+        # 2026-07-03 ユーザー確定: タブはコマファイルのみ表示する
+        return _is_bmanga_coma_context(context)
 
     def draw(self, context):
-        if not _is_bmanga_coma_context(context):
-            draw_context_notice(self.layout)
-            return
         draw_main_panel(self.layout, context)
 
 
@@ -172,14 +168,6 @@ def _is_bmanga_coma_context(context) -> bool:
         return False
     from . import bmanga_context
     return bmanga_context.scene_context(scene).is_bmanga_coma
-
-
-def draw_context_notice(layout) -> None:
-    box = layout.box()
-    box.label(text="コマファイルで使用します", icon="INFO")
-    col = box.column(align=True)
-    col.label(text="B-MANGA Renderはインストール済みです。")
-    col.label(text="出力プリセットはコマファイルを開くと表示されます。")
 
 
 def draw_main_panel(layout, context) -> None:

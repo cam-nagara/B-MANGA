@@ -8,8 +8,11 @@ from gpu_extras.batch import batch_for_shader
 from . import overlay_shared
 from ..utils import color_space, percentage, spread_merge_geometry, viewport_colors
 from ..utils.geom import Rect, mm_to_m
-
-GUIDE_SCREEN_PX = 1.0
+from ..utils.paper_guide_object import (
+    GUIDE_MAX_WIDTH_MM,
+    GUIDE_MIN_WIDTH_MM,
+    GUIDE_SCREEN_PX,
+)
 
 _GUIDE_COLORS = {
     "dim": viewport_colors.PAPER_GUIDE_DIM,
@@ -56,8 +59,9 @@ def draw_for_page(
         _draw_bleed_outer_fills(work, bleed_pairs, ox_mm, oy_mm)
         _draw_safe_area_fills(work, safe_pairs, ox_mm, oy_mm)
 
+        # 編集中ページの実体ガイド (paper_guide_object) と同じ太さ規則に揃える
         width_mm = _mm_width_for_screen_px(GUIDE_SCREEN_PX, mpp)
-        width_mm = max(0.005, min(3.0, width_mm))
+        width_mm = max(GUIDE_MIN_WIDTH_MM, min(GUIDE_MAX_WIDTH_MM, width_mm))
         for label, loops, segments in guide_sets:
             color = _GUIDE_COLORS.get(label, viewport_colors.PAPER_GUIDE)
             for loop in loops:

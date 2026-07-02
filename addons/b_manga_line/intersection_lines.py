@@ -1236,6 +1236,9 @@ def apply_intersection_lines(
     scene: bpy.types.Scene | None = None,
 ) -> bool:
     """交差線 GN モディファイアを適用. 成功時 True."""
+    # 2026-07-03 ユーザー確定: 交差線は「ライン素材（高速）」のみ。旧ファイルへ
+    # BOOLEAN/SDF が保存されていても SHELL として扱う（他方式は UI 非公開の内部実装）。
+    method = _SHELL_METHOD
     if obj.type != "MESH":
         return False
     from . import plane_filter
