@@ -427,6 +427,16 @@ def get_line_material(obj: bpy.types.Object, target: str) -> bpy.types.Material 
     return mat
 
 
+def first_line_material_slot(obj: bpy.types.Object) -> int:
+    """ライン素材が始まるマテリアルスロット番号を返す."""
+    if obj.type != "MESH" or obj.data is None:
+        return 999
+    for index, slot in enumerate(obj.material_slots):
+        if _line_material_target(slot.material) is not None:
+            return index
+    return 999
+
+
 def _update_emission_color(mat: bpy.types.Material, color: tuple[float, ...]) -> None:
     if not mat.use_nodes:
         return

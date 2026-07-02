@@ -514,6 +514,7 @@ def _update_marked_inner_edges(objects: list[bpy.types.Object], context) -> None
             create_targets.append(obj)
     if not create_targets:
         return
+    defer_intersection_viewport(objects)
     presets._update_view_layer(context)
     for obj in create_targets:
         settings = obj.bmanga_line_settings
@@ -552,6 +553,7 @@ def _update_inner_lines(
             inner_lines.disable_inner_lines(obj)
         return
 
+    defer_intersection_viewport(objects)
     presets._update_view_layer(context)
     refresh_targets = []
     for obj in objects:

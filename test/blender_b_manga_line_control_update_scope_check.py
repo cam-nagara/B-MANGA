@@ -76,6 +76,7 @@ def _install_counters():
         "intersection_apply": 0,
         "intersection_update": 0,
         "intersection_refresh": 0,
+        "intersection_defer": 0,
         "camera": 0,
         "camera_objects": 0,
         "visibility_objects": 0,
@@ -92,6 +93,7 @@ def _install_counters():
         "intersection_apply": intersection_lines.apply_intersection_lines,
         "intersection_update": intersection_lines.update_parameters,
         "intersection_refresh": intersection_lines.refresh_scene_intersections,
+        "intersection_defer": intersection_lines._queue_deferred_viewport_modifier,
         "camera": camera_comp.refresh,
         "camera_objects": camera_comp.refresh_objects,
         "visibility_objects": camera_comp.refresh_visibility_objects,
@@ -131,6 +133,10 @@ def _install_counters():
         counts["intersection_refresh"] += 1
         return originals["intersection_refresh"](*args, **kwargs)
 
+    def counted_intersection_defer(*args, **kwargs):
+        counts["intersection_defer"] += 1
+        return originals["intersection_defer"](*args, **kwargs)
+
     def counted_camera(*args, **kwargs):
         counts["camera"] += 1
         return originals["camera"](*args, **kwargs)
@@ -162,6 +168,7 @@ def _install_counters():
     intersection_lines.apply_intersection_lines = counted_intersection_apply
     intersection_lines.update_parameters = counted_intersection_update
     intersection_lines.refresh_scene_intersections = counted_intersection_refresh
+    intersection_lines._queue_deferred_viewport_modifier = counted_intersection_defer
     camera_comp.refresh = counted_camera
     camera_comp.refresh_objects = counted_camera_objects
     camera_comp.refresh_visibility_objects = counted_visibility_objects
@@ -181,6 +188,7 @@ def _install_counters():
         intersection_lines.apply_intersection_lines = originals["intersection_apply"]
         intersection_lines.update_parameters = originals["intersection_update"]
         intersection_lines.refresh_scene_intersections = originals["intersection_refresh"]
+        intersection_lines._queue_deferred_viewport_modifier = originals["intersection_defer"]
         camera_comp.refresh = originals["camera"]
         camera_comp.refresh_objects = originals["camera_objects"]
         camera_comp.refresh_visibility_objects = originals["visibility_objects"]
@@ -389,10 +397,27 @@ def _run_mixed_uniform_cases(objects, counts, reset) -> None:
     assert counts["inner_update"] <= 4, counts
 
 
+def _run_inner_toggle_defers_intersections(objects, counts, reset) -> None:
+    settings = objects[0].bmanga_line_settings
+    reset()
+    settings.inner_line_enabled = False
+    assert counts["intersection_refresh"] == 0, counts
+    assert counts["intersection_apply"] == 0, counts
+
+    reset()
+    settings.inner_line_enabled = True
+    assert counts["inner_apply"] > 0, counts
+    assert counts["intersection_refresh"] == 0, counts
+    assert counts["intersection_apply"] == 0, counts
+    assert counts["intersection_defer"] > 0, counts
+
+
 def main() -> None:
     b_manga_line.register()
     counts, reset, restore = _install_counters()
     try:
+        objects = _setup_scene()
+        _run_inner_toggle_defers_intersections(objects, counts, reset)
         objects = _setup_scene()
         settings = objects[0].bmanga_line_settings
         _run_baseline_cases(settings, counts, reset)
