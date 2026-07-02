@@ -3,6 +3,33 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-02 — ページファイルのページ一覧操作を修正 (B-MANGA v0.6.433)
+
+### 症状
+
+- ページファイルで、ページ一覧上の別ページをクリックするとハイライトは出るが、ダブルクリックでそのページファイルを開けなかった。
+- ページファイルの「前のページへ」「次のページへ」ボタンが、用紙設定の「読む方向」と合っていなかった。
+
+### 原因
+
+- ページファイル内のダブルクリック判定が、ページプレビュー画像の当たり判定だけを見ており、ページ一覧側の通常のページ判定にフォールバックしていなかった。
+- ページ移動ボタンの左右表示が固定で、読む方向を参照していなかった。
+
+### 修正
+
+- ページファイル内でページプレビュー画像に当たらない場合も、ページ一覧のページ判定からダブルクリック対象を解決するようにした。
+- 「左方向」では左側を「◀　次のページへ」、右側を「前のページへ　▶」にした。
+- 「右方向」では左側を「◀　前のページへ」、右側を「次のページへ　▶」にした。
+- ページファイルのダブルクリック判定と、読む方向別のボタン表示を確認する実機テストを追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile operators\mode_op.py panels\work_panel.py test\blender_page_file_nav_and_double_click_check.py`
+- `git diff --check -- operators\mode_op.py panels\work_panel.py test\blender_page_file_nav_and_double_click_check.py`
+- `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe --background --factory-startup --python-exit-code 1 --python test\blender_page_file_nav_and_double_click_check.py`
+
+---
+
 ## 2026-07-02 — コマ選択ハンドルを外側だけ表示 (B-MANGA v0.6.432)
 
 ### 症状

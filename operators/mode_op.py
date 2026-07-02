@@ -172,6 +172,8 @@ def page_file_index_from_viewport_event(context, event) -> int | None:
     role, current_page_id, _coma_id = page_file_scene.current_role(context)
     if role == page_file_scene.ROLE_PAGE:
         page_hit = _resolve_page_preview_at_event(context, event)
+        if page_hit is None:
+            page_hit = _resolve_page_at_event(context, event)
         if page_hit is None or not (0 <= page_hit < len(work.pages)):
             return None
         hit_page_id = str(getattr(work.pages[page_hit], "id", "") or "")

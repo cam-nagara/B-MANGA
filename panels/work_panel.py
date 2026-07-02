@@ -19,6 +19,20 @@ _ROLE_LABELS = {
 }
 
 
+def _page_file_nav_specs(work) -> tuple[tuple[str, str], tuple[str, str]]:
+    """ページファイル移動ボタンの左右表示と実行先を返す."""
+    read_direction = str(getattr(getattr(work, "paper", None), "read_direction", "left") or "left")
+    if read_direction == "left":
+        return (
+            ("bmanga.page_file_next", "◀　次のページへ"),
+            ("bmanga.page_file_prev", "前のページへ　▶"),
+        )
+    return (
+        ("bmanga.page_file_prev", "◀　前のページへ"),
+        ("bmanga.page_file_next", "次のページへ　▶"),
+    )
+
+
 class BMANGA_PT_work(Panel):
     bl_idname = "BMANGA_PT_work"
     bl_label = "作品"
@@ -126,6 +140,7 @@ class BMANGA_PT_coma_return(Panel):
             op.target = "COMA"
             return
         if page_file_scene.is_page_edit_scene(context.scene):
+            work = get_work(context)
             row = layout.row(align=True)
             row.operator(
                 "bmanga.exit_page_file",
@@ -134,8 +149,9 @@ class BMANGA_PT_coma_return(Panel):
             )
             row.operator("bmanga.work_save", text="", icon="FILE_TICK")
             nav = layout.row(align=True)
-            nav.operator("bmanga.page_file_prev", text="前のページへ", icon="TRIA_LEFT")
-            nav.operator("bmanga.page_file_next", text="次のページへ", icon="TRIA_RIGHT")
+            left_spec, right_spec = _page_file_nav_specs(work)
+            nav.operator(left_spec[0], text=left_spec[1])
+            nav.operator(right_spec[0], text=right_spec[1])
             op = layout.operator("bmanga.open_current_folder", text="保存フォルダを開く", icon="FILEBROWSER")
             op.target = "WORK"
             return
