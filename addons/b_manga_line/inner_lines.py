@@ -25,6 +25,7 @@ _RADIUS_HALF_NODE_LABEL = "BML_InnerLineRadiusHalf"
 _OFFSET_SOCKET_NAME = "オフセット"
 _MARKED_ONLY_SOCKET_NAME = "指定済みの辺だけ線にする"
 _MIDPOINT_FACTOR_SOCKET_NAME = "中間頂点の線幅調整"
+_MIDPOINT_JITTER_SOCKET_NAME = "中間頂点の乱れ (%)"
 _RESAMPLE_COUNT_SOCKET_NAME = "線の分割数"
 _WIDTH_CURVE_25_SOCKET_NAME = "線幅カーブ25%"
 _WIDTH_CURVE_50_SOCKET_NAME = "線幅カーブ50%"
@@ -35,6 +36,8 @@ _RESAMPLE_CURVE_LABEL = "BML_InnerCurveResample"
 _SELECTED_EDGE_MESH_LABEL = "BML_InnerSelectedEdgeMesh"
 _CHAIN_INSTANCE_SPLIT_LABEL = "BML_InnerChainInstanceSplit"
 _EDGE_ANGLE_COMPARE_LABEL = "BML_InnerEdgeAngleCompareGE"
+_CHAIN_SELECTION_COMPARE_LABEL = "BML_InnerChainSelectionGE"
+_CURVE_JITTER_CENTER_LABEL = "BML_InnerCurveJitterCenter"
 _CHAIN_ID_ATTR = inner_line_chains.CHAIN_ID_ATTR
 _SHARP_EDGE_ATTR = "sharp_edge"
 _CREASE_EDGE_ATTR = "crease_edge"
@@ -133,16 +136,8 @@ def _add_curve_width_scale(nodes, links, gin, x_offset=0):
     spline = nodes.new("GeometryNodeSplineParameter")
     spline.location = (x_offset - 760, 360)
 
-    doubled = _math(nodes, "MULTIPLY", (x_offset - 560, 360), value1=2.0)
-    links.new(spline.outputs["Factor"], doubled.inputs[0])
-    minus_one = _math(nodes, "SUBTRACT", (x_offset - 380, 360), value1=1.0)
-    links.new(doubled.outputs[0], minus_one.inputs[0])
-    abs_mid = _math(nodes, "ABSOLUTE", (x_offset - 200, 360))
-    links.new(minus_one.outputs[0], abs_mid.inputs[0])
-    midpoint = _math(nodes, "SUBTRACT", (x_offset - 20, 360), value0=1.0)
-    links.new(abs_mid.outputs[0], midpoint.inputs[1])
-
-    curved = _add_width_curve(nodes, links, midpoint.outputs[0], gin, x_offset)
+    midpoint_raw = _add_jittered_midpoint_factor(nodes, links, gin, spline, x_offset)
+    curved = _add_width_curve(nodes, links, midpoint_raw, gin, x_offset)
 
     one_minus_curve = _math(nodes, "SUBTRACT", (x_offset + 500, 360), value0=1.0)
     links.new(curved, one_minus_curve.inputs[1])
@@ -180,6 +175,63 @@ def _add_curve_width_scale(nodes, links, gin, x_offset=0):
     clamped_max = _math(nodes, "MINIMUM", (x_offset + 1480, 300), value1=1.0)
     links.new(clamped_min.outputs[0], clamped_max.inputs[0])
     return clamped_max.outputs[0]
+
+
+def _add_jittered_midpoint_factor(nodes, links, gin, spline, x_offset=0):
+    jitter_div = _math(nodes, "DIVIDE", (x_offset - 760, 520), value1=100.0)
+    links.new(gin.outputs[_MIDPOINT_JITTER_SOCKET_NAME], jitter_div.inputs[0])
+    jitter_clamp_min = _math(nodes, "MAXIMUM", (x_offset - 580, 520), value1=0.0)
+    links.new(jitter_div.outputs[0], jitter_clamp_min.inputs[0])
+    jitter_clamp_max = _math(nodes, "MINIMUM", (x_offset - 400, 520), value1=0.5)
+    links.new(jitter_clamp_min.outputs[0], jitter_clamp_max.inputs[0])
+
+    random = nodes.new("FunctionNodeRandomValue")
+    random.location = (x_offset - 760, 680)
+    random.data_type = "FLOAT"
+    random.inputs[2].default_value = -1.0
+    random.inputs[3].default_value = 1.0
+    links.new(spline.outputs["Index"], random.inputs["ID"])
+
+    offset = _math(nodes, "MULTIPLY", (x_offset - 220, 580))
+    links.new(random.outputs[1], offset.inputs[0])
+    links.new(jitter_clamp_max.outputs[0], offset.inputs[1])
+
+    center = _math(nodes, "ADD", (x_offset - 20, 580), value0=0.5)
+    center.label = _CURVE_JITTER_CENTER_LABEL
+    links.new(offset.outputs[0], center.inputs[1])
+    center_min = _math(nodes, "MAXIMUM", (x_offset + 160, 580), value1=0.001)
+    links.new(center.outputs[0], center_min.inputs[0])
+    center_max = _math(nodes, "MINIMUM", (x_offset + 340, 580), value1=0.999)
+    links.new(center_min.outputs[0], center_max.inputs[0])
+
+    left_ratio = _math(nodes, "DIVIDE", (x_offset - 220, 360))
+    links.new(spline.outputs["Factor"], left_ratio.inputs[0])
+    links.new(center_max.outputs[0], left_ratio.inputs[1])
+
+    one_minus_factor = _math(nodes, "SUBTRACT", (x_offset - 220, 240), value0=1.0)
+    links.new(spline.outputs["Factor"], one_minus_factor.inputs[1])
+    one_minus_center = _math(nodes, "SUBTRACT", (x_offset - 20, 240), value0=1.0)
+    links.new(center_max.outputs[0], one_minus_center.inputs[1])
+    right_ratio = _math(nodes, "DIVIDE", (x_offset + 160, 240))
+    links.new(one_minus_factor.outputs[0], right_ratio.inputs[0])
+    links.new(one_minus_center.outputs[0], right_ratio.inputs[1])
+
+    left_side = nodes.new("FunctionNodeCompare")
+    left_side.location = (x_offset + 160, 420)
+    left_side.data_type = "FLOAT"
+    left_side.operation = "LESS_EQUAL"
+    links.new(spline.outputs["Factor"], left_side.inputs[0])
+    links.new(center_max.outputs[0], left_side.inputs[1])
+
+    raw_switch = _switch_float(
+        nodes, links, left_side.outputs[0], right_ratio.outputs[0], left_ratio.outputs[0],
+        (x_offset + 520, 360),
+    )
+    raw_min = _math(nodes, "MAXIMUM", (x_offset + 700, 360), value1=0.0)
+    links.new(raw_switch, raw_min.inputs[0])
+    raw_max = _math(nodes, "MINIMUM", (x_offset + 880, 360), value1=1.0)
+    links.new(raw_min.outputs[0], raw_max.inputs[0])
+    return raw_max.outputs[0]
 
 
 # ------------------------------------------------------------------
@@ -241,6 +293,14 @@ def _create_node_tree() -> bpy.types.NodeTree:
     midpoint_sock.default_value = 0.0
     midpoint_sock.min_value = -1.0
     midpoint_sock.max_value = 1.0
+    jitter_sock = tree.interface.new_socket(
+        name=_MIDPOINT_JITTER_SOCKET_NAME,
+        in_out="INPUT",
+        socket_type="NodeSocketFloat",
+    )
+    jitter_sock.default_value = 0.0
+    jitter_sock.min_value = 0.0
+    jitter_sock.max_value = 50.0
     resample_count_sock = tree.interface.new_socket(
         name=_RESAMPLE_COUNT_SOCKET_NAME,
         in_out="INPUT",
@@ -356,12 +416,25 @@ def _create_node_tree() -> bpy.types.NodeTree:
     links.new(sharp_marked.outputs[0], marked_selection.inputs[0])
     links.new(crease_marked.outputs[0], marked_selection.inputs[1])
 
+    chain_selection_attr = nodes.new("GeometryNodeInputNamedAttribute")
+    chain_selection_attr.location = (-600, -600)
+    chain_selection_attr.data_type = "INT"
+    chain_selection_attr.inputs["Name"].default_value = _CHAIN_ID_ATTR
+
+    chain_selected = nodes.new("FunctionNodeCompare")
+    chain_selected.label = _CHAIN_SELECTION_COMPARE_LABEL
+    chain_selected.location = (-400, -600)
+    chain_selected.data_type = "INT"
+    chain_selected.operation = "GREATER_EQUAL"
+    links.new(chain_selection_attr.outputs["Attribute"], chain_selected.inputs[2])
+    chain_selected.inputs[3].default_value = 0
+
     selection_switch = nodes.new("GeometryNodeSwitch")
     selection_switch.label = _MARKED_SELECTION_SWITCH_LABEL
     selection_switch.location = (-20, -200)
     selection_switch.input_type = "BOOLEAN"
     links.new(gin.outputs[_MARKED_ONLY_SOCKET_NAME], selection_switch.inputs["Switch"])
-    links.new(compare.outputs[0], selection_switch.inputs["False"])
+    links.new(chain_selected.outputs[0], selection_switch.inputs["False"])
     links.new(marked_selection.outputs[0], selection_switch.inputs["True"])
 
     offset_amount = nodes.new("ShaderNodeMath")
@@ -534,6 +607,9 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
         if _find_socket_id(tree, _MIDPOINT_FACTOR_SOCKET_NAME) is None:
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
+        if _find_socket_id(tree, _MIDPOINT_JITTER_SOCKET_NAME) is None:
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
         if _find_socket_id(tree, _RESAMPLE_COUNT_SOCKET_NAME) is None:
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
@@ -587,6 +663,16 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
             None,
         )
         if compare_node is None or getattr(compare_node, "operation", "") != "GREATER_EQUAL":
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
+        chain_compare = next(
+            (n for n in tree.nodes if getattr(n, "label", "") == _CHAIN_SELECTION_COMPARE_LABEL),
+            None,
+        )
+        if chain_compare is None or getattr(chain_compare, "operation", "") != "GREATER_EQUAL":
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
+        if not any(getattr(n, "label", "") == _CURVE_JITTER_CENTER_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
         if not _uses_named_attribute(tree, _CHAIN_ID_ATTR):
@@ -653,6 +739,7 @@ def apply_inner_lines(
     material: bpy.types.Material | None = None,
     use_marked_edges: bool = False,
     midpoint_factor: float = 0.0,
+    midpoint_jitter_percent: float = 0.0,
     resample_count: int | None = None,
     width_curve_25: float = 0.25,
     width_curve_50: float = 0.50,
@@ -683,6 +770,7 @@ def apply_inner_lines(
     sid_offset = _find_socket_id(tree, _OFFSET_SOCKET_NAME)
     sid_marked_only = _find_socket_id(tree, _MARKED_ONLY_SOCKET_NAME)
     sid_midpoint_factor = _find_socket_id(tree, _MIDPOINT_FACTOR_SOCKET_NAME)
+    sid_midpoint_jitter = _find_socket_id(tree, _MIDPOINT_JITTER_SOCKET_NAME)
     sid_resample_count = _find_socket_id(tree, _RESAMPLE_COUNT_SOCKET_NAME)
     sid_curve_25 = _find_socket_id(tree, _WIDTH_CURVE_25_SOCKET_NAME)
     sid_curve_50 = _find_socket_id(tree, _WIDTH_CURVE_50_SOCKET_NAME)
@@ -697,6 +785,8 @@ def apply_inner_lines(
         mod[sid_marked_only] = bool(use_marked_edges)
     if sid_midpoint_factor is not None:
         mod[sid_midpoint_factor] = float(midpoint_factor)
+    if sid_midpoint_jitter is not None:
+        mod[sid_midpoint_jitter] = float(midpoint_jitter_percent)
     if sid_resample_count is not None:
         if resample_count is None:
             from . import subdivision_lod
@@ -783,6 +873,7 @@ def update_parameters(
     offset: float | None = None,
     use_marked_edges: bool | None = None,
     midpoint_factor: float | None = None,
+    midpoint_jitter_percent: float | None = None,
     resample_count: int | None = None,
     width_curve_25: float | None = None,
     width_curve_50: float | None = None,
@@ -840,6 +931,10 @@ def update_parameters(
         sid = _find_socket_id(tree, _MIDPOINT_FACTOR_SOCKET_NAME)
         if sid is not None:
             mod[sid] = float(midpoint_factor)
+    if midpoint_jitter_percent is not None:
+        sid = _find_socket_id(tree, _MIDPOINT_JITTER_SOCKET_NAME)
+        if sid is not None:
+            mod[sid] = float(midpoint_jitter_percent)
     if resample_count is not None:
         sid = _find_socket_id(tree, _RESAMPLE_COUNT_SOCKET_NAME)
         if sid is not None:
@@ -865,3 +960,22 @@ def update_parameters(
         if sid_line_material is not None:
             mod[sid_line_material] = line_material_index
     return True
+
+
+# ------------------------------------------------------------------
+# 保存済みファイルの旧内部線ノード修復
+# ------------------------------------------------------------------
+
+def repair_scene_inner_lines(scene: bpy.types.Scene | None = None) -> int:
+    from . import inner_line_repair
+    return inner_line_repair.repair_scene_inner_lines(scene)
+
+
+def register() -> None:
+    from . import inner_line_repair
+    inner_line_repair.register()
+
+
+def unregister() -> None:
+    from . import inner_line_repair
+    inner_line_repair.unregister()

@@ -81,6 +81,32 @@ def _make_segmented_box(name: str) -> bpy.types.Object:
     return obj
 
 
+def _make_t_branch_graph(name: str) -> bpy.types.Object:
+    verts = (
+        (0.0, 0.0, 0.0),
+        (0.0, 1.0, 0.0),
+        (0.0, 2.0, 0.0),
+        (-1.0, 0.0, 0.0),
+        (-2.0, 0.0, 0.0),
+        (1.0, 0.0, 0.0),
+        (2.0, 0.0, 0.0),
+    )
+    edges = (
+        (0, 1),
+        (1, 2),
+        (0, 3),
+        (3, 4),
+        (0, 5),
+        (5, 6),
+    )
+    mesh = bpy.data.meshes.new(name)
+    mesh.from_pydata(verts, edges, [])
+    mesh.update()
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    return obj
+
+
 def _center_ridge_vertex() -> int:
     return (LEVELS // 2) * 3 + 1
 
@@ -147,18 +173,20 @@ def _assert_outline_uses_detection_angle() -> None:
     assert _weight(obj, core.VG_LINE_WIDTH, center) < 0.001
 
 
-def _assert_box_corners_are_outline_endpoints() -> None:
+def _assert_box_real_corners_are_outline_endpoints() -> None:
     obj = _make_segmented_box("BML_midpoint_outline_box_endpoints")
     settings = obj.bmanga_line_settings
     settings.edge_smooth_factor = -1.0
     settings.edge_midpoint_angle = math.radians(60.0)
 
     vertex_analysis.compute_and_apply_weights(obj, settings, "outline")
-    center = _center_box_corner_vertex()
-    assert _weight(obj, core.VG_LINE_WIDTH, center) > 0.999
+    actual_corner = 3
+    middle_on_straight_edge = _center_box_corner_vertex()
+    assert _weight(obj, core.VG_LINE_WIDTH, actual_corner) > 0.999
+    assert _weight(obj, core.VG_LINE_WIDTH, middle_on_straight_edge) < 0.05
 
 
-def _assert_cylinder_rims_are_outline_endpoints() -> None:
+def _assert_cylinder_rims_use_view_endpoints() -> None:
     bpy.ops.mesh.primitive_cylinder_add(vertices=32, radius=1.0, depth=1.0)
     obj = bpy.context.object
     obj.name = "BML_midpoint_outline_cylinder_endpoints"
@@ -167,9 +195,12 @@ def _assert_cylinder_rims_are_outline_endpoints() -> None:
     settings.edge_midpoint_angle = math.radians(60.0)
 
     vertex_analysis.compute_and_apply_weights(obj, settings, "outline")
-    rim_vertices = [v.index for v in obj.data.vertices if abs(abs(v.co.z) - 0.5) < 0.01]
-    assert rim_vertices, "円柱上下端の頂点がありません"
-    assert min(_weight(obj, core.VG_LINE_WIDTH, index) for index in rim_vertices) > 0.95
+    top_vertices = [v for v in obj.data.vertices if v.co.z > 0.49]
+    assert top_vertices, "円柱上面の頂点がありません"
+    x_endpoint = max(top_vertices, key=lambda v: abs(v.co.x)).index
+    y_midpoint = max(top_vertices, key=lambda v: abs(v.co.y)).index
+    assert _weight(obj, core.VG_LINE_WIDTH, x_endpoint) > 0.95
+    assert _weight(obj, core.VG_LINE_WIDTH, y_midpoint) < 0.05
 
 
 def _assert_generated_target_uses_detection_angle(
@@ -212,6 +243,31 @@ def _assert_closed_cylinder_rim_uses_camera_view_endpoints() -> None:
     assert _weight(obj, core.VG_INNER_LINE_WIDTH, y_midpoint) < 0.05
 
 
+def _assert_branch_vertices_are_endpoints(
+    target: str,
+    group_name: str,
+    factor_prop: str,
+) -> None:
+    obj = _make_t_branch_graph("BML_midpoint_branch_" + target)
+    settings = obj.bmanga_line_settings
+    setattr(settings, factor_prop, -1.0)
+    real_edge_is_sharp = vertex_analysis._edge_is_sharp
+    try:
+        # 交差線生成後の線グラフ相当を検査するため、面を持たない辺も
+        # このテスト内では中間頂点判定対象として扱う。
+        vertex_analysis._edge_is_sharp = lambda _edge, _threshold: True
+        vertex_analysis.compute_and_apply_weights(obj, settings, target)
+    finally:
+        vertex_analysis._edge_is_sharp = real_edge_is_sharp
+
+    branch_vertex = 0
+    mid_vertices = (1, 3, 5)
+    endpoints = (2, 4, 6)
+    assert _weight(obj, group_name, branch_vertex) > 0.999
+    assert all(_weight(obj, group_name, vi) < 0.001 for vi in mid_vertices)
+    assert all(_weight(obj, group_name, vi) > 0.999 for vi in endpoints)
+
+
 def main() -> None:
     b_manga_line.register()
     _clear_scene()
@@ -224,8 +280,8 @@ def main() -> None:
         "intersection_edge_smooth_factor",
     )
     _assert_outline_uses_detection_angle()
-    _assert_box_corners_are_outline_endpoints()
-    _assert_cylinder_rims_are_outline_endpoints()
+    _assert_box_real_corners_are_outline_endpoints()
+    _assert_cylinder_rims_use_view_endpoints()
     _assert_generated_target_uses_detection_angle(
         "inner",
         core.VG_INNER_LINE_WIDTH,
@@ -239,6 +295,21 @@ def main() -> None:
         "intersection_edge_midpoint_angle",
     )
     _assert_closed_cylinder_rim_uses_camera_view_endpoints()
+    _assert_branch_vertices_are_endpoints(
+        "outline",
+        core.VG_LINE_WIDTH,
+        "edge_smooth_factor",
+    )
+    _assert_branch_vertices_are_endpoints(
+        "inner",
+        core.VG_INNER_LINE_WIDTH,
+        "inner_edge_smooth_factor",
+    )
+    _assert_branch_vertices_are_endpoints(
+        "intersection",
+        core.VG_INTERSECTION_LINE_WIDTH,
+        "intersection_edge_smooth_factor",
+    )
 
     print("[PASS] midpoint width settings are independent per line type")
 

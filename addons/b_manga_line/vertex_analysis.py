@@ -150,17 +150,10 @@ def _hard_endpoint_anchors(
     threshold: float,
     hard_endpoint_angle: float | None,
 ) -> set[int]:
-    if hard_endpoint_angle is None:
-        return set()
-    limit = max(float(threshold), float(hard_endpoint_angle))
-    anchors: set[int] = set()
-    for vert in bm.verts:
-        for edge in vert.link_edges:
-            angle = _edge_angle(edge)
-            if angle is not None and angle >= limit:
-                anchors.add(vert.index)
-                break
-    return anchors
+    # 実際の角や分岐は sharp graph の接続数で端点化する。
+    # 角度だけで頂点を端点にすると、分割済み直線上の途中頂点まで
+    # 端点になり、中間頂点の線幅調整と乱れが効かなくなる。
+    return set()
 
 
 def _stable_random_01(obj, chain: list[int]) -> float:

@@ -79,6 +79,8 @@ def _assert_node_tree_uses_inclusive_angle() -> None:
         angle=math.radians(60.0),
         thickness=0.01,
         material=mat,
+        midpoint_factor=-1.0,
+        midpoint_jitter_percent=37.5,
     )
     tree = obj.modifiers[inner_lines.GN_MODIFIER_NAME].node_group
     compare = next(
@@ -86,6 +88,62 @@ def _assert_node_tree_uses_inclusive_angle() -> None:
         if getattr(node, "label", "") == inner_lines._EDGE_ANGLE_COMPARE_LABEL
     )
     assert compare.operation == "GREATER_EQUAL"
+    chain_compare = next(
+        node for node in tree.nodes
+        if getattr(node, "label", "") == inner_lines._CHAIN_SELECTION_COMPARE_LABEL
+    )
+    assert chain_compare.operation == "GREATER_EQUAL"
+    selection_switch = next(
+        node for node in tree.nodes
+        if getattr(node, "label", "") == inner_lines._MARKED_SELECTION_SWITCH_LABEL
+    )
+    false_links = list(selection_switch.inputs["False"].links)
+    assert false_links, "内部線の自動選択入力が未接続です"
+    assert false_links[0].from_node == chain_compare
+    assert any(
+        getattr(node, "label", "") == inner_lines._CURVE_JITTER_CENTER_LABEL
+        for node in tree.nodes
+    )
+    sid = inner_lines._find_socket_id(tree, inner_lines._MIDPOINT_JITTER_SOCKET_NAME)
+    assert sid is not None
+    assert abs(float(obj.modifiers[inner_lines.GN_MODIFIER_NAME][sid]) - 37.5) < 1.0e-6
+
+
+def _assert_stale_inner_tree_is_repaired() -> None:
+    obj = _new_cylinder("inner_stale_tree_repair_check", 12)
+    settings = obj.bmanga_line_settings
+    settings.inner_line_angle = math.radians(60.0)
+    settings.inner_line_thickness = 0.01
+    settings.inner_line_offset = 1.0
+    settings.inner_edge_smooth_factor = -1.0
+    settings.inner_edge_midpoint_jitter_percent = 25.0
+    settings.inner_edge_width_curve_25 = 0.1
+    settings.inner_edge_width_curve_50 = 0.2
+    settings.inner_edge_width_curve_75 = 0.3
+    stale = bpy.data.node_groups.get(inner_lines.GN_TREE_NAME)
+    if stale is not None:
+        bpy.data.node_groups.remove(stale)
+    stale = bpy.data.node_groups.new(inner_lines.GN_TREE_NAME, "GeometryNodeTree")
+    mod = obj.modifiers.new(inner_lines.GN_MODIFIER_NAME, "NODES")
+    mod.node_group = stale
+    mod.show_viewport = False
+    mod.show_render = True
+
+    assert inner_lines.repair_scene_inner_lines(bpy.context.scene) == 1
+    repaired = obj.modifiers[inner_lines.GN_MODIFIER_NAME]
+    assert repaired.node_group != stale
+    assert not repaired.show_viewport
+    assert repaired.show_render
+    assert any(
+        getattr(node, "label", "") == inner_lines._CHAIN_SELECTION_COMPARE_LABEL
+        for node in repaired.node_group.nodes
+    )
+    sid = inner_lines._find_socket_id(
+        repaired.node_group,
+        inner_lines._MIDPOINT_JITTER_SOCKET_NAME,
+    )
+    assert sid is not None
+    assert abs(float(repaired[sid]) - 25.0) < 1.0e-6
 
 
 def main() -> None:
@@ -98,6 +156,8 @@ def main() -> None:
         _assert_cylinder_cap_spokes_are_not_selected()
         _clear_scene()
         _assert_node_tree_uses_inclusive_angle()
+        _clear_scene()
+        _assert_stale_inner_tree_is_repaired()
         print("[PASS] inner line angle threshold includes 60 degrees and ignores cap spokes")
     finally:
         b_manga_line.unregister()

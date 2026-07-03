@@ -3,6 +3,43 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-04 — B-MANGA Line中間頂点の乱れと円柱上面内部線を修正 (B-MANGA Line v0.3.90)
+
+### 症状
+
+- 円柱の内部線で、上面の三角分割がまだ線として表示されることがあった。
+- アウトライン・内部線・交差線の「中間頂点の乱れ」が効いていないように見える経路があった。
+- 交差線の中間頂点の線幅調整で、3方向以上へ伸びる交差点が線の区切りとして扱われない可能性があった。
+
+### 原因
+
+- 内部線の実際の生成ノードが、Python側で確定した内部線対象ではなく、旧来の角度判定を直接参照する構成を残していたため、保存済みファイルや旧ノードでは円柱キャップの三角分割を拾い得た。
+- 内部線の一括更新経路に「中間頂点の乱れ」値が渡っていなかった。
+- 分割済み直線上の途中頂点まで角度だけで端点化していたため、中間頂点の線幅調整・乱れの効果が潰れるケースがあった。
+- 交差線シェルのチューブ化では、3方向以上の分岐点をまたいで1本のカーブとして扱う余地があった。
+
+### 修正
+
+- 内部線ノードの自動選択は、確定済みの内部線対象属性だけを見るように変更し、円柱上面の三角分割が生成段階で線にならないようにした。
+- 保存済みファイル内の古い内部線ノードを、アドオン有効化時・ファイル読み込み後に現行構成へ自動修復するようにした。
+- 内部線の生成・更新・一括適用へ「中間頂点の乱れ」を渡し、生成線側でも乱れた中央位置で線幅変化を行うようにした。
+- 中間頂点の端点判定を、角度だけで途中頂点を端点化しない形へ修正した。直方体の実角・円柱の表示上の端・3方向以上に伸びる分岐点は端点として残す。
+- 交差線シェルは3方向以上へ伸びる交差点で辺を分割してからカーブ化し、中間頂点の線幅調整の区切りにするようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_inner_angle_threshold_check.py`
+- `test/blender_b_manga_line_midpoint_targets_check.py`
+- `test/blender_b_manga_line_midpoint_jitter_check.py`
+- `test/blender_b_manga_line_inner_width_check.py`
+- `test/blender_b_manga_line_intersection_shell_method_check.py`
+- `test/blender_b_manga_line_intersection_fill_check.py`
+- `test/blender_b_manga_line_intersection_refresh_efficiency_check.py`
+- AI目視: `_verify/2026-07-04_bml_line_midpoint_followup/bml_line_midpoint_cylinder_intersection.png` で、円柱上面に三角スポークが出ていないことを確認。検査ログ上も円柱キャップ三角分割の内部線選択は `0/64`。
+- `test_line03.blend` はバックグラウンド読み込みが2分以上完了せず、実ファイル由来のレンダーは未取得。保存は行っていない。
+
+---
+
 ## 2026-07-04 — B-MANGA Line円柱・六角柱の内部線判定と交差線更新を軽量化 (B-MANGA Line v0.3.89)
 
 ### 症状

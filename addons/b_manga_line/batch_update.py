@@ -210,6 +210,7 @@ def _inner_midpoint_kwargs(settings) -> dict[str, float]:
     )
     return {
         "midpoint_factor": factor,
+        "midpoint_jitter_percent": float(settings.inner_edge_midpoint_jitter_percent),
         "width_curve_25": float(settings.inner_edge_width_curve_25),
         "width_curve_50": float(settings.inner_edge_width_curve_50),
         "width_curve_75": float(settings.inner_edge_width_curve_75),

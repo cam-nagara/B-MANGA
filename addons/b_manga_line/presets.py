@@ -220,6 +220,7 @@ def apply_line_settings(
                 if settings.auto_subdivision_for_midpoint
                 else 0.0
             ),
+            midpoint_jitter_percent=settings.inner_edge_midpoint_jitter_percent,
             width_curve_25=settings.inner_edge_width_curve_25,
             width_curve_50=settings.inner_edge_width_curve_50,
             width_curve_75=settings.inner_edge_width_curve_75,

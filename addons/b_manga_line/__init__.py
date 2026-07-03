@@ -5,13 +5,14 @@ from __future__ import annotations
 bl_info = {
     "name": "B-MANGA Line",
     "author": "B-MANGA Project",
-    "version": (0, 3, 89),
+    "version": (0, 3, 90),
     "blender": (4, 3, 0),
     "description": "背面法（反転ハル）によるマンガ風アウトライン",
     "category": "Render",
 }
 
 from . import core
+from . import inner_lines
 from . import outline_setup
 from . import auto_smooth_guard
 from . import camera_comp
@@ -24,6 +25,7 @@ from . import panels
 
 _MODULES = (
     core,
+    inner_lines,
     outline_setup,
     auto_smooth_guard,
     camera_comp,
