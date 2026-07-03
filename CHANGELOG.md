@@ -3,6 +3,30 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-04 — B-MANGA Line内部線の分岐交差点を中間頂点調整の線端にする (B-MANGA Line v0.3.86)
+
+### 症状
+
+- 中間頂点の線幅調整を使った内部線で、T字状に交差して3方向以上へ辺が伸びる点が、線の端として扱われないことがあった。
+
+### 原因
+
+- サブディビジョン用の線上位置ベースの線幅調整は、カーブ化された内部線の始点・終点を基準にしており、内部線同士が交差して3方向以上へ分岐する点を線端として分割していなかった。
+
+### 修正
+
+- 内部線をカーブ化する前に、選択された内部線だけの辺グラフを作り、3方向以上へ分岐する点を交差点として検出するよう変更。
+- 検出した交差点で内部線を分割し、中間頂点の線幅調整が交差点をまたいで続かないようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_inner_branch_endpoint_check.py`
+- `test/blender_b_manga_line_inner_width_check.py`
+- `test/blender_b_manga_line_subdivision_level_sync_check.py`
+- `test/blender_b_manga_line_auto_subdivision_check.py`
+
+---
+
 ## 2026-07-04 — B-MANGA Lineサブディビジョン値を内部線・交差線へ同期 (B-MANGA Line v0.3.85)
 
 ### 症状

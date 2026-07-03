@@ -10,7 +10,7 @@ import math
 
 import bpy
 
-from . import modifier_stack
+from . import inner_line_chains, modifier_stack
 from .core import (
     GENERATED_LINE_ATTR,
     GN_MODIFIER_NAME,
@@ -32,6 +32,9 @@ _WIDTH_CURVE_75_SOCKET_NAME = "線幅カーブ75%"
 _MARKED_SELECTION_SWITCH_LABEL = "BML_MarkedInnerEdgeSelection"
 _CURVE_WIDTH_SCALE_LABEL = "BML_InnerCurveWidthScale"
 _RESAMPLE_CURVE_LABEL = "BML_InnerCurveResample"
+_SELECTED_EDGE_MESH_LABEL = "BML_InnerSelectedEdgeMesh"
+_CHAIN_INSTANCE_SPLIT_LABEL = "BML_InnerChainInstanceSplit"
+_CHAIN_ID_ATTR = inner_line_chains.CHAIN_ID_ATTR
 _SHARP_EDGE_ATTR = "sharp_edge"
 _CREASE_EDGE_ATTR = "crease_edge"
 
@@ -378,15 +381,47 @@ def _create_node_tree() -> bpy.types.NodeTree:
     links.new(del_shell.outputs["Geometry"], set_position.inputs["Geometry"])
     links.new(offset_vector.outputs[0], set_position.inputs["Offset"])
 
-    # Mesh to Curve: 選択エッジをカーブに変換
+    # 選択された内部線だけの辺グラフを作り、3方向以上へ分岐する点を
+    # カーブの端点として扱う。これにより中間頂点の線幅調整が
+    # T字状の交差点をまたいで続かないようにする。
+    not_selected = nodes.new("FunctionNodeBooleanMath")
+    not_selected.location = (-200, -520)
+    not_selected.operation = "NOT"
+    links.new(selection_switch.outputs["Output"], not_selected.inputs[0])
+
+    selected_edges = nodes.new("GeometryNodeDeleteGeometry")
+    selected_edges.label = _SELECTED_EDGE_MESH_LABEL
+    selected_edges.location = (-180, -360)
+    selected_edges.domain = "EDGE"
+    links.new(set_position.outputs["Geometry"], selected_edges.inputs["Geometry"])
+    links.new(not_selected.outputs[0], selected_edges.inputs["Selection"])
+
+    chain_id = nodes.new("GeometryNodeInputNamedAttribute")
+    chain_id.location = (-20, -560)
+    chain_id.data_type = "INT"
+    chain_id.inputs["Name"].default_value = _CHAIN_ID_ATTR
+
+    split_chains = nodes.new("GeometryNodeSplitToInstances")
+    split_chains.label = _CHAIN_INSTANCE_SPLIT_LABEL
+    split_chains.location = (40, -260)
+    split_chains.domain = "EDGE"
+    split_chains.inputs["Selection"].default_value = True
+    links.new(selected_edges.outputs["Geometry"], split_chains.inputs["Geometry"])
+    links.new(chain_id.outputs["Attribute"], split_chains.inputs["Group ID"])
+
+    realize_chains = nodes.new("GeometryNodeRealizeInstances")
+    realize_chains.location = (220, -260)
+    links.new(split_chains.outputs["Instances"], realize_chains.inputs["Geometry"])
+
+    # Mesh to Curve: 選択エッジだけに整理済みのメッシュをカーブに変換
     m2c = nodes.new("GeometryNodeMeshToCurve")
-    m2c.location = (-200, -200)
-    links.new(set_position.outputs["Geometry"], m2c.inputs[0])  # 元メッシュのみ
-    links.new(selection_switch.outputs["Output"], m2c.inputs[1])  # Selection
+    m2c.location = (400, -200)
+    links.new(realize_chains.outputs["Geometry"], m2c.inputs[0])
+    m2c.inputs["Selection"].default_value = True
 
     resample = nodes.new("GeometryNodeResampleCurve")
     resample.label = _RESAMPLE_CURVE_LABEL
-    resample.location = (-20, -200)
+    resample.location = (580, -200)
     if hasattr(resample, "mode"):
         resample.mode = "COUNT"
     count_input = resample.inputs.get("Count")
@@ -397,46 +432,46 @@ def _create_node_tree() -> bpy.types.NodeTree:
 
     # 内部線専用の線幅値を反映する。
     width_attr = nodes.new("GeometryNodeInputNamedAttribute")
-    width_attr.location = (-220, 120)
+    width_attr.location = (-20, 120)
     width_attr.data_type = "FLOAT"
     width_attr.inputs["Name"].default_value = VG_INNER_LINE_WIDTH
 
     width_switch = nodes.new("GeometryNodeSwitch")
-    width_switch.location = (-20, 120)
+    width_switch.location = (180, 120)
     width_switch.input_type = "FLOAT"
     width_switch.inputs["False"].default_value = 1.0
     links.new(width_attr.outputs["Exists"], width_switch.inputs["Switch"])
     links.new(width_attr.outputs["Attribute"], width_switch.inputs["True"])
 
     width_min = nodes.new("ShaderNodeMath")
-    width_min.location = (160, 120)
+    width_min.location = (360, 120)
     width_min.operation = "MAXIMUM"
     width_min.inputs[1].default_value = 0.0
     links.new(width_switch.outputs["Output"], width_min.inputs[0])
 
     width_max = nodes.new("ShaderNodeMath")
-    width_max.location = (340, 120)
+    width_max.location = (540, 120)
     width_max.operation = "MINIMUM"
     width_max.inputs[1].default_value = 1.0
     links.new(width_min.outputs[0], width_max.inputs[0])
 
     curve_scale = _add_curve_width_scale(nodes, links, gin, x_offset=520)
     combined_scale = nodes.new("ShaderNodeMath")
-    combined_scale.location = (620, 120)
+    combined_scale.location = (760, 120)
     combined_scale.operation = "MULTIPLY"
     links.new(width_max.outputs[0], combined_scale.inputs[0])
     links.new(curve_scale, combined_scale.inputs[1])
 
     # Curve Circle: チューブ断面
     circle = nodes.new("GeometryNodeCurvePrimitiveCircle")
-    circle.location = (-200, -400)
+    circle.location = (220, -400)
     circle.mode = "RADIUS"
     for inp in circle.inputs:
         if inp.name == "Resolution" and inp.enabled:
             inp.default_value = 4
     radius_half = nodes.new("ShaderNodeMath")
     radius_half.label = _RADIUS_HALF_NODE_LABEL
-    radius_half.location = (-400, -360)
+    radius_half.location = (20, -360)
     radius_half.operation = "MULTIPLY"
     radius_half.inputs[1].default_value = 0.5
     links.new(gin.outputs["線の太さ"], radius_half.inputs[0])
@@ -444,7 +479,7 @@ def _create_node_tree() -> bpy.types.NodeTree:
 
     # Curve to Mesh: カーブをチューブメッシュに変換
     c2m = nodes.new("GeometryNodeCurveToMesh")
-    c2m.location = (140, -200)
+    c2m.location = (740, -200)
     links.new(resample.outputs["Curve"], c2m.inputs[0])  # Curve
     links.new(circle.outputs[0], c2m.inputs[1])  # Profile Curve
     if "Scale" in c2m.inputs:
@@ -454,7 +489,7 @@ def _create_node_tree() -> bpy.types.NodeTree:
 
     mark_generated = nodes.new("GeometryNodeStoreNamedAttribute")
     mark_generated.label = _GENERATED_LINE_NODE_LABEL
-    mark_generated.location = (120, -360)
+    mark_generated.location = (720, -360)
     mark_generated.data_type = "BOOLEAN"
     mark_generated.domain = "FACE"
     mark_generated.inputs["Name"].default_value = GENERATED_LINE_ATTR
@@ -463,13 +498,13 @@ def _create_node_tree() -> bpy.types.NodeTree:
 
     # Set Material: マテリアル入力ソケットから割り当て
     setmat = nodes.new("GeometryNodeSetMaterial")
-    setmat.location = (300, -200)
+    setmat.location = (900, -200)
     links.new(mark_generated.outputs["Geometry"], setmat.inputs[0])
     links.new(gin.outputs["マテリアル"], setmat.inputs["Material"])
 
     # Join Geometry: 元メッシュ + 内部線ジオメトリ
     join = nodes.new("GeometryNodeJoinGeometry")
-    join.location = (500, 0)
+    join.location = (1100, 0)
     links.new(gin.outputs[0], join.inputs[0])  # 元ジオメトリ
     links.new(setmat.outputs[0], join.inputs[0])  # 内部線ジオメトリ
 
@@ -536,6 +571,15 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
         if not any(getattr(n, "label", "") == _RESAMPLE_CURVE_LABEL for n in tree.nodes):
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
+        if not any(getattr(n, "label", "") == _SELECTED_EDGE_MESH_LABEL for n in tree.nodes):
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
+        if not any(getattr(n, "label", "") == _CHAIN_INSTANCE_SPLIT_LABEL for n in tree.nodes):
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
+        if not _uses_named_attribute(tree, _CHAIN_ID_ATTR):
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
         if any(n.bl_idname == "GeometryNodeSetCurveRadius" for n in tree.nodes):
@@ -609,6 +653,7 @@ def apply_inner_lines(
     if obj.type != "MESH":
         return False
 
+    inner_line_chains.update_chain_id_attribute(obj, angle, use_marked_edges)
     tree = _get_or_create_tree()
 
     # 既存モディファイアを更新 or 新規作成
@@ -735,6 +780,32 @@ def update_parameters(
     material: bpy.types.Material | None = None,
 ) -> bool:
     """既存モディファイアのパラメータを更新."""
+    if angle is not None or use_marked_edges is not None or midpoint_factor is not None:
+        current_angle = angle
+        current_marked = use_marked_edges
+        current_mod = obj.modifiers.get(GN_MODIFIER_NAME)
+        if current_mod is not None and current_mod.node_group is not None:
+            tree_for_current = current_mod.node_group
+            if current_angle is None:
+                sid = _find_socket_id(tree_for_current, "検出角度")
+                if sid is not None:
+                    try:
+                        current_angle = float(current_mod[sid])
+                    except (KeyError, TypeError, ValueError):
+                        current_angle = None
+            if current_marked is None:
+                sid = _find_socket_id(tree_for_current, _MARKED_ONLY_SOCKET_NAME)
+                if sid is not None:
+                    try:
+                        current_marked = bool(current_mod[sid])
+                    except (KeyError, TypeError, ValueError):
+                        current_marked = None
+        inner_line_chains.update_chain_id_attribute(
+            obj,
+            float(current_angle if current_angle is not None else 0.5236),
+            bool(current_marked if current_marked is not None else False),
+        )
+
     mod = obj.modifiers.get(GN_MODIFIER_NAME)
     if mod is None or mod.node_group is None:
         return False
