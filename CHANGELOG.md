@@ -3,6 +3,28 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-04 — B-MANGA Lineアドオン有効化時の登録エラーを修正 (B-MANGA Line v0.3.88)
+
+### 症状
+
+- B-MANGA Line を有効化すると、登録中に「`_RestrictData` に `scenes` がない」というエラーで失敗することがあった。
+
+### 原因
+
+- 有効化処理の途中で既存シーン内のライン素材修復を即時実行しており、Blender が登録中にシーン一覧へのアクセスを制限しているタイミングに当たると例外になっていた。
+
+### 修正
+
+- 登録中にシーン一覧へアクセスできない場合は、ライン素材修復を Blender の登録完了後のタイマーへ遅延するよう変更。
+- 通常時・ファイル読み込み後は従来どおり既存ファイル内のライン素材修復を実行する。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_register_reenable_check.py`
+- `test/blender_b_manga_line_generated_material_color_check.py`
+
+---
+
 ## 2026-07-04 — B-MANGA Lineアウトラインの角・円柱端を中間頂点調整の線端にする (B-MANGA Line v0.3.87)
 
 ### 症状

@@ -56,6 +56,7 @@ _LINE_COLOR_PROPS = {
     "inner": "inner_line_color",
     "intersection": "intersection_color",
 }
+_repair_scene_line_materials_timer_running = False
 
 
 # ------------------------------------------------------------------
@@ -1236,12 +1237,58 @@ def set_line_only(obj: bpy.types.Object, enabled: bool) -> bool:
 @bpy.app.handlers.persistent
 def _on_load_post(_dummy):
     ensure_aov_passes()
-    repair_scene_line_materials()
+    _repair_scene_line_materials_now_or_later()
+
+
+def _scene_data_available() -> bool:
+    try:
+        getattr(bpy.data, "scenes")
+    except AttributeError:
+        return False
+    return True
+
+
+def _run_repair_scene_line_materials_timer():
+    global _repair_scene_line_materials_timer_running
+    if not _scene_data_available():
+        return 0.1
+    try:
+        ensure_aov_passes()
+        repair_scene_line_materials()
+    finally:
+        _repair_scene_line_materials_timer_running = False
+    return None
+
+
+def _queue_repair_scene_line_materials() -> None:
+    global _repair_scene_line_materials_timer_running
+    if _repair_scene_line_materials_timer_running:
+        return
+    timers = getattr(bpy.app, "timers", None)
+    if timers is None:
+        return
+    register_timer = getattr(timers, "register", None)
+    if register_timer is None:
+        return
+    _repair_scene_line_materials_timer_running = True
+    register_timer(_run_repair_scene_line_materials_timer, first_interval=0.0)
+
+
+def _repair_scene_line_materials_now_or_later() -> None:
+    if _scene_data_available():
+        repair_scene_line_materials()
+        return
+    _queue_repair_scene_line_materials()
 
 
 def repair_scene_line_materials(scene: bpy.types.Scene | None = None) -> int:
     """既存ファイル内のライン素材を現行ノード構成へ修復する."""
-    scenes = [scene] if scene is not None else list(bpy.data.scenes)
+    if scene is not None:
+        scenes = [scene]
+    else:
+        if not _scene_data_available():
+            return 0
+        scenes = list(bpy.data.scenes)
     seen: set[int] = set()
     repaired = 0
     for item_scene in scenes:
@@ -1268,11 +1315,20 @@ def repair_scene_line_materials(scene: bpy.types.Scene | None = None) -> int:
 
 def register() -> None:
     ensure_aov_passes()
-    repair_scene_line_materials()
+    _repair_scene_line_materials_now_or_later()
     if _on_load_post not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_on_load_post)
 
 
 def unregister() -> None:
+    global _repair_scene_line_materials_timer_running
     if _on_load_post in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_on_load_post)
+    timers = getattr(bpy.app, "timers", None)
+    if timers is not None:
+        try:
+            if timers.is_registered(_run_repair_scene_line_materials_timer):
+                timers.unregister(_run_repair_scene_line_materials_timer)
+        except (AttributeError, ValueError):
+            pass
+    _repair_scene_line_materials_timer_running = False

@@ -94,6 +94,21 @@ class _CaptureLayout:
         self.records["curves"].append("template_curve_mapping")
 
 
+class _FakeTimers:
+    def __init__(self) -> None:
+        self._registered: list[object] = []
+
+    def register(self, callback, **_kwargs) -> None:
+        if callback not in self._registered:
+            self._registered.append(callback)
+
+    def unregister(self, callback) -> None:
+        self._registered.remove(callback)
+
+    def is_registered(self, callback) -> bool:
+        return callback in self._registered
+
+
 def _assert_panels_draw_items() -> None:
     from b_manga_line_reenable_check import core, panels
 
@@ -236,8 +251,9 @@ def _assert_restricted_data_register_safe() -> None:
 
     real_bpy = outline_setup.bpy
     fake_handlers = types.SimpleNamespace(load_post=[])
+    fake_timers = _FakeTimers()
     fake_bpy = types.SimpleNamespace(
-        app=types.SimpleNamespace(handlers=fake_handlers),
+        app=types.SimpleNamespace(handlers=fake_handlers, timers=fake_timers),
         data=types.SimpleNamespace(),
     )
     outline_setup.bpy = fake_bpy
@@ -245,10 +261,20 @@ def _assert_restricted_data_register_safe() -> None:
         assert outline_setup.ensure_aov_passes() == 0
         outline_setup.register()
         assert outline_setup._on_load_post in fake_handlers.load_post
+        assert fake_timers.is_registered(outline_setup._run_repair_scene_line_materials_timer)
         outline_setup.unregister()
         assert outline_setup._on_load_post not in fake_handlers.load_post
+        assert not fake_timers.is_registered(outline_setup._run_repair_scene_line_materials_timer)
     finally:
         outline_setup.bpy = real_bpy
+
+
+def _assert_blender_restrict_blend_register_safe(mod) -> None:
+    from _bpy_restrict_state import RestrictBlend
+
+    with RestrictBlend():
+        mod.register()
+    mod.unregister()
 
 
 def main() -> None:
@@ -256,6 +282,7 @@ def main() -> None:
     mod = _load_package("b_manga_line_reenable_check")
     try:
         _assert_restricted_data_register_safe()
+        _assert_blender_restrict_blend_register_safe(mod)
         mod.register()
         _assert_registered()
         _assert_panels_draw_items()
