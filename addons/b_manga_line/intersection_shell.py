@@ -889,6 +889,7 @@ def _proxy_name(source: bpy.types.Object, target: bpy.types.Object) -> str:
 
 
 _PROXY_SOLIDIFY_NAME = "BML_ProxySolidify"
+_PROXY_SUBSURF_NAME = "BML_ProxyMidpointSubsurf"
 _PROXY_BOUNDARY_SIGNATURE_PROP = "bml_proxy_boundary_signature"
 _PROXY_HAS_BOUNDARY_PROP = "bml_proxy_has_boundary"
 
@@ -934,6 +935,28 @@ def _sync_proxy_thickness(proxy: bpy.types.Object) -> None:
         proxy.modifiers.remove(mod)
 
 
+def _sync_proxy_subdivision(
+    proxy: bpy.types.Object,
+    target: bpy.types.Object,
+) -> None:
+    from . import subdivision_lod
+
+    source_mod = subdivision_lod.auto_subsurf_modifier(target)
+    proxy_mod = proxy.modifiers.get(_PROXY_SUBSURF_NAME)
+    if source_mod is None:
+        if proxy_mod is not None:
+            proxy.modifiers.remove(proxy_mod)
+        return
+    if proxy_mod is None:
+        proxy_mod = proxy.modifiers.new(_PROXY_SUBSURF_NAME, "SUBSURF")
+    if hasattr(proxy_mod, "subdivision_type") and hasattr(source_mod, "subdivision_type"):
+        proxy_mod.subdivision_type = source_mod.subdivision_type
+    proxy_mod.levels = int(getattr(source_mod, "levels", 0))
+    proxy_mod.render_levels = int(getattr(source_mod, "render_levels", 0))
+    proxy_mod.show_viewport = bool(getattr(source_mod, "show_viewport", True))
+    proxy_mod.show_render = bool(getattr(source_mod, "show_render", True))
+
+
 def _get_or_create_proxy(
     source: bpy.types.Object,
     target: bpy.types.Object,
@@ -949,7 +972,41 @@ def _get_or_create_proxy(
     proxy.hide_render = True
     proxy[_PROXY_SOURCE_PROP] = target.name_full
     _sync_proxy_thickness(proxy)
+    _sync_proxy_subdivision(proxy, target)
     return proxy
+
+
+def sync_proxy_subdivision_for_target(target: bpy.types.Object) -> int:
+    if target.type != "MESH":
+        return 0
+    changed = 0
+    for proxy in bpy.data.objects:
+        if not bool(proxy.get(_PROXY_SOURCE_PROP, "")):
+            continue
+        if str(proxy.get(_PROXY_SOURCE_PROP, "") or "") != target.name_full:
+            continue
+        before = [
+            (
+                mod.name,
+                mod.type,
+                int(getattr(mod, "levels", -1)) if mod.type == "SUBSURF" else -1,
+                int(getattr(mod, "render_levels", -1)) if mod.type == "SUBSURF" else -1,
+            )
+            for mod in proxy.modifiers
+        ]
+        _sync_proxy_subdivision(proxy, target)
+        after = [
+            (
+                mod.name,
+                mod.type,
+                int(getattr(mod, "levels", -1)) if mod.type == "SUBSURF" else -1,
+                int(getattr(mod, "render_levels", -1)) if mod.type == "SUBSURF" else -1,
+            )
+            for mod in proxy.modifiers
+        ]
+        if before != after:
+            changed += 1
+    return changed
 
 
 def _outline_world_width(target: bpy.types.Object | None) -> float:

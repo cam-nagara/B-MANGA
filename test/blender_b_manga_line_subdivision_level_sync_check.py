@@ -1,0 +1,148 @@
+"""B-MANGA Line: Subdivision Surface levels drive inner/intersection generation."""
+
+from __future__ import annotations
+
+import math
+import sys
+from pathlib import Path
+
+import bpy
+
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "addons"))
+
+import b_manga_line  # noqa: E402
+from b_manga_line import (  # noqa: E402
+    core,
+    inner_lines,
+    intersection_lines,
+    intersection_shell,
+    outline_setup,
+    subdivision_lod,
+)
+
+
+def _clear_scene() -> None:
+    bpy.ops.object.select_all(action="SELECT")
+    bpy.ops.object.delete()
+    for datablocks in (bpy.data.meshes, bpy.data.materials, bpy.data.node_groups):
+        for item in list(datablocks):
+            if item.users == 0:
+                datablocks.remove(item)
+
+
+def _surface_material(name: str):
+    mat = bpy.data.materials.new(name)
+    mat.diffuse_color = (1.0, 1.0, 1.0, 1.0)
+    return mat
+
+
+def _make_cube(name: str, location: tuple[float, float, float]) -> bpy.types.Object:
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=location)
+    obj = bpy.context.object
+    obj.name = name
+    obj.data.materials.append(_surface_material(name + "_surface"))
+    obj.bmanga_line_settings.auto_subdivision_for_midpoint = True
+    return obj
+
+
+def _auto_mod(obj: bpy.types.Object) -> bpy.types.Modifier:
+    mod = subdivision_lod.ensure_auto_subdivision(obj, bpy.context.scene)
+    assert mod is not None
+    return mod
+
+
+def _inner_resample_count(obj: bpy.types.Object) -> int:
+    mod = obj.modifiers.get(core.GN_MODIFIER_NAME)
+    assert mod is not None and mod.node_group is not None
+    sid = inner_lines._find_socket_id(mod.node_group, "線の分割数")
+    assert sid is not None
+    return int(mod[sid])
+
+
+def _assert_inner_levels_sync() -> None:
+    obj = _make_cube("内部線_サブディビジョン同期", (0.0, 0.0, 0.0))
+    mod = _auto_mod(obj)
+    material = outline_setup.get_line_material(obj, "inner")
+    assert inner_lines.apply_inner_lines(
+        obj,
+        angle=math.radians(10.0),
+        thickness=0.03,
+        material=material,
+    )
+
+    mod.levels = 0
+    mod.render_levels = 4
+    subdivision_lod.sync_generated_line_subdivision(obj)
+    assert _inner_resample_count(obj) == 3
+
+    mod.levels = 3
+    subdivision_lod.sync_generated_line_subdivision(obj)
+    assert _inner_resample_count(obj) == 9
+
+    subdivision_lod.sync_generated_line_subdivision(obj, for_render=True)
+    assert _inner_resample_count(obj) == 17
+
+    subdivision_lod.sync_generated_line_subdivision(obj, for_render=False)
+    assert _inner_resample_count(obj) == 9
+
+
+def _proxy_for_target(target: bpy.types.Object) -> bpy.types.Object:
+    for obj in bpy.data.objects:
+        if str(obj.get(intersection_shell._PROXY_SOURCE_PROP, "") or "") == target.name_full:
+            return obj
+    raise AssertionError("交差対象プロキシが見つかりません")
+
+
+def _assert_intersection_proxy_levels_sync() -> None:
+    source = _make_cube("A_intersection_sync_source", (-0.25, 0.0, 0.0))
+    target = _make_cube("B_intersection_sync_target", (0.25, 0.0, 0.0))
+    source_mod = _auto_mod(source)
+    target_mod = _auto_mod(target)
+    source_mod.levels = 1
+    target_mod.levels = 2
+    target_mod.render_levels = 3
+
+    outline_setup.apply_outline(source, thickness=0.03, color=(0.0, 0.0, 0.0, 1.0))
+    outline_setup.apply_outline(target, thickness=0.03, color=(0.0, 0.0, 0.0, 1.0))
+    assert intersection_lines.apply_intersection_lines(
+        source,
+        target=target,
+        thickness=0.03,
+        material=outline_setup.get_line_material(source, "intersection"),
+        scene=bpy.context.scene,
+    )
+    proxy = _proxy_for_target(target)
+    proxy_mod = proxy.modifiers.get(intersection_shell._PROXY_SUBSURF_NAME)
+    assert proxy_mod is not None
+    assert int(proxy_mod.levels) == 2
+    assert int(proxy_mod.render_levels) == 3
+
+    target_mod.levels = 4
+    target_mod.render_levels = 1
+    changed = intersection_shell.sync_proxy_subdivision_for_target(target)
+    assert changed == 1
+    assert int(proxy_mod.levels) == 4
+    assert int(proxy_mod.render_levels) == 1
+
+
+def main() -> None:
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    b_manga_line.register()
+    try:
+        _clear_scene()
+        _assert_inner_levels_sync()
+        _clear_scene()
+        _assert_intersection_proxy_levels_sync()
+        print("[PASS] subdivision levels sync to inner/intersection lines", flush=True)
+    finally:
+        try:
+            b_manga_line.unregister()
+        except Exception:
+            pass
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+
+
+if __name__ == "__main__":
+    main()

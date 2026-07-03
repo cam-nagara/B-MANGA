@@ -6,6 +6,7 @@ import math
 
 import bmesh
 import bpy
+from bpy.app.handlers import persistent
 
 
 AUTO_SUBSURF_MODIFIER_NAME = "BML_MidpointSubsurf"
@@ -14,6 +15,10 @@ CREASE_EDGE_ATTR = "crease_edge"
 SHARP_EDGE_ANGLE = math.radians(60.0)
 MAX_RENDER_LEVELS = 4
 DISTANCE_STEP_METERS = 5.0
+DEFAULT_LINE_RESAMPLE_COUNT = 17
+_MIN_LINE_RESAMPLE_COUNT = 3
+_pending_sync_names: set[str] = set()
+_sync_timer_running = False
 
 
 def is_auto_subsurf_modifier(mod: bpy.types.Modifier | None) -> bool:
@@ -52,7 +57,7 @@ def _distance_to_camera(obj: bpy.types.Object, scene) -> float:
     return float((camera.matrix_world.translation - obj.matrix_world.translation).length)
 
 
-def _auto_modifier(obj: bpy.types.Object) -> bpy.types.Modifier | None:
+def auto_subsurf_modifier(obj: bpy.types.Object) -> bpy.types.Modifier | None:
     for mod in obj.modifiers:
         if is_auto_subsurf_modifier(mod):
             return mod
@@ -110,7 +115,7 @@ def ensure_auto_subdivision(obj: bpy.types.Object, scene) -> bpy.types.Modifier 
         return None
 
     mark_sharp_edges_for_subsurf(obj)
-    mod = _auto_modifier(obj)
+    mod = auto_subsurf_modifier(obj)
     if mod is None:
         mod = obj.modifiers.new(AUTO_SUBSURF_MODIFIER_NAME, "SUBSURF")
 
@@ -120,6 +125,7 @@ def ensure_auto_subdivision(obj: bpy.types.Object, scene) -> bpy.types.Modifier 
     mod.render_levels = render_levels_for_distance(_distance_to_camera(obj, scene))
     mod.show_viewport = True
     mod.show_render = True
+    sync_generated_line_subdivision(obj)
     return mod
 
 
@@ -133,4 +139,141 @@ def remove_auto_subdivision(obj: bpy.types.Object) -> bool:
             removed = True
     if AUTO_SUBSURF_CREASE_EDGES_PROP in obj:
         del obj[AUTO_SUBSURF_CREASE_EDGES_PROP]
+    sync_generated_line_subdivision(obj)
     return removed
+
+
+def line_resample_count(obj: bpy.types.Object, *, for_render: bool = False) -> int:
+    mod = auto_subsurf_modifier(obj)
+    if mod is None:
+        return DEFAULT_LINE_RESAMPLE_COUNT
+    level = int(getattr(mod, "render_levels", 0) if for_render else getattr(mod, "levels", 0))
+    if for_render and not bool(getattr(mod, "show_render", True)):
+        level = 0
+    if not for_render and not bool(getattr(mod, "show_viewport", True)):
+        level = 0
+    level = max(0, min(MAX_RENDER_LEVELS, level))
+    return max(_MIN_LINE_RESAMPLE_COUNT, (2 ** level) + 1)
+
+
+def sync_generated_line_subdivision(
+    obj: bpy.types.Object,
+    *,
+    for_render: bool = False,
+) -> bool:
+    if obj.type != "MESH":
+        return False
+    try:
+        from . import core, inner_lines
+
+        mod = obj.modifiers.get(core.GN_MODIFIER_NAME)
+        if mod is None or mod.node_group is None:
+            return False
+        sid = inner_lines._find_socket_id(mod.node_group, "線の分割数")
+        if sid is None:
+            return False
+        count = line_resample_count(obj, for_render=for_render)
+        try:
+            current = int(mod[sid])
+        except (KeyError, TypeError, ValueError):
+            current = -1
+        if current == count:
+            return False
+        return bool(inner_lines.update_parameters(obj, resample_count=count))
+    except Exception:  # noqa: BLE001 - 同期失敗時も通常操作を止めない
+        return False
+
+
+def sync_scene_generated_line_subdivision(
+    scene: bpy.types.Scene | None,
+    *,
+    for_render: bool = False,
+) -> int:
+    if scene is None:
+        return 0
+    changed = 0
+    for obj in scene.objects:
+        if obj.type != "MESH":
+            continue
+        if sync_generated_line_subdivision(obj, for_render=for_render):
+            changed += 1
+    return changed
+
+
+def _queue_sync(obj: bpy.types.Object) -> None:
+    global _sync_timer_running
+    if obj.type != "MESH":
+        return
+    _pending_sync_names.add(obj.name_full)
+    if not _sync_timer_running:
+        _sync_timer_running = True
+        bpy.app.timers.register(_run_sync_timer, first_interval=0.0)
+
+
+def _run_sync_timer():
+    global _sync_timer_running
+    names = list(_pending_sync_names)
+    _pending_sync_names.clear()
+    for name in names:
+        obj = bpy.data.objects.get(name)
+        if obj is None or obj.type != "MESH":
+            continue
+        sync_generated_line_subdivision(obj)
+        try:
+            from . import intersection_shell
+
+            intersection_shell.sync_proxy_subdivision_for_target(obj)
+        except Exception:  # noqa: BLE001
+            pass
+    _sync_timer_running = False
+    return None
+
+
+@persistent
+def _on_depsgraph_update(_scene, depsgraph=None):
+    if depsgraph is None:
+        return
+    for update in getattr(depsgraph, "updates", ()):
+        item = getattr(update, "id", None)
+        if isinstance(item, bpy.types.Object) and item.type == "MESH":
+            if auto_subsurf_modifier(item) is not None:
+                _queue_sync(item)
+
+
+@persistent
+def _on_render_pre(scene, _depsgraph=None):
+    sync_scene_generated_line_subdivision(scene, for_render=True)
+
+
+@persistent
+def _on_render_done(scene, _depsgraph=None):
+    sync_scene_generated_line_subdivision(scene, for_render=False)
+
+
+def _append_once(handler_list, handler) -> None:
+    if handler not in handler_list:
+        handler_list.append(handler)
+
+
+def _remove(handler_list, handler) -> None:
+    if handler in handler_list:
+        handler_list.remove(handler)
+
+
+def register() -> None:
+    _append_once(bpy.app.handlers.depsgraph_update_post, _on_depsgraph_update)
+    _append_once(bpy.app.handlers.render_pre, _on_render_pre)
+    _append_once(bpy.app.handlers.render_post, _on_render_done)
+    _append_once(bpy.app.handlers.render_cancel, _on_render_done)
+
+
+def unregister() -> None:
+    global _sync_timer_running
+    _remove(bpy.app.handlers.depsgraph_update_post, _on_depsgraph_update)
+    _remove(bpy.app.handlers.render_pre, _on_render_pre)
+    _remove(bpy.app.handlers.render_post, _on_render_done)
+    _remove(bpy.app.handlers.render_cancel, _on_render_done)
+    if bpy.app.timers.is_registered(_run_sync_timer):
+        bpy.app.timers.unregister(_run_sync_timer)
+    _pending_sync_names.clear()
+    _sync_timer_running = False

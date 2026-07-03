@@ -3,6 +3,33 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-04 — B-MANGA Lineサブディビジョン値を内部線・交差線へ同期 (B-MANGA Line v0.3.85)
+
+### 症状
+
+- サブディビジョンサーフェスのビューポートのレベル数やレンダーの数値を変更しても、内部線や交差線の生成密度・交差対象形状へ反映されなかった。
+
+### 原因
+
+- 内部線は線チューブ化前に固定分割数でカーブを再サンプルしており、サブディビジョンサーフェスのレベル数を読んでいなかった。
+- 交差線は交差対象を元メッシュのプロキシとして参照しており、相手オブジェクト側のサブディビジョンサーフェス値がプロキシへ同期されていなかった。
+
+### 修正
+
+- 内部線の分割数を、サブディビジョンサーフェスのビューポートのレベル数へ同期するよう変更。レンダー時はレンダーの数値へ一時的に切り替え、レンダー後にビューポート値へ戻す。
+- 交差線の交差対象プロキシにも、相手オブジェクトのサブディビジョンサーフェスのビューポート/レンダー値を同期するよう変更。
+- サブディビジョンサーフェス値の手動変更を検知して、内部線と交差線プロキシへ反映する同期処理を追加。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_subdivision_level_sync_check.py`
+- `test/blender_b_manga_line_auto_subdivision_check.py`
+- `test/blender_b_manga_line_inner_width_check.py`
+- `test/blender_b_manga_line_intersection_fill_check.py`
+- `test/blender_b_manga_line_intersection_shell_method_check.py`
+
+---
+
 ## 2026-07-04 — B-MANGA Line内部線・交差線の線色表示を修正 (B-MANGA Line v0.3.84)
 
 ### 症状

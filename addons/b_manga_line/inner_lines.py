@@ -25,6 +25,7 @@ _RADIUS_HALF_NODE_LABEL = "BML_InnerLineRadiusHalf"
 _OFFSET_SOCKET_NAME = "オフセット"
 _MARKED_ONLY_SOCKET_NAME = "指定済みの辺だけ線にする"
 _MIDPOINT_FACTOR_SOCKET_NAME = "中間頂点の線幅調整"
+_RESAMPLE_COUNT_SOCKET_NAME = "線の分割数"
 _WIDTH_CURVE_25_SOCKET_NAME = "線幅カーブ25%"
 _WIDTH_CURVE_50_SOCKET_NAME = "線幅カーブ50%"
 _WIDTH_CURVE_75_SOCKET_NAME = "線幅カーブ75%"
@@ -236,6 +237,14 @@ def _create_node_tree() -> bpy.types.NodeTree:
     midpoint_sock.default_value = 0.0
     midpoint_sock.min_value = -1.0
     midpoint_sock.max_value = 1.0
+    resample_count_sock = tree.interface.new_socket(
+        name=_RESAMPLE_COUNT_SOCKET_NAME,
+        in_out="INPUT",
+        socket_type="NodeSocketInt",
+    )
+    resample_count_sock.default_value = 17
+    resample_count_sock.min_value = 2
+    resample_count_sock.max_value = 256
     for name, default in (
         (_WIDTH_CURVE_25_SOCKET_NAME, 0.25),
         (_WIDTH_CURVE_50_SOCKET_NAME, 0.50),
@@ -383,6 +392,7 @@ def _create_node_tree() -> bpy.types.NodeTree:
     count_input = resample.inputs.get("Count")
     if count_input is not None:
         count_input.default_value = 17
+        links.new(gin.outputs[_RESAMPLE_COUNT_SOCKET_NAME], count_input)
     links.new(m2c.outputs[0], resample.inputs["Curve"])
 
     # 内部線専用の線幅値を反映する。
@@ -486,6 +496,9 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
         if _find_socket_id(tree, _MIDPOINT_FACTOR_SOCKET_NAME) is None:
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
+        if _find_socket_id(tree, _RESAMPLE_COUNT_SOCKET_NAME) is None:
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
         if _find_socket_id(tree, _WIDTH_CURVE_25_SOCKET_NAME) is None:
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
@@ -586,6 +599,7 @@ def apply_inner_lines(
     material: bpy.types.Material | None = None,
     use_marked_edges: bool = False,
     midpoint_factor: float = 0.0,
+    resample_count: int | None = None,
     width_curve_25: float = 0.25,
     width_curve_50: float = 0.50,
     width_curve_75: float = 0.75,
@@ -614,6 +628,7 @@ def apply_inner_lines(
     sid_offset = _find_socket_id(tree, _OFFSET_SOCKET_NAME)
     sid_marked_only = _find_socket_id(tree, _MARKED_ONLY_SOCKET_NAME)
     sid_midpoint_factor = _find_socket_id(tree, _MIDPOINT_FACTOR_SOCKET_NAME)
+    sid_resample_count = _find_socket_id(tree, _RESAMPLE_COUNT_SOCKET_NAME)
     sid_curve_25 = _find_socket_id(tree, _WIDTH_CURVE_25_SOCKET_NAME)
     sid_curve_50 = _find_socket_id(tree, _WIDTH_CURVE_50_SOCKET_NAME)
     sid_curve_75 = _find_socket_id(tree, _WIDTH_CURVE_75_SOCKET_NAME)
@@ -627,6 +642,12 @@ def apply_inner_lines(
         mod[sid_marked_only] = bool(use_marked_edges)
     if sid_midpoint_factor is not None:
         mod[sid_midpoint_factor] = float(midpoint_factor)
+    if sid_resample_count is not None:
+        if resample_count is None:
+            from . import subdivision_lod
+
+            resample_count = subdivision_lod.line_resample_count(obj)
+        mod[sid_resample_count] = max(2, int(resample_count))
     if sid_curve_25 is not None:
         mod[sid_curve_25] = float(width_curve_25)
     if sid_curve_50 is not None:
@@ -707,6 +728,7 @@ def update_parameters(
     offset: float | None = None,
     use_marked_edges: bool | None = None,
     midpoint_factor: float | None = None,
+    resample_count: int | None = None,
     width_curve_25: float | None = None,
     width_curve_50: float | None = None,
     width_curve_75: float | None = None,
@@ -737,6 +759,10 @@ def update_parameters(
         sid = _find_socket_id(tree, _MIDPOINT_FACTOR_SOCKET_NAME)
         if sid is not None:
             mod[sid] = float(midpoint_factor)
+    if resample_count is not None:
+        sid = _find_socket_id(tree, _RESAMPLE_COUNT_SOCKET_NAME)
+        if sid is not None:
+            mod[sid] = max(2, int(resample_count))
     if width_curve_25 is not None:
         sid = _find_socket_id(tree, _WIDTH_CURVE_25_SOCKET_NAME)
         if sid is not None:
