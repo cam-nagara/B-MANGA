@@ -348,12 +348,34 @@ def _assert_low_resolution_shell_tree_is_rebuilt() -> None:
     ]
 
 
+def _assert_missing_gap_coverage_shell_tree_is_rebuilt() -> None:
+    tree = intersection_shell._get_or_create_tree()
+    coverage = next(
+        (
+            node
+            for node in tree.nodes
+            if getattr(node, "label", "") == "BML_IntersectionShellGapCoverage"
+        ),
+        None,
+    )
+    assert coverage is not None, "交差線の隙間カバー係数ノードがありません"
+    tree.nodes.remove(coverage)
+
+    rebuilt = intersection_shell._get_or_create_tree()
+    assert rebuilt != tree
+    assert any(
+        getattr(node, "label", "") == "BML_IntersectionShellGapCoverage"
+        for node in rebuilt.nodes
+    )
+
+
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     b_manga_line.register()
     try:
         _assert_stale_shell_tree_is_rebuilt()
         _assert_low_resolution_shell_tree_is_rebuilt()
+        _assert_missing_gap_coverage_shell_tree_is_rebuilt()
         _clear_scene()
         # Zを互いにずらし、完全同一平面の重なり（EXACTブーリアンの縮退
         # ケース）を避ける現実的な配置にする

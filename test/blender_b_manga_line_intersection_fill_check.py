@@ -234,8 +234,9 @@ def main() -> None:
     # 見えないよう、塗りつぶしチューブの半径は自分・交差対象の
     # アウトライン幅(_OUTLINE_THICKNESS)のうち大きい方まで広がる
     # （交差線幅の設定値はもはや上限ではなく下限）。
-    inner = _CYLINDER_RADIUS - _OUTLINE_THICKNESS
-    outer = _CYLINDER_RADIUS + _OUTLINE_THICKNESS
+    covered_width = _OUTLINE_THICKNESS * intersection_shell.SHELL_GAP_COVERAGE_FACTOR
+    inner = _CYLINDER_RADIUS - covered_width
+    outer = _CYLINDER_RADIUS + covered_width
     margin = 0.08
     for label, low, high in (
         ("min_x", -outer - margin, -inner + margin),
@@ -250,8 +251,8 @@ def main() -> None:
     # (_OUTLINE_THICKNESS=0.24) に実効太さが支配されていることを明示的に確認
     # する（2026-07-03: 隙間塗りつぶし要望の中核）。
     outward = max_x - _CYLINDER_RADIUS
-    assert outward > 0.15, (
-        "交差線の実効太さがアウトライン幅ではなく設定値(0.015)に支配されています",
+    assert outward > _OUTLINE_THICKNESS * 1.02, (
+        "交差線の実効太さがアウトライン幅由来の隙間カバー幅に届いていません",
         outward,
     )
 

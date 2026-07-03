@@ -41,7 +41,9 @@ _SHELL_RADIUS_NODE_LABEL = "BML_IntersectionShellOwnRadius"
 _CURVE_RADIUS_NORMALIZER_LABEL = "BML_IntersectionShellCurveRadius"
 _SHELL_COMBINED_THICKNESS_NODE_LABEL = "BML_IntersectionShellCombinedThickness"
 _SHELL_PROFILE_NODE_LABEL = "BML_IntersectionShellProfile"
+_SHELL_GAP_COVERAGE_NODE_LABEL = "BML_IntersectionShellGapCoverage"
 SHELL_TUBE_PROFILE_RESOLUTION = 12
+SHELL_GAP_COVERAGE_FACTOR = 1.08
 
 
 def is_shell_modifier(mod: bpy.types.Modifier) -> bool:
@@ -313,20 +315,35 @@ def _add_combined_thickness(nodes, links, gin, loc):
     ユーザー設定の「線の太さ」はあくまで下限として扱い、どちらかの
     アウトライン幅がそれより太ければそちらを実効値として使う
     （2026-07-03 ユーザー要望: 隙間を交差線色で塗りつぶすには、隙間の
-    大きさに直結するアウトライン幅を優先すべき）。
+    大きさに直結するアウトライン幅を優先すべき）。背面法ハルの角では
+    実際の黒い張り出しが数値上のアウトライン幅をわずかに超えることが
+    あるため、アウトライン幅由来の塗りつぶしだけ小さな安全余裕を足す。
     """
+    own_cover = nodes.new("ShaderNodeMath")
+    own_cover.location = (loc[0] - 220, loc[1] - 80)
+    own_cover.operation = "MULTIPLY"
+    links.new(gin.outputs[_OWN_OUTLINE_SOCKET], own_cover.inputs[0])
+    own_cover.inputs[1].default_value = SHELL_GAP_COVERAGE_FACTOR
+
+    target_cover = nodes.new("ShaderNodeMath")
+    target_cover.label = _SHELL_GAP_COVERAGE_NODE_LABEL
+    target_cover.location = (loc[0] - 220, loc[1] - 240)
+    target_cover.operation = "MULTIPLY"
+    links.new(gin.outputs[_TARGET_THICKNESS_SOCKET], target_cover.inputs[0])
+    target_cover.inputs[1].default_value = SHELL_GAP_COVERAGE_FACTOR
+
     own_max = nodes.new("ShaderNodeMath")
     own_max.location = (loc[0], loc[1])
     own_max.operation = "MAXIMUM"
     links.new(gin.outputs[_THICKNESS_SOCKET], own_max.inputs[0])
-    links.new(gin.outputs[_OWN_OUTLINE_SOCKET], own_max.inputs[1])
+    links.new(own_cover.outputs[0], own_max.inputs[1])
 
     combined = nodes.new("ShaderNodeMath")
     combined.label = _SHELL_COMBINED_THICKNESS_NODE_LABEL
     combined.location = (loc[0] + 200, loc[1])
     combined.operation = "MAXIMUM"
     links.new(own_max.outputs[0], combined.inputs[0])
-    links.new(gin.outputs[_TARGET_THICKNESS_SOCKET], combined.inputs[1])
+    links.new(target_cover.outputs[0], combined.inputs[1])
     return combined.outputs[0]
 
 
@@ -656,6 +673,12 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
             # 4角断面のキャップが黒いくさび状の切れ込みとして目立つ。
             # 保存済みファイル内の旧ツリーを必ず再構築して、丸い断面に更新する。
             and _tree_has_current_profile_resolution(tree)
+            # v0.3.81: アウトライン幅ベースの塗りつぶしに小さな安全余裕を
+            # 追加したため、v0.3.80ツリーも再構築する。
+            and any(
+                getattr(node, "label", "") == _SHELL_GAP_COVERAGE_NODE_LABEL
+                for node in tree.nodes
+            )
         )
         if ok:
             return tree
