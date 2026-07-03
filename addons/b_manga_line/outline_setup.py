@@ -115,6 +115,12 @@ def _outline_double_sided(obj: bpy.types.Object) -> bool:
     return plane_filter.is_sheet_mesh(obj)
 
 
+def _line_material_double_sided(obj: bpy.types.Object, target: str) -> bool:
+    if target in {"inner", "intersection"}:
+        return True
+    return target == "outline" and _outline_double_sided(obj)
+
+
 def _repair_line_material(
     mat: bpy.types.Material,
     color: tuple[float, ...],
@@ -457,10 +463,10 @@ def get_line_material(obj: bpy.types.Object, target: str) -> bpy.types.Material 
             color,
             hide_through_transparent=hide_transparent,
         )
-    # 交差線チューブは生成されたライン実体そのものなので、背面法の
+    # 内部線・交差線チューブは生成されたライン実体そのものなので、背面法の
     # 面隠し（背面透明+カリング）は不要。曲線の向きによってチューブの
     # 法線が内向きになると線が消えるため、両面表示で構築する。
-    double_sided = target == "intersection"
+    double_sided = _line_material_double_sided(obj, target)
     for slot in obj.material_slots:
         if slot.material and _line_material_target(slot.material) == target:
             return _repair_line_material(
@@ -568,10 +574,7 @@ def update_transparent_protection(
     for slot in obj.material_slots:
         target = _line_material_target(slot.material)
         if target is not None:
-            double_sided = (
-                target == "intersection"
-                or (target == "outline" and _outline_double_sided(obj))
-            )
+            double_sided = _line_material_double_sided(obj, target)
             _build_outline_nodes(
                 slot.material,
                 color if target == "outline" else _line_color(obj, target),
@@ -1128,10 +1131,7 @@ def _restore_outline_materials(
     for mat in mesh.materials:
         target = _line_material_target(mat)
         if target is not None:
-            double_sided = (
-                target == "intersection"
-                or (target == "outline" and _outline_double_sided(obj))
-            )
+            double_sided = _line_material_double_sided(obj, target)
             _build_outline_nodes(
                 mat,
                 _line_color(obj, target),
@@ -1236,10 +1236,39 @@ def set_line_only(obj: bpy.types.Object, enabled: bool) -> bool:
 @bpy.app.handlers.persistent
 def _on_load_post(_dummy):
     ensure_aov_passes()
+    repair_scene_line_materials()
+
+
+def repair_scene_line_materials(scene: bpy.types.Scene | None = None) -> int:
+    """既存ファイル内のライン素材を現行ノード構成へ修復する."""
+    scenes = [scene] if scene is not None else list(bpy.data.scenes)
+    seen: set[int] = set()
+    repaired = 0
+    for item_scene in scenes:
+        if item_scene is None:
+            continue
+        for obj in item_scene.objects:
+            if obj.type != "MESH" or obj.data is None:
+                continue
+            pointer = obj.as_pointer()
+            if pointer in seen:
+                continue
+            seen.add(pointer)
+            if not any(_line_material_target(mat) is not None for mat in obj.data.materials):
+                continue
+            try:
+                _restore_outline_materials(obj, obj.data)
+            except RuntimeError:
+                # リンク元データなど、現在のファイル側から書き換えできない素材は
+                # ユーザーのライン適用・オーバーライド作成時に改めて修復される。
+                continue
+            repaired += 1
+    return repaired
 
 
 def register() -> None:
     ensure_aov_passes()
+    repair_scene_line_materials()
     if _on_load_post not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_on_load_post)
 
