@@ -3,6 +3,35 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-04 — B-MANGA Line線画だけのAOV合成出力を追加 (B-MANGA Line v0.3.91)
+
+### 症状
+
+- `BML_Line` AOVで線画だけを取り出そうとすると、背面法のアウトラインが「少し膨らませた面」として出力され、オブジェクトのシルエット内側まで塗られた状態になることがあった。
+- ラインだけを得るには、ラインのみ表示で別レンダーし、白部分を透明化するような二度手間が必要になる可能性があった。
+
+### 原因
+
+- 従来のAOVは互換用の単一出力だけで、アウトラインの生AOV、元オブジェクトのシルエット、内部線、交差線を分けて扱えなかった。
+- 背面法のライン素材だけでは、AOV内で「膨らませた面」から元オブジェクトの面部分だけを差し引くためのマスクが無かった。
+
+### 修正
+
+- 互換用の `BML_Line` は残したまま、線画合成用にアウトライン生AOV、元オブジェクトマスクAOV、内部線AOV、交差線AOVを追加した。
+- ライン適用済みオブジェクトの元面素材へ、元オブジェクトのシルエットを出すAOV出力を自動追加するようにした。
+- B-MANGA Lineパネルへ「線画合成ノードを作成」を追加し、アウトライン生AOVから元オブジェクトマスクを差し引き、内部線・交差線を足し戻した `BML_LineComposite` 出力を作成できるようにした。
+- 保存済みファイルの古いライン素材も、アドオン有効化時・ファイル読み込み後・合成ノード作成時に現行AOV構成へ修復するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_register_reenable_check.py`
+- `test/blender_b_manga_line_generated_material_color_check.py`
+- `test/blender_b_manga_line_camera_aov_line_only_check.py`
+- `test/blender_b_manga_line_aov_composite_check.py`
+- AI目視: `_verify/2026-07-04_bml_line_aov_composite/bml_line_outline_raw.png` は青い面状AOV、`bml_line_object_mask.png` は白い元オブジェクトマスク、`bml_line_composite.png` は内側が抜けた外周線のみになっていることを確認。
+
+---
+
 ## 2026-07-04 — B-MANGA Line中間頂点の乱れと円柱上面内部線を修正 (B-MANGA Line v0.3.90)
 
 ### 症状

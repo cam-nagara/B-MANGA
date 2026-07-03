@@ -7,7 +7,8 @@ from bpy.props import BoolProperty
 
 from . import registration
 from .core import (
-    AOV_NAME,
+    AOV_COMPOSITE_NAME,
+    AOV_NAMES,
     PROP_LINES_HIDDEN,
     PROP_LINE_ONLY,
     has_line,
@@ -465,7 +466,7 @@ class BMANGA_LINE_OT_reset_camera_ref(bpy.types.Operator):
 
 
 class BMANGA_LINE_OT_add_aov(bpy.types.Operator):
-    """ビューレイヤーに BML_Line AOV パスを追加"""
+    """ビューレイヤーに B-MANGA Line AOV パスを追加"""
 
     bl_idname = "bmanga_line.add_aov"
     bl_label = "AOVパスを追加"
@@ -476,9 +477,26 @@ class BMANGA_LINE_OT_add_aov(bpy.types.Operator):
 
         added = outline_setup.ensure_aov_passes(context.scene)
         if added:
-            self.report({"INFO"}, f"AOV '{AOV_NAME}' を追加しました")
+            self.report({"INFO"}, f"{added} 個の線画AOVを追加しました")
         else:
-            self.report({"INFO"}, f"AOV '{AOV_NAME}' は既に存在します")
+            self.report({"INFO"}, f"線画AOVは既に存在します ({', '.join(AOV_NAMES)})")
+        return {"FINISHED"}
+
+
+class BMANGA_LINE_OT_setup_aov_composite(bpy.types.Operator):
+    """線画だけを取り出す合成ノードを作成"""
+
+    bl_idname = "bmanga_line.setup_aov_composite"
+    bl_label = "線画合成ノードを作成"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        from . import aov_compositor, outline_setup
+
+        outline_setup.ensure_aov_passes(context.scene)
+        outline_setup.repair_scene_line_materials(context.scene)
+        aov_compositor.setup_line_aov_compositor(context.scene)
+        self.report({"INFO"}, f"{AOV_COMPOSITE_NAME} を作成しました")
         return {"FINISHED"}
 
 
@@ -495,6 +513,7 @@ _CLASSES = (
     BMANGA_LINE_OT_refresh_camera,
     BMANGA_LINE_OT_reset_camera_ref,
     BMANGA_LINE_OT_add_aov,
+    BMANGA_LINE_OT_setup_aov_composite,
 )
 
 

@@ -15,6 +15,11 @@ import bpy
 from . import plane_filter
 from .core import (
     AOV_NAME,
+    AOV_INNER_LINES_NAME,
+    AOV_INTERSECTION_LINES_NAME,
+    AOV_NAMES,
+    AOV_OBJECT_MASK_NAME,
+    AOV_OUTLINE_RAW_NAME,
     COLOR_ATTR_NAME,
     DEFAULT_LINE_WIDTH_REFERENCE_DISTANCE,
     MATERIAL_NAME,
@@ -37,11 +42,12 @@ PROP_HIDE_THROUGH_TRANSPARENT = "bml_hide_through_transparent"
 PROP_LINE_MATERIAL_TARGET = "bml_line_material_target"
 PROP_DOUBLE_SIDED = "bml_double_sided_line"
 PROP_MATERIAL_BUILD = "bml_line_material_build"
+PROP_SURFACE_AOV_MASK = "bml_surface_aov_mask"
 # ノード構築ロジックを変えたらこの番号を上げる（保存済みファイルの
 # 古い・壊れたノードツリーを次回適用時に確実に再構築するため。
 # フラグ比較だけだと「フラグは合っているが中身が壊れている」素材を
 # 修復できない — 2026-07-03 交差線不可視の実例）
-_LINE_MATERIAL_BUILD_VERSION = 2
+_LINE_MATERIAL_BUILD_VERSION = 3
 SHEET_OUTLINE_TREE_NAME = "BML_SheetOutlineTube"
 SHEET_RIM_HIDDEN_MATERIAL_NAME = "BML_SheetRimHidden"
 _SHEET_TUBE_THICKNESS_SOCKET = "線の太さ"
@@ -55,6 +61,11 @@ _LINE_COLOR_PROPS = {
     "outline": "outline_color",
     "inner": "inner_line_color",
     "intersection": "intersection_color",
+}
+_LINE_TARGET_AOVS = {
+    "outline": AOV_OUTLINE_RAW_NAME,
+    "inner": AOV_INNER_LINES_NAME,
+    "intersection": AOV_INTERSECTION_LINES_NAME,
 }
 _repair_scene_line_materials_timer_running = False
 
@@ -122,6 +133,86 @@ def _line_material_double_sided(obj: bpy.types.Object, target: str) -> bool:
     return target == "outline" and _outline_double_sided(obj)
 
 
+def _is_surface_material(mat: bpy.types.Material | None) -> bool:
+    return (
+        mat is not None
+        and not _is_line_material(mat)
+        and _line_material_target(mat) is None
+        and not _material_name_matches(mat, SHEET_RIM_HIDDEN_MATERIAL_NAME)
+    )
+
+
+def _add_aov_output(
+    nodes,
+    links,
+    aov_name: str,
+    color_socket,
+    value_socket=None,
+    *,
+    location: tuple[float, float] = (800, -250),
+) -> bpy.types.Node:
+    aov = nodes.new("ShaderNodeOutputAOV")
+    aov.location = location
+    aov.aov_name = aov_name
+    links.new(color_socket, aov.inputs["Color"])
+    if value_socket is not None:
+        links.new(value_socket, aov.inputs["Value"])
+    else:
+        aov.inputs["Value"].default_value = 1.0
+    return aov
+
+
+def _ensure_surface_mask_aov(mat: bpy.types.Material | None) -> bool:
+    if not _is_surface_material(mat):
+        return False
+    assert mat is not None
+    try:
+        mat.use_nodes = True
+    except RuntimeError:
+        return False
+    if mat.node_tree is None:
+        return False
+    nodes = mat.node_tree.nodes
+    links = mat.node_tree.links
+    for node in nodes:
+        if getattr(node, "aov_name", "") == AOV_OBJECT_MASK_NAME:
+            return False
+
+    rgb = nodes.new("ShaderNodeRGB")
+    rgb.location = (-240, -420)
+    rgb.label = "BML_ObjectMask_Color"
+    rgb.outputs[0].default_value = (1.0, 1.0, 1.0, 1.0)
+    _add_aov_output(
+        nodes,
+        links,
+        AOV_OBJECT_MASK_NAME,
+        rgb.outputs[0],
+        None,
+        location=(20, -420),
+    )
+    try:
+        mat[PROP_SURFACE_AOV_MASK] = True
+    except TypeError:
+        pass
+    return True
+
+
+def _ensure_surface_mask_aovs(obj: bpy.types.Object) -> int:
+    if obj.type != "MESH" or obj.data is None:
+        return 0
+    first_line_slot = first_line_material_slot(obj)
+    limit = min(first_line_slot, len(obj.data.materials))
+    count = 0
+    for index in range(limit):
+        try:
+            mat = obj.data.materials[index]
+        except (IndexError, TypeError):
+            continue
+        if _ensure_surface_mask_aov(mat):
+            count += 1
+    return count
+
+
 def _repair_line_material(
     mat: bpy.types.Material,
     color: tuple[float, ...],
@@ -133,6 +224,7 @@ def _repair_line_material(
     _repair_outline_material(
         mat,
         color,
+        target=target,
         hide_through_transparent=hide_through_transparent,
         double_sided=double_sided,
     )
@@ -144,6 +236,7 @@ def _build_outline_nodes(
     mat: bpy.types.Material,
     color: tuple[float, ...],
     *,
+    target: str = "outline",
     hide_through_transparent: bool = False,
     double_sided: bool = False,
 ) -> None:
@@ -232,13 +325,6 @@ def _build_outline_nodes(
 
     links.new(mix_lp.outputs["Shader"], output.inputs["Surface"])
 
-    # --- AOV 出力 ---
-    aov = nodes.new("ShaderNodeOutputAOV")
-    aov.location = (800, -250)
-    aov.aov_name = AOV_NAME
-
-    links.new(rgb.outputs[0], aov.inputs["Color"])
-
     invert = nodes.new("ShaderNodeMath")
     invert.location = (600, -250)
     invert.operation = "SUBTRACT"
@@ -262,7 +348,25 @@ def _build_outline_nodes(
         links.new(not_depth.outputs[0], visible_value.inputs[1])
         aov_value = visible_value.outputs[0]
 
-    links.new(aov_value, aov.inputs["Value"])
+    # 互換用のBML_Lineに加え、コンポジット合成用にライン種別別AOVへ出す。
+    _add_aov_output(
+        nodes,
+        links,
+        AOV_NAME,
+        rgb.outputs[0],
+        aov_value,
+        location=(800, -250),
+    )
+    target_aov = _LINE_TARGET_AOVS.get(target)
+    if target_aov is not None:
+        _add_aov_output(
+            nodes,
+            links,
+            target_aov,
+            rgb.outputs[0],
+            aov_value,
+            location=(800, -430),
+        )
     mat[PROP_HIDE_THROUGH_TRANSPARENT] = bool(hide_through_transparent)
     mat[PROP_DOUBLE_SIDED] = bool(double_sided)
     mat[PROP_MATERIAL_BUILD] = _LINE_MATERIAL_BUILD_VERSION
@@ -331,19 +435,26 @@ def _build_line_only_outline_nodes(
     links.new(silhouette.outputs[0], aov.inputs["Value"])
 
 
-def _has_aov_node(mat: bpy.types.Material) -> bool:
+def _has_aov_node(mat: bpy.types.Material, target: str = "outline") -> bool:
     if not mat.use_nodes:
         return False
+    required = {AOV_NAME}
+    target_aov = _LINE_TARGET_AOVS.get(target)
+    if target_aov is not None:
+        required.add(target_aov)
+    found: set[str] = set()
     for node in mat.node_tree.nodes:
-        if hasattr(node, "aov_name") and node.aov_name == AOV_NAME:
-            return True
-    return False
+        aov_name = getattr(node, "aov_name", "")
+        if aov_name in required:
+            found.add(aov_name)
+    return required.issubset(found)
 
 
 def _repair_outline_material(
     mat: bpy.types.Material,
     color: tuple[float, ...],
     *,
+    target: str = "outline",
     hide_through_transparent: bool,
     double_sided: bool = False,
 ) -> None:
@@ -351,7 +462,7 @@ def _repair_outline_material(
     current_double_sided = bool(mat.get(PROP_DOUBLE_SIDED, False))
     current_build = int(mat.get(PROP_MATERIAL_BUILD, 0) or 0)
     if (
-        not _has_aov_node(mat)
+        not _has_aov_node(mat, target)
         or current != hide_through_transparent
         or current_double_sided != double_sided
         or current_build != _LINE_MATERIAL_BUILD_VERSION
@@ -359,6 +470,7 @@ def _repair_outline_material(
         _build_outline_nodes(
             mat,
             color,
+            target=target,
             hide_through_transparent=hide_through_transparent,
             double_sided=double_sided,
         )
@@ -400,6 +512,7 @@ def get_or_create_material(
     _build_outline_nodes(
         mat,
         color,
+        target="outline",
         hide_through_transparent=hide_through_transparent,
         double_sided=double_sided,
     )
@@ -485,6 +598,7 @@ def get_line_material(obj: bpy.types.Object, target: str) -> bpy.types.Material 
     _build_outline_nodes(
         mat,
         color,
+        target=target,
         hide_through_transparent=hide_transparent,
         double_sided=double_sided,
     )
@@ -495,15 +609,7 @@ def get_line_material(obj: bpy.types.Object, target: str) -> bpy.types.Material 
 
 
 def _has_surface_material(obj: bpy.types.Object) -> bool:
-    return any(
-        slot.material is not None
-        and not _is_line_material(slot.material)
-        and _line_material_target(slot.material) is None
-        and not _material_name_matches(
-            slot.material, SHEET_RIM_HIDDEN_MATERIAL_NAME
-        )
-        for slot in obj.material_slots
-    )
+    return any(_is_surface_material(slot.material) for slot in obj.material_slots)
 
 
 def ensure_surface_material_slot(obj: bpy.types.Object) -> None:
@@ -516,6 +622,7 @@ def ensure_surface_material_slot(obj: bpy.types.Object) -> None:
     if obj.type != "MESH" or obj.data is None:
         return
     if _has_surface_material(obj):
+        _ensure_surface_mask_aovs(obj)
         return
     line_mats = [slot.material for slot in obj.material_slots if slot.material]
     obj.data.materials.clear()
@@ -524,6 +631,7 @@ def ensure_surface_material_slot(obj: bpy.types.Object) -> None:
     obj.data.materials.append(surface_mat)
     for mat in line_mats:
         obj.data.materials.append(mat)
+    _ensure_surface_mask_aovs(obj)
 
 
 def first_line_material_slot(obj: bpy.types.Object) -> int:
@@ -579,6 +687,7 @@ def update_transparent_protection(
             _build_outline_nodes(
                 slot.material,
                 color if target == "outline" else _line_color(obj, target),
+                target=target,
                 hide_through_transparent=enabled,
                 double_sided=double_sided,
             )
@@ -914,6 +1023,7 @@ def apply_outline(
     )
 
     material_offset = _ensure_outline_material_slots(obj, mat)
+    _ensure_surface_mask_aovs(obj)
 
     # Solidify モディファイア
     mod = obj.modifiers.get(MODIFIER_NAME)
@@ -959,19 +1069,19 @@ def apply_outline(
     return True
 
 
-def ensure_aov_pass(view_layer) -> bool:
+def ensure_aov_pass(view_layer, name: str = AOV_NAME, aov_type: str = "COLOR") -> bool:
     """ビューレイヤーに AOV パスを追加. 既存なら何もしない."""
     for aov in view_layer.aovs:
-        if aov.name == AOV_NAME:
+        if aov.name == name:
             return False
     aov = view_layer.aovs.add()
-    aov.name = AOV_NAME
-    aov.type = "COLOR"
+    aov.name = name
+    aov.type = aov_type
     return True
 
 
 def ensure_aov_passes(scene=None) -> int:
-    """指定シーン、または全シーンの BML_Line AOV を保証する."""
+    """指定シーン、または全シーンの B-MANGA Line AOV を保証する."""
     if scene is not None:
         scenes = [scene]
     else:
@@ -984,8 +1094,9 @@ def ensure_aov_passes(scene=None) -> int:
         if scn is None:
             continue
         for view_layer in scn.view_layers:
-            if ensure_aov_pass(view_layer):
-                count += 1
+            for name in AOV_NAMES:
+                if ensure_aov_pass(view_layer, name):
+                    count += 1
     return count
 
 
@@ -1136,6 +1247,7 @@ def _restore_outline_materials(
             _build_outline_nodes(
                 mat,
                 _line_color(obj, target),
+                target=target,
                 hide_through_transparent=hide_transparent,
                 double_sided=double_sided,
             )
@@ -1305,6 +1417,7 @@ def repair_scene_line_materials(scene: bpy.types.Scene | None = None) -> int:
                 continue
             try:
                 _restore_outline_materials(obj, obj.data)
+                _ensure_surface_mask_aovs(obj)
             except RuntimeError:
                 # リンク元データなど、現在のファイル側から書き換えできない素材は
                 # ユーザーのライン適用・オーバーライド作成時に改めて修復される。

@@ -47,7 +47,9 @@ def _select(obj: bpy.types.Object) -> None:
 
 def _assert_aov(scene: bpy.types.Scene) -> None:
     for view_layer in scene.view_layers:
-        assert any(aov.name == core.AOV_NAME for aov in view_layer.aovs), view_layer.name
+        names = {aov.name for aov in view_layer.aovs}
+        missing = set(core.AOV_NAMES) - names
+        assert not missing, (view_layer.name, sorted(missing))
 
 
 def _outline_material(obj: bpy.types.Object) -> bpy.types.Material:
@@ -58,10 +60,11 @@ def _outline_material(obj: bpy.types.Object) -> bpy.types.Material:
 
 def _has_line_aov_node(mat: bpy.types.Material) -> bool:
     assert mat.use_nodes, "ライン用マテリアルがノード化されていません"
-    return any(
-        getattr(node, "aov_name", "") == core.AOV_NAME
+    names = {
+        getattr(node, "aov_name", "")
         for node in mat.node_tree.nodes
-    )
+    }
+    return {core.AOV_NAME, core.AOV_OUTLINE_RAW_NAME}.issubset(names)
 
 
 def _make_two_material_cube() -> bpy.types.Object:
@@ -152,7 +155,7 @@ def _test_outline_material_aov_repair() -> None:
     obj = bpy.data.objects["BML_two_material_cube"]
     mat = _outline_material(obj)
     for node in list(mat.node_tree.nodes):
-        if getattr(node, "aov_name", "") == core.AOV_NAME:
+        if getattr(node, "aov_name", "") in {core.AOV_NAME, core.AOV_OUTLINE_RAW_NAME}:
             mat.node_tree.nodes.remove(node)
     assert not _has_line_aov_node(mat), "テスト用にAOVノードを削除できていません"
 
@@ -161,7 +164,7 @@ def _test_outline_material_aov_repair() -> None:
     assert _has_line_aov_node(mat), "ライン用マテリアルのAOVノードが自動復旧しません"
 
     for node in list(mat.node_tree.nodes):
-        if getattr(node, "aov_name", "") == core.AOV_NAME:
+        if getattr(node, "aov_name", "") in {core.AOV_NAME, core.AOV_OUTLINE_RAW_NAME}:
             mat.node_tree.nodes.remove(node)
     outline_setup.update_material_color(obj, (0.1, 0.2, 0.3, 1.0))
     assert _has_line_aov_node(mat), "線色更新時にAOVノードが自動復旧しません"

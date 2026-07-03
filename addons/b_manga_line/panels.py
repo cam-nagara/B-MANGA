@@ -328,6 +328,10 @@ def _draw_actions(layout, context, obj) -> None:
 
     row = layout.row(align=True)
     row.enabled = has_line_any
+    row.operator("bmanga_line.setup_aov_composite", icon="NODETREE")
+
+    row = layout.row(align=True)
+    row.enabled = has_line_any
     row.operator("bmanga_line.remove", icon="REMOVE")
 
     mesh_count = sum(1 for selected in context.selected_objects if selected.type == "MESH")
