@@ -27,6 +27,7 @@ from .core import (
 
 _ANCHOR_PROP = "bml_subsurf_anchors"
 _ANCHOR_THRESHOLD_PROP = "bml_subsurf_anchor_threshold"
+_OUTLINE_HARD_ENDPOINT_ANGLE = math.radians(80.0)
 
 
 def _apply_subsurf_for_midpoint(obj, threshold: float) -> set[int]:
@@ -123,6 +124,15 @@ def _edge_is_sharp(edge, threshold: float) -> bool:
     return len(edge.link_faces) == 1
 
 
+def _edge_angle(edge) -> float | None:
+    if len(edge.link_faces) < 2:
+        return None
+    try:
+        return float(edge.calc_face_angle())
+    except ValueError:
+        return None
+
+
 def _build_sharp_graph(bm, threshold: float) -> list[set[int]]:
     sharp_neighbors: list[set[int]] = [set() for _ in range(len(bm.verts))]
     for edge in bm.edges:
@@ -133,6 +143,24 @@ def _build_sharp_graph(bm, threshold: float) -> list[set[int]]:
         sharp_neighbors[v1].add(v2)
         sharp_neighbors[v2].add(v1)
     return sharp_neighbors
+
+
+def _hard_endpoint_anchors(
+    bm,
+    threshold: float,
+    hard_endpoint_angle: float | None,
+) -> set[int]:
+    if hard_endpoint_angle is None:
+        return set()
+    limit = max(float(threshold), float(hard_endpoint_angle))
+    anchors: set[int] = set()
+    for vert in bm.verts:
+        for edge in vert.link_edges:
+            angle = _edge_angle(edge)
+            if angle is not None and angle >= limit:
+                anchors.add(vert.index)
+                break
+    return anchors
 
 
 def _stable_random_01(obj, chain: list[int]) -> float:
@@ -531,6 +559,7 @@ def _calc_midpoint_factor(
     jitter_percent: float = 0.0,
     curve_points: tuple[float, float, float] | None = None,
     threshold: float = math.pi / 2,
+    hard_endpoint_angle: float | None = None,
 ) -> dict[int, float]:
     """鋭角アンカー頂点間の中間度を計算.
 
@@ -551,6 +580,7 @@ def _calc_midpoint_factor(
         i for i, neighbors in enumerate(sharp_neighbors)
         if neighbors and len(neighbors) != 2
     }
+    graph_anchors |= _hard_endpoint_anchors(bm, threshold, hard_endpoint_angle)
     if forced_anchors:
         graph_anchors |= {
             i for i in forced_anchors
@@ -658,7 +688,12 @@ def compute_and_apply_weights(obj, settings, target: str = "outline") -> int:
             n = len(mesh.vertices)
             weights = _base_weights(obj, settings, n, use_color=use_color, use_ao=use_ao)
         midpoint = _calc_midpoint_factor(
-            obj, base_anchors or None, jitter, curve_points, threshold,
+            obj,
+            base_anchors or None,
+            jitter,
+            curve_points,
+            threshold,
+            _OUTLINE_HARD_ENDPOINT_ANGLE if target == "outline" else None,
         )
         for i in range(n):
             m = midpoint.get(i, 0.0)

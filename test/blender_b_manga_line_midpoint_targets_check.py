@@ -131,10 +131,10 @@ def _assert_target_only(target: str, group_name: str, factor_prop: str) -> None:
 
 
 def _assert_outline_uses_detection_angle() -> None:
-    obj = _make_segmented_box("BML_midpoint_outline_angle")
+    obj = _make_folded_strip("BML_midpoint_outline_angle")
     settings = obj.bmanga_line_settings
     settings.edge_smooth_factor = -1.0
-    center = _center_box_corner_vertex()
+    center = _center_ridge_vertex()
 
     settings.inner_line_angle = math.radians(10.0)
     settings.edge_midpoint_angle = math.radians(120.0)
@@ -145,6 +145,31 @@ def _assert_outline_uses_detection_angle() -> None:
     settings.edge_midpoint_angle = math.radians(10.0)
     vertex_analysis.compute_and_apply_weights(obj, settings, "outline")
     assert _weight(obj, core.VG_LINE_WIDTH, center) < 0.001
+
+
+def _assert_box_corners_are_outline_endpoints() -> None:
+    obj = _make_segmented_box("BML_midpoint_outline_box_endpoints")
+    settings = obj.bmanga_line_settings
+    settings.edge_smooth_factor = -1.0
+    settings.edge_midpoint_angle = math.radians(60.0)
+
+    vertex_analysis.compute_and_apply_weights(obj, settings, "outline")
+    center = _center_box_corner_vertex()
+    assert _weight(obj, core.VG_LINE_WIDTH, center) > 0.999
+
+
+def _assert_cylinder_rims_are_outline_endpoints() -> None:
+    bpy.ops.mesh.primitive_cylinder_add(vertices=32, radius=1.0, depth=1.0)
+    obj = bpy.context.object
+    obj.name = "BML_midpoint_outline_cylinder_endpoints"
+    settings = obj.bmanga_line_settings
+    settings.edge_smooth_factor = -1.0
+    settings.edge_midpoint_angle = math.radians(60.0)
+
+    vertex_analysis.compute_and_apply_weights(obj, settings, "outline")
+    rim_vertices = [v.index for v in obj.data.vertices if abs(abs(v.co.z) - 0.5) < 0.01]
+    assert rim_vertices, "円柱上下端の頂点がありません"
+    assert min(_weight(obj, core.VG_LINE_WIDTH, index) for index in rim_vertices) > 0.95
 
 
 def _assert_generated_target_uses_detection_angle(
@@ -199,6 +224,8 @@ def main() -> None:
         "intersection_edge_smooth_factor",
     )
     _assert_outline_uses_detection_angle()
+    _assert_box_corners_are_outline_endpoints()
+    _assert_cylinder_rims_are_outline_endpoints()
     _assert_generated_target_uses_detection_angle(
         "inner",
         core.VG_INNER_LINE_WIDTH,
