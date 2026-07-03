@@ -419,7 +419,7 @@ def _setup_line_parameter_interface(tree):
     offset_sock = tree.interface.new_socket(
         name=_OFFSET_SOCKET, in_out="INPUT", socket_type="NodeSocketFloat",
     )
-    offset_sock.default_value = 0.0
+    offset_sock.default_value = 1.0
     offset_sock.min_value = -1.0
     offset_sock.max_value = 1.0
     target_radius_sock = tree.interface.new_socket(
@@ -1235,7 +1235,7 @@ def apply_intersection_lines(
     obj: bpy.types.Object,
     target: bpy.types.Object | None = None,
     thickness: float = 0.0005,
-    offset: float = 0.0,
+    offset: float = 1.0,
     material: bpy.types.Material | None = None,
     method: str = "BOOLEAN",
     scene: bpy.types.Scene | None = None,

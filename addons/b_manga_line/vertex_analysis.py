@@ -37,9 +37,15 @@ def _apply_subsurf_for_midpoint(obj, threshold: float) -> set[int]:
     されるため、適用前の情報が必要。
     戻り値: アンカー頂点インデックスのset（SubSurfなしなら空set）
     """
+    from . import subdivision_lod
+
     subsurf_names = [
         m.name for m in obj.modifiers
-        if m.type == "SUBSURF" and (m.show_viewport or m.show_render)
+        if (
+            m.type == "SUBSURF"
+            and (m.show_viewport or m.show_render)
+            and not subdivision_lod.is_auto_subsurf_modifier(m)
+        )
     ]
     if not subsurf_names:
         return set()

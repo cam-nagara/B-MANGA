@@ -218,6 +218,8 @@ def _midpoint_angle_property(prop_name: str, description: str):
         default=math.radians(60),
         min=math.radians(1),
         max=math.radians(180),
+        precision=1,
+        step=100,
         subtype="ANGLE",
         update=_make_weight_refresh_propagator(prop_name),
     )
@@ -432,6 +434,24 @@ def _on_sheet_exclusion_changed(self, context):
     if _propagating:
         return
     _propagate(self, context, "exclude_sheet_meshes")
+
+
+def _on_auto_subdivision_changed(self, context):
+    if _propagating:
+        return
+    owner = self.id_data
+    if owner.type == "MESH" and has_line(owner):
+        from . import modifier_stack, subdivision_lod
+
+        if self.auto_subdivision_for_midpoint:
+            subdivision_lod.ensure_auto_subdivision(
+                owner,
+                getattr(context, "scene", None),
+            )
+            modifier_stack.reorder_line_modifiers(owner)
+        else:
+            subdivision_lod.remove_auto_subdivision(owner)
+    _propagate(self, context, "auto_subdivision_for_midpoint")
 
 
 def _sync_inner_line_creation(
@@ -1105,6 +1125,16 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         update=_make_weight_refresh_propagator("use_vertex_color"),
     )  # type: ignore[valid-type]
 
+    auto_subdivision_for_midpoint: BoolProperty(
+        name="中間頂点用サブディビジョンを自動設定",
+        description=(
+            "ライン適用時に鋭い辺へクリースを付け、"
+            "カメラ距離に応じたサブディビジョンサーフェスを設定する"
+        ),
+        default=False,
+        update=_on_auto_subdivision_changed,
+    )  # type: ignore[valid-type]
+
     even_thickness: BoolProperty(
         name="面の厚みを均一に",
         description="凸凹した面でも均一な線幅にする",
@@ -1154,6 +1184,8 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         default=math.radians(60),
         min=math.radians(1),
         max=math.radians(180),
+        precision=1,
+        step=100,
         subtype="ANGLE",
         update=_on_inner_angle_changed,
     )  # type: ignore[valid-type]
@@ -1190,7 +1222,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     inner_line_offset: FloatProperty(
         name="オフセット",
         description="内部線を元の面からどれだけ浮かせるかを線幅基準で調整する",
-        default=0.0,
+        default=1.0,
         min=-1.0,
         max=1.0,
         precision=3,
@@ -1273,7 +1305,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     intersection_line_offset: FloatProperty(
         name="オフセット",
         description="交差線の出方を線幅基準で調整する",
-        default=0.0,
+        default=1.0,
         min=-1.0,
         max=1.0,
         precision=3,
@@ -1476,6 +1508,8 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         default=math.radians(10),
         min=0.0,
         max=math.radians(90),
+        precision=1,
+        step=100,
         subtype="ANGLE",
         update=_on_culling_margin_changed,
     )  # type: ignore[valid-type]

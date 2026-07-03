@@ -218,6 +218,8 @@ def _assert_shell_width_controls_affect_generated_mesh() -> None:
     surface = _make_surface_material("BML_shell_width_surface")
     slab = _make_source_slab(surface)
     cylinder = _make_contact_cylinder(surface)
+    slab.bmanga_line_settings.intersection_line_offset = 0.0
+    cylinder.bmanga_line_settings.intersection_line_offset = 0.0
     slab.bmanga_line_settings.intersection_edge_smooth_factor = 0.0
     _select([slab, cylinder])
     bpy.context.view_layer.objects.active = cylinder

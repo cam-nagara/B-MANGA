@@ -691,6 +691,18 @@ def _update_sheet_exclusion(objects: list[bpy.types.Object], context) -> None:
         _refresh_camera_objects(removed_targets, context, update_visibility=True)
 
 
+def _update_auto_subdivision(objects: list[bpy.types.Object], context) -> None:
+    from . import subdivision_lod
+
+    for obj in objects:
+        settings = obj.bmanga_line_settings
+        if settings.auto_subdivision_for_midpoint:
+            subdivision_lod.ensure_auto_subdivision(obj, context.scene)
+            modifier_stack.reorder_line_modifiers(obj)
+        else:
+            subdivision_lod.remove_auto_subdivision(obj)
+
+
 def _update_visibility_rules(objects: list[bpy.types.Object], context) -> None:
     needs_refresh = []
     for obj in objects:
@@ -734,6 +746,9 @@ def refresh_propagated_property(
         return
     if prop_name == "exclude_sheet_meshes":
         _update_sheet_exclusion(line_objects, context)
+        return
+    if prop_name == "auto_subdivision_for_midpoint":
+        _update_auto_subdivision(line_objects, context)
         return
     if prop_name == "outline_color":
         _update_outline_color(line_objects)

@@ -3,6 +3,40 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-03 — B-MANGA Lineのスライダー・オフセット初期値・中間頂点用サブディビジョンを調整 (B-MANGA Line v0.3.82)
+
+### 症状
+
+- 検出角度など角度スライダーの左右ボタンで、値の変化が小さく分かりづらい状態だった。
+- 内部線と交差線のオフセット初期値が0.0で、アウトラインの初期値1.0と揃っていなかった。
+- 中間頂点の線幅調整は、元メッシュの辺途中に頂点が無い場合に効果が出にくかった。
+
+### 原因
+
+- 角度プロパティのUI増減幅が未指定で、Blender既定の細かいステップに依存していた。
+- 内部線・交差線のオフセット初期値とノード側の既定値が旧設定のまま残っていた。
+- 中間頂点用の線幅計算は頂点グループを使うため、低密度メッシュでは辺途中の評価点が不足していた。
+
+### 修正
+
+- 検出角度を含む角度スライダーに、左右ボタンで見える単位の増減幅を明示。
+- アウトライン・内部線・交差線のオフセット初期値をすべて1.0へ統一。新規ノードツリー側の既定値も1.0へ更新。
+- 「中間頂点用サブディビジョンを自動設定」オプションを追加。ライン適用時に60度以上の鋭い辺へクリース1.00を設定し、サブディビジョンサーフェスを追加する。ビューポートは0、レンダーは最大4で、カメラ距離5mごとに1段階下げる。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_slider_step_check.py`
+- `test/blender_b_manga_line_auto_subdivision_check.py`
+- `test/blender_b_manga_line_register_reenable_check.py`
+- `test/blender_b_manga_line_offset_controls_check.py`
+- `test/blender_b_manga_line_intersection_shell_method_check.py`
+- `test/blender_b_manga_line_intersection_fill_check.py`
+- `test/blender_b_manga_line_midpoint_targets_check.py`
+- `test/blender_b_manga_line_midpoint_jitter_check.py`
+- `test/blender_b_manga_line_inner_width_check.py`
+
+---
+
 ## 2026-07-03 — B-MANGA Line交差線の端部カバーを追加調整 (B-MANGA Line v0.3.81)
 
 ### 症状

@@ -54,6 +54,7 @@ def _make_folded_strip() -> bpy.types.Object:
         obj,
         angle=math.radians(10.0),
         thickness=0.04,
+        offset=0.0,
         material=line_mat,
     )
     assert ok, "内部線を追加できませんでした"

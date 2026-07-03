@@ -74,7 +74,7 @@ def _setup_interface(tree: bpy.types.NodeTree) -> None:
         in_out="INPUT",
         socket_type="NodeSocketFloat",
     )
-    offset_sock.default_value = 0.0
+    offset_sock.default_value = 1.0
     offset_sock.min_value = -1.0
     offset_sock.max_value = 1.0
     tree.interface.new_socket(
@@ -1096,7 +1096,7 @@ def refresh_target_collection(
             obj,
             float(getattr(settings, "intersection_thickness", 0.0003)),
         ),
-        float(getattr(settings, "intersection_line_offset", 0.0)),
+        float(getattr(settings, "intersection_line_offset", 1.0)),
         outline_setup.get_line_material(obj, "intersection"),
         scene,
     )

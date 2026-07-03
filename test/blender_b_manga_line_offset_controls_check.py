@@ -74,6 +74,14 @@ def main() -> None:
             _make_cube("BML_offset_A", (-0.25, 0.0, -4.0)),
             _make_cube("BML_offset_B", (0.25, 0.0, -4.0)),
         ]
+        for obj in objects:
+            _assert_close(obj.bmanga_line_settings.outline_offset, 1.0, obj.name)
+            _assert_close(obj.bmanga_line_settings.inner_line_offset, 1.0, obj.name)
+            _assert_close(
+                obj.bmanga_line_settings.intersection_line_offset,
+                1.0,
+                obj.name,
+            )
         _select_all(objects)
         assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
 

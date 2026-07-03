@@ -66,7 +66,7 @@ def _create_node_tree() -> bpy.types.NodeTree:
     offset_sock = tree.interface.new_socket(
         name=_OFFSET_SOCKET_NAME, in_out="INPUT", socket_type="NodeSocketFloat"
     )
-    offset_sock.default_value = 0.0
+    offset_sock.default_value = 1.0
     offset_sock.min_value = -1.0
     offset_sock.max_value = 1.0
 
@@ -382,7 +382,7 @@ def apply_inner_lines(
     obj: bpy.types.Object,
     angle: float = 0.5236,
     thickness: float = 0.0005,
-    offset: float = 0.0,
+    offset: float = 1.0,
     material: bpy.types.Material | None = None,
     use_marked_edges: bool = False,
     enable: bool = True,

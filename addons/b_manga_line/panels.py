@@ -292,6 +292,9 @@ def _draw_actions(layout, context, obj) -> None:
     row = layout.row(align=True)
     row.scale_y = 1.4
     row.operator("bmanga_line.apply", icon="ADD")
+    settings = getattr(obj, "bmanga_line_settings", None)
+    if settings is not None:
+        layout.prop(settings, "auto_subdivision_for_midpoint")
 
     linked_line_count = sum(
         1 for linked_obj in context.scene.objects

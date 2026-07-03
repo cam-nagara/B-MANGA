@@ -22,6 +22,7 @@ _SETTING_FIELDS = (
     "outline_offset",
     "outline_color",
     "use_vertex_color",
+    "auto_subdivision_for_midpoint",
     "even_thickness",
     "exclude_sheet_meshes",
     "use_uniform_line_width",
@@ -167,10 +168,16 @@ def apply_line_settings(
         outline_setup,
         plane_filter,
         scale_utils,
+        subdivision_lod,
         vertex_analysis,
     )
 
     settings = obj.bmanga_line_settings
+    if settings.auto_subdivision_for_midpoint:
+        subdivision_lod.ensure_auto_subdivision(obj, context.scene)
+    else:
+        subdivision_lod.remove_auto_subdivision(obj)
+
     use_vg = (
         settings.use_uniform_line_width
         or vertex_analysis.has_width_controls(settings, "outline")
@@ -267,6 +274,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
         max=1.0,
     )
     use_vertex_color: BoolProperty(default=False)
+    auto_subdivision_for_midpoint: BoolProperty(default=False)
     even_thickness: BoolProperty(default=False)
     # 2026-07-03 ユーザー確定: 板ポリ除外だけは「初期値全オフ」の対象外でオン
     exclude_sheet_meshes: BoolProperty(default=True)
@@ -278,7 +286,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     inner_line_angle: FloatProperty(default=1.0471975512, min=0.0174532925, max=3.1415926536)
     use_marked_inner_edges: BoolProperty(default=False)
     inner_line_thickness: FloatProperty(default=0.0003, min=0.0001, max=1.0)
-    inner_line_offset: FloatProperty(default=0.0, min=-1.0, max=1.0)
+    inner_line_offset: FloatProperty(default=1.0, min=-1.0, max=1.0)
     inner_line_color: FloatVectorProperty(
         subtype="COLOR",
         size=4,
@@ -299,7 +307,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     )
     intersection_enabled: BoolProperty(default=False)
     intersection_thickness: FloatProperty(default=0.0003, min=0.0001, max=1.0)
-    intersection_line_offset: FloatProperty(default=0.0, min=-1.0, max=1.0)
+    intersection_line_offset: FloatProperty(default=1.0, min=-1.0, max=1.0)
     intersection_color: FloatVectorProperty(
         subtype="COLOR",
         size=4,
