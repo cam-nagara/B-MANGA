@@ -3,6 +3,43 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-03 — B-MANGA Line自動サブディビジョンの実機目視不具合を修正 (B-MANGA Line v0.3.83)
+
+### 症状
+
+- 実機レンダーで確認すると、「中間頂点用サブディビジョンを自動設定」を有効にしても、低密度メッシュの内部線で中央の線幅変化が出ていなかった。
+- 開いた面では、自動サブディビジョンによって外形が丸まり、意図しない形状変化が見えるケースがあった。
+- 交差線の塗りつぶし実機テストが、v0.3.82のオフセット初期値1.0に追従していなかった。
+
+### 原因
+
+- サブディビジョンサーフェスはライン生成前に追加されるが、線幅用の頂点グループは元メッシュ頂点へ書き込まれるため、辺途中に頂点が無いメッシュでは内部線の中央に線幅値を渡せなかった。
+- 自動クリース対象が二面角のある辺だけで、境界辺がクリースされず、開いた面の外周が丸まりやすかった。
+- 交差線テストは、旧オフセット0.0相当のカバー半径を前提にしていた。
+
+### 修正
+
+- 自動サブディビジョン有効時の内部線に、曲線の始点から終点までの位置ベースで線幅を補正する処理を追加。元メッシュに中間頂点が無い1本の内部線でも、中央の線幅調整が効くようにした。
+- 内部線カーブをチューブ化前に再サンプルし、中央の細りが実ジオメトリに出るようにした。
+- 自動サブディビジョン用クリースに境界辺も含め、開いた面の外形が丸まりにくいようにした。
+- 交差線の塗りつぶしテスト期待値を、オフセット初期値1.0の半径計算へ更新。
+- 設定変更・プリセット適用・作成範囲変更などの内部線更新経路にも、同じ中間線幅パラメータを反映。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_inner_width_check.py`
+- `test/blender_b_manga_line_auto_subdivision_check.py`
+- `test/blender_b_manga_line_slider_step_check.py`
+- `test/blender_b_manga_line_register_reenable_check.py`
+- `test/blender_b_manga_line_offset_controls_check.py`
+- `test/blender_b_manga_line_intersection_shell_method_check.py`
+- `test/blender_b_manga_line_intersection_fill_check.py`
+- `test/blender_b_manga_line_midpoint_targets_check.py`
+- `test/blender_b_manga_line_midpoint_jitter_check.py`
+- `D:\TM Dropbox\Miura Tadahiro\Develop\B-MANGAテスト\test_line.blend` を保存せず読み込み、現在のリポジトリ版を適用したレンダー画像をAI目視確認。
+
+---
+
 ## 2026-07-03 — B-MANGA Lineのスライダー・オフセット初期値・中間頂点用サブディビジョンを調整 (B-MANGA Line v0.3.82)
 
 ### 症状

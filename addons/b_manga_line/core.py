@@ -487,9 +487,31 @@ def _sync_inner_line_creation(
             offset=settings.inner_line_offset,
             material=mat,
             use_marked_edges=settings.use_marked_inner_edges,
+            midpoint_factor=(
+                settings.inner_edge_smooth_factor
+                if settings.auto_subdivision_for_midpoint
+                else 0.0
+            ),
+            width_curve_25=settings.inner_edge_width_curve_25,
+            width_curve_50=settings.inner_edge_width_curve_50,
+            width_curve_75=settings.inner_edge_width_curve_75,
         )
     inner_lines.disable_inner_lines(owner)
     return False
+
+
+def _inner_midpoint_kwargs(settings) -> dict[str, float]:
+    factor = (
+        float(settings.inner_edge_smooth_factor)
+        if bool(getattr(settings, "auto_subdivision_for_midpoint", False))
+        else 0.0
+    )
+    return {
+        "midpoint_factor": factor,
+        "width_curve_25": float(settings.inner_edge_width_curve_25),
+        "width_curve_50": float(settings.inner_edge_width_curve_50),
+        "width_curve_75": float(settings.inner_edge_width_curve_75),
+    }
 
 
 def _on_inner_line_enabled_changed(self, context):
@@ -513,7 +535,11 @@ def _on_inner_angle_changed(self, context):
     from . import inner_lines
     owner = self.id_data
     if owner.type == "MESH" and owner.modifiers.get(GN_MODIFIER_NAME) is not None:
-        inner_lines.update_parameters(owner, angle=self.inner_line_angle)
+        inner_lines.update_parameters(
+            owner,
+            angle=self.inner_line_angle,
+            **_inner_midpoint_kwargs(self),
+        )
         _refresh_line_width_weights(self, context, "inner")
     _propagate(self, context, "inner_line_angle")
 
@@ -537,6 +563,7 @@ def _on_marked_inner_edges_changed(self, context):
             inner_lines.update_parameters(
                 owner,
                 use_marked_edges=self.use_marked_inner_edges,
+                **_inner_midpoint_kwargs(self),
             )
         elif not self.inner_line_enabled:
             refreshed_owner = False
@@ -565,6 +592,7 @@ def _on_inner_thickness_changed(self, context):
                     owner,
                     self.inner_line_thickness,
                 ),
+                **_inner_midpoint_kwargs(self),
             )
     _propagate(self, context, "inner_line_thickness")
 
@@ -575,7 +603,11 @@ def _on_inner_offset_changed(self, context):
     from . import inner_lines
     owner = self.id_data
     if owner.type == "MESH":
-        inner_lines.update_parameters(owner, offset=self.inner_line_offset)
+        inner_lines.update_parameters(
+            owner,
+            offset=self.inner_line_offset,
+            **_inner_midpoint_kwargs(self),
+        )
     _propagate(self, context, "inner_line_offset")
 
 
@@ -856,6 +888,9 @@ def _refresh_generated_width_weights(owner, settings, target, vertex_analysis) -
     if target == "intersection":
         from . import intersection_lines
         intersection_lines.update_parameters(owner)
+    elif target == "inner":
+        from . import inner_lines
+        inner_lines.update_parameters(owner, **_inner_midpoint_kwargs(settings))
 
 
 def _on_edge_smooth_changed(self, context):
@@ -900,6 +935,7 @@ def _on_camera_comp_changed(self, context):
                     owner,
                     self.inner_line_thickness,
                 ),
+                **_inner_midpoint_kwargs(self),
             )
             intersection_lines.update_parameters(
                 owner,
@@ -963,6 +999,7 @@ def _on_uniform_line_width_changed(self, context):
                         owner,
                         self.inner_line_thickness,
                     ),
+                    **_inner_midpoint_kwargs(self),
                 )
                 intersection_lines.update_parameters(
                     owner,

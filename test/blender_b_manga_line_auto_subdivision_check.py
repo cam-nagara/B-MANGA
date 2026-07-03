@@ -64,11 +64,49 @@ def _assert_cube_edges_are_creased(obj: bpy.types.Object) -> None:
     assert len(creased) == 12, creased
 
 
+def _make_open_folded_strip() -> bpy.types.Object:
+    mesh = bpy.data.meshes.new("BML_open_folded_strip")
+    mesh.from_pydata(
+        [
+            (-1.0, -0.5, 0.0),
+            (-1.0, 0.0, 0.4),
+            (-1.0, 0.5, 0.0),
+            (1.0, -0.5, 0.0),
+            (1.0, 0.0, 0.4),
+            (1.0, 0.5, 0.0),
+        ],
+        [],
+        [
+            (0, 3, 4, 1),
+            (1, 4, 5, 2),
+        ],
+    )
+    mesh.update()
+    obj = bpy.data.objects.new("BML_open_folded_strip", mesh)
+    bpy.context.collection.objects.link(obj)
+    return obj
+
+
+def _assert_open_edges_are_creased() -> None:
+    obj = _make_open_folded_strip()
+    count = subdivision_lod.mark_sharp_edges_for_subsurf(obj)
+    assert count == 7, count
+    attr = obj.data.attributes.get(subdivision_lod.CREASE_EDGE_ATTR)
+    assert attr is not None, "クリース属性がありません"
+    creased = [
+        index for index, item in enumerate(attr.data)
+        if abs(float(item.value) - 1.0) < 1.0e-6
+    ]
+    assert len(creased) == 7, creased
+
+
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     b_manga_line.register()
     try:
         _assert_render_level_ladder()
+        _clear_scene()
+        _assert_open_edges_are_creased()
         _clear_scene()
         bpy.ops.object.camera_add(location=(0.0, -3.0, 0.0))
         bpy.context.scene.camera = bpy.context.object

@@ -234,7 +234,14 @@ def main() -> None:
     # 見えないよう、塗りつぶしチューブの半径は自分・交差対象の
     # アウトライン幅(_OUTLINE_THICKNESS)のうち大きい方まで広がる
     # （交差線幅の設定値はもはや上限ではなく下限）。
-    covered_width = _OUTLINE_THICKNESS * intersection_shell.SHELL_GAP_COVERAGE_FACTOR
+    # v0.3.82 以降は交差線のオフセット初期値が 1.0。半径は
+    # 「実効太さ + 実効太さ * オフセット * 0.5」なので、初期値では
+    # 隙間カバー幅が 1.5 倍になる。
+    covered_width = (
+        _OUTLINE_THICKNESS
+        * intersection_shell.SHELL_GAP_COVERAGE_FACTOR
+        * 1.5
+    )
     inner = _CYLINDER_RADIUS - covered_width
     outer = _CYLINDER_RADIUS + covered_width
     margin = 0.08

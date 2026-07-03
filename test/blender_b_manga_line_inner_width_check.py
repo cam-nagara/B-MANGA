@@ -73,6 +73,42 @@ def _make_folded_strip() -> bpy.types.Object:
     return obj
 
 
+def _make_low_density_folded_strip() -> bpy.types.Object:
+    verts = [
+        (-2.0, -0.5, 0.0),
+        (-2.0, 0.0, 0.35),
+        (-2.0, 0.5, 0.0),
+        (2.0, -0.5, 0.0),
+        (2.0, 0.0, 0.35),
+        (2.0, 0.5, 0.0),
+    ]
+    faces = [
+        (0, 3, 4, 1),
+        (1, 4, 5, 2),
+    ]
+    mesh = bpy.data.meshes.new("BML_inner_width_low_density_strip")
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+
+    obj = bpy.data.objects.new("BML_inner_width_low_density_strip", mesh)
+    bpy.context.collection.objects.link(obj)
+    obj.data.materials.append(_make_material("BML_inner_width_low_surface", (1, 1, 1, 1)))
+    line_mat = _make_material("BML_inner_width_line_low", (0, 0, 0, 1))
+    obj.data.materials.append(line_mat)
+
+    ok = inner_lines.apply_inner_lines(
+        obj,
+        angle=math.radians(10.0),
+        thickness=0.04,
+        offset=0.0,
+        material=line_mat,
+        midpoint_factor=-1.0,
+    )
+    assert ok, "低密度メッシュへ内部線を追加できませんでした"
+    bpy.context.view_layer.update()
+    return obj
+
+
 def _sample_line_radii(mesh: bpy.types.Mesh) -> dict[float, float]:
     line_index = None
     for i, mat in enumerate(mesh.materials):
@@ -112,6 +148,14 @@ def main() -> None:
     assert abs(radii[-2.0] - 0.02) < 0.005, radii
     assert abs(radii[2.0] - 0.02) < 0.005, radii
     assert radii[0.0] < 0.001, radii
+
+    low = _make_low_density_folded_strip()
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    low_mesh = bpy.data.meshes.new_from_object(low.evaluated_get(depsgraph))
+    low_radii = _sample_line_radii(low_mesh)
+    assert abs(low_radii[-2.0] - 0.02) < 0.005, low_radii
+    assert abs(low_radii[2.0] - 0.02) < 0.005, low_radii
+    assert low_radii[0.0] < 0.001, low_radii
     print(f"[PASS] inner line midpoint radius reaches zero: {radii}")
 
 

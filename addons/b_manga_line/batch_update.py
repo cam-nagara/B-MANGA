@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import bpy
 
-from . import camera_comp, core, inner_lines, intersection_lines, outline_setup, presets
+from . import camera_comp, core, inner_lines, intersection_lines, modifier_stack, outline_setup, presets
 from .scale_utils import modifier_thickness_for_world_width
 
 MAX_IMMEDIATE_VISIBILITY_OBJECTS = 64
@@ -202,6 +202,20 @@ def _update_generated_color(objects: list[bpy.types.Object], target: str) -> Non
             intersection_lines.update_parameters(obj, material=material)
 
 
+def _inner_midpoint_kwargs(settings) -> dict[str, float]:
+    factor = (
+        float(settings.inner_edge_smooth_factor)
+        if bool(getattr(settings, "auto_subdivision_for_midpoint", False))
+        else 0.0
+    )
+    return {
+        "midpoint_factor": factor,
+        "width_curve_25": float(settings.inner_edge_width_curve_25),
+        "width_curve_50": float(settings.inner_edge_width_curve_50),
+        "width_curve_75": float(settings.inner_edge_width_curve_75),
+    }
+
+
 def _update_outline_thickness(objects: list[bpy.types.Object], context) -> None:
     for obj in objects:
         settings = obj.bmanga_line_settings
@@ -243,6 +257,7 @@ def _update_generated_thickness(
                     obj,
                     settings.inner_line_thickness,
                 ),
+                **_inner_midpoint_kwargs(settings),
             )
         elif target == "intersection":
             intersection_lines.update_parameters(
@@ -259,7 +274,11 @@ def _update_generated_offset(objects: list[bpy.types.Object], target: str) -> No
     for obj in targets:
         settings = obj.bmanga_line_settings
         if target == "inner":
-            inner_lines.update_parameters(obj, offset=settings.inner_line_offset)
+            inner_lines.update_parameters(
+                obj,
+                offset=settings.inner_line_offset,
+                **_inner_midpoint_kwargs(settings),
+            )
         elif target == "intersection":
             intersection_lines.update_parameters(
                 obj,
@@ -298,6 +317,7 @@ def _update_camera_compensation(objects: list[bpy.types.Object], context) -> Non
                 obj,
                 settings.inner_line_thickness,
             ),
+            **_inner_midpoint_kwargs(settings),
         )
         intersection_lines.update_parameters(
             obj,
@@ -377,6 +397,7 @@ def _update_uniform_line_width(objects: list[bpy.types.Object], context) -> None
                 obj,
                 settings.inner_line_thickness,
             ),
+            **_inner_midpoint_kwargs(settings),
         )
         intersection_lines.update_parameters(
             obj,
@@ -469,6 +490,8 @@ def _update_width_target(
             vertex_analysis.clear_width_weights(obj, group_name=group_name)
         if target == "intersection":
             intersection_lines.update_parameters(obj)
+        elif target == "inner":
+            inner_lines.update_parameters(obj, **_inner_midpoint_kwargs(settings))
 
 
 def _update_inner_angle(objects: list[bpy.types.Object], context) -> None:
@@ -477,6 +500,7 @@ def _update_inner_angle(objects: list[bpy.types.Object], context) -> None:
         inner_lines.update_parameters(
             obj,
             angle=obj.bmanga_line_settings.inner_line_angle,
+            **_inner_midpoint_kwargs(obj.bmanga_line_settings),
         )
     pending_targets = targets
     uniform_targets = [
@@ -509,6 +533,7 @@ def _update_marked_inner_edges(objects: list[bpy.types.Object], context) -> None
             inner_lines.update_parameters(
                 obj,
                 use_marked_edges=settings.use_marked_inner_edges,
+                **_inner_midpoint_kwargs(settings),
             )
         elif not settings.inner_line_enabled:
             continue
@@ -530,6 +555,7 @@ def _update_marked_inner_edges(objects: list[bpy.types.Object], context) -> None
             material=outline_setup.get_line_material(obj, "inner"),
             offset=settings.inner_line_offset,
             use_marked_edges=settings.use_marked_inner_edges,
+            **_inner_midpoint_kwargs(settings),
             enable=False,
         ):
             refresh_targets.append(obj)
@@ -579,6 +605,7 @@ def _update_inner_lines(
                 material=outline_setup.get_line_material(obj, "inner"),
                 offset=settings.inner_line_offset,
                 use_marked_edges=settings.use_marked_inner_edges,
+                **_inner_midpoint_kwargs(settings),
                 enable=False,
             ):
                 refresh_targets.append(obj)
@@ -634,6 +661,7 @@ def _update_inner_creation_range(objects: list[bpy.types.Object], context) -> No
                 material=outline_setup.get_line_material(obj, "inner"),
                 offset=settings.inner_line_offset,
                 use_marked_edges=settings.use_marked_inner_edges,
+                **_inner_midpoint_kwargs(settings),
             ):
                 refresh_targets.append(obj)
     if refresh_targets:

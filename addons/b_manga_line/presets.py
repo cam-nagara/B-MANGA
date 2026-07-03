@@ -215,6 +215,14 @@ def apply_line_settings(
             offset=settings.inner_line_offset,
             material=outline_setup.get_line_material(obj, "inner"),
             use_marked_edges=settings.use_marked_inner_edges,
+            midpoint_factor=(
+                settings.inner_edge_smooth_factor
+                if settings.auto_subdivision_for_midpoint
+                else 0.0
+            ),
+            width_curve_25=settings.inner_edge_width_curve_25,
+            width_curve_50=settings.inner_edge_width_curve_50,
+            width_curve_75=settings.inner_edge_width_curve_75,
         )
     else:
         inner_lines.remove_inner_lines(obj)

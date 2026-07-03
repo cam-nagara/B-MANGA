@@ -81,6 +81,7 @@ def mark_sharp_edges_for_subsurf(
         sharp_indices: list[int] = []
         for edge in bm.edges:
             if len(edge.link_faces) < 2:
+                sharp_indices.append(edge.index)
                 continue
             try:
                 if edge.calc_face_angle() >= threshold:
