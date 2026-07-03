@@ -1546,12 +1546,13 @@ def _refresh_source_intersections(
 
 def refresh_scene_intersections(scene: bpy.types.Scene) -> list[bpy.types.Object]:
     """シーン内の交差線を、現在のメッシュ構成に合わせて作り直す."""
-    from . import outline_setup, plane_filter
+    from . import intersection_shell, outline_setup, plane_filter
 
     refreshed: list[bpy.types.Object] = []
     sources = _intersection_refresh_sources(scene)
     for obj in sources:
         if _refresh_source_intersections(obj, scene, outline_setup, plane_filter):
             refreshed.append(obj)
+    intersection_shell.cleanup_orphan_proxies()
     _defer_heavy_viewport_refresh(refreshed)
     return refreshed

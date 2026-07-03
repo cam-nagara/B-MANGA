@@ -79,69 +79,32 @@ def main() -> None:
                 refresh_scene=False,
                 transforms_fresh=False,
             )
-        old_threshold = intersection_lines._DEFERRED_VIEWPORT_THRESHOLD
-        intersection_lines._DEFERRED_VIEWPORT_THRESHOLD = 0
-        try:
-            refreshed = intersection_lines.refresh_scene_intersections(bpy.context.scene)
-            assert source in refreshed, "まとめ交差線の生成元が更新対象に含まれていません"
-        finally:
-            intersection_lines._DEFERRED_VIEWPORT_THRESHOLD = old_threshold
+        # 2026-07-03: 生成方式はSHELL固定 — 複数対象でもモディファイアは
+        # 1つ（__Shell）にまとまり、対象はコレクションで管理される
+        refreshed = intersection_lines.refresh_scene_intersections(bpy.context.scene)
+        assert source in refreshed, "まとめ交差線の生成元が更新対象に含まれていません"
+
+        from b_manga_line import intersection_shell
 
         mods = list(core.iter_intersection_modifiers(source))
         assert len(mods) == 1, [mod.name for mod in mods]
         mod = mods[0]
-        assert mod.name.startswith(core.INTERSECTION_MODIFIER_PREFIX + "Targets")
+        assert intersection_shell.is_shell_modifier(mod), mod.name
         assert mod.node_group is not None
-        assert "_Multi_" in mod.node_group.name
-        assert not mod.show_viewport
-        assert intersection_lines.is_deferred_viewport_modifier(mod)
         actual_targets = {
-            item.name
-            for item in intersection_lines._multi_modifier_targets(mod)
+            item.name for item in intersection_shell.modifier_targets(mod)
         }
         assert actual_targets == {item.name for item in targets}, actual_targets
-        for _ in range(20):
-            if not intersection_lines.is_deferred_viewport_modifier(mod):
-                break
-            intersection_lines._restore_deferred_viewport_step()
-        assert mod.show_viewport
-        assert not intersection_lines.is_deferred_viewport_modifier(mod)
 
-        _make_camera()
-        source.bmanga_line_settings.use_intersection_distance_limit = True
-        source.bmanga_line_settings.intersection_max_distance = 0.5
-        old_threshold = intersection_lines._DEFERRED_VIEWPORT_THRESHOLD
-        intersection_lines._DEFERRED_VIEWPORT_THRESHOLD = 0
-        try:
-            intersection_lines.refresh_scene_intersections(bpy.context.scene)
-        finally:
-            intersection_lines._DEFERRED_VIEWPORT_THRESHOLD = old_threshold
-        deferred_mods = list(core.iter_intersection_modifiers(source))
-        assert deferred_mods
-        assert all(intersection_lines.is_deferred_viewport_modifier(item) for item in deferred_mods)
-        for _ in range(20):
-            if not any(intersection_lines.is_deferred_viewport_modifier(item) for item in deferred_mods):
-                break
-            intersection_lines._restore_deferred_viewport_step()
-        assert all(not item.show_viewport for item in deferred_mods)
-        assert all(not item.show_render for item in deferred_mods)
-        source.bmanga_line_settings.use_intersection_distance_limit = False
-        source.bmanga_line_settings.intersection_max_distance = 20.0
-
+        # 板ポリ除外オプションは廃止 — シートも交差対象に残り続ける
         sheet_target.bmanga_line_settings.exclude_sheet_meshes = True
         intersection_lines.prune_excluded_intersections(bpy.context.scene)
-        remaining_targets = set()
-        for current in core.iter_intersection_modifiers(source):
-            if intersection_lines._is_grouped_modifier(current):
-                remaining_targets.update(
-                    item.name
-                    for item in intersection_lines._multi_modifier_targets(current)
-                )
-            else:
-                target = intersection_lines._modifier_target(current)
-                if target is not None:
-                    remaining_targets.add(target.name)
-        assert remaining_targets == {item.name for item in cube_targets}, remaining_targets
+        remaining_targets = {
+            item.name
+            for current in core.iter_intersection_modifiers(source)
+            for item in intersection_shell.modifier_targets(current)
+        }
+        assert remaining_targets == {item.name for item in targets}, remaining_targets
 
         bpy.context.view_layer.update()
         print("[PASS] multi intersection targets are grouped")

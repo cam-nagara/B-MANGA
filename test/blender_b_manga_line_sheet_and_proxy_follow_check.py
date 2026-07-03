@@ -170,6 +170,92 @@ def _test_sheet_never_owns_intersection_pair() -> None:
     )
 
 
+def _test_remove_lines_cleans_sheet() -> None:
+    """「ラインを削除」でシートのチューブ・非表示リム素材まで消えること."""
+    _clear_scene()
+    cube, plane = _setup_pair()
+
+    bpy.ops.object.select_all(action="DESELECT")
+    cube.select_set(True)
+    plane.select_set(True)
+    bpy.context.view_layer.objects.active = plane
+    assert bpy.ops.bmanga_line.remove() == {"FINISHED"}
+
+    for obj in (cube, plane):
+        leftover = [m.name for m in obj.modifiers if m.name.startswith("BML_")]
+        assert not leftover, f"{obj.name} にモディファイアが残っています: {leftover}"
+        mats = [
+            slot.material.name
+            for slot in obj.material_slots
+            if slot.material
+            and (
+                outline_setup._is_line_material(slot.material)
+                or slot.material.name.startswith(
+                    outline_setup.SHEET_RIM_HIDDEN_MATERIAL_NAME
+                )
+            )
+        ]
+        assert not mats, f"{obj.name} にライン素材が残っています: {mats}"
+        assert not core.has_line(obj)
+    strays = [
+        o.name for o in bpy.data.objects
+        if o.name.startswith("BML_IntersectionProxy")
+    ]
+    assert not strays, f"交差プロキシが残っています: {strays}"
+    stray_colls = [
+        c.name for c in bpy.data.collections
+        if c.name.startswith("BML_IntersectionTargets")
+    ]
+    assert not stray_colls, f"交差対象コレクションが残っています: {stray_colls}"
+
+
+def _test_outline_toggle_hides_sheet_tube() -> None:
+    """「アウトラインを追加」オフでシートのチューブも非表示になること."""
+    _clear_scene()
+    cube, plane = _setup_pair()
+    tube = plane.modifiers[core.SHEET_OUTLINE_MODIFIER_NAME]
+
+    _select(plane)
+    plane.bmanga_line_settings.outline_enabled = False
+    assert not tube.show_viewport and not tube.show_render, (
+        "アウトラインオフでもチューブが表示されています"
+    )
+    plane.bmanga_line_settings.outline_enabled = True
+    assert tube.show_viewport and tube.show_render
+
+
+def _test_line_only_keeps_sheet_rim_hidden() -> None:
+    """「ラインのみ表示」の往復でシートのリムが見えないままなこと."""
+    _clear_scene()
+    cube, plane = _setup_pair()
+    solidify = plane.modifiers[core.MODIFIER_NAME]
+
+    def _rim_is_hidden() -> bool:
+        index = solidify.material_offset_rim
+        if not (0 <= index < len(plane.material_slots)):
+            return False
+        mat = plane.material_slots[index].material
+        return mat is not None and mat.name.startswith(
+            outline_setup.SHEET_RIM_HIDDEN_MATERIAL_NAME
+        )
+
+    assert _rim_is_hidden()
+    assert outline_setup.set_line_only(plane, True)
+    assert _rim_is_hidden(), "ラインのみ表示中にリムが露出しています"
+    hidden_slots = [
+        slot.material.name
+        for slot in plane.material_slots
+        if slot.material
+        and slot.material.name.startswith(
+            outline_setup.SHEET_RIM_HIDDEN_MATERIAL_NAME
+        )
+    ]
+    assert hidden_slots, "リム非表示マテリアルが白差し替えで失われています"
+    assert outline_setup.set_line_only(plane, False)
+    assert _rim_is_hidden(), "通常表示へ戻した後にリムが露出しています"
+    assert plane.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME) is not None
+
+
 def _test_pair_ownership_is_deterministic() -> None:
     """アクティブオブジェクトに関係なく交差ペアの持ち主が一意に決まる."""
     _clear_scene()
@@ -270,6 +356,9 @@ def main() -> None:
     _test_sheet_never_owns_intersection_pair()
     _test_pair_ownership_is_deterministic()
     _test_proxy_follows_object_move()
+    _test_remove_lines_cleans_sheet()
+    _test_outline_toggle_hides_sheet_tube()
+    _test_line_only_keeps_sheet_rim_hidden()
     print("[PASS] B-MANGA Line sheet outline/ownership and proxy follow")
 
 

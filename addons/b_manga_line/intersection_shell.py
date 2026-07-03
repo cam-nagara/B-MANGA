@@ -22,6 +22,7 @@ _OFFSET_SOCKET = "オフセット"
 _MATERIAL_SOCKET = "マテリアル"
 _TARGET_COLLECTION_SOCKET = "交差対象グループ"
 _TARGET_THICKNESS_SOCKET = "交差対象の線幅"
+_OWN_OUTLINE_SOCKET = "自分のアウトライン幅"
 _LINE_MATERIAL_INDEX_SOCKET = "ライン素材番号"
 _HAS_TARGET_SOCKET = "交差対象あり"
 _MIDPOINT_FACTOR_SOCKET = "中間頂点の線幅調整"
@@ -29,6 +30,8 @@ _WIDTH_CURVE_25_SOCKET = "変化グラフ 25%"
 _WIDTH_CURVE_50_SOCKET = "変化グラフ 50%"
 _WIDTH_CURVE_75_SOCKET = "変化グラフ 75%"
 _SHELL_BOOLEAN_NODE_LABEL = "BML_IntersectionShellBoolean"
+_SHELL_SURFACE_NODE_LABEL = "BML_IntersectionShellSurface"
+_SHELL_UNION_NODE_LABEL = "BML_IntersectionShellTargetUnion"
 _TARGET_COLLECTION_PROP = "bml_intersection_shell_target_collection"
 _TARGET_COLLECTION_PREFIX = "BML_IntersectionTargets"
 _PROXY_SOURCE_PROP = "bml_intersection_shell_proxy_source"
@@ -86,6 +89,14 @@ def _setup_interface(tree: bpy.types.NodeTree) -> None:
     target_radius_sock.default_value = 0.0
     target_radius_sock.min_value = 0.0
     target_radius_sock.max_value = 1.0
+    own_outline_sock = tree.interface.new_socket(
+        name=_OWN_OUTLINE_SOCKET,
+        in_out="INPUT",
+        socket_type="NodeSocketFloat",
+    )
+    own_outline_sock.default_value = 0.0
+    own_outline_sock.min_value = 0.0
+    own_outline_sock.max_value = 1.0
     line_material_sock = tree.interface.new_socket(
         name=_LINE_MATERIAL_INDEX_SOCKET,
         in_out="INPUT",
@@ -143,18 +154,47 @@ def _create_node_tree() -> bpy.types.NodeTree:
     realize.location = (-840, -460)
     links.new(collection_info.outputs["Instances"], realize.inputs["Geometry"])
 
-    target_geo = intersection_lines._add_target_solidify(
-        nodes, links, realize.outputs["Geometry"], 0.0001, (-640, -460),
-    )
+    # 板ポリ等の非多様体ターゲットはプロキシ側の Solidify で閉じてあるため
+    # （_get_or_create_proxy 参照）、ここでの全面押し出しは行わない。
+    # 全面押し出しは閉じた立体まで二重壁化し、その継ぎ目が交差エッジとして
+    # 誤検出される（縦縞ノイズの原因）。
+    target_geo = realize.outputs["Geometry"]
+    # 接触検出: 交差相手を交差線幅ぶんだけ法線方向へ膨らませる。
+    # 交差線は元の面との交差位置に一本だけ生成する（位置ズレは
+    # 線の太さの範囲内に収まり、接している相手にも線が出る）。
+    inflate_eps = nodes.new("ShaderNodeMath")
+    inflate_eps.location = (-640, -700)
+    inflate_eps.operation = "MAXIMUM"
+    inflate_eps.inputs[1].default_value = 0.0005
+    links.new(gin.outputs[_THICKNESS_SOCKET], inflate_eps.inputs[0])
+
+    target_normal = nodes.new("GeometryNodeInputNormal")
+    target_normal.location = (-640, -840)
+
+    inflate_offset = nodes.new("ShaderNodeVectorMath")
+    inflate_offset.location = (-440, -700)
+    inflate_offset.operation = "SCALE"
+    links.new(target_normal.outputs["Normal"], inflate_offset.inputs[0])
+    links.new(inflate_eps.outputs[0], inflate_offset.inputs["Scale"])
+
+    inflate = nodes.new("GeometryNodeSetPosition")
+    inflate.location = (-240, -520)
+    links.new(target_geo, inflate.inputs["Geometry"])
+    links.new(inflate_offset.outputs["Vector"], inflate.inputs["Offset"])
+    target_geo = inflate.outputs["Geometry"]
+
     radius = _add_shell_radius(nodes, links, gin, (80, -820))
 
     mat_idx = nodes.new("GeometryNodeInputMaterialIndex")
     mat_idx.location = (-1060, 200)
 
+    # 交差の基準はライン用ソリッド殻ではなく「元の面」
+    # （殻基準だと元面側と殻側の2本の交差曲線ができ、二重線になる）
     line_shell = nodes.new("FunctionNodeCompare")
+    line_shell.label = _SHELL_SURFACE_NODE_LABEL
     line_shell.location = (-840, 200)
     line_shell.data_type = "INT"
-    line_shell.operation = "GREATER_EQUAL"
+    line_shell.operation = "LESS_THAN"
     links.new(mat_idx.outputs[0], line_shell.inputs[2])
     links.new(gin.outputs[_LINE_MATERIAL_INDEX_SOCKET], line_shell.inputs[3])
 
@@ -466,6 +506,7 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
             and _find_socket_id(tree, _MATERIAL_SOCKET) is not None
             and _find_socket_id(tree, _TARGET_COLLECTION_SOCKET) is not None
             and _find_socket_id(tree, _TARGET_THICKNESS_SOCKET) is not None
+            and _find_socket_id(tree, _OWN_OUTLINE_SOCKET) is not None
             and _find_socket_id(tree, _LINE_MATERIAL_INDEX_SOCKET) is not None
             and _find_socket_id(tree, _HAS_TARGET_SOCKET) is not None
             and _find_socket_id(tree, _MIDPOINT_FACTOR_SOCKET) is not None
@@ -484,6 +525,24 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
             and any(
                 getattr(node, "label", "") == _CURVE_RADIUS_NORMALIZER_LABEL
                 for node in tree.nodes
+            )
+            and any(
+                getattr(node, "label", "") == _SHELL_SURFACE_NODE_LABEL
+                for node in tree.nodes
+            )
+            # 過去世代のツリー（UNION入り・Self Intersection有効・全面押し出し）を排除
+            and not any(
+                getattr(node, "label", "") == _SHELL_UNION_NODE_LABEL
+                for node in tree.nodes
+            )
+            and not any(
+                node.bl_idname == "GeometryNodeMeshBoolean"
+                and "Self Intersection" in node.inputs
+                and bool(node.inputs["Self Intersection"].default_value)
+                for node in tree.nodes
+            )
+            and not any(
+                node.bl_idname == "GeometryNodeExtrudeMesh" for node in tree.nodes
             )
             and _tree_uses_generated_mark(tree)
         )
@@ -540,6 +599,7 @@ def update_modifier_parameters(
     sid_target_thickness = _find_socket_id(tree, _TARGET_THICKNESS_SOCKET)
     if sid_target_thickness is not None:
         mod[sid_target_thickness] = _max_target_thickness(obj, modifier_targets(mod))
+    _set_own_outline_width(mod)
     sid_has_target = _find_socket_id(tree, _HAS_TARGET_SOCKET)
     if sid_has_target is not None:
         mod[sid_has_target] = bool(modifier_targets(mod))
@@ -694,6 +754,52 @@ def _proxy_name(source: bpy.types.Object, target: bpy.types.Object) -> str:
     return f"{_PROXY_PREFIX}_{cleaned[:48]}_{source.as_pointer():x}_{target.as_pointer():x}"
 
 
+_PROXY_SOLIDIFY_NAME = "BML_ProxySolidify"
+_PROXY_BOUNDARY_SIGNATURE_PROP = "bml_proxy_boundary_signature"
+_PROXY_HAS_BOUNDARY_PROP = "bml_proxy_has_boundary"
+
+
+def _mesh_has_boundary(mesh: bpy.types.Mesh) -> bool:
+    counts: dict[tuple[int, int], int] = {}
+    for poly in mesh.polygons:
+        for key in poly.edge_keys:
+            counts[key] = counts.get(key, 0) + 1
+    return any(value == 1 for value in counts.values())
+
+
+def _proxy_needs_thickness(proxy: bpy.types.Object, mesh: bpy.types.Mesh) -> bool:
+    """板ポリ等の非多様体メッシュか（結果はプロキシへキャッシュ）."""
+    signature = f"{mesh.as_pointer()}:{len(mesh.polygons)}:{len(mesh.edges)}"
+    if proxy.get(_PROXY_BOUNDARY_SIGNATURE_PROP) == signature:
+        return bool(proxy.get(_PROXY_HAS_BOUNDARY_PROP, False))
+    result = _mesh_has_boundary(mesh)
+    try:
+        proxy[_PROXY_BOUNDARY_SIGNATURE_PROP] = signature
+        proxy[_PROXY_HAS_BOUNDARY_PROP] = bool(result)
+    except (AttributeError, TypeError, RuntimeError):
+        pass
+    return result
+
+
+def _sync_proxy_thickness(proxy: bpy.types.Object) -> None:
+    """非多様体ターゲットのプロキシへ厚み付けの Solidify を持たせる.
+
+    GNツリー内の全面押し出しは閉じた立体まで二重壁化してしまうため、
+    厚みが必要なプロキシだけ実モディファイアで閉多様体にする。
+    """
+    mesh = proxy.data
+    needs = mesh is not None and _proxy_needs_thickness(proxy, mesh)
+    mod = proxy.modifiers.get(_PROXY_SOLIDIFY_NAME)
+    if needs:
+        if mod is None:
+            mod = proxy.modifiers.new(name=_PROXY_SOLIDIFY_NAME, type="SOLIDIFY")
+        mod.thickness = 0.002
+        mod.offset = 0.0
+        mod.use_rim = True
+    elif mod is not None:
+        proxy.modifiers.remove(mod)
+
+
 def _get_or_create_proxy(
     source: bpy.types.Object,
     target: bpy.types.Object,
@@ -708,6 +814,7 @@ def _get_or_create_proxy(
     proxy.hide_viewport = True
     proxy.hide_render = True
     proxy[_PROXY_SOURCE_PROP] = target.name_full
+    _sync_proxy_thickness(proxy)
     return proxy
 
 
@@ -737,6 +844,19 @@ def _max_target_thickness(
     if not targets:
         return 0.0
     return max(_target_outline_thickness(source, target) for target in targets)
+
+
+def _set_own_outline_width(mod: bpy.types.Modifier) -> None:
+    """二重線の塗りつぶし幅の基準として自分のアウトライン幅を渡す."""
+    tree = getattr(mod, "node_group", None)
+    obj = getattr(mod, "id_data", None)
+    if tree is None or getattr(obj, "type", None) != "MESH":
+        return
+    sid = _find_socket_id(tree, _OWN_OUTLINE_SOCKET)
+    if sid is None:
+        return
+    outline = obj.modifiers.get(MODIFIER_NAME)
+    mod[sid] = abs(float(outline.thickness)) if outline is not None else 0.0
 
 
 def _modifier_target_collection(mod: bpy.types.Modifier) -> bpy.types.Collection | None:
@@ -778,6 +898,7 @@ def _set_target_collection_parameters(
     sid_target_thickness = _find_socket_id(tree, _TARGET_THICKNESS_SOCKET)
     if sid_target_thickness is not None:
         mod[sid_target_thickness] = _max_target_thickness(obj, targets)
+    _set_own_outline_width(mod)
     sid_has_target = _find_socket_id(tree, _HAS_TARGET_SOCKET)
     if sid_has_target is not None:
         mod[sid_has_target] = bool(targets)
@@ -830,6 +951,35 @@ def refresh_target_collection(
         outline_setup.get_line_material(obj, "intersection"),
         scene,
     )
+
+
+def cleanup_orphan_proxies() -> int:
+    """持ち主のいない交差対象コレクションとプロキシを掃除する.
+
+    オブジェクトを Blender 標準の削除で消すと、その交差対象コレクションと
+    プロキシがファイル内に残り続けるため、シーン更新時に回収する。
+    """
+    removed = 0
+    owners = {
+        str(obj.get(_TARGET_COLLECTION_PROP, "") or "")
+        for obj in bpy.data.objects
+    }
+    for collection in list(bpy.data.collections):
+        if not collection.name.startswith(_TARGET_COLLECTION_PREFIX):
+            continue
+        if collection.name in owners:
+            continue
+        for item in list(collection.objects):
+            collection.objects.unlink(item)
+            if bool(item.get(_PROXY_SOURCE_PROP, "")) and not item.users_collection:
+                bpy.data.objects.remove(item)
+                removed += 1
+        bpy.data.collections.remove(collection)
+    for obj in list(bpy.data.objects):
+        if bool(obj.get(_PROXY_SOURCE_PROP, "")) and not obj.users_collection:
+            bpy.data.objects.remove(obj)
+            removed += 1
+    return removed
 
 
 def cleanup_target_collection(obj: bpy.types.Object) -> None:

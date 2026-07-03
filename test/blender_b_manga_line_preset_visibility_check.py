@@ -310,9 +310,12 @@ def _assert_multi_select_manual_setting_propagation(
     assert target.intersection_method == "BOOLEAN"
     intersection_mods = _intersection_mods(first) + _intersection_mods(second)
     assert intersection_mods
+    # 2026-07-03 確定仕様: 生成方式はSHELL固定（BOOLEAN指定してもSHELLで生成）
+    from b_manga_line import intersection_shell
+
     assert any(
         mod.node_group is not None
-        and mod.node_group.name.startswith(intersection_lines.INTERSECTION_TREE_BOOLEAN)
+        and mod.node_group.name.startswith(intersection_shell.SHELL_TREE_NAME)
         for mod in intersection_mods
     )
     assert math.isclose(target.intersection_thickness_mm, 1.4, rel_tol=0.001)

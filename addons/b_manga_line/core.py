@@ -278,19 +278,25 @@ def _ensure_outline_for_settings(owner: bpy.types.Object, settings, context) -> 
 def set_outline_visibility_from_settings(obj: bpy.types.Object) -> bool:
     if obj.type != "MESH":
         return False
-    mod = obj.modifiers.get(MODIFIER_NAME)
-    if mod is None:
-        return False
     settings = getattr(obj, "bmanga_line_settings", None)
     outline_on = settings is None or bool(getattr(settings, "outline_enabled", True))
     visible = outline_on and not bool(obj.get(PROP_LINES_HIDDEN, False))
     changed = False
-    if mod.show_viewport != visible:
-        mod.show_viewport = visible
-        changed = True
-    if mod.show_render != visible:
-        mod.show_render = visible
-        changed = True
+    found = False
+    # シートの境界チューブもアウトラインの一部として一緒に切り替える
+    for name in (MODIFIER_NAME, SHEET_OUTLINE_MODIFIER_NAME):
+        mod = obj.modifiers.get(name)
+        if mod is None:
+            continue
+        found = True
+        if mod.show_viewport != visible:
+            mod.show_viewport = visible
+            changed = True
+        if mod.show_render != visible:
+            mod.show_render = visible
+            changed = True
+    if not found:
+        return False
     return changed
 
 

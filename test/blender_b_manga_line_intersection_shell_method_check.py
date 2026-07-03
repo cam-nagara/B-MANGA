@@ -281,10 +281,12 @@ def main() -> None:
     try:
         _assert_stale_shell_tree_is_rebuilt()
         _clear_scene()
+        # Zを互いにずらし、完全同一平面の重なり（EXACTブーリアンの縮退
+        # ケース）を避ける現実的な配置にする
         objects = [
             _make_cube("BML_shell_intersection_A", (-0.25, 0.0, 0.0)),
-            _make_cube("BML_shell_intersection_B", (0.25, 0.0, 0.0)),
-            _make_cube("BML_shell_intersection_C", (0.0, 0.25, 0.0)),
+            _make_cube("BML_shell_intersection_B", (0.25, 0.0, -0.07)),
+            _make_cube("BML_shell_intersection_C", (0.0, 0.25, 0.11)),
         ]
         _select(objects)
 

@@ -224,12 +224,15 @@ def main() -> None:
     max_x = max(co.x for co in coords)
     min_y = min(co.y for co in coords)
     max_y = max(co.y for co in coords)
-    # 交差線の帯が対象（半径0.5の円柱）の表面より外側に生成されていること。
-    # 注: 旧BOOLEAN方式は交差対象の線幅(0.24)ぶん外側(>0.60)まで塗りつぶして
-    # いたが、SHELL方式の現行実装は自線幅ぶん(≈0.515)まで。差分は
-    # AGENT_INBOX「SHELL交差線の二重線塗りつぶし範囲」を参照。
-    assert min_x < -0.5 and max_x > 0.5, (min_x, max_x)
-    assert min_y < -0.5 and max_y > 0.5, (min_y, max_y)
+    # 2026-07-03: 交差線は「元の面」との実際の交差位置（半径0.5の円柱表面）に
+    # 一本だけ生成される。旧仕様の「殻の厚みぶん外側(>0.60)への塗りつぶし」は
+    # 二重線と位置ズレの原因だったため廃止（線幅・接触ぶんの余裕のみ許容）。
+    for label, low, high in (
+        ("min_x", -0.60, -0.45), ("max_x", 0.45, 0.60),
+        ("min_y", -0.60, -0.45), ("max_y", 0.45, 0.60),
+    ):
+        value = {"min_x": min_x, "max_x": max_x, "min_y": min_y, "max_y": max_y}[label]
+        assert low < value < high, (label, value)
 
     _assert_near_contact_uses_camera_width_before_generation()
 

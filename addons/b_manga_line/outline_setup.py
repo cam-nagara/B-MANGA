@@ -456,12 +456,48 @@ def get_line_material(obj: bpy.types.Object, target: str) -> bpy.types.Material 
                 target=target,
                 hide_through_transparent=hide_transparent,
             )
+    # ライン素材がスロット0（元面の素材位置）を占有しないよう、
+    # 先に表面用の素材を確保する（交差線・内部線をアウトラインより
+    # 先に有効化した場合の順序バグ対策）
+    ensure_surface_material_slot(obj)
     mat = bpy.data.materials.new(name=_LINE_MATERIAL_NAMES[target])
     _build_outline_nodes(mat, color, hide_through_transparent=hide_transparent)
     _set_line_material_target(mat, target)
     _configure_material(mat)
     obj.data.materials.append(mat)
     return mat
+
+
+def _has_surface_material(obj: bpy.types.Object) -> bool:
+    return any(
+        slot.material is not None
+        and not _is_line_material(slot.material)
+        and _line_material_target(slot.material) is None
+        and not _material_name_matches(
+            slot.material, SHEET_RIM_HIDDEN_MATERIAL_NAME
+        )
+        for slot in obj.material_slots
+    )
+
+
+def ensure_surface_material_slot(obj: bpy.types.Object) -> None:
+    """元面用の素材スロットを先頭に確保する.
+
+    ライン素材だけがスロットに並ぶと元面がライン素材扱いになり、
+    交差線の生成元が空になる・元面がライン色で塗られる等の不具合に
+    つながるため、無ければ作り、並びが壊れていれば先頭へ組み直す。
+    """
+    if obj.type != "MESH" or obj.data is None:
+        return
+    if _has_surface_material(obj):
+        return
+    line_mats = [slot.material for slot in obj.material_slots if slot.material]
+    obj.data.materials.clear()
+    surface_mat = bpy.data.materials.new(name=obj.name)
+    surface_mat.use_nodes = True
+    obj.data.materials.append(surface_mat)
+    for mat in line_mats:
+        obj.data.materials.append(mat)
 
 
 def first_line_material_slot(obj: bpy.types.Object) -> int:
@@ -823,12 +859,9 @@ def apply_outline(
     if not obj.data.polygons:
         return False
 
-    # 元メッシュ面用のマテリアルがなければ追加
+    # 元メッシュ面用のマテリアルがなければ追加・並びが壊れていれば修復
     # （アウトライン専用マテリアルがスロット0に来ると元面もアウトライン化する）
-    if not obj.data.materials:
-        surface_mat = bpy.data.materials.new(name=obj.name)
-        surface_mat.use_nodes = True
-        obj.data.materials.append(surface_mat)
+    ensure_surface_material_slot(obj)
 
     mat = get_or_create_material(
         obj,
@@ -924,12 +957,21 @@ def remove_outline(obj: bpy.types.Object) -> bool:
         obj.modifiers.remove(mod)
         removed = True
 
+    # シートの境界チューブも一緒に削除
+    tube = obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME)
+    if tube is not None:
+        obj.modifiers.remove(tube)
+        removed = True
+
     set_line_only(obj, False)
 
-    # マテリアルスロットを除去（オブジェクト専用マテリアル）
+    # マテリアルスロットを除去（オブジェクト専用マテリアル + シート用リム非表示）
     for i in range(len(obj.data.materials) - 1, -1, -1):
         mat = obj.data.materials[i]
-        if mat and _is_line_material(mat):
+        if mat and (
+            _is_line_material(mat)
+            or _material_name_matches(mat, SHEET_RIM_HIDDEN_MATERIAL_NAME)
+        ):
             obj.data.materials.pop(index=i)
             if mat.users == 0:
                 bpy.data.materials.remove(mat)
@@ -1100,13 +1142,24 @@ def set_line_only(obj: bpy.types.Object, enabled: bool) -> bool:
         _configure_line_only_solidify_shape(obj)
         _remove_line_only_wire(obj)
         for index, mat in enumerate(mesh.materials):
-            if mat is not None and _is_line_material(mat):
+            if mat is not None and (
+                _is_line_material(mat)
+                or _material_name_matches(mat, SHEET_RIM_HIDDEN_MATERIAL_NAME)
+            ):
+                # シート用リム非表示マテリアルは白差し替えの対象外
+                # （差し替えるとリムが白いヒレとして見えてしまう）
                 continue
             stored.append({"index": index, "material": mat.name if mat else ""})
             mesh.materials[index] = hidden
         mod = obj.modifiers.get(MODIFIER_NAME)
         if mod is not None and hasattr(mod, "material_offset_rim"):
-            mod.material_offset_rim = mod.material_offset
+            rim_mat = None
+            if 0 <= mod.material_offset_rim < len(obj.material_slots):
+                rim_mat = obj.material_slots[mod.material_offset_rim].material
+            if rim_mat is None or not _material_name_matches(
+                rim_mat, SHEET_RIM_HIDDEN_MATERIAL_NAME
+            ):
+                mod.material_offset_rim = mod.material_offset
         obj[PROP_LINE_ONLY_MATERIALS] = json.dumps(stored, ensure_ascii=False)
         obj[PROP_LINE_ONLY] = True
         return True
@@ -1126,6 +1179,10 @@ def set_line_only(obj: bpy.types.Object, enabled: bool) -> bool:
     _restore_outline_materials(obj, mesh)
     _restore_solidify_shape(obj)
     _remove_line_only_wire(obj)
+    # シートはリムの非表示化とチューブ設定を復元する
+    mod = obj.modifiers.get(MODIFIER_NAME)
+    if mod is not None:
+        ensure_sheet_outline(obj, mod, get_outline_material(obj))
     if PROP_LINE_ONLY_MATERIALS in obj:
         del obj[PROP_LINE_ONLY_MATERIALS]
     if PROP_LINE_ONLY in obj:
