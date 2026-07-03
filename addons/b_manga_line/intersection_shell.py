@@ -39,6 +39,7 @@ _PROXY_SOURCE_PROP = "bml_intersection_shell_proxy_source"
 _PROXY_PREFIX = "BML_IntersectionProxy"
 _SHELL_RADIUS_NODE_LABEL = "BML_IntersectionShellOwnRadius"
 _CURVE_RADIUS_NORMALIZER_LABEL = "BML_IntersectionShellCurveRadius"
+_SHELL_COMBINED_THICKNESS_NODE_LABEL = "BML_IntersectionShellCombinedThickness"
 
 
 def is_shell_modifier(mod: bpy.types.Modifier) -> bool:
@@ -165,9 +166,21 @@ def _create_node_tree() -> bpy.types.NodeTree:
     # 全面押し出しは閉じた立体まで二重壁化し、その継ぎ目が交差エッジとして
     # 誤検出される（縦縞ノイズの原因）。
     target_geo = realize.outputs["Geometry"]
-    # 接触検出: 交差相手を交差線幅ぶんだけ法線方向へ膨らませる。
-    # 交差線は元の面との交差位置に一本だけ生成する（位置ズレは
-    # 線の太さの範囲内に収まり、接している相手にも線が出る）。
+
+    # 交差線の実効太さ（塗りつぶしチューブの半径用） = 設定値と双方の
+    # アウトライン幅の最大値。背面法ハルは元メッシュとの間に構造的な
+    # 隙間ができることがある（2026-07-03 ユーザー要望: 元メッシュと
+    # アウトライン殻の間を交差線色で塗りつぶす）。塗りつぶしが双方の
+    # アウトライン幅を確実に覆うよう、ユーザー設定の交差線幅はあくまで
+    # 下限とし、自分・交差対象のアウトライン幅のうち大きい方を実効幅
+    # にする。※ 交差位置そのもの（ブーリアンの接触検出）には使わない
+    # ——ここに使うと交差判定位置自体が外側へずれ、線が実際の面より
+    # 大きくズレた位置に生成される。
+    combined_thickness = _add_combined_thickness(nodes, links, gin, (-900, -640))
+
+    # 接触検出: 交差相手を線の太さ（設定値のみ）ぶんだけ法線方向へ
+    # 膨らませる。交差線は元の面との交差位置に一本だけ生成する
+    # （位置ズレは線の太さの範囲内に収まり、接している相手にも線が出る）。
     inflate_eps = nodes.new("ShaderNodeMath")
     inflate_eps.location = (-640, -700)
     inflate_eps.operation = "MAXIMUM"
@@ -202,7 +215,7 @@ def _create_node_tree() -> bpy.types.NodeTree:
     links.new(target_geo, target_union.inputs["Mesh 2"])
     target_geo = target_union.outputs["Mesh"]
 
-    radius = _add_shell_radius(nodes, links, gin, (80, -820))
+    radius = _add_shell_radius(nodes, links, combined_thickness, gin, (80, -820))
 
     # 交差の基準はライン用ソリッド殻ではなく「元の面」
     # （殻基準だと元面側と殻側の2本の交差曲線ができ、二重線になる）。
@@ -291,11 +304,35 @@ def _create_node_tree() -> bpy.types.NodeTree:
     return tree
 
 
-def _add_shell_radius(nodes, links, gin, loc):
+def _add_combined_thickness(nodes, links, gin, loc):
+    """交差線の実効太さ = ユーザー設定値・自分のアウトライン幅・交差対象の
+    アウトライン幅のうち最大のもの.
+
+    ユーザー設定の「線の太さ」はあくまで下限として扱い、どちらかの
+    アウトライン幅がそれより太ければそちらを実効値として使う
+    （2026-07-03 ユーザー要望: 隙間を交差線色で塗りつぶすには、隙間の
+    大きさに直結するアウトライン幅を優先すべき）。
+    """
+    own_max = nodes.new("ShaderNodeMath")
+    own_max.location = (loc[0], loc[1])
+    own_max.operation = "MAXIMUM"
+    links.new(gin.outputs[_THICKNESS_SOCKET], own_max.inputs[0])
+    links.new(gin.outputs[_OWN_OUTLINE_SOCKET], own_max.inputs[1])
+
+    combined = nodes.new("ShaderNodeMath")
+    combined.label = _SHELL_COMBINED_THICKNESS_NODE_LABEL
+    combined.location = (loc[0] + 200, loc[1])
+    combined.operation = "MAXIMUM"
+    links.new(own_max.outputs[0], combined.inputs[0])
+    links.new(gin.outputs[_TARGET_THICKNESS_SOCKET], combined.inputs[1])
+    return combined.outputs[0]
+
+
+def _add_shell_radius(nodes, links, combined_thickness, gin, loc):
     offset_amount = nodes.new("ShaderNodeMath")
     offset_amount.location = (loc[0] - 420, loc[1] + 160)
     offset_amount.operation = "MULTIPLY"
-    links.new(gin.outputs[_THICKNESS_SOCKET], offset_amount.inputs[0])
+    links.new(combined_thickness, offset_amount.inputs[0])
     links.new(gin.outputs[_OFFSET_SOCKET], offset_amount.inputs[1])
 
     offset_half = nodes.new("ShaderNodeMath")
@@ -308,7 +345,7 @@ def _add_shell_radius(nodes, links, gin, loc):
     radius.label = _SHELL_RADIUS_NODE_LABEL
     radius.location = loc
     radius.operation = "ADD"
-    links.new(gin.outputs[_THICKNESS_SOCKET], radius.inputs[0])
+    links.new(combined_thickness, radius.inputs[0])
     links.new(offset_half.outputs[0], radius.inputs[1])
 
     radius_min = nodes.new("ShaderNodeMath")
@@ -580,6 +617,13 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
                 for node in tree.nodes
             )
             and _tree_uses_generated_mark(tree)
+            # 過去世代（実効太さがユーザー設定のみ）を排除し、
+            # アウトライン幅を加味した現行構成を要求する
+            # （2026-07-03 隙間塗りつぶし要望）
+            and any(
+                getattr(node, "label", "") == _SHELL_COMBINED_THICKNESS_NODE_LABEL
+                for node in tree.nodes
+            )
         )
         if ok:
             return tree

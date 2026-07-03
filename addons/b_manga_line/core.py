@@ -1257,7 +1257,11 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
 
     intersection_thickness_mm: FloatProperty(
         name="交差線の太さ (mm)",
-        description="印刷時の交差線の太さ (mm)",
+        description=(
+            "印刷時の交差線の太さ (mm)。実際の太さはここで指定した値と、"
+            "交差する双方のアウトライン線幅のうち最も太いものになります"
+            "（元メッシュとアウトラインの間に隙間ができないようにするため）"
+        ),
         get=_get_intersection_mm,
         set=_set_intersection_mm,
         min=0.1,

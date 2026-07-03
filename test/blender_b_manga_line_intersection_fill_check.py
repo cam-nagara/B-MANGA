@@ -11,6 +11,9 @@ import bpy
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
+_CYLINDER_RADIUS = 0.50
+_OUTLINE_THICKNESS = 0.24
+
 import b_manga_line  # noqa: E402
 from b_manga_line import (  # noqa: E402
     core,
@@ -64,7 +67,7 @@ def _make_source_slab(white_mat):
 def _make_target_cylinder(white_mat):
     bpy.ops.mesh.primitive_cylinder_add(
         vertices=96,
-        radius=0.50,
+        radius=_CYLINDER_RADIUS,
         depth=1.20,
         location=(0.0, 0.0, 0.0),
     )
@@ -73,7 +76,7 @@ def _make_target_cylinder(white_mat):
     obj.data.materials.append(white_mat)
     outline_setup.apply_outline(
         obj,
-        thickness=0.24,
+        thickness=_OUTLINE_THICKNESS,
         color=(0.0, 0.0, 0.0, 1.0),
         scene=bpy.context.scene,
     )
@@ -181,7 +184,7 @@ def main() -> None:
     # SHELL 方式はソース側アウトラインのソリッド厚みを交差判定に使う
     outline_setup.apply_outline(
         source,
-        thickness=0.24,
+        thickness=_OUTLINE_THICKNESS,
         color=(0.0, 0.0, 0.0, 1.0),
         scene=bpy.context.scene,
     )
@@ -224,15 +227,33 @@ def main() -> None:
     max_x = max(co.x for co in coords)
     min_y = min(co.y for co in coords)
     max_y = max(co.y for co in coords)
-    # 2026-07-03: 交差線は「元の面」との実際の交差位置（半径0.5の円柱表面）に
-    # 一本だけ生成される。旧仕様の「殻の厚みぶん外側(>0.60)への塗りつぶし」は
-    # 二重線と位置ズレの原因だったため廃止（線幅・接触ぶんの余裕のみ許容）。
+    # 交差線の中心（曲線位置）は「元の面」との実際の交差位置（半径0.5の
+    # 円柱表面）。旧仕様の「殻の厚みぶん外側への塗りつぶし」は二重線と
+    # 位置ズレの原因だったため単一曲線化した(2026-07-03)。
+    # その上で 2026-07-03 追加要望: 背面法ハルと元メッシュの間に隙間が
+    # 見えないよう、塗りつぶしチューブの半径は自分・交差対象の
+    # アウトライン幅(_OUTLINE_THICKNESS)のうち大きい方まで広がる
+    # （交差線幅の設定値はもはや上限ではなく下限）。
+    inner = _CYLINDER_RADIUS - _OUTLINE_THICKNESS
+    outer = _CYLINDER_RADIUS + _OUTLINE_THICKNESS
+    margin = 0.08
     for label, low, high in (
-        ("min_x", -0.60, -0.45), ("max_x", 0.45, 0.60),
-        ("min_y", -0.60, -0.45), ("max_y", 0.45, 0.60),
+        ("min_x", -outer - margin, -inner + margin),
+        ("max_x", inner - margin, outer + margin),
+        ("min_y", -outer - margin, -inner + margin),
+        ("max_y", inner - margin, outer + margin),
     ):
         value = {"min_x": min_x, "max_x": max_x, "min_y": min_y, "max_y": max_y}[label]
         assert low < value < high, (label, value)
+
+    # 交差線幅の設定値（0.015、極めて小さい）ではなく、双方のアウトライン幅
+    # (_OUTLINE_THICKNESS=0.24) に実効太さが支配されていることを明示的に確認
+    # する（2026-07-03: 隙間塗りつぶし要望の中核）。
+    outward = max_x - _CYLINDER_RADIUS
+    assert outward > 0.15, (
+        "交差線の実効太さがアウトライン幅ではなく設定値(0.015)に支配されています",
+        outward,
+    )
 
     _assert_near_contact_uses_camera_width_before_generation()
 

@@ -606,6 +606,22 @@ def _ensure_color_attribute(obj: bpy.types.Object):
     return attr
 
 
+def _apply_solidify_algorithm_mode(mod: bpy.types.Modifier, is_sheet: bool) -> None:
+    """角の背面法ハルが隙間を作らないよう複数面法線を考慮するComplexモードへ切替.
+
+    「Simple」は各頂点を単純な平均法線方向へ押し出すため、角度差の大きい
+    面が交差する鋭い角（立方体の角・円柱の縁など）で背面ハルが本体の輪郭まで
+    届かず隙間が見えることがある（CEDEC2024のGGトゥーンライン資料で「線が
+    浮いて見える問題」として説明されている現象と同一）。「Complex」は面同士の
+    接続を解いて閉じたシェルを作るため、この隙間が実測で大幅に軽減される。
+    シートは境界チューブ側で輪郭を作り、Solidifyのリム出力は透過素材で
+    非表示にしているだけなので対象外（Simpleのまま維持）。
+    """
+    if not hasattr(mod, "solidify_mode"):
+        return
+    mod.solidify_mode = "EXTRUDE" if is_sheet else "NON_MANIFOLD"
+
+
 def _configure_solidify_shape(
     obj: bpy.types.Object,
     mod: bpy.types.Modifier,
@@ -617,6 +633,7 @@ def _configure_solidify_shape(
     if hasattr(mod, "use_rim_only"):
         mod.use_rim_only = is_sheet
     mod.use_rim = True if is_sheet else use_rim
+    _apply_solidify_algorithm_mode(mod, is_sheet)
 
 
 def _configure_line_only_solidify_shape(
@@ -637,6 +654,7 @@ def _configure_line_only_solidify_shape(
     if hasattr(mod, "use_rim_only"):
         mod.use_rim_only = is_sheet
     mod.use_rim = True if is_sheet else bool(use_rim)
+    _apply_solidify_algorithm_mode(mod, is_sheet)
 
 
 def _restore_solidify_shape(obj: bpy.types.Object) -> None:
