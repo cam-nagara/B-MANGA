@@ -36,6 +36,12 @@ LINE_ONLY_WIREFRAME_NAME = "BML_LineOnly_Wire"
 PROP_HIDE_THROUGH_TRANSPARENT = "bml_hide_through_transparent"
 PROP_LINE_MATERIAL_TARGET = "bml_line_material_target"
 PROP_DOUBLE_SIDED = "bml_double_sided_line"
+PROP_MATERIAL_BUILD = "bml_line_material_build"
+# ノード構築ロジックを変えたらこの番号を上げる（保存済みファイルの
+# 古い・壊れたノードツリーを次回適用時に確実に再構築するため。
+# フラグ比較だけだと「フラグは合っているが中身が壊れている」素材を
+# 修復できない — 2026-07-03 交差線不可視の実例）
+_LINE_MATERIAL_BUILD_VERSION = 2
 SHEET_OUTLINE_TREE_NAME = "BML_SheetOutlineTube"
 SHEET_RIM_HIDDEN_MATERIAL_NAME = "BML_SheetRimHidden"
 _SHEET_TUBE_THICKNESS_SOCKET = "線の太さ"
@@ -252,6 +258,7 @@ def _build_outline_nodes(
     links.new(aov_value, aov.inputs["Value"])
     mat[PROP_HIDE_THROUGH_TRANSPARENT] = bool(hide_through_transparent)
     mat[PROP_DOUBLE_SIDED] = bool(double_sided)
+    mat[PROP_MATERIAL_BUILD] = _LINE_MATERIAL_BUILD_VERSION
 
 
 def _build_line_only_outline_nodes(
@@ -335,10 +342,12 @@ def _repair_outline_material(
 ) -> None:
     current = bool(mat.get(PROP_HIDE_THROUGH_TRANSPARENT, False))
     current_double_sided = bool(mat.get(PROP_DOUBLE_SIDED, False))
+    current_build = int(mat.get(PROP_MATERIAL_BUILD, 0) or 0)
     if (
         not _has_aov_node(mat)
         or current != hide_through_transparent
         or current_double_sided != double_sided
+        or current_build != _LINE_MATERIAL_BUILD_VERSION
     ):
         _build_outline_nodes(
             mat,
@@ -448,6 +457,10 @@ def get_line_material(obj: bpy.types.Object, target: str) -> bpy.types.Material 
             color,
             hide_through_transparent=hide_transparent,
         )
+    # 交差線チューブは生成されたライン実体そのものなので、背面法の
+    # 面隠し（背面透明+カリング）は不要。曲線の向きによってチューブの
+    # 法線が内向きになると線が消えるため、両面表示で構築する。
+    double_sided = target == "intersection"
     for slot in obj.material_slots:
         if slot.material and _line_material_target(slot.material) == target:
             return _repair_line_material(
@@ -455,15 +468,21 @@ def get_line_material(obj: bpy.types.Object, target: str) -> bpy.types.Material 
                 color,
                 target=target,
                 hide_through_transparent=hide_transparent,
+                double_sided=double_sided,
             )
     # ライン素材がスロット0（元面の素材位置）を占有しないよう、
     # 先に表面用の素材を確保する（交差線・内部線をアウトラインより
     # 先に有効化した場合の順序バグ対策）
     ensure_surface_material_slot(obj)
     mat = bpy.data.materials.new(name=_LINE_MATERIAL_NAMES[target])
-    _build_outline_nodes(mat, color, hide_through_transparent=hide_transparent)
+    _build_outline_nodes(
+        mat,
+        color,
+        hide_through_transparent=hide_transparent,
+        double_sided=double_sided,
+    )
     _set_line_material_target(mat, target)
-    _configure_material(mat)
+    _configure_material(mat, double_sided=double_sided)
     obj.data.materials.append(mat)
     return mat
 
@@ -549,7 +568,10 @@ def update_transparent_protection(
     for slot in obj.material_slots:
         target = _line_material_target(slot.material)
         if target is not None:
-            double_sided = target == "outline" and _outline_double_sided(obj)
+            double_sided = (
+                target == "intersection"
+                or (target == "outline" and _outline_double_sided(obj))
+            )
             _build_outline_nodes(
                 slot.material,
                 color if target == "outline" else _line_color(obj, target),
@@ -1088,7 +1110,10 @@ def _restore_outline_materials(
     for mat in mesh.materials:
         target = _line_material_target(mat)
         if target is not None:
-            double_sided = target == "outline" and _outline_double_sided(obj)
+            double_sided = (
+                target == "intersection"
+                or (target == "outline" and _outline_double_sided(obj))
+            )
             _build_outline_nodes(
                 mat,
                 _line_color(obj, target),

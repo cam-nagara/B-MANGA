@@ -23,6 +23,7 @@ _MATERIAL_SOCKET = "マテリアル"
 _TARGET_COLLECTION_SOCKET = "交差対象グループ"
 _TARGET_THICKNESS_SOCKET = "交差対象の線幅"
 _OWN_OUTLINE_SOCKET = "自分のアウトライン幅"
+_OUTLINE_MATERIAL_SOCKET = "アウトライン素材"
 _LINE_MATERIAL_INDEX_SOCKET = "ライン素材番号"
 _HAS_TARGET_SOCKET = "交差対象あり"
 _MIDPOINT_FACTOR_SOCKET = "中間頂点の線幅調整"
@@ -97,6 +98,11 @@ def _setup_interface(tree: bpy.types.NodeTree) -> None:
     own_outline_sock.default_value = 0.0
     own_outline_sock.min_value = 0.0
     own_outline_sock.max_value = 1.0
+    tree.interface.new_socket(
+        name=_OUTLINE_MATERIAL_SOCKET,
+        in_out="INPUT",
+        socket_type="NodeSocketMaterial",
+    )
     line_material_sock = tree.interface.new_socket(
         name=_LINE_MATERIAL_INDEX_SOCKET,
         in_out="INPUT",
@@ -183,20 +189,37 @@ def _create_node_tree() -> bpy.types.NodeTree:
     links.new(inflate_offset.outputs["Vector"], inflate.inputs["Offset"])
     target_geo = inflate.outputs["Geometry"]
 
+    # 交差対象同士が重なっていると、結合オペランドの自己交差で
+    # DIFFERENCE が空になるため、UNION で清浄な一体メッシュへまとめる。
+    # （プロキシ側Solidify化で二重壁が無くなった今は安全に機能する）
+    target_union = nodes.new("GeometryNodeMeshBoolean")
+    target_union.label = _SHELL_UNION_NODE_LABEL
+    target_union.location = (-60, -520)
+    target_union.operation = "UNION"
+    target_union.solver = "EXACT"
+    if "Self Intersection" in target_union.inputs:
+        target_union.inputs["Self Intersection"].default_value = True
+    links.new(target_geo, target_union.inputs["Mesh 2"])
+    target_geo = target_union.outputs["Mesh"]
+
     radius = _add_shell_radius(nodes, links, gin, (80, -820))
 
-    mat_idx = nodes.new("GeometryNodeInputMaterialIndex")
-    mat_idx.location = (-1060, 200)
-
     # 交差の基準はライン用ソリッド殻ではなく「元の面」
-    # （殻基準だと元面側と殻側の2本の交差曲線ができ、二重線になる）
-    line_shell = nodes.new("FunctionNodeCompare")
+    # （殻基準だと元面側と殻側の2本の交差曲線ができ、二重線になる）。
+    # 元面の判定は素材番号の比較ではなく「アウトライン素材の面を除外」で
+    # 行う（内部線モディファイアのJOINで素材番号が再マッピングされ、
+    # 番号比較だと選択が壊れるため — 2026-07-03 交差線不可視の原因）。
+    outline_faces = nodes.new("GeometryNodeMaterialSelection")
+    outline_faces.location = (-1060, 200)
+    links.new(
+        gin.outputs[_OUTLINE_MATERIAL_SOCKET], outline_faces.inputs["Material"]
+    )
+
+    line_shell = nodes.new("FunctionNodeBooleanMath")
     line_shell.label = _SHELL_SURFACE_NODE_LABEL
     line_shell.location = (-840, 200)
-    line_shell.data_type = "INT"
-    line_shell.operation = "LESS_THAN"
-    links.new(mat_idx.outputs[0], line_shell.inputs[2])
-    links.new(gin.outputs[_LINE_MATERIAL_INDEX_SOCKET], line_shell.inputs[3])
+    line_shell.operation = "NOT"
+    links.new(outline_faces.outputs["Selection"], line_shell.inputs[0])
 
     generated_attr = nodes.new("GeometryNodeInputNamedAttribute")
     generated_attr.location = (-1060, 20)
@@ -246,9 +269,17 @@ def _create_node_tree() -> bpy.types.NodeTree:
     links.new(boolean.outputs["Mesh"], separate.inputs["Geometry"])
     links.new(boolean.outputs["Intersecting Edges"], separate.inputs["Selection"])
 
+    # ブーリアンの交差エッジは頂点を共有しない細切れ断片になるため、
+    # 溶接して連続ループへつなぐ。つながないと「中間頂点の線幅調整」が
+    # 断片ごとに適用され、線が毛羽立つ／極細化して見えなくなる。
+    weld = nodes.new("GeometryNodeMergeByDistance")
+    weld.location = (670, -120)
+    weld.inputs["Distance"].default_value = 0.0001
+    links.new(separate.outputs["Selection"], weld.inputs["Geometry"])
+
     m2c = nodes.new("GeometryNodeMeshToCurve")
     m2c.location = (780, -120)
-    links.new(separate.outputs["Selection"], m2c.inputs["Mesh"])
+    links.new(weld.outputs["Geometry"], m2c.inputs["Mesh"])
 
     normalized_curve = _add_curve_radius_normalizer(
         nodes, links, m2c.outputs["Curve"], (980, -120),
@@ -507,6 +538,11 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
             and _find_socket_id(tree, _TARGET_COLLECTION_SOCKET) is not None
             and _find_socket_id(tree, _TARGET_THICKNESS_SOCKET) is not None
             and _find_socket_id(tree, _OWN_OUTLINE_SOCKET) is not None
+            and _find_socket_id(tree, _OUTLINE_MATERIAL_SOCKET) is not None
+            and any(
+                node.bl_idname == "GeometryNodeMaterialSelection"
+                for node in tree.nodes
+            )
             and _find_socket_id(tree, _LINE_MATERIAL_INDEX_SOCKET) is not None
             and _find_socket_id(tree, _HAS_TARGET_SOCKET) is not None
             and _find_socket_id(tree, _MIDPOINT_FACTOR_SOCKET) is not None
@@ -530,19 +566,18 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
                 getattr(node, "label", "") == _SHELL_SURFACE_NODE_LABEL
                 for node in tree.nodes
             )
-            # 過去世代のツリー（UNION入り・Self Intersection有効・全面押し出し）を排除
-            and not any(
+            # 過去世代のツリー（全面押し出し入り）を排除し、
+            # 現行構成（対象UNION清浄化あり）を要求する
+            and any(
                 getattr(node, "label", "") == _SHELL_UNION_NODE_LABEL
                 for node in tree.nodes
             )
             and not any(
-                node.bl_idname == "GeometryNodeMeshBoolean"
-                and "Self Intersection" in node.inputs
-                and bool(node.inputs["Self Intersection"].default_value)
-                for node in tree.nodes
-            )
-            and not any(
                 node.bl_idname == "GeometryNodeExtrudeMesh" for node in tree.nodes
+            )
+            and any(
+                node.bl_idname == "GeometryNodeMergeByDistance"
+                for node in tree.nodes
             )
             and _tree_uses_generated_mark(tree)
         )
@@ -857,6 +892,21 @@ def _set_own_outline_width(mod: bpy.types.Modifier) -> None:
         return
     outline = obj.modifiers.get(MODIFIER_NAME)
     mod[sid] = abs(float(outline.thickness)) if outline is not None else 0.0
+    _set_outline_material_socket(mod)
+
+
+def _set_outline_material_socket(mod: bpy.types.Modifier) -> None:
+    """元面判定用に自分のアウトライン素材をツリーへ渡す."""
+    tree = getattr(mod, "node_group", None)
+    obj = getattr(mod, "id_data", None)
+    if tree is None or getattr(obj, "type", None) != "MESH":
+        return
+    sid = _find_socket_id(tree, _OUTLINE_MATERIAL_SOCKET)
+    if sid is None:
+        return
+    material = outline_setup.get_outline_material(obj)
+    if material is not None:
+        mod[sid] = material
 
 
 def _modifier_target_collection(mod: bpy.types.Modifier) -> bpy.types.Collection | None:
