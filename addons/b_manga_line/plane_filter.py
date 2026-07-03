@@ -27,14 +27,14 @@ def clear_cache(obj: bpy.types.Object) -> None:
 
 
 def should_exclude_generated_lines(obj: bpy.types.Object, settings=None) -> bool:
-    """Return True when inner/intersection lines should be skipped."""
-    if settings is None:
-        settings = getattr(obj, "bmanga_line_settings", None)
-    if settings is None:
-        return False
-    if not bool(getattr(settings, "exclude_sheet_meshes", False)):
-        return False
-    return is_sheet_mesh(obj)
+    """Return True when inner/intersection lines should be skipped.
+
+    2026-07-03 ユーザー確定: 「板ポリは内部線・交差線を作らない」オプションは
+    廃止（境界チューブ方式とペア所有権の修正で板ポリの交差線が正しく
+    出るようになったため不要）。exclude_sheet_meshes プロパティは
+    旧ファイル互換のため残っているが、参照しない。
+    """
+    return False
 
 
 def is_sheet_mesh(obj: bpy.types.Object, *, use_cache: bool = True) -> bool:

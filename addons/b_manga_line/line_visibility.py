@@ -11,6 +11,7 @@ from .core import (
     LINE_MODIFIER_NAMES,
     MODIFIER_NAME,
     PROP_LINES_HIDDEN,
+    SHEET_OUTLINE_MODIFIER_NAME,
 )
 
 
@@ -66,7 +67,7 @@ def _line_modifier_enabled_by_settings(
             bool(getattr(settings, "intersection_enabled", False))
             and not plane_filter.should_exclude_generated_lines(obj, settings)
         )
-    if mod.name == MODIFIER_NAME:
+    if mod.name in (MODIFIER_NAME, SHEET_OUTLINE_MODIFIER_NAME):
         return bool(getattr(settings, "outline_enabled", True))
     return True
 

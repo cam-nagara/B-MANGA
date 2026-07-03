@@ -112,7 +112,14 @@ def main() -> None:
         assert getattr(plane_mod, "use_rim", False), "板ポリの縁生成が有効になっていません"
         if hasattr(plane_mod, "use_rim_only"):
             assert plane_mod.use_rim_only, "板ポリで黒い面を作る外殻生成になっています"
-        assert plane_mod.material_offset_rim == plane_mod.material_offset
+        # 2026-07-03: 板ポリの輪郭は全方向チューブ（BML_SheetOutline）が担い、
+        # リム面は非表示マテリアルへ逃がす
+        tube_mod = plane.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME)
+        assert tube_mod is not None, "板ポリに境界チューブがありません"
+        rim_mat = plane.material_slots[plane_mod.material_offset_rim].material
+        assert rim_mat is not None and rim_mat.name.startswith(
+            outline_setup.SHEET_RIM_HIDDEN_MATERIAL_NAME
+        ), "板ポリのリム面が非表示マテリアルになっていません"
         assert plane_mod.offset == 1.0
 
         bpy.ops.mesh.primitive_cube_add(size=1.0, location=(3.0, 0.0, 0.0))

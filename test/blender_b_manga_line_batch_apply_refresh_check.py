@@ -251,9 +251,11 @@ def main() -> None:
                     "use_intersection_creation_limit",
                     "intersection_creation_max_distance",
                 }:
-                    assert refresh_counts["inner_apply"] == 0, (prop_name, refresh_counts)
-                    assert refresh_counts["intersection"] == 0, (prop_name, refresh_counts)
-                    assert refresh_counts["camera_objects"] == 0, (prop_name, refresh_counts)
+                    # 作成範囲の変更は範囲内外が変わったラインの作成・削除を
+                    # 伴ってよい（2026-07-03 修正: 変更が無反応だったのはバグ）。
+                    # フル再適用（apply）と全体カメラ更新（camera）の禁止は
+                    # 冒頭の共通 assert で引き続き担保される。
+                    pass
                 if prop_name == "inner_line_enabled" and value is False:
                     assert refresh_counts["inner_apply"] == 0, (prop_name, refresh_counts)
                     assert refresh_counts["intersection"] == 0, (prop_name, refresh_counts)

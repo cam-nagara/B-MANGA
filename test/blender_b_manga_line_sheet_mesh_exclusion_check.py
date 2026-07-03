@@ -1,4 +1,8 @@
-"""Blender check: sheet meshes are excluded from generated line features."""
+"""Blender check: sheet meshes keep generated lines (exclusion option retired).
+
+2026-07-03 ユーザー確定: 「板ポリは内部線・交差線を作らない」オプションは廃止。
+exclude_sheet_meshes プロパティが残っていても挙動へ影響しないことを確認する。
+"""
 
 from __future__ import annotations
 
@@ -66,40 +70,35 @@ def main() -> None:
         cube = _make_cube("BML_sheet_default_cube")
         thin_box = _make_cube("BML_thin_box", location=(3.0, 0.0, 0.0), scale=(1.0, 1.0, 0.01))
 
-        assert sheet.bmanga_line_settings.exclude_sheet_meshes is False
         assert plane_filter.is_sheet_mesh(sheet), "平面が板ポリとして検出されていません"
         assert not plane_filter.is_sheet_mesh(thin_box), "薄い箱が板ポリ扱いされています"
+        # 旧プロパティが True でも挙動へ影響しない（オプション廃止）
+        assert plane_filter.should_exclude_generated_lines(sheet) is False
         sheet.bmanga_line_settings.inner_line_enabled = True
         sheet.bmanga_line_settings.intersection_enabled = True
-        sheet.bmanga_line_settings.intersection_method = "BOOLEAN"
         sheet.bmanga_line_settings.exclude_sheet_meshes = True
         cube.bmanga_line_settings.intersection_enabled = True
-        cube.bmanga_line_settings.intersection_method = "BOOLEAN"
 
         _apply_line(sheet, cube)
         assert core.has_outline(sheet), "板ポリのアウトラインが作成されていません"
-        _assert_no_generated_lines(sheet)
-        assert not _has_intersection(cube), "板ポリが交差対象に残っています"
+        assert sheet.modifiers.get(core.GN_MODIFIER_NAME) is not None, (
+            "板ポリに内部線が作成されていません"
+        )
+        assert _has_intersection(cube), (
+            "板ポリとの交差線が非シート側に作成されていません"
+        )
+        assert not _has_intersection(sheet), (
+            "交差ペアの持ち主がシート側になっています"
+        )
 
-        _clear_scene()
-        included_sheet = _make_plane("BML_sheet_included")
-        included_cube = _make_cube("BML_sheet_included_cube")
-        assert included_sheet.bmanga_line_settings.exclude_sheet_meshes is False
-        included_sheet.bmanga_line_settings.inner_line_enabled = True
-        included_sheet.bmanga_line_settings.intersection_enabled = True
-        included_sheet.bmanga_line_settings.intersection_method = "BOOLEAN"
-        included_cube.bmanga_line_settings.intersection_enabled = True
-        included_cube.bmanga_line_settings.intersection_method = "BOOLEAN"
-        _apply_line(included_sheet, included_cube)
-        assert included_sheet.modifiers.get(core.GN_MODIFIER_NAME) is not None
-        assert _has_intersection(included_sheet) or _has_intersection(included_cube)
-
+        # 旧プロパティをトグルしても線は消えない
         bpy.ops.object.select_all(action="DESELECT")
-        included_sheet.select_set(True)
-        bpy.context.view_layer.objects.active = included_sheet
-        included_sheet.bmanga_line_settings.exclude_sheet_meshes = True
-        _assert_no_generated_lines(included_sheet)
-        assert not _has_intersection(included_cube), "板ポリを対象外にした後も交差線が残っています"
+        sheet.select_set(True)
+        bpy.context.view_layer.objects.active = sheet
+        sheet.bmanga_line_settings.exclude_sheet_meshes = False
+        sheet.bmanga_line_settings.exclude_sheet_meshes = True
+        assert sheet.modifiers.get(core.GN_MODIFIER_NAME) is not None
+        assert _has_intersection(cube)
 
         print("BMANGA_LINE_SHEET_MESH_EXCLUSION_OK")
     finally:

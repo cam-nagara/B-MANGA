@@ -12,7 +12,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import core, intersection_lines, outline_setup, presets  # noqa: E402
+from b_manga_line import (  # noqa: E402
+    core,
+    intersection_lines,
+    intersection_shell,
+    outline_setup,
+    presets,
+)
 
 
 def _clear_scene() -> None:
@@ -124,6 +130,11 @@ def _evaluated_line_stats(
 def _target_names(obj: bpy.types.Object) -> set[str]:
     names: set[str] = set()
     for mod in core.iter_intersection_modifiers(obj):
+        if intersection_shell.is_shell_modifier(mod):
+            names.update(
+                target.name for target in intersection_shell.modifier_targets(mod)
+            )
+            continue
         target = intersection_lines._modifier_target(mod)
         if target is not None:
             names.add(target.name)
@@ -167,10 +178,20 @@ def main() -> None:
     white_mat = _emission_material("確認用_白", (1.0, 1.0, 1.0, 1.0))
     source = _make_source_slab(white_mat)
     target = _make_target_cylinder(white_mat)
-    line_mat = outline_setup.get_or_create_material(source, (0.0, 0.0, 0.0, 1.0))
+    # SHELL 方式はソース側アウトラインのソリッド厚みを交差判定に使う
+    outline_setup.apply_outline(
+        source,
+        thickness=0.24,
+        color=(0.0, 0.0, 0.0, 1.0),
+        scene=bpy.context.scene,
+    )
+    line_mat = outline_setup.get_line_material(source, "intersection")
     assert line_mat is not None, "線の素材が作成されていません"
-    source.data.materials.append(line_mat)
 
+    # 2026-07-03 確定仕様: 生成方式は「ライン素材（高速）」のみ
+    # （BOOLEAN 指定しても SHELL として適用される）。
+    # ペアの持ち主は面数の少ない側（この場合スラブ）に決定的に決まる。
+    bpy.context.view_layer.objects.active = source
     assert intersection_lines.apply_intersection_lines(
         source,
         target=target,
@@ -179,11 +200,15 @@ def main() -> None:
         method="BOOLEAN",
     )
 
-    tree = bpy.data.node_groups.get(core.INTERSECTION_TREE_BOOLEAN)
+    tree = bpy.data.node_groups.get(intersection_shell.SHELL_TREE_NAME)
     assert tree is not None, "交差線の生成設定が作成されていません"
-    assert any(
-        getattr(node, "label", "") == "BML_TargetLineFill" for node in tree.nodes
-    ), "交差対象のライン厚みを塗る経路がありません"
+    mod = source.modifiers.get(intersection_shell.SHELL_MODIFIER_NAME)
+    assert mod is not None, "高速交差線モディファイアが作成されていません"
+    sid_target_width = intersection_shell._find_socket_id(tree, "交差対象の線幅")
+    assert sid_target_width is not None, "交差対象のライン厚みを塗る入力がありません"
+    assert float(mod[sid_target_width]) > 0.0, (
+        "交差対象のライン厚みが反映されていません"
+    )
 
     bpy.context.view_layer.update()
     line_polygons, surface_polygons, coords = _evaluated_line_stats(
@@ -199,8 +224,12 @@ def main() -> None:
     max_x = max(co.x for co in coords)
     min_y = min(co.y for co in coords)
     max_y = max(co.y for co in coords)
-    assert min_x < -0.60 and max_x > 0.60, (min_x, max_x)
-    assert min_y < -0.60 and max_y > 0.60, (min_y, max_y)
+    # 交差線の帯が対象（半径0.5の円柱）の表面より外側に生成されていること。
+    # 注: 旧BOOLEAN方式は交差対象の線幅(0.24)ぶん外側(>0.60)まで塗りつぶして
+    # いたが、SHELL方式の現行実装は自線幅ぶん(≈0.515)まで。差分は
+    # AGENT_INBOX「SHELL交差線の二重線塗りつぶし範囲」を参照。
+    assert min_x < -0.5 and max_x > 0.5, (min_x, max_x)
+    assert min_y < -0.5 and max_y > 0.5, (min_y, max_y)
 
     _assert_near_contact_uses_camera_width_before_generation()
 

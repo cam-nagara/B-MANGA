@@ -892,15 +892,20 @@ def _source_owns_intersection_pair(
     target: bpy.types.Object,
     scene: bpy.types.Scene | None,
 ) -> bool:
-    """重複防止時、どちら側に交差線を作るかを決める."""
-    active = getattr(getattr(bpy.context, "view_layer", None), "objects", None)
-    active_obj = getattr(active, "active", None)
-    if active_obj is not None and getattr(active_obj, "type", None) == "MESH":
-        if scene is None or any(item == active_obj for item in scene.objects):
-            if active_obj == source:
-                return True
-            if active_obj == target:
-                return False
+    """重複防止時、どちら側に交差線を作るかを決める.
+
+    リフレッシュ時のアクティブオブジェクトに依存しない決定的な判定に
+    する（アクティブ優先だと更新のたびに持ち主が入れ替わり、両側に
+    ペアが残って交差線が二重になる — 2026-07-03 修正）。
+    """
+    from . import plane_filter
+
+    # シート（板ポリ）のアウトラインはリムのみで立体が無く、
+    # ソース側にすると交差判定が空になるため、必ず非シート側に持たせる。
+    source_sheet = plane_filter.is_sheet_mesh(source)
+    target_sheet = plane_filter.is_sheet_mesh(target)
+    if source_sheet != target_sheet:
+        return not source_sheet
     source_cost = _intersection_source_cost(source)
     target_cost = _intersection_source_cost(target)
     if source_cost != target_cost:

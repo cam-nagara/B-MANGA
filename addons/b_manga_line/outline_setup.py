@@ -23,6 +23,7 @@ from .core import (
     PROP_LINE_ONLY_MATERIALS,
     PROP_BASE_THICKNESS,
     PROP_REF_DISTANCE,
+    SHEET_OUTLINE_MODIFIER_NAME,
     VG_INNER_LINE_WIDTH,
     VG_INTERSECTION_LINE_WIDTH,
     VG_LINE_WIDTH,
@@ -34,6 +35,11 @@ LINE_ONLY_MATERIAL_NAME = "BML_LineOnly_SurfaceHidden"
 LINE_ONLY_WIREFRAME_NAME = "BML_LineOnly_Wire"
 PROP_HIDE_THROUGH_TRANSPARENT = "bml_hide_through_transparent"
 PROP_LINE_MATERIAL_TARGET = "bml_line_material_target"
+PROP_DOUBLE_SIDED = "bml_double_sided_line"
+SHEET_OUTLINE_TREE_NAME = "BML_SheetOutlineTube"
+SHEET_RIM_HIDDEN_MATERIAL_NAME = "BML_SheetRimHidden"
+_SHEET_TUBE_THICKNESS_SOCKET = "線の太さ"
+_SHEET_TUBE_MATERIAL_SOCKET = "マテリアル"
 _LINE_MATERIAL_NAMES = {
     "outline": MATERIAL_NAME,
     "inner": f"{MATERIAL_NAME}_Inner",
@@ -98,17 +104,24 @@ def _line_hide_transparent(obj: bpy.types.Object) -> bool:
     return bool(getattr(settings, "hide_through_transparent", False))
 
 
+def _outline_double_sided(obj: bpy.types.Object) -> bool:
+    """シートはリムのみのアウトラインになるため両面表示が必要."""
+    return plane_filter.is_sheet_mesh(obj)
+
+
 def _repair_line_material(
     mat: bpy.types.Material,
     color: tuple[float, ...],
     *,
     target: str,
     hide_through_transparent: bool,
+    double_sided: bool = False,
 ) -> bpy.types.Material:
     _repair_outline_material(
         mat,
         color,
         hide_through_transparent=hide_through_transparent,
+        double_sided=double_sided,
     )
     _set_line_material_target(mat, target)
     return mat
@@ -119,6 +132,7 @@ def _build_outline_nodes(
     color: tuple[float, ...],
     *,
     hide_through_transparent: bool = False,
+    double_sided: bool = False,
 ) -> None:
     """マテリアルノードツリーを構築（背面法 + AOV 出力）.
 
@@ -132,6 +146,11 @@ def _build_outline_nodes(
       内側 MixShader — Backfacing で分岐:
         Factor=0（アウトライン面）→ Emission
         Factor=1（カリング対象面）→ Transparent
+
+    double_sided（シート用）:
+    リムのみアウトラインには隠すべきシェル面が無いので、
+    Backfacing 分岐を作らず両面とも Emission にする（手前側の
+    フチが背面判定で消えるのを防ぐ）。
     """
     mat.use_nodes = True
     nodes = mat.node_tree.nodes
@@ -151,9 +170,6 @@ def _build_outline_nodes(
     links.new(rgb.outputs[0], emission.inputs["Color"])
     emission.inputs["Strength"].default_value = 1.0
 
-    trans_bf = nodes.new("ShaderNodeBsdfTransparent")
-    trans_bf.location = (200, -100)
-
     geom = nodes.new("ShaderNodeNewGeometry")
     geom.location = (-400, -100)
 
@@ -163,13 +179,19 @@ def _build_outline_nodes(
     trans_lp = nodes.new("ShaderNodeBsdfTransparent")
     trans_lp.location = (200, 300)
 
-    mix_bf = nodes.new("ShaderNodeMixShader")
-    mix_bf.location = (400, 0)
-    links.new(geom.outputs["Backfacing"], mix_bf.inputs[0])
-    links.new(emission.outputs["Emission"], mix_bf.inputs[1])
-    links.new(trans_bf.outputs["BSDF"], mix_bf.inputs[2])
+    if double_sided:
+        camera_shader = emission.outputs["Emission"]
+    else:
+        trans_bf = nodes.new("ShaderNodeBsdfTransparent")
+        trans_bf.location = (200, -100)
 
-    camera_shader = mix_bf.outputs["Shader"]
+        mix_bf = nodes.new("ShaderNodeMixShader")
+        mix_bf.location = (400, 0)
+        links.new(geom.outputs["Backfacing"], mix_bf.inputs[0])
+        links.new(emission.outputs["Emission"], mix_bf.inputs[1])
+        links.new(trans_bf.outputs["BSDF"], mix_bf.inputs[2])
+        camera_shader = mix_bf.outputs["Shader"]
+
     transparent_depth_mask = None
     if hide_through_transparent:
         depth_cmp = nodes.new("ShaderNodeMath")
@@ -185,7 +207,7 @@ def _build_outline_nodes(
         mix_td = nodes.new("ShaderNodeMixShader")
         mix_td.location = (600, -180)
         links.new(transparent_depth_mask, mix_td.inputs[0])
-        links.new(mix_bf.outputs["Shader"], mix_td.inputs[1])
+        links.new(camera_shader, mix_td.inputs[1])
         links.new(trans_td.outputs["BSDF"], mix_td.inputs[2])
         camera_shader = mix_td.outputs["Shader"]
 
@@ -208,7 +230,10 @@ def _build_outline_nodes(
     invert.location = (600, -250)
     invert.operation = "SUBTRACT"
     invert.inputs[0].default_value = 1.0
-    links.new(geom.outputs["Backfacing"], invert.inputs[1])
+    if double_sided:
+        invert.inputs[1].default_value = 0.0
+    else:
+        links.new(geom.outputs["Backfacing"], invert.inputs[1])
     aov_value = invert.outputs[0]
     if transparent_depth_mask is not None:
         not_depth = nodes.new("ShaderNodeMath")
@@ -226,6 +251,7 @@ def _build_outline_nodes(
 
     links.new(aov_value, aov.inputs["Value"])
     mat[PROP_HIDE_THROUGH_TRANSPARENT] = bool(hide_through_transparent)
+    mat[PROP_DOUBLE_SIDED] = bool(double_sided)
 
 
 def _build_line_only_outline_nodes(
@@ -305,22 +331,29 @@ def _repair_outline_material(
     color: tuple[float, ...],
     *,
     hide_through_transparent: bool,
+    double_sided: bool = False,
 ) -> None:
     current = bool(mat.get(PROP_HIDE_THROUGH_TRANSPARENT, False))
-    if not _has_aov_node(mat) or current != hide_through_transparent:
+    current_double_sided = bool(mat.get(PROP_DOUBLE_SIDED, False))
+    if (
+        not _has_aov_node(mat)
+        or current != hide_through_transparent
+        or current_double_sided != double_sided
+    ):
         _build_outline_nodes(
             mat,
             color,
             hide_through_transparent=hide_through_transparent,
+            double_sided=double_sided,
         )
     else:
         _update_emission_color(mat, color)
-    _configure_material(mat)
+    _configure_material(mat, double_sided=double_sided)
 
 
-def _configure_material(mat: bpy.types.Material) -> None:
+def _configure_material(mat: bpy.types.Material, *, double_sided: bool = False) -> None:
     if hasattr(mat, "use_backface_culling"):
-        mat.use_backface_culling = True
+        mat.use_backface_culling = not double_sided
     try:
         mat.shadow_method = "NONE"
     except (AttributeError, TypeError):
@@ -334,6 +367,7 @@ def get_or_create_material(
     hide_through_transparent: bool = False,
 ) -> bpy.types.Material:
     """オブジェクト専用のアウトラインマテリアルを取得または作成."""
+    double_sided = _outline_double_sided(obj)
     for slot in obj.material_slots:
         if slot.material and _is_outline_material(slot.material):
             mat = slot.material
@@ -342,6 +376,7 @@ def get_or_create_material(
                 color,
                 target="outline",
                 hide_through_transparent=hide_through_transparent,
+                double_sided=double_sided,
             )
             return mat
 
@@ -350,9 +385,10 @@ def get_or_create_material(
         mat,
         color,
         hide_through_transparent=hide_through_transparent,
+        double_sided=double_sided,
     )
     _set_line_material_target(mat, "outline")
-    _configure_material(mat)
+    _configure_material(mat, double_sided=double_sided)
     return mat
 
 
@@ -393,6 +429,7 @@ def get_outline_material(obj: bpy.types.Object) -> bpy.types.Material | None:
                 color,
                 target="outline",
                 hide_through_transparent=hide_transparent,
+                double_sided=_outline_double_sided(obj),
             )
             return slot.material
     return None
@@ -461,6 +498,7 @@ def update_material_color(obj: bpy.types.Object, color: tuple[float, ...]) -> No
                 color,
                 target="outline",
                 hide_through_transparent=hide_transparent,
+                double_sided=_outline_double_sided(obj),
             )
             _update_emission_color(slot.material, color)
             return
@@ -475,13 +513,15 @@ def update_transparent_protection(
     for slot in obj.material_slots:
         target = _line_material_target(slot.material)
         if target is not None:
+            double_sided = target == "outline" and _outline_double_sided(obj)
             _build_outline_nodes(
                 slot.material,
                 color if target == "outline" else _line_color(obj, target),
                 hide_through_transparent=enabled,
+                double_sided=double_sided,
             )
             _set_line_material_target(slot.material, target)
-            _configure_material(slot.material)
+            _configure_material(slot.material, double_sided=double_sided)
 
 
 # ------------------------------------------------------------------
@@ -563,6 +603,204 @@ def update_modifier_rim(obj: bpy.types.Object, use_rim: bool) -> None:
 
 
 # ------------------------------------------------------------------
+# シート（板ポリ）用アウトライン — 境界辺チューブ
+# 背面法のリムは面と平行なカメラで消え、片側にしか伸びないため、
+# シートでは輪郭辺に沿って全方向へ均等に太らせたチューブを生成する
+# （2026-07-03 ユーザー要望「全方向に拡張した立体をライン用オブジェクトに」）。
+# ------------------------------------------------------------------
+
+def _find_socket_identifier(tree: bpy.types.NodeTree, name: str) -> str | None:
+    for item in tree.interface.items_tree:
+        if (
+            item.item_type == "SOCKET"
+            and item.in_out == "INPUT"
+            and item.name == name
+        ):
+            return item.identifier
+    return None
+
+
+def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
+    tree = bpy.data.node_groups.get(SHEET_OUTLINE_TREE_NAME)
+    if tree is not None:
+        if _find_socket_identifier(tree, _SHEET_TUBE_THICKNESS_SOCKET) is not None:
+            return tree
+        bpy.data.node_groups.remove(tree)
+    tree = bpy.data.node_groups.new(SHEET_OUTLINE_TREE_NAME, "GeometryNodeTree")
+    tree.interface.new_socket(
+        name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry",
+    )
+    tree.interface.new_socket(
+        name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry",
+    )
+    width_sock = tree.interface.new_socket(
+        name=_SHEET_TUBE_THICKNESS_SOCKET,
+        in_out="INPUT",
+        socket_type="NodeSocketFloat",
+    )
+    width_sock.default_value = 0.01
+    width_sock.min_value = 0.0
+    width_sock.max_value = 10.0
+    tree.interface.new_socket(
+        name=_SHEET_TUBE_MATERIAL_SOCKET,
+        in_out="INPUT",
+        socket_type="NodeSocketMaterial",
+    )
+
+    nodes = tree.nodes
+    links = tree.links
+    group_in = nodes.new("NodeGroupInput")
+    group_in.location = (-800, 0)
+    group_out = nodes.new("NodeGroupOutput")
+    group_out.location = (600, 0)
+
+    neighbors = nodes.new("GeometryNodeInputMeshEdgeNeighbors")
+    neighbors.location = (-800, -200)
+    boundary = nodes.new("FunctionNodeCompare")
+    boundary.location = (-600, -200)
+    boundary.data_type = "INT"
+    boundary.operation = "EQUAL"
+    boundary.inputs["B"].default_value = 1
+    links.new(neighbors.outputs["Face Count"], boundary.inputs["A"])
+
+    to_curve = nodes.new("GeometryNodeMeshToCurve")
+    to_curve.location = (-400, 0)
+    links.new(group_in.outputs["Geometry"], to_curve.inputs["Mesh"])
+    links.new(boundary.outputs["Result"], to_curve.inputs["Selection"])
+
+    half_width = nodes.new("ShaderNodeMath")
+    half_width.location = (-400, -240)
+    half_width.operation = "MULTIPLY"
+    half_width.inputs[1].default_value = 0.5
+    links.new(group_in.outputs[_SHEET_TUBE_THICKNESS_SOCKET], half_width.inputs[0])
+
+    profile = nodes.new("GeometryNodeCurvePrimitiveCircle")
+    profile.location = (-200, -200)
+    profile.mode = "RADIUS"
+    profile.inputs["Resolution"].default_value = 8
+    links.new(half_width.outputs[0], profile.inputs["Radius"])
+
+    tube = nodes.new("GeometryNodeCurveToMesh")
+    tube.location = (0, 0)
+    if "Fill Caps" in tube.inputs:
+        tube.inputs["Fill Caps"].default_value = True
+    links.new(to_curve.outputs["Curve"], tube.inputs["Curve"])
+    links.new(profile.outputs["Curve"], tube.inputs["Profile Curve"])
+
+    smooth = nodes.new("GeometryNodeSetShadeSmooth")
+    smooth.location = (150, 0)
+    links.new(tube.outputs["Mesh"], smooth.inputs["Geometry"])
+
+    set_mat = nodes.new("GeometryNodeSetMaterial")
+    set_mat.location = (300, 0)
+    links.new(smooth.outputs["Geometry"], set_mat.inputs["Geometry"])
+    links.new(
+        group_in.outputs[_SHEET_TUBE_MATERIAL_SOCKET],
+        set_mat.inputs["Material"],
+    )
+
+    join = nodes.new("GeometryNodeJoinGeometry")
+    join.location = (450, 0)
+    links.new(group_in.outputs["Geometry"], join.inputs["Geometry"])
+    links.new(set_mat.outputs["Geometry"], join.inputs["Geometry"])
+    links.new(join.outputs["Geometry"], group_out.inputs["Geometry"])
+    return tree
+
+
+def _get_or_create_hidden_rim_material() -> bpy.types.Material:
+    """シートのリム面を見えなくするための完全透明マテリアル."""
+    mat = bpy.data.materials.get(SHEET_RIM_HIDDEN_MATERIAL_NAME)
+    if mat is None:
+        mat = bpy.data.materials.new(SHEET_RIM_HIDDEN_MATERIAL_NAME)
+    needs_build = not mat.use_nodes
+    if not needs_build:
+        needs_build = not any(
+            node.type == "BSDF_TRANSPARENT" for node in mat.node_tree.nodes
+        )
+    if needs_build:
+        mat.use_nodes = True
+        nodes = mat.node_tree.nodes
+        links = mat.node_tree.links
+        nodes.clear()
+        output = nodes.new("ShaderNodeOutputMaterial")
+        output.location = (200, 0)
+        transparent = nodes.new("ShaderNodeBsdfTransparent")
+        transparent.location = (0, 0)
+        links.new(transparent.outputs["BSDF"], output.inputs["Surface"])
+    try:
+        mat.surface_render_method = "BLENDED"
+    except (AttributeError, TypeError):
+        pass
+    try:
+        mat.shadow_method = "NONE"
+    except (AttributeError, TypeError):
+        pass
+    return mat
+
+
+def ensure_sheet_outline(
+    obj: bpy.types.Object,
+    solidify_mod: bpy.types.Modifier,
+    line_mat: bpy.types.Material | None,
+) -> None:
+    """シートなら境界チューブを作り、リムを非表示化する。非シートなら撤去."""
+    is_sheet = plane_filter.is_sheet_mesh(obj)
+    mod = obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME)
+    if not is_sheet:
+        if mod is not None:
+            obj.modifiers.remove(mod)
+        return
+    tree = _get_or_create_sheet_outline_tree()
+    if mod is None:
+        mod = obj.modifiers.new(name=SHEET_OUTLINE_MODIFIER_NAME, type="NODES")
+    mod.node_group = tree
+    mod.show_viewport = solidify_mod.show_viewport
+    mod.show_render = solidify_mod.show_render
+    sid_width = _find_socket_identifier(tree, _SHEET_TUBE_THICKNESS_SOCKET)
+    if sid_width is not None:
+        mod[sid_width] = abs(float(solidify_mod.thickness))
+    if line_mat is not None:
+        sid_mat = _find_socket_identifier(tree, _SHEET_TUBE_MATERIAL_SOCKET)
+        if sid_mat is not None:
+            mod[sid_mat] = line_mat
+
+    # 既存リムはチューブと二重になるため非表示マテリアルへ逃がす。
+    # 注: material_offset_rim は元面のスロット番号への加算のため、
+    # 元面が複数マテリアルのシートでは末尾クランプに頼る。
+    hidden = _get_or_create_hidden_rim_material()
+    hidden_index = None
+    for index, slot in enumerate(obj.material_slots):
+        if slot.material is hidden:
+            hidden_index = index
+            break
+    if hidden_index is None:
+        obj.data.materials.append(hidden)
+        hidden_index = len(obj.material_slots) - 1
+    solidify_mod.material_offset_rim = hidden_index
+
+    from . import modifier_stack
+    modifier_stack.reorder_line_modifiers(obj)
+
+
+def sync_sheet_outline_width(obj: bpy.types.Object) -> None:
+    """シートチューブの太さを Solidify の線幅設定へ追従させる."""
+    if obj.type != "MESH":
+        return
+    mod = obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME)
+    if mod is None or mod.node_group is None:
+        return
+    solidify = obj.modifiers.get(MODIFIER_NAME)
+    if solidify is None:
+        return
+    sid = _find_socket_identifier(mod.node_group, _SHEET_TUBE_THICKNESS_SOCKET)
+    if sid is None:
+        return
+    value = abs(float(solidify.thickness))
+    if abs(float(mod.get(sid, 0.0)) - value) > 1.0e-12:
+        mod[sid] = value
+
+
+# ------------------------------------------------------------------
 # 適用 / 削除
 # ------------------------------------------------------------------
 
@@ -610,6 +848,9 @@ def apply_outline(
     _configure_solidify_shape(obj, mod, use_rim, offset)
     mod.material_offset = material_offset
     mod.material_offset_rim = material_offset
+
+    # シートは境界チューブでアウトラインを作る（リムは非表示化される）
+    ensure_sheet_outline(obj, mod, mat)
 
     # 頂点グループによる線幅制御
     need_vg = use_vertex_color or use_vertex_group
@@ -805,13 +1046,15 @@ def _restore_outline_materials(
     for mat in mesh.materials:
         target = _line_material_target(mat)
         if target is not None:
+            double_sided = target == "outline" and _outline_double_sided(obj)
             _build_outline_nodes(
                 mat,
                 _line_color(obj, target),
                 hide_through_transparent=hide_transparent,
+                double_sided=double_sided,
             )
             _set_line_material_target(mat, target)
-            _configure_material(mat)
+            _configure_material(mat, double_sided=double_sided)
 
 
 def _ensure_line_only_wire(obj: bpy.types.Object) -> None:

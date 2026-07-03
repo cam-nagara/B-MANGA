@@ -268,7 +268,8 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     )
     use_vertex_color: BoolProperty(default=False)
     even_thickness: BoolProperty(default=False)
-    exclude_sheet_meshes: BoolProperty(default=False)
+    # 2026-07-03 ユーザー確定: 板ポリ除外だけは「初期値全オフ」の対象外でオン
+    exclude_sheet_meshes: BoolProperty(default=True)
     use_uniform_line_width: BoolProperty(default=False)
     use_rim: BoolProperty(default=False)
     hide_through_transparent: BoolProperty(default=False)

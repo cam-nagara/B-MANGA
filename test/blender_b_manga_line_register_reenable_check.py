@@ -36,9 +36,9 @@ def _assert_registered() -> None:
     assert getattr(bpy.types.Object, "bmanga_line_settings", None) is not None
     assert getattr(bpy.types.Scene, "bmanga_line_camera", None) is not None
     assert getattr(bpy.types, "BMANGA_LINE_PT_main", None) is not None
+    # 2026-07-03: 基本設定パネル（板ポリ除外のみ）はオプション廃止に伴い撤去
     subpanels = (
         "BMANGA_LINE_PT_presets",
-        "BMANGA_LINE_PT_basic",
         "BMANGA_LINE_PT_outline",
         "BMANGA_LINE_PT_camera",
         "BMANGA_LINE_PT_inner_line",
@@ -112,7 +112,6 @@ def _assert_panels_draw_items() -> None:
     for panel_cls in (
         panels.BMANGA_LINE_PT_main,
         panels.BMANGA_LINE_PT_presets,
-        panels.BMANGA_LINE_PT_basic,
         panels.BMANGA_LINE_PT_outline,
         panels.BMANGA_LINE_PT_camera,
         panels.BMANGA_LINE_PT_inner_line,
@@ -125,7 +124,6 @@ def _assert_panels_draw_items() -> None:
         "outline_enabled",
         "outline_thickness_mm",
         "outline_color",
-        "exclude_sheet_meshes",
         "use_camera_compensation",
         "line_width_reference_distance",
         "use_uniform_line_width",
@@ -154,6 +152,8 @@ def _assert_panels_draw_items() -> None:
         "outline_enabled",
         "use_inner_line_creation_limit",
         "use_intersection_creation_limit",
+        # 2026-07-03 ユーザー確定: 板ポリ除外だけは初期値オン
+        "exclude_sheet_meshes",
     }
     for prop_name in bool_props:
         if prop_name in initially_on_props:

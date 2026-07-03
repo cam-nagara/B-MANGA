@@ -9,13 +9,15 @@ from .core import (
     INTERSECTION_MODIFIER_NAME,
     INTERSECTION_MODIFIER_PREFIX,
     MODIFIER_NAME,
+    SHEET_OUTLINE_MODIFIER_NAME,
 )
 
 
 def is_line_modifier_name(name: str) -> bool:
     """B-MANGA Line が生成するモディファイア名か返す."""
     return (
-        name == MODIFIER_NAME
+        name == SHEET_OUTLINE_MODIFIER_NAME
+        or name == MODIFIER_NAME
         or name == GN_MODIFIER_NAME
         or name == INTERSECTION_MODIFIER_NAME
         or name.startswith(INTERSECTION_MODIFIER_PREFIX)
@@ -24,12 +26,15 @@ def is_line_modifier_name(name: str) -> bool:
 
 def _line_modifier_order(mod: bpy.types.Modifier) -> tuple[int, str]:
     name = mod.name
-    if name == MODIFIER_NAME:
+    # シートのチューブは Solidify より前（境界辺を元メッシュから拾うため）
+    if name == SHEET_OUTLINE_MODIFIER_NAME:
         return (0, name)
-    if name == GN_MODIFIER_NAME:
+    if name == MODIFIER_NAME:
         return (1, name)
-    if name == INTERSECTION_MODIFIER_NAME or name.startswith(INTERSECTION_MODIFIER_PREFIX):
+    if name == GN_MODIFIER_NAME:
         return (2, name)
+    if name == INTERSECTION_MODIFIER_NAME or name.startswith(INTERSECTION_MODIFIER_PREFIX):
+        return (3, name)
     return (99, name)
 
 

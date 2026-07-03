@@ -35,6 +35,7 @@ DEFAULT_POINTS = (
     (1.0, 1.0),
 )
 _PENDING_SYNC: set[tuple[int, str]] = set()
+_shutdown = False
 
 
 def _normalize_target(target: str) -> str:
@@ -110,6 +111,7 @@ def schedule_node_sync(settings, target: str = "outline") -> bool:
     try:
         owner = settings.id_data
         owner_key = owner.as_pointer()
+        owner_name = owner.name_full
     except (AttributeError, ReferenceError, RuntimeError):
         return False
     key = (owner_key, target)
@@ -117,14 +119,29 @@ def schedule_node_sync(settings, target: str = "outline") -> bool:
         return False
     _PENDING_SYNC.add(key)
 
+    # 注意: settings / owner のラッパーを閉包へ捕まえない。
+    # Undo・再読み込み・アドオンリロード後に解放済みメモリへ触れて
+    # クラッシュするため（2026-07-03 test_line.crash.txt）、
+    # 毎回アクティブオブジェクトから引き直す。
     def _run():
+        if _shutdown:
+            _PENDING_SYNC.discard(key)
+            return None
         try:
             active = getattr(bpy.context, "active_object", None)
-            if active is not owner:
+            if (
+                active is None
+                or active.name_full != owner_name
+                or active.as_pointer() != owner_key
+            ):
                 _PENDING_SYNC.discard(key)
                 return None
-            sync_settings_and_node(settings, target)
-        except ReferenceError:
+            live_settings = getattr(active, "bmanga_line_settings", None)
+            if live_settings is None:
+                _PENDING_SYNC.discard(key)
+                return None
+            sync_settings_and_node(live_settings, target)
+        except (ReferenceError, RuntimeError):
             _PENDING_SYNC.discard(key)
             return None
         return SYNC_INTERVAL
@@ -239,3 +256,15 @@ def _set_attr(settings, attr: str, value: float) -> bool:
 
 def _clamp01(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
+
+
+def register() -> None:
+    global _shutdown
+    _shutdown = False
+
+
+def unregister() -> None:
+    """リロード後の旧タイマーを確実に止める（旧モジュール側で実行される）."""
+    global _shutdown
+    _shutdown = True
+    _PENDING_SYNC.clear()

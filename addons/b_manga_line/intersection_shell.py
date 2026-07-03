@@ -649,6 +649,23 @@ def _target_list(
     return targets
 
 
+def _remove_mirror_proxy(obj: bpy.types.Object, target: bpy.types.Object) -> None:
+    """相手側が同じペアを持っていたら外す（持ち主の重複による二重線の掃除）."""
+    name = str(target.get(_TARGET_COLLECTION_PROP, "") or "")
+    if not name:
+        return
+    collection = bpy.data.collections.get(name)
+    if collection is None:
+        return
+    mirror = bpy.data.objects.get(_proxy_name(target, obj))
+    if mirror is None:
+        return
+    if mirror.name in collection.objects:
+        collection.objects.unlink(mirror)
+    if not mirror.users_collection:
+        bpy.data.objects.remove(mirror)
+
+
 def _sync_target_collection(
     obj: bpy.types.Object,
     scene: bpy.types.Scene | None,
@@ -666,6 +683,8 @@ def _sync_target_collection(
     for item in proxies:
         if item.name not in collection.objects:
             collection.objects.link(item)
+    for target in targets:
+        _remove_mirror_proxy(obj, target)
     return collection, targets
 
 
@@ -859,3 +878,212 @@ def apply_intersection_shell(
     mod.show_render = True
     _position_modifier(obj, mod)
     return True
+
+
+# ------------------------------------------------------------------
+# オブジェクト移動への追従
+# プロキシの相対行列は作成時のスナップショットのため、移動を
+# depsgraph ハンドラで検知して即時更新し、ペア構成（交差の有無）は
+# 移動が止まってから再同期する。
+# ------------------------------------------------------------------
+
+# 行列は float32 で保存されるため、それより粗い許容誤差で比較して
+# 「書き込み→再比較で不一致→再書き込み」の更新ループを避ける。
+_MATRIX_EPS = 1.0e-5
+_RESYNC_IDLE_SECONDS = 0.35
+_MATRIX_SYNC_INTERVAL = 0.1
+
+_pending_matrix_names: set[str] = set()
+_pending_resync_names: set[str] = set()
+_resync_timer_active = False
+_syncing_transforms = False
+_last_move_at = 0.0
+
+
+def _matrices_close(a, b) -> bool:
+    for i in range(4):
+        for j in range(4):
+            if abs(a[i][j] - b[i][j]) > _MATRIX_EPS:
+                return False
+    return True
+
+
+def _shell_sources(scene) -> list[bpy.types.Object]:
+    return [
+        obj for obj in scene.objects
+        if obj.type == "MESH"
+        and obj.modifiers.get(SHELL_MODIFIER_NAME) is not None
+    ]
+
+
+def _sync_proxy_matrices(scene, moved_names: set[str]) -> set[str]:
+    """移動したオブジェクトに関係するプロキシ行列を追従させる.
+
+    ペア再同期が必要なソース名の集合を返す。
+    """
+    involved: set[str] = set()
+    for source in _shell_sources(scene):
+        collection_name = str(source.get(_TARGET_COLLECTION_PROP, "") or "")
+        collection = (
+            bpy.data.collections.get(collection_name) if collection_name else None
+        )
+        if collection is None:
+            continue
+        source_moved = source.name_full in moved_names
+        source_inv = None
+        for proxy in collection.objects:
+            target_name = str(proxy.get(_PROXY_SOURCE_PROP, "") or "")
+            target = bpy.data.objects.get(target_name)
+            if target is None:
+                continue
+            if not source_moved and target.name_full not in moved_names:
+                continue
+            involved.add(source.name_full)
+            if source_inv is None:
+                source_inv = source.matrix_world.inverted()
+            expected = source_inv @ target.matrix_world
+            if _matrices_close(proxy.matrix_world, expected):
+                continue
+            proxy.matrix_world = expected
+    return involved
+
+
+def _collect_moved_mesh_names(depsgraph) -> set[str]:
+    moved: set[str] = set()
+    for update in getattr(depsgraph, "updates", ()):
+        if not getattr(update, "is_updated_transform", False):
+            continue
+        id_data = getattr(update, "id", None)
+        if not isinstance(id_data, bpy.types.Object):
+            continue
+        if getattr(id_data, "type", None) != "MESH":
+            continue
+        if bool(id_data.get(_PROXY_SOURCE_PROP, "")):
+            continue
+        moved.add(id_data.name_full)
+    return moved
+
+
+@bpy.app.handlers.persistent
+def _on_depsgraph_update(scene, depsgraph=None):
+    """移動したオブジェクト名を記録するだけの軽量ハンドラ.
+
+    depsgraph 評価中の bpy データ書き込みはクラッシュ要因になるため、
+    ここでは一切書き込まず、実作業はタイマー（メインループ）へ委ねる。
+    """
+    global _resync_timer_active, _last_move_at
+    if _syncing_transforms or depsgraph is None or scene is None:
+        return
+    moved = _collect_moved_mesh_names(depsgraph)
+    if not moved:
+        return
+    import time
+
+    _last_move_at = time.monotonic()
+    _pending_matrix_names.update(moved)
+    _pending_resync_names.update(moved)
+    if not _resync_timer_active:
+        _resync_timer_active = True
+        bpy.app.timers.register(
+            _run_follow_timer, first_interval=_MATRIX_SYNC_INTERVAL
+        )
+
+
+def _run_follow_timer():
+    """プロキシ行列の追従（即時）とペア再同期（移動停止後）を行う."""
+    global _resync_timer_active, _syncing_transforms
+    import time
+
+    scene = getattr(bpy.context, "scene", None)
+    if scene is None:
+        _resync_timer_active = False
+        _pending_matrix_names.clear()
+        _pending_resync_names.clear()
+        return None
+    if _pending_matrix_names:
+        moved = set(_pending_matrix_names)
+        _pending_matrix_names.clear()
+        _syncing_transforms = True
+        try:
+            involved = _sync_proxy_matrices(scene, moved)
+        finally:
+            _syncing_transforms = False
+        for name in moved:
+            if name in involved:
+                continue
+            obj = bpy.data.objects.get(name)
+            settings = getattr(obj, "bmanga_line_settings", None) if obj else None
+            if settings is None or not getattr(
+                settings, "intersection_enabled", False
+            ):
+                _pending_resync_names.discard(name)
+    if time.monotonic() - _last_move_at < _RESYNC_IDLE_SECONDS:
+        return _MATRIX_SYNC_INTERVAL
+    names = set(_pending_resync_names)
+    _pending_resync_names.clear()
+    _resync_timer_active = False
+    if names:
+        _do_pair_resync(scene, names)
+    return None
+
+
+def _do_pair_resync(scene, names: set[str]) -> None:
+    """移動が落ち着いた後にペア構成（交差の有無）を再同期する."""
+    global _syncing_transforms
+    from . import camera_comp, intersection_lines, plane_filter
+
+    moved = [obj for obj in (bpy.data.objects.get(n) for n in names) if obj]
+    affected: dict[str, bpy.types.Object] = {}
+    for obj in moved:
+        if obj.type == "MESH":
+            affected[obj.name_full] = obj
+    for obj in scene.objects:
+        if obj.type != "MESH" or obj.name_full in affected:
+            continue
+        settings = getattr(obj, "bmanga_line_settings", None)
+        has_shell = obj.modifiers.get(SHELL_MODIFIER_NAME) is not None
+        enabled = settings is not None and getattr(
+            settings, "intersection_enabled", False
+        )
+        if not (has_shell or enabled):
+            continue
+        margin = 1.0
+        if any(
+            intersection_lines._bounds_overlap(obj, item, margin) for item in moved
+        ):
+            affected[obj.name_full] = obj
+    if not affected:
+        return None
+    _syncing_transforms = True
+    try:
+        refreshed = []
+        for obj in affected.values():
+            if intersection_lines._refresh_source_intersections(
+                obj, scene, outline_setup, plane_filter
+            ):
+                refreshed.append(obj)
+        if refreshed:
+            camera_comp.refresh_objects(
+                bpy.context,
+                refreshed,
+                width_targets=("intersection",),
+            )
+    finally:
+        _syncing_transforms = False
+    return None
+
+
+def register() -> None:
+    if _on_depsgraph_update not in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph_update)
+
+
+def unregister() -> None:
+    global _resync_timer_active
+    if _on_depsgraph_update in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph_update)
+    if bpy.app.timers.is_registered(_run_follow_timer):
+        bpy.app.timers.unregister(_run_follow_timer)
+    _resync_timer_active = False
+    _pending_matrix_names.clear()
+    _pending_resync_names.clear()

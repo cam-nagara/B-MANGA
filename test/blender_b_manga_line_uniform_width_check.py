@@ -77,8 +77,9 @@ def _target_pixels(width_mm: float) -> float:
 
 
 def _expected_world_width(scene: bpy.types.Scene, depth: float, width_mm: float) -> float:
+    # 線幅は印刷 mm 一致が正: 解像度パーセンテージに影響されないフル解像度基準
     camera = scene.camera
-    height = scene.render.resolution_y * scene.render.resolution_percentage / 100.0
+    height = float(scene.render.resolution_y)
     view_height = 2.0 * depth * math.tan(camera.data.angle_y * 0.5)
     return _target_pixels(width_mm) * view_height / height
 
@@ -162,6 +163,8 @@ def _test_uniform_width_depth_and_resolution() -> None:
 
     settings = obj.bmanga_line_settings
     settings.outline_thickness_mm = 0.5
+    # 板ポリ除外（初期値オン）の対象になる薄板なので、内部線の線幅検証用に除外を切る
+    settings.exclude_sheet_meshes = False
     settings.inner_line_enabled = True
     settings.inner_line_thickness_mm = 0.25
     settings.use_uniform_line_width = True
@@ -496,7 +499,8 @@ def _test_camera_compensation_uses_mesh_position_not_origin() -> None:
     assert math.isclose(actual, expected, rel_tol=0.001), (actual, expected)
 
 
-def _test_live_camera_view_size_controls_preview_width() -> None:
+def _test_resolution_percentage_does_not_change_width() -> None:
+    """プレビュー縮小（解像度%）でも線幅の実体は印刷 mm 基準のまま変わらない."""
     scene = bpy.context.scene
     _clear_scene()
     _configure_scene(scene)
@@ -504,7 +508,7 @@ def _test_live_camera_view_size_controls_preview_width() -> None:
 
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0.0, 0.0, -5.0))
     obj = bpy.context.object
-    obj.name = "BML_live_camera_view_size_cube"
+    obj.name = "BML_resolution_percentage_cube"
     _select(obj)
     settings = obj.bmanga_line_settings
     settings.outline_thickness_mm = 0.5
@@ -512,22 +516,22 @@ def _test_live_camera_view_size_controls_preview_width() -> None:
     settings.line_width_reference_distance = 5.0
     assert presets.apply_line_settings(obj, bpy.context)
 
-    render_width = _line_world_width(obj)
-    camera_comp._set_display_size_override((1000.0, 1000.0))
+    full_width = _line_world_width(obj)
+    expected = _target_pixels(0.5) * (
+        2.0 * 5.0 * math.tan(scene.camera.data.angle_y * 0.5) / 8000.0
+    )
+    assert math.isclose(full_width, expected, rel_tol=0.001), (full_width, expected)
+
+    scene.render.resolution_percentage = 13
     try:
         camera_comp._update_camera_compensation(scene, scene.camera, [obj])
+        preview_width = _line_world_width(obj)
+        assert math.isclose(preview_width, full_width, rel_tol=0.001), (
+            preview_width,
+            full_width,
+        )
     finally:
-        camera_comp._set_display_size_override(None)
-
-    preview_width = _line_world_width(obj)
-    assert preview_width > render_width * 7.5, (preview_width, render_width)
-    expected_preview = _target_pixels(0.5) * (
-        2.0 * 5.0 * math.tan(scene.camera.data.angle_y * 0.5) / 1000.0
-    )
-    assert math.isclose(preview_width, expected_preview, rel_tol=0.001), (
-        preview_width,
-        expected_preview,
-    )
+        scene.render.resolution_percentage = 100
 
 
 def _test_evaluated_orthographic_width() -> None:
@@ -629,7 +633,7 @@ def main() -> None:
     _test_object_scale_compensates_modifier_width()
     _test_intersection_target_scale_conversion()
     _test_camera_compensation_uses_mesh_position_not_origin()
-    _test_live_camera_view_size_controls_preview_width()
+    _test_resolution_percentage_does_not_change_width()
     _test_evaluated_orthographic_width()
     _test_linked_uniform_width_refresh_does_not_crash()
     print("[PASS] B-MANGA Line uniform width follows mm, DPI, and resolution")

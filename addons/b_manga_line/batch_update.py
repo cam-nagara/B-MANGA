@@ -595,6 +595,56 @@ def _update_inner_lines(
         )
 
 
+def _update_inner_creation_range(objects: list[bpy.types.Object], context) -> None:
+    """作成範囲の設定変更を内部線へ反映（状態が変わるオブジェクトだけ再構築）."""
+    from . import plane_filter
+
+    create_targets = []
+    refresh_targets = []
+    for obj in objects:
+        settings = obj.bmanga_line_settings
+        if not settings.inner_line_enabled:
+            continue
+        if plane_filter.should_exclude_generated_lines(obj, settings):
+            continue
+        in_range = camera_comp.inner_line_creation_in_range(
+            obj,
+            context.scene,
+            settings,
+        )
+        mod = obj.modifiers.get(core.GN_MODIFIER_NAME)
+        if not in_range:
+            inner_lines.disable_inner_lines(obj)
+            continue
+        if mod is None:
+            create_targets.append(obj)
+        elif inner_lines.enable_inner_lines(obj):
+            refresh_targets.append(obj)
+    if create_targets:
+        presets._update_view_layer(context)
+        for obj in create_targets:
+            settings = obj.bmanga_line_settings
+            if inner_lines.apply_inner_lines(
+                obj,
+                angle=settings.inner_line_angle,
+                thickness=modifier_thickness_for_world_width(
+                    obj,
+                    settings.inner_line_thickness,
+                ),
+                material=outline_setup.get_line_material(obj, "inner"),
+                offset=settings.inner_line_offset,
+                use_marked_edges=settings.use_marked_inner_edges,
+            ):
+                refresh_targets.append(obj)
+    if refresh_targets:
+        _refresh_camera_objects(
+            refresh_targets,
+            context,
+            update_visibility=True,
+            width_targets=("inner",),
+        )
+
+
 def _update_intersections(objects: list[bpy.types.Object], context) -> None:
     if not objects:
         return
@@ -777,6 +827,7 @@ def refresh_propagated_property(
         "use_inner_line_creation_limit",
         "inner_line_creation_max_distance",
     }:
+        _update_inner_creation_range(line_objects, context)
         return
     if prop_name == "inner_line_angle":
         _update_inner_angle(line_objects, context)
@@ -801,6 +852,9 @@ def refresh_propagated_property(
         "use_intersection_creation_limit",
         "intersection_creation_max_distance",
     }:
+        if len(line_objects) > MAX_IMMEDIATE_INTERSECTION_REBUILD_OBJECTS:
+            return
+        _update_intersections(line_objects, context)
         return
     if prop_name == "intersection_thickness":
         _update_generated_thickness(line_objects, context, "intersection")

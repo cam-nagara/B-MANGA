@@ -199,11 +199,13 @@ def _high_z_count(coords: list, threshold: float) -> int:
 
 
 def _assert_shell_width_controls_affect_generated_mesh() -> None:
+    # ペアの持ち主は面数の少ない側（スラブ）に決定的に決まる
+    # （2026-07-03: アクティブオブジェクト優先を廃止）
     _clear_scene()
     surface = _make_surface_material("BML_shell_width_surface")
     slab = _make_source_slab(surface)
     cylinder = _make_contact_cylinder(surface)
-    cylinder.bmanga_line_settings.intersection_edge_smooth_factor = 0.0
+    slab.bmanga_line_settings.intersection_edge_smooth_factor = 0.0
     _select([slab, cylinder])
     bpy.context.view_layer.objects.active = cylinder
 
@@ -211,24 +213,24 @@ def _assert_shell_width_controls_affect_generated_mesh() -> None:
     assert presets.apply_line_settings(cylinder, bpy.context, refresh_scene=False)
     intersection_lines.refresh_scene_intersections(bpy.context.scene)
 
-    base_coords = _intersection_material_vertices(cylinder)
+    base_coords = _intersection_material_vertices(slab)
     assert _z_span(base_coords) > 0.04, _z_span(base_coords)
     base_high = _high_z_count(base_coords, 0.015)
 
-    intersection_lines.update_parameters(cylinder, thickness=0.08)
-    cylinder.update_tag()
+    intersection_lines.update_parameters(slab, thickness=0.08)
+    slab.update_tag()
     bpy.context.view_layer.update()
-    thick_coords = _intersection_material_vertices(cylinder)
+    thick_coords = _intersection_material_vertices(slab)
     assert _z_span(thick_coords) > _z_span(base_coords) * 2.0, (
         _z_span(base_coords),
         _z_span(thick_coords),
     )
 
-    cylinder.bmanga_line_settings.intersection_edge_smooth_factor = -1.0
-    intersection_lines.update_parameters(cylinder)
-    cylinder.update_tag()
+    slab.bmanga_line_settings.intersection_edge_smooth_factor = -1.0
+    intersection_lines.update_parameters(slab)
+    slab.update_tag()
     bpy.context.view_layer.update()
-    tapered_coords = _intersection_material_vertices(cylinder)
+    tapered_coords = _intersection_material_vertices(slab)
     tapered_high = _high_z_count(tapered_coords, 0.015)
     assert tapered_high < base_high, (base_high, tapered_high)
 

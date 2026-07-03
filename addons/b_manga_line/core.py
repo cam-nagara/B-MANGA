@@ -21,6 +21,7 @@ from .selection import selected_mesh_objects as _selected_mesh_objects
 # 命名規則 — モディファイア・マテリアル・頂点グループ等の識別子
 # ------------------------------------------------------------------
 MODIFIER_NAME = "BML_Outline"
+SHEET_OUTLINE_MODIFIER_NAME = "BML_SheetOutline"
 MATERIAL_NAME = "BML_Outline"
 VG_LINE_WIDTH = "BML_LineWidth"
 VG_INNER_LINE_WIDTH = "BML_InnerLineWidth"
@@ -46,6 +47,7 @@ REF_MODE_VIEW = "VIEW"
 REF_MODE_LOCKED = "LOCKED"
 DEFAULT_LINE_WIDTH_REFERENCE_DISTANCE = 2.0
 LINE_MODIFIER_NAMES = (
+    SHEET_OUTLINE_MODIFIER_NAME,
     MODIFIER_NAME,
     GN_MODIFIER_NAME,
 )
@@ -419,33 +421,11 @@ def _on_transparent_protection_changed(self, context):
 
 
 def _on_sheet_exclusion_changed(self, context):
+    # 2026-07-03 ユーザー確定: 板ポリ除外オプションは廃止（UI 非公開・挙動なし）。
+    # 旧ファイル互換のためプロパティと伝搬だけ残す。
     if _propagating:
         return
-    from . import inner_lines, intersection_lines, plane_filter
-    owner = self.id_data
-    refreshed_owner = False
-    if owner.type == "MESH" and has_line(owner):
-        sheet_mesh = plane_filter.is_sheet_mesh(owner)
-        if self.exclude_sheet_meshes and sheet_mesh:
-            refreshed_owner = bool(owner.modifiers.get(GN_MODIFIER_NAME))
-            refreshed_owner |= any(iter_intersection_modifiers(owner))
-            inner_lines.remove_inner_lines(owner)
-            intersection_lines.remove_intersection_lines(owner)
-            intersection_lines.prune_excluded_intersections(getattr(context, "scene", None))
-        elif not self.exclude_sheet_meshes and sheet_mesh:
-            refreshed_owner = _sync_inner_line_creation(owner, self, context)
-            _sync_intersection_creation(owner, self, context)
-            refreshed = _refresh_intersection_scene(context)
-            if refreshed:
-                _refresh_print_widths_for(
-                    context,
-                    refreshed,
-                    update_visibility=True,
-                    width_targets=("intersection",),
-                )
     _propagate(self, context, "exclude_sheet_meshes")
-    if refreshed_owner:
-        _refresh_print_widths_for(context, [owner], update_visibility=True)
 
 
 def _sync_inner_line_creation(
@@ -573,16 +553,57 @@ def _on_inner_offset_changed(self, context):
     _propagate(self, context, "inner_line_offset")
 
 
+def _sync_inner_creation_range(owner: bpy.types.Object, settings, context) -> bool:
+    """作成範囲の設定変更を内部線の実状態へ反映する。
+
+    範囲判定と実状態が食い違う時だけ作成/有効化/無効化を行い、
+    スライダードラッグ中の無駄な再構築を避ける。
+    """
+    from . import camera_comp, inner_lines, plane_filter
+    if owner.type != "MESH":
+        return False
+    if not settings.inner_line_enabled:
+        return False
+    if plane_filter.should_exclude_generated_lines(owner, settings):
+        return False
+    in_range = camera_comp.inner_line_creation_in_range(
+        owner,
+        getattr(context, "scene", None),
+        settings,
+    )
+    mod = owner.modifiers.get(GN_MODIFIER_NAME)
+    if not in_range:
+        if mod is not None:
+            inner_lines.disable_inner_lines(owner)
+        return False
+    if mod is None:
+        return _sync_inner_line_creation(owner, settings, context)
+    return inner_lines.enable_inner_lines(owner)
+
+
+def _on_inner_creation_range_changed(self, context, prop_name: str) -> None:
+    owner = self.id_data
+    refreshed_owner = _sync_inner_creation_range(owner, self, context)
+    _propagate(self, context, prop_name)
+    if refreshed_owner:
+        _refresh_print_widths_for(
+            context,
+            [owner],
+            update_visibility=True,
+            width_targets=("inner",),
+        )
+
+
 def _on_inner_creation_limit_changed(self, context):
     if _propagating:
         return
-    _propagate(self, context, "use_inner_line_creation_limit")
+    _on_inner_creation_range_changed(self, context, "use_inner_line_creation_limit")
 
 
 def _on_inner_creation_distance_changed(self, context):
     if _propagating:
         return
-    _propagate(self, context, "inner_line_creation_max_distance")
+    _on_inner_creation_range_changed(self, context, "inner_line_creation_max_distance")
 
 
 def _sync_intersection_creation(owner: bpy.types.Object, settings, context) -> None:
@@ -716,16 +737,42 @@ def _on_intersection_offset_changed(self, context):
     _propagate(self, context, "intersection_line_offset")
 
 
+def _on_intersection_creation_range_changed(self, context, prop_name: str) -> None:
+    owner = self.id_data
+    propagated = _propagate(self, context, prop_name)
+    if propagated:
+        return
+    from . import intersection_lines
+    scene = getattr(context, "scene", None)
+    if not intersection_lines.scene_has_enabled_intersections(scene):
+        return
+    _sync_intersection_creation(owner, self, context)
+    refreshed = _refresh_intersection_scene(context)
+    if any(iter_intersection_modifiers(owner)) and owner not in refreshed:
+        refreshed.append(owner)
+    if refreshed:
+        _refresh_print_widths_for(
+            context,
+            refreshed,
+            update_visibility=True,
+            width_targets=("intersection",),
+        )
+
+
 def _on_intersection_creation_limit_changed(self, context):
     if _propagating:
         return
-    _propagate(self, context, "use_intersection_creation_limit")
+    _on_intersection_creation_range_changed(
+        self, context, "use_intersection_creation_limit",
+    )
 
 
 def _on_intersection_creation_distance_changed(self, context):
     if _propagating:
         return
-    _propagate(self, context, "intersection_creation_max_distance")
+    _on_intersection_creation_range_changed(
+        self, context, "intersection_creation_max_distance",
+    )
 
 
 def _refresh_line_width_weights(self, context, target: str | None = None) -> None:
