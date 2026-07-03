@@ -40,6 +40,8 @@ _PROXY_PREFIX = "BML_IntersectionProxy"
 _SHELL_RADIUS_NODE_LABEL = "BML_IntersectionShellOwnRadius"
 _CURVE_RADIUS_NORMALIZER_LABEL = "BML_IntersectionShellCurveRadius"
 _SHELL_COMBINED_THICKNESS_NODE_LABEL = "BML_IntersectionShellCombinedThickness"
+_SHELL_PROFILE_NODE_LABEL = "BML_IntersectionShellProfile"
+SHELL_TUBE_PROFILE_RESOLUTION = 12
 
 
 def is_shell_modifier(mod: bpy.types.Modifier) -> bool:
@@ -369,11 +371,12 @@ def _add_shell_tube_nodes(nodes, links, curve_output, gin, radius_output, x_offs
     scale = _add_curve_width_scale(nodes, links, gin, x_offset=x_offset)
 
     circle = nodes.new("GeometryNodeCurvePrimitiveCircle")
+    circle.label = _SHELL_PROFILE_NODE_LABEL
     circle.location = (x_offset + 0, -550)
     circle.mode = "RADIUS"
     for inp in circle.inputs:
         if inp.name == "Resolution" and inp.enabled:
-            inp.default_value = 4
+            inp.default_value = SHELL_TUBE_PROFILE_RESOLUTION
     links.new(radius_output, circle.inputs["Radius"])
 
     c2m = nodes.new("GeometryNodeCurveToMesh")
@@ -394,9 +397,13 @@ def _add_shell_tube_nodes(nodes, links, curve_output, gin, radius_output, x_offs
     mark_generated.inputs["Value"].default_value = True
     links.new(c2m.outputs["Mesh"], mark_generated.inputs["Geometry"])
 
+    smooth = nodes.new("GeometryNodeSetShadeSmooth")
+    smooth.location = (x_offset + 440, -470)
+    links.new(mark_generated.outputs["Geometry"], smooth.inputs["Geometry"])
+
     setmat = nodes.new("GeometryNodeSetMaterial")
     setmat.location = (x_offset + 500, -300)
-    links.new(mark_generated.outputs["Geometry"], setmat.inputs["Geometry"])
+    links.new(smooth.outputs["Geometry"], setmat.inputs["Geometry"])
     links.new(gin.outputs[_MATERIAL_SOCKET], setmat.inputs["Material"])
 
     join = nodes.new("GeometryNodeJoinGeometry")
@@ -565,6 +572,27 @@ def _tree_uses_generated_mark(tree: bpy.types.NodeTree) -> bool:
     )
 
 
+def _tree_has_current_profile_resolution(tree: bpy.types.NodeTree) -> bool:
+    profile_nodes = [
+        node
+        for node in tree.nodes
+        if (
+            node.bl_idname == "GeometryNodeCurvePrimitiveCircle"
+            and getattr(node, "label", "") == _SHELL_PROFILE_NODE_LABEL
+        )
+    ]
+    if not profile_nodes:
+        return False
+    for node in profile_nodes:
+        resolution = next(
+            (inp.default_value for inp in node.inputs if inp.name == "Resolution"),
+            None,
+        )
+        if resolution is None or int(resolution) < SHELL_TUBE_PROFILE_RESOLUTION:
+            return False
+    return True
+
+
 def _get_or_create_tree() -> bpy.types.NodeTree:
     tree = bpy.data.node_groups.get(SHELL_TREE_NAME)
     if tree is not None:
@@ -624,6 +652,10 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
                 getattr(node, "label", "") == _SHELL_COMBINED_THICKNESS_NODE_LABEL
                 for node in tree.nodes
             )
+            # v0.3.80: アウトライン幅ベースで太くなった交差線では、
+            # 4角断面のキャップが黒いくさび状の切れ込みとして目立つ。
+            # 保存済みファイル内の旧ツリーを必ず再構築して、丸い断面に更新する。
+            and _tree_has_current_profile_resolution(tree)
         )
         if ok:
             return tree

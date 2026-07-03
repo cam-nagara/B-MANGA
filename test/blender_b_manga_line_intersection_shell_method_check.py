@@ -113,6 +113,19 @@ def _socket_value(mod: bpy.types.Modifier, name: str):
     return mod[_socket_id(tree, name)]
 
 
+def _profile_resolutions(tree: bpy.types.NodeTree) -> list[int]:
+    values: list[int] = []
+    for node in tree.nodes:
+        if node.bl_idname != "GeometryNodeCurvePrimitiveCircle":
+            continue
+        if getattr(node, "label", "") != "BML_IntersectionShellProfile":
+            continue
+        for inp in node.inputs:
+            if inp.name == "Resolution":
+                values.append(int(inp.default_value))
+    return values
+
+
 def _intersection_material_polygons(obj: bpy.types.Object) -> int:
     mat = outline_setup.get_line_material(obj, "intersection")
     depsgraph = bpy.context.evaluated_depsgraph_get()
@@ -273,6 +286,66 @@ def _assert_stale_shell_tree_is_rebuilt() -> None:
     rebuilt = intersection_shell._get_or_create_tree()
     assert rebuilt != stale
     assert intersection_shell._tree_uses_generated_mark(rebuilt)
+    assert _profile_resolutions(rebuilt) == [
+        intersection_shell.SHELL_TUBE_PROFILE_RESOLUTION
+    ]
+
+
+def _assert_low_resolution_shell_tree_is_rebuilt() -> None:
+    old = bpy.data.node_groups.get(intersection_shell.SHELL_TREE_NAME)
+    if old is not None:
+        bpy.data.node_groups.remove(old)
+    stale = bpy.data.node_groups.new(
+        name=intersection_shell.SHELL_TREE_NAME,
+        type="GeometryNodeTree",
+    )
+    for name, socket_type in (
+        ("Geometry", "NodeSocketGeometry"),
+        ("線の太さ", "NodeSocketFloat"),
+        ("オフセット", "NodeSocketFloat"),
+        ("マテリアル", "NodeSocketMaterial"),
+        ("交差対象グループ", "NodeSocketCollection"),
+        ("交差対象の線幅", "NodeSocketFloat"),
+        ("自分のアウトライン幅", "NodeSocketFloat"),
+        ("アウトライン素材", "NodeSocketMaterial"),
+        ("ライン素材番号", "NodeSocketInt"),
+        ("交差対象あり", "NodeSocketBool"),
+        ("中間頂点の線幅調整", "NodeSocketFloat"),
+        ("変化グラフ 25%", "NodeSocketFloat"),
+        ("変化グラフ 50%", "NodeSocketFloat"),
+        ("変化グラフ 75%", "NodeSocketFloat"),
+    ):
+        stale.interface.new_socket(name=name, in_out="INPUT", socket_type=socket_type)
+    stale.interface.new_socket(
+        name="Geometry",
+        in_out="OUTPUT",
+        socket_type="NodeSocketGeometry",
+    )
+    stale.nodes.new("GeometryNodeMaterialSelection")
+    boolean = stale.nodes.new("GeometryNodeMeshBoolean")
+    boolean.label = "BML_IntersectionShellBoolean"
+    radius = stale.nodes.new("ShaderNodeMath")
+    radius.label = "BML_IntersectionShellOwnRadius"
+    normalizer = stale.nodes.new("GeometryNodeSetCurveRadius")
+    normalizer.label = "BML_IntersectionShellCurveRadius"
+    surface = stale.nodes.new("FunctionNodeBooleanMath")
+    surface.label = "BML_IntersectionShellSurface"
+    union = stale.nodes.new("GeometryNodeMeshBoolean")
+    union.label = "BML_IntersectionShellTargetUnion"
+    stale.nodes.new("GeometryNodeMergeByDistance")
+    combined = stale.nodes.new("ShaderNodeMath")
+    combined.label = "BML_IntersectionShellCombinedThickness"
+    mark = stale.nodes.new("GeometryNodeStoreNamedAttribute")
+    mark.label = intersection_lines._GENERATED_LINE_NODE_LABEL
+    profile = stale.nodes.new("GeometryNodeCurvePrimitiveCircle")
+    profile.label = "BML_IntersectionShellProfile"
+    profile.inputs["Resolution"].default_value = 4
+
+    rebuilt = intersection_shell._get_or_create_tree()
+    assert rebuilt != stale
+    assert _profile_resolutions(rebuilt) == [
+        intersection_shell.SHELL_TUBE_PROFILE_RESOLUTION
+    ]
 
 
 def main() -> None:
@@ -280,6 +353,7 @@ def main() -> None:
     b_manga_line.register()
     try:
         _assert_stale_shell_tree_is_rebuilt()
+        _assert_low_resolution_shell_tree_is_rebuilt()
         _clear_scene()
         # Zを互いにずらし、完全同一平面の重なり（EXACTブーリアンの縮退
         # ケース）を避ける現実的な配置にする
@@ -333,6 +407,9 @@ def main() -> None:
                 and getattr(node, "label", "") == "BML_IntersectionShellBoolean"
                 for node in mod.node_group.nodes
             )
+            assert _profile_resolutions(mod.node_group) == [
+                intersection_shell.SHELL_TUBE_PROFILE_RESOLUTION
+            ]
             assert intersection_lines._modifier_target(mod) is None
             targets = intersection_shell.modifier_targets(mod)
             assert obj not in targets
