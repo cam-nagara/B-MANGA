@@ -36,7 +36,7 @@ def _edge_is_angle_selected(edge, threshold: float) -> bool:
     if len(edge.link_faces) < 2:
         return False
     try:
-        return edge.calc_face_angle() > threshold
+        return edge.calc_face_angle() + 1.0e-7 >= threshold
     except ValueError:
         return False
 

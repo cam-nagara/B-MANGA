@@ -34,6 +34,7 @@ _CURVE_WIDTH_SCALE_LABEL = "BML_InnerCurveWidthScale"
 _RESAMPLE_CURVE_LABEL = "BML_InnerCurveResample"
 _SELECTED_EDGE_MESH_LABEL = "BML_InnerSelectedEdgeMesh"
 _CHAIN_INSTANCE_SPLIT_LABEL = "BML_InnerChainInstanceSplit"
+_EDGE_ANGLE_COMPARE_LABEL = "BML_InnerEdgeAngleCompareGE"
 _CHAIN_ID_ATTR = inner_line_chains.CHAIN_ID_ATTR
 _SHARP_EDGE_ATTR = "sharp_edge"
 _CREASE_EDGE_ATTR = "crease_edge"
@@ -310,11 +311,13 @@ def _create_node_tree() -> bpy.types.NodeTree:
     edge_angle = nodes.new("GeometryNodeInputMeshEdgeAngle")
     edge_angle.location = (-600, -200)
 
-    # Compare: 角度 > 閾値 → 折れ目エッジを選択
+    # UIの検出角度は「その角度以上」を対象にする。
+    # 六角柱の縦角は60度ちょうどなので、60度指定で含まれる必要がある。
     compare = nodes.new("FunctionNodeCompare")
+    compare.label = _EDGE_ANGLE_COMPARE_LABEL
     compare.location = (-400, -200)
     compare.data_type = "FLOAT"
-    compare.operation = "GREATER_THAN"
+    compare.operation = "GREATER_EQUAL"
     links.new(edge_angle.outputs[0], compare.inputs["A"])  # Unsigned Angle
     links.new(gin.outputs[1], compare.inputs["B"])  # 検出角度
 
@@ -577,6 +580,13 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
         if not any(getattr(n, "label", "") == _CHAIN_INSTANCE_SPLIT_LABEL for n in tree.nodes):
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
+        compare_node = next(
+            (n for n in tree.nodes if getattr(n, "label", "") == _EDGE_ANGLE_COMPARE_LABEL),
+            None,
+        )
+        if compare_node is None or getattr(compare_node, "operation", "") != "GREATER_EQUAL":
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
         if not _uses_named_attribute(tree, _CHAIN_ID_ATTR):

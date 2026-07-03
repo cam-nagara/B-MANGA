@@ -582,6 +582,31 @@ def _find_socket_id(tree: bpy.types.NodeTree, name: str) -> str | None:
     return getattr(item, "identifier", None) if item is not None else None
 
 
+def _set_modifier_input_if_changed(
+    mod: bpy.types.Modifier,
+    sid: str | None,
+    value,
+    *,
+    epsilon: float = 1.0e-9,
+) -> bool:
+    if sid is None:
+        return False
+    try:
+        current = mod[sid]
+    except (KeyError, TypeError):
+        current = None
+    if isinstance(value, float):
+        try:
+            if abs(float(current) - value) <= epsilon:
+                return False
+        except (TypeError, ValueError):
+            pass
+    elif current == value:
+        return False
+    mod[sid] = value
+    return True
+
+
 def _tree_uses_generated_mark(tree: bpy.types.NodeTree) -> bool:
     return any(
         getattr(node, "label", "") == intersection_lines._GENERATED_LINE_NODE_LABEL
@@ -722,21 +747,23 @@ def update_modifier_parameters(
     if material is not None:
         _ensure_material_slot(obj, material)
     sid_thickness = _find_socket_id(tree, _THICKNESS_SOCKET)
-    if sid_thickness is not None and thickness is not None:
-        mod[sid_thickness] = thickness
+    if thickness is not None:
+        _set_modifier_input_if_changed(mod, sid_thickness, thickness)
     sid_offset = _find_socket_id(tree, _OFFSET_SOCKET)
-    if sid_offset is not None and offset is not None:
-        mod[sid_offset] = offset
+    if offset is not None:
+        _set_modifier_input_if_changed(mod, sid_offset, offset)
     sid_material = _find_socket_id(tree, _MATERIAL_SOCKET)
-    if sid_material is not None and material is not None:
-        mod[sid_material] = material
+    if material is not None:
+        _set_modifier_input_if_changed(mod, sid_material, material)
     sid_target_thickness = _find_socket_id(tree, _TARGET_THICKNESS_SOCKET)
-    if sid_target_thickness is not None:
-        mod[sid_target_thickness] = _max_target_thickness(obj, modifier_targets(mod))
+    _set_modifier_input_if_changed(
+        mod,
+        sid_target_thickness,
+        _max_target_thickness(obj, modifier_targets(mod)),
+    )
     _set_own_outline_width(mod)
     sid_has_target = _find_socket_id(tree, _HAS_TARGET_SOCKET)
-    if sid_has_target is not None:
-        mod[sid_has_target] = bool(modifier_targets(mod))
+    _set_modifier_input_if_changed(mod, sid_has_target, bool(modifier_targets(mod)))
     _set_width_control_parameters(mod)
     _set_line_material_index(mod)
 
@@ -763,8 +790,7 @@ def _set_width_control_parameters(mod: bpy.types.Modifier) -> None:
     }
     for name, value in values.items():
         sid = _find_socket_id(tree, name)
-        if sid is not None:
-            mod[sid] = value
+        _set_modifier_input_if_changed(mod, sid, value)
 
 
 def _collection_name(obj: bpy.types.Object) -> str:
@@ -928,9 +954,12 @@ def _sync_proxy_thickness(proxy: bpy.types.Object) -> None:
     if needs:
         if mod is None:
             mod = proxy.modifiers.new(name=_PROXY_SOLIDIFY_NAME, type="SOLIDIFY")
-        mod.thickness = 0.002
-        mod.offset = 0.0
-        mod.use_rim = True
+        if mod.thickness != 0.002:
+            mod.thickness = 0.002
+        if mod.offset != 0.0:
+            mod.offset = 0.0
+        if not mod.use_rim:
+            mod.use_rim = True
     elif mod is not None:
         proxy.modifiers.remove(mod)
 
@@ -950,11 +979,20 @@ def _sync_proxy_subdivision(
     if proxy_mod is None:
         proxy_mod = proxy.modifiers.new(_PROXY_SUBSURF_NAME, "SUBSURF")
     if hasattr(proxy_mod, "subdivision_type") and hasattr(source_mod, "subdivision_type"):
-        proxy_mod.subdivision_type = source_mod.subdivision_type
-    proxy_mod.levels = int(getattr(source_mod, "levels", 0))
-    proxy_mod.render_levels = int(getattr(source_mod, "render_levels", 0))
-    proxy_mod.show_viewport = bool(getattr(source_mod, "show_viewport", True))
-    proxy_mod.show_render = bool(getattr(source_mod, "show_render", True))
+        if proxy_mod.subdivision_type != source_mod.subdivision_type:
+            proxy_mod.subdivision_type = source_mod.subdivision_type
+    levels = int(getattr(source_mod, "levels", 0))
+    render_levels = int(getattr(source_mod, "render_levels", 0))
+    show_viewport = bool(getattr(source_mod, "show_viewport", True))
+    show_render = bool(getattr(source_mod, "show_render", True))
+    if proxy_mod.levels != levels:
+        proxy_mod.levels = levels
+    if proxy_mod.render_levels != render_levels:
+        proxy_mod.render_levels = render_levels
+    if proxy_mod.show_viewport != show_viewport:
+        proxy_mod.show_viewport = show_viewport
+    if proxy_mod.show_render != show_render:
+        proxy_mod.show_render = show_render
 
 
 def _get_or_create_proxy(
@@ -967,10 +1005,15 @@ def _get_or_create_proxy(
         proxy = bpy.data.objects.new(name=name, object_data=target.data)
     elif proxy.data is not target.data:
         proxy.data = target.data
-    proxy.matrix_world = source.matrix_world.inverted() @ target.matrix_world
-    proxy.hide_viewport = True
-    proxy.hide_render = True
-    proxy[_PROXY_SOURCE_PROP] = target.name_full
+    expected_matrix = source.matrix_world.inverted() @ target.matrix_world
+    if not _matrices_close(proxy.matrix_world, expected_matrix):
+        proxy.matrix_world = expected_matrix
+    if not proxy.hide_viewport:
+        proxy.hide_viewport = True
+    if not proxy.hide_render:
+        proxy.hide_render = True
+    if str(proxy.get(_PROXY_SOURCE_PROP, "") or "") != target.name_full:
+        proxy[_PROXY_SOURCE_PROP] = target.name_full
     _sync_proxy_thickness(proxy)
     _sync_proxy_subdivision(proxy, target)
     return proxy
@@ -1047,7 +1090,8 @@ def _set_own_outline_width(mod: bpy.types.Modifier) -> None:
     if sid is None:
         return
     outline = obj.modifiers.get(MODIFIER_NAME)
-    mod[sid] = abs(float(outline.thickness)) if outline is not None else 0.0
+    value = abs(float(outline.thickness)) if outline is not None else 0.0
+    _set_modifier_input_if_changed(mod, sid, value)
     _set_outline_material_socket(mod)
 
 
@@ -1062,7 +1106,7 @@ def _set_outline_material_socket(mod: bpy.types.Modifier) -> None:
         return
     material = outline_setup.get_outline_material(obj)
     if material is not None:
-        mod[sid] = material
+        _set_modifier_input_if_changed(mod, sid, material)
 
 
 def _modifier_target_collection(mod: bpy.types.Modifier) -> bpy.types.Collection | None:
@@ -1099,15 +1143,16 @@ def _set_target_collection_parameters(
     if tree is None or getattr(obj, "type", None) != "MESH":
         return
     sid_collection = _find_socket_id(tree, _TARGET_COLLECTION_SOCKET)
-    if sid_collection is not None:
-        mod[sid_collection] = collection
+    _set_modifier_input_if_changed(mod, sid_collection, collection)
     sid_target_thickness = _find_socket_id(tree, _TARGET_THICKNESS_SOCKET)
-    if sid_target_thickness is not None:
-        mod[sid_target_thickness] = _max_target_thickness(obj, targets)
+    _set_modifier_input_if_changed(
+        mod,
+        sid_target_thickness,
+        _max_target_thickness(obj, targets),
+    )
     _set_own_outline_width(mod)
     sid_has_target = _find_socket_id(tree, _HAS_TARGET_SOCKET)
-    if sid_has_target is not None:
-        mod[sid_has_target] = bool(targets)
+    _set_modifier_input_if_changed(mod, sid_has_target, bool(targets))
     _set_line_material_index(mod)
 
 
@@ -1121,8 +1166,11 @@ def _set_line_material_index(mod: bpy.types.Modifier) -> None:
     if tree is None or getattr(obj, "type", None) != "MESH":
         return
     sid_line_material = _find_socket_id(tree, _LINE_MATERIAL_INDEX_SOCKET)
-    if sid_line_material is not None:
-        mod[sid_line_material] = outline_setup.first_line_material_slot(obj)
+    _set_modifier_input_if_changed(
+        mod,
+        sid_line_material,
+        outline_setup.first_line_material_slot(obj),
+    )
 
 
 def update_target_width_reference(mod: bpy.types.Modifier) -> bool:
@@ -1230,8 +1278,10 @@ def apply_intersection_shell(
     update_modifier_parameters(mod, thickness, offset, material)
     _set_target_collection_parameters(mod, collection, targets)
 
-    mod.show_viewport = True
-    mod.show_render = True
+    if not mod.show_viewport:
+        mod.show_viewport = True
+    if not mod.show_render:
+        mod.show_render = True
     _position_modifier(obj, mod)
     return True
 

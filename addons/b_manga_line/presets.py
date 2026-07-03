@@ -230,20 +230,11 @@ def apply_line_settings(
     intersection_in_range = camera_comp.intersection_line_creation_in_range(
         obj, context.scene, settings,
     )
-    if settings.intersection_enabled and not exclude_generated and intersection_in_range:
-        if refresh_scene:
-            intersection_lines.apply_intersection_lines(
-                obj,
-                thickness=scale_utils.modifier_thickness_for_world_width(
-                    obj,
-                    settings.intersection_thickness,
-                ),
-                offset=settings.intersection_line_offset,
-                material=outline_setup.get_line_material(obj, "intersection"),
-                method=settings.intersection_method,
-                scene=context.scene,
-            )
-    else:
+    if not (
+        settings.intersection_enabled
+        and not exclude_generated
+        and intersection_in_range
+    ):
         intersection_lines.remove_intersection_lines(obj)
 
     camera_comp.store_unit_reference(obj, context.scene)

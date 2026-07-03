@@ -729,7 +729,6 @@ def _on_intersection_enabled_changed(self, context):
                 width_targets=("intersection",),
             )
     else:
-        _sync_intersection_creation(owner, self, context)
         refreshed = _refresh_intersection_scene(context)
         if any(iter_intersection_modifiers(owner)) and owner not in refreshed:
             refreshed.append(owner)
@@ -804,7 +803,6 @@ def _on_intersection_creation_range_changed(self, context, prop_name: str) -> No
     scene = getattr(context, "scene", None)
     if not intersection_lines.scene_has_enabled_intersections(scene):
         return
-    _sync_intersection_creation(owner, self, context)
     refreshed = _refresh_intersection_scene(context)
     if any(iter_intersection_modifiers(owner)) and owner not in refreshed:
         refreshed.append(owner)
