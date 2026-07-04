@@ -17,6 +17,7 @@ MAX_RENDER_LEVELS = 4
 DISTANCE_STEP_METERS = 5.0
 DEFAULT_LINE_RESAMPLE_COUNT = 17
 _MIN_LINE_RESAMPLE_COUNT = 3
+_ROUND_LOOP_RESAMPLE_CAP = 96
 _pending_sync_names: set[str] = set()
 _sync_timer_running = False
 
@@ -146,14 +147,47 @@ def remove_auto_subdivision(obj: bpy.types.Object) -> bool:
 def line_resample_count(obj: bpy.types.Object, *, for_render: bool = False) -> int:
     mod = auto_subsurf_modifier(obj)
     if mod is None:
-        return DEFAULT_LINE_RESAMPLE_COUNT
+        return max(DEFAULT_LINE_RESAMPLE_COUNT, _closed_loop_min_resample_count(obj))
     level = int(getattr(mod, "render_levels", 0) if for_render else getattr(mod, "levels", 0))
     if for_render and not bool(getattr(mod, "show_render", True)):
         level = 0
     if not for_render and not bool(getattr(mod, "show_viewport", True)):
         level = 0
     level = max(0, min(MAX_RENDER_LEVELS, level))
-    return max(_MIN_LINE_RESAMPLE_COUNT, (2 ** level) + 1)
+    return max(_MIN_LINE_RESAMPLE_COUNT, (2 ** level) + 1, _closed_loop_min_resample_count(obj))
+
+
+def _closed_loop_min_resample_count(obj: bpy.types.Object) -> int:
+    """Prevent round rim loops from being resampled into triangles at low LOD."""
+    if obj.type != "MESH" or obj.data is None:
+        return _MIN_LINE_RESAMPLE_COUNT
+    try:
+        from . import inner_line_chains
+    except Exception:  # noqa: BLE001
+        return _MIN_LINE_RESAMPLE_COUNT
+    mesh = obj.data
+    attr = mesh.attributes.get(inner_line_chains.CHAIN_ID_ATTR)
+    if attr is None or getattr(attr, "domain", None) != "EDGE":
+        return _MIN_LINE_RESAMPLE_COUNT
+    chains: dict[int, list[bpy.types.MeshEdge]] = {}
+    for edge in mesh.edges:
+        if edge.index >= len(attr.data):
+            continue
+        chain_id = int(getattr(attr.data[edge.index], "value", -1))
+        if chain_id < 0:
+            continue
+        chains.setdefault(chain_id, []).append(edge)
+    minimum = _MIN_LINE_RESAMPLE_COUNT
+    for edges in chains.values():
+        if len(edges) < 3:
+            continue
+        degrees: dict[int, int] = {}
+        for edge in edges:
+            for vertex_index in edge.vertices:
+                degrees[vertex_index] = degrees.get(vertex_index, 0) + 1
+        if degrees and all(degree == 2 for degree in degrees.values()):
+            minimum = max(minimum, min(_ROUND_LOOP_RESAMPLE_CAP, len(edges) + 1))
+    return minimum
 
 
 def sync_generated_line_subdivision(

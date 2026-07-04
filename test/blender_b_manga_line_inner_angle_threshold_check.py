@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import inner_line_chains, inner_lines, outline_setup  # noqa: E402
+from b_manga_line import inner_line_chains, inner_lines, outline_setup, subdivision_lod  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -24,6 +24,19 @@ def _new_cylinder(name: str, vertices: int) -> bpy.types.Object:
     bpy.ops.mesh.primitive_cylinder_add(
         vertices=vertices,
         radius=1.0,
+        depth=2.0,
+        end_fill_type="TRIFAN",
+    )
+    obj = bpy.context.object
+    obj.name = name
+    return obj
+
+
+def _new_cone(name: str, vertices: int) -> bpy.types.Object:
+    bpy.ops.mesh.primitive_cone_add(
+        vertices=vertices,
+        radius1=1.0,
+        radius2=0.0,
         depth=2.0,
         end_fill_type="TRIFAN",
     )
@@ -69,6 +82,67 @@ def _assert_cylinder_cap_spokes_are_not_selected() -> None:
     selected, _vertical, cap_spokes = _edge_selection_sets(obj)
     assert cap_spokes, "円柱の上下面三角分割辺を検出できません"
     assert not (cap_spokes & selected), f"円柱上下面の三角分割辺が内部線対象です: {cap_spokes & selected}"
+
+
+def _assert_cone_cap_spokes_are_not_selected() -> None:
+    obj = _new_cone("cone_cap_spoke_check", 32)
+    inner_line_chains.update_chain_id_attribute(obj, math.radians(60.0), False)
+    selected, _vertical, cap_spokes = _edge_selection_sets(obj)
+    assert cap_spokes, "円錐の底面三角分割辺を検出できません"
+    assert not (cap_spokes & selected), f"円錐底面の三角分割辺が内部線対象です: {cap_spokes & selected}"
+
+
+def _assert_round_rim_loops_are_not_resampled_as_triangles() -> None:
+    for maker, label in ((_new_cylinder, "円柱"), (_new_cone, "円錐")):
+        obj = maker(f"{label}_rim_chain_check", 32)
+        inner_line_chains.update_chain_id_attribute(obj, math.radians(60.0), False)
+        attr = obj.data.attributes[inner_line_chains.CHAIN_ID_ATTR]
+        chain_edges: dict[int, int] = {}
+        for edge in obj.data.edges:
+            value = int(attr.data[edge.index].value)
+            if value < 0:
+                continue
+            v1, v2 = edge.vertices
+            co1 = obj.data.vertices[v1].co
+            co2 = obj.data.vertices[v2].co
+            same_z = abs(co1.z - co2.z) < 1.0e-6
+            near_center = co1.xy.length < 0.1 or co2.xy.length < 0.1
+            if same_z and not near_center:
+                chain_edges[value] = chain_edges.get(value, 0) + 1
+        assert chain_edges, f"{label}の円周内部線を検出できません"
+        rim_edge_count = max(chain_edges.values())
+        count = subdivision_lod.line_resample_count(obj)
+        assert count >= min(96, rim_edge_count + 1), (
+            f"{label}の円周が低分割で三角形化します: count={count}, rim={rim_edge_count}"
+        )
+        _clear_scene()
+
+
+def _assert_saved_current_tree_refreshes_stale_cap_selection() -> None:
+    obj = _new_cone("inner_stale_chain_refresh_check", 16)
+    settings = obj.bmanga_line_settings
+    settings.inner_line_angle = math.radians(60.0)
+    settings.use_marked_inner_edges = False
+    mat = outline_setup.get_line_material(obj, "inner")
+    assert inner_lines.apply_inner_lines(
+        obj,
+        angle=settings.inner_line_angle,
+        thickness=0.01,
+        material=mat,
+    )
+    selected, _vertical, cap_spokes = _edge_selection_sets(obj)
+    assert cap_spokes, "円錐の底面三角分割辺を検出できません"
+    assert not (cap_spokes & selected), selected
+
+    attr = obj.data.attributes[inner_line_chains.CHAIN_ID_ATTR]
+    for edge_index in cap_spokes:
+        attr.data[edge_index].value = 0
+    selected, _vertical, cap_spokes = _edge_selection_sets(obj)
+    assert cap_spokes & selected, "テスト用の古い三角分割選択を作れません"
+
+    assert inner_lines.repair_scene_inner_lines(bpy.context.scene) == 0
+    selected, _vertical, cap_spokes = _edge_selection_sets(obj)
+    assert not (cap_spokes & selected), f"保存済みの古い三角分割選択が残っています: {cap_spokes & selected}"
 
 
 def _assert_node_tree_uses_inclusive_angle() -> None:
@@ -154,6 +228,12 @@ def main() -> None:
         _assert_hex_60_degree_edges_are_selected()
         _clear_scene()
         _assert_cylinder_cap_spokes_are_not_selected()
+        _clear_scene()
+        _assert_cone_cap_spokes_are_not_selected()
+        _clear_scene()
+        _assert_round_rim_loops_are_not_resampled_as_triangles()
+        _clear_scene()
+        _assert_saved_current_tree_refreshes_stale_cap_selection()
         _clear_scene()
         _assert_node_tree_uses_inclusive_angle()
         _clear_scene()

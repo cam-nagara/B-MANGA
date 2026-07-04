@@ -3,6 +3,37 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-04 — B-MANGA Line円柱・円錐の円周内部線が三角形化する問題を修正 (B-MANGA Line v0.3.93)
+
+### 症状
+
+- 円柱の上面/底面の円や、円錐の底面の円に出る内部線が、円ではなく三角形のように表示されることがあった。
+- 保存済みファイルでは、内部線ノードが現行構成でも、古い内部線対象の辺情報が残り続ける可能性があった。
+
+### 原因
+
+- 自動サブディビジョンのビューポートレベルが0のとき、内部線の分割数が3まで下がり、円周の閉じたループも3点へ再サンプリングされていた。
+- 保存済みファイルの内部線ノードが現行構成と判定されると、内部線対象の辺情報を再計算せずに修復処理を終えていた。
+
+### 修正
+
+- 円柱・円錐の円周のような閉じた内部線ループでは、元の円周辺数に応じた最低分割数を自動確保し、低LODでも円が三角形化しないようにした。
+- 保存済みファイル読み込み時、内部線ノードが現行構成でも内部線対象の辺情報を再計算するようにした。
+- 円錐の底面三角分割辺と、保存済みの古い三角分割選択が残るケースを回帰テストに追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_inner_angle_threshold_check.py`
+- `test/blender_b_manga_line_inner_width_check.py`
+- `test/blender_b_manga_line_midpoint_targets_check.py`
+- `test/blender_b_manga_line_midpoint_jitter_check.py`
+- `test/blender_b_manga_line_auto_subdivision_check.py`
+- `test/blender_b_manga_line_subdivision_level_sync_check.py`
+- 実ファイル `D:\TM Dropbox\Miura Tadahiro\Develop\B-MANGAテスト\test_line03.blend` を `--disable-autoexec` で読み込み、7個のライン適用済みオブジェクトをまとめてレンダー。
+- AI目視: `_verify/2026-07-04_bml_line03_aov_composite_actual_inner_round_loop_resample_fix/crop_large_cylinder_top_composite_on_white.png` で、円柱上面の内部線が三角形ではなく円周として表示されることを確認。
+
+---
+
 ## 2026-07-04 — B-MANGA Line線画AOV合成の実ファイル出力を安定化 (B-MANGA Line v0.3.92)
 
 ### 症状

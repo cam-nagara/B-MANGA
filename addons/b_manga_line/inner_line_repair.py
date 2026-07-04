@@ -61,6 +61,52 @@ def _inner_tree_is_current(tree: bpy.types.NodeTree | None) -> bool:
     )
 
 
+def _modifier_float(mod: bpy.types.Modifier, tree: bpy.types.NodeTree, socket_name: str, fallback: float) -> float:
+    from . import inner_lines
+
+    sid = inner_lines._find_socket_id(tree, socket_name)
+    if sid is None:
+        return fallback
+    try:
+        return float(mod[sid])
+    except (KeyError, TypeError, ValueError):
+        return fallback
+
+
+def _modifier_bool(mod: bpy.types.Modifier, tree: bpy.types.NodeTree, socket_name: str, fallback: bool) -> bool:
+    from . import inner_lines
+
+    sid = inner_lines._find_socket_id(tree, socket_name)
+    if sid is None:
+        return fallback
+    try:
+        return bool(mod[sid])
+    except (KeyError, TypeError, ValueError):
+        return fallback
+
+
+def _refresh_chain_attribute(
+    obj: bpy.types.Object,
+    mod: bpy.types.Modifier,
+    settings,
+) -> None:
+    from . import inner_line_chains, inner_lines
+
+    tree = mod.node_group
+    if tree is None:
+        return
+    angle = float(getattr(settings, "inner_line_angle", 0.5236))
+    use_marked_edges = bool(getattr(settings, "use_marked_inner_edges", False))
+    angle = _modifier_float(mod, tree, "検出角度", angle)
+    use_marked_edges = _modifier_bool(
+        mod,
+        tree,
+        inner_lines._MARKED_ONLY_SOCKET_NAME,
+        use_marked_edges,
+    )
+    inner_line_chains.update_chain_id_attribute(obj, angle, use_marked_edges)
+
+
 def _repair_object(obj: bpy.types.Object) -> bool:
     from . import inner_lines, outline_setup
     from .scale_utils import modifier_thickness_for_world_width
@@ -68,10 +114,13 @@ def _repair_object(obj: bpy.types.Object) -> bool:
     if obj.type != "MESH" or obj.data is None:
         return False
     mod = obj.modifiers.get(GN_MODIFIER_NAME)
-    if mod is None or _inner_tree_is_current(mod.node_group):
+    if mod is None:
         return False
     settings = getattr(obj, "bmanga_line_settings", None)
     if settings is None:
+        return False
+    if _inner_tree_is_current(mod.node_group):
+        _refresh_chain_attribute(obj, mod, settings)
         return False
 
     show_viewport = bool(mod.show_viewport)
