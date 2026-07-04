@@ -27,7 +27,11 @@ def _surface_material(name: str) -> bpy.types.Material:
     return mat
 
 
-def _apply_line(obj: bpy.types.Object, *, use_rim: bool) -> bpy.types.Modifier:
+def _apply_line(
+    obj: bpy.types.Object,
+    *,
+    use_rim: bool,
+) -> bpy.types.Modifier | None:
     settings = obj.bmanga_line_settings
     settings.outline_thickness_mm = 0.3
     settings.use_rim = use_rim
@@ -35,7 +39,10 @@ def _apply_line(obj: bpy.types.Object, *, use_rim: bool) -> bpy.types.Modifier:
     settings.intersection_enabled = False
     assert presets.apply_line_settings(obj, bpy.context)
     mod = obj.modifiers.get(core.MODIFIER_NAME)
-    assert mod is not None, f"{obj.name}: アウトラインが作成されていません"
+    if mod is None:
+        assert obj.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME) is not None, (
+            f"{obj.name}: アウトラインが作成されていません"
+        )
     return mod
 
 
@@ -120,11 +127,11 @@ def main() -> None:
         plane.data.materials.append(_surface_material("BML_open_plane_surface"))
         plane_mod = _apply_line(plane, use_rim=False)
 
-        assert getattr(plane_mod, "use_rim", False), "板ポリの縁生成が有効になっていません"
-        if hasattr(plane_mod, "use_rim_only"):
-            assert plane_mod.use_rim_only, "板ポリで黒い面を作る外殻生成になっています"
-        # 2026-07-03: 板ポリの輪郭は全方向チューブ（BML_SheetOutline）が担い、
-        # リム面は非表示マテリアルへ逃がす
+        assert plane_mod is None, "板ポリに通常アウトラインが作成されています"
+        assert plane.modifiers.get(core.GN_MODIFIER_NAME) is None, (
+            "板ポリに内部線が作成されています"
+        )
+        # 2026-07-04: 板ポリの輪郭は全方向チューブ（BML_SheetOutline）が担う。
         tube_mod = plane.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME)
         assert tube_mod is not None, "板ポリに境界チューブがありません"
         assert tube_mod.node_group is not None
@@ -150,15 +157,9 @@ def main() -> None:
         plane.bmanga_line_settings.edge_smooth_factor = -0.75
         plane.bmanga_line_settings.edge_midpoint_jitter_percent = 12.0
         plane.bmanga_line_settings.edge_midpoint_angle = math.radians(55.0)
-        outline_setup.sync_sheet_outline_width(plane)
         assert abs(tube_mod[_socket_id(tube_mod.node_group, "中間頂点の線幅調整")] + 0.75) < 1e-7
         assert abs(tube_mod[_socket_id(tube_mod.node_group, "中間頂点の乱れ (%)")] - 12.0) < 1e-7
         assert abs(tube_mod[_socket_id(tube_mod.node_group, "検出角度")] - math.radians(55.0)) < 1e-7
-        rim_mat = plane.material_slots[plane_mod.material_offset_rim].material
-        assert rim_mat is not None and rim_mat.name.startswith(
-            outline_setup.SHEET_RIM_HIDDEN_MATERIAL_NAME
-        ), "板ポリのリム面が非表示マテリアルになっていません"
-        assert plane_mod.offset == 1.0
 
         bpy.ops.mesh.primitive_cube_add(size=1.0, location=(3.0, 0.0, 0.0))
         cube = bpy.context.object
@@ -213,10 +214,11 @@ def main() -> None:
         assert open_box_mod.offset == 1.0, "通常表示へ戻した開いた立体が内側形状のままです"
 
         assert outline_setup.set_line_only(plane, True)
-        assert plane_mod.offset == 1.0
-        if hasattr(plane_mod, "use_rim_only"):
-            assert plane_mod.use_rim_only
+        assert plane.modifiers.get(core.MODIFIER_NAME) is None
+        assert plane.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME) is not None
         assert outline_setup.set_line_only(plane, False)
+        assert plane.modifiers.get(core.MODIFIER_NAME) is None
+        assert plane.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME) is not None
 
         non_manifold = _add_closed_non_manifold_mesh()
         non_manifold_mod = _apply_line(non_manifold, use_rim=False)

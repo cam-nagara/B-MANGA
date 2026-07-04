@@ -120,9 +120,15 @@ def _test_sheet_outline_is_double_sided() -> None:
     )
     assert not bool(cube_mat.get(outline_setup.PROP_DOUBLE_SIDED, False))
 
-    # シートのリムのみソリッドが維持されていること
-    mod = plane.modifiers[core.MODIFIER_NAME]
-    assert mod.use_rim and mod.use_rim_only
+    assert plane.modifiers.get(core.MODIFIER_NAME) is None, (
+        "板ポリに通常アウトラインが作成されています"
+    )
+    assert plane.modifiers.get(core.GN_MODIFIER_NAME) is None, (
+        "板ポリに内部線が作成されています"
+    )
+    assert plane.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME) is not None, (
+        "板ポリに境界チューブが作成されていません"
+    )
 
 
 def _test_sheet_outline_tube() -> None:
@@ -138,27 +144,20 @@ def _test_sheet_outline_tube() -> None:
         "立体オブジェクトにチューブが作られています"
     )
 
-    # チューブは Solidify より前に置く（境界辺を元メッシュから拾うため）
-    names = [m.name for m in plane.modifiers]
-    assert names.index(core.SHEET_OUTLINE_MODIFIER_NAME) < names.index(
-        core.MODIFIER_NAME
-    ), names
+    assert plane.modifiers.get(core.MODIFIER_NAME) is None, (
+        "板ポリに通常アウトラインが作成されています"
+    )
+    assert plane.modifiers.get(core.GN_MODIFIER_NAME) is None, (
+        "板ポリに内部線が作成されています"
+    )
 
-    # チューブ太さは Solidify の線幅と同期する
-    solidify = plane.modifiers[core.MODIFIER_NAME]
+    # チューブ太さはアウトラインの線幅設定と同期する
     sid = outline_setup._find_socket_identifier(
         tube_mod.node_group, "線の太さ"
     )
-    assert abs(float(tube_mod[sid]) - abs(solidify.thickness)) < 1.0e-6
-    solidify.thickness = 0.123
-    outline_setup.sync_sheet_outline_width(plane)
+    assert float(tube_mod[sid]) > 0.0, "境界チューブの太さが設定されていません"
+    outline_setup.update_modifier_thickness(plane, 0.123)
     assert abs(float(tube_mod[sid]) - 0.123) < 1.0e-6
-
-    # リムは非表示マテリアルへ逃がされている
-    hidden_index = solidify.material_offset_rim
-    hidden_mat = plane.material_slots[hidden_index].material
-    assert hidden_mat is not None
-    assert hidden_mat.name.startswith(outline_setup.SHEET_RIM_HIDDEN_MATERIAL_NAME)
 
     # 評価済みメッシュにチューブのジオメトリが乗っている
     # （3m四方plane: 境界4辺 × 円周8分割 = 32面以上増える）
@@ -244,35 +243,21 @@ def _test_outline_toggle_hides_sheet_tube() -> None:
     assert tube.show_viewport and tube.show_render
 
 
-def _test_line_only_keeps_sheet_rim_hidden() -> None:
-    """「ラインのみ表示」の往復でシートのリムが見えないままなこと."""
+def _test_line_only_keeps_sheet_tube_only() -> None:
+    """「ラインのみ表示」の往復でも板ポリは境界チューブのみであること."""
     _clear_scene()
     cube, plane = _setup_pair()
-    solidify = plane.modifiers[core.MODIFIER_NAME]
-
-    def _rim_is_hidden() -> bool:
-        index = solidify.material_offset_rim
-        if not (0 <= index < len(plane.material_slots)):
-            return False
-        mat = plane.material_slots[index].material
-        return mat is not None and mat.name.startswith(
-            outline_setup.SHEET_RIM_HIDDEN_MATERIAL_NAME
-        )
-
-    assert _rim_is_hidden()
+    assert plane.modifiers.get(core.MODIFIER_NAME) is None
+    assert plane.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME) is not None
     assert outline_setup.set_line_only(plane, True)
-    assert _rim_is_hidden(), "ラインのみ表示中にリムが露出しています"
-    hidden_slots = [
-        slot.material.name
-        for slot in plane.material_slots
-        if slot.material
-        and slot.material.name.startswith(
-            outline_setup.SHEET_RIM_HIDDEN_MATERIAL_NAME
-        )
-    ]
-    assert hidden_slots, "リム非表示マテリアルが白差し替えで失われています"
+    assert plane.modifiers.get(core.MODIFIER_NAME) is None, (
+        "ラインのみ表示中に通常アウトラインが復活しています"
+    )
+    assert plane.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME) is not None
     assert outline_setup.set_line_only(plane, False)
-    assert _rim_is_hidden(), "通常表示へ戻した後にリムが露出しています"
+    assert plane.modifiers.get(core.MODIFIER_NAME) is None, (
+        "通常表示へ戻した後に通常アウトラインが復活しています"
+    )
     assert plane.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME) is not None
 
 
@@ -378,7 +363,7 @@ def main() -> None:
     _test_proxy_follows_object_move()
     _test_remove_lines_cleans_sheet()
     _test_outline_toggle_hides_sheet_tube()
-    _test_line_only_keeps_sheet_rim_hidden()
+    _test_line_only_keeps_sheet_tube_only()
     print("[PASS] B-MANGA Line sheet outline/ownership and proxy follow")
 
 

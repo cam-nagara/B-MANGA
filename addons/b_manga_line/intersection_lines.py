@@ -38,6 +38,7 @@ from .core import (
     INTERSECTION_TREE_SDF,
     MODIFIER_NAME,
     PROP_LINES_HIDDEN,
+    SHEET_OUTLINE_MODIFIER_NAME,
     VG_INTERSECTION_LINE_WIDTH,
     iter_intersection_modifiers,
 )
@@ -59,6 +60,13 @@ _DEFERRED_VIEWPORT_THRESHOLD = 12
 _DEFERRED_VIEWPORT_INTERVAL = 0.4
 _deferred_viewport_queue: list[tuple[str, str]] = []
 _deferred_viewport_timer_running = False
+
+
+def _has_outline_source(obj: bpy.types.Object) -> bool:
+    return (
+        obj.modifiers.get(MODIFIER_NAME) is not None
+        or obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME) is not None
+    )
 
 
 # ------------------------------------------------------------------
@@ -824,7 +832,9 @@ def _outline_world_width(target: bpy.types.Object | None) -> float:
         return 0.0
     mod = target.modifiers.get(MODIFIER_NAME)
     if mod is None:
-        return 0.0
+        from . import outline_setup
+
+        return outline_setup.sheet_outline_world_width(target)
     return scale_utils.world_width_from_modifier(target, mod.thickness)
 
 
@@ -865,7 +875,7 @@ def _auto_targets(
                 continue
             if not getattr(candidate.data, "polygons", None):
                 continue
-            if candidate.modifiers.get(MODIFIER_NAME) is None:
+            if not _has_outline_source(candidate):
                 continue
             candidate_settings = getattr(candidate, "bmanga_line_settings", None)
             if not _creation_in_range(candidate, src_scene):
@@ -1516,7 +1526,7 @@ def _refresh_source_intersections(
     outline_setup,
     plane_filter,
 ) -> bool:
-    if obj.modifiers.get(MODIFIER_NAME) is None:
+    if not _has_outline_source(obj):
         return False
     settings = getattr(obj, "bmanga_line_settings", None)
     if settings is None:

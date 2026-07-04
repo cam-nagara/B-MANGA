@@ -4,7 +4,16 @@ from __future__ import annotations
 
 import bpy
 
-from . import camera_comp, core, inner_lines, intersection_lines, modifier_stack, outline_setup, presets
+from . import (
+    camera_comp,
+    core,
+    inner_lines,
+    intersection_lines,
+    modifier_stack,
+    outline_setup,
+    plane_filter,
+    presets,
+)
 from .scale_utils import modifier_thickness_for_world_width
 
 MAX_IMMEDIATE_VISIBILITY_OBJECTS = 64
@@ -36,6 +45,10 @@ def _outline_modifier(obj: bpy.types.Object):
     return obj.modifiers.get(core.MODIFIER_NAME)
 
 
+def _has_outline_target(obj: bpy.types.Object) -> bool:
+    return core.has_outline(obj)
+
+
 def defer_intersection_viewport(objects) -> None:
     for obj in objects:
         for mod in core.iter_intersection_modifiers(obj):
@@ -47,7 +60,7 @@ def _target_modifier_exists(obj: bpy.types.Object, target: str) -> bool:
         return obj.modifiers.get(core.GN_MODIFIER_NAME) is not None
     if target == "intersection":
         return any(core.iter_intersection_modifiers(obj))
-    return _outline_modifier(obj) is not None
+    return _has_outline_target(obj)
 
 
 def _generated_line_objects(
@@ -55,7 +68,7 @@ def _generated_line_objects(
     target: str,
 ) -> list[bpy.types.Object]:
     if target == "outline":
-        return [obj for obj in objects if _outline_modifier(obj) is not None]
+        return [obj for obj in objects if _has_outline_target(obj)]
     return [obj for obj in objects if _target_modifier_exists(obj, target)]
 
 
@@ -134,7 +147,7 @@ def _ensure_outline_modifier(obj: bpy.types.Object, context) -> bool:
 
 def _update_outline_enabled(objects: list[bpy.types.Object], context) -> None:
     needs_view_update = any(
-        obj.bmanga_line_settings.outline_enabled and _outline_modifier(obj) is None
+        obj.bmanga_line_settings.outline_enabled and not _has_outline_target(obj)
         for obj in objects
     )
     if any(obj.bmanga_line_settings.outline_enabled for obj in objects):
@@ -145,7 +158,7 @@ def _update_outline_enabled(objects: list[bpy.types.Object], context) -> None:
     for obj in objects:
         settings = obj.bmanga_line_settings
         created = False
-        if settings.outline_enabled and _outline_modifier(obj) is None:
+        if settings.outline_enabled and not _has_outline_target(obj):
             if _ensure_outline_modifier(obj, context):
                 created = True
                 refresh_targets.append(obj)
@@ -210,6 +223,7 @@ def _inner_midpoint_kwargs(settings) -> dict[str, float]:
     )
     return {
         "midpoint_factor": factor,
+        "midpoint_angle": float(settings.inner_edge_midpoint_angle),
         "midpoint_jitter_percent": float(settings.inner_edge_midpoint_jitter_percent),
         "width_curve_25": float(settings.inner_edge_width_curve_25),
         "width_curve_50": float(settings.inner_edge_width_curve_50),
@@ -298,6 +312,7 @@ def _update_camera_compensation(objects: list[bpy.types.Object], context) -> Non
         settings = obj.bmanga_line_settings
         mod = _outline_modifier(obj)
         if mod is None:
+            outline_setup.sync_sheet_outline_width(obj)
             continue
         if settings.use_camera_compensation:
             camera_comp.store_unit_reference(obj, context.scene)
@@ -364,6 +379,7 @@ def _update_uniform_line_width(objects: list[bpy.types.Object], context) -> None
         settings = obj.bmanga_line_settings
         mod = _outline_modifier(obj)
         if mod is None:
+            outline_setup.sync_sheet_outline_width(obj)
             continue
         if settings.use_uniform_line_width:
             vg = _ensure_vertex_group(obj, core.VG_LINE_WIDTH)
@@ -432,6 +448,7 @@ def _update_width_controls(objects: list[bpy.types.Object], context) -> None:
         settings = obj.bmanga_line_settings
         mod = _outline_modifier(obj)
         if mod is None:
+            outline_setup.sync_sheet_outline_width(obj)
             continue
         use_vg = (
             settings.use_vertex_color
@@ -527,7 +544,7 @@ def _update_marked_inner_edges(objects: list[bpy.types.Object], context) -> None
     refresh_targets = []
     for obj in objects:
         settings = obj.bmanga_line_settings
-        if plane_filter.should_exclude_generated_lines(obj, settings):
+        if plane_filter.should_skip_inner_lines(obj, settings):
             inner_lines.remove_inner_lines(obj)
             continue
         if not camera_comp.inner_line_creation_in_range(obj, context.scene, settings):
@@ -590,6 +607,9 @@ def _update_inner_lines(
     refresh_targets = []
     for obj in objects:
         settings = obj.bmanga_line_settings
+        if plane_filter.should_skip_inner_lines(obj, settings):
+            inner_lines.remove_inner_lines(obj)
+            continue
         if settings.inner_line_enabled and camera_comp.inner_line_creation_in_range(
             obj,
             context.scene,
@@ -636,7 +656,7 @@ def _update_inner_creation_range(objects: list[bpy.types.Object], context) -> No
         settings = obj.bmanga_line_settings
         if not settings.inner_line_enabled:
             continue
-        if plane_filter.should_exclude_generated_lines(obj, settings):
+        if plane_filter.should_skip_inner_lines(obj, settings):
             continue
         in_range = camera_comp.inner_line_creation_in_range(
             obj,
@@ -705,9 +725,8 @@ def _update_sheet_exclusion(objects: list[bpy.types.Object], context) -> None:
     rebuild_targets = []
     for obj in objects:
         settings = obj.bmanga_line_settings
-        if plane_filter.should_exclude_generated_lines(obj, settings):
+        if plane_filter.should_skip_inner_lines(obj, settings):
             removed = inner_lines.remove_inner_lines(obj)
-            removed |= intersection_lines.remove_intersection_lines(obj)
             if removed:
                 removed_targets.append(obj)
         elif (

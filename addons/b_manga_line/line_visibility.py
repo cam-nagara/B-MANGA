@@ -16,7 +16,13 @@ from .core import (
 
 
 def has_outline(obj: bpy.types.Object) -> bool:
-    return obj.type == "MESH" and obj.modifiers.get(MODIFIER_NAME) is not None
+    return (
+        obj.type == "MESH"
+        and (
+            obj.modifiers.get(MODIFIER_NAME) is not None
+            or obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME) is not None
+        )
+    )
 
 
 def is_intersection_modifier_name(name: str) -> bool:
@@ -59,7 +65,7 @@ def _line_modifier_enabled_by_settings(
         from . import plane_filter
         return (
             bool(getattr(settings, "inner_line_enabled", False))
-            and not plane_filter.should_exclude_generated_lines(obj, settings)
+            and not plane_filter.should_skip_inner_lines(obj, settings)
         )
     if is_intersection_modifier_name(mod.name):
         from . import plane_filter

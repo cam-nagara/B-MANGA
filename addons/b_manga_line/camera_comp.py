@@ -24,6 +24,7 @@ from .core import (
     PROP_REF_MODE,
     REF_MODE_LOCKED,
     REF_MODE_VIEW,
+    SHEET_OUTLINE_MODIFIER_NAME,
     VG_INNER_LINE_WIDTH,
     VG_INTERSECTION_LINE_WIDTH,
     VG_LINE_WIDTH,
@@ -586,6 +587,8 @@ def _apply_target_width(
     if mod is not None:
         mod.thickness = scaled
         outline_setup.sync_sheet_outline_width(obj)
+    elif obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME) is not None:
+        outline_setup.sync_sheet_outline_width(obj, scaled)
 
 
 def _apply_target_style_weights(obj, settings, target: str) -> None:
@@ -685,12 +688,23 @@ def _update_camera_compensation(scene, camera, objects=None, width_targets=None)
         if settings is None:
             continue
         mod = obj.modifiers.get(MODIFIER_NAME)
-        if mod is None:
+        sheet_mod = obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME)
+        if mod is None and sheet_mod is None:
             continue
         if normalized_targets is not None:
             _apply_targeted_line_widths(scene, camera, obj, settings, normalized_targets)
             if "outline" in normalized_targets:
                 outline_targets.append(obj)
+            continue
+        if mod is None:
+            _apply_targeted_line_widths(
+                scene,
+                camera,
+                obj,
+                settings,
+                ("outline", "inner", "intersection"),
+            )
+            outline_targets.append(obj)
             continue
         if settings.use_uniform_line_width:
             _apply_uniform_line_width(scene, camera, obj, settings, mod)
@@ -787,6 +801,8 @@ def _update_visibility(scene, camera, cam_loc, cam_fwd, objects=None):
             continue
 
         outline_mod = obj.modifiers.get(MODIFIER_NAME)
+        if outline_mod is None:
+            outline_mod = obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME)
         inner_mod = obj.modifiers.get(GN_MODIFIER_NAME)
         intersection_mods = list(iter_intersection_modifiers(obj))
         if outline_mod is None and inner_mod is None and not intersection_mods:
@@ -946,7 +962,7 @@ def store_reference(obj, scene):
     if camera is None:
         return False
     mod = obj.modifiers.get(MODIFIER_NAME)
-    if mod is None:
+    if mod is None and obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME) is None:
         return False
     dist = (camera.matrix_world.translation - obj.matrix_world.translation).length
     ref_distance = max(dist, 0.001)
@@ -954,7 +970,11 @@ def store_reference(obj, scene):
     if settings is not None:
         settings.line_width_reference_distance = ref_distance
     obj[PROP_REF_DISTANCE] = ref_distance
-    obj[PROP_BASE_THICKNESS] = settings.outline_thickness if settings else abs(mod.thickness)
+    obj[PROP_BASE_THICKNESS] = (
+        settings.outline_thickness
+        if settings
+        else abs(float(getattr(mod, "thickness", 0.0)))
+    )
     obj[PROP_REF_FOV_TAN] = _get_fov_factor(camera.data, scene)
     obj[PROP_REF_MODE] = REF_MODE_LOCKED
     return True
@@ -966,11 +986,15 @@ def store_unit_reference(obj, scene):
     if camera is None:
         return False
     mod = obj.modifiers.get(MODIFIER_NAME)
-    if mod is None:
+    if mod is None and obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME) is None:
         return False
     settings = getattr(obj, "bmanga_line_settings", None)
     obj[PROP_REF_DISTANCE] = _line_width_reference_distance(settings)
-    obj[PROP_BASE_THICKNESS] = settings.outline_thickness if settings else abs(mod.thickness)
+    obj[PROP_BASE_THICKNESS] = (
+        settings.outline_thickness
+        if settings
+        else abs(float(getattr(mod, "thickness", 0.0)))
+    )
     obj[PROP_REF_FOV_TAN] = _get_fov_factor(camera.data, scene)
     obj[PROP_REF_MODE] = REF_MODE_VIEW
     return True

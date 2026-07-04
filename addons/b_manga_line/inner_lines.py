@@ -750,6 +750,7 @@ def apply_inner_lines(
     material: bpy.types.Material | None = None,
     use_marked_edges: bool = False,
     midpoint_factor: float = 0.0,
+    midpoint_angle: float | None = None,
     midpoint_jitter_percent: float = 0.0,
     resample_count: int | None = None,
     width_curve_25: float = 0.25,
@@ -761,7 +762,15 @@ def apply_inner_lines(
     if obj.type != "MESH":
         return False
 
-    inner_line_chains.update_chain_id_attribute(obj, angle, use_marked_edges)
+    if midpoint_angle is None:
+        settings = getattr(obj, "bmanga_line_settings", None)
+        midpoint_angle = getattr(settings, "inner_edge_midpoint_angle", None)
+    inner_line_chains.update_chain_id_attribute(
+        obj,
+        angle,
+        use_marked_edges,
+        midpoint_angle,
+    )
     tree = _get_or_create_tree()
 
     # 既存モディファイアを更新 or 新規作成
@@ -884,6 +893,7 @@ def update_parameters(
     offset: float | None = None,
     use_marked_edges: bool | None = None,
     midpoint_factor: float | None = None,
+    midpoint_angle: float | None = None,
     midpoint_jitter_percent: float | None = None,
     resample_count: int | None = None,
     width_curve_25: float | None = None,
@@ -892,7 +902,12 @@ def update_parameters(
     material: bpy.types.Material | None = None,
 ) -> bool:
     """既存モディファイアのパラメータを更新."""
-    if angle is not None or use_marked_edges is not None or midpoint_factor is not None:
+    if (
+        angle is not None
+        or use_marked_edges is not None
+        or midpoint_factor is not None
+        or midpoint_angle is not None
+    ):
         current_angle = angle
         current_marked = use_marked_edges
         current_mod = obj.modifiers.get(GN_MODIFIER_NAME)
@@ -912,10 +927,14 @@ def update_parameters(
                         current_marked = bool(current_mod[sid])
                     except (KeyError, TypeError, ValueError):
                         current_marked = None
+        if midpoint_angle is None:
+            settings = getattr(obj, "bmanga_line_settings", None)
+            midpoint_angle = getattr(settings, "inner_edge_midpoint_angle", None)
         inner_line_chains.update_chain_id_attribute(
             obj,
             float(current_angle if current_angle is not None else 0.5236),
             bool(current_marked if current_marked is not None else False),
+            midpoint_angle,
         )
 
     mod = obj.modifiers.get(GN_MODIFIER_NAME)

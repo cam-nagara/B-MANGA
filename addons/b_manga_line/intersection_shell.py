@@ -13,6 +13,7 @@ from . import modifier_stack, outline_setup, scale_utils
 from .core import (
     INTERSECTION_MODIFIER_PREFIX,
     MODIFIER_NAME,
+    SHEET_OUTLINE_MODIFIER_NAME,
 )
 
 
@@ -753,7 +754,10 @@ def _target_candidates(
                 continue
             if not getattr(candidate.data, "polygons", None):
                 continue
-            if candidate.modifiers.get(MODIFIER_NAME) is None:
+            if (
+                candidate.modifiers.get(MODIFIER_NAME) is None
+                and candidate.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME) is None
+            ):
                 continue
             settings = getattr(candidate, "bmanga_line_settings", None)
             if plane_filter.should_exclude_generated_lines(candidate, settings):
@@ -971,7 +975,7 @@ def _outline_world_width(target: bpy.types.Object | None) -> float:
         return 0.0
     mod = target.modifiers.get(MODIFIER_NAME)
     if mod is None:
-        return 0.0
+        return outline_setup.sheet_outline_world_width(target)
     return scale_utils.world_width_from_modifier(target, mod.thickness)
 
 
@@ -1004,7 +1008,13 @@ def _set_own_outline_width(mod: bpy.types.Modifier) -> None:
     if sid is None:
         return
     outline = obj.modifiers.get(MODIFIER_NAME)
-    value = abs(float(outline.thickness)) if outline is not None else 0.0
+    if outline is not None:
+        value = abs(float(outline.thickness))
+    else:
+        value = scale_utils.modifier_thickness_for_world_width(
+            obj,
+            outline_setup.sheet_outline_world_width(obj),
+        )
     _set_modifier_input_if_changed(mod, sid, value)
     _set_outline_material_socket(mod)
 

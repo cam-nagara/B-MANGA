@@ -1,7 +1,7 @@
-"""Blender check: sheet meshes keep generated lines (exclusion option retired).
+"""Blender check: sheet meshes use only sheet outline plus intersection pairs.
 
-2026-07-03 ユーザー確定: 「板ポリは内部線・交差線を作らない」オプションは廃止。
-exclude_sheet_meshes プロパティが残っていても挙動へ影響しないことを確認する。
+2026-07-04 ユーザー確定: 板ポリは通常アウトラインと内部線を作らず、
+境界チューブと交差線だけを使う。
 """
 
 from __future__ import annotations
@@ -55,9 +55,13 @@ def _has_intersection(obj: bpy.types.Object) -> bool:
     return any(core.iter_intersection_modifiers(obj))
 
 
-def _assert_no_generated_lines(obj: bpy.types.Object) -> None:
+def _assert_sheet_has_only_sheet_outline(obj: bpy.types.Object) -> None:
+    assert obj.modifiers.get(core.MODIFIER_NAME) is None, "通常アウトラインが作成されています"
     assert obj.modifiers.get(core.GN_MODIFIER_NAME) is None, "内部線が作成されています"
-    assert not _has_intersection(obj), "交差線が作成されています"
+    assert obj.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME) is not None, (
+        "境界チューブが作成されていません"
+    )
+    assert not _has_intersection(obj), "交差ペアの持ち主が板ポリ側になっています"
 
 
 def main() -> None:
@@ -72,7 +76,7 @@ def main() -> None:
 
         assert plane_filter.is_sheet_mesh(sheet), "平面が板ポリとして検出されていません"
         assert not plane_filter.is_sheet_mesh(thin_box), "薄い箱が板ポリ扱いされています"
-        # 旧プロパティが True でも挙動へ影響しない（オプション廃止）
+        # 旧プロパティが True でも板ポリ除外には戻らない（交差線は維持）
         assert plane_filter.should_exclude_generated_lines(sheet) is False
         sheet.bmanga_line_settings.inner_line_enabled = True
         sheet.bmanga_line_settings.intersection_enabled = True
@@ -81,23 +85,18 @@ def main() -> None:
 
         _apply_line(sheet, cube)
         assert core.has_outline(sheet), "板ポリのアウトラインが作成されていません"
-        assert sheet.modifiers.get(core.GN_MODIFIER_NAME) is not None, (
-            "板ポリに内部線が作成されていません"
-        )
+        _assert_sheet_has_only_sheet_outline(sheet)
         assert _has_intersection(cube), (
             "板ポリとの交差線が非シート側に作成されていません"
         )
-        assert not _has_intersection(sheet), (
-            "交差ペアの持ち主がシート側になっています"
-        )
 
-        # 旧プロパティをトグルしても線は消えない
+        # 旧プロパティをトグルしても内部線は作られず、交差線は消えない
         bpy.ops.object.select_all(action="DESELECT")
         sheet.select_set(True)
         bpy.context.view_layer.objects.active = sheet
         sheet.bmanga_line_settings.exclude_sheet_meshes = False
         sheet.bmanga_line_settings.exclude_sheet_meshes = True
-        assert sheet.modifiers.get(core.GN_MODIFIER_NAME) is not None
+        _assert_sheet_has_only_sheet_outline(sheet)
         assert _has_intersection(cube)
 
         print("BMANGA_LINE_SHEET_MESH_EXCLUSION_OK")

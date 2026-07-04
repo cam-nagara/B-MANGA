@@ -25,6 +25,7 @@ from .core import (
     DEFAULT_LINE_WIDTH_REFERENCE_DISTANCE,
     MATERIAL_NAME,
     MODIFIER_NAME,
+    PROP_LINES_HIDDEN,
     PROP_LINE_ONLY,
     PROP_LINE_ONLY_MATERIALS,
     PROP_BASE_THICKNESS,
@@ -34,7 +35,7 @@ from .core import (
     VG_INTERSECTION_LINE_WIDTH,
     VG_LINE_WIDTH,
 )
-from .scale_utils import modifier_thickness_for_world_width
+from .scale_utils import modifier_thickness_for_world_width, world_width_from_modifier
 
 
 LINE_ONLY_MATERIAL_NAME = "BML_LineOnly_SurfaceHidden"
@@ -1010,12 +1011,30 @@ def _get_or_create_hidden_rim_material() -> bpy.types.Material:
     return mat
 
 
+def _ensure_sheet_line_material_slot(
+    obj: bpy.types.Object,
+    mat: bpy.types.Material | None,
+) -> None:
+    if mat is None or obj.type != "MESH" or obj.data is None:
+        return
+    if not any(slot_mat == mat for slot_mat in obj.data.materials):
+        obj.data.materials.append(mat)
+
+
+def _sheet_outline_visible(obj: bpy.types.Object) -> bool:
+    settings = getattr(obj, "bmanga_line_settings", None)
+    outline_on = settings is None or bool(getattr(settings, "outline_enabled", True))
+    return outline_on and not bool(obj.get(PROP_LINES_HIDDEN, False))
+
+
 def ensure_sheet_outline(
     obj: bpy.types.Object,
-    solidify_mod: bpy.types.Modifier,
+    solidify_mod: bpy.types.Modifier | None,
     line_mat: bpy.types.Material | None,
+    *,
+    thickness: float | None = None,
 ) -> None:
-    """シートなら境界チューブを作り、リムを非表示化する。非シートなら撤去."""
+    """シートなら境界チューブを作る。非シートなら撤去."""
     is_sheet = plane_filter.is_sheet_mesh(obj)
     mod = obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME)
     if not is_sheet:
@@ -1026,36 +1045,53 @@ def ensure_sheet_outline(
     if mod is None:
         mod = obj.modifiers.new(name=SHEET_OUTLINE_MODIFIER_NAME, type="NODES")
     mod.node_group = tree
-    mod.show_viewport = solidify_mod.show_viewport
-    mod.show_render = solidify_mod.show_render
+    if solidify_mod is not None:
+        mod.show_viewport = solidify_mod.show_viewport
+        mod.show_render = solidify_mod.show_render
+        width_value = abs(float(solidify_mod.thickness))
+    else:
+        visible = _sheet_outline_visible(obj)
+        mod.show_viewport = visible
+        mod.show_render = visible
+        width_value = abs(float(thickness if thickness is not None else 0.0))
     sid_width = _find_socket_identifier(tree, _SHEET_TUBE_THICKNESS_SOCKET)
     if sid_width is not None:
-        mod[sid_width] = abs(float(solidify_mod.thickness))
+        mod[sid_width] = width_value
     if line_mat is not None:
+        _ensure_sheet_line_material_slot(obj, line_mat)
         sid_mat = _find_socket_identifier(tree, _SHEET_TUBE_MATERIAL_SOCKET)
         if sid_mat is not None:
             mod[sid_mat] = line_mat
     _sync_sheet_outline_midpoint_inputs(obj, mod)
 
-    # 既存リムはチューブと二重になるため非表示マテリアルへ逃がす。
-    # 注: material_offset_rim は元面のスロット番号への加算のため、
-    # 元面が複数マテリアルのシートでは末尾クランプに頼る。
-    hidden = _get_or_create_hidden_rim_material()
-    hidden_index = None
-    for index, slot in enumerate(obj.material_slots):
-        if slot.material is hidden:
-            hidden_index = index
-            break
-    if hidden_index is None:
-        obj.data.materials.append(hidden)
-        hidden_index = len(obj.material_slots) - 1
-    solidify_mod.material_offset_rim = hidden_index
+    if solidify_mod is not None:
+        # 旧ファイル互換: 通常アウトラインがまだ残っているシートでは、
+        # 既存リムがチューブと二重にならないよう非表示素材へ逃がす。
+        hidden = _get_or_create_hidden_rim_material()
+        hidden_index = None
+        for index, slot in enumerate(obj.material_slots):
+            if slot.material is hidden:
+                hidden_index = index
+                break
+        if hidden_index is None:
+            obj.data.materials.append(hidden)
+            hidden_index = len(obj.material_slots) - 1
+        solidify_mod.material_offset_rim = hidden_index
 
     from . import modifier_stack
     modifier_stack.reorder_line_modifiers(obj)
 
 
-def sync_sheet_outline_width(obj: bpy.types.Object) -> None:
+def _sheet_outline_width_from_settings(obj: bpy.types.Object) -> float:
+    settings = getattr(obj, "bmanga_line_settings", None)
+    width = float(getattr(settings, "outline_thickness", 0.0003))
+    return modifier_thickness_for_world_width(obj, width)
+
+
+def sync_sheet_outline_width(
+    obj: bpy.types.Object,
+    width: float | None = None,
+) -> None:
     """シートチューブの太さを Solidify の線幅設定へ追従させる."""
     if obj.type != "MESH":
         return
@@ -1066,15 +1102,34 @@ def sync_sheet_outline_width(obj: bpy.types.Object) -> None:
     if mod.node_group is not tree:
         mod.node_group = tree
     solidify = obj.modifiers.get(MODIFIER_NAME)
-    if solidify is None:
-        return
     sid = _find_socket_identifier(mod.node_group, _SHEET_TUBE_THICKNESS_SOCKET)
     if sid is None:
         return
-    value = abs(float(solidify.thickness))
+    if width is None and solidify is not None:
+        value = abs(float(solidify.thickness))
+    elif width is None:
+        value = abs(float(_sheet_outline_width_from_settings(obj)))
+    else:
+        value = abs(float(width))
     if abs(float(mod.get(sid, 0.0)) - value) > 1.0e-12:
         mod[sid] = value
     _sync_sheet_outline_midpoint_inputs(obj, mod)
+
+
+def sheet_outline_world_width(obj: bpy.types.Object | None) -> float:
+    if obj is None or obj.type != "MESH":
+        return 0.0
+    mod = obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME)
+    if mod is None or mod.node_group is None:
+        return 0.0
+    sid = _find_socket_identifier(mod.node_group, _SHEET_TUBE_THICKNESS_SOCKET)
+    if sid is None:
+        return 0.0
+    try:
+        width = float(mod[sid])
+    except (KeyError, TypeError, ValueError):
+        return 0.0
+    return world_width_from_modifier(obj, width)
 
 
 def _set_node_input_if_changed(
@@ -1176,33 +1231,46 @@ def apply_outline(
         color,
         hide_through_transparent=hide_through_transparent,
     )
+    is_sheet = plane_filter.is_sheet_mesh(obj)
 
-    material_offset = _ensure_outline_material_slots(obj, mat)
+    if is_sheet:
+        _ensure_sheet_line_material_slot(obj, mat)
+    else:
+        material_offset = _ensure_outline_material_slots(obj, mat)
     _ensure_surface_mask_aovs(obj)
 
-    # Solidify モディファイア
-    mod = obj.modifiers.get(MODIFIER_NAME)
-    if mod is None:
-        mod = obj.modifiers.new(name=MODIFIER_NAME, type="SOLIDIFY")
-    mod.thickness = modifier_thickness_for_world_width(obj, thickness)
-    mod.use_flip_normals = True
-    mod.use_even_offset = even_thickness
-    _configure_solidify_shape(obj, mod, use_rim, offset)
-    mod.material_offset = material_offset
-    mod.material_offset_rim = material_offset
+    local_thickness = modifier_thickness_for_world_width(obj, thickness)
+    if is_sheet:
+        # 板ポリは通常の背面法アウトラインを作らず、境界チューブだけを使う。
+        old_mod = obj.modifiers.get(MODIFIER_NAME)
+        if old_mod is not None:
+            obj.modifiers.remove(old_mod)
+        ensure_sheet_outline(obj, None, mat, thickness=local_thickness)
+    else:
+        # Solidify モディファイア
+        mod = obj.modifiers.get(MODIFIER_NAME)
+        if mod is None:
+            mod = obj.modifiers.new(name=MODIFIER_NAME, type="SOLIDIFY")
+        mod.thickness = local_thickness
+        mod.use_flip_normals = True
+        mod.use_even_offset = even_thickness
+        _configure_solidify_shape(obj, mod, use_rim, offset)
+        mod.material_offset = material_offset
+        mod.material_offset_rim = material_offset
 
-    # シートは境界チューブでアウトラインを作る（リムは非表示化される）
-    ensure_sheet_outline(obj, mod, mat)
+        # 非シートでは旧シートチューブが残っていれば撤去する。
+        ensure_sheet_outline(obj, mod, mat)
 
     # 頂点グループによる線幅制御
     need_vg = use_vertex_color or use_vertex_group
-    if need_vg:
+    mod = obj.modifiers.get(MODIFIER_NAME)
+    if mod is not None and need_vg:
         vg = _ensure_vertex_group(obj)
         if use_vertex_color:
             _ensure_color_attribute(obj)
         mod.vertex_group = vg.name
         mod.thickness_vertex_group = 0.0
-    else:
+    elif mod is not None:
         mod.vertex_group = ""
 
     # 線幅入力値の基準距離を保存
@@ -1219,7 +1287,8 @@ def apply_outline(
             obj.data,
             hide_through_transparent_override=True,
         )
-        _configure_line_only_solidify_shape(obj, use_rim, offset)
+        if mod is not None:
+            _configure_line_only_solidify_shape(obj, use_rim, offset)
 
     return True
 
@@ -1304,6 +1373,11 @@ def update_modifier_thickness(obj: bpy.types.Object, thickness: float) -> None:
     mod = obj.modifiers.get(MODIFIER_NAME)
     if mod is not None:
         mod.thickness = modifier_thickness_for_world_width(obj, thickness)
+    else:
+        sync_sheet_outline_width(
+            obj,
+            modifier_thickness_for_world_width(obj, thickness),
+        )
 
 
 def update_modifier_offset(obj: bpy.types.Object, offset: float) -> None:
@@ -1490,10 +1564,11 @@ def set_line_only(obj: bpy.types.Object, enabled: bool) -> bool:
     _restore_outline_materials(obj, mesh)
     _restore_solidify_shape(obj)
     _remove_line_only_wire(obj)
-    # シートはリムの非表示化とチューブ設定を復元する
     mod = obj.modifiers.get(MODIFIER_NAME)
     if mod is not None:
         ensure_sheet_outline(obj, mod, get_outline_material(obj))
+    elif plane_filter.is_sheet_mesh(obj):
+        sync_sheet_outline_width(obj)
     if PROP_LINE_ONLY_MATERIALS in obj:
         del obj[PROP_LINE_ONLY_MATERIALS]
     if PROP_LINE_ONLY in obj:

@@ -197,10 +197,10 @@ def apply_line_settings(
     if not ok:
         return False
 
-    exclude_generated = plane_filter.should_exclude_generated_lines(obj, settings)
+    skip_inner = plane_filter.should_skip_inner_lines(obj, settings)
     if (
         settings.inner_line_enabled
-        and not exclude_generated
+        and not skip_inner
         and camera_comp.inner_line_creation_in_range(
             obj, context.scene, settings,
         )
@@ -220,6 +220,7 @@ def apply_line_settings(
                 if settings.auto_subdivision_for_midpoint
                 else 0.0
             ),
+            midpoint_angle=settings.inner_edge_midpoint_angle,
             midpoint_jitter_percent=settings.inner_edge_midpoint_jitter_percent,
             width_curve_25=settings.inner_edge_width_curve_25,
             width_curve_50=settings.inner_edge_width_curve_50,
@@ -233,7 +234,7 @@ def apply_line_settings(
     )
     if not (
         settings.intersection_enabled
-        and not exclude_generated
+        and not plane_filter.should_exclude_generated_lines(obj, settings)
         and intersection_in_range
     ):
         intersection_lines.remove_intersection_lines(obj)

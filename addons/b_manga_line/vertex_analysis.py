@@ -715,7 +715,7 @@ def compute_and_apply_weights(obj, settings, target: str = "outline") -> int:
             curve_points,
             graph_threshold,
             split_threshold,
-            use_branch_anchors=(target != "outline"),
+            use_branch_anchors=True,
         )
         for i in range(n):
             m = midpoint.get(i, 0.0)

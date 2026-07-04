@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import core, vertex_analysis  # noqa: E402
+from b_manga_line import core, inner_line_chains, vertex_analysis  # noqa: E402
 
 
 LEVELS = 9
@@ -214,6 +214,24 @@ def _reset_all_groups(obj: bpy.types.Object) -> None:
         core.VG_INTERSECTION_LINE_WIDTH,
     ):
         vertex_analysis.reset_width_weights(obj, group_name=name)
+
+
+def _mark_all_edges(obj: bpy.types.Object) -> None:
+    attr = obj.data.attributes.get(inner_line_chains.SHARP_EDGE_ATTR)
+    if attr is None:
+        attr = obj.data.attributes.new(
+            inner_line_chains.SHARP_EDGE_ATTR,
+            "BOOLEAN",
+            "EDGE",
+        )
+    for item in attr.data:
+        item.value = True
+
+
+def _edge_chain_ids(obj: bpy.types.Object) -> list[int]:
+    attr = obj.data.attributes.get(inner_line_chains.CHAIN_ID_ATTR)
+    assert attr is not None, "内部線チェーンIDがありません"
+    return [int(item.value) for item in attr.data]
 
 
 def _assert_target_only(target: str, group_name: str, factor_prop: str) -> None:
@@ -436,6 +454,36 @@ def _assert_diamond_loop_splits_only_acute_points(
     assert all(_weight(obj, group_name, vi) < 0.001 for vi in obtuse_centers)
 
 
+def _assert_inner_chain_ids_split_at_branch_and_acute_points() -> None:
+    branch = _make_t_branch_graph("BML_inner_chain_branch_split")
+    _mark_all_edges(branch)
+    inner_line_chains.update_chain_id_attribute(
+        branch,
+        math.radians(60.0),
+        True,
+        math.radians(100.0),
+    )
+    ids = _edge_chain_ids(branch)
+    assert len(set(ids)) == 3, ids
+    assert ids[0] == ids[1], ids
+    assert ids[2] == ids[3], ids
+    assert ids[4] == ids[5], ids
+
+    diamond = _make_diamond_loop_graph("BML_inner_chain_diamond_split")
+    _mark_all_edges(diamond)
+    inner_line_chains.update_chain_id_attribute(
+        diamond,
+        math.radians(60.0),
+        True,
+        math.radians(100.0),
+    )
+    ids = _edge_chain_ids(diamond)
+    assert len(set(ids)) == 2, ids
+    assert ids[0] == ids[1], ids
+    assert ids[2] == ids[3], ids
+    assert ids[0] != ids[2], ids
+
+
 def main() -> None:
     b_manga_line.register()
     _clear_scene()
@@ -509,6 +557,7 @@ def main() -> None:
         "intersection_edge_smooth_factor",
         "intersection_edge_midpoint_angle",
     )
+    _assert_inner_chain_ids_split_at_branch_and_acute_points()
 
     print("[PASS] midpoint width settings are independent per line type")
 

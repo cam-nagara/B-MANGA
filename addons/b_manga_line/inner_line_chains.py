@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import bmesh
 import bpy
 
@@ -176,10 +178,35 @@ def _write_remaining_components(
     return chain_id
 
 
+def _hard_endpoint_anchors(bm, neighbors: list[set[int]], angle: float | None) -> set[int]:
+    if angle is None or angle <= 0.0:
+        return set()
+    anchors: set[int] = set()
+    bm.verts.ensure_lookup_table()
+    for vert in bm.verts:
+        connected = neighbors[vert.index]
+        if len(connected) != 2:
+            continue
+        directions = []
+        for other_index in connected:
+            other = bm.verts[other_index]
+            direction = other.co - vert.co
+            if direction.length <= 1.0e-8:
+                continue
+            directions.append(direction.normalized())
+        if len(directions) != 2:
+            continue
+        path_angle = directions[0].angle(directions[1], math.pi)
+        if path_angle + 1.0e-7 < angle:
+            anchors.add(vert.index)
+    return anchors
+
+
 def update_chain_id_attribute(
     obj: bpy.types.Object,
     angle: float,
     use_marked_edges: bool,
+    midpoint_angle: float | None = None,
 ) -> None:
     if obj.type != "MESH" or obj.data is None:
         return
@@ -199,6 +226,7 @@ def update_chain_id_attribute(
             i for i, connected in enumerate(neighbors)
             if connected and len(connected) != 2
         }
+        anchors |= _hard_endpoint_anchors(bm, neighbors, midpoint_angle)
         visited: set[int] = set()
         chain_id = _write_anchor_chains(
             attr, edge_lookup, neighbors, anchors, visited, 0,

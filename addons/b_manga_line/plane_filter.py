@@ -37,6 +37,11 @@ def should_exclude_generated_lines(obj: bpy.types.Object, settings=None) -> bool
     return False
 
 
+def should_skip_inner_lines(obj: bpy.types.Object, settings=None) -> bool:
+    """Return True when inner lines should not be generated for this mesh."""
+    return is_sheet_mesh(obj)
+
+
 def is_sheet_mesh(obj: bpy.types.Object, *, use_cache: bool = True) -> bool:
     """Detect flat polygon-card meshes without evaluated mesh conversion."""
     if obj.type != "MESH" or obj.data is None:

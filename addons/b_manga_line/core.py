@@ -479,7 +479,7 @@ def _sync_inner_line_creation(
     if not settings.inner_line_enabled:
         inner_lines.disable_inner_lines(owner)
         return False
-    if plane_filter.should_exclude_generated_lines(owner, settings):
+    if plane_filter.should_skip_inner_lines(owner, settings):
         inner_lines.remove_inner_lines(owner)
         return False
     if camera_comp.inner_line_creation_in_range(owner, getattr(context, "scene", None), settings):
@@ -504,6 +504,7 @@ def _sync_inner_line_creation(
                 if settings.auto_subdivision_for_midpoint
                 else 0.0
             ),
+            midpoint_angle=settings.inner_edge_midpoint_angle,
             midpoint_jitter_percent=settings.inner_edge_midpoint_jitter_percent,
             width_curve_25=settings.inner_edge_width_curve_25,
             width_curve_50=settings.inner_edge_width_curve_50,
@@ -521,6 +522,7 @@ def _inner_midpoint_kwargs(settings) -> dict[str, float]:
     )
     return {
         "midpoint_factor": factor,
+        "midpoint_angle": float(settings.inner_edge_midpoint_angle),
         "midpoint_jitter_percent": float(settings.inner_edge_midpoint_jitter_percent),
         "width_curve_25": float(settings.inner_edge_width_curve_25),
         "width_curve_50": float(settings.inner_edge_width_curve_50),
@@ -565,7 +567,7 @@ def _on_marked_inner_edges_changed(self, context):
     owner = self.id_data
     refreshed_owner = False
     if owner.type == "MESH" and has_line(owner):
-        if plane_filter.should_exclude_generated_lines(owner, self):
+        if plane_filter.should_skip_inner_lines(owner, self):
             inner_lines.remove_inner_lines(owner)
         elif not camera_comp.inner_line_creation_in_range(
             owner,
@@ -636,7 +638,7 @@ def _sync_inner_creation_range(owner: bpy.types.Object, settings, context) -> bo
         return False
     if not settings.inner_line_enabled:
         return False
-    if plane_filter.should_exclude_generated_lines(owner, settings):
+    if plane_filter.should_skip_inner_lines(owner, settings):
         return False
     in_range = camera_comp.inner_line_creation_in_range(
         owner,
@@ -877,6 +879,8 @@ def _refresh_outline_width_weights(owner, settings, vertex_analysis) -> None:
 
     mod = owner.modifiers.get(MODIFIER_NAME)
     if mod is None:
+        if owner.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME) is not None:
+            outline_setup.sync_sheet_outline_width(owner)
         return
     if _needs_line_width_weights(settings, "outline"):
         vg = _ensure_vertex_group(owner, VG_LINE_WIDTH)
