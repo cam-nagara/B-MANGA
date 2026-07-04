@@ -167,13 +167,21 @@ def _assert_node_tree_uses_inclusive_angle() -> None:
         if getattr(node, "label", "") == inner_lines._CHAIN_SELECTION_COMPARE_LABEL
     )
     assert chain_compare.operation == "GREATER_EQUAL"
+    chain_angle_filter = next(
+        node for node in tree.nodes
+        if getattr(node, "label", "") == inner_lines._CHAIN_ANGLE_FILTER_LABEL
+    )
+    assert chain_angle_filter.operation == "AND"
+    filter_sources = {link.from_node for socket in chain_angle_filter.inputs for link in socket.links}
+    assert chain_compare in filter_sources
+    assert compare in filter_sources
     selection_switch = next(
         node for node in tree.nodes
         if getattr(node, "label", "") == inner_lines._MARKED_SELECTION_SWITCH_LABEL
     )
     false_links = list(selection_switch.inputs["False"].links)
     assert false_links, "内部線の自動選択入力が未接続です"
-    assert false_links[0].from_node == chain_compare
+    assert false_links[0].from_node == chain_angle_filter
     assert any(
         getattr(node, "label", "") == inner_lines._CURVE_JITTER_CENTER_LABEL
         for node in tree.nodes

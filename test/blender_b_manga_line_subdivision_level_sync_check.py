@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import sys
 from pathlib import Path
+from collections import Counter
 
 import bpy
 
@@ -61,6 +62,20 @@ def _inner_resample_count(obj: bpy.types.Object) -> int:
     return int(mod[sid])
 
 
+def _evaluated_material_counts(obj: bpy.types.Object) -> Counter:
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = obj.evaluated_get(depsgraph)
+    mesh = evaluated.to_mesh()
+    try:
+        materials = [mat.name if mat else "" for mat in mesh.materials]
+        return Counter(
+            materials[poly.material_index] if poly.material_index < len(materials) else ""
+            for poly in mesh.polygons
+        )
+    finally:
+        evaluated.to_mesh_clear()
+
+
 def _assert_inner_levels_sync() -> None:
     obj = _make_cube("内部線_サブディビジョン同期", (0.0, 0.0, 0.0))
     mod = _auto_mod(obj)
@@ -86,6 +101,29 @@ def _assert_inner_levels_sync() -> None:
 
     subdivision_lod.sync_generated_line_subdivision(obj, for_render=False)
     assert _inner_resample_count(obj) == 9
+
+
+def _assert_inner_lines_do_not_follow_subdivision_grid() -> None:
+    obj = _make_cube("内部線_レンダー細分グリッド除外", (0.0, 0.0, 0.0))
+    mod = _auto_mod(obj)
+    material = outline_setup.get_line_material(obj, "inner")
+    assert inner_lines.apply_inner_lines(
+        obj,
+        angle=math.radians(45.0),
+        thickness=0.03,
+        material=material,
+    )
+
+    mod.levels = 2
+    mod.render_levels = 2
+    counts = _evaluated_material_counts(obj)
+    line_faces = sum(
+        count for name, count in counts.items()
+        if name.startswith("BML_Outline_Inner")
+    )
+    surface_faces = counts.get(obj.data.materials[0].name, 0)
+    assert 0 < line_faces <= 240, counts
+    assert surface_faces == 96, counts
 
 
 def _proxy_for_target(target: bpy.types.Object) -> bpy.types.Object:
@@ -133,6 +171,8 @@ def main() -> None:
     try:
         _clear_scene()
         _assert_inner_levels_sync()
+        _clear_scene()
+        _assert_inner_lines_do_not_follow_subdivision_grid()
         _clear_scene()
         _assert_intersection_proxy_levels_sync()
         print("[PASS] subdivision levels sync to inner/intersection lines", flush=True)

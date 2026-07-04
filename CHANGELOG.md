@@ -3,6 +3,40 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-04 — B-MANGA Lineレンダー時の内部線グリッド化とコンポジットノード整理を修正 (B-MANGA Line v0.3.94)
+
+### 症状
+
+- ビューポートでは正常でも、レンダリングすると内部線がポリゴンのすべての辺のように出力されることがあった。
+- 板ポリのライン適用で、境界チューブがライン素材として評価されていることを確認する回帰テストが不足していた。
+- 線画合成用のBMLコンポジットノードがシーンのコンポジット上に個別ノードとして並び、扱いにくかった。
+
+### 原因
+
+- 自動サブディビジョンのレンダー評価時、内部線対象の辺属性が細分後の面内エッジにも伝播し、内部線ノードが属性だけで選択していたため、角度条件を満たさない細分グリッドまで線化していた。
+- 板ポリの境界チューブは生成されていたが、評価後にライン素材で残ることをテストで固定できていなかった。
+- AOV合成処理を、シーン側のコンポジットツリーへ直接展開していた。
+
+### 修正
+
+- 内部線ノードの自動選択を「内部線対象の辺属性」かつ「検出角度以上」の辺に限定し、レンダー用サブディビジョン後の面内グリッドを除外した。
+- 板ポリ境界チューブが評価済みメッシュ上でもライン素材として残ることを回帰テストに追加した。
+- 線画合成処理を `BML_LineAOVCompositeGroup` ノードグループへまとめ、シーン側にはRender Layers、グループ、結果ノードだけを置く構成にした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_subdivision_level_sync_check.py`
+- `test/blender_b_manga_line_sheet_and_proxy_follow_check.py`
+- `test/blender_b_manga_line_aov_composite_check.py`
+- `test/blender_b_manga_line_open_mesh_outline_check.py`
+- `test/blender_b_manga_line_inner_angle_threshold_check.py`
+- `test/blender_b_manga_line_sheet_mesh_exclusion_check.py`
+- `test/blender_b_manga_line_auto_subdivision_check.py`
+- AI目視: `_verify/2026-07-04_bml_render_inner_sheet_group_visual/line_composite_on_white.png` と `inner_lines.png` で、レンダー用サブディビジョンを有効にしても球・トーラス・円柱面が全面格子化せず、板ポリの黒い輪郭が出ることを確認。
+- 補足: 保存済み `D:\TM Dropbox\Miura Tadahiro\Develop\B-MANGAテスト\test_line03.blend` は、CLIから読み込んだ状態ではライン対象が0個だったため、同ファイル単体では今回の線画AOVを検証できなかった。
+
+---
+
 ## 2026-07-04 — B-MANGA Line円柱・円錐の円周内部線が三角形化する問題を修正 (B-MANGA Line v0.3.93)
 
 ### 症状

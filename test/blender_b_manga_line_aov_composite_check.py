@@ -111,6 +111,7 @@ def _render_composite(scene: bpy.types.Scene) -> Path:
         old.unlink()
     target = OUT_DIR / "bml_line_composite.png"
     tree = aov_compositor.setup_line_aov_compositor(scene, output_path=target)
+    _assert_grouped_compositor(tree)
     _add_debug_render_output(tree, "Image", "bml_line_beauty")
     _add_debug_aov_output(tree, core.AOV_NAME, "bml_line_legacy")
     _add_debug_aov_output(tree, core.AOV_OUTLINE_RAW_NAME, "bml_line_outline_raw")
@@ -120,6 +121,31 @@ def _render_composite(scene: bpy.types.Scene) -> Path:
     candidates = sorted(OUT_DIR.glob("bml_line_composite*.png"))
     assert candidates, "線画合成画像が出力されていません"
     return candidates[-1]
+
+
+def _assert_grouped_compositor(tree: bpy.types.NodeTree) -> None:
+    group_nodes = [
+        node for node in tree.nodes
+        if node.name == f"{aov_compositor.NODE_PREFIX}_Group"
+    ]
+    assert len(group_nodes) == 1, [node.name for node in tree.nodes]
+    group = group_nodes[0]
+    assert group.node_tree is not None
+    assert group.node_tree.name == aov_compositor.GROUP_TREE_NAME
+    direct_processing = [
+        node.name for node in tree.nodes
+        if node.name.startswith(aov_compositor.NODE_PREFIX + "_")
+        and node.name not in {
+            f"{aov_compositor.NODE_PREFIX}_RenderLayers",
+            f"{aov_compositor.NODE_PREFIX}_Group",
+            f"{aov_compositor.NODE_PREFIX}_Result",
+            f"{aov_compositor.NODE_PREFIX}_FileOutput",
+        }
+    ]
+    assert not direct_processing, direct_processing
+    assert group.node_tree.nodes.get(
+        f"{aov_compositor.NODE_PREFIX}_SetTransparentLineAlpha"
+    ) is not None
 
 
 def _add_debug_aov_output(tree: bpy.types.NodeTree, aov_name: str, stem: str) -> None:

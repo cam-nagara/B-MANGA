@@ -37,6 +37,7 @@ _SELECTED_EDGE_MESH_LABEL = "BML_InnerSelectedEdgeMesh"
 _CHAIN_INSTANCE_SPLIT_LABEL = "BML_InnerChainInstanceSplit"
 _EDGE_ANGLE_COMPARE_LABEL = "BML_InnerEdgeAngleCompareGE"
 _CHAIN_SELECTION_COMPARE_LABEL = "BML_InnerChainSelectionGE"
+_CHAIN_ANGLE_FILTER_LABEL = "BML_InnerChainAngleFilter"
 _CURVE_JITTER_CENTER_LABEL = "BML_InnerCurveJitterCenter"
 _CHAIN_ID_ATTR = inner_line_chains.CHAIN_ID_ATTR
 _SHARP_EDGE_ATTR = "sharp_edge"
@@ -429,12 +430,19 @@ def _create_node_tree() -> bpy.types.NodeTree:
     links.new(chain_selection_attr.outputs["Attribute"], chain_selected.inputs[2])
     chain_selected.inputs[3].default_value = 0
 
+    chain_angle_filtered = nodes.new("FunctionNodeBooleanMath")
+    chain_angle_filtered.label = _CHAIN_ANGLE_FILTER_LABEL
+    chain_angle_filtered.location = (-200, -680)
+    chain_angle_filtered.operation = "AND"
+    links.new(chain_selected.outputs[0], chain_angle_filtered.inputs[0])
+    links.new(compare.outputs[0], chain_angle_filtered.inputs[1])
+
     selection_switch = nodes.new("GeometryNodeSwitch")
     selection_switch.label = _MARKED_SELECTION_SWITCH_LABEL
     selection_switch.location = (-20, -200)
     selection_switch.input_type = "BOOLEAN"
     links.new(gin.outputs[_MARKED_ONLY_SOCKET_NAME], selection_switch.inputs["Switch"])
-    links.new(chain_selected.outputs[0], selection_switch.inputs["False"])
+    links.new(chain_angle_filtered.outputs[0], selection_switch.inputs["False"])
     links.new(marked_selection.outputs[0], selection_switch.inputs["True"])
 
     offset_amount = nodes.new("ShaderNodeMath")
@@ -656,6 +664,9 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
         if not any(getattr(n, "label", "") == _CHAIN_INSTANCE_SPLIT_LABEL for n in tree.nodes):
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
+        if not any(getattr(n, "label", "") == _CHAIN_ANGLE_FILTER_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
         compare_node = next(

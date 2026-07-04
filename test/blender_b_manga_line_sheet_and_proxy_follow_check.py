@@ -59,6 +59,23 @@ def _eval_poly_count(obj: bpy.types.Object) -> int:
         ev.to_mesh_clear()
 
 
+def _eval_material_poly_count(obj: bpy.types.Object, material_prefix: str) -> int:
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    ev = obj.evaluated_get(depsgraph)
+    mesh = ev.to_mesh()
+    try:
+        materials = [mat.name if mat else "" for mat in mesh.materials]
+        count = 0
+        for poly in mesh.polygons:
+            if poly.material_index >= len(materials):
+                continue
+            if materials[poly.material_index].startswith(material_prefix):
+                count += 1
+        return count
+    finally:
+        ev.to_mesh_clear()
+
+
 def _setup_pair() -> tuple[bpy.types.Object, bpy.types.Object]:
     """交差するキューブ（立体）と平面（シート）を作る."""
     scene = bpy.context.scene
@@ -149,6 +166,9 @@ def _test_sheet_outline_tube() -> None:
     assert _eval_poly_count(plane) >= base + 32, (
         _eval_poly_count(plane),
         base,
+    )
+    assert _eval_material_poly_count(plane, outline_setup.MATERIAL_NAME) >= 32, (
+        "板ポリ境界チューブがライン素材で評価されていません"
     )
 
 
