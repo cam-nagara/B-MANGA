@@ -130,21 +130,11 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
     tree = intersection_shell._get_or_create_tree()
     assert _socket_id(tree, "中間頂点の乱れ (%)")
     assert _socket_id(tree, "検出角度")
-    split = next(
-        (
-            node
-            for node in tree.nodes
-            if getattr(node, "label", "") == "BML_IntersectionShellPathWidthV6"
-        ),
-        None,
-    )
-    assert split is not None, "検出角度で線幅区間を分けるノードがありません"
-    assert split.bl_idname == "GeometryNodeSplitEdges"
     midpoint = next(
         (
             node
             for node in tree.nodes
-            if getattr(node, "label", "") == "BML_IntersectionShellPathWidthV6Midpoints"
+            if getattr(node, "label", "") == "BML_IntersectionShellPathWidthV7Midpoints"
         ),
         None,
     )
@@ -158,7 +148,7 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
                 and node.data_type == "FLOAT"
                 and node.operation == "GREATER_THAN"
                 and getattr(node, "label", "") == (
-                    "BML_IntersectionShellPathWidthV6Angle"
+                    "BML_IntersectionShellPathWidthV7Angle"
                 )
             )
         ),
@@ -166,9 +156,21 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
     )
     assert angle_compare is not None
     assert not any(
+        node.bl_idname == "GeometryNodeSplitEdges"
+        for node in tree.nodes
+    ), "線そのものを分割するノードが残っています"
+    assert not any(
         node.bl_idname == "GeometryNodeResampleCurve"
         for node in tree.nodes
     ), "再サンプリングで線形状を変えるノードが残っています"
+    assert any(
+        node.bl_idname == "GeometryNodeOffsetPointInCurve"
+        for node in tree.nodes
+    )
+    assert any(
+        node.bl_idname == "GeometryNodeSampleIndex"
+        for node in tree.nodes
+    )
     assert any(
         node.bl_idname == "GeometryNodeMergeByDistance"
         for node in tree.nodes

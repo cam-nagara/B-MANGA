@@ -129,13 +129,17 @@ def main() -> None:
         assert tube_mod is not None, "板ポリに境界チューブがありません"
         assert tube_mod.node_group is not None
         assert any(
-            getattr(node, "label", "") == "BML_SheetOutlinePathWidthV6"
+            getattr(node, "label", "") == "BML_SheetOutlinePathWidthV7Angle"
             for node in tube_mod.node_group.nodes
         ), "板ポリアウトラインが検出角度で分割されていません"
         assert any(
-            getattr(node, "label", "") == "BML_SheetOutlinePathWidthV6Midpoints"
+            getattr(node, "label", "") == "BML_SheetOutlinePathWidthV7Midpoints"
             for node in tube_mod.node_group.nodes
         ), "板ポリアウトラインに区間ごとの中心点がありません"
+        assert not any(
+            node.bl_idname == "GeometryNodeSplitEdges"
+            for node in tube_mod.node_group.nodes
+        ), "板ポリアウトラインが線そのものを分割しています"
         plane.bmanga_line_settings.edge_smooth_factor = -0.75
         plane.bmanga_line_settings.edge_midpoint_jitter_percent = 12.0
         plane.bmanga_line_settings.edge_midpoint_angle = math.radians(55.0)

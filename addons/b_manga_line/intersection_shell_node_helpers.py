@@ -24,16 +24,6 @@ def _switch_float(nodes, links, switch_output, true_output, false_output, loc):
     return node.outputs["Output"]
 
 
-def _switch_vector(nodes, links, switch_output, true_output, false_output, loc):
-    node = nodes.new("GeometryNodeSwitch")
-    node.location = loc
-    node.input_type = "VECTOR"
-    links.new(switch_output, node.inputs["Switch"])
-    links.new(false_output, node.inputs["False"])
-    links.new(true_output, node.inputs["True"])
-    return node.outputs["Output"]
-
-
 def _value_or_socket(nodes, links, socket_output, default, loc):
     if socket_output is not None:
         return socket_output
@@ -72,39 +62,7 @@ def _compare_le(nodes, links, value_output, threshold, loc):
     return node.outputs[0]
 
 
-def _compare_int_equal(nodes, links, left_output, right_output, loc):
-    node = nodes.new("FunctionNodeCompare")
-    node.location = loc
-    node.data_type = "INT"
-    node.operation = "EQUAL"
-    links.new(left_output, node.inputs[2])
-    links.new(right_output, node.inputs[3])
-    return node.outputs[0]
-
-
-def _compare_int_value(nodes, links, value_output, operation: str, value: int, loc):
-    node = nodes.new("FunctionNodeCompare")
-    node.location = loc
-    node.data_type = "INT"
-    node.operation = operation
-    links.new(value_output, node.inputs[2])
-    node.inputs[3].default_value = value
-    return node.outputs[0]
-
-
-def _sample_index(nodes, links, mesh_output, value_output, index_output, loc, data_type):
-    node = nodes.new("GeometryNodeSampleIndex")
-    node.location = loc
-    node.data_type = data_type
-    node.domain = "EDGE"
-    links.new(mesh_output, node.inputs["Geometry"])
-    links.new(value_output, node.inputs["Value"])
-    links.new(index_output, node.inputs["Index"])
-    return node.outputs["Value"]
-
-
-def _add_width_curve(nodes, links, raw_output, gin, sockets, x_offset=0):
-    c25, c50, c75 = (gin.outputs[name] for name in sockets)
+def _add_width_curve_outputs(nodes, links, raw_output, c25, c50, c75, x_offset=0):
     seg0 = _curve_segment(nodes, links, raw_output, None, c25, 0.00, 0.25, x_offset, -240)
     seg1 = _curve_segment(nodes, links, raw_output, c25, c50, 0.25, 0.50, x_offset, -420)
     seg2 = _curve_segment(nodes, links, raw_output, c50, c75, 0.50, 0.75, x_offset, -600)
@@ -117,207 +75,73 @@ def _add_width_curve(nodes, links, raw_output, gin, sockets, x_offset=0):
     return _switch_float(nodes, links, le25, seg0, switch50, (x_offset + 900, -220))
 
 
-def _edge_other_position(
-    nodes,
-    links,
-    mesh_output,
-    edge_vertices,
-    edge_index_output,
-    current_index_output,
-    *,
-    x_offset: int,
-    y: int,
-):
-    vi1 = _sample_index(
-        nodes,
-        links,
-        mesh_output,
-        edge_vertices.outputs["Vertex Index 1"],
-        edge_index_output,
-        (x_offset, y + 220),
-        "INT",
-    )
-    pos1 = _sample_index(
-        nodes,
-        links,
-        mesh_output,
-        edge_vertices.outputs["Position 1"],
-        edge_index_output,
-        (x_offset, y + 80),
-        "FLOAT_VECTOR",
-    )
-    pos2 = _sample_index(
-        nodes,
-        links,
-        mesh_output,
-        edge_vertices.outputs["Position 2"],
-        edge_index_output,
-        (x_offset, y - 60),
-        "FLOAT_VECTOR",
-    )
-    vi1_is_current = _compare_int_equal(
-        nodes,
-        links,
-        vi1,
-        current_index_output,
-        (x_offset + 220, y + 220),
-    )
-    return _switch_vector(
-        nodes,
-        links,
-        vi1_is_current,
-        pos2,
-        pos1,
-        (x_offset + 420, y + 60),
-    )
+def _add_width_curve(nodes, links, raw_output, gin, sockets, x_offset=0):
+    c25, c50, c75 = (gin.outputs[name] for name in sockets)
+    return _add_width_curve_outputs(nodes, links, raw_output, c25, c50, c75, x_offset)
 
 
-def _add_turn_angle_selection(
+def _scale_from_center_weight(
     nodes,
     links,
-    mesh_output,
-    angle_output,
+    center_weight_output,
+    factor_output,
     loc,
     *,
-    label: str | None = None,
+    width_curve_outputs=None,
 ):
-    """Select degree-2 vertices where the path angle is below the threshold."""
     x, y = loc
-    index = nodes.new("GeometryNodeInputIndex")
-    index.location = (x, y + 420)
-    position = nodes.new("GeometryNodeInputPosition")
-    position.location = (x, y + 260)
-
-    degree_neighbors = nodes.new("GeometryNodeInputMeshVertexNeighbors")
-    degree_neighbors.location = (x, y + 80)
-    degree_two = _compare_int_value(
-        nodes,
-        links,
-        degree_neighbors.outputs["Vertex Count"],
-        "EQUAL",
-        2,
-        (x + 220, y + 80),
-    )
-
-    edge0 = nodes.new("GeometryNodeEdgesOfVertex")
-    edge0.location = (x + 220, y + 420)
-    links.new(index.outputs["Index"], edge0.inputs["Vertex Index"])
-    edge0.inputs["Sort Index"].default_value = 0
-
-    edge1 = nodes.new("GeometryNodeEdgesOfVertex")
-    edge1.location = (x + 220, y + 260)
-    links.new(index.outputs["Index"], edge1.inputs["Vertex Index"])
-    edge1.inputs["Sort Index"].default_value = 1
-
-    edge_vertices = nodes.new("GeometryNodeInputMeshEdgeVertices")
-    edge_vertices.location = (x + 460, y + 520)
-
-    other0 = _edge_other_position(
-        nodes,
-        links,
-        mesh_output,
-        edge_vertices,
-        edge0.outputs["Edge Index"],
-        index.outputs["Index"],
-        x_offset=x + 460,
-        y=y + 260,
-    )
-    other1 = _edge_other_position(
-        nodes,
-        links,
-        mesh_output,
-        edge_vertices,
-        edge1.outputs["Edge Index"],
-        index.outputs["Index"],
-        x_offset=x + 460,
-        y=y - 160,
-    )
-
-    vec0 = nodes.new("ShaderNodeVectorMath")
-    vec0.location = (x + 1100, y + 220)
-    vec0.operation = "SUBTRACT"
-    links.new(other0, vec0.inputs[0])
-    links.new(position.outputs["Position"], vec0.inputs[1])
-
-    vec1 = nodes.new("ShaderNodeVectorMath")
-    vec1.location = (x + 1100, y - 20)
-    vec1.operation = "SUBTRACT"
-    links.new(other1, vec1.inputs[0])
-    links.new(position.outputs["Position"], vec1.inputs[1])
-
-    norm0 = nodes.new("ShaderNodeVectorMath")
-    norm0.location = (x + 1320, y + 220)
-    norm0.operation = "NORMALIZE"
-    links.new(vec0.outputs["Vector"], norm0.inputs[0])
-
-    norm1 = nodes.new("ShaderNodeVectorMath")
-    norm1.location = (x + 1320, y - 20)
-    norm1.operation = "NORMALIZE"
-    links.new(vec1.outputs["Vector"], norm1.inputs[0])
-
-    dot = nodes.new("ShaderNodeVectorMath")
-    dot.location = (x + 1540, y + 100)
-    dot.operation = "DOT_PRODUCT"
-    links.new(norm0.outputs["Vector"], dot.inputs[0])
-    links.new(norm1.outputs["Vector"], dot.inputs[1])
-
-    angle_cos = _math(nodes, "COSINE", (x + 1540, y - 120))
-    links.new(angle_output, angle_cos.inputs[0])
-
-    acute_path_angle = nodes.new("FunctionNodeCompare")
-    acute_path_angle.location = (x + 1720, y + 100)
-    if label:
-        acute_path_angle.label = label
-    acute_path_angle.data_type = "FLOAT"
-    acute_path_angle.operation = "GREATER_THAN"
-    links.new(dot.outputs["Value"], acute_path_angle.inputs[0])
-    links.new(angle_cos.outputs[0], acute_path_angle.inputs[1])
-
-    selected = nodes.new("FunctionNodeBooleanMath")
-    selected.location = (x + 1940, y + 80)
-    selected.operation = "AND"
-    links.new(degree_two, selected.inputs[0])
-    links.new(acute_path_angle.outputs[0], selected.inputs[1])
-    return selected.outputs[0]
-
-
-def add_branch_split(nodes, links, mesh_output, label: str, *, angle_output=None):
-    neighbors = nodes.new("GeometryNodeInputMeshVertexNeighbors")
-    neighbors.location = (660, 80)
-    branch_selection = _compare_int_value(
-        nodes,
-        links,
-        neighbors.outputs["Vertex Count"],
-        "GREATER_EQUAL",
-        3,
-        (820, 80),
-    )
-    selection = branch_selection
-    if angle_output is not None:
-        angle_selection = _add_turn_angle_selection(
+    if width_curve_outputs is not None:
+        c25, c50, c75 = width_curve_outputs
+        curved = _add_width_curve_outputs(
             nodes,
             links,
-            mesh_output,
-            angle_output,
-            (420, -520),
-            label=label + "Angle",
+            center_weight_output,
+            c25,
+            c50,
+            c75,
+            x_offset=x,
         )
-        combine = nodes.new("FunctionNodeBooleanMath")
-        combine.location = (1020, 0)
-        combine.operation = "OR"
-        links.new(branch_selection, combine.inputs[0])
-        links.new(angle_selection, combine.inputs[1])
-        selection = combine.outputs[0]
+    else:
+        curved = center_weight_output
 
-    split = nodes.new("GeometryNodeSplitEdges")
-    split.label = label
-    split.location = (1220, -120) if angle_output is not None else (780, -120)
-    links.new(mesh_output, split.inputs["Mesh"])
-    links.new(selection, split.inputs["Selection"])
-    return split.outputs["Mesh"]
+    one_minus = _math(nodes, "SUBTRACT", (x + 500, y + 160), value0=1.0)
+    links.new(curved, one_minus.inputs[1])
+    pos_drop = _math(nodes, "MULTIPLY", (x + 700, y + 180))
+    links.new(one_minus.outputs[0], pos_drop.inputs[0])
+    links.new(factor_output, pos_drop.inputs[1])
+    pos_scale = _math(nodes, "SUBTRACT", (x + 900, y + 180), value0=1.0)
+    links.new(pos_drop.outputs[0], pos_scale.inputs[1])
+
+    abs_factor = _math(nodes, "ABSOLUTE", (x + 500, y - 20))
+    links.new(factor_output, abs_factor.inputs[0])
+    neg_drop = _math(nodes, "MULTIPLY", (x + 700, y - 20))
+    links.new(curved, neg_drop.inputs[0])
+    links.new(abs_factor.outputs[0], neg_drop.inputs[1])
+    neg_scale = _math(nodes, "SUBTRACT", (x + 900, y - 20), value0=1.0)
+    links.new(neg_drop.outputs[0], neg_scale.inputs[1])
+
+    positive = nodes.new("FunctionNodeCompare")
+    positive.location = (x + 700, y + 360)
+    positive.data_type = "FLOAT"
+    positive.operation = "GREATER_EQUAL"
+    positive.inputs[1].default_value = 0.0
+    links.new(factor_output, positive.inputs[0])
+    scale_switch = _switch_float(
+        nodes,
+        links,
+        positive.outputs[0],
+        pos_scale.outputs[0],
+        neg_scale.outputs[0],
+        (x + 1100, y + 80),
+    )
+    clamped_min = _math(nodes, "MAXIMUM", (x + 1300, y + 80), value1=0.02)
+    links.new(scale_switch, clamped_min.inputs[0])
+    clamped_max = _math(nodes, "MINIMUM", (x + 1480, y + 80), value1=1.0)
+    links.new(clamped_min.outputs[0], clamped_max.inputs[0])
+    return clamped_max.outputs[0]
 
 
-def _scale_from_split_selection(nodes, links, selection_output, factor_output, loc):
+def _scale_from_endpoint_selection(nodes, links, selection_output, factor_output, loc):
     x, y = loc
 
     positive = nodes.new("FunctionNodeCompare")
@@ -355,7 +179,7 @@ def _scale_from_split_selection(nodes, links, selection_output, factor_output, l
         neg_center.outputs[0],
         (x + 640, y - 20),
     )
-    return _switch_float(
+    scale = _switch_float(
         nodes,
         links,
         selection_output,
@@ -363,6 +187,9 @@ def _scale_from_split_selection(nodes, links, selection_output, factor_output, l
         center_scale,
         (x + 860, y + 100),
     )
+    clamped_min = _math(nodes, "MAXIMUM", (x + 1060, y + 100), value1=0.02)
+    links.new(scale, clamped_min.inputs[0])
+    return clamped_min.outputs[0]
 
 
 def add_jittered_midpoint_factor(
@@ -456,41 +283,13 @@ def add_curve_width_scale(
         jitter_center_label=jitter_center_label,
     )
     curved = _add_width_curve(nodes, links, raw, gin, width_curve_sockets, x_offset)
-    one_minus = _math(nodes, "SUBTRACT", (x_offset + 500, 160), value0=1.0)
-    links.new(curved, one_minus.inputs[1])
-    pos_drop = _math(nodes, "MULTIPLY", (x_offset + 700, 180))
-    links.new(one_minus.outputs[0], pos_drop.inputs[0])
-    links.new(gin.outputs[midpoint_factor_socket], pos_drop.inputs[1])
-    pos_scale = _math(nodes, "SUBTRACT", (x_offset + 900, 180), value0=1.0)
-    links.new(pos_drop.outputs[0], pos_scale.inputs[1])
-
-    abs_factor = _math(nodes, "ABSOLUTE", (x_offset + 500, -20))
-    links.new(gin.outputs[midpoint_factor_socket], abs_factor.inputs[0])
-    neg_drop = _math(nodes, "MULTIPLY", (x_offset + 700, -20))
-    links.new(curved, neg_drop.inputs[0])
-    links.new(abs_factor.outputs[0], neg_drop.inputs[1])
-    neg_scale = _math(nodes, "SUBTRACT", (x_offset + 900, -20), value0=1.0)
-    links.new(neg_drop.outputs[0], neg_scale.inputs[1])
-
-    positive = nodes.new("FunctionNodeCompare")
-    positive.location = (x_offset + 700, 360)
-    positive.data_type = "FLOAT"
-    positive.operation = "GREATER_EQUAL"
-    positive.inputs[1].default_value = 0.0
-    links.new(gin.outputs[midpoint_factor_socket], positive.inputs[0])
-    scale_switch = _switch_float(
+    return _scale_from_center_weight(
         nodes,
         links,
-        positive.outputs[0],
-        pos_scale.outputs[0],
-        neg_scale.outputs[0],
-        (x_offset + 1100, 80),
+        curved,
+        gin.outputs[midpoint_factor_socket],
+        (x_offset, 0),
     )
-    clamped_min = _math(nodes, "MAXIMUM", (x_offset + 1300, 80), value1=0.0)
-    links.new(scale_switch, clamped_min.inputs[0])
-    clamped_max = _math(nodes, "MINIMUM", (x_offset + 1480, 80), value1=1.0)
-    links.new(clamped_min.outputs[0], clamped_max.inputs[0])
-    return clamped_max.outputs[0]
 
 
 def _sample_curve_position(nodes, links, curve_output, position_output, index_output, loc):
@@ -504,6 +303,57 @@ def _sample_curve_position(nodes, links, curve_output, position_output, index_ou
     return sample.outputs["Value"]
 
 
+def _curve_angle_split_from_positions(
+    nodes,
+    links,
+    before_position,
+    center_position,
+    after_position,
+    angle_cos_output,
+    loc,
+    *,
+    label: str | None = None,
+):
+    x, y = loc
+    vec_before = nodes.new("ShaderNodeVectorMath")
+    vec_before.location = (x, y + 120)
+    vec_before.operation = "SUBTRACT"
+    links.new(before_position, vec_before.inputs[0])
+    links.new(center_position, vec_before.inputs[1])
+
+    vec_after = nodes.new("ShaderNodeVectorMath")
+    vec_after.location = (x, y - 80)
+    vec_after.operation = "SUBTRACT"
+    links.new(after_position, vec_after.inputs[0])
+    links.new(center_position, vec_after.inputs[1])
+
+    norm_before = nodes.new("ShaderNodeVectorMath")
+    norm_before.location = (x + 220, y + 120)
+    norm_before.operation = "NORMALIZE"
+    links.new(vec_before.outputs["Vector"], norm_before.inputs[0])
+
+    norm_after = nodes.new("ShaderNodeVectorMath")
+    norm_after.location = (x + 220, y - 80)
+    norm_after.operation = "NORMALIZE"
+    links.new(vec_after.outputs["Vector"], norm_after.inputs[0])
+
+    dot = nodes.new("ShaderNodeVectorMath")
+    dot.location = (x + 440, y + 20)
+    dot.operation = "DOT_PRODUCT"
+    links.new(norm_before.outputs["Vector"], dot.inputs[0])
+    links.new(norm_after.outputs["Vector"], dot.inputs[1])
+
+    angle_split = nodes.new("FunctionNodeCompare")
+    angle_split.location = (x + 660, y + 20)
+    if label:
+        angle_split.label = label
+    angle_split.data_type = "FLOAT"
+    angle_split.operation = "GREATER_THAN"
+    links.new(dot.outputs["Value"], angle_split.inputs[0])
+    links.new(angle_cos_output, angle_split.inputs[1])
+    return angle_split.outputs[0]
+
+
 def add_curve_midpoint_width_scale(
     nodes,
     links,
@@ -513,6 +363,7 @@ def add_curve_midpoint_width_scale(
     loc,
     *,
     label: str,
+    width_curve_outputs=None,
 ):
     """Return a Curve to Mesh scale field without changing the curve shape."""
     x, y = loc
@@ -609,10 +460,10 @@ def add_curve_midpoint_width_scale(
     links.new(angle_split.outputs[0], split.inputs[0])
     links.new(endpoint.outputs[0], split.inputs[1])
 
-    return _scale_from_split_selection(
+    return _scale_from_endpoint_selection(
         nodes,
         links,
         split.outputs[0],
         factor_output,
-        (x + 1760, y + 40),
+        (x + 1980, y + 40),
     )

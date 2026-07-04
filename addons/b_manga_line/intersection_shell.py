@@ -45,9 +45,8 @@ _CURVE_RADIUS_NORMALIZER_LABEL = "BML_IntersectionShellCurveRadius"
 _SHELL_COMBINED_THICKNESS_NODE_LABEL = "BML_IntersectionShellCombinedThickness"
 _SHELL_PROFILE_NODE_LABEL = "BML_IntersectionShellProfile"
 _SHELL_GAP_COVERAGE_NODE_LABEL = "BML_IntersectionShellGapCoverage"
-_SHELL_BRANCH_SPLIT_NODE_LABEL = "BML_IntersectionShellPathWidthV6"
-_SHELL_SUBDIVIDE_NODE_LABEL = "BML_IntersectionShellPathWidthV6Midpoints"
-_SHELL_JITTER_CENTER_LABEL = "BML_IntersectionShellJitterCenter"
+_SHELL_BRANCH_SPLIT_NODE_LABEL = "BML_IntersectionShellPathWidthV7"
+_SHELL_SUBDIVIDE_NODE_LABEL = "BML_IntersectionShellPathWidthV7Midpoints"
 SHELL_TUBE_PROFILE_RESOLUTION = 12
 SHELL_GAP_COVERAGE_FACTOR = 1.08
 
@@ -318,17 +317,9 @@ def _create_node_tree() -> bpy.types.NodeTree:
     weld.inputs["Distance"].default_value = 0.0001
     links.new(separate.outputs["Selection"], weld.inputs["Geometry"])
 
-    split_edges = intersection_shell_node_helpers.add_branch_split(
-        nodes,
-        links,
-        weld.outputs["Geometry"],
-        _SHELL_BRANCH_SPLIT_NODE_LABEL,
-        angle_output=gin.outputs[_MIDPOINT_ANGLE_SOCKET],
-    )
-
     m2c = nodes.new("GeometryNodeMeshToCurve")
     m2c.location = (900, -120)
-    links.new(split_edges, m2c.inputs["Mesh"])
+    links.new(weld.outputs["Geometry"], m2c.inputs["Mesh"])
 
     subdivide_curve = nodes.new("GeometryNodeSubdivideCurve")
     subdivide_curve.label = _SHELL_SUBDIVIDE_NODE_LABEL
@@ -423,19 +414,19 @@ def _add_curve_radius_normalizer(nodes, links, curve_output, loc):
 
 
 def _add_shell_tube_nodes(nodes, links, curve_output, gin, radius_output, x_offset=0):
-    scale = intersection_shell_node_helpers.add_curve_width_scale(
+    scale = intersection_shell_node_helpers.add_curve_midpoint_width_scale(
         nodes,
         links,
-        gin,
-        x_offset=x_offset - 260,
-        midpoint_factor_socket=_MIDPOINT_FACTOR_SOCKET,
-        midpoint_jitter_socket=_MIDPOINT_JITTER_SOCKET,
-        width_curve_sockets=(
-            _WIDTH_CURVE_25_SOCKET,
-            _WIDTH_CURVE_50_SOCKET,
-            _WIDTH_CURVE_75_SOCKET,
+        curve_output,
+        gin.outputs[_MIDPOINT_ANGLE_SOCKET],
+        gin.outputs[_MIDPOINT_FACTOR_SOCKET],
+        (x_offset - 260, -820),
+        label=_SHELL_BRANCH_SPLIT_NODE_LABEL + "Angle",
+        width_curve_outputs=(
+            gin.outputs[_WIDTH_CURVE_25_SOCKET],
+            gin.outputs[_WIDTH_CURVE_50_SOCKET],
+            gin.outputs[_WIDTH_CURVE_75_SOCKET],
         ),
-        jitter_center_label=_SHELL_JITTER_CENTER_LABEL,
     )
 
     circle = nodes.new("GeometryNodeCurvePrimitiveCircle")
@@ -600,7 +591,7 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
                 for node in tree.nodes
             )
             and any(
-                getattr(node, "label", "") == _SHELL_BRANCH_SPLIT_NODE_LABEL
+                getattr(node, "label", "") == _SHELL_SUBDIVIDE_NODE_LABEL
                 for node in tree.nodes
             )
             and _tree_uses_generated_mark(tree)

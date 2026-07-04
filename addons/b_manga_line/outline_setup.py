@@ -59,9 +59,8 @@ _SHEET_TUBE_MIDPOINT_ANGLE_SOCKET = "検出角度"
 _SHEET_TUBE_WIDTH_CURVE_25_SOCKET = "変化グラフ 25%"
 _SHEET_TUBE_WIDTH_CURVE_50_SOCKET = "変化グラフ 50%"
 _SHEET_TUBE_WIDTH_CURVE_75_SOCKET = "変化グラフ 75%"
-_SHEET_TUBE_ANGLE_SPLIT_LABEL = "BML_SheetOutlinePathWidthV6"
-_SHEET_TUBE_SUBDIVIDE_LABEL = "BML_SheetOutlinePathWidthV6Midpoints"
-_SHEET_TUBE_JITTER_CENTER_LABEL = "BML_SheetOutlineJitterCenter"
+_SHEET_TUBE_ANGLE_SPLIT_LABEL = "BML_SheetOutlinePathWidthV7"
+_SHEET_TUBE_SUBDIVIDE_LABEL = "BML_SheetOutlinePathWidthV7Midpoints"
 _LINE_MATERIAL_NAMES = {
     "outline": MATERIAL_NAME,
     "inner": f"{MATERIAL_NAME}_Inner",
@@ -831,7 +830,7 @@ def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
             and _find_socket_identifier(tree, _SHEET_TUBE_WIDTH_CURVE_50_SOCKET) is not None
             and _find_socket_identifier(tree, _SHEET_TUBE_WIDTH_CURVE_75_SOCKET) is not None
             and any(
-                getattr(node, "label", "") == _SHEET_TUBE_ANGLE_SPLIT_LABEL
+                getattr(node, "label", "") == _SHEET_TUBE_SUBDIVIDE_LABEL
                 for node in tree.nodes
             )
         ):
@@ -913,28 +912,10 @@ def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
     boundary.inputs["B"].default_value = 1
     links.new(neighbors.outputs["Face Count"], boundary.inputs["A"])
 
-    not_boundary = nodes.new("FunctionNodeBooleanMath")
-    not_boundary.location = (-420, -220)
-    not_boundary.operation = "NOT"
-    links.new(boundary.outputs["Result"], not_boundary.inputs[0])
-
-    boundary_edges = nodes.new("GeometryNodeDeleteGeometry")
-    boundary_edges.location = (-520, 0)
-    boundary_edges.domain = "EDGE"
-    links.new(group_in.outputs["Geometry"], boundary_edges.inputs["Geometry"])
-    links.new(not_boundary.outputs[0], boundary_edges.inputs["Selection"])
-
-    split_edges = intersection_shell_node_helpers.add_branch_split(
-        nodes,
-        links,
-        boundary_edges.outputs["Geometry"],
-        _SHEET_TUBE_ANGLE_SPLIT_LABEL,
-        angle_output=group_in.outputs[_SHEET_TUBE_MIDPOINT_ANGLE_SOCKET],
-    )
-
     to_curve = nodes.new("GeometryNodeMeshToCurve")
     to_curve.location = (980, 0)
-    links.new(split_edges, to_curve.inputs["Mesh"])
+    links.new(group_in.outputs["Geometry"], to_curve.inputs["Mesh"])
+    links.new(boundary.outputs["Result"], to_curve.inputs["Selection"])
 
     subdivide_curve = nodes.new("GeometryNodeSubdivideCurve")
     subdivide_curve.label = _SHEET_TUBE_SUBDIVIDE_LABEL
@@ -954,19 +935,19 @@ def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
     profile.inputs["Resolution"].default_value = 8
     links.new(half_width.outputs[0], profile.inputs["Radius"])
 
-    scale = intersection_shell_node_helpers.add_curve_width_scale(
+    scale = intersection_shell_node_helpers.add_curve_midpoint_width_scale(
         nodes,
         links,
-        group_in,
-        x_offset=1080,
-        midpoint_factor_socket=_SHEET_TUBE_MIDPOINT_FACTOR_SOCKET,
-        midpoint_jitter_socket=_SHEET_TUBE_MIDPOINT_JITTER_SOCKET,
-        width_curve_sockets=(
-            _SHEET_TUBE_WIDTH_CURVE_25_SOCKET,
-            _SHEET_TUBE_WIDTH_CURVE_50_SOCKET,
-            _SHEET_TUBE_WIDTH_CURVE_75_SOCKET,
+        subdivide_curve.outputs["Curve"],
+        group_in.outputs[_SHEET_TUBE_MIDPOINT_ANGLE_SOCKET],
+        group_in.outputs[_SHEET_TUBE_MIDPOINT_FACTOR_SOCKET],
+        (1080, -620),
+        label=_SHEET_TUBE_ANGLE_SPLIT_LABEL + "Angle",
+        width_curve_outputs=(
+            group_in.outputs[_SHEET_TUBE_WIDTH_CURVE_25_SOCKET],
+            group_in.outputs[_SHEET_TUBE_WIDTH_CURVE_50_SOCKET],
+            group_in.outputs[_SHEET_TUBE_WIDTH_CURVE_75_SOCKET],
         ),
-        jitter_center_label=_SHEET_TUBE_JITTER_CENTER_LABEL,
     )
 
     tube = nodes.new("GeometryNodeCurveToMesh")
