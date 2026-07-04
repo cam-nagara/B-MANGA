@@ -227,7 +227,7 @@ def _midpoint_angle_property(prop_name: str, description: str):
     return FloatProperty(
         name="検出角度",
         description=description,
-        default=math.radians(60),
+        default=math.radians(100),
         min=math.radians(1),
         max=math.radians(180),
         precision=1,

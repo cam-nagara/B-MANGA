@@ -129,7 +129,7 @@ def main() -> None:
         assert tube_mod is not None, "板ポリに境界チューブがありません"
         assert tube_mod.node_group is not None
         assert any(
-            getattr(node, "label", "") == "BML_SheetOutlineAcutePathSplitV2"
+            getattr(node, "label", "") == "BML_SheetOutlineAcutePathSplitV4"
             for node in tube_mod.node_group.nodes
         ), "板ポリアウトラインが検出角度で分割されていません"
         plane.bmanga_line_settings.edge_smooth_factor = -0.75

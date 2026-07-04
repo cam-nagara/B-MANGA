@@ -81,6 +81,26 @@ def _make_segmented_box(name: str) -> bpy.types.Object:
     return obj
 
 
+def _make_subdivided_rectangle(name: str) -> bpy.types.Object:
+    verts = (
+        (-1.0, -0.7, 0.0),
+        (0.0, -0.7, 0.0),
+        (1.0, -0.7, 0.0),
+        (1.0, 0.0, 0.0),
+        (1.0, 0.7, 0.0),
+        (0.0, 0.7, 0.0),
+        (-1.0, 0.7, 0.0),
+        (-1.0, 0.0, 0.0),
+    )
+    mesh = bpy.data.meshes.new(name)
+    mesh.from_pydata(verts, [], [tuple(range(len(verts)))])
+    mesh.update()
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    obj.data.materials.append(bpy.data.materials.new(name + "_surface"))
+    return obj
+
+
 def _make_t_branch_graph(name: str) -> bpy.types.Object:
     verts = (
         (0.0, 0.0, 0.0),
@@ -152,6 +172,27 @@ def _make_acute_graph(name: str) -> bpy.types.Object:
     return obj
 
 
+def _make_diamond_loop_graph(name: str) -> bpy.types.Object:
+    verts = (
+        (0.0, -0.85, 0.0),
+        (0.32, 0.0, 0.0),
+        (0.0, 0.85, 0.0),
+        (-0.32, 0.0, 0.0),
+    )
+    edges = (
+        (0, 1),
+        (1, 2),
+        (2, 3),
+        (3, 0),
+    )
+    mesh = bpy.data.meshes.new(name)
+    mesh.from_pydata(verts, edges, [])
+    mesh.update()
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    return obj
+
+
 def _center_ridge_vertex() -> int:
     return (LEVELS // 2) * 3 + 1
 
@@ -176,20 +217,19 @@ def _reset_all_groups(obj: bpy.types.Object) -> None:
 
 
 def _assert_target_only(target: str, group_name: str, factor_prop: str) -> None:
-    obj = _make_folded_strip("BML_midpoint_" + target)
+    obj = _make_subdivided_rectangle("BML_midpoint_" + target)
     settings = obj.bmanga_line_settings
     angle_prop = {
         "outline": "edge_midpoint_angle",
         "inner": "inner_edge_midpoint_angle",
         "intersection": "intersection_edge_midpoint_angle",
     }[target]
-    settings.inner_line_angle = math.radians(120.0)
-    setattr(settings, angle_prop, math.radians(10.0))
+    setattr(settings, angle_prop, math.radians(100.0))
     _reset_all_groups(obj)
     setattr(settings, factor_prop, -1.0)
 
     vertex_analysis.compute_and_apply_weights(obj, settings, target)
-    center = _center_ridge_vertex()
+    center = 1
     assert _weight(obj, group_name, center) < 0.001
 
     untouched = {
@@ -202,33 +242,38 @@ def _assert_target_only(target: str, group_name: str, factor_prop: str) -> None:
 
 
 def _assert_outline_uses_detection_angle() -> None:
-    obj = _make_folded_strip("BML_midpoint_outline_angle")
+    obj = _make_bent_graph("BML_midpoint_outline_angle")
     settings = obj.bmanga_line_settings
     settings.edge_smooth_factor = -1.0
-    center = _center_ridge_vertex()
+    bend_vertex = 2
+    real_edge_is_sharp = vertex_analysis._edge_is_sharp
 
-    settings.inner_line_angle = math.radians(10.0)
-    settings.edge_midpoint_angle = math.radians(120.0)
-    vertex_analysis.compute_and_apply_weights(obj, settings, "outline")
-    assert _weight(obj, core.VG_LINE_WIDTH, center) > 0.999
+    try:
+        vertex_analysis._edge_is_sharp = lambda _edge, _threshold: True
+        settings.inner_line_angle = math.radians(100.0)
+        settings.edge_midpoint_angle = math.radians(60.0)
+        vertex_analysis.compute_and_apply_weights(obj, settings, "outline")
+        assert _weight(obj, core.VG_LINE_WIDTH, bend_vertex) < 0.001
 
-    settings.inner_line_angle = math.radians(120.0)
-    settings.edge_midpoint_angle = math.radians(10.0)
-    vertex_analysis.compute_and_apply_weights(obj, settings, "outline")
-    assert _weight(obj, core.VG_LINE_WIDTH, center) < 0.001
+        settings.inner_line_angle = math.radians(60.0)
+        settings.edge_midpoint_angle = math.radians(100.0)
+        vertex_analysis.compute_and_apply_weights(obj, settings, "outline")
+        assert _weight(obj, core.VG_LINE_WIDTH, bend_vertex) > 0.999
+    finally:
+        vertex_analysis._edge_is_sharp = real_edge_is_sharp
 
 
-def _assert_box_real_corners_are_outline_endpoints() -> None:
-    obj = _make_segmented_box("BML_midpoint_outline_box_endpoints")
+def _assert_rectangle_corners_are_outline_endpoints() -> None:
+    obj = _make_subdivided_rectangle("BML_midpoint_outline_rectangle_endpoints")
     settings = obj.bmanga_line_settings
     settings.edge_smooth_factor = -1.0
-    settings.edge_midpoint_angle = math.radians(60.0)
+    settings.edge_midpoint_angle = math.radians(100.0)
 
     vertex_analysis.compute_and_apply_weights(obj, settings, "outline")
-    actual_corner = 3
-    middle_on_straight_edge = _center_box_corner_vertex()
-    assert _weight(obj, core.VG_LINE_WIDTH, actual_corner) > 0.999
-    assert _weight(obj, core.VG_LINE_WIDTH, middle_on_straight_edge) < 0.05
+    corners = (0, 2, 4, 6)
+    side_centers = (1, 3, 5, 7)
+    assert all(_weight(obj, core.VG_LINE_WIDTH, vi) > 0.999 for vi in corners)
+    assert all(_weight(obj, core.VG_LINE_WIDTH, vi) < 0.05 for vi in side_centers)
 
 
 def _assert_cylinder_rims_use_view_endpoints() -> None:
@@ -237,7 +282,7 @@ def _assert_cylinder_rims_use_view_endpoints() -> None:
     obj.name = "BML_midpoint_outline_cylinder_endpoints"
     settings = obj.bmanga_line_settings
     settings.edge_smooth_factor = -1.0
-    settings.edge_midpoint_angle = math.radians(60.0)
+    settings.edge_midpoint_angle = math.radians(100.0)
 
     vertex_analysis.compute_and_apply_weights(obj, settings, "outline")
     top_vertices = [v for v in obj.data.vertices if v.co.z > 0.49]
@@ -254,20 +299,25 @@ def _assert_generated_target_uses_detection_angle(
     factor_prop: str,
     angle_prop: str,
 ) -> None:
-    obj = _make_folded_strip("BML_midpoint_angle_" + target)
+    obj = _make_bent_graph("BML_midpoint_angle_" + target)
     settings = obj.bmanga_line_settings
     setattr(settings, factor_prop, -1.0)
-    center = _center_ridge_vertex()
+    bend_vertex = 2
+    real_edge_is_sharp = vertex_analysis._edge_is_sharp
 
-    settings.inner_line_angle = math.radians(10.0)
-    setattr(settings, angle_prop, math.radians(120.0))
-    vertex_analysis.compute_and_apply_weights(obj, settings, target)
-    assert _weight(obj, group_name, center) > 0.999
+    try:
+        vertex_analysis._edge_is_sharp = lambda _edge, _threshold: True
+        settings.inner_line_angle = math.radians(60.0)
+        setattr(settings, angle_prop, math.radians(60.0))
+        vertex_analysis.compute_and_apply_weights(obj, settings, target)
+        assert _weight(obj, group_name, bend_vertex) < 0.001
 
-    settings.inner_line_angle = math.radians(120.0)
-    setattr(settings, angle_prop, math.radians(10.0))
-    vertex_analysis.compute_and_apply_weights(obj, settings, target)
-    assert _weight(obj, group_name, center) < 0.001
+        settings.inner_line_angle = math.radians(60.0)
+        setattr(settings, angle_prop, math.radians(100.0))
+        vertex_analysis.compute_and_apply_weights(obj, settings, target)
+        assert _weight(obj, group_name, bend_vertex) > 0.999
+    finally:
+        vertex_analysis._edge_is_sharp = real_edge_is_sharp
 
 
 def _assert_closed_cylinder_rim_uses_camera_view_endpoints() -> None:
@@ -276,7 +326,7 @@ def _assert_closed_cylinder_rim_uses_camera_view_endpoints() -> None:
     obj.name = "BML_midpoint_closed_rim"
     settings = obj.bmanga_line_settings
     settings.inner_edge_smooth_factor = -1.0
-    settings.inner_edge_midpoint_angle = math.radians(60.0)
+    settings.inner_edge_midpoint_angle = math.radians(100.0)
 
     vertex_analysis.compute_and_apply_weights(obj, settings, "inner")
     top_vertices = [v for v in obj.data.vertices if v.co.z > 0.49]
@@ -322,7 +372,7 @@ def _assert_bent_path_uses_detection_angle(
     obj = _make_bent_graph("BML_midpoint_bent_" + target)
     settings = obj.bmanga_line_settings
     setattr(settings, factor_prop, -1.0)
-    setattr(settings, angle_prop, math.radians(60.0))
+    setattr(settings, angle_prop, math.radians(100.0))
     real_edge_is_sharp = vertex_analysis._edge_is_sharp
     try:
         vertex_analysis._edge_is_sharp = lambda _edge, _threshold: True
@@ -331,9 +381,11 @@ def _assert_bent_path_uses_detection_angle(
         vertex_analysis._edge_is_sharp = real_edge_is_sharp
 
     bend_vertex = 2
+    segment_centers = (1, 3)
     endpoints = (0, 4)
-    assert _weight(obj, group_name, bend_vertex) < 0.001
+    assert _weight(obj, group_name, bend_vertex) > 0.999
     assert all(_weight(obj, group_name, vi) > 0.999 for vi in endpoints)
+    assert all(_weight(obj, group_name, vi) < 0.001 for vi in segment_centers)
 
 
 def _assert_acute_path_splits_below_detection_angle(
@@ -345,7 +397,7 @@ def _assert_acute_path_splits_below_detection_angle(
     obj = _make_acute_graph("BML_midpoint_acute_" + target)
     settings = obj.bmanga_line_settings
     setattr(settings, factor_prop, -1.0)
-    setattr(settings, angle_prop, math.radians(60.0))
+    setattr(settings, angle_prop, math.radians(100.0))
     real_edge_is_sharp = vertex_analysis._edge_is_sharp
     try:
         vertex_analysis._edge_is_sharp = lambda _edge, _threshold: True
@@ -361,6 +413,29 @@ def _assert_acute_path_splits_below_detection_angle(
     assert all(_weight(obj, group_name, vi) < 0.001 for vi in segment_centers)
 
 
+def _assert_diamond_loop_splits_only_acute_points(
+    target: str,
+    group_name: str,
+    factor_prop: str,
+    angle_prop: str,
+) -> None:
+    obj = _make_diamond_loop_graph("BML_midpoint_diamond_" + target)
+    settings = obj.bmanga_line_settings
+    setattr(settings, factor_prop, -1.0)
+    setattr(settings, angle_prop, math.radians(100.0))
+    real_edge_is_sharp = vertex_analysis._edge_is_sharp
+    try:
+        vertex_analysis._edge_is_sharp = lambda _edge, _threshold: True
+        vertex_analysis.compute_and_apply_weights(obj, settings, target)
+    finally:
+        vertex_analysis._edge_is_sharp = real_edge_is_sharp
+
+    acute_points = (0, 2)
+    obtuse_centers = (1, 3)
+    assert all(_weight(obj, group_name, vi) > 0.999 for vi in acute_points)
+    assert all(_weight(obj, group_name, vi) < 0.001 for vi in obtuse_centers)
+
+
 def main() -> None:
     b_manga_line.register()
     _clear_scene()
@@ -373,7 +448,7 @@ def main() -> None:
         "intersection_edge_smooth_factor",
     )
     _assert_outline_uses_detection_angle()
-    _assert_box_real_corners_are_outline_endpoints()
+    _assert_rectangle_corners_are_outline_endpoints()
     _assert_cylinder_rims_use_view_endpoints()
     _assert_generated_target_uses_detection_angle(
         "inner",
@@ -389,11 +464,6 @@ def main() -> None:
     )
     _assert_closed_cylinder_rim_uses_camera_view_endpoints()
     _assert_branch_vertices_are_endpoints(
-        "outline",
-        core.VG_LINE_WIDTH,
-        "edge_smooth_factor",
-    )
-    _assert_branch_vertices_are_endpoints(
         "inner",
         core.VG_INNER_LINE_WIDTH,
         "inner_edge_smooth_factor",
@@ -422,6 +492,18 @@ def main() -> None:
         "edge_midpoint_angle",
     )
     _assert_acute_path_splits_below_detection_angle(
+        "intersection",
+        core.VG_INTERSECTION_LINE_WIDTH,
+        "intersection_edge_smooth_factor",
+        "intersection_edge_midpoint_angle",
+    )
+    _assert_diamond_loop_splits_only_acute_points(
+        "outline",
+        core.VG_LINE_WIDTH,
+        "edge_smooth_factor",
+        "edge_midpoint_angle",
+    )
+    _assert_diamond_loop_splits_only_acute_points(
         "intersection",
         core.VG_INTERSECTION_LINE_WIDTH,
         "intersection_edge_smooth_factor",

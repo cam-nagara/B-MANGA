@@ -59,7 +59,7 @@ _SHEET_TUBE_MIDPOINT_ANGLE_SOCKET = "検出角度"
 _SHEET_TUBE_WIDTH_CURVE_25_SOCKET = "変化グラフ 25%"
 _SHEET_TUBE_WIDTH_CURVE_50_SOCKET = "変化グラフ 50%"
 _SHEET_TUBE_WIDTH_CURVE_75_SOCKET = "変化グラフ 75%"
-_SHEET_TUBE_ANGLE_SPLIT_LABEL = "BML_SheetOutlineAcutePathSplitV2"
+_SHEET_TUBE_ANGLE_SPLIT_LABEL = "BML_SheetOutlineAcutePathSplitV4"
 _SHEET_TUBE_JITTER_CENTER_LABEL = "BML_SheetOutlineJitterCenter"
 _LINE_MATERIAL_NAMES = {
     "outline": MATERIAL_NAME,
@@ -877,7 +877,7 @@ def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
         in_out="INPUT",
         socket_type="NodeSocketFloat",
     )
-    angle_sock.default_value = 1.0471975512
+    angle_sock.default_value = 1.7453292520
     angle_sock.min_value = 0.0
     angle_sock.max_value = 3.1415926536
     if hasattr(angle_sock, "subtype"):
@@ -935,6 +935,14 @@ def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
     to_curve.location = (980, 0)
     links.new(split_edges, to_curve.inputs["Mesh"])
 
+    resample = nodes.new("GeometryNodeResampleCurve")
+    resample.location = (1120, 0)
+    if hasattr(resample, "mode"):
+        resample.mode = "COUNT"
+    if "Count" in resample.inputs:
+        resample.inputs["Count"].default_value = 17
+    links.new(to_curve.outputs["Curve"], resample.inputs["Curve"])
+
     half_width = nodes.new("ShaderNodeMath")
     half_width.location = (-400, -240)
     half_width.operation = "MULTIPLY"
@@ -963,10 +971,10 @@ def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
     )
 
     tube = nodes.new("GeometryNodeCurveToMesh")
-    tube.location = (1380, 0)
+    tube.location = (1480, 0)
     if "Fill Caps" in tube.inputs:
         tube.inputs["Fill Caps"].default_value = True
-    links.new(to_curve.outputs["Curve"], tube.inputs["Curve"])
+    links.new(resample.outputs["Curve"], tube.inputs["Curve"])
     links.new(profile.outputs["Curve"], tube.inputs["Profile Curve"])
     if "Scale" in tube.inputs:
         links.new(scale, tube.inputs["Scale"])
@@ -1137,7 +1145,7 @@ def _sync_sheet_outline_midpoint_inputs(
     _set_node_input_if_changed(
         mod,
         _SHEET_TUBE_MIDPOINT_ANGLE_SOCKET,
-        float(getattr(settings, "edge_midpoint_angle", 1.0471975512)),
+        float(getattr(settings, "edge_midpoint_angle", 1.7453292520)),
     )
     _set_node_input_if_changed(
         mod,

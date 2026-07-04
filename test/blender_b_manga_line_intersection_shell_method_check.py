@@ -134,25 +134,35 @@ def _assert_shell_tree_has_branch_endpoint_and_jitter_nodes() -> None:
         (
             node
             for node in tree.nodes
-            if getattr(node, "label", "") == "BML_IntersectionShellAcutePathSplitV2"
+            if getattr(node, "label", "") == "BML_IntersectionShellAcutePathSplitV4"
         ),
         None,
     )
     assert split is not None, "交差点分岐でカーブを区切るノードがありません"
     selection_links = list(split.inputs["Selection"].links)
     assert selection_links, "交差点分岐の選択入力が未接続です"
-    selector = selection_links[0].from_node
-    assert selector.bl_idname == "FunctionNodeBooleanMath"
-    assert selector.operation == "OR"
-    branch_compare = None
-    for link in selector.inputs[0].links:
-        if link.from_node.bl_idname == "FunctionNodeCompare":
-            branch_compare = link.from_node
-            break
+    assert selection_links[0].from_node.bl_idname == "FunctionNodeBooleanMath"
+    branch_compare = next(
+        (
+            node for node in tree.nodes
+            if (
+                node.bl_idname == "FunctionNodeCompare"
+                and node.data_type == "INT"
+                and node.operation == "GREATER_EQUAL"
+                and int(node.inputs[3].default_value) == 3
+            )
+        ),
+        None,
+    )
     assert branch_compare is not None
-    assert branch_compare.data_type == "INT"
-    assert branch_compare.operation == "GREATER_EQUAL"
-    assert int(branch_compare.inputs[3].default_value) == 3
+    assert any(
+        node.bl_idname == "GeometryNodeStoreNamedAttribute"
+        for node in tree.nodes
+    )
+    assert any(
+        node.bl_idname == "GeometryNodeMergeByDistance"
+        for node in tree.nodes
+    )
     assert any(
         node.bl_idname == "GeometryNodeEdgesOfVertex"
         for node in tree.nodes

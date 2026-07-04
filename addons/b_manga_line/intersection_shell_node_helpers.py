@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 
+_PATH_SPLIT_ATTR = "BML_PathSplitVertex"
+
+
 def _math(nodes, operation: str, loc, value0=None, value1=None):
     node = nodes.new("ShaderNodeMath")
     node.location = loc
@@ -101,6 +104,58 @@ def _sample_index(nodes, links, mesh_output, value_output, index_output, loc, da
     links.new(value_output, node.inputs["Value"])
     links.new(index_output, node.inputs["Index"])
     return node.outputs["Value"]
+
+
+def _store_split_vertex_attribute(nodes, links, mesh_output, selection_output, loc):
+    node = nodes.new("GeometryNodeStoreNamedAttribute")
+    node.location = loc
+    node.domain = "POINT"
+    node.data_type = "BOOLEAN"
+    links.new(mesh_output, node.inputs["Geometry"])
+    node.inputs["Name"].default_value = _PATH_SPLIT_ATTR
+    links.new(selection_output, node.inputs["Value"])
+    return node.outputs["Geometry"]
+
+
+def _edge_selection_from_vertex_selection(nodes, links, mesh_output, selection_output, loc):
+    x, y = loc
+    edge_vertices = nodes.new("GeometryNodeInputMeshEdgeVertices")
+    edge_vertices.location = (x, y)
+
+    sample1 = nodes.new("GeometryNodeSampleIndex")
+    sample1.location = (x + 240, y + 80)
+    sample1.data_type = "BOOLEAN"
+    sample1.domain = "POINT"
+    links.new(mesh_output, sample1.inputs["Geometry"])
+    links.new(selection_output, sample1.inputs["Value"])
+    links.new(edge_vertices.outputs["Vertex Index 1"], sample1.inputs["Index"])
+
+    sample2 = nodes.new("GeometryNodeSampleIndex")
+    sample2.location = (x + 240, y - 80)
+    sample2.data_type = "BOOLEAN"
+    sample2.domain = "POINT"
+    links.new(mesh_output, sample2.inputs["Geometry"])
+    links.new(selection_output, sample2.inputs["Value"])
+    links.new(edge_vertices.outputs["Vertex Index 2"], sample2.inputs["Index"])
+
+    edge_selection = nodes.new("FunctionNodeBooleanMath")
+    edge_selection.location = (x + 480, y)
+    edge_selection.operation = "OR"
+    links.new(sample1.outputs["Value"], edge_selection.inputs[0])
+    links.new(sample2.outputs["Value"], edge_selection.inputs[1])
+    return edge_selection.outputs[0]
+
+
+def _non_split_vertex_selection(nodes, links, loc):
+    attr = nodes.new("GeometryNodeInputNamedAttribute")
+    attr.location = loc
+    attr.data_type = "BOOLEAN"
+    attr.inputs["Name"].default_value = _PATH_SPLIT_ATTR
+    invert = nodes.new("FunctionNodeBooleanMath")
+    invert.location = (loc[0] + 240, loc[1])
+    invert.operation = "NOT"
+    links.new(attr.outputs["Attribute"], invert.inputs[0])
+    return invert.outputs[0]
 
 
 def _add_width_curve(nodes, links, raw_output, gin, sockets, x_offset=0):
@@ -298,12 +353,36 @@ def add_branch_split(nodes, links, mesh_output, label: str, *, angle_output=None
         links.new(angle_selection, combine.inputs[1])
         selection = combine.outputs[0]
 
+    marked_mesh = _store_split_vertex_attribute(
+        nodes,
+        links,
+        mesh_output,
+        selection,
+        (1120, 120),
+    )
+    edge_selection = _edge_selection_from_vertex_selection(
+        nodes,
+        links,
+        marked_mesh,
+        selection,
+        (1120, -260),
+    )
+
     split = nodes.new("GeometryNodeSplitEdges")
     split.label = label
-    split.location = (1220, -120) if angle_output is not None else (780, -120)
-    links.new(mesh_output, split.inputs["Mesh"])
-    links.new(selection, split.inputs["Selection"])
-    return split.outputs["Mesh"]
+    split.location = (1720, -120) if angle_output is not None else (1480, -120)
+    links.new(marked_mesh, split.inputs["Mesh"])
+    links.new(edge_selection, split.inputs["Selection"])
+
+    merge = nodes.new("GeometryNodeMergeByDistance")
+    merge.location = (1940, -120) if angle_output is not None else (1700, -120)
+    merge.inputs["Distance"].default_value = 0.000001
+    links.new(split.outputs["Mesh"], merge.inputs["Geometry"])
+    links.new(
+        _non_split_vertex_selection(nodes, links, (1720, -360)),
+        merge.inputs["Selection"],
+    )
+    return merge.outputs["Geometry"]
 
 
 def add_jittered_midpoint_factor(

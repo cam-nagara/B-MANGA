@@ -441,6 +441,12 @@ def _angle_threshold(settings, target: str = "outline") -> float:
     return max(0.0, float(getattr(settings, prop_name, fallback)))
 
 
+def _line_graph_threshold(settings, target: str = "outline") -> float:
+    if _normalize_target(target) == "inner":
+        return max(0.0, float(getattr(settings, "inner_line_angle", math.radians(60.0))))
+    return math.radians(60.0)
+
+
 def _write_vertex_group_weights(
     obj: bpy.types.Object,
     weights: list[float],
@@ -567,6 +573,7 @@ def _calc_midpoint_factor(
     curve_points: tuple[float, float, float] | None = None,
     threshold: float = math.pi / 2,
     hard_endpoint_angle: float | None = None,
+    use_branch_anchors: bool = True,
 ) -> dict[int, float]:
     """鋭角アンカー頂点間の中間度を計算.
 
@@ -583,10 +590,16 @@ def _calc_midpoint_factor(
     n = len(bm.verts)
     sharp_neighbors = _build_sharp_graph(bm, threshold)
 
-    graph_anchors = {
-        i for i, neighbors in enumerate(sharp_neighbors)
-        if neighbors and len(neighbors) != 2
-    }
+    if use_branch_anchors:
+        graph_anchors = {
+            i for i, neighbors in enumerate(sharp_neighbors)
+            if neighbors and len(neighbors) != 2
+        }
+    else:
+        graph_anchors = {
+            i for i, neighbors in enumerate(sharp_neighbors)
+            if len(neighbors) == 1
+        }
     graph_anchors |= _hard_endpoint_anchors(bm, threshold, hard_endpoint_angle)
     if forced_anchors:
         graph_anchors |= {
@@ -684,11 +697,12 @@ def compute_and_apply_weights(obj, settings, target: str = "outline") -> int:
     # 3. 中間頂点の線幅調整
     factor, jitter, curve_points = _target_midpoint_props(settings, target)
     if abs(factor) > 0.001:
-        threshold = _angle_threshold(settings, target)
+        split_threshold = _angle_threshold(settings, target)
+        graph_threshold = _line_graph_threshold(settings, target)
         before_mesh = obj.data
         before_count = n
-        base_anchors = _apply_subsurf_for_midpoint(obj, threshold)
-        saved_anchors = _get_saved_anchors(obj, threshold)
+        base_anchors = _apply_subsurf_for_midpoint(obj, graph_threshold)
+        saved_anchors = _get_saved_anchors(obj, graph_threshold)
         base_anchors = base_anchors or saved_anchors
         if obj.data is not before_mesh or len(obj.data.vertices) != before_count:
             mesh = obj.data
@@ -699,8 +713,9 @@ def compute_and_apply_weights(obj, settings, target: str = "outline") -> int:
             base_anchors or None,
             jitter,
             curve_points,
-            threshold,
-            threshold if target in {"outline", "intersection"} else None,
+            graph_threshold,
+            split_threshold,
+            use_branch_anchors=(target != "outline"),
         )
         for i in range(n):
             m = midpoint.get(i, 0.0)

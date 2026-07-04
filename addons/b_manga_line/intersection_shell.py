@@ -45,7 +45,7 @@ _CURVE_RADIUS_NORMALIZER_LABEL = "BML_IntersectionShellCurveRadius"
 _SHELL_COMBINED_THICKNESS_NODE_LABEL = "BML_IntersectionShellCombinedThickness"
 _SHELL_PROFILE_NODE_LABEL = "BML_IntersectionShellProfile"
 _SHELL_GAP_COVERAGE_NODE_LABEL = "BML_IntersectionShellGapCoverage"
-_SHELL_BRANCH_SPLIT_NODE_LABEL = "BML_IntersectionShellAcutePathSplitV2"
+_SHELL_BRANCH_SPLIT_NODE_LABEL = "BML_IntersectionShellAcutePathSplitV4"
 _SHELL_CURVE_JITTER_CENTER_LABEL = "BML_IntersectionShellJitterCenter"
 SHELL_TUBE_PROFILE_RESOLUTION = 12
 SHELL_GAP_COVERAGE_FACTOR = 1.08
@@ -147,7 +147,7 @@ def _setup_interface(tree: bpy.types.NodeTree) -> None:
         in_out="INPUT",
         socket_type="NodeSocketFloat",
     )
-    angle_sock.default_value = 1.0471975512
+    angle_sock.default_value = 1.7453292520
     angle_sock.min_value = 0.0
     angle_sock.max_value = 3.1415926536
     if hasattr(angle_sock, "subtype"):
@@ -416,6 +416,14 @@ def _add_curve_radius_normalizer(nodes, links, curve_output, loc):
 
 
 def _add_shell_tube_nodes(nodes, links, curve_output, gin, radius_output, x_offset=0):
+    resample = nodes.new("GeometryNodeResampleCurve")
+    resample.location = (x_offset - 180, -300)
+    if hasattr(resample, "mode"):
+        resample.mode = "COUNT"
+    if "Count" in resample.inputs:
+        resample.inputs["Count"].default_value = 17
+    links.new(curve_output, resample.inputs["Curve"])
+
     scale = intersection_shell_node_helpers.add_curve_width_scale(
         nodes,
         links,
@@ -442,7 +450,7 @@ def _add_shell_tube_nodes(nodes, links, curve_output, gin, radius_output, x_offs
 
     c2m = nodes.new("GeometryNodeCurveToMesh")
     c2m.location = (x_offset + 200, -300)
-    links.new(curve_output, c2m.inputs["Curve"])
+    links.new(resample.outputs["Curve"], c2m.inputs["Curve"])
     links.new(circle.outputs["Curve"], c2m.inputs["Profile Curve"])
     if "Scale" in c2m.inputs:
         links.new(scale, c2m.inputs["Scale"])
@@ -696,7 +704,7 @@ def _set_width_control_parameters(mod: bpy.types.Modifier) -> None:
             getattr(settings, "intersection_edge_midpoint_jitter_percent", 0.0)
         ),
         _MIDPOINT_ANGLE_SOCKET: float(
-            getattr(settings, "intersection_edge_midpoint_angle", 1.0471975512)
+            getattr(settings, "intersection_edge_midpoint_angle", 1.7453292520)
         ),
         _WIDTH_CURVE_25_SOCKET: float(
             getattr(settings, "intersection_edge_width_curve_25", 0.25)
