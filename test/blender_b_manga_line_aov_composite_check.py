@@ -166,6 +166,7 @@ def _assert_line_only_pixels(path: Path) -> None:
         pixels = list(image.pixels)
         blue_total = 0
         blue_center = 0
+        alpha_total = 0
         center_x0 = int(w * 0.38)
         center_x1 = int(w * 0.62)
         center_y0 = int(h * 0.32)
@@ -174,6 +175,8 @@ def _assert_line_only_pixels(path: Path) -> None:
             for x in range(w):
                 index = (y * w + x) * 4
                 r, g, b, a = pixels[index:index + 4]
+                if a > 0.01:
+                    alpha_total += 1
                 is_blue = b > 0.30 and r < 0.18 and g < 0.18 and a > 0.0
                 if is_blue:
                     blue_total += 1
@@ -183,6 +186,7 @@ def _assert_line_only_pixels(path: Path) -> None:
         bpy.data.images.remove(image)
     assert blue_total > 200, f"アウトラインが少なすぎます: {blue_total}"
     assert blue_center < 30, f"中央面にアウトラインAOVの塗りが残っています: {blue_center}"
+    assert alpha_total < w * h * 0.25, f"線画以外の透明度が残っています: {alpha_total}/{w * h}"
 
 
 def main() -> None:
