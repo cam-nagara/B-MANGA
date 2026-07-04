@@ -3,6 +3,36 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-05 — 交差線の中間頂点線幅補間を修正 (B-MANGA Line v0.3.105)
+
+### 症状
+
+- 交差線で中間頂点の線幅調整を使った時、サブディビジョンサーフェスをON、特にビューポートのレベル数2付近にすると、端だけ太く、その直後から急に細い一定線幅へ落ちることがあった。
+- サブディビジョンサーフェスで交差線の評価点が増えた時、出るべき交差線が更新されず、欠けたように見える場合があった。
+
+### 原因
+
+- 交差線の線幅補間が、線の端から中心までの距離ではなく、角/端点の直前直後数点だけを見て 0 / 0.5 / 1 に切り替える段階判定になっていた。
+- ビューポートのレベル数をレンダーに合わせた時、交差線側の再評価が明示的に走らない経路があった。
+
+### 修正
+
+- 交差線と板ポリ境界チューブの線幅補間を、角/端点ごとの区間内で累積距離を使う連続補間に変更した。
+- 検出角度で区切られる点は、形状を変えずに線幅補間上の端点として扱うようにした。
+- サブディビジョンサーフェスのビューポートのレベル数をレンダーに合わせた時、交差線とカメラ補正の更新も明示的に走るようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_intersection_shell_method_check.py`
+- `test/blender_b_manga_line_open_mesh_outline_check.py`
+- `test/blender_b_manga_line_subdivision_level_sync_check.py`
+- `_verify/2026-07-05_bml_intersection_subsurf_midpoint/intersection_midpoint_subsurf_off.png`
+- `_verify/2026-07-05_bml_intersection_subsurf_midpoint/intersection_midpoint_subsurf_level2.png`
+- `_verify/2026-07-05_bml_intersection_subsurf_midpoint/intersection_midpoint_rectangle_level2.png`
+- `_verify/2026-07-05_bml_intersection_subsurf_midpoint/test_line04_intersection_level2.png`
+
+---
+
 ## 2026-07-05 — カメラ距離ボタンとライン表示チェックボックスを追加 (B-MANGA Line v0.3.104)
 
 ### 症状

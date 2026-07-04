@@ -539,14 +539,27 @@ def _on_match_subsurf_viewport_to_render_changed(self, context):
     if _propagating:
         return
     if self.match_subsurf_viewport_to_render:
-        from . import subdivision_lod
+        from . import camera_comp, intersection_lines, subdivision_lod
 
         owner = self.id_data
         targets = _selected_mesh_objects(context, owner)
         if owner.type == "MESH" and owner not in targets:
             targets.append(owner)
+        changed_targets = []
         for obj in targets:
-            subdivision_lod.sync_viewport_levels_to_render(obj)
+            if subdivision_lod.sync_viewport_levels_to_render(obj):
+                changed_targets.append(obj)
+        if changed_targets:
+            refreshed = _refresh_intersection_scene(context)
+            if not refreshed:
+                for obj in changed_targets:
+                    intersection_lines.update_parameters(obj)
+                refreshed = changed_targets
+            camera_comp.refresh_objects(
+                context,
+                refreshed,
+                width_targets=("intersection",),
+            )
     _propagate(self, context, "match_subsurf_viewport_to_render")
 
 

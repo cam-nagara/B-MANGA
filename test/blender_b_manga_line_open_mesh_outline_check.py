@@ -136,13 +136,21 @@ def main() -> None:
         assert tube_mod is not None, "板ポリに境界チューブがありません"
         assert tube_mod.node_group is not None
         assert any(
-            getattr(node, "label", "") == "BML_SheetOutlinePathWidthV8Angle"
+            getattr(node, "label", "") == "BML_SheetOutlinePathWidthV9Angle"
             for node in tube_mod.node_group.nodes
         ), "板ポリアウトラインが検出角度で分割されていません"
         assert any(
-            getattr(node, "label", "") == "BML_SheetOutlinePathWidthV8Midpoints"
+            getattr(node, "label", "") == "BML_SheetOutlinePathWidthV9Midpoints"
             for node in tube_mod.node_group.nodes
         ), "板ポリアウトラインに区間ごとの中心点がありません"
+        assert any(
+            node.bl_idname == "GeometryNodeSplineParameter"
+            for node in tube_mod.node_group.nodes
+        ), "板ポリアウトラインの線幅が端点から中間点まで連続補間されていません"
+        assert any(
+            node.bl_idname == "GeometryNodeAccumulateField"
+            for node in tube_mod.node_group.nodes
+        ), "板ポリアウトラインの線幅が角/端点ごとの区間距離で補間されていません"
         assert not any(
             node.bl_idname == "GeometryNodeSplitEdges"
             for node in tube_mod.node_group.nodes

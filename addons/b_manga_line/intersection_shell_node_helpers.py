@@ -24,6 +24,16 @@ def _switch_float(nodes, links, switch_output, true_output, false_output, loc):
     return node.outputs["Output"]
 
 
+def _float_switch_value(nodes, links, switch_output, true_value, false_value, loc):
+    node = nodes.new("GeometryNodeSwitch")
+    node.location = loc
+    node.input_type = "FLOAT"
+    links.new(switch_output, node.inputs["Switch"])
+    node.inputs["False"].default_value = false_value
+    node.inputs["True"].default_value = true_value
+    return node.outputs["Output"]
+
+
 def _value_or_socket(nodes, links, socket_output, default, loc):
     if socket_output is not None:
         return socket_output
@@ -192,6 +202,83 @@ def _scale_from_endpoint_selection(nodes, links, selection_output, factor_output
     return clamped_min.outputs[0]
 
 
+def _add_jittered_midpoint_factor_from_output(
+    nodes,
+    links,
+    spline,
+    jitter_output,
+    x_offset: int,
+    *,
+    jitter_center_label: str,
+    y_offset: int = 0,
+    factor_output=None,
+    random_id_output=None,
+):
+    jitter_div = _math(nodes, "DIVIDE", (x_offset - 760, y_offset + 280), value1=100.0)
+    if jitter_output is not None:
+        links.new(jitter_output, jitter_div.inputs[0])
+    else:
+        jitter_div.inputs[0].default_value = 0.0
+    jitter_min = _math(nodes, "MAXIMUM", (x_offset - 580, y_offset + 280), value1=0.0)
+    links.new(jitter_div.outputs[0], jitter_min.inputs[0])
+    jitter_max = _math(nodes, "MINIMUM", (x_offset - 400, y_offset + 280), value1=0.5)
+    links.new(jitter_min.outputs[0], jitter_max.inputs[0])
+
+    random = nodes.new("FunctionNodeRandomValue")
+    random.location = (x_offset - 760, y_offset + 440)
+    random.data_type = "FLOAT"
+    random.inputs[2].default_value = -1.0
+    random.inputs[3].default_value = 1.0
+    links.new(
+        random_id_output if random_id_output is not None else spline.outputs["Index"],
+        random.inputs["ID"],
+    )
+
+    offset = _math(nodes, "MULTIPLY", (x_offset - 220, y_offset + 340))
+    links.new(random.outputs[1], offset.inputs[0])
+    links.new(jitter_max.outputs[0], offset.inputs[1])
+    center = _math(nodes, "ADD", (x_offset - 20, y_offset + 340), value0=0.5)
+    center.label = jitter_center_label
+    links.new(offset.outputs[0], center.inputs[1])
+    center_min = _math(nodes, "MAXIMUM", (x_offset + 160, y_offset + 340), value1=0.001)
+    links.new(center.outputs[0], center_min.inputs[0])
+    center_max = _math(nodes, "MINIMUM", (x_offset + 340, y_offset + 340), value1=0.999)
+    links.new(center_min.outputs[0], center_max.inputs[0])
+
+    left_ratio = _math(nodes, "DIVIDE", (x_offset - 220, y_offset + 120))
+    factor = factor_output if factor_output is not None else spline.outputs["Factor"]
+    links.new(factor, left_ratio.inputs[0])
+    links.new(center_max.outputs[0], left_ratio.inputs[1])
+    one_minus_factor = _math(nodes, "SUBTRACT", (x_offset - 220, y_offset), value0=1.0)
+    links.new(factor, one_minus_factor.inputs[1])
+    one_minus_center = _math(nodes, "SUBTRACT", (x_offset - 20, y_offset), value0=1.0)
+    links.new(center_max.outputs[0], one_minus_center.inputs[1])
+    right_ratio = _math(nodes, "DIVIDE", (x_offset + 160, y_offset))
+    links.new(one_minus_factor.outputs[0], right_ratio.inputs[0])
+    links.new(one_minus_center.outputs[0], right_ratio.inputs[1])
+
+    left_side = nodes.new("FunctionNodeCompare")
+    left_side.location = (x_offset + 160, y_offset + 180)
+    left_side.data_type = "FLOAT"
+    left_side.operation = "LESS_EQUAL"
+    links.new(factor, left_side.inputs[0])
+    links.new(center_max.outputs[0], left_side.inputs[1])
+
+    raw = _switch_float(
+        nodes,
+        links,
+        left_side.outputs[0],
+        left_ratio.outputs[0],
+        right_ratio.outputs[0],
+        (x_offset + 520, y_offset + 120),
+    )
+    raw_min = _math(nodes, "MAXIMUM", (x_offset + 700, y_offset + 120), value1=0.0)
+    links.new(raw, raw_min.inputs[0])
+    raw_max = _math(nodes, "MINIMUM", (x_offset + 880, y_offset + 120), value1=1.0)
+    links.new(raw_min.outputs[0], raw_max.inputs[0])
+    return raw_max.outputs[0]
+
+
 def add_jittered_midpoint_factor(
     nodes,
     links,
@@ -202,62 +289,14 @@ def add_jittered_midpoint_factor(
     midpoint_jitter_socket: str,
     jitter_center_label: str,
 ):
-    jitter_div = _math(nodes, "DIVIDE", (x_offset - 760, 280), value1=100.0)
-    links.new(gin.outputs[midpoint_jitter_socket], jitter_div.inputs[0])
-    jitter_min = _math(nodes, "MAXIMUM", (x_offset - 580, 280), value1=0.0)
-    links.new(jitter_div.outputs[0], jitter_min.inputs[0])
-    jitter_max = _math(nodes, "MINIMUM", (x_offset - 400, 280), value1=0.5)
-    links.new(jitter_min.outputs[0], jitter_max.inputs[0])
-
-    random = nodes.new("FunctionNodeRandomValue")
-    random.location = (x_offset - 760, 440)
-    random.data_type = "FLOAT"
-    random.inputs[2].default_value = -1.0
-    random.inputs[3].default_value = 1.0
-    links.new(spline.outputs["Index"], random.inputs["ID"])
-
-    offset = _math(nodes, "MULTIPLY", (x_offset - 220, 340))
-    links.new(random.outputs[1], offset.inputs[0])
-    links.new(jitter_max.outputs[0], offset.inputs[1])
-    center = _math(nodes, "ADD", (x_offset - 20, 340), value0=0.5)
-    center.label = jitter_center_label
-    links.new(offset.outputs[0], center.inputs[1])
-    center_min = _math(nodes, "MAXIMUM", (x_offset + 160, 340), value1=0.001)
-    links.new(center.outputs[0], center_min.inputs[0])
-    center_max = _math(nodes, "MINIMUM", (x_offset + 340, 340), value1=0.999)
-    links.new(center_min.outputs[0], center_max.inputs[0])
-
-    left_ratio = _math(nodes, "DIVIDE", (x_offset - 220, 120))
-    links.new(spline.outputs["Factor"], left_ratio.inputs[0])
-    links.new(center_max.outputs[0], left_ratio.inputs[1])
-    one_minus_factor = _math(nodes, "SUBTRACT", (x_offset - 220, 0), value0=1.0)
-    links.new(spline.outputs["Factor"], one_minus_factor.inputs[1])
-    one_minus_center = _math(nodes, "SUBTRACT", (x_offset - 20, 0), value0=1.0)
-    links.new(center_max.outputs[0], one_minus_center.inputs[1])
-    right_ratio = _math(nodes, "DIVIDE", (x_offset + 160, 0))
-    links.new(one_minus_factor.outputs[0], right_ratio.inputs[0])
-    links.new(one_minus_center.outputs[0], right_ratio.inputs[1])
-
-    left_side = nodes.new("FunctionNodeCompare")
-    left_side.location = (x_offset + 160, 180)
-    left_side.data_type = "FLOAT"
-    left_side.operation = "LESS_EQUAL"
-    links.new(spline.outputs["Factor"], left_side.inputs[0])
-    links.new(center_max.outputs[0], left_side.inputs[1])
-
-    raw = _switch_float(
+    return _add_jittered_midpoint_factor_from_output(
         nodes,
         links,
-        left_side.outputs[0],
-        left_ratio.outputs[0],
-        right_ratio.outputs[0],
-        (x_offset + 520, 120),
+        spline,
+        gin.outputs[midpoint_jitter_socket],
+        x_offset,
+        jitter_center_label=jitter_center_label,
     )
-    raw_min = _math(nodes, "MAXIMUM", (x_offset + 700, 120), value1=0.0)
-    links.new(raw, raw_min.inputs[0])
-    raw_max = _math(nodes, "MINIMUM", (x_offset + 880, 120), value1=1.0)
-    links.new(raw_min.outputs[0], raw_max.inputs[0])
-    return raw_max.outputs[0]
 
 
 def add_curve_width_scale(
@@ -466,15 +505,18 @@ def add_curve_midpoint_width_scale(
     *,
     label: str,
     width_curve_outputs=None,
+    jitter_output=None,
 ):
     """Return a Curve to Mesh scale field without changing the curve shape."""
     x, y = loc
     index = nodes.new("GeometryNodeInputIndex")
-    index.location = (x, y + 420)
+    index.location = (x, y + 520)
     position = nodes.new("GeometryNodeInputPosition")
-    position.location = (x, y + 260)
+    position.location = (x, y + 360)
+    spline = nodes.new("GeometryNodeSplineParameter")
+    spline.location = (x, y + 160)
 
-    angle_cos = _math(nodes, "COSINE", (x + 180, y + 120))
+    angle_cos = _math(nodes, "COSINE", (x + 180, y + 220))
     links.new(angle_output, angle_cos.inputs[0])
 
     current_split = _curve_point_split_from_offsets(
@@ -487,116 +529,114 @@ def add_curve_midpoint_width_scale(
         0,
         1,
         angle_cos.outputs[0],
-        (x + 360, y + 300),
+        (x + 360, y + 400),
         label=label,
     )
-    prev_split = _curve_point_split_from_offsets(
-        nodes,
-        links,
-        curve_output,
-        position.outputs["Position"],
-        index.outputs["Index"],
-        -2,
-        -1,
-        0,
-        angle_cos.outputs[0],
-        (x + 360, y - 160),
-    )
-    next_split = _curve_point_split_from_offsets(
-        nodes,
-        links,
-        curve_output,
-        position.outputs["Position"],
-        index.outputs["Index"],
-        0,
-        1,
-        2,
-        angle_cos.outputs[0],
-        (x + 360, y - 620),
-    )
-    prev2_split = _curve_point_split_from_offsets(
-        nodes,
-        links,
-        curve_output,
-        position.outputs["Position"],
-        index.outputs["Index"],
-        -3,
-        -2,
-        -1,
-        angle_cos.outputs[0],
-        (x + 2040, y - 160),
-    )
-    next2_split = _curve_point_split_from_offsets(
-        nodes,
-        links,
-        curve_output,
-        position.outputs["Position"],
-        index.outputs["Index"],
-        1,
-        2,
-        3,
-        angle_cos.outputs[0],
-        (x + 2040, y - 620),
-    )
 
-    adjacent_center = _bool_and(
-        nodes,
-        links,
-        prev_split,
-        next_split,
-        (x + 3720, y + 160),
-    )
-    two_step_center = _bool_and(
-        nodes,
-        links,
-        prev2_split,
-        next2_split,
-        (x + 3720, y - 20),
-    )
-    full_center = _bool_or(
-        nodes,
-        links,
-        adjacent_center,
-        two_step_center,
-        (x + 3920, y + 80),
-    )
-    near_prev = _bool_or(nodes, links, prev_split, prev2_split, (x + 3720, y - 240))
-    near_next = _bool_or(nodes, links, next_split, next2_split, (x + 3720, y - 400))
-    near_endpoint = _bool_or(nodes, links, near_prev, near_next, (x + 3920, y - 320))
-
-    one = nodes.new("ShaderNodeValue")
-    one.location = (x + 3920, y - 80)
-    one.outputs[0].default_value = 1.0
-    half = nodes.new("ShaderNodeValue")
-    half.location = (x + 3920, y - 220)
-    half.outputs[0].default_value = 0.5
-    zero = nodes.new("ShaderNodeValue")
-    zero.location = (x + 3920, y - 560)
-    zero.outputs[0].default_value = 0.0
-
-    center_or_half = _switch_float(
-        nodes,
-        links,
-        full_center,
-        one.outputs[0],
-        half.outputs[0],
-        (x + 4140, y - 60),
-    )
-    non_endpoint_weight = _switch_float(
-        nodes,
-        links,
-        near_endpoint,
-        center_or_half,
-        one.outputs[0],
-        (x + 4360, y - 60),
-    )
-    center_weight = _switch_float(
+    spline_start = nodes.new("FunctionNodeCompare")
+    spline_start.location = (x + 2040, y + 420)
+    spline_start.data_type = "FLOAT"
+    spline_start.operation = "LESS_EQUAL"
+    spline_start.inputs[1].default_value = 0.000001
+    links.new(spline.outputs["Factor"], spline_start.inputs[0])
+    effective_split = _bool_or(
         nodes,
         links,
         current_split,
+        spline_start.outputs[0],
+        (x + 2240, y + 420),
+    )
+    split_value = _float_switch_value(
+        nodes,
+        links,
+        effective_split,
+        1.0,
+        0.0,
+        (x + 2440, y + 420),
+    )
+    split_accumulate = nodes.new("GeometryNodeAccumulateField")
+    split_accumulate.location = (x + 2640, y + 420)
+    split_accumulate.data_type = "FLOAT"
+    split_accumulate.domain = "POINT"
+    links.new(split_value, split_accumulate.inputs["Value"])
+    links.new(spline.outputs["Index"], split_accumulate.inputs["Group ID"])
+    segment_id = _math(nodes, "SUBTRACT", (x + 2860, y + 420))
+    links.new(split_accumulate.outputs["Leading"], segment_id.inputs[0])
+    links.new(split_value, segment_id.inputs[1])
+
+    prev = _offset_point(nodes, links, index.outputs["Index"], -1, (x + 2040, y + 120))
+    prev_pos = _sample_curve_position(
+        nodes,
+        links,
+        curve_output,
+        position.outputs["Position"],
+        prev.outputs["Point Index"],
+        (x + 2240, y + 120),
+    )
+    dist = nodes.new("ShaderNodeVectorMath")
+    dist.location = (x + 2440, y + 120)
+    dist.operation = "DISTANCE"
+    links.new(position.outputs["Position"], dist.inputs[0])
+    links.new(prev_pos, dist.inputs[1])
+    invalid_prev = _bool_not(
+        nodes,
+        links,
+        prev.outputs["Is Valid Offset"],
+        (x + 2440, y - 40),
+    )
+    segment_start = _bool_or(
+        nodes,
+        links,
+        invalid_prev,
+        spline_start.outputs[0],
+        (x + 2640, y + 40),
+    )
+    segment_step = _switch_float(
+        nodes,
+        links,
+        segment_start,
+        _value_or_socket(nodes, links, None, 0.0, (x + 2640, y - 160)),
+        dist.outputs["Value"],
+        (x + 2860, y + 120),
+    )
+    distance_accumulate = nodes.new("GeometryNodeAccumulateField")
+    distance_accumulate.location = (x + 3060, y + 120)
+    distance_accumulate.data_type = "FLOAT"
+    distance_accumulate.domain = "POINT"
+    links.new(segment_step, distance_accumulate.inputs["Value"])
+    links.new(segment_id.outputs[0], distance_accumulate.inputs["Group ID"])
+    total_safe = _math(nodes, "MAXIMUM", (x + 3280, y + 40), value1=0.000001)
+    links.new(distance_accumulate.outputs["Total"], total_safe.inputs[0])
+    local_factor = _math(nodes, "DIVIDE", (x + 3500, y + 120))
+    links.new(distance_accumulate.outputs["Leading"], local_factor.inputs[0])
+    links.new(total_safe.outputs[0], local_factor.inputs[1])
+    local_min = _math(nodes, "MAXIMUM", (x + 3720, y + 120), value1=0.0)
+    links.new(local_factor.outputs[0], local_min.inputs[0])
+    local_max = _math(nodes, "MINIMUM", (x + 3940, y + 120), value1=1.0)
+    links.new(local_min.outputs[0], local_max.inputs[0])
+
+    continuous_weight = _add_jittered_midpoint_factor_from_output(
+        nodes,
+        links,
+        spline,
+        jitter_output,
+        x + 4820,
+        jitter_center_label=label + "Center",
+        y_offset=y + 60,
+        factor_output=local_max.outputs[0],
+        random_id_output=segment_id.outputs[0],
+    )
+    zero = nodes.new("ShaderNodeValue")
+    zero.location = (x + 5840, y - 260)
+    zero.outputs[0].default_value = 0.0
+
+    center_weight = _switch_float(
+        nodes,
+        links,
+        effective_split,
         zero.outputs[0],
-        non_endpoint_weight,
-        (x + 4580, y + 40),
+        continuous_weight,
+        (x + 6060, y + 40),
     )
 
     return _scale_from_center_weight(
@@ -604,6 +644,6 @@ def add_curve_midpoint_width_scale(
         links,
         center_weight,
         factor_output,
-        (x + 4800, y + 40),
+        (x + 6280, y + 40),
         width_curve_outputs=width_curve_outputs,
     )

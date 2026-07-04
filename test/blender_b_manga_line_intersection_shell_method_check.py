@@ -134,7 +134,7 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
         (
             node
             for node in tree.nodes
-            if getattr(node, "label", "") == "BML_IntersectionShellPathWidthV8Midpoints"
+            if getattr(node, "label", "") == "BML_IntersectionShellPathWidthV9Midpoints"
         ),
         None,
     )
@@ -148,13 +148,25 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
                 and node.data_type == "FLOAT"
                 and node.operation == "GREATER_THAN"
                 and getattr(node, "label", "") == (
-                    "BML_IntersectionShellPathWidthV8Angle"
+                    "BML_IntersectionShellPathWidthV9Angle"
                 )
             )
         ),
         None,
     )
     assert angle_compare is not None
+    assert any(
+        node.bl_idname == "GeometryNodeSplineParameter"
+        for node in tree.nodes
+    ), "線幅が端点から中間点まで連続補間されていません"
+    assert any(
+        node.bl_idname == "GeometryNodeAccumulateField"
+        for node in tree.nodes
+    ), "交差線の線幅が角/端点ごとの区間距離で補間されていません"
+    assert any(
+        node.bl_idname == "FunctionNodeRandomValue"
+        for node in tree.nodes
+    ), "交差線の中間頂点の乱れがノードに接続されていません"
     assert not any(
         node.bl_idname == "GeometryNodeSplitEdges"
         for node in tree.nodes
