@@ -134,7 +134,7 @@ def _scale_from_center_weight(
         neg_scale.outputs[0],
         (x + 1100, y + 80),
     )
-    clamped_min = _math(nodes, "MAXIMUM", (x + 1300, y + 80), value1=0.02)
+    clamped_min = _math(nodes, "MAXIMUM", (x + 1300, y + 80), value1=0.0)
     links.new(scale_switch, clamped_min.inputs[0])
     clamped_max = _math(nodes, "MINIMUM", (x + 1480, y + 80), value1=1.0)
     links.new(clamped_min.outputs[0], clamped_max.inputs[0])
@@ -187,7 +187,7 @@ def _scale_from_endpoint_selection(nodes, links, selection_output, factor_output
         center_scale,
         (x + 860, y + 100),
     )
-    clamped_min = _math(nodes, "MAXIMUM", (x + 1060, y + 100), value1=0.02)
+    clamped_min = _math(nodes, "MAXIMUM", (x + 1060, y + 100), value1=0.0)
     links.new(scale, clamped_min.inputs[0])
     return clamped_min.outputs[0]
 
@@ -303,6 +303,108 @@ def _sample_curve_position(nodes, links, curve_output, position_output, index_ou
     return sample.outputs["Value"]
 
 
+def _offset_point(nodes, links, index_output, offset: int, loc):
+    node = nodes.new("GeometryNodeOffsetPointInCurve")
+    node.location = loc
+    links.new(index_output, node.inputs["Point Index"])
+    node.inputs["Offset"].default_value = offset
+    return node
+
+
+def _bool_not(nodes, links, value_output, loc):
+    node = nodes.new("FunctionNodeBooleanMath")
+    node.location = loc
+    node.operation = "NOT"
+    links.new(value_output, node.inputs[0])
+    return node.outputs[0]
+
+
+def _bool_or(nodes, links, left_output, right_output, loc):
+    node = nodes.new("FunctionNodeBooleanMath")
+    node.location = loc
+    node.operation = "OR"
+    links.new(left_output, node.inputs[0])
+    links.new(right_output, node.inputs[1])
+    return node.outputs[0]
+
+
+def _bool_and(nodes, links, left_output, right_output, loc):
+    node = nodes.new("FunctionNodeBooleanMath")
+    node.location = loc
+    node.operation = "AND"
+    links.new(left_output, node.inputs[0])
+    links.new(right_output, node.inputs[1])
+    return node.outputs[0]
+
+
+def _curve_point_split_from_offsets(
+    nodes,
+    links,
+    curve_output,
+    position_output,
+    index_output,
+    before_offset: int,
+    center_offset: int,
+    after_offset: int,
+    angle_cos_output,
+    loc,
+    *,
+    label: str | None = None,
+):
+    x, y = loc
+    before = _offset_point(nodes, links, index_output, before_offset, (x, y + 180))
+    center = _offset_point(nodes, links, index_output, center_offset, (x, y + 20))
+    after = _offset_point(nodes, links, index_output, after_offset, (x, y - 140))
+    before_pos = _sample_curve_position(
+        nodes,
+        links,
+        curve_output,
+        position_output,
+        before.outputs["Point Index"],
+        (x + 220, y + 180),
+    )
+    center_pos = _sample_curve_position(
+        nodes,
+        links,
+        curve_output,
+        position_output,
+        center.outputs["Point Index"],
+        (x + 220, y + 20),
+    )
+    after_pos = _sample_curve_position(
+        nodes,
+        links,
+        curve_output,
+        position_output,
+        after.outputs["Point Index"],
+        (x + 220, y - 140),
+    )
+    angle_split = _curve_angle_split_from_positions(
+        nodes,
+        links,
+        before_pos,
+        center_pos,
+        after_pos,
+        angle_cos_output,
+        (x + 440, y + 20),
+        label=label,
+    )
+    invalid_before = _bool_not(
+        nodes,
+        links,
+        before.outputs["Is Valid Offset"],
+        (x + 1120, y + 140),
+    )
+    invalid_after = _bool_not(
+        nodes,
+        links,
+        after.outputs["Is Valid Offset"],
+        (x + 1120, y - 60),
+    )
+    endpoint = _bool_or(nodes, links, invalid_before, invalid_after, (x + 1320, y + 40))
+    return _bool_or(nodes, links, angle_split, endpoint, (x + 1520, y + 40))
+
+
 def _curve_angle_split_from_positions(
     nodes,
     links,
@@ -372,98 +474,136 @@ def add_curve_midpoint_width_scale(
     position = nodes.new("GeometryNodeInputPosition")
     position.location = (x, y + 260)
 
-    prev_point = nodes.new("GeometryNodeOffsetPointInCurve")
-    prev_point.location = (x + 220, y + 420)
-    links.new(index.outputs["Index"], prev_point.inputs["Point Index"])
-    prev_point.inputs["Offset"].default_value = -1
-
-    next_point = nodes.new("GeometryNodeOffsetPointInCurve")
-    next_point.location = (x + 220, y + 260)
-    links.new(index.outputs["Index"], next_point.inputs["Point Index"])
-    next_point.inputs["Offset"].default_value = 1
-
-    prev_pos = _sample_curve_position(
-        nodes,
-        links,
-        curve_output,
-        position.outputs["Position"],
-        prev_point.outputs["Point Index"],
-        (x + 460, y + 420),
-    )
-    next_pos = _sample_curve_position(
-        nodes,
-        links,
-        curve_output,
-        position.outputs["Position"],
-        next_point.outputs["Point Index"],
-        (x + 460, y + 260),
-    )
-
-    vec_prev = nodes.new("ShaderNodeVectorMath")
-    vec_prev.location = (x + 700, y + 400)
-    vec_prev.operation = "SUBTRACT"
-    links.new(prev_pos, vec_prev.inputs[0])
-    links.new(position.outputs["Position"], vec_prev.inputs[1])
-
-    vec_next = nodes.new("ShaderNodeVectorMath")
-    vec_next.location = (x + 700, y + 200)
-    vec_next.operation = "SUBTRACT"
-    links.new(next_pos, vec_next.inputs[0])
-    links.new(position.outputs["Position"], vec_next.inputs[1])
-
-    norm_prev = nodes.new("ShaderNodeVectorMath")
-    norm_prev.location = (x + 920, y + 400)
-    norm_prev.operation = "NORMALIZE"
-    links.new(vec_prev.outputs["Vector"], norm_prev.inputs[0])
-
-    norm_next = nodes.new("ShaderNodeVectorMath")
-    norm_next.location = (x + 920, y + 200)
-    norm_next.operation = "NORMALIZE"
-    links.new(vec_next.outputs["Vector"], norm_next.inputs[0])
-
-    dot = nodes.new("ShaderNodeVectorMath")
-    dot.location = (x + 1140, y + 300)
-    dot.operation = "DOT_PRODUCT"
-    links.new(norm_prev.outputs["Vector"], dot.inputs[0])
-    links.new(norm_next.outputs["Vector"], dot.inputs[1])
-
-    angle_cos = _math(nodes, "COSINE", (x + 1140, y + 120))
+    angle_cos = _math(nodes, "COSINE", (x + 180, y + 120))
     links.new(angle_output, angle_cos.inputs[0])
 
-    angle_split = nodes.new("FunctionNodeCompare")
-    angle_split.location = (x + 1320, y + 300)
-    angle_split.label = label
-    angle_split.data_type = "FLOAT"
-    angle_split.operation = "GREATER_THAN"
-    links.new(dot.outputs["Value"], angle_split.inputs[0])
-    links.new(angle_cos.outputs[0], angle_split.inputs[1])
-
-    invalid_prev = nodes.new("FunctionNodeBooleanMath")
-    invalid_prev.location = (x + 700, y + 60)
-    invalid_prev.operation = "NOT"
-    links.new(prev_point.outputs["Is Valid Offset"], invalid_prev.inputs[0])
-
-    invalid_next = nodes.new("FunctionNodeBooleanMath")
-    invalid_next.location = (x + 700, y - 80)
-    invalid_next.operation = "NOT"
-    links.new(next_point.outputs["Is Valid Offset"], invalid_next.inputs[0])
-
-    endpoint = nodes.new("FunctionNodeBooleanMath")
-    endpoint.location = (x + 940, y - 20)
-    endpoint.operation = "OR"
-    links.new(invalid_prev.outputs[0], endpoint.inputs[0])
-    links.new(invalid_next.outputs[0], endpoint.inputs[1])
-
-    split = nodes.new("FunctionNodeBooleanMath")
-    split.location = (x + 1540, y + 160)
-    split.operation = "OR"
-    links.new(angle_split.outputs[0], split.inputs[0])
-    links.new(endpoint.outputs[0], split.inputs[1])
-
-    return _scale_from_endpoint_selection(
+    current_split = _curve_point_split_from_offsets(
         nodes,
         links,
-        split.outputs[0],
+        curve_output,
+        position.outputs["Position"],
+        index.outputs["Index"],
+        -1,
+        0,
+        1,
+        angle_cos.outputs[0],
+        (x + 360, y + 300),
+        label=label,
+    )
+    prev_split = _curve_point_split_from_offsets(
+        nodes,
+        links,
+        curve_output,
+        position.outputs["Position"],
+        index.outputs["Index"],
+        -2,
+        -1,
+        0,
+        angle_cos.outputs[0],
+        (x + 360, y - 160),
+    )
+    next_split = _curve_point_split_from_offsets(
+        nodes,
+        links,
+        curve_output,
+        position.outputs["Position"],
+        index.outputs["Index"],
+        0,
+        1,
+        2,
+        angle_cos.outputs[0],
+        (x + 360, y - 620),
+    )
+    prev2_split = _curve_point_split_from_offsets(
+        nodes,
+        links,
+        curve_output,
+        position.outputs["Position"],
+        index.outputs["Index"],
+        -3,
+        -2,
+        -1,
+        angle_cos.outputs[0],
+        (x + 2040, y - 160),
+    )
+    next2_split = _curve_point_split_from_offsets(
+        nodes,
+        links,
+        curve_output,
+        position.outputs["Position"],
+        index.outputs["Index"],
+        1,
+        2,
+        3,
+        angle_cos.outputs[0],
+        (x + 2040, y - 620),
+    )
+
+    adjacent_center = _bool_and(
+        nodes,
+        links,
+        prev_split,
+        next_split,
+        (x + 3720, y + 160),
+    )
+    two_step_center = _bool_and(
+        nodes,
+        links,
+        prev2_split,
+        next2_split,
+        (x + 3720, y - 20),
+    )
+    full_center = _bool_or(
+        nodes,
+        links,
+        adjacent_center,
+        two_step_center,
+        (x + 3920, y + 80),
+    )
+    near_prev = _bool_or(nodes, links, prev_split, prev2_split, (x + 3720, y - 240))
+    near_next = _bool_or(nodes, links, next_split, next2_split, (x + 3720, y - 400))
+    near_endpoint = _bool_or(nodes, links, near_prev, near_next, (x + 3920, y - 320))
+
+    one = nodes.new("ShaderNodeValue")
+    one.location = (x + 3920, y - 80)
+    one.outputs[0].default_value = 1.0
+    half = nodes.new("ShaderNodeValue")
+    half.location = (x + 3920, y - 220)
+    half.outputs[0].default_value = 0.5
+    zero = nodes.new("ShaderNodeValue")
+    zero.location = (x + 3920, y - 560)
+    zero.outputs[0].default_value = 0.0
+
+    center_or_half = _switch_float(
+        nodes,
+        links,
+        full_center,
+        one.outputs[0],
+        half.outputs[0],
+        (x + 4140, y - 60),
+    )
+    non_endpoint_weight = _switch_float(
+        nodes,
+        links,
+        near_endpoint,
+        center_or_half,
+        one.outputs[0],
+        (x + 4360, y - 60),
+    )
+    center_weight = _switch_float(
+        nodes,
+        links,
+        current_split,
+        zero.outputs[0],
+        non_endpoint_weight,
+        (x + 4580, y + 40),
+    )
+
+    return _scale_from_center_weight(
+        nodes,
+        links,
+        center_weight,
         factor_output,
-        (x + 1980, y + 40),
+        (x + 4800, y + 40),
+        width_curve_outputs=width_curve_outputs,
     )

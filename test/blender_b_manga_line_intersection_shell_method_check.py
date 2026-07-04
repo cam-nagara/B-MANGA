@@ -134,7 +134,7 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
         (
             node
             for node in tree.nodes
-            if getattr(node, "label", "") == "BML_IntersectionShellPathWidthV7Midpoints"
+            if getattr(node, "label", "") == "BML_IntersectionShellPathWidthV8Midpoints"
         ),
         None,
     )
@@ -148,7 +148,7 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
                 and node.data_type == "FLOAT"
                 and node.operation == "GREATER_THAN"
                 and getattr(node, "label", "") == (
-                    "BML_IntersectionShellPathWidthV7Angle"
+                    "BML_IntersectionShellPathWidthV8Angle"
                 )
             )
         ),
@@ -175,6 +175,13 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
         node.bl_idname == "GeometryNodeMergeByDistance"
         for node in tree.nodes
     )
+    assert not any(
+        node.bl_idname == "ShaderNodeMath"
+        and node.operation == "MAXIMUM"
+        and len(node.inputs) > 1
+        and abs(float(node.inputs[1].default_value) - 0.02) < 1.0e-9
+        for node in tree.nodes
+    ), "中間頂点の線幅調整に0幅を妨げる下限が残っています"
 
 
 def _intersection_material_polygons(obj: bpy.types.Object) -> int:
