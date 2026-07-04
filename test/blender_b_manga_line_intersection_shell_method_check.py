@@ -134,7 +134,7 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
         (
             node
             for node in tree.nodes
-            if getattr(node, "label", "") == "BML_IntersectionShellPathWidthV9Midpoints"
+            if getattr(node, "label", "") == "BML_IntersectionShellPathWidthV15Midpoints"
         ),
         None,
     )
@@ -148,7 +148,7 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
                 and node.data_type == "FLOAT"
                 and node.operation == "GREATER_THAN"
                 and getattr(node, "label", "") == (
-                    "BML_IntersectionShellPathWidthV9Angle"
+                    "BML_IntersectionShellPathWidthV15Angle"
                 )
             )
         ),

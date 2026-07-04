@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 
+_ANGLE_SPLIT_MIN_SEGMENT_FRACTION = 0.04
+
+
 def _math(nodes, operation: str, loc, value0=None, value1=None):
     node = nodes.new("ShaderNodeMath")
     node.location = loc
@@ -386,6 +389,7 @@ def _curve_point_split_from_offsets(
     center_offset: int,
     after_offset: int,
     angle_cos_output,
+    min_segment_length_output,
     loc,
     *,
     label: str | None = None,
@@ -425,6 +429,7 @@ def _curve_point_split_from_offsets(
         center_pos,
         after_pos,
         angle_cos_output,
+        min_segment_length_output,
         (x + 440, y + 20),
         label=label,
     )
@@ -451,6 +456,7 @@ def _curve_angle_split_from_positions(
     center_position,
     after_position,
     angle_cos_output,
+    min_segment_length_output,
     loc,
     *,
     label: str | None = None,
@@ -492,7 +498,47 @@ def _curve_angle_split_from_positions(
     angle_split.operation = "GREATER_THAN"
     links.new(dot.outputs["Value"], angle_split.inputs[0])
     links.new(angle_cos_output, angle_split.inputs[1])
-    return angle_split.outputs[0]
+    if min_segment_length_output is None:
+        return angle_split.outputs[0]
+
+    before_length = nodes.new("ShaderNodeVectorMath")
+    before_length.location = (x + 660, y + 180)
+    before_length.operation = "LENGTH"
+    links.new(vec_before.outputs["Vector"], before_length.inputs[0])
+
+    after_length = nodes.new("ShaderNodeVectorMath")
+    after_length.location = (x + 660, y - 140)
+    after_length.operation = "LENGTH"
+    links.new(vec_after.outputs["Vector"], after_length.inputs[0])
+
+    before_long = nodes.new("FunctionNodeCompare")
+    before_long.location = (x + 860, y + 180)
+    before_long.data_type = "FLOAT"
+    before_long.operation = "GREATER_EQUAL"
+    links.new(before_length.outputs["Value"], before_long.inputs[0])
+    links.new(min_segment_length_output, before_long.inputs[1])
+
+    after_long = nodes.new("FunctionNodeCompare")
+    after_long.location = (x + 860, y - 140)
+    after_long.data_type = "FLOAT"
+    after_long.operation = "GREATER_EQUAL"
+    links.new(after_length.outputs["Value"], after_long.inputs[0])
+    links.new(min_segment_length_output, after_long.inputs[1])
+
+    enough_span = _bool_and(
+        nodes,
+        links,
+        before_long.outputs[0],
+        after_long.outputs[0],
+        (x + 1060, y + 20),
+    )
+    return _bool_and(
+        nodes,
+        links,
+        angle_split.outputs[0],
+        enough_span,
+        (x + 1260, y + 20),
+    )
 
 
 def add_curve_midpoint_width_scale(
@@ -506,6 +552,7 @@ def add_curve_midpoint_width_scale(
     label: str,
     width_curve_outputs=None,
     jitter_output=None,
+    angle_split_min_segment_fraction: float = _ANGLE_SPLIT_MIN_SEGMENT_FRACTION,
 ):
     """Return a Curve to Mesh scale field without changing the curve shape."""
     x, y = loc
@@ -518,6 +565,13 @@ def add_curve_midpoint_width_scale(
 
     angle_cos = _math(nodes, "COSINE", (x + 180, y + 220))
     links.new(angle_output, angle_cos.inputs[0])
+    min_segment_length = _math(
+        nodes,
+        "MULTIPLY",
+        (x + 180, y + 20),
+        value1=max(0.0, float(angle_split_min_segment_fraction)),
+    )
+    links.new(spline.outputs["Length"], min_segment_length.inputs[0])
 
     current_split = _curve_point_split_from_offsets(
         nodes,
@@ -529,6 +583,7 @@ def add_curve_midpoint_width_scale(
         0,
         1,
         angle_cos.outputs[0],
+        min_segment_length.outputs[0],
         (x + 360, y + 400),
         label=label,
     )

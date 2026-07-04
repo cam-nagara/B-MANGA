@@ -64,6 +64,29 @@ def sync_viewport_levels_to_render(obj: bpy.types.Object) -> int:
     return changed
 
 
+def reset_viewport_levels_to_zero(obj: bpy.types.Object) -> int:
+    """選択メッシュのSubsurfのビューポートレベルを0へ戻す."""
+    if obj.type != "MESH":
+        return 0
+    changed = 0
+    for mod in obj.modifiers:
+        if mod.type != "SUBSURF":
+            continue
+        if int(getattr(mod, "levels", 0)) == 0:
+            continue
+        mod.levels = 0
+        changed += 1
+    if changed:
+        sync_generated_line_subdivision(obj)
+        try:
+            from . import intersection_shell
+
+            intersection_shell.sync_proxy_subdivision_for_target(obj)
+        except Exception:  # noqa: BLE001 - 交差線プロキシが無い場合も通常操作を止めない
+            pass
+    return changed
+
+
 def _line_camera(scene) -> bpy.types.Object | None:
     if scene is None:
         return None
@@ -145,7 +168,7 @@ def ensure_auto_subdivision(obj: bpy.types.Object, scene) -> bpy.types.Modifier 
         mod = obj.modifiers.new(AUTO_SUBSURF_MODIFIER_NAME, "SUBSURF")
 
     if hasattr(mod, "subdivision_type"):
-        mod.subdivision_type = "CATMULL_CLARK"
+        mod.subdivision_type = "SIMPLE"
     mod.levels = 0
     mod.render_levels = render_levels_for_distance(_distance_to_camera(obj, scene))
     mod.show_viewport = True

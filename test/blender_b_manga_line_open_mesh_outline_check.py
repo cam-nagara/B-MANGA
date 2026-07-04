@@ -136,11 +136,11 @@ def main() -> None:
         assert tube_mod is not None, "板ポリに境界チューブがありません"
         assert tube_mod.node_group is not None
         assert any(
-            getattr(node, "label", "") == "BML_SheetOutlinePathWidthV9Angle"
+            getattr(node, "label", "") == "BML_SheetOutlinePathWidthV15Angle"
             for node in tube_mod.node_group.nodes
         ), "板ポリアウトラインが検出角度で分割されていません"
         assert any(
-            getattr(node, "label", "") == "BML_SheetOutlinePathWidthV9Midpoints"
+            getattr(node, "label", "") == "BML_SheetOutlinePathWidthV15Midpoints"
             for node in tube_mod.node_group.nodes
         ), "板ポリアウトラインに区間ごとの中心点がありません"
         assert any(

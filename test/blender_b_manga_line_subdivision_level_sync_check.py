@@ -51,6 +51,8 @@ def _make_cube(name: str, location: tuple[float, float, float]) -> bpy.types.Obj
 def _auto_mod(obj: bpy.types.Object) -> bpy.types.Modifier:
     mod = subdivision_lod.ensure_auto_subdivision(obj, bpy.context.scene)
     assert mod is not None
+    if hasattr(mod, "subdivision_type"):
+        assert mod.subdivision_type == "SIMPLE"
     return mod
 
 
@@ -165,6 +167,25 @@ def _assert_intersection_proxy_levels_sync() -> None:
     assert int(proxy_mod.render_levels) == 1
 
 
+def _assert_match_viewport_checkbox_restores_zero() -> None:
+    obj = _make_cube("ビューポート段数チェックボックス", (0.0, 0.0, 0.0))
+    mod = _auto_mod(obj)
+    mod.levels = 0
+    mod.render_levels = 2
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+
+    settings = obj.bmanga_line_settings
+    settings.match_subsurf_viewport_to_render = True
+    bpy.context.view_layer.update()
+    assert int(mod.levels) == 2
+
+    settings.match_subsurf_viewport_to_render = False
+    bpy.context.view_layer.update()
+    assert int(mod.levels) == 0
+
+
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     b_manga_line.register()
@@ -175,6 +196,8 @@ def main() -> None:
         _assert_inner_lines_do_not_follow_subdivision_grid()
         _clear_scene()
         _assert_intersection_proxy_levels_sync()
+        _clear_scene()
+        _assert_match_viewport_checkbox_restores_zero()
         print("[PASS] subdivision levels sync to inner/intersection lines", flush=True)
     finally:
         try:

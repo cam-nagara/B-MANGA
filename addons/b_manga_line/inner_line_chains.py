@@ -11,6 +11,7 @@ import bpy
 CHAIN_ID_ATTR = "BML_InnerLineChainID"
 SHARP_EDGE_ATTR = "sharp_edge"
 CREASE_EDGE_ATTR = "crease_edge"
+HARD_ENDPOINT_MIN_SEGMENT_FRACTION = 0.04
 
 
 def _edge_attr_value(mesh: bpy.types.Mesh, attr_name: str, edge_index: int):
@@ -178,23 +179,38 @@ def _write_remaining_components(
     return chain_id
 
 
+def _hard_endpoint_min_length(bm, neighbors: list[set[int]]) -> float:
+    total = 0.0
+    for index, connected in enumerate(neighbors):
+        for other_index in connected:
+            if other_index <= index:
+                continue
+            total += (bm.verts[other_index].co - bm.verts[index].co).length
+    return total * HARD_ENDPOINT_MIN_SEGMENT_FRACTION
+
+
 def _hard_endpoint_anchors(bm, neighbors: list[set[int]], angle: float | None) -> set[int]:
     if angle is None or angle <= 0.0:
         return set()
     anchors: set[int] = set()
     bm.verts.ensure_lookup_table()
+    min_segment_length = _hard_endpoint_min_length(bm, neighbors)
     for vert in bm.verts:
         connected = neighbors[vert.index]
         if len(connected) != 2:
             continue
         directions = []
+        lengths = []
         for other_index in connected:
             other = bm.verts[other_index]
             direction = other.co - vert.co
             if direction.length <= 1.0e-8:
                 continue
+            lengths.append(direction.length)
             directions.append(direction.normalized())
         if len(directions) != 2:
+            continue
+        if min(lengths) < min_segment_length:
             continue
         path_angle = directions[0].angle(directions[1], math.pi)
         if path_angle + 1.0e-7 < angle:
