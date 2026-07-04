@@ -133,6 +133,16 @@ def main() -> None:
         assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
         assert _auto_subsurf(obj) is None
 
+        obj.bmanga_line_settings.auto_subdivision_for_midpoint = True
+        assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+        assert _auto_subsurf(obj) is not None
+        bpy.ops.object.select_all(action="DESELECT")
+        obj.select_set(True)
+        bpy.context.view_layer.objects.active = obj
+        assert bpy.ops.bmanga_line.remove("EXEC_DEFAULT") == {"FINISHED"}
+        assert _auto_subsurf(obj) is None
+        assert obj.modifiers.get(core.MODIFIER_NAME) is None
+
         print("BMANGA_LINE_AUTO_SUBDIVISION_OK")
     finally:
         try:

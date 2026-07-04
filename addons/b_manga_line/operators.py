@@ -144,7 +144,13 @@ class BMANGA_LINE_OT_remove(bpy.types.Operator):
         return any(has_line(obj) for obj in context.selected_objects)
 
     def execute(self, context):
-        from . import intersection_lines, outline_setup, inner_lines, plane_filter
+        from . import (
+            intersection_lines,
+            outline_setup,
+            inner_lines,
+            plane_filter,
+            subdivision_lod,
+        )
         from .core import (
             PROP_BASE_THICKNESS,
             PROP_REF_DISTANCE,
@@ -160,6 +166,7 @@ class BMANGA_LINE_OT_remove(bpy.types.Operator):
             removed_any |= outline_setup.remove_outline(obj)
             removed_any |= inner_lines.remove_inner_lines(obj)
             removed_any |= intersection_lines.remove_intersection_lines(obj)
+            removed_any |= subdivision_lod.remove_auto_subdivision(obj)
             if removed_any:
                 count += 1
             for key in (
