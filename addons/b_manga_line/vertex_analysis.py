@@ -27,7 +27,6 @@ from .core import (
 
 _ANCHOR_PROP = "bml_subsurf_anchors"
 _ANCHOR_THRESHOLD_PROP = "bml_subsurf_anchor_threshold"
-_OUTLINE_HARD_ENDPOINT_ANGLE = math.radians(80.0)
 
 
 def _apply_subsurf_for_midpoint(obj, threshold: float) -> set[int]:
@@ -150,10 +149,28 @@ def _hard_endpoint_anchors(
     threshold: float,
     hard_endpoint_angle: float | None,
 ) -> set[int]:
-    # 実際の角や分岐は sharp graph の接続数で端点化する。
-    # 角度だけで頂点を端点にすると、分割済み直線上の途中頂点まで
-    # 端点になり、中間頂点の線幅調整と乱れが効かなくなる。
-    return set()
+    if hard_endpoint_angle is None or hard_endpoint_angle <= 0.0:
+        return set()
+    anchors: set[int] = set()
+    for vert in bm.verts:
+        directions = []
+        for edge in vert.link_edges:
+            if not _edge_is_sharp(edge, threshold):
+                continue
+            other = edge.other_vert(vert)
+            direction = other.co - vert.co
+            if direction.length <= 1.0e-8:
+                continue
+            directions.append(direction.normalized())
+        if len(directions) != 2:
+            continue
+        # 直線上の分割頂点は2方向が反対向き（角度=180度）なので折れ角0度。
+        # 角では2方向のなす角が小さくなり、折れ角が大きくなる。
+        path_angle = directions[0].angle(directions[1], math.pi)
+        turn_angle = max(0.0, math.pi - path_angle)
+        if turn_angle + 1.0e-7 >= hard_endpoint_angle:
+            anchors.add(vert.index)
+    return anchors
 
 
 def _stable_random_01(obj, chain: list[int]) -> float:
@@ -686,7 +703,7 @@ def compute_and_apply_weights(obj, settings, target: str = "outline") -> int:
             jitter,
             curve_points,
             threshold,
-            _OUTLINE_HARD_ENDPOINT_ANGLE if target == "outline" else None,
+            threshold if target in {"outline", "intersection"} else None,
         )
         for i in range(n):
             m = midpoint.get(i, 0.0)

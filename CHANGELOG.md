@@ -3,6 +3,39 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-04 — B-MANGA Line中間頂点の線幅調整を角で分割 (B-MANGA Line v0.3.95)
+
+### 症状
+
+- 中間頂点の線幅調整が、アウトラインでは曲線部分には効く一方、板ポリなどの直線アウトラインでは分かりにくかった。
+- 交差線では、折れ曲がった線や交点をまたいで一本の線として扱われ、中間頂点の線幅調整が長くつながりすぎることがあった。
+
+### 原因
+
+- 板ポリの境界チューブは、線幅調整用の中間点設定を受け取っていなかった。
+- 交差線の生成ノードは3方向以上に分岐する点だけでパスを分け、検出角度以上に折れた点では分割していなかった。
+- 中間頂点用サブディビジョンが既存ライン生成モディファイアより後ろに残るケースがあり、ライン生成側が細分化前の形を見てしまうことがあった。
+
+### 修正
+
+- 板ポリのアウトライン境界チューブにも、中間頂点の線幅調整・乱れ・変化グラフ・検出角度を反映するようにした。
+- 交差線のパス分割に、3方向以上の交点だけでなく、検出角度以上に折れた点を追加した。
+- 実メッシュ側の頂点グループ計算でも、直線途中の分割頂点は端点にせず、検出角度以上の折れ点だけを端点にした。
+- 中間頂点用サブディビジョンをライン生成より前へ安定配置するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_midpoint_targets_check.py`
+- `test/blender_b_manga_line_open_mesh_outline_check.py`
+- `test/blender_b_manga_line_intersection_shell_method_check.py`
+- `test/blender_b_manga_line_auto_subdivision_check.py`
+- `test/blender_b_manga_line_midpoint_jitter_check.py`
+- `test/blender_b_manga_line_subdivision_level_sync_check.py`
+- `test/blender_b_manga_line_register_reenable_check.py`
+- AI目視: `_verify/2026-07-04_bml_midpoint_path_split_visual/midpoint_path_split.png` で、板ポリの境界チューブと交差線が分割後の線として出力されることを確認。
+
+---
+
 ## 2026-07-04 — B-MANGA Lineレンダー時の内部線グリッド化とコンポジットノード整理を修正 (B-MANGA Line v0.3.94)
 
 ### 症状

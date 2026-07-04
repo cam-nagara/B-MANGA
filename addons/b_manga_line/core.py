@@ -873,6 +873,8 @@ def _refresh_line_width_weights(self, context, target: str | None = None) -> Non
 
 
 def _refresh_outline_width_weights(owner, settings, vertex_analysis) -> None:
+    from . import outline_setup
+
     mod = owner.modifiers.get(MODIFIER_NAME)
     if mod is None:
         return
@@ -885,6 +887,7 @@ def _refresh_outline_width_weights(owner, settings, vertex_analysis) -> None:
     else:
         mod.vertex_group = ""
         vertex_analysis.clear_width_weights(owner, group_name=VG_LINE_WIDTH)
+    outline_setup.sync_sheet_outline_width(owner)
 
 
 def _refresh_generated_width_weights(owner, settings, target, vertex_analysis) -> None:

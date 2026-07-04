@@ -126,6 +126,12 @@ def ensure_auto_subdivision(obj: bpy.types.Object, scene) -> bpy.types.Modifier 
     mod.render_levels = render_levels_for_distance(_distance_to_camera(obj, scene))
     mod.show_viewport = True
     mod.show_render = True
+    try:
+        from . import modifier_stack
+
+        modifier_stack.reorder_line_modifiers(obj)
+    except Exception:  # noqa: BLE001 - 順序修復に失敗しても設定自体は残す
+        pass
     sync_generated_line_subdivision(obj)
     return mod
 

@@ -12,6 +12,7 @@ import json
 
 import bpy
 
+from . import intersection_shell_node_helpers
 from . import plane_filter
 from .core import (
     AOV_NAME,
@@ -52,6 +53,14 @@ SHEET_OUTLINE_TREE_NAME = "BML_SheetOutlineTube"
 SHEET_RIM_HIDDEN_MATERIAL_NAME = "BML_SheetRimHidden"
 _SHEET_TUBE_THICKNESS_SOCKET = "線の太さ"
 _SHEET_TUBE_MATERIAL_SOCKET = "マテリアル"
+_SHEET_TUBE_MIDPOINT_FACTOR_SOCKET = "中間頂点の線幅調整"
+_SHEET_TUBE_MIDPOINT_JITTER_SOCKET = "中間頂点の乱れ (%)"
+_SHEET_TUBE_MIDPOINT_ANGLE_SOCKET = "検出角度"
+_SHEET_TUBE_WIDTH_CURVE_25_SOCKET = "変化グラフ 25%"
+_SHEET_TUBE_WIDTH_CURVE_50_SOCKET = "変化グラフ 50%"
+_SHEET_TUBE_WIDTH_CURVE_75_SOCKET = "変化グラフ 75%"
+_SHEET_TUBE_ANGLE_SPLIT_LABEL = "BML_SheetOutlineAngleSplit"
+_SHEET_TUBE_JITTER_CENTER_LABEL = "BML_SheetOutlineJitterCenter"
 _LINE_MATERIAL_NAMES = {
     "outline": MATERIAL_NAME,
     "inner": f"{MATERIAL_NAME}_Inner",
@@ -812,7 +821,19 @@ def _find_socket_identifier(tree: bpy.types.NodeTree, name: str) -> str | None:
 def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
     tree = bpy.data.node_groups.get(SHEET_OUTLINE_TREE_NAME)
     if tree is not None:
-        if _find_socket_identifier(tree, _SHEET_TUBE_THICKNESS_SOCKET) is not None:
+        if (
+            _find_socket_identifier(tree, _SHEET_TUBE_THICKNESS_SOCKET) is not None
+            and _find_socket_identifier(tree, _SHEET_TUBE_MIDPOINT_FACTOR_SOCKET) is not None
+            and _find_socket_identifier(tree, _SHEET_TUBE_MIDPOINT_JITTER_SOCKET) is not None
+            and _find_socket_identifier(tree, _SHEET_TUBE_MIDPOINT_ANGLE_SOCKET) is not None
+            and _find_socket_identifier(tree, _SHEET_TUBE_WIDTH_CURVE_25_SOCKET) is not None
+            and _find_socket_identifier(tree, _SHEET_TUBE_WIDTH_CURVE_50_SOCKET) is not None
+            and _find_socket_identifier(tree, _SHEET_TUBE_WIDTH_CURVE_75_SOCKET) is not None
+            and any(
+                getattr(node, "label", "") == _SHEET_TUBE_ANGLE_SPLIT_LABEL
+                for node in tree.nodes
+            )
+        ):
             return tree
         bpy.data.node_groups.remove(tree)
     tree = bpy.data.node_groups.new(SHEET_OUTLINE_TREE_NAME, "GeometryNodeTree")
@@ -835,6 +856,45 @@ def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
         in_out="INPUT",
         socket_type="NodeSocketMaterial",
     )
+    midpoint_sock = tree.interface.new_socket(
+        name=_SHEET_TUBE_MIDPOINT_FACTOR_SOCKET,
+        in_out="INPUT",
+        socket_type="NodeSocketFloat",
+    )
+    midpoint_sock.default_value = 0.0
+    midpoint_sock.min_value = -1.0
+    midpoint_sock.max_value = 1.0
+    jitter_sock = tree.interface.new_socket(
+        name=_SHEET_TUBE_MIDPOINT_JITTER_SOCKET,
+        in_out="INPUT",
+        socket_type="NodeSocketFloat",
+    )
+    jitter_sock.default_value = 0.0
+    jitter_sock.min_value = 0.0
+    jitter_sock.max_value = 50.0
+    angle_sock = tree.interface.new_socket(
+        name=_SHEET_TUBE_MIDPOINT_ANGLE_SOCKET,
+        in_out="INPUT",
+        socket_type="NodeSocketFloat",
+    )
+    angle_sock.default_value = 1.0471975512
+    angle_sock.min_value = 0.0
+    angle_sock.max_value = 3.1415926536
+    if hasattr(angle_sock, "subtype"):
+        angle_sock.subtype = "ANGLE"
+    for name, default in (
+        (_SHEET_TUBE_WIDTH_CURVE_25_SOCKET, 0.25),
+        (_SHEET_TUBE_WIDTH_CURVE_50_SOCKET, 0.50),
+        (_SHEET_TUBE_WIDTH_CURVE_75_SOCKET, 0.75),
+    ):
+        sock = tree.interface.new_socket(
+            name=name,
+            in_out="INPUT",
+            socket_type="NodeSocketFloat",
+        )
+        sock.default_value = default
+        sock.min_value = 0.0
+        sock.max_value = 1.0
 
     nodes = tree.nodes
     links = tree.links
@@ -852,10 +912,28 @@ def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
     boundary.inputs["B"].default_value = 1
     links.new(neighbors.outputs["Face Count"], boundary.inputs["A"])
 
+    not_boundary = nodes.new("FunctionNodeBooleanMath")
+    not_boundary.location = (-420, -220)
+    not_boundary.operation = "NOT"
+    links.new(boundary.outputs["Result"], not_boundary.inputs[0])
+
+    boundary_edges = nodes.new("GeometryNodeDeleteGeometry")
+    boundary_edges.location = (-520, 0)
+    boundary_edges.domain = "EDGE"
+    links.new(group_in.outputs["Geometry"], boundary_edges.inputs["Geometry"])
+    links.new(not_boundary.outputs[0], boundary_edges.inputs["Selection"])
+
+    split_edges = intersection_shell_node_helpers.add_branch_split(
+        nodes,
+        links,
+        boundary_edges.outputs["Geometry"],
+        _SHEET_TUBE_ANGLE_SPLIT_LABEL,
+        angle_output=group_in.outputs[_SHEET_TUBE_MIDPOINT_ANGLE_SOCKET],
+    )
+
     to_curve = nodes.new("GeometryNodeMeshToCurve")
-    to_curve.location = (-400, 0)
-    links.new(group_in.outputs["Geometry"], to_curve.inputs["Mesh"])
-    links.new(boundary.outputs["Result"], to_curve.inputs["Selection"])
+    to_curve.location = (980, 0)
+    links.new(split_edges, to_curve.inputs["Mesh"])
 
     half_width = nodes.new("ShaderNodeMath")
     half_width.location = (-400, -240)
@@ -864,24 +942,41 @@ def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
     links.new(group_in.outputs[_SHEET_TUBE_THICKNESS_SOCKET], half_width.inputs[0])
 
     profile = nodes.new("GeometryNodeCurvePrimitiveCircle")
-    profile.location = (-200, -200)
+    profile.location = (1120, -260)
     profile.mode = "RADIUS"
     profile.inputs["Resolution"].default_value = 8
     links.new(half_width.outputs[0], profile.inputs["Radius"])
 
+    scale = intersection_shell_node_helpers.add_curve_width_scale(
+        nodes,
+        links,
+        group_in,
+        x_offset=1080,
+        midpoint_factor_socket=_SHEET_TUBE_MIDPOINT_FACTOR_SOCKET,
+        midpoint_jitter_socket=_SHEET_TUBE_MIDPOINT_JITTER_SOCKET,
+        width_curve_sockets=(
+            _SHEET_TUBE_WIDTH_CURVE_25_SOCKET,
+            _SHEET_TUBE_WIDTH_CURVE_50_SOCKET,
+            _SHEET_TUBE_WIDTH_CURVE_75_SOCKET,
+        ),
+        jitter_center_label=_SHEET_TUBE_JITTER_CENTER_LABEL,
+    )
+
     tube = nodes.new("GeometryNodeCurveToMesh")
-    tube.location = (0, 0)
+    tube.location = (1380, 0)
     if "Fill Caps" in tube.inputs:
         tube.inputs["Fill Caps"].default_value = True
     links.new(to_curve.outputs["Curve"], tube.inputs["Curve"])
     links.new(profile.outputs["Curve"], tube.inputs["Profile Curve"])
+    if "Scale" in tube.inputs:
+        links.new(scale, tube.inputs["Scale"])
 
     smooth = nodes.new("GeometryNodeSetShadeSmooth")
-    smooth.location = (150, 0)
+    smooth.location = (1540, 0)
     links.new(tube.outputs["Mesh"], smooth.inputs["Geometry"])
 
     set_mat = nodes.new("GeometryNodeSetMaterial")
-    set_mat.location = (300, 0)
+    set_mat.location = (1700, 0)
     links.new(smooth.outputs["Geometry"], set_mat.inputs["Geometry"])
     links.new(
         group_in.outputs[_SHEET_TUBE_MATERIAL_SOCKET],
@@ -889,7 +984,7 @@ def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
     )
 
     join = nodes.new("GeometryNodeJoinGeometry")
-    join.location = (450, 0)
+    join.location = (1880, 0)
     links.new(group_in.outputs["Geometry"], join.inputs["Geometry"])
     links.new(set_mat.outputs["Geometry"], join.inputs["Geometry"])
     links.new(join.outputs["Geometry"], group_out.inputs["Geometry"])
@@ -952,6 +1047,7 @@ def ensure_sheet_outline(
         sid_mat = _find_socket_identifier(tree, _SHEET_TUBE_MATERIAL_SOCKET)
         if sid_mat is not None:
             mod[sid_mat] = line_mat
+    _sync_sheet_outline_midpoint_inputs(obj, mod)
 
     # 既存リムはチューブと二重になるため非表示マテリアルへ逃がす。
     # 注: material_offset_rim は元面のスロット番号への加算のため、
@@ -976,8 +1072,11 @@ def sync_sheet_outline_width(obj: bpy.types.Object) -> None:
     if obj.type != "MESH":
         return
     mod = obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME)
-    if mod is None or mod.node_group is None:
+    if mod is None:
         return
+    tree = _get_or_create_sheet_outline_tree()
+    if mod.node_group is not tree:
+        mod.node_group = tree
     solidify = obj.modifiers.get(MODIFIER_NAME)
     if solidify is None:
         return
@@ -987,6 +1086,74 @@ def sync_sheet_outline_width(obj: bpy.types.Object) -> None:
     value = abs(float(solidify.thickness))
     if abs(float(mod.get(sid, 0.0)) - value) > 1.0e-12:
         mod[sid] = value
+    _sync_sheet_outline_midpoint_inputs(obj, mod)
+
+
+def _set_node_input_if_changed(
+    mod: bpy.types.Modifier,
+    socket_name: str,
+    value,
+    *,
+    epsilon: float = 1.0e-9,
+) -> None:
+    tree = getattr(mod, "node_group", None)
+    if tree is None:
+        return
+    sid = _find_socket_identifier(tree, socket_name)
+    if sid is None:
+        return
+    try:
+        current = mod[sid]
+    except (KeyError, TypeError):
+        current = None
+    if isinstance(value, float):
+        try:
+            if abs(float(current) - value) <= epsilon:
+                return
+        except (TypeError, ValueError):
+            pass
+    elif current == value:
+        return
+    mod[sid] = value
+
+
+def _sync_sheet_outline_midpoint_inputs(
+    obj: bpy.types.Object,
+    mod: bpy.types.Modifier,
+) -> None:
+    settings = getattr(obj, "bmanga_line_settings", None)
+    if settings is None:
+        return
+    _set_node_input_if_changed(
+        mod,
+        _SHEET_TUBE_MIDPOINT_FACTOR_SOCKET,
+        float(getattr(settings, "edge_smooth_factor", 0.0)),
+    )
+    _set_node_input_if_changed(
+        mod,
+        _SHEET_TUBE_MIDPOINT_JITTER_SOCKET,
+        float(getattr(settings, "edge_midpoint_jitter_percent", 0.0)),
+    )
+    _set_node_input_if_changed(
+        mod,
+        _SHEET_TUBE_MIDPOINT_ANGLE_SOCKET,
+        float(getattr(settings, "edge_midpoint_angle", 1.0471975512)),
+    )
+    _set_node_input_if_changed(
+        mod,
+        _SHEET_TUBE_WIDTH_CURVE_25_SOCKET,
+        float(getattr(settings, "edge_width_curve_25", 0.25)),
+    )
+    _set_node_input_if_changed(
+        mod,
+        _SHEET_TUBE_WIDTH_CURVE_50_SOCKET,
+        float(getattr(settings, "edge_width_curve_50", 0.50)),
+    )
+    _set_node_input_if_changed(
+        mod,
+        _SHEET_TUBE_WIDTH_CURVE_75_SOCKET,
+        float(getattr(settings, "edge_width_curve_75", 0.75)),
+    )
 
 
 # ------------------------------------------------------------------

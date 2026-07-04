@@ -24,6 +24,16 @@ def _switch_float(nodes, links, switch_output, true_output, false_output, loc):
     return node.outputs["Output"]
 
 
+def _switch_vector(nodes, links, switch_output, true_output, false_output, loc):
+    node = nodes.new("GeometryNodeSwitch")
+    node.location = loc
+    node.input_type = "VECTOR"
+    links.new(switch_output, node.inputs["Switch"])
+    links.new(false_output, node.inputs["False"])
+    links.new(true_output, node.inputs["True"])
+    return node.outputs["Output"]
+
+
 def _value_or_socket(nodes, links, socket_output, default, loc):
     if socket_output is not None:
         return socket_output
@@ -62,6 +72,37 @@ def _compare_le(nodes, links, value_output, threshold, loc):
     return node.outputs[0]
 
 
+def _compare_int_equal(nodes, links, left_output, right_output, loc):
+    node = nodes.new("FunctionNodeCompare")
+    node.location = loc
+    node.data_type = "INT"
+    node.operation = "EQUAL"
+    links.new(left_output, node.inputs[2])
+    links.new(right_output, node.inputs[3])
+    return node.outputs[0]
+
+
+def _compare_int_value(nodes, links, value_output, operation: str, value: int, loc):
+    node = nodes.new("FunctionNodeCompare")
+    node.location = loc
+    node.data_type = "INT"
+    node.operation = operation
+    links.new(value_output, node.inputs[2])
+    node.inputs[3].default_value = value
+    return node.outputs[0]
+
+
+def _sample_index(nodes, links, mesh_output, value_output, index_output, loc, data_type):
+    node = nodes.new("GeometryNodeSampleIndex")
+    node.location = loc
+    node.data_type = data_type
+    node.domain = "EDGE"
+    links.new(mesh_output, node.inputs["Geometry"])
+    links.new(value_output, node.inputs["Value"])
+    links.new(index_output, node.inputs["Index"])
+    return node.outputs["Value"]
+
+
 def _add_width_curve(nodes, links, raw_output, gin, sockets, x_offset=0):
     c25, c50, c75 = (gin.outputs[name] for name in sockets)
     seg0 = _curve_segment(nodes, links, raw_output, None, c25, 0.00, 0.25, x_offset, -240)
@@ -76,21 +117,194 @@ def _add_width_curve(nodes, links, raw_output, gin, sockets, x_offset=0):
     return _switch_float(nodes, links, le25, seg0, switch50, (x_offset + 900, -220))
 
 
-def add_branch_split(nodes, links, mesh_output, label: str):
+def _edge_other_position(
+    nodes,
+    links,
+    mesh_output,
+    edge_vertices,
+    edge_index_output,
+    current_index_output,
+    *,
+    x_offset: int,
+    y: int,
+):
+    vi1 = _sample_index(
+        nodes,
+        links,
+        mesh_output,
+        edge_vertices.outputs["Vertex Index 1"],
+        edge_index_output,
+        (x_offset, y + 220),
+        "INT",
+    )
+    pos1 = _sample_index(
+        nodes,
+        links,
+        mesh_output,
+        edge_vertices.outputs["Position 1"],
+        edge_index_output,
+        (x_offset, y + 80),
+        "FLOAT_VECTOR",
+    )
+    pos2 = _sample_index(
+        nodes,
+        links,
+        mesh_output,
+        edge_vertices.outputs["Position 2"],
+        edge_index_output,
+        (x_offset, y - 60),
+        "FLOAT_VECTOR",
+    )
+    vi1_is_current = _compare_int_equal(
+        nodes,
+        links,
+        vi1,
+        current_index_output,
+        (x_offset + 220, y + 220),
+    )
+    return _switch_vector(
+        nodes,
+        links,
+        vi1_is_current,
+        pos2,
+        pos1,
+        (x_offset + 420, y + 60),
+    )
+
+
+def _add_turn_angle_selection(nodes, links, mesh_output, angle_output, loc):
+    """Select degree-2 vertices where the line path bends by the angle threshold."""
+    x, y = loc
+    index = nodes.new("GeometryNodeInputIndex")
+    index.location = (x, y + 420)
+    position = nodes.new("GeometryNodeInputPosition")
+    position.location = (x, y + 260)
+
+    degree_neighbors = nodes.new("GeometryNodeInputMeshVertexNeighbors")
+    degree_neighbors.location = (x, y + 80)
+    degree_two = _compare_int_value(
+        nodes,
+        links,
+        degree_neighbors.outputs["Vertex Count"],
+        "EQUAL",
+        2,
+        (x + 220, y + 80),
+    )
+
+    edge0 = nodes.new("GeometryNodeEdgesOfVertex")
+    edge0.location = (x + 220, y + 420)
+    links.new(index.outputs["Index"], edge0.inputs["Vertex Index"])
+    edge0.inputs["Sort Index"].default_value = 0
+
+    edge1 = nodes.new("GeometryNodeEdgesOfVertex")
+    edge1.location = (x + 220, y + 260)
+    links.new(index.outputs["Index"], edge1.inputs["Vertex Index"])
+    edge1.inputs["Sort Index"].default_value = 1
+
+    edge_vertices = nodes.new("GeometryNodeInputMeshEdgeVertices")
+    edge_vertices.location = (x + 460, y + 520)
+
+    other0 = _edge_other_position(
+        nodes,
+        links,
+        mesh_output,
+        edge_vertices,
+        edge0.outputs["Edge Index"],
+        index.outputs["Index"],
+        x_offset=x + 460,
+        y=y + 260,
+    )
+    other1 = _edge_other_position(
+        nodes,
+        links,
+        mesh_output,
+        edge_vertices,
+        edge1.outputs["Edge Index"],
+        index.outputs["Index"],
+        x_offset=x + 460,
+        y=y - 160,
+    )
+
+    vec0 = nodes.new("ShaderNodeVectorMath")
+    vec0.location = (x + 1100, y + 220)
+    vec0.operation = "SUBTRACT"
+    links.new(other0, vec0.inputs[0])
+    links.new(position.outputs["Position"], vec0.inputs[1])
+
+    vec1 = nodes.new("ShaderNodeVectorMath")
+    vec1.location = (x + 1100, y - 20)
+    vec1.operation = "SUBTRACT"
+    links.new(other1, vec1.inputs[0])
+    links.new(position.outputs["Position"], vec1.inputs[1])
+
+    norm0 = nodes.new("ShaderNodeVectorMath")
+    norm0.location = (x + 1320, y + 220)
+    norm0.operation = "NORMALIZE"
+    links.new(vec0.outputs["Vector"], norm0.inputs[0])
+
+    norm1 = nodes.new("ShaderNodeVectorMath")
+    norm1.location = (x + 1320, y - 20)
+    norm1.operation = "NORMALIZE"
+    links.new(vec1.outputs["Vector"], norm1.inputs[0])
+
+    dot = nodes.new("ShaderNodeVectorMath")
+    dot.location = (x + 1540, y + 100)
+    dot.operation = "DOT_PRODUCT"
+    links.new(norm0.outputs["Vector"], dot.inputs[0])
+    links.new(norm1.outputs["Vector"], dot.inputs[1])
+
+    angle_cos = _math(nodes, "COSINE", (x + 1540, y - 120))
+    links.new(angle_output, angle_cos.inputs[0])
+    neg_cos = _math(nodes, "MULTIPLY", (x + 1720, y - 120), value1=-1.0)
+    links.new(angle_cos.outputs[0], neg_cos.inputs[0])
+
+    sharp_turn = nodes.new("FunctionNodeCompare")
+    sharp_turn.location = (x + 1720, y + 100)
+    sharp_turn.data_type = "FLOAT"
+    sharp_turn.operation = "GREATER_EQUAL"
+    links.new(dot.outputs["Value"], sharp_turn.inputs[0])
+    links.new(neg_cos.outputs[0], sharp_turn.inputs[1])
+
+    selected = nodes.new("FunctionNodeBooleanMath")
+    selected.location = (x + 1940, y + 80)
+    selected.operation = "AND"
+    links.new(degree_two, selected.inputs[0])
+    links.new(sharp_turn.outputs[0], selected.inputs[1])
+    return selected.outputs[0]
+
+
+def add_branch_split(nodes, links, mesh_output, label: str, *, angle_output=None):
     neighbors = nodes.new("GeometryNodeInputMeshVertexNeighbors")
     neighbors.location = (660, 80)
-    compare = nodes.new("FunctionNodeCompare")
-    compare.location = (820, 80)
-    compare.data_type = "INT"
-    compare.operation = "GREATER_EQUAL"
-    links.new(neighbors.outputs["Vertex Count"], compare.inputs[2])
-    compare.inputs[3].default_value = 3
+    branch_selection = _compare_int_value(
+        nodes,
+        links,
+        neighbors.outputs["Vertex Count"],
+        "GREATER_EQUAL",
+        3,
+        (820, 80),
+    )
+    selection = branch_selection
+    if angle_output is not None:
+        angle_selection = _add_turn_angle_selection(
+            nodes,
+            links,
+            mesh_output,
+            angle_output,
+            (420, -520),
+        )
+        combine = nodes.new("FunctionNodeBooleanMath")
+        combine.location = (1020, 0)
+        combine.operation = "OR"
+        links.new(branch_selection, combine.inputs[0])
+        links.new(angle_selection, combine.inputs[1])
+        selection = combine.outputs[0]
 
     split = nodes.new("GeometryNodeSplitEdges")
     split.label = label
-    split.location = (780, -120)
+    split.location = (1220, -120) if angle_output is not None else (780, -120)
     links.new(mesh_output, split.inputs["Mesh"])
-    links.new(compare.outputs[0], split.inputs["Selection"])
+    links.new(selection, split.inputs["Selection"])
     return split.outputs["Mesh"]
 
 

@@ -29,6 +29,7 @@ _LINE_MATERIAL_INDEX_SOCKET = "ライン素材番号"
 _HAS_TARGET_SOCKET = "交差対象あり"
 _MIDPOINT_FACTOR_SOCKET = "中間頂点の線幅調整"
 _MIDPOINT_JITTER_SOCKET = "中間頂点の乱れ (%)"
+_MIDPOINT_ANGLE_SOCKET = "検出角度"
 _WIDTH_CURVE_25_SOCKET = "変化グラフ 25%"
 _WIDTH_CURVE_50_SOCKET = "変化グラフ 50%"
 _WIDTH_CURVE_75_SOCKET = "変化グラフ 75%"
@@ -141,6 +142,16 @@ def _setup_interface(tree: bpy.types.NodeTree) -> None:
     jitter_sock.default_value = 0.0
     jitter_sock.min_value = 0.0
     jitter_sock.max_value = 50.0
+    angle_sock = tree.interface.new_socket(
+        name=_MIDPOINT_ANGLE_SOCKET,
+        in_out="INPUT",
+        socket_type="NodeSocketFloat",
+    )
+    angle_sock.default_value = 1.0471975512
+    angle_sock.min_value = 0.0
+    angle_sock.max_value = 3.1415926536
+    if hasattr(angle_sock, "subtype"):
+        angle_sock.subtype = "ANGLE"
     for name, default in (
         (_WIDTH_CURVE_25_SOCKET, 0.25),
         (_WIDTH_CURVE_50_SOCKET, 0.50),
@@ -311,6 +322,7 @@ def _create_node_tree() -> bpy.types.NodeTree:
         links,
         weld.outputs["Geometry"],
         _SHELL_BRANCH_SPLIT_NODE_LABEL,
+        angle_output=gin.outputs[_MIDPOINT_ANGLE_SOCKET],
     )
 
     m2c = nodes.new("GeometryNodeMeshToCurve")
@@ -546,6 +558,7 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
             and _find_socket_id(tree, _HAS_TARGET_SOCKET) is not None
             and _find_socket_id(tree, _MIDPOINT_FACTOR_SOCKET) is not None
             and _find_socket_id(tree, _MIDPOINT_JITTER_SOCKET) is not None
+            and _find_socket_id(tree, _MIDPOINT_ANGLE_SOCKET) is not None
             and _find_socket_id(tree, _WIDTH_CURVE_25_SOCKET) is not None
             and _find_socket_id(tree, _WIDTH_CURVE_50_SOCKET) is not None
             and _find_socket_id(tree, _WIDTH_CURVE_75_SOCKET) is not None
@@ -681,6 +694,9 @@ def _set_width_control_parameters(mod: bpy.types.Modifier) -> None:
         ),
         _MIDPOINT_JITTER_SOCKET: float(
             getattr(settings, "intersection_edge_midpoint_jitter_percent", 0.0)
+        ),
+        _MIDPOINT_ANGLE_SOCKET: float(
+            getattr(settings, "intersection_edge_midpoint_angle", 1.0471975512)
         ),
         _WIDTH_CURVE_25_SOCKET: float(
             getattr(settings, "intersection_edge_width_curve_25", 0.25)

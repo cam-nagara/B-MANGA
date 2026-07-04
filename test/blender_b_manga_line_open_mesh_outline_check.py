@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import math
 from pathlib import Path
 
 import bpy
@@ -36,6 +37,16 @@ def _apply_line(obj: bpy.types.Object, *, use_rim: bool) -> bpy.types.Modifier:
     mod = obj.modifiers.get(core.MODIFIER_NAME)
     assert mod is not None, f"{obj.name}: アウトラインが作成されていません"
     return mod
+
+
+def _socket_id(tree: bpy.types.NodeTree, name: str) -> str:
+    for item in tree.interface.items_tree:
+        if (
+            getattr(item, "name", None) == name
+            and getattr(item, "in_out", None) == "INPUT"
+        ):
+            return item.identifier
+    raise AssertionError(f"socket not found: {name}")
 
 
 def _add_closed_non_manifold_mesh() -> bpy.types.Object:
@@ -116,6 +127,18 @@ def main() -> None:
         # リム面は非表示マテリアルへ逃がす
         tube_mod = plane.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME)
         assert tube_mod is not None, "板ポリに境界チューブがありません"
+        assert tube_mod.node_group is not None
+        assert any(
+            getattr(node, "label", "") == "BML_SheetOutlineAngleSplit"
+            for node in tube_mod.node_group.nodes
+        ), "板ポリアウトラインが検出角度で分割されていません"
+        plane.bmanga_line_settings.edge_smooth_factor = -0.75
+        plane.bmanga_line_settings.edge_midpoint_jitter_percent = 12.0
+        plane.bmanga_line_settings.edge_midpoint_angle = math.radians(55.0)
+        outline_setup.sync_sheet_outline_width(plane)
+        assert abs(tube_mod[_socket_id(tube_mod.node_group, "中間頂点の線幅調整")] + 0.75) < 1e-7
+        assert abs(tube_mod[_socket_id(tube_mod.node_group, "中間頂点の乱れ (%)")] - 12.0) < 1e-7
+        assert abs(tube_mod[_socket_id(tube_mod.node_group, "検出角度")] - math.radians(55.0)) < 1e-7
         rim_mat = plane.material_slots[plane_mod.material_offset_rim].material
         assert rim_mat is not None and rim_mat.name.startswith(
             outline_setup.SHEET_RIM_HIDDEN_MATERIAL_NAME

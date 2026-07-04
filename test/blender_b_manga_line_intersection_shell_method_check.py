@@ -129,6 +129,7 @@ def _profile_resolutions(tree: bpy.types.NodeTree) -> list[int]:
 def _assert_shell_tree_has_branch_endpoint_and_jitter_nodes() -> None:
     tree = intersection_shell._get_or_create_tree()
     assert _socket_id(tree, "中間頂点の乱れ (%)")
+    assert _socket_id(tree, "検出角度")
     split = next(
         (
             node
@@ -140,11 +141,26 @@ def _assert_shell_tree_has_branch_endpoint_and_jitter_nodes() -> None:
     assert split is not None, "交差点分岐でカーブを区切るノードがありません"
     selection_links = list(split.inputs["Selection"].links)
     assert selection_links, "交差点分岐の選択入力が未接続です"
-    compare = selection_links[0].from_node
-    assert compare.bl_idname == "FunctionNodeCompare"
-    assert compare.data_type == "INT"
-    assert compare.operation == "GREATER_EQUAL"
-    assert int(compare.inputs[3].default_value) == 3
+    selector = selection_links[0].from_node
+    assert selector.bl_idname == "FunctionNodeBooleanMath"
+    assert selector.operation == "OR"
+    branch_compare = None
+    for link in selector.inputs[0].links:
+        if link.from_node.bl_idname == "FunctionNodeCompare":
+            branch_compare = link.from_node
+            break
+    assert branch_compare is not None
+    assert branch_compare.data_type == "INT"
+    assert branch_compare.operation == "GREATER_EQUAL"
+    assert int(branch_compare.inputs[3].default_value) == 3
+    assert any(
+        node.bl_idname == "GeometryNodeEdgesOfVertex"
+        for node in tree.nodes
+    )
+    assert any(
+        node.bl_idname == "GeometryNodeInputMeshEdgeVertices"
+        for node in tree.nodes
+    )
     assert any(
         node.bl_idname == "GeometryNodeInputMeshVertexNeighbors"
         for node in tree.nodes

@@ -448,6 +448,7 @@ def _update_width_controls(objects: list[bpy.types.Object], context) -> None:
         else:
             mod.vertex_group = ""
             vertex_analysis.clear_width_weights(obj, group_name=core.VG_LINE_WIDTH)
+        outline_setup.sync_sheet_outline_width(obj)
 
 
 def _update_width_target(
@@ -489,6 +490,8 @@ def _update_width_target(
                 if mod is not None:
                     mod.vertex_group = ""
             vertex_analysis.clear_width_weights(obj, group_name=group_name)
+        if target == "outline":
+            outline_setup.sync_sheet_outline_width(obj)
         if target == "intersection":
             intersection_lines.update_parameters(obj)
         elif target == "inner":
