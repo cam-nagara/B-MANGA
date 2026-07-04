@@ -45,8 +45,7 @@ _CURVE_RADIUS_NORMALIZER_LABEL = "BML_IntersectionShellCurveRadius"
 _SHELL_COMBINED_THICKNESS_NODE_LABEL = "BML_IntersectionShellCombinedThickness"
 _SHELL_PROFILE_NODE_LABEL = "BML_IntersectionShellProfile"
 _SHELL_GAP_COVERAGE_NODE_LABEL = "BML_IntersectionShellGapCoverage"
-_SHELL_BRANCH_SPLIT_NODE_LABEL = "BML_IntersectionShellAcutePathSplitV4"
-_SHELL_CURVE_JITTER_CENTER_LABEL = "BML_IntersectionShellJitterCenter"
+_SHELL_BRANCH_SPLIT_NODE_LABEL = "BML_IntersectionShellMidpointWidthV5"
 SHELL_TUBE_PROFILE_RESOLUTION = 12
 SHELL_GAP_COVERAGE_FACTOR = 1.08
 
@@ -317,23 +316,21 @@ def _create_node_tree() -> bpy.types.NodeTree:
     weld.inputs["Distance"].default_value = 0.0001
     links.new(separate.outputs["Selection"], weld.inputs["Geometry"])
 
-    split_mesh = intersection_shell_node_helpers.add_branch_split(
-        nodes,
-        links,
-        weld.outputs["Geometry"],
-        _SHELL_BRANCH_SPLIT_NODE_LABEL,
-        angle_output=gin.outputs[_MIDPOINT_ANGLE_SOCKET],
-    )
-
     m2c = nodes.new("GeometryNodeMeshToCurve")
     m2c.location = (900, -120)
-    links.new(split_mesh, m2c.inputs["Mesh"])
+    links.new(weld.outputs["Geometry"], m2c.inputs["Mesh"])
+
+    subdivide_curve = nodes.new("GeometryNodeSubdivideCurve")
+    subdivide_curve.label = _SHELL_BRANCH_SPLIT_NODE_LABEL
+    subdivide_curve.location = (1040, -120)
+    subdivide_curve.inputs["Cuts"].default_value = 1
+    links.new(m2c.outputs["Curve"], subdivide_curve.inputs["Curve"])
 
     normalized_curve = _add_curve_radius_normalizer(
-        nodes, links, m2c.outputs["Curve"], (1060, -120),
+        nodes, links, subdivide_curve.outputs["Curve"], (1180, -120),
     )
     join = _add_shell_tube_nodes(
-        nodes, links, normalized_curve, gin, radius, x_offset=1240,
+        nodes, links, normalized_curve, gin, radius, x_offset=1340,
     )
     links.new(join.outputs[0], gout.inputs[0])
     return tree
@@ -416,27 +413,14 @@ def _add_curve_radius_normalizer(nodes, links, curve_output, loc):
 
 
 def _add_shell_tube_nodes(nodes, links, curve_output, gin, radius_output, x_offset=0):
-    resample = nodes.new("GeometryNodeResampleCurve")
-    resample.location = (x_offset - 180, -300)
-    if hasattr(resample, "mode"):
-        resample.mode = "COUNT"
-    if "Count" in resample.inputs:
-        resample.inputs["Count"].default_value = 17
-    links.new(curve_output, resample.inputs["Curve"])
-
-    scale = intersection_shell_node_helpers.add_curve_width_scale(
+    scale = intersection_shell_node_helpers.add_curve_midpoint_width_scale(
         nodes,
         links,
-        gin,
-        x_offset=x_offset,
-        midpoint_factor_socket=_MIDPOINT_FACTOR_SOCKET,
-        midpoint_jitter_socket=_MIDPOINT_JITTER_SOCKET,
-        width_curve_sockets=(
-            _WIDTH_CURVE_25_SOCKET,
-            _WIDTH_CURVE_50_SOCKET,
-            _WIDTH_CURVE_75_SOCKET,
-        ),
-        jitter_center_label=_SHELL_CURVE_JITTER_CENTER_LABEL,
+        curve_output,
+        gin.outputs[_MIDPOINT_ANGLE_SOCKET],
+        gin.outputs[_MIDPOINT_FACTOR_SOCKET],
+        (x_offset - 260, -820),
+        label=_SHELL_BRANCH_SPLIT_NODE_LABEL + "Angle",
     )
 
     circle = nodes.new("GeometryNodeCurvePrimitiveCircle")
@@ -450,7 +434,7 @@ def _add_shell_tube_nodes(nodes, links, curve_output, gin, radius_output, x_offs
 
     c2m = nodes.new("GeometryNodeCurveToMesh")
     c2m.location = (x_offset + 200, -300)
-    links.new(resample.outputs["Curve"], c2m.inputs["Curve"])
+    links.new(curve_output, c2m.inputs["Curve"])
     links.new(circle.outputs["Curve"], c2m.inputs["Profile Curve"])
     if "Scale" in c2m.inputs:
         links.new(scale, c2m.inputs["Scale"])
@@ -602,10 +586,6 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
             )
             and any(
                 getattr(node, "label", "") == _SHELL_BRANCH_SPLIT_NODE_LABEL
-                for node in tree.nodes
-            )
-            and any(
-                getattr(node, "label", "") == _SHELL_CURVE_JITTER_CENTER_LABEL
                 for node in tree.nodes
             )
             and _tree_uses_generated_mark(tree)

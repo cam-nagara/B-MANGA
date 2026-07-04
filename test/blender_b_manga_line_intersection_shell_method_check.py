@@ -126,57 +126,49 @@ def _profile_resolutions(tree: bpy.types.NodeTree) -> list[int]:
     return values
 
 
-def _assert_shell_tree_has_branch_endpoint_and_jitter_nodes() -> None:
+def _assert_shell_tree_has_midpoint_width_nodes() -> None:
     tree = intersection_shell._get_or_create_tree()
     assert _socket_id(tree, "中間頂点の乱れ (%)")
     assert _socket_id(tree, "検出角度")
-    split = next(
+    midpoint = next(
         (
             node
             for node in tree.nodes
-            if getattr(node, "label", "") == "BML_IntersectionShellAcutePathSplitV4"
+            if getattr(node, "label", "") == "BML_IntersectionShellMidpointWidthV5"
         ),
         None,
     )
-    assert split is not None, "交差点分岐でカーブを区切るノードがありません"
-    selection_links = list(split.inputs["Selection"].links)
-    assert selection_links, "交差点分岐の選択入力が未接続です"
-    assert selection_links[0].from_node.bl_idname == "FunctionNodeBooleanMath"
-    branch_compare = next(
+    assert midpoint is not None, "中点を追加して太さを変えるノードがありません"
+    assert midpoint.bl_idname == "GeometryNodeSubdivideCurve"
+    assert not any(
+        node.bl_idname == "GeometryNodeSplitEdges"
+        for node in tree.nodes
+    ), "交差線の形状を切る Split Edges が残っています"
+    angle_compare = next(
         (
             node for node in tree.nodes
             if (
                 node.bl_idname == "FunctionNodeCompare"
-                and node.data_type == "INT"
-                and node.operation == "GREATER_EQUAL"
-                and int(node.inputs[3].default_value) == 3
+                and node.data_type == "FLOAT"
+                and node.operation == "GREATER_THAN"
+                and getattr(node, "label", "") == (
+                    "BML_IntersectionShellMidpointWidthV5Angle"
+                )
             )
         ),
         None,
     )
-    assert branch_compare is not None
+    assert angle_compare is not None
     assert any(
-        node.bl_idname == "GeometryNodeStoreNamedAttribute"
+        node.bl_idname == "GeometryNodeOffsetPointInCurve"
+        for node in tree.nodes
+    )
+    assert any(
+        node.bl_idname == "GeometryNodeSampleIndex"
         for node in tree.nodes
     )
     assert any(
         node.bl_idname == "GeometryNodeMergeByDistance"
-        for node in tree.nodes
-    )
-    assert any(
-        node.bl_idname == "GeometryNodeEdgesOfVertex"
-        for node in tree.nodes
-    )
-    assert any(
-        node.bl_idname == "GeometryNodeInputMeshEdgeVertices"
-        for node in tree.nodes
-    )
-    assert any(
-        node.bl_idname == "GeometryNodeInputMeshVertexNeighbors"
-        for node in tree.nodes
-    )
-    assert any(
-        getattr(node, "label", "") == "BML_IntersectionShellJitterCenter"
         for node in tree.nodes
     )
 
@@ -301,8 +293,10 @@ def _assert_shell_width_controls_affect_generated_mesh() -> None:
     slab.update_tag()
     bpy.context.view_layer.update()
     tapered_coords = _intersection_material_vertices(slab)
-    tapered_high = _high_z_count(tapered_coords, 0.015)
-    assert tapered_high < base_high, (base_high, tapered_high)
+    assert _z_span(tapered_coords) < _z_span(base_coords) * 0.5, (
+        _z_span(base_coords),
+        _z_span(tapered_coords),
+    )
 
 
 def _assert_stale_shell_tree_is_rebuilt() -> None:
@@ -346,7 +340,7 @@ def _assert_stale_shell_tree_is_rebuilt() -> None:
     assert _profile_resolutions(rebuilt) == [
         intersection_shell.SHELL_TUBE_PROFILE_RESOLUTION
     ]
-    _assert_shell_tree_has_branch_endpoint_and_jitter_nodes()
+    _assert_shell_tree_has_midpoint_width_nodes()
 
 
 def _assert_low_resolution_shell_tree_is_rebuilt() -> None:
@@ -404,7 +398,7 @@ def _assert_low_resolution_shell_tree_is_rebuilt() -> None:
     assert _profile_resolutions(rebuilt) == [
         intersection_shell.SHELL_TUBE_PROFILE_RESOLUTION
     ]
-    _assert_shell_tree_has_branch_endpoint_and_jitter_nodes()
+    _assert_shell_tree_has_midpoint_width_nodes()
 
 
 def _assert_missing_gap_coverage_shell_tree_is_rebuilt() -> None:
@@ -426,7 +420,7 @@ def _assert_missing_gap_coverage_shell_tree_is_rebuilt() -> None:
         getattr(node, "label", "") == "BML_IntersectionShellGapCoverage"
         for node in rebuilt.nodes
     )
-    _assert_shell_tree_has_branch_endpoint_and_jitter_nodes()
+    _assert_shell_tree_has_midpoint_width_nodes()
 
 
 def main() -> None:
@@ -436,7 +430,7 @@ def main() -> None:
         _assert_stale_shell_tree_is_rebuilt()
         _assert_low_resolution_shell_tree_is_rebuilt()
         _assert_missing_gap_coverage_shell_tree_is_rebuilt()
-        _assert_shell_tree_has_branch_endpoint_and_jitter_nodes()
+        _assert_shell_tree_has_midpoint_width_nodes()
         _clear_scene()
         # Zを互いにずらし、完全同一平面の重なり（EXACTブーリアンの縮退
         # ケース）を避ける現実的な配置にする
@@ -493,7 +487,7 @@ def main() -> None:
             assert _profile_resolutions(mod.node_group) == [
                 intersection_shell.SHELL_TUBE_PROFILE_RESOLUTION
             ]
-            _assert_shell_tree_has_branch_endpoint_and_jitter_nodes()
+            _assert_shell_tree_has_midpoint_width_nodes()
             assert intersection_lines._modifier_target(mod) is None
             targets = intersection_shell.modifier_targets(mod)
             assert obj not in targets

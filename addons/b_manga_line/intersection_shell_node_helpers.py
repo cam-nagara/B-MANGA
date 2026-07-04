@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 
-_PATH_SPLIT_ATTR = "BML_PathSplitVertex"
-
-
 def _math(nodes, operation: str, loc, value0=None, value1=None):
     node = nodes.new("ShaderNodeMath")
     node.location = loc
@@ -104,58 +101,6 @@ def _sample_index(nodes, links, mesh_output, value_output, index_output, loc, da
     links.new(value_output, node.inputs["Value"])
     links.new(index_output, node.inputs["Index"])
     return node.outputs["Value"]
-
-
-def _store_split_vertex_attribute(nodes, links, mesh_output, selection_output, loc):
-    node = nodes.new("GeometryNodeStoreNamedAttribute")
-    node.location = loc
-    node.domain = "POINT"
-    node.data_type = "BOOLEAN"
-    links.new(mesh_output, node.inputs["Geometry"])
-    node.inputs["Name"].default_value = _PATH_SPLIT_ATTR
-    links.new(selection_output, node.inputs["Value"])
-    return node.outputs["Geometry"]
-
-
-def _edge_selection_from_vertex_selection(nodes, links, mesh_output, selection_output, loc):
-    x, y = loc
-    edge_vertices = nodes.new("GeometryNodeInputMeshEdgeVertices")
-    edge_vertices.location = (x, y)
-
-    sample1 = nodes.new("GeometryNodeSampleIndex")
-    sample1.location = (x + 240, y + 80)
-    sample1.data_type = "BOOLEAN"
-    sample1.domain = "POINT"
-    links.new(mesh_output, sample1.inputs["Geometry"])
-    links.new(selection_output, sample1.inputs["Value"])
-    links.new(edge_vertices.outputs["Vertex Index 1"], sample1.inputs["Index"])
-
-    sample2 = nodes.new("GeometryNodeSampleIndex")
-    sample2.location = (x + 240, y - 80)
-    sample2.data_type = "BOOLEAN"
-    sample2.domain = "POINT"
-    links.new(mesh_output, sample2.inputs["Geometry"])
-    links.new(selection_output, sample2.inputs["Value"])
-    links.new(edge_vertices.outputs["Vertex Index 2"], sample2.inputs["Index"])
-
-    edge_selection = nodes.new("FunctionNodeBooleanMath")
-    edge_selection.location = (x + 480, y)
-    edge_selection.operation = "OR"
-    links.new(sample1.outputs["Value"], edge_selection.inputs[0])
-    links.new(sample2.outputs["Value"], edge_selection.inputs[1])
-    return edge_selection.outputs[0]
-
-
-def _non_split_vertex_selection(nodes, links, loc):
-    attr = nodes.new("GeometryNodeInputNamedAttribute")
-    attr.location = loc
-    attr.data_type = "BOOLEAN"
-    attr.inputs["Name"].default_value = _PATH_SPLIT_ATTR
-    invert = nodes.new("FunctionNodeBooleanMath")
-    invert.location = (loc[0] + 240, loc[1])
-    invert.operation = "NOT"
-    links.new(attr.outputs["Attribute"], invert.inputs[0])
-    return invert.outputs[0]
 
 
 def _add_width_curve(nodes, links, raw_output, gin, sockets, x_offset=0):
@@ -326,63 +271,52 @@ def _add_turn_angle_selection(nodes, links, mesh_output, angle_output, loc):
     return selected.outputs[0]
 
 
-def add_branch_split(nodes, links, mesh_output, label: str, *, angle_output=None):
-    neighbors = nodes.new("GeometryNodeInputMeshVertexNeighbors")
-    neighbors.location = (660, 80)
-    branch_selection = _compare_int_value(
+def _scale_from_split_selection(nodes, links, selection_output, factor_output, loc):
+    x, y = loc
+
+    positive = nodes.new("FunctionNodeCompare")
+    positive.location = (x, y + 280)
+    positive.data_type = "FLOAT"
+    positive.operation = "GREATER_EQUAL"
+    positive.inputs[1].default_value = 0.0
+    links.new(factor_output, positive.inputs[0])
+
+    one = nodes.new("ShaderNodeValue")
+    one.location = (x, y + 80)
+    one.outputs[0].default_value = 1.0
+
+    pos_endpoint = _math(nodes, "SUBTRACT", (x + 220, y + 220), value0=1.0)
+    links.new(factor_output, pos_endpoint.inputs[1])
+
+    abs_factor = _math(nodes, "ABSOLUTE", (x + 220, y - 40))
+    links.new(factor_output, abs_factor.inputs[0])
+    neg_center = _math(nodes, "SUBTRACT", (x + 420, y - 40), value0=1.0)
+    links.new(abs_factor.outputs[0], neg_center.inputs[1])
+
+    endpoint_scale = _switch_float(
         nodes,
         links,
-        neighbors.outputs["Vertex Count"],
-        "GREATER_EQUAL",
-        3,
-        (820, 80),
+        positive.outputs[0],
+        pos_endpoint.outputs[0],
+        one.outputs[0],
+        (x + 520, y + 220),
     )
-    selection = branch_selection
-    if angle_output is not None:
-        angle_selection = _add_turn_angle_selection(
-            nodes,
-            links,
-            mesh_output,
-            angle_output,
-            (420, -520),
-        )
-        combine = nodes.new("FunctionNodeBooleanMath")
-        combine.location = (1020, 0)
-        combine.operation = "OR"
-        links.new(branch_selection, combine.inputs[0])
-        links.new(angle_selection, combine.inputs[1])
-        selection = combine.outputs[0]
-
-    marked_mesh = _store_split_vertex_attribute(
+    center_scale = _switch_float(
         nodes,
         links,
-        mesh_output,
-        selection,
-        (1120, 120),
+        positive.outputs[0],
+        one.outputs[0],
+        neg_center.outputs[0],
+        (x + 640, y - 20),
     )
-    edge_selection = _edge_selection_from_vertex_selection(
+    return _switch_float(
         nodes,
         links,
-        marked_mesh,
-        selection,
-        (1120, -260),
+        selection_output,
+        endpoint_scale,
+        center_scale,
+        (x + 860, y + 100),
     )
-
-    split = nodes.new("GeometryNodeSplitEdges")
-    split.label = label
-    split.location = (1720, -120) if angle_output is not None else (1480, -120)
-    links.new(marked_mesh, split.inputs["Mesh"])
-    links.new(edge_selection, split.inputs["Selection"])
-
-    merge = nodes.new("GeometryNodeMergeByDistance")
-    merge.location = (1940, -120) if angle_output is not None else (1700, -120)
-    merge.inputs["Distance"].default_value = 0.000001
-    links.new(split.outputs["Mesh"], merge.inputs["Geometry"])
-    links.new(
-        _non_split_vertex_selection(nodes, links, (1720, -360)),
-        merge.inputs["Selection"],
-    )
-    return merge.outputs["Geometry"]
 
 
 def add_jittered_midpoint_factor(
@@ -511,3 +445,128 @@ def add_curve_width_scale(
     clamped_max = _math(nodes, "MINIMUM", (x_offset + 1480, 80), value1=1.0)
     links.new(clamped_min.outputs[0], clamped_max.inputs[0])
     return clamped_max.outputs[0]
+
+
+def _sample_curve_position(nodes, links, curve_output, position_output, index_output, loc):
+    sample = nodes.new("GeometryNodeSampleIndex")
+    sample.location = loc
+    sample.data_type = "FLOAT_VECTOR"
+    sample.domain = "POINT"
+    links.new(curve_output, sample.inputs["Geometry"])
+    links.new(position_output, sample.inputs["Value"])
+    links.new(index_output, sample.inputs["Index"])
+    return sample.outputs["Value"]
+
+
+def add_curve_midpoint_width_scale(
+    nodes,
+    links,
+    curve_output,
+    angle_output,
+    factor_output,
+    loc,
+    *,
+    label: str,
+):
+    """Return a Curve to Mesh scale field without changing the curve shape."""
+    x, y = loc
+    index = nodes.new("GeometryNodeInputIndex")
+    index.location = (x, y + 420)
+    position = nodes.new("GeometryNodeInputPosition")
+    position.location = (x, y + 260)
+
+    prev_point = nodes.new("GeometryNodeOffsetPointInCurve")
+    prev_point.location = (x + 220, y + 420)
+    links.new(index.outputs["Index"], prev_point.inputs["Point Index"])
+    prev_point.inputs["Offset"].default_value = -1
+
+    next_point = nodes.new("GeometryNodeOffsetPointInCurve")
+    next_point.location = (x + 220, y + 260)
+    links.new(index.outputs["Index"], next_point.inputs["Point Index"])
+    next_point.inputs["Offset"].default_value = 1
+
+    prev_pos = _sample_curve_position(
+        nodes,
+        links,
+        curve_output,
+        position.outputs["Position"],
+        prev_point.outputs["Point Index"],
+        (x + 460, y + 420),
+    )
+    next_pos = _sample_curve_position(
+        nodes,
+        links,
+        curve_output,
+        position.outputs["Position"],
+        next_point.outputs["Point Index"],
+        (x + 460, y + 260),
+    )
+
+    vec_prev = nodes.new("ShaderNodeVectorMath")
+    vec_prev.location = (x + 700, y + 400)
+    vec_prev.operation = "SUBTRACT"
+    links.new(prev_pos, vec_prev.inputs[0])
+    links.new(position.outputs["Position"], vec_prev.inputs[1])
+
+    vec_next = nodes.new("ShaderNodeVectorMath")
+    vec_next.location = (x + 700, y + 200)
+    vec_next.operation = "SUBTRACT"
+    links.new(next_pos, vec_next.inputs[0])
+    links.new(position.outputs["Position"], vec_next.inputs[1])
+
+    norm_prev = nodes.new("ShaderNodeVectorMath")
+    norm_prev.location = (x + 920, y + 400)
+    norm_prev.operation = "NORMALIZE"
+    links.new(vec_prev.outputs["Vector"], norm_prev.inputs[0])
+
+    norm_next = nodes.new("ShaderNodeVectorMath")
+    norm_next.location = (x + 920, y + 200)
+    norm_next.operation = "NORMALIZE"
+    links.new(vec_next.outputs["Vector"], norm_next.inputs[0])
+
+    dot = nodes.new("ShaderNodeVectorMath")
+    dot.location = (x + 1140, y + 300)
+    dot.operation = "DOT_PRODUCT"
+    links.new(norm_prev.outputs["Vector"], dot.inputs[0])
+    links.new(norm_next.outputs["Vector"], dot.inputs[1])
+
+    angle_cos = _math(nodes, "COSINE", (x + 1140, y + 120))
+    links.new(angle_output, angle_cos.inputs[0])
+
+    angle_split = nodes.new("FunctionNodeCompare")
+    angle_split.location = (x + 1320, y + 300)
+    angle_split.label = label
+    angle_split.data_type = "FLOAT"
+    angle_split.operation = "GREATER_THAN"
+    links.new(dot.outputs["Value"], angle_split.inputs[0])
+    links.new(angle_cos.outputs[0], angle_split.inputs[1])
+
+    invalid_prev = nodes.new("FunctionNodeBooleanMath")
+    invalid_prev.location = (x + 700, y + 60)
+    invalid_prev.operation = "NOT"
+    links.new(prev_point.outputs["Is Valid Offset"], invalid_prev.inputs[0])
+
+    invalid_next = nodes.new("FunctionNodeBooleanMath")
+    invalid_next.location = (x + 700, y - 80)
+    invalid_next.operation = "NOT"
+    links.new(next_point.outputs["Is Valid Offset"], invalid_next.inputs[0])
+
+    endpoint = nodes.new("FunctionNodeBooleanMath")
+    endpoint.location = (x + 940, y - 20)
+    endpoint.operation = "OR"
+    links.new(invalid_prev.outputs[0], endpoint.inputs[0])
+    links.new(invalid_next.outputs[0], endpoint.inputs[1])
+
+    split = nodes.new("FunctionNodeBooleanMath")
+    split.location = (x + 1540, y + 160)
+    split.operation = "OR"
+    links.new(angle_split.outputs[0], split.inputs[0])
+    links.new(endpoint.outputs[0], split.inputs[1])
+
+    return _scale_from_split_selection(
+        nodes,
+        links,
+        split.outputs[0],
+        factor_output,
+        (x + 1760, y + 40),
+    )
