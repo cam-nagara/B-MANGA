@@ -5,7 +5,7 @@ from __future__ import annotations
 import bpy
 
 from . import edge_width_curve, registration
-from .core import PROP_LINE_ONLY, has_line, has_outline
+from .core import PROP_LINE_ONLY, has_line, has_outline, sync_line_display_settings
 
 
 def _get_paper_dpi(scene) -> int:
@@ -157,7 +157,13 @@ def _draw_camera(layout, context, settings) -> None:
     col.label(text=f"基準: {basis} ({camera_name})", icon="CAMERA_DATA")
     col.prop(context.scene, "bmanga_line_camera")
     col.separator()
-    col.prop(settings, "line_width_reference_distance")
+    row = col.row(align=True)
+    row.prop(settings, "line_width_reference_distance")
+    row.operator(
+        "bmanga_line.reset_camera_ref",
+        text="選択原点まで",
+        icon="EMPTY_ARROWS",
+    )
     col.separator()
     col.prop(settings, "use_camera_compensation")
     sub = col.column(align=True)
@@ -312,19 +318,18 @@ def _draw_actions(layout, context, obj) -> None:
         icon="LINKED",
     )
 
-    row = layout.row(align=True)
-    row.enabled = has_line_any
-    op = row.operator("bmanga_line.set_visibility", text="ラインを表示", icon="HIDE_OFF")
-    op.visible = True
-    op = row.operator("bmanga_line.set_visibility", text="ラインを非表示", icon="HIDE_ON")
-    op.visible = False
+    if settings is not None:
+        sync_line_display_settings(obj)
+        row = layout.row(align=True)
+        row.enabled = has_line_any
+        row.prop(settings, "lines_visible")
 
-    row = layout.row(align=True)
-    row.enabled = has_line_any or line_only_any
-    op = row.operator("bmanga_line.set_line_only", text="ラインのみを表示", icon="OVERLAY")
-    op.line_only = True
-    op = row.operator("bmanga_line.set_line_only", text="通常表示に戻す", icon="MATERIAL")
-    op.line_only = False
+        row = layout.row(align=True)
+        row.enabled = has_line_any or line_only_any
+        row.prop(settings, "line_only_visible")
+
+        row = layout.row(align=True)
+        row.prop(settings, "match_subsurf_viewport_to_render")
 
     row = layout.row(align=True)
     row.enabled = has_line_any

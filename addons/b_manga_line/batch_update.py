@@ -754,6 +754,35 @@ def _update_auto_subdivision(objects: list[bpy.types.Object], context) -> None:
             subdivision_lod.remove_auto_subdivision(obj)
 
 
+def _update_lines_visible(objects: list[bpy.types.Object], context) -> None:
+    needs_refresh = False
+    for obj in objects:
+        visible = bool(obj.bmanga_line_settings.lines_visible)
+        if core.set_line_visibility(obj, visible) and visible:
+            needs_refresh = True
+    if needs_refresh:
+        camera_comp.refresh(context)
+
+
+def _update_line_only_visible(objects: list[bpy.types.Object], context) -> None:
+    from . import viewport_aov
+
+    viewport_aov.disable_line_aov(context)
+    for obj in objects:
+        enabled = bool(obj.bmanga_line_settings.line_only_visible)
+        if enabled:
+            core.set_line_visibility(obj, True)
+        outline_setup.set_line_only(obj, enabled)
+
+
+def _update_match_subsurf_viewport_to_render(objects: list[bpy.types.Object]) -> None:
+    from . import subdivision_lod
+
+    for obj in objects:
+        if bool(obj.bmanga_line_settings.match_subsurf_viewport_to_render):
+            subdivision_lod.sync_viewport_levels_to_render(obj)
+
+
 def _update_visibility_rules(objects: list[bpy.types.Object], context) -> None:
     needs_refresh = []
     for obj in objects:
@@ -800,6 +829,15 @@ def refresh_propagated_property(
         return
     if prop_name == "auto_subdivision_for_midpoint":
         _update_auto_subdivision(line_objects, context)
+        return
+    if prop_name == "lines_visible":
+        _update_lines_visible(line_objects, context)
+        return
+    if prop_name == "line_only_visible":
+        _update_line_only_visible(line_objects, context)
+        return
+    if prop_name == "match_subsurf_viewport_to_render":
+        _update_match_subsurf_viewport_to_render(line_objects)
         return
     if prop_name == "outline_color":
         _update_outline_color(line_objects)

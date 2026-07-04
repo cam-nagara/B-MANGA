@@ -40,6 +40,30 @@ def render_levels_for_distance(distance: float) -> int:
     return max(0, min(MAX_RENDER_LEVELS, level))
 
 
+def sync_viewport_levels_to_render(obj: bpy.types.Object) -> int:
+    """選択メッシュのSubsurfのビューポートレベルをレンダーレベルへ揃える."""
+    if obj.type != "MESH":
+        return 0
+    changed = 0
+    for mod in obj.modifiers:
+        if mod.type != "SUBSURF":
+            continue
+        render_levels = max(0, int(getattr(mod, "render_levels", 0)))
+        if int(getattr(mod, "levels", 0)) == render_levels:
+            continue
+        mod.levels = render_levels
+        changed += 1
+    if changed:
+        sync_generated_line_subdivision(obj)
+        try:
+            from . import intersection_shell
+
+            intersection_shell.sync_proxy_subdivision_for_target(obj)
+        except Exception:  # noqa: BLE001 - 交差線プロキシが無い場合も通常操作を止めない
+            pass
+    return changed
+
+
 def _line_camera(scene) -> bpy.types.Object | None:
     if scene is None:
         return None

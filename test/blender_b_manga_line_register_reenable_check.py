@@ -140,6 +140,9 @@ def _assert_panels_draw_items() -> None:
         "outline_thickness_mm",
         "outline_color",
         "auto_subdivision_for_midpoint",
+        "lines_visible",
+        "line_only_visible",
+        "match_subsurf_viewport_to_render",
         "use_camera_compensation",
         "line_width_reference_distance",
         "use_uniform_line_width",
@@ -166,6 +169,7 @@ def _assert_panels_draw_items() -> None:
     ]
     initially_on_props = {
         "outline_enabled",
+        "lines_visible",
         "use_inner_line_creation_limit",
         "use_intersection_creation_limit",
         # 2026-07-03 ユーザー確定: 板ポリ除外だけは初期値オン
@@ -240,7 +244,7 @@ def _assert_panels_draw_items() -> None:
     for operator_id in (
         "bmanga_line.apply",
         "bmanga_line.select_render_range_meshes",
-        "bmanga_line.set_visibility",
+        "bmanga_line.reset_camera_ref",
         "bmanga_line.remove",
     ):
         assert operator_id in records["operators"], f"{operator_id} がパネルにありません"

@@ -89,4 +89,10 @@ def set_line_visibility(obj: bpy.types.Object, visible: bool) -> bool:
         if mod.show_render != mod_visible:
             mod.show_render = mod_visible
     obj[PROP_LINES_HIDDEN] = not visible
+    try:
+        from . import core
+
+        core.sync_line_visibility_setting(obj)
+    except Exception:  # noqa: BLE001 - UI状態同期に失敗しても表示切替は維持する
+        pass
     return True

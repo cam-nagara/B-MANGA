@@ -1507,6 +1507,15 @@ def set_line_only(obj: bpy.types.Object, enabled: bool) -> bool:
     """ライン用以外の素材を一時的に白い光沢素材へ置き換える."""
     if obj.type != "MESH":
         return False
+
+    def _sync_ui_state() -> None:
+        try:
+            from . import core
+
+            core.sync_line_only_setting(obj)
+        except Exception:  # noqa: BLE001 - UI状態同期に失敗しても表示切替は維持する
+            pass
+
     mesh = obj.data
     if enabled:
         if bool(obj.get(PROP_LINE_ONLY, False)):
@@ -1516,6 +1525,7 @@ def set_line_only(obj: bpy.types.Object, enabled: bool) -> bool:
                 hide_through_transparent_override=True,
             )
             _configure_line_only_solidify_shape(obj)
+            _sync_ui_state()
             return True
         stored = []
         hidden = _get_line_only_material()
@@ -1547,9 +1557,11 @@ def set_line_only(obj: bpy.types.Object, enabled: bool) -> bool:
                 mod.material_offset_rim = mod.material_offset
         obj[PROP_LINE_ONLY_MATERIALS] = json.dumps(stored, ensure_ascii=False)
         obj[PROP_LINE_ONLY] = True
+        _sync_ui_state()
         return True
 
     if not bool(obj.get(PROP_LINE_ONLY, False)):
+        _sync_ui_state()
         return True
     raw = obj.get(PROP_LINE_ONLY_MATERIALS, "[]")
     try:
@@ -1573,6 +1585,7 @@ def set_line_only(obj: bpy.types.Object, enabled: bool) -> bool:
         del obj[PROP_LINE_ONLY_MATERIALS]
     if PROP_LINE_ONLY in obj:
         del obj[PROP_LINE_ONLY]
+    _sync_ui_state()
     return True
 
 

@@ -466,6 +466,90 @@ def _on_auto_subdivision_changed(self, context):
     _propagate(self, context, "auto_subdivision_for_midpoint")
 
 
+def _set_bool_setting_without_update(
+    obj: bpy.types.Object,
+    prop_name: str,
+    value: bool,
+) -> None:
+    settings = getattr(obj, "bmanga_line_settings", None)
+    if settings is None or not hasattr(settings, prop_name):
+        return
+    if bool(getattr(settings, prop_name)) == bool(value):
+        return
+    global _propagating
+    old = _propagating
+    _propagating = True
+    try:
+        setattr(settings, prop_name, bool(value))
+    finally:
+        _propagating = old
+
+
+def sync_line_visibility_setting(obj: bpy.types.Object) -> None:
+    """ライン表示状態をUIチェックボックスへ同期する."""
+    _set_bool_setting_without_update(
+        obj,
+        "lines_visible",
+        not bool(obj.get(PROP_LINES_HIDDEN, False)),
+    )
+
+
+def sync_line_only_setting(obj: bpy.types.Object) -> None:
+    """ラインのみ表示状態をUIチェックボックスへ同期する."""
+    _set_bool_setting_without_update(
+        obj,
+        "line_only_visible",
+        bool(obj.get(PROP_LINE_ONLY, False)),
+    )
+
+
+def sync_line_display_settings(obj: bpy.types.Object) -> None:
+    sync_line_visibility_setting(obj)
+    sync_line_only_setting(obj)
+
+
+def _on_lines_visible_changed(self, context):
+    if _propagating:
+        return
+    owner = self.id_data
+    visible = bool(self.lines_visible)
+    if owner.type == "MESH" and has_line(owner):
+        set_line_visibility(owner, visible)
+        if visible:
+            _refresh_print_widths(context)
+    _propagate(self, context, "lines_visible")
+
+
+def _on_line_only_visible_changed(self, context):
+    if _propagating:
+        return
+    from . import outline_setup, viewport_aov
+
+    owner = self.id_data
+    enabled = bool(self.line_only_visible)
+    viewport_aov.disable_line_aov(context)
+    if owner.type == "MESH" and has_line(owner):
+        if enabled:
+            set_line_visibility(owner, True)
+        outline_setup.set_line_only(owner, enabled)
+    _propagate(self, context, "line_only_visible")
+
+
+def _on_match_subsurf_viewport_to_render_changed(self, context):
+    if _propagating:
+        return
+    if self.match_subsurf_viewport_to_render:
+        from . import subdivision_lod
+
+        owner = self.id_data
+        targets = _selected_mesh_objects(context, owner)
+        if owner.type == "MESH" and owner not in targets:
+            targets.append(owner)
+        for obj in targets:
+            subdivision_lod.sync_viewport_levels_to_render(obj)
+    _propagate(self, context, "match_subsurf_viewport_to_render")
+
+
 def _sync_inner_line_creation(
     owner: bpy.types.Object,
     settings,
@@ -1189,6 +1273,30 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         ),
         default=False,
         update=_on_auto_subdivision_changed,
+    )  # type: ignore[valid-type]
+
+    lines_visible: BoolProperty(
+        name="ラインを表示",
+        description="選択中のオブジェクトのライン表示を切り替える",
+        default=True,
+        update=_on_lines_visible_changed,
+    )  # type: ignore[valid-type]
+
+    line_only_visible: BoolProperty(
+        name="ラインのみを表示",
+        description="面を白く置き換え、ラインだけが見える表示へ切り替える",
+        default=False,
+        update=_on_line_only_visible_changed,
+    )  # type: ignore[valid-type]
+
+    match_subsurf_viewport_to_render: BoolProperty(
+        name="ビューポートのレベル数をレンダーに合わせる",
+        description=(
+            "選択中のメッシュのサブディビジョンサーフェスで、"
+            "ビューポートのレベル数をレンダーと同じ数値にする"
+        ),
+        default=False,
+        update=_on_match_subsurf_viewport_to_render_changed,
     )  # type: ignore[valid-type]
 
     even_thickness: BoolProperty(

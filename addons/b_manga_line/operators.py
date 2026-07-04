@@ -422,10 +422,10 @@ class BMANGA_LINE_OT_refresh_camera(bpy.types.Operator):
 
 
 class BMANGA_LINE_OT_reset_camera_ref(bpy.types.Operator):
-    """アクティブオブジェクトの現在距離を線幅基準距離にする"""
+    """選択オブジェクトの原点までの距離を線幅基準距離にする"""
 
     bl_idname = "bmanga_line.reset_camera_ref"
-    bl_label = "現在距離を基準にする"
+    bl_label = "選択原点までの距離に設定"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -434,7 +434,7 @@ class BMANGA_LINE_OT_reset_camera_ref(bpy.types.Operator):
 
         return (
             camera_comp.get_line_camera(context.scene) is not None
-            and any(has_outline(obj) for obj in context.selected_objects)
+            and any(obj.type == "MESH" for obj in context.selected_objects)
         )
 
     def execute(self, context):
@@ -445,12 +445,9 @@ class BMANGA_LINE_OT_reset_camera_ref(bpy.types.Operator):
             self.report({"WARNING"}, "カメラがありません")
             return {"CANCELLED"}
 
-        targets = [
-            obj for obj in context.selected_objects
-            if obj.type == "MESH" and has_outline(obj)
-        ]
+        targets = [obj for obj in context.selected_objects if obj.type == "MESH"]
         if not targets:
-            self.report({"WARNING"}, "ライン設定のあるオブジェクトを選択してください")
+            self.report({"WARNING"}, "メッシュオブジェクトを選択してください")
             return {"CANCELLED"}
 
         source = context.active_object if context.active_object in targets else targets[0]
@@ -463,10 +460,13 @@ class BMANGA_LINE_OT_reset_camera_ref(bpy.types.Operator):
         try:
             for obj in targets:
                 obj.bmanga_line_settings.line_width_reference_distance = distance
-                camera_comp.store_unit_reference(obj, context.scene)
+                if has_outline(obj):
+                    camera_comp.store_unit_reference(obj, context.scene)
         finally:
             core._propagating = old
-        camera_comp.refresh_objects(context, targets)
+        line_targets = [obj for obj in targets if has_outline(obj)]
+        if line_targets:
+            camera_comp.refresh_objects(context, line_targets)
 
         self.report({"INFO"}, f"{len(targets)} オブジェクトの線幅基準距離を更新しました")
         return {"FINISHED"}
