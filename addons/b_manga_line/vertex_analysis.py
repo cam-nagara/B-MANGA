@@ -32,7 +32,7 @@ _ANCHOR_THRESHOLD_PROP = "bml_subsurf_anchor_threshold"
 def _apply_subsurf_for_midpoint(obj, threshold: float) -> set[int]:
     """SubSurfがあれば適用して頂点密度を確保.
 
-    適用前にベースメッシュのアンカー頂点（検出角度以上のエッジ）を検出し、
+    適用前にベースメッシュのアンカー頂点（検出角度未満のパス角）を検出し、
     カスタムプロパティに保存。SubSurf後はエッジ角度が平滑化
     されるため、適用前の情報が必要。
     戻り値: アンカー頂点インデックスのset（SubSurfなしなら空set）
@@ -164,11 +164,8 @@ def _hard_endpoint_anchors(
             directions.append(direction.normalized())
         if len(directions) != 2:
             continue
-        # 直線上の分割頂点は2方向が反対向き（角度=180度）なので折れ角0度。
-        # 角では2方向のなす角が小さくなり、折れ角が大きくなる。
         path_angle = directions[0].angle(directions[1], math.pi)
-        turn_angle = max(0.0, math.pi - path_angle)
-        if turn_angle + 1.0e-7 >= hard_endpoint_angle:
+        if path_angle + 1.0e-7 < hard_endpoint_angle:
             anchors.add(vert.index)
     return anchors
 
@@ -669,7 +666,7 @@ def compute_and_apply_weights(obj, settings, target: str = "outline") -> int:
     合成順序:
     1. 手動頂点カラー（BML_LineWidth）の明度 → ベースウェイト
     2. AO（BML_AO）の暗さ → 暗い部分ほど太い線
-    3. 検出角度で見つけた角と角の間 → 中間頂点の線幅差
+    3. 検出角度未満で分割した線ごとの両端と中心 → 中間頂点の線幅差
     """
     if obj.type != "MESH":
         return 0

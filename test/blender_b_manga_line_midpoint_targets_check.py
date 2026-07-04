@@ -129,6 +129,29 @@ def _make_bent_graph(name: str) -> bpy.types.Object:
     return obj
 
 
+def _make_acute_graph(name: str) -> bpy.types.Object:
+    d = math.sqrt(0.5)
+    verts = (
+        (-2.0, 0.0, 0.0),
+        (-1.0, 0.0, 0.0),
+        (0.0, 0.0, 0.0),
+        (-d, d, 0.0),
+        (-2.0 * d, 2.0 * d, 0.0),
+    )
+    edges = (
+        (0, 1),
+        (1, 2),
+        (2, 3),
+        (3, 4),
+    )
+    mesh = bpy.data.meshes.new(name)
+    mesh.from_pydata(verts, edges, [])
+    mesh.update()
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    return obj
+
+
 def _center_ridge_vertex() -> int:
     return (LEVELS // 2) * 3 + 1
 
@@ -308,13 +331,34 @@ def _assert_bent_path_uses_detection_angle(
         vertex_analysis._edge_is_sharp = real_edge_is_sharp
 
     bend_vertex = 2
-    left_mid = 1
-    right_mid = 3
     endpoints = (0, 4)
-    assert _weight(obj, group_name, bend_vertex) > 0.999
+    assert _weight(obj, group_name, bend_vertex) < 0.001
     assert all(_weight(obj, group_name, vi) > 0.999 for vi in endpoints)
-    assert _weight(obj, group_name, left_mid) < 0.001
-    assert _weight(obj, group_name, right_mid) < 0.001
+
+
+def _assert_acute_path_splits_below_detection_angle(
+    target: str,
+    group_name: str,
+    factor_prop: str,
+    angle_prop: str,
+) -> None:
+    obj = _make_acute_graph("BML_midpoint_acute_" + target)
+    settings = obj.bmanga_line_settings
+    setattr(settings, factor_prop, -1.0)
+    setattr(settings, angle_prop, math.radians(60.0))
+    real_edge_is_sharp = vertex_analysis._edge_is_sharp
+    try:
+        vertex_analysis._edge_is_sharp = lambda _edge, _threshold: True
+        vertex_analysis.compute_and_apply_weights(obj, settings, target)
+    finally:
+        vertex_analysis._edge_is_sharp = real_edge_is_sharp
+
+    split_vertex = 2
+    endpoints = (0, 4)
+    segment_centers = (1, 3)
+    assert _weight(obj, group_name, split_vertex) > 0.999
+    assert all(_weight(obj, group_name, vi) > 0.999 for vi in endpoints)
+    assert all(_weight(obj, group_name, vi) < 0.001 for vi in segment_centers)
 
 
 def main() -> None:
@@ -366,6 +410,18 @@ def main() -> None:
         "edge_midpoint_angle",
     )
     _assert_bent_path_uses_detection_angle(
+        "intersection",
+        core.VG_INTERSECTION_LINE_WIDTH,
+        "intersection_edge_smooth_factor",
+        "intersection_edge_midpoint_angle",
+    )
+    _assert_acute_path_splits_below_detection_angle(
+        "outline",
+        core.VG_LINE_WIDTH,
+        "edge_smooth_factor",
+        "edge_midpoint_angle",
+    )
+    _assert_acute_path_splits_below_detection_angle(
         "intersection",
         core.VG_INTERSECTION_LINE_WIDTH,
         "intersection_edge_smooth_factor",

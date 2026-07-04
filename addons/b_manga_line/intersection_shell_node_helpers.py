@@ -173,7 +173,7 @@ def _edge_other_position(
 
 
 def _add_turn_angle_selection(nodes, links, mesh_output, angle_output, loc):
-    """Select degree-2 vertices where the line path bends by the angle threshold."""
+    """Select degree-2 vertices where the path angle is below the threshold."""
     x, y = loc
     index = nodes.new("GeometryNodeInputIndex")
     index.location = (x, y + 420)
@@ -255,21 +255,19 @@ def _add_turn_angle_selection(nodes, links, mesh_output, angle_output, loc):
 
     angle_cos = _math(nodes, "COSINE", (x + 1540, y - 120))
     links.new(angle_output, angle_cos.inputs[0])
-    neg_cos = _math(nodes, "MULTIPLY", (x + 1720, y - 120), value1=-1.0)
-    links.new(angle_cos.outputs[0], neg_cos.inputs[0])
 
-    sharp_turn = nodes.new("FunctionNodeCompare")
-    sharp_turn.location = (x + 1720, y + 100)
-    sharp_turn.data_type = "FLOAT"
-    sharp_turn.operation = "GREATER_EQUAL"
-    links.new(dot.outputs["Value"], sharp_turn.inputs[0])
-    links.new(neg_cos.outputs[0], sharp_turn.inputs[1])
+    acute_path_angle = nodes.new("FunctionNodeCompare")
+    acute_path_angle.location = (x + 1720, y + 100)
+    acute_path_angle.data_type = "FLOAT"
+    acute_path_angle.operation = "GREATER_THAN"
+    links.new(dot.outputs["Value"], acute_path_angle.inputs[0])
+    links.new(angle_cos.outputs[0], acute_path_angle.inputs[1])
 
     selected = nodes.new("FunctionNodeBooleanMath")
     selected.location = (x + 1940, y + 80)
     selected.operation = "AND"
     links.new(degree_two, selected.inputs[0])
-    links.new(sharp_turn.outputs[0], selected.inputs[1])
+    links.new(acute_path_angle.outputs[0], selected.inputs[1])
     return selected.outputs[0]
 
 

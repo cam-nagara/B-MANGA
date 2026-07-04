@@ -134,7 +134,7 @@ def _assert_shell_tree_has_branch_endpoint_and_jitter_nodes() -> None:
         (
             node
             for node in tree.nodes
-            if getattr(node, "label", "") == "BML_IntersectionShellBranchSplit"
+            if getattr(node, "label", "") == "BML_IntersectionShellAcutePathSplitV2"
         ),
         None,
     )

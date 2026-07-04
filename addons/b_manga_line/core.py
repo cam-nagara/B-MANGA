@@ -1462,7 +1462,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
 
     edge_midpoint_angle: _midpoint_angle_property(
         "edge_midpoint_angle",
-        "アウトラインの中間頂点線幅調整で角として扱う角度",
+        "アウトラインを分割する角度。これ未満の角で分割し、以上の角は接続します",
     )  # type: ignore[valid-type]
 
     edge_width_curve_25: FloatProperty(
@@ -1497,7 +1497,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
 
     inner_edge_smooth_factor: _midpoint_factor_property(
         "inner_edge_smooth_factor",
-        "検出角度で見つけた角と角の間の内部線幅を調整（正: 太く / 負: 細く）",
+        "分割された内部線ごとの中心付近の線幅を調整（正: 太く / 負: 細く）",
     )  # type: ignore[valid-type]
     inner_edge_midpoint_jitter_percent: _midpoint_jitter_property(
         "inner_edge_midpoint_jitter_percent",
@@ -1505,7 +1505,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     )  # type: ignore[valid-type]
     inner_edge_midpoint_angle: _midpoint_angle_property(
         "inner_edge_midpoint_angle",
-        "内部線の中間頂点線幅調整で角として扱う角度",
+        "内部線を分割する角度。これ未満の角で分割し、以上の角は接続します",
     )  # type: ignore[valid-type]
     inner_edge_width_curve_25: _curve_point_property(
         "inner_edge_width_curve_25", "25%",
@@ -1522,7 +1522,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
 
     intersection_edge_smooth_factor: _midpoint_factor_property(
         "intersection_edge_smooth_factor",
-        "検出角度で見つけた角と角の間の交差線幅を調整（正: 太く / 負: 細く）",
+        "分割された交差線ごとの中心付近の線幅を調整（正: 太く / 負: 細く）",
     )  # type: ignore[valid-type]
     intersection_edge_midpoint_jitter_percent: _midpoint_jitter_property(
         "intersection_edge_midpoint_jitter_percent",
@@ -1530,7 +1530,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     )  # type: ignore[valid-type]
     intersection_edge_midpoint_angle: _midpoint_angle_property(
         "intersection_edge_midpoint_angle",
-        "交差線の中間頂点線幅調整で角として扱う角度",
+        "交差線を分割する角度。これ未満の角で分割し、以上の角は接続します",
     )  # type: ignore[valid-type]
     intersection_edge_width_curve_25: _curve_point_property(
         "intersection_edge_width_curve_25", "25%",
