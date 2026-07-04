@@ -528,6 +528,12 @@ def main() -> None:
         "edge_midpoint_angle",
     )
     _assert_bent_path_uses_detection_angle(
+        "inner",
+        core.VG_INNER_LINE_WIDTH,
+        "inner_edge_smooth_factor",
+        "inner_edge_midpoint_angle",
+    )
+    _assert_bent_path_uses_detection_angle(
         "intersection",
         core.VG_INTERSECTION_LINE_WIDTH,
         "intersection_edge_smooth_factor",
@@ -538,6 +544,12 @@ def main() -> None:
         core.VG_LINE_WIDTH,
         "edge_smooth_factor",
         "edge_midpoint_angle",
+    )
+    _assert_acute_path_splits_below_detection_angle(
+        "inner",
+        core.VG_INNER_LINE_WIDTH,
+        "inner_edge_smooth_factor",
+        "inner_edge_midpoint_angle",
     )
     _assert_acute_path_splits_below_detection_angle(
         "intersection",
@@ -550,6 +562,12 @@ def main() -> None:
         core.VG_LINE_WIDTH,
         "edge_smooth_factor",
         "edge_midpoint_angle",
+    )
+    _assert_diamond_loop_splits_only_acute_points(
+        "inner",
+        core.VG_INNER_LINE_WIDTH,
+        "inner_edge_smooth_factor",
+        "inner_edge_midpoint_angle",
     )
     _assert_diamond_loop_splits_only_acute_points(
         "intersection",

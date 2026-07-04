@@ -393,6 +393,8 @@ def _curve_point_split_from_offsets(
     loc,
     *,
     label: str | None = None,
+    include_endpoints: bool = True,
+    include_angle: bool = True,
 ):
     x, y = loc
     before = _offset_point(nodes, links, index_output, before_offset, (x, y + 180))
@@ -446,6 +448,11 @@ def _curve_point_split_from_offsets(
         (x + 1120, y - 60),
     )
     endpoint = _bool_or(nodes, links, invalid_before, invalid_after, (x + 1320, y + 40))
+    if not include_angle:
+        return endpoint
+    if not include_endpoints:
+        valid_offsets = _bool_not(nodes, links, endpoint, (x + 1520, y + 40))
+        return _bool_and(nodes, links, angle_split, valid_offsets, (x + 1720, y + 40))
     return _bool_or(nodes, links, angle_split, endpoint, (x + 1520, y + 40))
 
 
@@ -553,6 +560,7 @@ def add_curve_midpoint_width_scale(
     width_curve_outputs=None,
     jitter_output=None,
     angle_split_min_segment_fraction: float = _ANGLE_SPLIT_MIN_SEGMENT_FRACTION,
+    angle_split_confirmation_offset: int = 1,
 ):
     """Return a Curve to Mesh scale field without changing the curve shape."""
     x, y = loc
@@ -573,7 +581,7 @@ def add_curve_midpoint_width_scale(
     )
     links.new(spline.outputs["Length"], min_segment_length.inputs[0])
 
-    current_split = _curve_point_split_from_offsets(
+    angle_split = _curve_point_split_from_offsets(
         nodes,
         links,
         curve_output,
@@ -586,10 +594,60 @@ def add_curve_midpoint_width_scale(
         min_segment_length.outputs[0],
         (x + 360, y + 400),
         label=label,
+        include_endpoints=False,
+    )
+
+    confirm_offset = max(1, int(angle_split_confirmation_offset))
+    if confirm_offset > 1:
+        confirmed_angle_split = _curve_point_split_from_offsets(
+            nodes,
+            links,
+            curve_output,
+            position.outputs["Position"],
+            index.outputs["Index"],
+            -confirm_offset,
+            0,
+            confirm_offset,
+            angle_cos.outputs[0],
+            min_segment_length.outputs[0],
+            (x + 360, y + 40),
+            label=label + "Confirm",
+            include_endpoints=False,
+        )
+        angle_split = _bool_and(
+            nodes,
+            links,
+            angle_split,
+            confirmed_angle_split,
+            (x + 2040, y + 520),
+        )
+
+    endpoint_split = _curve_point_split_from_offsets(
+        nodes,
+        links,
+        curve_output,
+        position.outputs["Position"],
+        index.outputs["Index"],
+        -1,
+        0,
+        1,
+        angle_cos.outputs[0],
+        min_segment_length.outputs[0],
+        (x + 360, y - 320),
+        label=label + "Endpoint",
+        include_endpoints=True,
+        include_angle=False,
+    )
+    current_split = _bool_or(
+        nodes,
+        links,
+        angle_split,
+        endpoint_split,
+        (x + 2240, y + 520),
     )
 
     spline_start = nodes.new("FunctionNodeCompare")
-    spline_start.location = (x + 2040, y + 420)
+    spline_start.location = (x + 2440, y + 420)
     spline_start.data_type = "FLOAT"
     spline_start.operation = "LESS_EQUAL"
     spline_start.inputs[1].default_value = 0.000001
@@ -599,7 +657,7 @@ def add_curve_midpoint_width_scale(
         links,
         current_split,
         spline_start.outputs[0],
-        (x + 2240, y + 420),
+        (x + 2640, y + 420),
     )
     split_value = _float_switch_value(
         nodes,
@@ -607,15 +665,15 @@ def add_curve_midpoint_width_scale(
         effective_split,
         1.0,
         0.0,
-        (x + 2440, y + 420),
+        (x + 2840, y + 420),
     )
     split_accumulate = nodes.new("GeometryNodeAccumulateField")
-    split_accumulate.location = (x + 2640, y + 420)
+    split_accumulate.location = (x + 3040, y + 420)
     split_accumulate.data_type = "FLOAT"
     split_accumulate.domain = "POINT"
     links.new(split_value, split_accumulate.inputs["Value"])
     links.new(spline.outputs["Index"], split_accumulate.inputs["Group ID"])
-    segment_id = _math(nodes, "SUBTRACT", (x + 2860, y + 420))
+    segment_id = _math(nodes, "SUBTRACT", (x + 3260, y + 420))
     links.new(split_accumulate.outputs["Leading"], segment_id.inputs[0])
     links.new(split_value, segment_id.inputs[1])
 

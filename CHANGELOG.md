@@ -3,6 +3,38 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-05 — 交差線の角端点判定を確認付きに修正 (B-MANGA Line v0.3.107)
+
+### 症状
+
+- 交差線の中間頂点の線幅調整で、検出角度による角の区切りを効かせたい一方、サブディビジョンやブーリアン由来の細かい折れまで端点として拾うと、線幅が小刻みにガタついていた。
+- 直前の対策では細かい折れを抑えるため、交差線の角度端点判定が強く抑制され、検出角度で区切る意図が反映されにくかった。
+
+### 原因
+
+- 生成線の線幅補間ノードが、1つ前・1つ後の点だけで角度端点を判定していた。
+- そのため、実際の角と、補間や交差計算で生じた短い折れを区別しにくかった。
+
+### 修正
+
+- 交差線の角度端点判定を、直近の点だけでなく少し離れた近傍でも同じ曲がりとして確認できた場合だけ端点にするようにした。
+- 実端点は角度判定とは別に端点として扱い、線そのものは分割せず、端点から中間点までの連続した線幅変化を維持した。
+- 板ポリ境界チューブと交差線の中間頂点ノード世代を更新し、保存済みファイル内の旧ノードが残らないようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_intersection_shell_method_check.py`
+- `test/blender_b_manga_line_open_mesh_outline_check.py`
+- `test/blender_b_manga_line_midpoint_targets_check.py`
+- `test/blender_b_manga_line_midpoint_jitter_check.py`
+- `test/blender_b_manga_line_subdivision_level_sync_check.py`
+- `test/blender_b_manga_line_inner_width_check.py`
+- `test/blender_b_manga_line_inner_branch_endpoint_check.py`
+- `_verify/2026-07-05_bml_intersection_subsurf_midpoint/intersection_midpoint_rectangle_level2.png`
+- `_verify/2026-07-05_bml_intersection_subsurf_midpoint/test_line04_intersection_level2.png`
+
+---
+
 ## 2026-07-05 — 段数チェックボックス復帰と端点誤検出を修正 (B-MANGA Line v0.3.106)
 
 ### 症状

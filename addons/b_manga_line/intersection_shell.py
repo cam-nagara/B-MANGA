@@ -46,8 +46,8 @@ _CURVE_RADIUS_NORMALIZER_LABEL = "BML_IntersectionShellCurveRadius"
 _SHELL_COMBINED_THICKNESS_NODE_LABEL = "BML_IntersectionShellCombinedThickness"
 _SHELL_PROFILE_NODE_LABEL = "BML_IntersectionShellProfile"
 _SHELL_GAP_COVERAGE_NODE_LABEL = "BML_IntersectionShellGapCoverage"
-_SHELL_BRANCH_SPLIT_NODE_LABEL = "BML_IntersectionShellPathWidthV15"
-_SHELL_SUBDIVIDE_NODE_LABEL = "BML_IntersectionShellPathWidthV15Midpoints"
+_SHELL_BRANCH_SPLIT_NODE_LABEL = "BML_IntersectionShellPathWidthV16"
+_SHELL_SUBDIVIDE_NODE_LABEL = "BML_IntersectionShellPathWidthV16Midpoints"
 SHELL_TUBE_PROFILE_RESOLUTION = 12
 SHELL_GAP_COVERAGE_FACTOR = 1.08
 
@@ -430,9 +430,11 @@ def _add_shell_tube_nodes(nodes, links, curve_output, gin, radius_output, x_offs
         ),
         jitter_output=gin.outputs[_MIDPOINT_JITTER_SOCKET],
         # Boolean/subdivision contact curves can contain many tiny bends that are
-        # not user-visible corners. Treat branch/end points as split points here
-        # and avoid making every contact-fragment bend a midpoint-width endpoint.
-        angle_split_min_segment_fraction=1.0,
+        # not user-visible corners. A corner is accepted only when both the
+        # immediate point and a wider neighborhood agree, so real bends become
+        # endpoints while tiny contact-fragment wiggles are ignored.
+        angle_split_min_segment_fraction=0.04,
+        angle_split_confirmation_offset=3,
     )
 
     circle = nodes.new("GeometryNodeCurvePrimitiveCircle")

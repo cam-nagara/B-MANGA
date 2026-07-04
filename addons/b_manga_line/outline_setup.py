@@ -60,8 +60,8 @@ _SHEET_TUBE_MIDPOINT_ANGLE_SOCKET = "検出角度"
 _SHEET_TUBE_WIDTH_CURVE_25_SOCKET = "変化グラフ 25%"
 _SHEET_TUBE_WIDTH_CURVE_50_SOCKET = "変化グラフ 50%"
 _SHEET_TUBE_WIDTH_CURVE_75_SOCKET = "変化グラフ 75%"
-_SHEET_TUBE_ANGLE_SPLIT_LABEL = "BML_SheetOutlinePathWidthV15"
-_SHEET_TUBE_SUBDIVIDE_LABEL = "BML_SheetOutlinePathWidthV15Midpoints"
+_SHEET_TUBE_ANGLE_SPLIT_LABEL = "BML_SheetOutlinePathWidthV16"
+_SHEET_TUBE_SUBDIVIDE_LABEL = "BML_SheetOutlinePathWidthV16Midpoints"
 _LINE_MATERIAL_NAMES = {
     "outline": MATERIAL_NAME,
     "inner": f"{MATERIAL_NAME}_Inner",
@@ -950,6 +950,7 @@ def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
             group_in.outputs[_SHEET_TUBE_WIDTH_CURVE_75_SOCKET],
         ),
         jitter_output=group_in.outputs[_SHEET_TUBE_MIDPOINT_JITTER_SOCKET],
+        angle_split_confirmation_offset=1,
     )
 
     tube = nodes.new("GeometryNodeCurveToMesh")
