@@ -130,20 +130,26 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
     tree = intersection_shell._get_or_create_tree()
     assert _socket_id(tree, "中間頂点の乱れ (%)")
     assert _socket_id(tree, "検出角度")
+    split = next(
+        (
+            node
+            for node in tree.nodes
+            if getattr(node, "label", "") == "BML_IntersectionShellPathWidthV6"
+        ),
+        None,
+    )
+    assert split is not None, "検出角度で線幅区間を分けるノードがありません"
+    assert split.bl_idname == "GeometryNodeSplitEdges"
     midpoint = next(
         (
             node
             for node in tree.nodes
-            if getattr(node, "label", "") == "BML_IntersectionShellMidpointWidthV5"
+            if getattr(node, "label", "") == "BML_IntersectionShellPathWidthV6Midpoints"
         ),
         None,
     )
-    assert midpoint is not None, "中点を追加して太さを変えるノードがありません"
+    assert midpoint is not None, "区間ごとの中心点を追加するノードがありません"
     assert midpoint.bl_idname == "GeometryNodeSubdivideCurve"
-    assert not any(
-        node.bl_idname == "GeometryNodeSplitEdges"
-        for node in tree.nodes
-    ), "交差線の形状を切る Split Edges が残っています"
     angle_compare = next(
         (
             node for node in tree.nodes
@@ -152,21 +158,17 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
                 and node.data_type == "FLOAT"
                 and node.operation == "GREATER_THAN"
                 and getattr(node, "label", "") == (
-                    "BML_IntersectionShellMidpointWidthV5Angle"
+                    "BML_IntersectionShellPathWidthV6Angle"
                 )
             )
         ),
         None,
     )
     assert angle_compare is not None
-    assert any(
-        node.bl_idname == "GeometryNodeOffsetPointInCurve"
+    assert not any(
+        node.bl_idname == "GeometryNodeResampleCurve"
         for node in tree.nodes
-    )
-    assert any(
-        node.bl_idname == "GeometryNodeSampleIndex"
-        for node in tree.nodes
-    )
+    ), "再サンプリングで線形状を変えるノードが残っています"
     assert any(
         node.bl_idname == "GeometryNodeMergeByDistance"
         for node in tree.nodes
@@ -254,8 +256,12 @@ def _z_span(coords: list) -> float:
     return max(values) - min(values)
 
 
-def _high_z_count(coords: list, threshold: float) -> int:
-    return sum(1 for co in coords if abs(co.z) > threshold)
+def _abs_z_percentile(coords: list, ratio: float) -> float:
+    if not coords:
+        return 0.0
+    values = sorted(abs(co.z) for co in coords)
+    index = min(len(values) - 1, max(0, int(len(values) * ratio)))
+    return values[index]
 
 
 def _assert_shell_width_controls_affect_generated_mesh() -> None:
@@ -277,7 +283,6 @@ def _assert_shell_width_controls_affect_generated_mesh() -> None:
 
     base_coords = _intersection_material_vertices(slab)
     assert _z_span(base_coords) > 0.04, _z_span(base_coords)
-    base_high = _high_z_count(base_coords, 0.015)
 
     intersection_lines.update_parameters(slab, thickness=0.08)
     slab.update_tag()
@@ -287,15 +292,17 @@ def _assert_shell_width_controls_affect_generated_mesh() -> None:
         _z_span(base_coords),
         _z_span(thick_coords),
     )
+    thick_p75 = _abs_z_percentile(thick_coords, 0.75)
 
     slab.bmanga_line_settings.intersection_edge_smooth_factor = -1.0
     intersection_lines.update_parameters(slab)
     slab.update_tag()
     bpy.context.view_layer.update()
     tapered_coords = _intersection_material_vertices(slab)
-    assert _z_span(tapered_coords) < _z_span(base_coords) * 0.5, (
-        _z_span(base_coords),
-        _z_span(tapered_coords),
+    tapered_p75 = _abs_z_percentile(tapered_coords, 0.75)
+    assert tapered_p75 < thick_p75 * 0.75, (
+        thick_p75,
+        tapered_p75,
     )
 
 

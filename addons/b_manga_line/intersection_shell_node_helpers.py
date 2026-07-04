@@ -172,7 +172,15 @@ def _edge_other_position(
     )
 
 
-def _add_turn_angle_selection(nodes, links, mesh_output, angle_output, loc):
+def _add_turn_angle_selection(
+    nodes,
+    links,
+    mesh_output,
+    angle_output,
+    loc,
+    *,
+    label: str | None = None,
+):
     """Select degree-2 vertices where the path angle is below the threshold."""
     x, y = loc
     index = nodes.new("GeometryNodeInputIndex")
@@ -258,6 +266,8 @@ def _add_turn_angle_selection(nodes, links, mesh_output, angle_output, loc):
 
     acute_path_angle = nodes.new("FunctionNodeCompare")
     acute_path_angle.location = (x + 1720, y + 100)
+    if label:
+        acute_path_angle.label = label
     acute_path_angle.data_type = "FLOAT"
     acute_path_angle.operation = "GREATER_THAN"
     links.new(dot.outputs["Value"], acute_path_angle.inputs[0])
@@ -269,6 +279,42 @@ def _add_turn_angle_selection(nodes, links, mesh_output, angle_output, loc):
     links.new(degree_two, selected.inputs[0])
     links.new(acute_path_angle.outputs[0], selected.inputs[1])
     return selected.outputs[0]
+
+
+def add_branch_split(nodes, links, mesh_output, label: str, *, angle_output=None):
+    neighbors = nodes.new("GeometryNodeInputMeshVertexNeighbors")
+    neighbors.location = (660, 80)
+    branch_selection = _compare_int_value(
+        nodes,
+        links,
+        neighbors.outputs["Vertex Count"],
+        "GREATER_EQUAL",
+        3,
+        (820, 80),
+    )
+    selection = branch_selection
+    if angle_output is not None:
+        angle_selection = _add_turn_angle_selection(
+            nodes,
+            links,
+            mesh_output,
+            angle_output,
+            (420, -520),
+            label=label + "Angle",
+        )
+        combine = nodes.new("FunctionNodeBooleanMath")
+        combine.location = (1020, 0)
+        combine.operation = "OR"
+        links.new(branch_selection, combine.inputs[0])
+        links.new(angle_selection, combine.inputs[1])
+        selection = combine.outputs[0]
+
+    split = nodes.new("GeometryNodeSplitEdges")
+    split.label = label
+    split.location = (1220, -120) if angle_output is not None else (780, -120)
+    links.new(mesh_output, split.inputs["Mesh"])
+    links.new(selection, split.inputs["Selection"])
+    return split.outputs["Mesh"]
 
 
 def _scale_from_split_selection(nodes, links, selection_output, factor_output, loc):
