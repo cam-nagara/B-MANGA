@@ -52,7 +52,7 @@ def _auto_mod(obj: bpy.types.Object) -> bpy.types.Modifier:
     mod = subdivision_lod.ensure_auto_subdivision(obj, bpy.context.scene)
     assert mod is not None
     if hasattr(mod, "subdivision_type"):
-        assert mod.subdivision_type == "SIMPLE"
+        assert mod.subdivision_type == subdivision_lod.AUTO_SUBSURF_SUBDIVISION_TYPE
     return mod
 
 

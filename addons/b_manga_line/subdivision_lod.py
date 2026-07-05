@@ -13,6 +13,7 @@ AUTO_SUBSURF_MODIFIER_NAME = "BML_MidpointSubsurf"
 AUTO_SUBSURF_CREASE_EDGES_PROP = "bml_auto_midpoint_subsurf_crease_edges"
 CREASE_EDGE_ATTR = "crease_edge"
 SHARP_EDGE_ANGLE = math.radians(60.0)
+AUTO_SUBSURF_SUBDIVISION_TYPE = "CATMULL_CLARK"
 MAX_RENDER_LEVELS = 4
 DISTANCE_STEP_METERS = 5.0
 DEFAULT_LINE_RESAMPLE_COUNT = 17
@@ -148,11 +149,15 @@ def mark_sharp_edges_for_subsurf(
     finally:
         bm.free()
 
+    attr = _ensure_crease_attribute(mesh)
+    for item in attr.data:
+        item.value = 0.0
+
     if not sharp_indices:
         obj[AUTO_SUBSURF_CREASE_EDGES_PROP] = []
+        mesh.update()
         return 0
 
-    attr = _ensure_crease_attribute(mesh)
     for edge_index in sharp_indices:
         if edge_index < len(attr.data):
             attr.data[edge_index].value = 1.0
@@ -172,7 +177,7 @@ def ensure_auto_subdivision(obj: bpy.types.Object, scene) -> bpy.types.Modifier 
         mod = obj.modifiers.new(AUTO_SUBSURF_MODIFIER_NAME, "SUBSURF")
 
     if hasattr(mod, "subdivision_type"):
-        mod.subdivision_type = "SIMPLE"
+        mod.subdivision_type = AUTO_SUBSURF_SUBDIVISION_TYPE
     mod.levels = 0
     mod.render_levels = render_levels_for_distance(_distance_to_camera(obj, scene))
     mod.show_viewport = True
