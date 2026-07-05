@@ -1275,6 +1275,12 @@ def apply_outline(
     elif mod is not None:
         mod.vertex_group = ""
 
+    from . import outline_width_attribute
+    outline_width_attribute.ensure_outline_width_attribute(
+        obj,
+        getattr(obj, "bmanga_line_settings", None),
+    )
+
     # 線幅入力値の基準距離を保存
     if scene is not None and scene.camera is not None:
         obj[PROP_BASE_THICKNESS] = abs(thickness)
@@ -1336,6 +1342,10 @@ def remove_outline(obj: bpy.types.Object) -> bool:
     mod = obj.modifiers.get(MODIFIER_NAME)
     if mod is not None:
         obj.modifiers.remove(mod)
+        removed = True
+
+    from . import outline_width_attribute
+    if outline_width_attribute.remove_outline_width_attribute(obj):
         removed = True
 
     # シートの境界チューブも一緒に削除

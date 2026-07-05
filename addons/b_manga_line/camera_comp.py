@@ -384,18 +384,28 @@ def _compensated_width_for_mesh(
 
 
 def _prepare_style_weights(obj, settings, target: str) -> bool:
-    from . import vertex_analysis
+    from . import outline_width_attribute, vertex_analysis
 
     group_name = vertex_analysis.width_group_name(target)
     if vertex_analysis.has_width_controls(settings, target):
         vertex_analysis.compute_and_apply_weights(obj, settings, target)
+        if target == "outline":
+            outline_width_attribute.ensure_outline_width_attribute(obj, settings)
         return True
     vertex_analysis.clear_width_weights(obj, group_name=group_name)
+    if target == "outline":
+        outline_width_attribute.remove_outline_width_attribute(obj)
     return False
 
 
 def _apply_uniform_line_width(scene, camera, obj, settings, mod) -> None:
-    from . import inner_lines, intersection_lines, outline_setup, vertex_analysis
+    from . import (
+        inner_lines,
+        intersection_lines,
+        outline_setup,
+        outline_width_attribute,
+        vertex_analysis,
+    )
 
     if not obj.data.vertices:
         return
@@ -414,6 +424,7 @@ def _apply_uniform_line_width(scene, camera, obj, settings, mod) -> None:
         [width / max_outline_world for width in outline_widths],
         group_name=VG_LINE_WIDTH,
     )
+    outline_width_attribute.ensure_outline_width_attribute(obj, settings)
 
     has_inner = _has_inner_modifier(obj)
     has_intersection = _has_intersection_modifier(obj)

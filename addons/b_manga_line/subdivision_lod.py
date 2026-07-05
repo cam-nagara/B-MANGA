@@ -21,6 +21,7 @@ _MIN_LINE_RESAMPLE_COUNT = 3
 _ROUND_LOOP_RESAMPLE_CAP = 96
 _pending_sync_names: set[str] = set()
 _sync_timer_running = False
+_repair_timer_running = False
 
 
 def is_auto_subsurf_modifier(mod: bpy.types.Modifier | None) -> bool:
@@ -192,6 +193,48 @@ def ensure_auto_subdivision(obj: bpy.types.Object, scene) -> bpy.types.Modifier 
     return mod
 
 
+def repair_auto_subdivision_modifiers(scene: bpy.types.Scene | None = None) -> int:
+    """既存ファイル内の自動Subsurfを現行仕様へ修復する."""
+    if scene is not None:
+        objects = tuple(scene.objects)
+    else:
+        data_objects = getattr(bpy.data, "objects", None)
+        if data_objects is None:
+            return 0
+        objects = tuple(data_objects)
+
+    changed = 0
+    for obj in objects:
+        if obj.type != "MESH" or obj.data is None:
+            continue
+        mod = auto_subsurf_modifier(obj)
+        if mod is None:
+            continue
+        mark_sharp_edges_for_subsurf(obj)
+        if hasattr(mod, "subdivision_type") and mod.subdivision_type != AUTO_SUBSURF_SUBDIVISION_TYPE:
+            mod.subdivision_type = AUTO_SUBSURF_SUBDIVISION_TYPE
+            changed += 1
+        if sync_generated_line_subdivision(obj):
+            changed += 1
+        try:
+            from . import intersection_shell
+
+            intersection_shell.sync_proxy_subdivision_for_target(obj)
+        except Exception:  # noqa: BLE001 - 交差線プロキシが無い場合も通常操作を止めない
+            pass
+        try:
+            from . import outline_width_attribute
+
+            if outline_width_attribute.ensure_outline_width_attribute(
+                obj,
+                getattr(obj, "bmanga_line_settings", None),
+            ):
+                changed += 1
+        except Exception:  # noqa: BLE001 - 修復失敗時もファイル読み込みを止めない
+            pass
+    return changed
+
+
 def remove_auto_subdivision(obj: bpy.types.Object) -> bool:
     if obj.type != "MESH":
         return False
@@ -331,6 +374,23 @@ def _run_sync_timer():
     return None
 
 
+def _run_repair_timer():
+    global _repair_timer_running
+    try:
+        repair_auto_subdivision_modifiers()
+    finally:
+        _repair_timer_running = False
+    return None
+
+
+def _queue_repair() -> None:
+    global _repair_timer_running
+    if _repair_timer_running:
+        return
+    _repair_timer_running = True
+    bpy.app.timers.register(_run_repair_timer, first_interval=0.0)
+
+
 @persistent
 def _on_depsgraph_update(_scene, depsgraph=None):
     if depsgraph is None:
@@ -352,6 +412,11 @@ def _on_render_done(scene, _depsgraph=None):
     sync_scene_generated_line_subdivision(scene, for_render=False)
 
 
+@persistent
+def _on_load_post(_dummy):
+    _queue_repair()
+
+
 def _append_once(handler_list, handler) -> None:
     if handler not in handler_list:
         handler_list.append(handler)
@@ -367,15 +432,21 @@ def register() -> None:
     _append_once(bpy.app.handlers.render_pre, _on_render_pre)
     _append_once(bpy.app.handlers.render_post, _on_render_done)
     _append_once(bpy.app.handlers.render_cancel, _on_render_done)
+    _append_once(bpy.app.handlers.load_post, _on_load_post)
+    _queue_repair()
 
 
 def unregister() -> None:
-    global _sync_timer_running
+    global _sync_timer_running, _repair_timer_running
     _remove(bpy.app.handlers.depsgraph_update_post, _on_depsgraph_update)
     _remove(bpy.app.handlers.render_pre, _on_render_pre)
     _remove(bpy.app.handlers.render_post, _on_render_done)
     _remove(bpy.app.handlers.render_cancel, _on_render_done)
+    _remove(bpy.app.handlers.load_post, _on_load_post)
     if bpy.app.timers.is_registered(_run_sync_timer):
         bpy.app.timers.unregister(_run_sync_timer)
+    if bpy.app.timers.is_registered(_run_repair_timer):
+        bpy.app.timers.unregister(_run_repair_timer)
     _pending_sync_names.clear()
     _sync_timer_running = False
+    _repair_timer_running = False

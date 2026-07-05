@@ -21,6 +21,7 @@ from .selection import selected_mesh_objects as _selected_mesh_objects
 # 命名規則 — モディファイア・マテリアル・頂点グループ等の識別子
 # ------------------------------------------------------------------
 MODIFIER_NAME = "BML_Outline"
+OUTLINE_WIDTH_ATTR_MODIFIER_NAME = "BML_OutlineWidthAttribute"
 SHEET_OUTLINE_MODIFIER_NAME = "BML_SheetOutline"
 MATERIAL_NAME = "BML_Outline"
 VG_LINE_WIDTH = "BML_LineWidth"
@@ -60,6 +61,7 @@ REF_MODE_LOCKED = "LOCKED"
 DEFAULT_LINE_WIDTH_REFERENCE_DISTANCE = 2.0
 LINE_MODIFIER_NAMES = (
     SHEET_OUTLINE_MODIFIER_NAME,
+    OUTLINE_WIDTH_ATTR_MODIFIER_NAME,
     MODIFIER_NAME,
     GN_MODIFIER_NAME,
 )
@@ -976,7 +978,7 @@ def _refresh_line_width_weights(self, context, target: str | None = None) -> Non
 
 
 def _refresh_outline_width_weights(owner, settings, vertex_analysis) -> None:
-    from . import outline_setup
+    from . import outline_setup, outline_width_attribute
 
     mod = owner.modifiers.get(MODIFIER_NAME)
     if mod is None:
@@ -992,6 +994,7 @@ def _refresh_outline_width_weights(owner, settings, vertex_analysis) -> None:
     else:
         mod.vertex_group = ""
         vertex_analysis.clear_width_weights(owner, group_name=VG_LINE_WIDTH)
+    outline_width_attribute.ensure_outline_width_attribute(owner, settings)
     outline_setup.sync_sheet_outline_width(owner)
 
 

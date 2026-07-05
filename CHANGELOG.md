@@ -3,6 +3,37 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-05 — 評価後アウトライン線幅と既存Subsurf修復を追加 (B-MANGA Line v0.3.110)
+
+### 症状
+
+- 既に保存済みのファイル内にある中間頂点用サブディビジョンサーフェスが「シンプル」のまま残ると、アドオン更新後も滑らかな評価後形状に追従しないことがあった。
+- 中間頂点用サブディビジョンサーフェスを使ったアウトラインでは、直方体などの直線アウトラインで、サブディビジョン後に増えた評価後頂点へ中間頂点の線幅調整が届かないことがあった。
+
+### 原因
+
+- 自動生成時の方式は修正済みだったが、保存済みファイル内の既存モディファイアを開いた時に現行仕様へ修復する処理が不足していた。
+- 通常の頂点グループだけでは、サブディビジョンサーフェス後に生成された頂点へ「端点から中点まで」の線幅変化を直接持たせられなかった。
+
+### 修正
+
+- 読み込み後とアドオン登録後に、既存の中間頂点用サブディビジョンサーフェスを「カトマルクラーク」へ修復し、角度検出クリースも再設定するようにした。
+- アウトラインの直線にも評価後形状上で線幅属性を付与し、端点を太く、中間点を細くする線幅変化がサブディビジョン後の補助点にも反映されるようにした。
+- 評価後線幅用の処理をアウトラインの直前に配置し、線の形状自体は変えず、線幅だけを変えるようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_auto_subdivision_check.py`
+- `test/blender_b_manga_line_register_reenable_check.py`
+- `test/blender_b_manga_line_subdivision_level_sync_check.py`
+- `test/blender_b_manga_line_midpoint_targets_check.py`
+- `test/blender_b_manga_line_intersection_shell_method_check.py`
+- `test/blender_b_manga_line_full_visual_audit_check.py`
+- `_verify/2026-07-05_goal_completion_probe/outline_width_attribute_compare.png`
+- `_verify/2026-07-05_bml_intersection_subsurf_midpoint/intersection_midpoint_subsurf_level2.png`
+
+---
+
 ## 2026-07-05 — 中間頂点用サブディビジョン方式を修正 (B-MANGA Line v0.3.109)
 
 ### 症状

@@ -11,6 +11,7 @@ from . import (
     intersection_lines,
     modifier_stack,
     outline_setup,
+    outline_width_attribute,
     plane_filter,
     presets,
 )
@@ -399,6 +400,7 @@ def _update_uniform_line_width(objects: list[bpy.types.Object], context) -> None
         else:
             mod.vertex_group = ""
             vertex_analysis.clear_width_weights(obj, group_name=core.VG_LINE_WIDTH)
+        outline_width_attribute.ensure_outline_width_attribute(obj, settings)
         for target in ("inner", "intersection"):
             group_name = vertex_analysis.width_group_name(target)
             if not _target_modifier_exists(obj, target):
@@ -465,6 +467,7 @@ def _update_width_controls(objects: list[bpy.types.Object], context) -> None:
         else:
             mod.vertex_group = ""
             vertex_analysis.clear_width_weights(obj, group_name=core.VG_LINE_WIDTH)
+        outline_width_attribute.ensure_outline_width_attribute(obj, settings)
         outline_setup.sync_sheet_outline_width(obj)
 
 
@@ -508,6 +511,7 @@ def _update_width_target(
                     mod.vertex_group = ""
             vertex_analysis.clear_width_weights(obj, group_name=group_name)
         if target == "outline":
+            outline_width_attribute.ensure_outline_width_attribute(obj, settings)
             outline_setup.sync_sheet_outline_width(obj)
         if target == "intersection":
             intersection_lines.update_parameters(obj)

@@ -11,7 +11,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import core, subdivision_lod  # noqa: E402
+from b_manga_line import (  # noqa: E402
+    core,
+    outline_setup,
+    outline_width_attribute,
+    subdivision_lod,
+    vertex_analysis,
+)
 
 
 def _clear_scene() -> None:
@@ -62,6 +68,70 @@ def _assert_cube_edges_are_creased(obj: bpy.types.Object) -> None:
         if abs(float(item.value) - 1.0) < 1.0e-6
     ]
     assert len(creased) == 12, creased
+
+
+def _radial_distribution(obj: bpy.types.Object) -> list[tuple[float, int]]:
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = obj.evaluated_get(depsgraph)
+    mesh = evaluated.to_mesh()
+    try:
+        bins: dict[float, int] = {}
+        for vertex in mesh.vertices:
+            value = round(max(abs(vertex.co.x), abs(vertex.co.y), abs(vertex.co.z)), 3)
+            bins[value] = bins.get(value, 0) + 1
+        return sorted(bins.items())
+    finally:
+        evaluated.to_mesh_clear()
+
+
+def _assert_evaluated_outline_width_reaches_subsurf_points() -> None:
+    bpy.ops.mesh.primitive_cube_add(size=1.8, location=(0.0, 0.0, 0.0))
+    obj = bpy.context.object
+    obj.data.materials.append(bpy.data.materials.new("BML_evaluated_width_surface"))
+    settings = obj.bmanga_line_settings
+    settings.auto_subdivision_for_midpoint = True
+    settings.edge_smooth_factor = -1.0
+    settings.edge_midpoint_jitter_percent = 0.0
+    settings.outline_thickness = 0.20
+
+    auto_mod = subdivision_lod.ensure_auto_subdivision(obj, bpy.context.scene)
+    assert auto_mod is not None
+    auto_mod.levels = 2
+    auto_mod.render_levels = 2
+    outline_setup.apply_outline(
+        obj,
+        thickness=0.20,
+        color=(1.0, 0.0, 0.8, 1.0),
+        use_vertex_group=True,
+        scene=bpy.context.scene,
+    )
+    vertex_analysis.compute_and_apply_weights(obj, settings, "outline")
+    outline_width_attribute.ensure_outline_width_attribute(obj, settings)
+    names = [mod.name for mod in obj.modifiers]
+    assert core.OUTLINE_WIDTH_ATTR_MODIFIER_NAME in names, names
+    assert names.index(core.OUTLINE_WIDTH_ATTR_MODIFIER_NAME) < names.index(core.MODIFIER_NAME)
+
+    with_evaluated_width = _radial_distribution(obj)
+    outline_width_attribute.remove_outline_width_attribute(obj)
+    without_evaluated_width = _radial_distribution(obj)
+
+    assert with_evaluated_width != without_evaluated_width
+    assert any(0.91 < radius < 1.09 for radius, _count in with_evaluated_width), (
+        with_evaluated_width,
+        without_evaluated_width,
+    )
+
+
+def _assert_existing_simple_subsurf_is_repaired() -> None:
+    bpy.ops.mesh.primitive_cube_add(size=1.0)
+    obj = bpy.context.object
+    mod = obj.modifiers.new(subdivision_lod.AUTO_SUBSURF_MODIFIER_NAME, "SUBSURF")
+    if hasattr(mod, "subdivision_type"):
+        mod.subdivision_type = "SIMPLE"
+    changed = subdivision_lod.repair_auto_subdivision_modifiers(bpy.context.scene)
+    assert changed >= 1
+    assert mod.subdivision_type == subdivision_lod.AUTO_SUBSURF_SUBDIVISION_TYPE
+    _assert_cube_edges_are_creased(obj)
 
 
 def _make_flat_two_quad_strip() -> bpy.types.Object:
@@ -183,6 +253,12 @@ def main() -> None:
         assert bpy.ops.bmanga_line.remove("EXEC_DEFAULT") == {"FINISHED"}
         assert _auto_subsurf(obj) is None
         assert obj.modifiers.get(core.MODIFIER_NAME) is None
+        assert obj.modifiers.get(core.OUTLINE_WIDTH_ATTR_MODIFIER_NAME) is None
+
+        _clear_scene()
+        _assert_evaluated_outline_width_reaches_subsurf_points()
+        _clear_scene()
+        _assert_existing_simple_subsurf_is_repaired()
 
         print("BMANGA_LINE_AUTO_SUBDIVISION_OK")
     finally:
