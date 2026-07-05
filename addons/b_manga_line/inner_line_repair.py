@@ -137,7 +137,7 @@ def _repair_object(obj: bpy.types.Object) -> bool:
             obj,
             float(getattr(settings, "inner_line_thickness", 0.0003)),
         ),
-        offset=float(getattr(settings, "inner_line_offset", 1.0)),
+        offset=float(getattr(settings, "inner_line_offset", 0.0)),
         material=outline_setup.get_line_material(obj, "inner"),
         use_marked_edges=bool(getattr(settings, "use_marked_inner_edges", False)),
         midpoint_factor=midpoint_factor,

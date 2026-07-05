@@ -194,21 +194,21 @@ def main() -> None:
         if hasattr(cube_mod, "use_rim_only"):
             assert not cube_mod.use_rim_only, "閉じた立体まで縁だけ生成になっています"
         assert not cube_mod.use_rim, "閉じた立体でリム面が強制されています"
-        assert cube_mod.offset == 1.0, "通常表示の閉じた立体が内側アウトラインになっています"
+        assert cube_mod.offset == 0.0, "通常表示の閉じた立体のオフセット初期値が違います"
 
         assert outline_setup.set_line_only(cube, True)
-        assert cube_mod.offset == 1.0, "ラインのみ表示でオフセットが変わっています"
+        assert cube_mod.offset == 0.0, "ラインのみ表示でオフセットが変わっています"
         cube.bmanga_line_settings.use_rim = True
-        assert cube_mod.offset == 1.0, "ラインのみ表示中の設定変更でオフセットが変わっています"
+        assert cube_mod.offset == 0.0, "ラインのみ表示中の設定変更でオフセットが変わっています"
         assert cube_mod.use_rim, "ラインのみ表示中のリム面設定が反映されていません"
         cube.bmanga_line_settings.use_rim = False
-        assert cube_mod.offset == 1.0, "ラインのみ表示中の設定変更でオフセットが変わっています"
+        assert cube_mod.offset == 0.0, "ラインのみ表示中の設定変更でオフセットが変わっています"
         assert not cube_mod.use_rim, "ラインのみ表示中のリム面設定オフが反映されていません"
         assert presets.apply_line_settings(cube, bpy.context)
-        assert cube_mod.offset == 1.0, "ラインのみ表示中の再適用でオフセットが変わっています"
+        assert cube_mod.offset == 0.0, "ラインのみ表示中の再適用でオフセットが変わっています"
         assert bool(cube.get(core.PROP_LINE_ONLY, False)), "ラインのみ表示中の再適用で状態が解除されています"
         assert outline_setup.set_line_only(cube, False)
-        assert cube_mod.offset == 1.0, "通常表示へ戻した後もラインのみ表示の形状が残っています"
+        assert cube_mod.offset == 0.0, "通常表示へ戻した後もラインのみ表示の形状が残っています"
 
         bpy.ops.mesh.primitive_cube_add(size=1.0, location=(4.5, 0.0, 0.0))
         scaled_cube = bpy.context.object
@@ -228,14 +228,14 @@ def main() -> None:
         if hasattr(open_box_mod, "use_rim_only"):
             assert not open_box_mod.use_rim_only, "開いた立体を板ポリ扱いしています"
         assert not open_box_mod.use_rim, "開いた立体でリム面が強制されています"
-        assert open_box_mod.offset == 1.0, "通常表示の開いた立体が内側アウトラインになっています"
+        assert open_box_mod.offset == 0.0, "通常表示の開いた立体のオフセット初期値が違います"
         assert outline_setup.set_line_only(open_box, True)
-        assert open_box_mod.offset == 1.0, "ラインのみ表示の開いた立体でオフセットが変わっています"
+        assert open_box_mod.offset == 0.0, "ラインのみ表示の開いた立体でオフセットが変わっています"
         if hasattr(open_box_mod, "use_rim_only"):
             assert not open_box_mod.use_rim_only, "ラインのみ表示で開いた立体を板ポリ扱いしています"
         assert not open_box_mod.use_rim, "ラインのみ表示の開いた立体でリム面が強制されています"
         assert outline_setup.set_line_only(open_box, False)
-        assert open_box_mod.offset == 1.0, "通常表示へ戻した開いた立体が内側形状のままです"
+        assert open_box_mod.offset == 0.0, "通常表示へ戻した開いた立体が内側形状のままです"
 
         assert outline_setup.set_line_only(plane, True)
         assert plane.modifiers.get(core.MODIFIER_NAME) is None
@@ -250,7 +250,7 @@ def main() -> None:
         if hasattr(non_manifold_mod, "use_rim_only"):
             assert not non_manifold_mod.use_rim_only, "閉じた特殊メッシュを板ポリ扱いしています"
         assert not non_manifold_mod.use_rim, "閉じた特殊メッシュでリム面が強制されています"
-        assert non_manifold_mod.offset == 1.0
+        assert non_manifold_mod.offset == 0.0
 
         cube_mod = _apply_line(cube, use_rim=True)
         assert cube_mod.use_rim, "閉じた立体のリム面設定が反映されていません"

@@ -42,6 +42,7 @@ _TARGET_COLLECTION_PREFIX = "BML_IntersectionTargets"
 _PROXY_SOURCE_PROP = "bml_intersection_shell_proxy_source"
 _PROXY_PREFIX = "BML_IntersectionProxy"
 _SHELL_RADIUS_NODE_LABEL = "BML_IntersectionShellOwnRadius"
+_SHELL_VISUAL_RADIUS_NODE_LABEL = "BML_IntersectionShellVisualRadiusV118"
 _CURVE_RADIUS_NORMALIZER_LABEL = "BML_IntersectionShellCurveRadius"
 _SHELL_COMBINED_THICKNESS_NODE_LABEL = "BML_IntersectionShellCombinedThickness"
 _SHELL_PROFILE_NODE_LABEL = "BML_IntersectionShellProfile"
@@ -87,7 +88,7 @@ def _setup_interface(tree: bpy.types.NodeTree) -> None:
         in_out="INPUT",
         socket_type="NodeSocketFloat",
     )
-    offset_sock.default_value = 1.0
+    offset_sock.default_value = 0.0
     offset_sock.min_value = -1.0
     offset_sock.max_value = 1.0
     tree.interface.new_socket(
@@ -202,15 +203,10 @@ def _create_node_tree() -> bpy.types.NodeTree:
     # 誤検出される（縦縞ノイズの原因）。
     target_geo = realize.outputs["Geometry"]
 
-    # 交差線の実効太さ（塗りつぶしチューブの半径用） = 設定値と双方の
-    # アウトライン幅の最大値。背面法ハルは元メッシュとの間に構造的な
-    # 隙間ができることがある（2026-07-03 ユーザー要望: 元メッシュと
-    # アウトライン殻の間を交差線色で塗りつぶす）。塗りつぶしが双方の
-    # アウトライン幅を確実に覆うよう、ユーザー設定の交差線幅はあくまで
-    # 下限とし、自分・交差対象のアウトライン幅のうち大きい方を実効幅
-    # にする。※ 交差位置そのもの（ブーリアンの接触検出）には使わない
-    # ——ここに使うと交差判定位置自体が外側へずれ、線が実際の面より
-    # 大きくズレた位置に生成される。
+    # 過去ファイル判定用にアウトライン幅の参照ノードは残すが、
+    # 実際に描く交差線チューブの半径には使わない。線幅に連動して
+    # アウトライン幅まで半径へ混ぜると、アウトラインを太くした時に
+    # 面同士の交差ラインから見た目が外側へ広がって見えるため。
     combined_thickness = _add_combined_thickness(nodes, links, gin, (-900, -640))
 
     # 交差位置は、交差相手の元の面を基準にする。完全接触だけはBooleanが
@@ -245,7 +241,13 @@ def _create_node_tree() -> bpy.types.NodeTree:
     links.new(target_geo, target_union.inputs["Mesh 2"])
     target_geo = target_union.outputs["Mesh"]
 
-    radius = _add_shell_radius(nodes, links, combined_thickness, gin, (80, -820))
+    radius = _add_shell_radius(
+        nodes,
+        links,
+        gin.outputs[_THICKNESS_SOCKET],
+        gin,
+        (80, -820),
+    )
 
     # 交差の基準はライン用ソリッド殻ではなく「元の面」
     # （殻基準だと元面側と殻側の2本の交差曲線ができ、二重線になる）。
@@ -414,11 +416,12 @@ def _add_combined_thickness(nodes, links, gin, loc):
     return combined.outputs[0]
 
 
-def _add_shell_radius(nodes, links, combined_thickness, gin, loc):
+def _add_shell_radius(nodes, links, line_thickness, gin, loc):
     offset_amount = nodes.new("ShaderNodeMath")
+    offset_amount.label = _SHELL_VISUAL_RADIUS_NODE_LABEL
     offset_amount.location = (loc[0] - 420, loc[1] + 160)
     offset_amount.operation = "MULTIPLY"
-    links.new(combined_thickness, offset_amount.inputs[0])
+    links.new(line_thickness, offset_amount.inputs[0])
     links.new(gin.outputs[_OFFSET_SOCKET], offset_amount.inputs[1])
 
     offset_half = nodes.new("ShaderNodeMath")
@@ -431,7 +434,7 @@ def _add_shell_radius(nodes, links, combined_thickness, gin, loc):
     radius.label = _SHELL_RADIUS_NODE_LABEL
     radius.location = loc
     radius.operation = "ADD"
-    links.new(combined_thickness, radius.inputs[0])
+    links.new(line_thickness, radius.inputs[0])
     links.new(offset_half.outputs[0], radius.inputs[1])
 
     radius_min = nodes.new("ShaderNodeMath")
@@ -647,6 +650,10 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
             # （2026-07-03 隙間塗りつぶし要望）
             and any(
                 getattr(node, "label", "") == _SHELL_COMBINED_THICKNESS_NODE_LABEL
+                for node in tree.nodes
+            )
+            and any(
+                getattr(node, "label", "") == _SHELL_VISUAL_RADIUS_NODE_LABEL
                 for node in tree.nodes
             )
             # v0.3.80: アウトライン幅ベースで太くなった交差線では、
@@ -1216,7 +1223,7 @@ def refresh_target_collection(
             obj,
             float(getattr(settings, "intersection_thickness", 0.0003)),
         ),
-        float(getattr(settings, "intersection_line_offset", 1.0)),
+        float(getattr(settings, "intersection_line_offset", 0.0)),
         outline_setup.get_line_material(obj, "intersection"),
         scene,
     )

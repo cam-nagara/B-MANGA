@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 
 import bpy
@@ -52,6 +53,7 @@ AOV_NAMES = (
 PROP_LINES_HIDDEN = "bml_lines_hidden"
 PROP_LINE_ONLY = "bml_line_only"
 PROP_LINE_ONLY_MATERIALS = "bml_line_only_materials"
+PROP_LINE_ONLY_WORLD = "bml_line_only_world"
 PROP_BASE_THICKNESS = "bml_base_thickness"
 PROP_REF_DISTANCE = "bml_ref_distance"
 PROP_REF_FOV_TAN = "bml_ref_fov_tan"
@@ -510,6 +512,166 @@ def sync_line_display_settings(obj: bpy.types.Object) -> None:
     sync_line_only_setting(obj)
 
 
+def _scene_line_objects(context) -> list[bpy.types.Object]:
+    scene = getattr(context, "scene", None)
+    if scene is None:
+        return []
+    return [
+        obj for obj in scene.objects
+        if obj.type == "MESH" and obj.data is not None and has_line(obj)
+    ]
+
+
+def _world_background_node(world: bpy.types.World | None):
+    if world is None or not getattr(world, "use_nodes", False) or world.node_tree is None:
+        return None
+    for node in world.node_tree.nodes:
+        if node.type == "BACKGROUND":
+            return node
+    return None
+
+
+def _line_only_world_state(scene: bpy.types.Scene) -> dict:
+    world = scene.world
+    background = _world_background_node(world)
+    surface_link = None
+    if world is not None and getattr(world, "use_nodes", False) and world.node_tree is not None:
+        output = next((node for node in world.node_tree.nodes if node.type == "OUTPUT_WORLD"), None)
+        if output is not None:
+            for link in world.node_tree.links:
+                if link.to_node == output and link.to_socket == output.inputs["Surface"]:
+                    surface_link = {
+                        "from_node": link.from_node.name,
+                        "from_socket": link.from_socket.name,
+                    }
+                    break
+    state = {
+        "had_world": world is not None,
+        "world_name": world.name if world is not None else "",
+        "use_nodes": bool(getattr(world, "use_nodes", False)) if world else False,
+        "color": tuple(getattr(world, "color", (0.05, 0.05, 0.05))) if world else None,
+        "background_color": None,
+        "background_strength": None,
+        "surface_link": surface_link,
+    }
+    if background is not None:
+        state["background_color"] = tuple(background.inputs["Color"].default_value)
+        state["background_strength"] = float(background.inputs["Strength"].default_value)
+    return state
+
+
+def _ensure_line_only_world(context) -> None:
+    scene = getattr(context, "scene", None)
+    if scene is None:
+        return
+    if PROP_LINE_ONLY_WORLD not in scene:
+        scene[PROP_LINE_ONLY_WORLD] = json.dumps(
+            _line_only_world_state(scene),
+            ensure_ascii=False,
+        )
+    world = scene.world
+    if world is None:
+        world = bpy.data.worlds.new("BML_LineOnly_World")
+        scene.world = world
+    world.color = (1.0, 1.0, 1.0)
+    world.use_nodes = True
+    if world.node_tree is None:
+        return
+    nodes = world.node_tree.nodes
+    links = world.node_tree.links
+    background = _world_background_node(world)
+    if background is None:
+        background = nodes.new("ShaderNodeBackground")
+    output = next((node for node in nodes if node.type == "OUTPUT_WORLD"), None)
+    if output is None:
+        output = nodes.new("ShaderNodeOutputWorld")
+    for link in list(links):
+        if link.to_node == output and link.to_socket == output.inputs["Surface"]:
+            links.remove(link)
+    links.new(background.outputs["Background"], output.inputs["Surface"])
+    background.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
+    background.inputs["Strength"].default_value = 1.0
+
+
+def _restore_line_only_world(context) -> None:
+    scene = getattr(context, "scene", None)
+    if scene is None or PROP_LINE_ONLY_WORLD not in scene:
+        return
+    raw = scene.get(PROP_LINE_ONLY_WORLD, "{}")
+    try:
+        state = json.loads(raw)
+    except (TypeError, ValueError):
+        state = {}
+    if not state.get("had_world", False):
+        try:
+            scene.world = None
+        except TypeError:
+            pass
+    else:
+        world_name = str(state.get("world_name", ""))
+        world = bpy.data.worlds.get(world_name) or scene.world
+        if world is not None:
+            scene.world = world
+            if state.get("color") is not None:
+                try:
+                    world.color = tuple(state["color"][:3])
+                except (TypeError, ValueError):
+                    pass
+            world.use_nodes = bool(state.get("use_nodes", False))
+            if world.use_nodes:
+                background = _world_background_node(world)
+                if background is not None:
+                    color = state.get("background_color")
+                    strength = state.get("background_strength")
+                    if color is not None:
+                        background.inputs["Color"].default_value = tuple(color)
+                    if strength is not None:
+                        background.inputs["Strength"].default_value = float(strength)
+                if world.node_tree is not None:
+                    output = next(
+                        (node for node in world.node_tree.nodes if node.type == "OUTPUT_WORLD"),
+                        None,
+                    )
+                    if output is not None:
+                        links = world.node_tree.links
+                        for link in list(links):
+                            if link.to_node == output and link.to_socket == output.inputs["Surface"]:
+                                links.remove(link)
+                        link_state = state.get("surface_link")
+                        if isinstance(link_state, dict):
+                            from_node = world.node_tree.nodes.get(str(link_state.get("from_node", "")))
+                            from_socket = None
+                            if from_node is not None:
+                                from_socket = from_node.outputs.get(
+                                    str(link_state.get("from_socket", ""))
+                                )
+                            if from_node is not None and from_socket is not None:
+                                links.new(from_socket, output.inputs["Surface"])
+    del scene[PROP_LINE_ONLY_WORLD]
+
+
+def set_scene_line_only(context, enabled: bool) -> int:
+    """シーン内のライン適用済みオブジェクトを一括でラインのみ表示にする."""
+    from . import outline_setup, viewport_aov
+
+    viewport_aov.disable_line_aov(context)
+    line_objects = _scene_line_objects(context)
+    if enabled:
+        _ensure_line_only_world(context)
+        for obj in line_objects:
+            set_line_visibility(obj, True)
+    changed = 0
+    for obj in line_objects:
+        before = bool(obj.get(PROP_LINE_ONLY, False))
+        if outline_setup.set_line_only(obj, enabled):
+            after = bool(obj.get(PROP_LINE_ONLY, False))
+            if before != after or enabled:
+                changed += 1
+    if not enabled:
+        _restore_line_only_world(context)
+    return changed
+
+
 def _on_lines_visible_changed(self, context):
     if _propagating:
         return
@@ -525,16 +687,7 @@ def _on_lines_visible_changed(self, context):
 def _on_line_only_visible_changed(self, context):
     if _propagating:
         return
-    from . import outline_setup, viewport_aov
-
-    owner = self.id_data
-    enabled = bool(self.line_only_visible)
-    viewport_aov.disable_line_aov(context)
-    if owner.type == "MESH" and has_line(owner):
-        if enabled:
-            set_line_visibility(owner, True)
-        outline_setup.set_line_only(owner, enabled)
-    _propagate(self, context, "line_only_visible")
+    set_scene_line_only(context, bool(self.line_only_visible))
 
 
 def _on_match_subsurf_viewport_to_render_changed(self, context):
@@ -1265,7 +1418,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     outline_offset: FloatProperty(
         name="オフセット",
         description="アウトラインを元の面からどちら側に出すかを調整する",
-        default=1.0,
+        default=0.0,
         min=-1.0,
         max=1.0,
         precision=3,
@@ -1406,7 +1559,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     inner_line_offset: FloatProperty(
         name="オフセット",
         description="内部線を元の面からどれだけ浮かせるかを線幅基準で調整する",
-        default=1.0,
+        default=0.0,
         min=-1.0,
         max=1.0,
         precision=3,
@@ -1474,9 +1627,8 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     intersection_thickness_mm: FloatProperty(
         name="交差線の太さ (mm)",
         description=(
-            "印刷時の交差線の太さ (mm)。実際の太さはここで指定した値と、"
-            "交差する双方のアウトライン線幅のうち最も太いものになります"
-            "（元メッシュとアウトラインの間に隙間ができないようにするため）"
+            "印刷時の交差線の太さ (mm)。交差している面のライン上に"
+            "この太さで描画します"
         ),
         get=_get_intersection_mm,
         set=_set_intersection_mm,
@@ -1489,7 +1641,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     intersection_line_offset: FloatProperty(
         name="オフセット",
         description="交差線の出方を線幅基準で調整する",
-        default=1.0,
+        default=0.0,
         min=-1.0,
         max=1.0,
         precision=3,

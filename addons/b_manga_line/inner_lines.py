@@ -39,6 +39,7 @@ _EDGE_ANGLE_COMPARE_LABEL = "BML_InnerEdgeAngleCompareGE"
 _CHAIN_SELECTION_COMPARE_LABEL = "BML_InnerChainSelectionGE"
 _CHAIN_ANGLE_FILTER_LABEL = "BML_InnerChainAngleFilter"
 _CURVE_JITTER_CENTER_LABEL = "BML_InnerCurveJitterCenter"
+_CURVE_JITTER_CHAIN_ID_LABEL = "BML_InnerCurveJitterChainID"
 _SAFE_CURVE_SCALE_LABEL = "BML_InnerCurveSafeScale"
 _MIN_CURVE_TO_MESH_SCALE = 0.04
 _CHAIN_ID_ATTR = inner_line_chains.CHAIN_ID_ATTR
@@ -135,11 +136,18 @@ def _add_width_curve(nodes, links, raw_output, gin, x_offset=0):
     return switch25
 
 
-def _add_curve_width_scale(nodes, links, gin, x_offset=0):
+def _add_curve_width_scale(nodes, links, gin, x_offset=0, random_id_output=None):
     spline = nodes.new("GeometryNodeSplineParameter")
     spline.location = (x_offset - 760, 360)
 
-    midpoint_raw = _add_jittered_midpoint_factor(nodes, links, gin, spline, x_offset)
+    midpoint_raw = _add_jittered_midpoint_factor(
+        nodes,
+        links,
+        gin,
+        spline,
+        x_offset,
+        random_id_output=random_id_output,
+    )
     curved = _add_width_curve(nodes, links, midpoint_raw, gin, x_offset)
 
     one_minus_curve = _math(nodes, "SUBTRACT", (x_offset + 500, 360), value0=1.0)
@@ -180,7 +188,15 @@ def _add_curve_width_scale(nodes, links, gin, x_offset=0):
     return clamped_max.outputs[0]
 
 
-def _add_jittered_midpoint_factor(nodes, links, gin, spline, x_offset=0):
+def _add_jittered_midpoint_factor(
+    nodes,
+    links,
+    gin,
+    spline,
+    x_offset=0,
+    *,
+    random_id_output=None,
+):
     jitter_div = _math(nodes, "DIVIDE", (x_offset - 760, 520), value1=100.0)
     links.new(gin.outputs[_MIDPOINT_JITTER_SOCKET_NAME], jitter_div.inputs[0])
     jitter_clamp_min = _math(nodes, "MAXIMUM", (x_offset - 580, 520), value1=0.0)
@@ -193,7 +209,9 @@ def _add_jittered_midpoint_factor(nodes, links, gin, spline, x_offset=0):
     random.data_type = "FLOAT"
     random.inputs[2].default_value = -1.0
     random.inputs[3].default_value = 1.0
-    links.new(spline.outputs["Index"], random.inputs["ID"])
+    if random_id_output is None:
+        random_id_output = spline.outputs["Index"]
+    links.new(random_id_output, random.inputs["ID"])
 
     offset = _math(nodes, "MULTIPLY", (x_offset - 220, 580))
     links.new(random.outputs[1], offset.inputs[0])
@@ -270,7 +288,7 @@ def _create_node_tree() -> bpy.types.NodeTree:
     offset_sock = tree.interface.new_socket(
         name=_OFFSET_SOCKET_NAME, in_out="INPUT", socket_type="NodeSocketFloat"
     )
-    offset_sock.default_value = 1.0
+    offset_sock.default_value = 0.0
     offset_sock.min_value = -1.0
     offset_sock.max_value = 1.0
 
@@ -516,6 +534,12 @@ def _create_node_tree() -> bpy.types.NodeTree:
         links.new(gin.outputs[_RESAMPLE_COUNT_SOCKET_NAME], count_input)
     links.new(m2c.outputs[0], resample.inputs["Curve"])
 
+    curve_chain_id = nodes.new("GeometryNodeInputNamedAttribute")
+    curve_chain_id.label = _CURVE_JITTER_CHAIN_ID_LABEL
+    curve_chain_id.location = (580, -600)
+    curve_chain_id.data_type = "INT"
+    curve_chain_id.inputs["Name"].default_value = _CHAIN_ID_ATTR
+
     # 内部線専用の線幅値を反映する。
     width_attr = nodes.new("GeometryNodeInputNamedAttribute")
     width_attr.location = (-20, 120)
@@ -541,7 +565,13 @@ def _create_node_tree() -> bpy.types.NodeTree:
     width_max.inputs[1].default_value = 1.0
     links.new(width_min.outputs[0], width_max.inputs[0])
 
-    curve_scale = _add_curve_width_scale(nodes, links, gin, x_offset=520)
+    curve_scale = _add_curve_width_scale(
+        nodes,
+        links,
+        gin,
+        x_offset=520,
+        random_id_output=curve_chain_id.outputs["Attribute"],
+    )
     combined_scale = nodes.new("ShaderNodeMath")
     combined_scale.location = (760, 120)
     combined_scale.operation = "MULTIPLY"
@@ -695,6 +725,9 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
         if not any(getattr(n, "label", "") == _CURVE_JITTER_CENTER_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
+        if not any(getattr(n, "label", "") == _CURVE_JITTER_CHAIN_ID_LABEL for n in tree.nodes):
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
         if not any(getattr(n, "label", "") == _SAFE_CURVE_SCALE_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
@@ -758,7 +791,7 @@ def apply_inner_lines(
     obj: bpy.types.Object,
     angle: float = 0.5236,
     thickness: float = 0.0005,
-    offset: float = 1.0,
+    offset: float = 0.0,
     material: bpy.types.Material | None = None,
     use_marked_edges: bool = False,
     midpoint_factor: float = 0.0,

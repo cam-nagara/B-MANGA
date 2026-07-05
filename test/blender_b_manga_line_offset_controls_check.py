@@ -63,6 +63,15 @@ def _select_all(objects: list[bpy.types.Object]) -> None:
     bpy.context.view_layer.objects.active = objects[0]
 
 
+def _background_node(world: bpy.types.World):
+    if not world.use_nodes:
+        world.use_nodes = True
+    for node in world.node_tree.nodes:
+        if node.type == "BACKGROUND":
+            return node
+    return world.node_tree.nodes.new("ShaderNodeBackground")
+
+
 def main() -> None:
     b_manga_line.register()
     try:
@@ -75,11 +84,11 @@ def main() -> None:
             _make_cube("BML_offset_B", (0.25, 0.0, -4.0)),
         ]
         for obj in objects:
-            _assert_close(obj.bmanga_line_settings.outline_offset, 1.0, obj.name)
-            _assert_close(obj.bmanga_line_settings.inner_line_offset, 1.0, obj.name)
+            _assert_close(obj.bmanga_line_settings.outline_offset, 0.0, obj.name)
+            _assert_close(obj.bmanga_line_settings.inner_line_offset, 0.0, obj.name)
             _assert_close(
                 obj.bmanga_line_settings.intersection_line_offset,
-                1.0,
+                0.0,
                 obj.name,
             )
         _select_all(objects)
@@ -114,16 +123,38 @@ def main() -> None:
         for mod in intersection_mods:
             _assert_close(_socket_value(mod, OFFSET_SOCKET), -0.2, mod.name)
 
+        world = bpy.context.scene.world or bpy.data.worlds.new("BML_offset_world")
+        bpy.context.scene.world = world
+        world.use_nodes = True
+        background = _background_node(world)
+        background.inputs["Color"].default_value = (0.2, 0.3, 0.4, 1.0)
+        background.inputs["Strength"].default_value = 0.35
+
+        bpy.ops.object.select_all(action="DESELECT")
+        objects[0].select_set(True)
+        bpy.context.view_layer.objects.active = objects[0]
         assert bpy.ops.bmanga_line.set_line_only("EXEC_DEFAULT", line_only=True) == {"FINISHED"}
         for obj in objects:
+            assert bool(obj.get(core.PROP_LINE_ONLY, False)), obj.name
             _assert_close(obj.modifiers[core.MODIFIER_NAME].offset, 0.25, obj.name)
+        _assert_close(background.inputs["Color"].default_value[0], 1.0, "world color r")
+        _assert_close(background.inputs["Color"].default_value[1], 1.0, "world color g")
+        _assert_close(background.inputs["Color"].default_value[2], 1.0, "world color b")
+        _assert_close(background.inputs["Strength"].default_value, 1.0, "world strength")
         assert bpy.ops.bmanga_line.set_line_only("EXEC_DEFAULT", line_only=False) == {"FINISHED"}
         for obj in objects:
+            assert not bool(obj.get(core.PROP_LINE_ONLY, False)), obj.name
             _assert_close(obj.modifiers[core.MODIFIER_NAME].offset, 0.25, obj.name)
+        _assert_close(background.inputs["Color"].default_value[0], 0.2, "restored world r")
+        _assert_close(background.inputs["Color"].default_value[1], 0.3, "restored world g")
+        _assert_close(background.inputs["Color"].default_value[2], 0.4, "restored world b")
+        _assert_close(background.inputs["Strength"].default_value, 0.35, "restored world strength")
+
+        _select_all(objects)
 
         bpy.context.scene.bmanga_line_preset_name = "offset preset"
         assert bpy.ops.bmanga_line.preset_save("EXEC_DEFAULT") == {"FINISHED"}
-        settings.outline_offset = 1.0
+        settings.outline_offset = 0.0
         settings.inner_line_offset = 0.0
         settings.intersection_line_offset = 0.0
         assert bpy.ops.bmanga_line.preset_apply_selected("EXEC_DEFAULT") == {"FINISHED"}

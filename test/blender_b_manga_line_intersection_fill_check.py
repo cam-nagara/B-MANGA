@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT / "addons"))
 
 _CYLINDER_RADIUS = 0.50
 _OUTLINE_THICKNESS = 0.24
+_INTERSECTION_THICKNESS = 0.015
 
 import b_manga_line  # noqa: E402
 from b_manga_line import (  # noqa: E402
@@ -198,7 +199,7 @@ def main() -> None:
     assert intersection_lines.apply_intersection_lines(
         source,
         target=target,
-        thickness=0.015,
+        thickness=_INTERSECTION_THICKNESS,
         material=line_mat,
         method="BOOLEAN",
     )
@@ -228,20 +229,10 @@ def main() -> None:
     min_y = min(co.y for co in coords)
     max_y = max(co.y for co in coords)
     # 交差線の中心（曲線位置）は「元の面」との実際の交差位置（半径0.5の
-    # 円柱表面）。旧仕様の「殻の厚みぶん外側への塗りつぶし」は二重線と
-    # 位置ズレの原因だったため単一曲線化した(2026-07-03)。
-    # その上で 2026-07-03 追加要望: 背面法ハルと元メッシュの間に隙間が
-    # 見えないよう、塗りつぶしチューブの半径は自分・交差対象の
-    # アウトライン幅(_OUTLINE_THICKNESS)のうち大きい方まで広がる
-    # （交差線幅の設定値はもはや上限ではなく下限）。
-    # v0.3.82 以降は交差線のオフセット初期値が 1.0。半径は
-    # 「実効太さ + 実効太さ * オフセット * 0.5」なので、初期値では
-    # 隙間カバー幅が 1.5 倍になる。
-    covered_width = (
-        _OUTLINE_THICKNESS
-        * intersection_shell.SHELL_GAP_COVERAGE_FACTOR
-        * 1.5
-    )
+    # 円柱表面）。アウトライン幅を表示半径へ混ぜると、アウトラインを
+    # 太くした時に面同士の交差ラインから外側へ広がって見えるため、
+    # チューブの半径は交差線幅だけで決まる。
+    covered_width = _INTERSECTION_THICKNESS
     inner = _CYLINDER_RADIUS - covered_width
     outer = _CYLINDER_RADIUS + covered_width
     margin = 0.08
@@ -254,12 +245,9 @@ def main() -> None:
         value = {"min_x": min_x, "max_x": max_x, "min_y": min_y, "max_y": max_y}[label]
         assert low < value < high, (label, value)
 
-    # 交差線幅の設定値（0.015、極めて小さい）ではなく、双方のアウトライン幅
-    # (_OUTLINE_THICKNESS=0.24) に実効太さが支配されていることを明示的に確認
-    # する（2026-07-03: 隙間塗りつぶし要望の中核）。
     outward = max_x - _CYLINDER_RADIUS
-    assert outward > _OUTLINE_THICKNESS * 1.02, (
-        "交差線の実効太さがアウトライン幅由来の隙間カバー幅に届いていません",
+    assert _INTERSECTION_THICKNESS * 0.25 < outward < _OUTLINE_THICKNESS * 0.25, (
+        "交差線の実効太さがアウトライン幅に引っ張られています",
         outward,
     )
 

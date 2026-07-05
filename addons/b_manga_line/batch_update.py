@@ -769,14 +769,8 @@ def _update_lines_visible(objects: list[bpy.types.Object], context) -> None:
 
 
 def _update_line_only_visible(objects: list[bpy.types.Object], context) -> None:
-    from . import viewport_aov
-
-    viewport_aov.disable_line_aov(context)
-    for obj in objects:
-        enabled = bool(obj.bmanga_line_settings.line_only_visible)
-        if enabled:
-            core.set_line_visibility(obj, True)
-        outline_setup.set_line_only(obj, enabled)
+    enabled = any(bool(obj.bmanga_line_settings.line_only_visible) for obj in objects)
+    core.set_scene_line_only(context, enabled)
 
 
 def _update_match_subsurf_viewport_to_render(objects: list[bpy.types.Object]) -> None:

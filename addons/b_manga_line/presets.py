@@ -266,7 +266,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
 
     outline_enabled: BoolProperty(default=True)
     outline_thickness: FloatProperty(default=0.0003, min=0.0001, max=1.0)
-    outline_offset: FloatProperty(default=1.0, min=-1.0, max=1.0)
+    outline_offset: FloatProperty(default=0.0, min=-1.0, max=1.0)
     outline_color: FloatVectorProperty(
         subtype="COLOR",
         size=4,
@@ -287,7 +287,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     inner_line_angle: FloatProperty(default=1.0471975512, min=0.0174532925, max=3.1415926536)
     use_marked_inner_edges: BoolProperty(default=False)
     inner_line_thickness: FloatProperty(default=0.0003, min=0.0001, max=1.0)
-    inner_line_offset: FloatProperty(default=1.0, min=-1.0, max=1.0)
+    inner_line_offset: FloatProperty(default=0.0, min=-1.0, max=1.0)
     inner_line_color: FloatVectorProperty(
         subtype="COLOR",
         size=4,
@@ -308,7 +308,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     )
     intersection_enabled: BoolProperty(default=False)
     intersection_thickness: FloatProperty(default=0.0003, min=0.0001, max=1.0)
-    intersection_line_offset: FloatProperty(default=1.0, min=-1.0, max=1.0)
+    intersection_line_offset: FloatProperty(default=0.0, min=-1.0, max=1.0)
     intersection_color: FloatVectorProperty(
         subtype="COLOR",
         size=4,

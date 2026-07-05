@@ -291,6 +291,26 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
     )
     assert contact_offset is not None, "固定微小値で接触判定するノードがありません"
     assert contact_offset.bl_idname == "GeometryNodeSetPosition"
+    visual_radius_marker = next(
+        (
+            node for node in tree.nodes
+            if getattr(node, "label", "") == intersection_shell._SHELL_VISUAL_RADIUS_NODE_LABEL
+        ),
+        None,
+    )
+    assert visual_radius_marker is not None, "交差線の表示半径が現行仕様ではありません"
+    radius = next(
+        (
+            node for node in tree.nodes
+            if getattr(node, "label", "") == intersection_shell._SHELL_RADIUS_NODE_LABEL
+        ),
+        None,
+    )
+    assert radius is not None, "交差線の表示半径ノードがありません"
+    radius_link = _incoming_link(tree, radius, radius.inputs[0])
+    assert radius_link is not None, "交差線の線幅入力が表示半径へ届いていません"
+    assert radius_link.from_node.bl_idname == "NodeGroupInput"
+    assert radius_link.from_socket.name == "線の太さ"
     assert not any(
         node.bl_idname == "ShaderNodeMath"
         and node.operation == "MAXIMUM"

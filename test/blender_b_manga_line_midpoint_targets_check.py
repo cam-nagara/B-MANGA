@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import core, inner_line_chains, vertex_analysis  # noqa: E402
+from b_manga_line import core, inner_line_chains, inner_lines, vertex_analysis  # noqa: E402
 
 
 LEVELS = 9
@@ -484,6 +484,22 @@ def _assert_inner_chain_ids_split_at_branch_and_acute_points() -> None:
     assert ids[0] != ids[2], ids
 
 
+def _assert_inner_jitter_uses_chain_id() -> None:
+    tree = inner_lines._get_or_create_tree()
+    random = next(
+        (node for node in tree.nodes if node.bl_idname == "FunctionNodeRandomValue"),
+        None,
+    )
+    assert random is not None, "中間点の乱れ用の乱数ノードがありません"
+    links = [link for link in tree.links if link.to_socket == random.inputs["ID"]]
+    assert links, "中間点の乱れの乱数IDが未接続です"
+    source = links[0].from_node
+    assert getattr(source, "label", "") == inner_lines._CURVE_JITTER_CHAIN_ID_LABEL, (
+        "内部線ごとの乱れIDが内部線チェーンIDではありません"
+    )
+    assert source.inputs["Name"].default_value == inner_line_chains.CHAIN_ID_ATTR
+
+
 def main() -> None:
     b_manga_line.register()
     _clear_scene()
@@ -576,6 +592,7 @@ def main() -> None:
         "intersection_edge_midpoint_angle",
     )
     _assert_inner_chain_ids_split_at_branch_and_acute_points()
+    _assert_inner_jitter_uses_chain_id()
 
     print("[PASS] midpoint width settings are independent per line type")
 

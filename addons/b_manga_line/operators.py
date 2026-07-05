@@ -10,7 +10,6 @@ from .core import (
     AOV_COMPOSITE_NAME,
     AOV_NAMES,
     PROP_LINES_HIDDEN,
-    PROP_LINE_ONLY,
     has_line,
     has_outline,
     record_override_edits,
@@ -228,38 +227,11 @@ class BMANGA_LINE_OT_set_line_only(bpy.types.Operator):
         return any(has_line(obj) for obj in context.selected_objects)
 
     def execute(self, context):
-        from . import outline_setup, viewport_aov
-        from .core import set_line_visibility
+        from .core import set_scene_line_only
 
-        changed_objects: set[int] = set()
-        failed = 0
-        line_objects = [obj for obj in context.selected_objects if has_line(obj)]
-
-        if self.line_only:
-            viewport_aov.disable_line_aov(context)
-            for obj in line_objects:
-                set_line_visibility(obj, True)
-            for obj in line_objects:
-                try:
-                    if outline_setup.set_line_only(obj, True):
-                        changed_objects.add(obj.as_pointer())
-                except Exception:
-                    failed += 1
-        else:
-            if viewport_aov.disable_line_aov(context):
-                changed_objects.update(obj.as_pointer() for obj in line_objects)
-            for obj in line_objects:
-                if not bool(obj.get(PROP_LINE_ONLY, False)):
-                    continue
-                try:
-                    if outline_setup.set_line_only(obj, False):
-                        changed_objects.add(obj.as_pointer())
-                except Exception:
-                    failed += 1
-        if failed:
-            self.report({"WARNING"}, f"{failed} オブジェクトは素材を変更できませんでした")
+        changed = set_scene_line_only(context, bool(self.line_only))
         action = "ラインのみ表示" if self.line_only else "通常表示"
-        self.report({"INFO"}, f"{len(changed_objects)} オブジェクトを{action}にしました")
+        self.report({"INFO"}, f"{changed} オブジェクトを{action}にしました")
         return {"FINISHED"}
 
 

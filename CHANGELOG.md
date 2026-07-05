@@ -3,6 +3,53 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-06 — B-MANGA Lineの乱れ・交差線位置・ラインのみ表示を修正 (B-MANGA Line v0.3.118)
+
+### 症状
+
+- 内部線の「中間点の乱れ」で、複数の内部線の中間点が同じ量だけずれていた。
+- 「ビューポートのレベル数をレンダーに合わせる」のオン/オフで、交差線の端位置が不自然にずれて見える場合があった。
+- 「ラインのみを表示」が、非選択のライン適用済みオブジェクトとワールド背景まで一括で白化していなかった。
+- アウトラインを太くした時、交差線の見た目が面同士の交差ラインから外側へ広がって見えた。
+- アウトライン、内部線、交差線のオフセット初期値が 0.000 ではなかった。
+
+### 原因
+
+- 内部線の乱れが、内部線ごとの識別ではなく同じ曲線内の番号を乱数IDに使っていた。
+- 交差線の表示半径に、交差線幅だけでなくアウトライン幅由来の隙間カバー幅を混ぜていたため、アウトラインを太くすると交差線も外側へ太く広がって見えていた。
+- ラインのみ表示の切り替えが、操作対象中心の素材差し替えに留まり、シーン全体のライン適用済みオブジェクトとワールド背景の状態をまとめて管理していなかった。
+- 旧来の外側オフセット前提の初期値が、プロパティ・プリセット・ノード入力に残っていた。
+
+### 修正
+
+- 内部線の乱れは、内部線チェーンIDを乱数IDとして使い、内部線ごとに別々の中間点位置になるようにした。
+- 交差線の表示半径は交差線の線幅だけを基準にし、アウトライン幅に引っ張られないようにした。
+- ラインのみ表示は、シーン内のライン適用済みオブジェクト全体を白化し、ワールド背景ノードのカラーを白・強さを1.0へ切り替え、オフで元に戻すようにした。
+- アウトライン、内部線、交差線のオフセット初期値をすべて 0.000 にした。
+- 保存済み旧ノードは、次回適用時に現行仕様へ再構築されるようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_midpoint_targets_check.py`
+- `test/blender_b_manga_line_offset_controls_check.py`
+- `test/blender_b_manga_line_intersection_shell_method_check.py`
+- `test/blender_b_manga_line_intersection_fill_check.py`
+- `test/blender_b_manga_line_open_mesh_outline_check.py`
+- `test/blender_b_manga_line_register_reenable_check.py`
+- `D:\TM Dropbox\Miura Tadahiro\Develop\B-MANGAテスト\test_line05.blend`
+- `_verify/2026-07-05_bml_line05_goal_repro/v03118_current_outline_only.png`
+- `_verify/2026-07-05_bml_line05_goal_repro/v03118_current_inner_only.png`
+- `_verify/2026-07-05_bml_line05_goal_repro/v03118_current_intersection_only.png`
+- `_verify/2026-07-06_bml_line05_current_regression/lod_off_intersection.png`
+- `_verify/2026-07-06_bml_line05_current_regression/lod_on_intersection.png`
+- `_verify/2026-07-06_bml_line05_current_regression/thick_outline_intersection.png`
+- `D:\TM Dropbox\Miura Tadahiro\Develop\B-MANGAテスト\test_line04.blend`
+- `_verify/2026-07-06_bml_line04_current_regression/line04_outline_only.png`
+- `_verify/2026-07-06_bml_line04_current_regression/line04_inner_only.png`
+- `_verify/2026-07-06_bml_line04_current_regression/line04_intersection_only.png`
+
+---
+
 ## 2026-07-06 — 交差線カーブ角端点修正の徹底チェック (B-MANGA Line v0.3.117 検証追記)
 
 ### 症状

@@ -192,22 +192,22 @@ def _assert_panels_draw_items() -> None:
     ), "内部線の検出角度の初期値が60度ではありません"
     assert math.isclose(
         obj.bmanga_line_settings.outline_offset,
-        1.0,
+        0.0,
         rel_tol=0.0,
         abs_tol=1.0e-7,
-    ), "アウトラインのオフセット初期値が1.0ではありません"
+    ), "アウトラインのオフセット初期値が0.0ではありません"
     assert math.isclose(
         obj.bmanga_line_settings.inner_line_offset,
-        1.0,
+        0.0,
         rel_tol=0.0,
         abs_tol=1.0e-7,
-    ), "内部線のオフセット初期値が1.0ではありません"
+    ), "内部線のオフセット初期値が0.0ではありません"
     assert math.isclose(
         obj.bmanga_line_settings.intersection_line_offset,
-        1.0,
+        0.0,
         rel_tol=0.0,
         abs_tol=1.0e-7,
-    ), "交差線のオフセット初期値が1.0ではありません"
+    ), "交差線のオフセット初期値が0.0ではありません"
     preset = bpy.context.scene.bmanga_line_presets.add()
     preset_bool_props = [
         prop.identifier
@@ -230,8 +230,8 @@ def _assert_panels_draw_items() -> None:
         rel_tol=0.0,
         abs_tol=1.0e-7,
     ), "プリセットの内部線の検出角度の初期値が60度ではありません"
-    assert math.isclose(preset.inner_line_offset, 1.0, rel_tol=0.0, abs_tol=1.0e-7)
-    assert math.isclose(preset.intersection_line_offset, 1.0, rel_tol=0.0, abs_tol=1.0e-7)
+    assert math.isclose(preset.inner_line_offset, 0.0, rel_tol=0.0, abs_tol=1.0e-7)
+    assert math.isclose(preset.intersection_line_offset, 0.0, rel_tol=0.0, abs_tol=1.0e-7)
     camera_props = [
         "line_width_reference_distance",
         "use_camera_compensation",
