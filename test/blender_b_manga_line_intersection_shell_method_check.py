@@ -197,57 +197,6 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
         None,
     )
     assert angle_compare is not None
-    angle_confirm = next(
-        (
-            node for node in tree.nodes
-            if (
-                node.bl_idname == "FunctionNodeCompare"
-                and node.data_type == "FLOAT"
-                and node.operation == "GREATER_THAN"
-                and getattr(node, "label", "") == (
-                    intersection_shell._SHELL_BRANCH_SPLIT_NODE_LABEL + "AngleConfirm"
-                )
-            )
-        ),
-        None,
-    )
-    assert angle_confirm is not None, "交差線の微細な折れを除外する角確認判定がありません"
-    angle_confirm_unavailable = next(
-        (
-            node for node in tree.nodes
-            if (
-                node.bl_idname == "FunctionNodeBooleanMath"
-                and node.operation == "OR"
-                and getattr(node, "label", "") == (
-                    intersection_shell._SHELL_BRANCH_SPLIT_NODE_LABEL
-                    + "AngleConfirmUnavailable"
-                )
-            )
-        ),
-        None,
-    )
-    assert (
-        angle_confirm_unavailable is not None
-    ), "短い交差線カーブで確認点が取れない角を端点へ戻す経路がありません"
-    angle_confirm_ok = next(
-        (
-            node for node in tree.nodes
-            if (
-                node.bl_idname == "FunctionNodeBooleanMath"
-                and node.operation == "OR"
-                and getattr(node, "label", "") == (
-                    intersection_shell._SHELL_BRANCH_SPLIT_NODE_LABEL
-                    + "AngleConfirmUnavailableOK"
-                )
-            )
-        ),
-        None,
-    )
-    assert angle_confirm_ok is not None
-    assert any(
-        link.from_node == angle_confirm_unavailable and link.to_node == angle_confirm_ok
-        for link in tree.links
-    ), "確認点が取れない短い角が角端点判定へ合流していません"
     angle_input_link = _incoming_link(tree, angle_compare, angle_compare.inputs[1])
     assert angle_input_link is not None, "交差線の角端点判定に検出角度が接続されていません"
     angle_cos = angle_input_link.from_node
@@ -290,46 +239,6 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
         None,
     )
     assert split_read is not None, "保存済み端点候補を線幅補間へ渡していません"
-    topology_compare = next(
-        (
-            node for node in tree.nodes
-            if (
-                node.bl_idname == "FunctionNodeCompare"
-                and node.data_type == "INT"
-                and node.operation == "NOT_EQUAL"
-                and getattr(node, "label", "") == intersection_shell._SHELL_TOPO_SPLIT_NODE_LABEL
-            )
-        ),
-        None,
-    )
-    assert topology_compare is not None, "交差エッジの接続数で実端・分岐を判定していません"
-    topology_store = next(
-        (
-            node for node in tree.nodes
-            if (
-                node.bl_idname == "GeometryNodeStoreNamedAttribute"
-                and getattr(node, "label", "") == (
-                    intersection_shell._SHELL_TOPO_SPLIT_NODE_LABEL + "Store"
-                )
-                and node.data_type == "BOOLEAN"
-                and node.inputs["Name"].default_value == intersection_shell._SHELL_TOPO_SPLIT_ATTR
-            )
-        ),
-        None,
-    )
-    assert topology_store is not None, "接続数で判定した実端・分岐をカーブ化前に保存していません"
-    topology_read = next(
-        (
-            node for node in tree.nodes
-            if (
-                node.bl_idname == "GeometryNodeInputNamedAttribute"
-                and node.data_type == "BOOLEAN"
-                and node.inputs["Name"].default_value == intersection_shell._SHELL_TOPO_SPLIT_ATTR
-            )
-        ),
-        None,
-    )
-    assert topology_read is not None, "カーブ化前の実端・分岐印を角端点保存へ渡していません"
     assert not any(
         str(getattr(node, "label", "")).startswith("BML_IntersectionShellPathWidthV15")
         or str(getattr(node, "label", "")).startswith("BML_IntersectionShellPathWidthV16")
@@ -338,6 +247,7 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
         or str(getattr(node, "label", "")).startswith("BML_IntersectionShellCurveEndpointV21")
         or str(getattr(node, "label", "")).startswith("BML_IntersectionShellCurveEndpointV22")
         or str(getattr(node, "label", "")).startswith("BML_IntersectionShellCurveEndpointV23")
+        or str(getattr(node, "label", "")).startswith("BML_IntersectionShellCurveEndpointV24")
         for node in tree.nodes
     ), "旧世代の交差線中間頂点ノードが残っています"
     assert any(
@@ -400,14 +310,10 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
 def _make_short_corner_probe_object() -> bpy.types.Object:
     mesh = bpy.data.meshes.new("BMLShortCornerProbeMesh")
     mesh.from_pydata(
-        [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0)],
+        [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.7)],
         [(0, 1), (1, 2)],
         [],
     )
-    attr = mesh.attributes.new("BMLShortCornerSplit", "FLOAT", "POINT")
-    attr.data[0].value = 0.0
-    attr.data[1].value = 1.0
-    attr.data[2].value = 2.0
     mesh.update()
     obj = bpy.data.objects.new("BML_short_corner_probe", mesh)
     bpy.context.scene.collection.objects.link(obj)
@@ -440,10 +346,23 @@ def _build_short_corner_probe_tree() -> bpy.types.NodeTree:
     angle.location = (-780, -260)
     angle.outputs[0].default_value = math.radians(100.0)
 
+    split_curve = helpers.store_curve_midpoint_split_attribute(
+        nodes,
+        links,
+        set_radius.outputs["Curve"],
+        angle.outputs[0],
+        (-340, -300),
+        attribute_name="BMLShortCornerSplit",
+        label="BML_ShortCornerProbeAngle",
+        angle_split_min_segment_fraction=0.0,
+        angle_split_confirmation_offset=1,
+        include_curve_endpoints=True,
+    )
+
     subdivide = nodes.new("GeometryNodeSubdivideCurve")
     subdivide.location = (780, 0)
     subdivide.inputs["Cuts"].default_value = 15
-    links.new(set_radius.outputs["Curve"], subdivide.inputs["Curve"])
+    links.new(split_curve, subdivide.inputs["Curve"])
 
     factor = nodes.new("ShaderNodeValue")
     factor.location = (760, -360)
@@ -479,18 +398,44 @@ def _build_short_corner_probe_tree() -> bpy.types.NodeTree:
     return tree
 
 
+def _short_corner_probe_path() -> tuple[list[tuple[float, float, float]], list[float]]:
+    points = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.7)]
+    lengths = [0.0]
+    for start, end in zip(points, points[1:]):
+        segment = math.sqrt(sum((end[i] - start[i]) ** 2 for i in range(3)))
+        lengths.append(lengths[-1] + segment)
+    return points, lengths
+
+
+def _point_segment_station_and_radius(
+    co,
+    start: tuple[float, float, float],
+    end: tuple[float, float, float],
+    base_station: float,
+) -> tuple[float, float]:
+    px, py, pz = co.x, co.y, co.z
+    sx, sy, sz = start
+    ex, ey, ez = end
+    vx, vy, vz = ex - sx, ey - sy, ez - sz
+    wx, wy, wz = px - sx, py - sy, pz - sz
+    length_sq = vx * vx + vy * vy + vz * vz
+    if length_sq <= 0.0:
+        t = 0.0
+    else:
+        t = max(0.0, min(1.0, (wx * vx + wy * vy + wz * vz) / length_sq))
+    cx, cy, cz = sx + vx * t, sy + vy * t, sz + vz * t
+    radius = math.sqrt((px - cx) ** 2 + (py - cy) ** 2 + (pz - cz) ** 2)
+    station = base_station + math.sqrt(length_sq) * t
+    return station, radius
+
+
 def _short_corner_station_and_radius(co) -> tuple[float, float]:
-    x, y, z = co.x, co.y, co.z
-    t1 = min(1.0, max(0.0, x))
-    dx1 = x - t1
-    dist1 = dx1 * dx1 + y * y + z * z
-    t2 = min(1.0, max(0.0, y))
-    dx2 = x - 1.0
-    dy2 = y - t2
-    dist2 = dx2 * dx2 + dy2 * dy2 + z * z
-    if dist1 <= dist2:
-        return t1, dist1 ** 0.5
-    return 1.0 + t2, dist2 ** 0.5
+    points, lengths = _short_corner_probe_path()
+    candidates = [
+        _point_segment_station_and_radius(co, points[index], points[index + 1], lengths[index])
+        for index in range(len(points) - 1)
+    ]
+    return min(candidates, key=lambda item: item[1])
 
 
 def _short_corner_bucket_radii(obj: bpy.types.Object) -> dict[str, float]:
@@ -508,7 +453,7 @@ def _short_corner_bucket_radii(obj: bpy.types.Object) -> dict[str, float]:
                 buckets["first_mid"].append(radius)
             elif 0.95 <= station <= 1.05:
                 buckets["corner"].append(radius)
-            elif 1.45 <= station <= 1.55:
+            elif 1.55 <= station <= 1.70:
                 buckets["second_mid"].append(radius)
         return {
             "first_mid_min": min(buckets["first_mid"]) if buckets["first_mid"] else -1.0,
@@ -519,7 +464,7 @@ def _short_corner_bucket_radii(obj: bpy.types.Object) -> dict[str, float]:
         bpy.data.meshes.remove(mesh)
 
 
-def _assert_short_curve_split_points_keep_tapered_segments() -> None:
+def _assert_3d_curve_angle_keeps_tapered_segments() -> None:
     _clear_scene()
     obj = _make_short_corner_probe_object()
     tree = _build_short_corner_probe_tree()
@@ -800,7 +745,7 @@ def main() -> None:
         _assert_low_resolution_shell_tree_is_rebuilt()
         _assert_missing_gap_coverage_shell_tree_is_rebuilt()
         _assert_shell_tree_has_midpoint_width_nodes()
-        _assert_short_curve_split_points_keep_tapered_segments()
+        _assert_3d_curve_angle_keeps_tapered_segments()
         _clear_scene()
         # Zを互いにずらし、完全同一平面の重なり（EXACTブーリアンの縮退
         # ケース）を避ける現実的な配置にする

@@ -46,11 +46,9 @@ _CURVE_RADIUS_NORMALIZER_LABEL = "BML_IntersectionShellCurveRadius"
 _SHELL_COMBINED_THICKNESS_NODE_LABEL = "BML_IntersectionShellCombinedThickness"
 _SHELL_PROFILE_NODE_LABEL = "BML_IntersectionShellProfile"
 _SHELL_GAP_COVERAGE_NODE_LABEL = "BML_IntersectionShellGapCoverage"
-_SHELL_BRANCH_SPLIT_NODE_LABEL = "BML_IntersectionShellCurveEndpointV24"
-_SHELL_SUBDIVIDE_NODE_LABEL = "BML_IntersectionShellCurveEndpointV24Midpoints"
-_SHELL_SPLIT_ATTR = "BML_IntersectionShellCurveEndpointV24"
-_SHELL_TOPO_SPLIT_ATTR = "BML_IntersectionShellTopologyEndpointV24"
-_SHELL_TOPO_SPLIT_NODE_LABEL = "BML_IntersectionShellTopologyEndpointV24"
+_SHELL_BRANCH_SPLIT_NODE_LABEL = "BML_IntersectionShellCurveEndpointV25"
+_SHELL_SUBDIVIDE_NODE_LABEL = "BML_IntersectionShellCurveEndpointV25Midpoints"
+_SHELL_SPLIT_ATTR = "BML_IntersectionShellCurveEndpointV25"
 _SHELL_SUBDIVIDE_CUTS = 3
 _SHELL_SAFE_SCALE_NODE_LABEL = "BML_IntersectionShellSafeScale"
 _SHELL_CONTACT_OFFSET_NODE_LABEL = "BML_IntersectionShellFixedContactOffsetV20"
@@ -322,16 +320,9 @@ def _create_node_tree() -> bpy.types.NodeTree:
     weld.inputs["Distance"].default_value = _SHELL_WELD_DISTANCE
     links.new(separate.outputs["Selection"], weld.inputs["Geometry"])
 
-    topology_marked_mesh = _store_mesh_topology_split_attribute(
-        nodes,
-        links,
-        weld.outputs["Geometry"],
-        (820, -360),
-    )
-
     m2c = nodes.new("GeometryNodeMeshToCurve")
     m2c.location = (900, -120)
-    links.new(topology_marked_mesh, m2c.inputs["Mesh"])
+    links.new(weld.outputs["Geometry"], m2c.inputs["Mesh"])
 
     normalized_curve = _add_curve_radius_normalizer(
         nodes, links, m2c.outputs["Curve"], (1040, -120),
@@ -348,10 +339,9 @@ def _create_node_tree() -> bpy.types.NodeTree:
             # 端点候補は、細分化前の交差カーブ上に存在する実端・角だけにする。
             # 後段の SubdivideCurve で増える補間点はこの属性を持たないため、
             # 中間頂点の線幅補間用の点としてだけ使われる。
-            angle_split_min_segment_fraction=0.04,
-            angle_split_confirmation_offset=3,
-            base_split_attribute_name=_SHELL_TOPO_SPLIT_ATTR,
-            include_curve_endpoints=False,
+            angle_split_min_segment_fraction=0.0,
+            angle_split_confirmation_offset=1,
+            include_curve_endpoints=True,
         )
     )
 
@@ -459,29 +449,6 @@ def _add_curve_radius_normalizer(nodes, links, curve_output, loc):
     set_radius.inputs["Radius"].default_value = 1.0
     links.new(curve_output, set_radius.inputs["Curve"])
     return set_radius.outputs["Curve"]
-
-
-def _store_mesh_topology_split_attribute(nodes, links, mesh_output, loc):
-    vertex_neighbors = nodes.new("GeometryNodeInputMeshVertexNeighbors")
-    vertex_neighbors.location = loc
-
-    branch_or_endpoint = nodes.new("FunctionNodeCompare")
-    branch_or_endpoint.label = _SHELL_TOPO_SPLIT_NODE_LABEL
-    branch_or_endpoint.location = (loc[0] + 220, loc[1])
-    branch_or_endpoint.data_type = "INT"
-    branch_or_endpoint.operation = "NOT_EQUAL"
-    links.new(vertex_neighbors.outputs["Vertex Count"], branch_or_endpoint.inputs[2])
-    branch_or_endpoint.inputs[3].default_value = 2
-
-    store = nodes.new("GeometryNodeStoreNamedAttribute")
-    store.label = _SHELL_TOPO_SPLIT_NODE_LABEL + "Store"
-    store.location = (loc[0] + 440, loc[1])
-    store.data_type = "BOOLEAN"
-    store.domain = "POINT"
-    store.inputs["Name"].default_value = _SHELL_TOPO_SPLIT_ATTR
-    links.new(mesh_output, store.inputs["Geometry"])
-    links.new(branch_or_endpoint.outputs[0], store.inputs["Value"])
-    return store.outputs["Geometry"]
 
 
 def _add_shell_tube_nodes(nodes, links, curve_output, gin, radius_output, scale, x_offset=0):
@@ -672,28 +639,6 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
                     _SHELL_BRANCH_SPLIT_NODE_LABEL + "AngleStore"
                 )
                 and node.inputs["Name"].default_value == _SHELL_SPLIT_ATTR
-                for node in tree.nodes
-            )
-            # ブーリアン由来の細かい折れを角端点として拾いすぎないよう、
-            # 交差線だけは少し離れた点でも角であることを確認する。
-            and any(
-                node.bl_idname == "FunctionNodeCompare"
-                and getattr(node, "label", "") == (
-                    _SHELL_BRANCH_SPLIT_NODE_LABEL + "AngleConfirm"
-                )
-                for node in tree.nodes
-            )
-            and any(
-                node.bl_idname == "FunctionNodeCompare"
-                and getattr(node, "label", "") == _SHELL_TOPO_SPLIT_NODE_LABEL
-                for node in tree.nodes
-            )
-            and any(
-                node.bl_idname == "GeometryNodeStoreNamedAttribute"
-                and getattr(node, "label", "") == (
-                    _SHELL_TOPO_SPLIT_NODE_LABEL + "Store"
-                )
-                and node.inputs["Name"].default_value == _SHELL_TOPO_SPLIT_ATTR
                 for node in tree.nodes
             )
             and _tree_uses_generated_mark(tree)

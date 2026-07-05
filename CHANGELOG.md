@@ -3,6 +3,43 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-06 — 交差線の3Dカーブ角を端点に固定 (B-MANGA Line v0.3.117)
+
+### 症状
+
+- 交差線で、ユーザーが赤丸で示した「交差線カーブ上の角」を、単純に角度検出された端点として扱えていなかった。
+- 「中間頂点の線幅調整」で、カーブ角は通常線幅のまま残し、角と角の間だけをほぼゼロまで細くする挙動が画像上で分かりにくかった。
+- 交差線の端点判定に、カーブ角以外のメッシュ接続数や離れた確認点の条件が混ざり、短い3D角を素直に端点へできない余地があった。
+
+### 原因
+
+- 交差線だけ、カーブ化前のメッシュ接続数や追加確認判定を端点候補に混ぜていたため、「交差線カーブ上の角を3D角度で見る」という仕様から処理がずれていた。
+- 角検出の最小区間条件により、短い交差線カーブのXYZ方向の折れが端点候補から落ちる余地があった。
+
+### 修正
+
+- 交差線は、細分化前の交差線カーブ上で3D角度を検出し、カーブ角とカーブ実端を端点として保存する方式にした。
+- 交差線のメッシュ接続数由来の端点候補をこの経路から外し、赤丸相当の「カーブの角」を端点判定の正にした。
+- 端点を保存してから中間点用の細分化を行うため、端点は通常線幅のまま残り、端点間の中間点だけが「中間頂点の線幅調整」で細くなる。
+- XYZ方向に折れた短い3Dカーブ角でも、角が端点として残り、両側の区間中間点が細くなる実機テストを追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_intersection_shell_method_check.py`
+- `test/blender_b_manga_line_midpoint_targets_check.py`
+- `D:\TM Dropbox\Miura Tadahiro\Develop\B-MANGAテスト\test_line05.blend`
+- `_verify/2026-07-05_bml_line05_goal_repro/after_v03117_normal_check_outline_only.png`
+- `_verify/2026-07-05_bml_line05_goal_repro/after_v03117_normal_check_inner_only.png`
+- `_verify/2026-07-05_bml_line05_goal_repro/after_v03117_normal_check_intersection_only.png`
+- `_verify/2026-07-05_bml_line05_goal_repro/after_v03117_intersection_midzero_intersection_only.png`
+- `_verify/2026-07-05_bml_line05_goal_repro/after_v03117_intersection_midzero_plane_outline_top.png`
+- `D:\TM Dropbox\Miura Tadahiro\Develop\B-MANGAテスト\test_line04.blend`
+- `_verify/2026-07-05_bml_line04_codex_repro/after_v03117_outline_only.png`
+- `_verify/2026-07-05_bml_line04_codex_repro/after_v03117_inner_only.png`
+- `_verify/2026-07-05_bml_line04_codex_repro/after_v03117_intersection_only.png`
+
+---
+
 ## 2026-07-06 — 交差線のカーブ角端点と区間別線幅補間を再修正 (B-MANGA Line v0.3.116)
 
 ### 症状
