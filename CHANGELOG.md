@@ -3,6 +3,47 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-06 — 交差線カーブ角端点修正の徹底チェック (B-MANGA Line v0.3.117 検証追記)
+
+### 症状
+
+- v0.3.117 の修正後、交差線カーブ角の端点化と中間点ほぼゼロ設定について、関連する設定変更経路まで含めた徹底チェックが未完了だった。
+- 関連テストのうち、交差線の作成範囲制限変更を「交差線再判定なし」とみなす古い期待値が残っていた。
+- 内部線角度更新の更新回数上限も、現行の選択オブジェクト伝播と合っていなかった。
+
+### 原因
+
+- 交差線の作成範囲制限は、現在はシーン内の交差線対象を再判定する仕様になっているが、テストが旧来の「生成済みラインを触らない」前提のままだった。
+- 更新範囲テストが固定回数に寄りすぎており、「対象ライン種別だけが更新されること」という本来見るべき条件からずれていた。
+
+### 修正
+
+- 交差線の作成範囲制限変更では、交差線の再判定が1回走り、必要な場合だけ交差線の線幅更新が走ることを確認する期待値へ更新した。
+- 内部線角度更新は、内部線だけが更新対象になることを維持したまま、選択オブジェクト数に応じた上限で確認するようにした。
+- v0.3.117 の交差線カーブ角端点修正について、操作経路を「ライン適用/更新」「交差線中間頂点設定変更」「保存済み旧ノード再構築」に分けて確認した。挙動変更はなし。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_intersection_shell_method_check.py`
+- `test/blender_b_manga_line_midpoint_targets_check.py`
+- `test/blender_b_manga_line_control_update_scope_check.py`
+- `test/blender_b_manga_line_generated_update_scope_check.py`
+- `test/blender_b_manga_line_batch_apply_refresh_check.py`
+- `test/blender_b_manga_line_preset_visibility_check.py`
+- `test/blender_b_manga_line_slider_step_check.py`
+- `D:\TM Dropbox\Miura Tadahiro\Develop\B-MANGAテスト\test_line05.blend`
+- `_verify/2026-07-05_bml_line05_goal_repro/after_v03117_thorough_normal_outline_only.png`
+- `_verify/2026-07-05_bml_line05_goal_repro/after_v03117_thorough_normal_inner_only.png`
+- `_verify/2026-07-05_bml_line05_goal_repro/after_v03117_thorough_normal_intersection_only.png`
+- `_verify/2026-07-05_bml_line05_goal_repro/after_v03117_intersection_midzero_intersection_only.png`
+- `_verify/2026-07-05_bml_line05_goal_repro/after_v03117_intersection_midzero_plane_outline_top.png`
+- `D:\TM Dropbox\Miura Tadahiro\Develop\B-MANGAテスト\test_line04.blend`
+- `_verify/2026-07-05_bml_line04_codex_repro/after_v03117_thorough_outline_only.png`
+- `_verify/2026-07-05_bml_line04_codex_repro/after_v03117_thorough_inner_only.png`
+- `_verify/2026-07-05_bml_line04_codex_repro/after_v03117_thorough_intersection_only.png`
+
+---
+
 ## 2026-07-06 — 交差線の3Dカーブ角を端点に固定 (B-MANGA Line v0.3.117)
 
 ### 症状

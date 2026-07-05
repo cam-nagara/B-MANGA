@@ -214,6 +214,14 @@ def _assert_width_scope(prop_name: str, counts: dict, target: str | None) -> Non
     if target is None:
         assert counts["camera_objects"] == 0, (prop_name, counts)
         return
+    if target == "optional_intersection":
+        if counts["camera_objects"] == 0:
+            return
+        assert all(scope == ("intersection",) for scope in counts["camera_scopes"]), (
+            prop_name,
+            counts,
+        )
+        return
     expected = ("all",) if target == "all" else (target,)
     assert counts["camera_objects"] > 0, (prop_name, counts)
     assert all(scope == expected for scope in counts["camera_scopes"]), (prop_name, counts)
@@ -308,13 +316,28 @@ def _run_baseline_cases(settings, counts, reset) -> None:
         ("intersection_edge_width_curve_50", 0.52, None),
         ("intersection_edge_width_curve_75", 0.82, None),
         ("intersection_edge_smooth_factor", 0.0, None),
-        ("use_intersection_creation_limit", False, None),
-        ("use_intersection_creation_limit", True, None),
-        ("intersection_creation_max_distance", 12.0, None),
     ]
     for prop_name, value, width_target in no_rebuild_cases:
         _change(settings, prop_name, value, counts, reset, width_target=width_target)
         _assert_no_generated_rebuild(prop_name, counts)
+
+    intersection_creation_cases = [
+        ("use_intersection_creation_limit", False),
+        ("use_intersection_creation_limit", True),
+        ("intersection_creation_max_distance", 12.0),
+    ]
+    for prop_name, value in intersection_creation_cases:
+        _change(
+            settings,
+            prop_name,
+            value,
+            counts,
+            reset,
+            width_target="optional_intersection",
+        )
+        assert counts["inner_apply"] == 0, (prop_name, counts)
+        assert counts["inner_update"] == 0, (prop_name, counts)
+        assert counts["intersection_refresh"] == 1, (prop_name, counts)
 
     width_cases = [
         ("outline_thickness", 0.0011, "outline"),
@@ -394,7 +417,7 @@ def _run_mixed_uniform_cases(objects, counts, reset) -> None:
     _assert_no_generated_rebuild("inner_line_angle_mixed_uniform", counts)
     assert counts["camera_objects"] == 1, counts
     assert counts["camera_scopes"] == [("inner",)], counts
-    assert counts["inner_update"] <= 4, counts
+    assert counts["inner_update"] <= len(objects) * 2, counts
 
 
 def _run_inner_toggle_defers_intersections(objects, counts, reset) -> None:
