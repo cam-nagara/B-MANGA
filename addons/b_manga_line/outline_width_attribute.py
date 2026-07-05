@@ -13,7 +13,7 @@ from .core import (
 )
 
 
-TREE_NAME = "BML_OutlineWidthAttribute"
+TREE_NAME = "BML_OutlineWidthAttributeV2"
 _GEOMETRY_SOCKET = "Geometry"
 _MIDPOINT_FACTOR_SOCKET = "中間頂点の線幅調整"
 _MIDPOINT_JITTER_SOCKET = "中間頂点の乱れ (%)"
@@ -203,58 +203,6 @@ def _selected_edge_curves(nodes, links, geometry_output, gin):
     return resample.outputs["Curve"]
 
 
-def _rank_curve_width_scale(nodes, links, gin, loc):
-    x, y = loc
-    point_index = nodes.new("GeometryNodeInputIndex")
-    point_index.location = (x - 560, y + 220)
-
-    local_index = _math(nodes, "MODULO", (x - 340, y + 160), value1=float(_RESAMPLE_COUNT))
-    links.new(point_index.outputs["Index"], local_index.inputs[0])
-    factor = _math(
-        nodes,
-        "DIVIDE",
-        (x - 120, y + 160),
-        value1=float(max(1, _RESAMPLE_COUNT - 1)),
-    )
-    links.new(local_index.outputs[0], factor.inputs[0])
-    factor_min = _math(nodes, "MAXIMUM", (x + 80, y + 160), value1=0.0)
-    links.new(factor.outputs[0], factor_min.inputs[0])
-    factor_max = _math(nodes, "MINIMUM", (x + 280, y + 160), value1=1.0)
-    links.new(factor_min.outputs[0], factor_max.inputs[0])
-
-    spline = nodes.new("GeometryNodeSplineParameter")
-    spline.location = (x - 560, y - 40)
-    group_id = _math(nodes, "DIVIDE", (x - 340, y - 40), value1=float(_RESAMPLE_COUNT))
-    links.new(point_index.outputs["Index"], group_id.inputs[0])
-    group_floor = _math(nodes, "FLOOR", (x - 120, y - 40))
-    links.new(group_id.outputs[0], group_floor.inputs[0])
-
-    center_weight = intersection_shell_node_helpers._add_jittered_midpoint_factor_from_output(
-        nodes,
-        links,
-        spline,
-        gin.outputs[_MIDPOINT_JITTER_SOCKET],
-        x + 760,
-        jitter_center_label=_CURVE_WIDTH_LABEL,
-        y_offset=y,
-        factor_output=factor_max.outputs[0],
-        random_id_output=group_floor.outputs[0],
-    )
-    scale = intersection_shell_node_helpers._scale_from_center_weight(
-        nodes,
-        links,
-        center_weight,
-        gin.outputs[_MIDPOINT_FACTOR_SOCKET],
-        (x + 1840, y),
-        width_curve_outputs=(
-            gin.outputs[_WIDTH_CURVE_25_SOCKET],
-            gin.outputs[_WIDTH_CURVE_50_SOCKET],
-            gin.outputs[_WIDTH_CURVE_75_SOCKET],
-        ),
-    )
-    return scale
-
-
 def _create_node_tree() -> bpy.types.NodeTree:
     tree = bpy.data.node_groups.new(TREE_NAME, type="GeometryNodeTree")
     _setup_interface(tree)
@@ -267,30 +215,47 @@ def _create_node_tree() -> bpy.types.NodeTree:
     gout.location = (1300, 0)
 
     curves = _selected_edge_curves(nodes, links, gin.outputs["Geometry"], gin)
-    curve_points = nodes.new("GeometryNodeCurveToPoints")
-    curve_points.location = (600, -420)
-    if hasattr(curve_points, "mode"):
-        curve_points.mode = "COUNT"
-    count_input = curve_points.inputs.get("Count")
-    if count_input is not None:
-        count_input.default_value = _RESAMPLE_COUNT
-    links.new(curves, curve_points.inputs["Curve"])
-    scale = _rank_curve_width_scale(nodes, links, gin, (720, -720))
+    scale = intersection_shell_node_helpers.add_curve_midpoint_width_scale(
+        nodes,
+        links,
+        curves,
+        gin.outputs[_MIDPOINT_ANGLE_SOCKET],
+        gin.outputs[_MIDPOINT_FACTOR_SOCKET],
+        (720, -720),
+        label=_CURVE_WIDTH_LABEL + "Split",
+        width_curve_outputs=(
+            gin.outputs[_WIDTH_CURVE_25_SOCKET],
+            gin.outputs[_WIDTH_CURVE_50_SOCKET],
+            gin.outputs[_WIDTH_CURVE_75_SOCKET],
+        ),
+        jitter_output=gin.outputs[_MIDPOINT_JITTER_SOCKET],
+        angle_split_min_segment_fraction=0.04,
+        angle_split_confirmation_offset=1,
+    )
 
     store_curve_width = nodes.new("GeometryNodeStoreNamedAttribute")
     store_curve_width.location = (720, -240)
     store_curve_width.data_type = "FLOAT"
     store_curve_width.domain = "POINT"
     store_curve_width.inputs["Name"].default_value = _CURVE_WIDTH_LABEL
-    links.new(curve_points.outputs["Points"], store_curve_width.inputs["Geometry"])
+    links.new(curves, store_curve_width.inputs["Geometry"])
     links.new(scale, store_curve_width.inputs["Value"])
+
+    curve_points = nodes.new("GeometryNodeCurveToPoints")
+    curve_points.location = (960, -420)
+    if hasattr(curve_points, "mode"):
+        curve_points.mode = "COUNT"
+    count_input = curve_points.inputs.get("Count")
+    if count_input is not None:
+        count_input.default_value = _RESAMPLE_COUNT
+    links.new(store_curve_width.outputs["Geometry"], curve_points.inputs["Curve"])
 
     position = nodes.new("GeometryNodeInputPosition")
     position.location = (720, 120)
 
     sample_nearest = nodes.new("GeometryNodeSampleNearest")
     sample_nearest.location = (1160, -160)
-    links.new(store_curve_width.outputs["Geometry"], sample_nearest.inputs["Geometry"])
+    links.new(curve_points.outputs["Points"], sample_nearest.inputs["Geometry"])
     links.new(position.outputs["Position"], sample_nearest.inputs["Sample Position"])
 
     curve_width_attr = nodes.new("GeometryNodeInputNamedAttribute")
@@ -301,7 +266,7 @@ def _create_node_tree() -> bpy.types.NodeTree:
     sample_width = nodes.new("GeometryNodeSampleIndex")
     sample_width.location = (1380, -360)
     sample_width.data_type = "FLOAT"
-    links.new(store_curve_width.outputs["Geometry"], sample_width.inputs["Geometry"])
+    links.new(curve_points.outputs["Points"], sample_width.inputs["Geometry"])
     links.new(curve_width_attr.outputs["Attribute"], sample_width.inputs["Value"])
     links.new(sample_nearest.outputs["Index"], sample_width.inputs["Index"])
 

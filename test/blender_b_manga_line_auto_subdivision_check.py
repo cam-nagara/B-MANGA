@@ -107,6 +107,16 @@ def _assert_evaluated_outline_width_reaches_subsurf_points() -> None:
     )
     vertex_analysis.compute_and_apply_weights(obj, settings, "outline")
     outline_width_attribute.ensure_outline_width_attribute(obj, settings)
+    tree = outline_width_attribute.get_or_create_tree()
+    assert tree.name.startswith("BML_OutlineWidthAttributeV2")
+    assert any(
+        getattr(node, "label", "") == "BML_OutlineEvaluatedWidthSplit"
+        for node in tree.nodes
+    ), "アウトライン評価後線幅が検出角度で区間分割されていません"
+    assert not any(
+        node.bl_idname == "ShaderNodeMath" and getattr(node, "operation", "") == "MODULO"
+        for node in tree.nodes
+    ), "固定分割順だけで線幅を決める旧アウトライン処理が残っています"
     names = [mod.name for mod in obj.modifiers]
     assert core.OUTLINE_WIDTH_ATTR_MODIFIER_NAME in names, names
     assert names.index(core.OUTLINE_WIDTH_ATTR_MODIFIER_NAME) < names.index(core.MODIFIER_NAME)

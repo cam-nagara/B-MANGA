@@ -46,8 +46,9 @@ _CURVE_RADIUS_NORMALIZER_LABEL = "BML_IntersectionShellCurveRadius"
 _SHELL_COMBINED_THICKNESS_NODE_LABEL = "BML_IntersectionShellCombinedThickness"
 _SHELL_PROFILE_NODE_LABEL = "BML_IntersectionShellProfile"
 _SHELL_GAP_COVERAGE_NODE_LABEL = "BML_IntersectionShellGapCoverage"
-_SHELL_BRANCH_SPLIT_NODE_LABEL = "BML_IntersectionShellPathWidthV17"
-_SHELL_SUBDIVIDE_NODE_LABEL = "BML_IntersectionShellPathWidthV17Midpoints"
+_SHELL_BRANCH_SPLIT_NODE_LABEL = "BML_IntersectionShellPathWidthV18"
+_SHELL_SUBDIVIDE_NODE_LABEL = "BML_IntersectionShellPathWidthV18Midpoints"
+_SHELL_SPLIT_ATTR = "BML_IntersectionShellSplitV18"
 SHELL_TUBE_PROFILE_RESOLUTION = 12
 SHELL_GAP_COVERAGE_FACTOR = 1.08
 
@@ -322,17 +323,51 @@ def _create_node_tree() -> bpy.types.NodeTree:
     m2c.location = (900, -120)
     links.new(weld.outputs["Geometry"], m2c.inputs["Mesh"])
 
+    normalized_curve = _add_curve_radius_normalizer(
+        nodes, links, m2c.outputs["Curve"], (1040, -120),
+    )
+    split_marked_curve = (
+        intersection_shell_node_helpers.store_curve_midpoint_split_attribute(
+            nodes,
+            links,
+            normalized_curve,
+            gin.outputs[_MIDPOINT_ANGLE_SOCKET],
+            (1040, -900),
+            attribute_name=_SHELL_SPLIT_ATTR,
+            label=_SHELL_BRANCH_SPLIT_NODE_LABEL + "Angle",
+            # 端点候補は、細分化前の交差カーブ上に存在する実端・角だけにする。
+            # 後段の SubdivideCurve で増える補間点はこの属性を持たないため、
+            # 中間頂点の線幅補間用の点としてだけ使われる。
+            angle_split_min_segment_fraction=0.04,
+            angle_split_confirmation_offset=1,
+        )
+    )
+
     subdivide_curve = nodes.new("GeometryNodeSubdivideCurve")
     subdivide_curve.label = _SHELL_SUBDIVIDE_NODE_LABEL
-    subdivide_curve.location = (1040, -120)
+    subdivide_curve.location = (1260, -120)
     subdivide_curve.inputs["Cuts"].default_value = 1
-    links.new(m2c.outputs["Curve"], subdivide_curve.inputs["Curve"])
+    links.new(split_marked_curve, subdivide_curve.inputs["Curve"])
 
-    normalized_curve = _add_curve_radius_normalizer(
-        nodes, links, subdivide_curve.outputs["Curve"], (1180, -120),
+    scale = (
+        intersection_shell_node_helpers.add_curve_midpoint_width_scale_from_split_attribute(
+            nodes,
+            links,
+            subdivide_curve.outputs["Curve"],
+            gin.outputs[_MIDPOINT_FACTOR_SOCKET],
+            (1260, -900),
+            attribute_name=_SHELL_SPLIT_ATTR,
+            label=_SHELL_BRANCH_SPLIT_NODE_LABEL + "Stored",
+            width_curve_outputs=(
+                gin.outputs[_WIDTH_CURVE_25_SOCKET],
+                gin.outputs[_WIDTH_CURVE_50_SOCKET],
+                gin.outputs[_WIDTH_CURVE_75_SOCKET],
+            ),
+            jitter_output=gin.outputs[_MIDPOINT_JITTER_SOCKET],
+        )
     )
     join = _add_shell_tube_nodes(
-        nodes, links, normalized_curve, gin, radius, x_offset=1340,
+        nodes, links, subdivide_curve.outputs["Curve"], gin, radius, scale, x_offset=1460,
     )
     links.new(join.outputs[0], gout.inputs[0])
     return tree
@@ -414,29 +449,7 @@ def _add_curve_radius_normalizer(nodes, links, curve_output, loc):
     return set_radius.outputs["Curve"]
 
 
-def _add_shell_tube_nodes(nodes, links, curve_output, gin, radius_output, x_offset=0):
-    scale = intersection_shell_node_helpers.add_curve_midpoint_width_scale(
-        nodes,
-        links,
-        curve_output,
-        gin.outputs[_MIDPOINT_ANGLE_SOCKET],
-        gin.outputs[_MIDPOINT_FACTOR_SOCKET],
-        (x_offset - 260, -820),
-        label=_SHELL_BRANCH_SPLIT_NODE_LABEL + "Angle",
-        width_curve_outputs=(
-            gin.outputs[_WIDTH_CURVE_25_SOCKET],
-            gin.outputs[_WIDTH_CURVE_50_SOCKET],
-            gin.outputs[_WIDTH_CURVE_75_SOCKET],
-        ),
-        jitter_output=gin.outputs[_MIDPOINT_JITTER_SOCKET],
-        # Boolean/subdivision contact curves can contain many tiny bends that are
-        # not user-visible corners. A corner is accepted only when a longer
-        # neighborhood agrees, so real bends become endpoints while contact
-        # fragments and interpolation points are ignored.
-        angle_split_min_segment_fraction=0.10,
-        angle_split_confirmation_offset=5,
-    )
-
+def _add_shell_tube_nodes(nodes, links, curve_output, gin, radius_output, scale, x_offset=0):
     circle = nodes.new("GeometryNodeCurvePrimitiveCircle")
     circle.label = _SHELL_PROFILE_NODE_LABEL
     circle.location = (x_offset + 0, -550)

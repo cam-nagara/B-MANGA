@@ -3,6 +3,42 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-05 — 中間頂点の端点判定を細分化前に固定 (B-MANGA Line v0.3.111)
+
+### 症状
+
+- サブディビジョンサーフェスを有効にした交差線で、端だけ太く、その直後から急に細い一定線幅になることがあった。
+- 交差線や内部線が小刻みにガタついて見える場合があり、補間で増えた頂点まで端点として扱っているように見えることがあった。
+- 自動サブディビジョン時のアウトライン評価後線幅が、検出角度で分割された1本ごとの区間ではなく、固定分割順に寄った線幅変化になる可能性があった。
+
+### 原因
+
+- 交差線の中間頂点端点判定を、カーブ細分化後の点列に対して行っていたため、サブディビジョンや補間で増えた点が端点候補へ混ざり得た。
+- アウトラインの評価後線幅用ノードは検出角度を受け取っていたが、実際の区間分割には使わず、固定数で再サンプルした点列の順番で線幅を決めていた。
+
+### 修正
+
+- 交差線は、細分化前のカーブ上で実端・検出角度未満の角を端点候補として保存し、細分化後は保存済みの端点だけを線幅変化区間の端として扱うようにした。
+- サブディビジョンや補間で増えた点は、端点ではなく、端点から中間点まで線幅をなだらかに補間するための点として扱うようにした。
+- アウトラインの評価後線幅も、検出角度で分割された区間ごとに端点から中間点へ連続変化するノードへ更新した。
+- 中間頂点用サブディビジョンの設計意図を、カトマルクラーク + クリースで基本形状を保ち、補間点を端点扱いしない仕様として明文化した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_intersection_shell_method_check.py`
+- `test/blender_b_manga_line_auto_subdivision_check.py`
+- `test/blender_b_manga_line_midpoint_targets_check.py`
+- `test/blender_b_manga_line_inner_branch_endpoint_check.py`
+- `test/blender_b_manga_line_subdivision_level_sync_check.py`
+- `test/blender_b_manga_line_midpoint_jitter_check.py`
+- `test/blender_b_manga_line_inner_width_check.py`
+- `test/blender_b_manga_line_full_visual_audit_check.py`
+- `_verify/2026-07-05_bml_intersection_subsurf_midpoint/intersection_midpoint_subsurf_level2.png`
+- `_verify/2026-07-05_bml_intersection_subsurf_midpoint/test_line04_intersection_level2.png`
+- `_verify/2026-07-05_bml_intersection_subsurf_midpoint/test_line04_intersection_level2_lines_only.png`
+
+---
+
 ## 2026-07-05 — 評価後アウトライン線幅と既存Subsurf修復を追加 (B-MANGA Line v0.3.110)
 
 ### 症状

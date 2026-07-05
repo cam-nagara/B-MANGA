@@ -134,7 +134,7 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
         (
             node
             for node in tree.nodes
-            if getattr(node, "label", "") == "BML_IntersectionShellPathWidthV17Midpoints"
+            if getattr(node, "label", "") == intersection_shell._SHELL_SUBDIVIDE_NODE_LABEL
         ),
         None,
     )
@@ -148,31 +148,44 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
                 and node.data_type == "FLOAT"
                 and node.operation == "GREATER_THAN"
                 and getattr(node, "label", "") == (
-                    "BML_IntersectionShellPathWidthV17Angle"
+                    intersection_shell._SHELL_BRANCH_SPLIT_NODE_LABEL + "Angle"
                 )
             )
         ),
         None,
     )
     assert angle_compare is not None
-    angle_confirm = next(
+    split_store = next(
         (
             node for node in tree.nodes
             if (
-                node.bl_idname == "FunctionNodeCompare"
-                and node.data_type == "FLOAT"
-                and node.operation == "GREATER_THAN"
+                node.bl_idname == "GeometryNodeStoreNamedAttribute"
                 and getattr(node, "label", "") == (
-                    "BML_IntersectionShellPathWidthV17AngleConfirm"
+                    intersection_shell._SHELL_BRANCH_SPLIT_NODE_LABEL + "AngleStore"
                 )
             )
         ),
         None,
     )
-    assert angle_confirm is not None, "交差線の角端点判定に確認用の近傍判定がありません"
+    assert split_store is not None, "交差線の端点候補を細分化前に保存していません"
+    assert split_store.data_type == "FLOAT"
+    assert split_store.inputs["Name"].default_value == intersection_shell._SHELL_SPLIT_ATTR
+    split_read = next(
+        (
+            node for node in tree.nodes
+            if (
+                node.bl_idname == "GeometryNodeInputNamedAttribute"
+                and node.data_type == "FLOAT"
+                and node.inputs["Name"].default_value == intersection_shell._SHELL_SPLIT_ATTR
+            )
+        ),
+        None,
+    )
+    assert split_read is not None, "保存済み端点候補を線幅補間へ渡していません"
     assert not any(
         str(getattr(node, "label", "")).startswith("BML_IntersectionShellPathWidthV15")
         or str(getattr(node, "label", "")).startswith("BML_IntersectionShellPathWidthV16")
+        or str(getattr(node, "label", "")).startswith("BML_IntersectionShellPathWidthV17")
         for node in tree.nodes
     ), "旧世代の交差線中間頂点ノードが残っています"
     assert any(

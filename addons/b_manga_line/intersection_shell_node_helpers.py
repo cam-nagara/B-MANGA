@@ -760,3 +760,331 @@ def add_curve_midpoint_width_scale(
         (x + 6280, y + 40),
         width_curve_outputs=width_curve_outputs,
     )
+
+
+def store_curve_midpoint_split_attribute(
+    nodes,
+    links,
+    curve_output,
+    angle_output,
+    loc,
+    *,
+    attribute_name: str,
+    label: str,
+    angle_split_min_segment_fraction: float = _ANGLE_SPLIT_MIN_SEGMENT_FRACTION,
+    angle_split_confirmation_offset: int = 1,
+):
+    """Mark only original curve points that can split midpoint-width segments."""
+    x, y = loc
+    index = nodes.new("GeometryNodeInputIndex")
+    index.location = (x, y + 520)
+    position = nodes.new("GeometryNodeInputPosition")
+    position.location = (x, y + 360)
+    spline = nodes.new("GeometryNodeSplineParameter")
+    spline.location = (x, y + 160)
+
+    angle_cos = _math(nodes, "COSINE", (x + 180, y + 220))
+    links.new(angle_output, angle_cos.inputs[0])
+    min_segment_length = _math(
+        nodes,
+        "MULTIPLY",
+        (x + 180, y + 20),
+        value1=max(0.0, float(angle_split_min_segment_fraction)),
+    )
+    links.new(spline.outputs["Length"], min_segment_length.inputs[0])
+
+    angle_split = _curve_point_split_from_offsets(
+        nodes,
+        links,
+        curve_output,
+        position.outputs["Position"],
+        index.outputs["Index"],
+        -1,
+        0,
+        1,
+        angle_cos.outputs[0],
+        min_segment_length.outputs[0],
+        (x + 360, y + 400),
+        label=label,
+        include_endpoints=False,
+    )
+
+    confirm_offset = max(1, int(angle_split_confirmation_offset))
+    if confirm_offset > 1:
+        confirmed_angle_split = _curve_point_split_from_offsets(
+            nodes,
+            links,
+            curve_output,
+            position.outputs["Position"],
+            index.outputs["Index"],
+            -confirm_offset,
+            0,
+            confirm_offset,
+            angle_cos.outputs[0],
+            min_segment_length.outputs[0],
+            (x + 360, y + 40),
+            label=label + "Confirm",
+            include_endpoints=False,
+        )
+        angle_split = _bool_and(
+            nodes,
+            links,
+            angle_split,
+            confirmed_angle_split,
+            (x + 2040, y + 520),
+        )
+
+    endpoint_split = _curve_point_split_from_offsets(
+        nodes,
+        links,
+        curve_output,
+        position.outputs["Position"],
+        index.outputs["Index"],
+        -1,
+        0,
+        1,
+        angle_cos.outputs[0],
+        min_segment_length.outputs[0],
+        (x + 360, y - 320),
+        label=label + "Endpoint",
+        include_endpoints=True,
+        include_angle=False,
+    )
+    current_split = _bool_or(
+        nodes,
+        links,
+        angle_split,
+        endpoint_split,
+        (x + 2240, y + 520),
+    )
+
+    spline_start = nodes.new("FunctionNodeCompare")
+    spline_start.location = (x + 2440, y + 420)
+    spline_start.data_type = "FLOAT"
+    spline_start.operation = "LESS_EQUAL"
+    spline_start.inputs[1].default_value = 0.000001
+    links.new(spline.outputs["Factor"], spline_start.inputs[0])
+    effective_split = _bool_or(
+        nodes,
+        links,
+        current_split,
+        spline_start.outputs[0],
+        (x + 2640, y + 420),
+    )
+
+    split_value = _float_switch_value(
+        nodes,
+        links,
+        effective_split,
+        1.0,
+        0.0,
+        (x + 2860, y + 420),
+    )
+    split_accumulate = nodes.new("GeometryNodeAccumulateField")
+    split_accumulate.location = (x + 3060, y + 420)
+    split_accumulate.data_type = "FLOAT"
+    split_accumulate.domain = "POINT"
+    links.new(split_value, split_accumulate.inputs["Value"])
+    links.new(spline.outputs["Index"], split_accumulate.inputs["Group ID"])
+    split_index = _math(nodes, "SUBTRACT", (x + 3280, y + 420), value1=1.0)
+    links.new(split_accumulate.outputs["Leading"], split_index.inputs[0])
+
+    sentinel = nodes.new("ShaderNodeValue")
+    sentinel.location = (x + 3280, y + 220)
+    sentinel.outputs[0].default_value = -0.37
+    split_key = _switch_float(
+        nodes,
+        links,
+        effective_split,
+        split_index.outputs[0],
+        sentinel.outputs[0],
+        (x + 3500, y + 320),
+    )
+
+    store = nodes.new("GeometryNodeStoreNamedAttribute")
+    store.label = label + "Store"
+    store.location = (x + 3720, y + 180)
+    store.data_type = "FLOAT"
+    store.domain = "POINT"
+    store.inputs["Name"].default_value = attribute_name
+    links.new(curve_output, store.inputs["Geometry"])
+    links.new(split_key, store.inputs["Value"])
+    return store.outputs["Geometry"]
+
+
+def add_curve_midpoint_width_scale_from_split_attribute(
+    nodes,
+    links,
+    curve_output,
+    factor_output,
+    loc,
+    *,
+    attribute_name: str,
+    label: str,
+    width_curve_outputs=None,
+    jitter_output=None,
+):
+    """Return a width scale field using pre-marked split points only."""
+    x, y = loc
+    index = nodes.new("GeometryNodeInputIndex")
+    index.location = (x, y + 520)
+    position = nodes.new("GeometryNodeInputPosition")
+    position.location = (x, y + 360)
+    spline = nodes.new("GeometryNodeSplineParameter")
+    spline.location = (x, y + 160)
+
+    split_attr = nodes.new("GeometryNodeInputNamedAttribute")
+    split_attr.location = (x + 360, y + 440)
+    split_attr.data_type = "FLOAT"
+    split_attr.inputs["Name"].default_value = attribute_name
+
+    rounded_key = _math(nodes, "ROUND", (x + 560, y + 520))
+    links.new(split_attr.outputs["Attribute"], rounded_key.inputs[0])
+    key_delta = _math(nodes, "SUBTRACT", (x + 760, y + 520))
+    links.new(split_attr.outputs["Attribute"], key_delta.inputs[0])
+    links.new(rounded_key.outputs[0], key_delta.inputs[1])
+    abs_delta = _math(nodes, "ABSOLUTE", (x + 960, y + 520))
+    links.new(key_delta.outputs[0], abs_delta.inputs[0])
+    key_is_integer = nodes.new("FunctionNodeCompare")
+    key_is_integer.location = (x + 1160, y + 520)
+    key_is_integer.data_type = "FLOAT"
+    key_is_integer.operation = "LESS_THAN"
+    key_is_integer.inputs[1].default_value = 0.001
+    links.new(abs_delta.outputs[0], key_is_integer.inputs[0])
+
+    key_non_negative = nodes.new("FunctionNodeCompare")
+    key_non_negative.location = (x + 1160, y + 360)
+    key_non_negative.data_type = "FLOAT"
+    key_non_negative.operation = "GREATER_EQUAL"
+    key_non_negative.inputs[1].default_value = -0.001
+    links.new(split_attr.outputs["Attribute"], key_non_negative.inputs[0])
+
+    valid_key = _bool_and(
+        nodes,
+        links,
+        key_is_integer.outputs[0],
+        key_non_negative.outputs[0],
+        (x + 1360, y + 440),
+    )
+    split_marked = _bool_and(
+        nodes,
+        links,
+        split_attr.outputs["Exists"],
+        valid_key,
+        (x + 1560, y + 440),
+    )
+
+    spline_start = nodes.new("FunctionNodeCompare")
+    spline_start.location = (x + 1760, y + 420)
+    spline_start.data_type = "FLOAT"
+    spline_start.operation = "LESS_EQUAL"
+    spline_start.inputs[1].default_value = 0.000001
+    links.new(spline.outputs["Factor"], spline_start.inputs[0])
+    effective_split = _bool_or(
+        nodes,
+        links,
+        split_marked,
+        spline_start.outputs[0],
+        (x + 1960, y + 420),
+    )
+    split_value = _float_switch_value(
+        nodes,
+        links,
+        effective_split,
+        1.0,
+        0.0,
+        (x + 2160, y + 420),
+    )
+    split_accumulate = nodes.new("GeometryNodeAccumulateField")
+    split_accumulate.location = (x + 2360, y + 420)
+    split_accumulate.data_type = "FLOAT"
+    split_accumulate.domain = "POINT"
+    links.new(split_value, split_accumulate.inputs["Value"])
+    links.new(spline.outputs["Index"], split_accumulate.inputs["Group ID"])
+    segment_id = _math(nodes, "SUBTRACT", (x + 2580, y + 420))
+    links.new(split_accumulate.outputs["Leading"], segment_id.inputs[0])
+    links.new(split_value, segment_id.inputs[1])
+
+    prev = _offset_point(nodes, links, index.outputs["Index"], -1, (x + 360, y + 120))
+    prev_pos = _sample_curve_position(
+        nodes,
+        links,
+        curve_output,
+        position.outputs["Position"],
+        prev.outputs["Point Index"],
+        (x + 560, y + 120),
+    )
+    dist = nodes.new("ShaderNodeVectorMath")
+    dist.location = (x + 760, y + 120)
+    dist.operation = "DISTANCE"
+    links.new(position.outputs["Position"], dist.inputs[0])
+    links.new(prev_pos, dist.inputs[1])
+    invalid_prev = _bool_not(
+        nodes,
+        links,
+        prev.outputs["Is Valid Offset"],
+        (x + 760, y - 40),
+    )
+    segment_start = _bool_or(
+        nodes,
+        links,
+        invalid_prev,
+        spline_start.outputs[0],
+        (x + 960, y + 40),
+    )
+    segment_step = _switch_float(
+        nodes,
+        links,
+        segment_start,
+        _value_or_socket(nodes, links, None, 0.0, (x + 960, y - 160)),
+        dist.outputs["Value"],
+        (x + 1180, y + 120),
+    )
+    distance_accumulate = nodes.new("GeometryNodeAccumulateField")
+    distance_accumulate.location = (x + 1380, y + 120)
+    distance_accumulate.data_type = "FLOAT"
+    distance_accumulate.domain = "POINT"
+    links.new(segment_step, distance_accumulate.inputs["Value"])
+    links.new(segment_id.outputs[0], distance_accumulate.inputs["Group ID"])
+    total_safe = _math(nodes, "MAXIMUM", (x + 1600, y + 40), value1=0.000001)
+    links.new(distance_accumulate.outputs["Total"], total_safe.inputs[0])
+    local_factor = _math(nodes, "DIVIDE", (x + 1820, y + 120))
+    links.new(distance_accumulate.outputs["Leading"], local_factor.inputs[0])
+    links.new(total_safe.outputs[0], local_factor.inputs[1])
+    local_min = _math(nodes, "MAXIMUM", (x + 2040, y + 120), value1=0.0)
+    links.new(local_factor.outputs[0], local_min.inputs[0])
+    local_max = _math(nodes, "MINIMUM", (x + 2260, y + 120), value1=1.0)
+    links.new(local_min.outputs[0], local_max.inputs[0])
+
+    continuous_weight = _add_jittered_midpoint_factor_from_output(
+        nodes,
+        links,
+        spline,
+        jitter_output,
+        x + 3140,
+        jitter_center_label=label + "Center",
+        y_offset=y + 60,
+        factor_output=local_max.outputs[0],
+        random_id_output=segment_id.outputs[0],
+    )
+    zero = nodes.new("ShaderNodeValue")
+    zero.location = (x + 4160, y - 260)
+    zero.outputs[0].default_value = 0.0
+
+    center_weight = _switch_float(
+        nodes,
+        links,
+        effective_split,
+        zero.outputs[0],
+        continuous_weight,
+        (x + 4380, y + 40),
+    )
+
+    return _scale_from_center_weight(
+        nodes,
+        links,
+        center_weight,
+        factor_output,
+        (x + 4600, y + 40),
+        width_curve_outputs=width_curve_outputs,
+    )
