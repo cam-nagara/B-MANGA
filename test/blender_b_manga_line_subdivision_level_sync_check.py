@@ -167,6 +167,41 @@ def _assert_intersection_proxy_levels_sync() -> None:
     assert int(proxy_mod.render_levels) == 1
 
 
+def _assert_manual_subsurf_proxy_levels_sync() -> None:
+    source = _make_cube("A_manual_subsurf_source", (-0.25, 0.0, 0.0))
+    target = _make_cube("B_manual_subsurf_target", (0.25, 0.0, 0.0))
+    manual = target.modifiers.new("User_Subdivision_Surface", "SUBSURF")
+    manual.levels = 2
+    manual.render_levels = 4
+
+    outline_setup.apply_outline(source, thickness=0.03, color=(0.0, 0.0, 0.0, 1.0))
+    outline_setup.apply_outline(target, thickness=0.03, color=(0.0, 0.0, 0.0, 1.0))
+    assert intersection_lines.apply_intersection_lines(
+        source,
+        target=target,
+        thickness=0.03,
+        material=outline_setup.get_line_material(source, "intersection"),
+        scene=bpy.context.scene,
+    )
+
+    proxy = _proxy_for_target(target)
+    copied = [
+        mod for mod in proxy.modifiers
+        if mod.type == "SUBSURF" and mod.name.startswith("BML_ProxySubsurf_")
+    ]
+    assert len(copied) == 1, [mod.name for mod in proxy.modifiers]
+    proxy_mod = copied[0]
+    assert int(proxy_mod.levels) == 2
+    assert int(proxy_mod.render_levels) == 4
+
+    manual.levels = 1
+    manual.render_levels = 3
+    changed = intersection_shell.sync_proxy_subdivision_for_target(target)
+    assert changed == 1
+    assert int(proxy_mod.levels) == 1
+    assert int(proxy_mod.render_levels) == 3
+
+
 def _assert_match_viewport_checkbox_restores_zero() -> None:
     obj = _make_cube("ビューポート段数チェックボックス", (0.0, 0.0, 0.0))
     mod = _auto_mod(obj)
@@ -196,6 +231,8 @@ def main() -> None:
         _assert_inner_lines_do_not_follow_subdivision_grid()
         _clear_scene()
         _assert_intersection_proxy_levels_sync()
+        _clear_scene()
+        _assert_manual_subsurf_proxy_levels_sync()
         _clear_scene()
         _assert_match_viewport_checkbox_restores_zero()
         print("[PASS] subdivision levels sync to inner/intersection lines", flush=True)

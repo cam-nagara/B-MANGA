@@ -112,6 +112,10 @@ def auto_subsurf_modifier(obj: bpy.types.Object) -> bpy.types.Modifier | None:
     return None
 
 
+def has_subsurf_modifier(obj: bpy.types.Object) -> bool:
+    return any(mod.type == "SUBSURF" for mod in obj.modifiers)
+
+
 def _ensure_crease_attribute(mesh: bpy.types.Mesh):
     attr = mesh.attributes.get(CREASE_EDGE_ATTR)
     if attr is None:
@@ -194,6 +198,12 @@ def remove_auto_subdivision(obj: bpy.types.Object) -> bool:
     if AUTO_SUBSURF_CREASE_EDGES_PROP in obj:
         del obj[AUTO_SUBSURF_CREASE_EDGES_PROP]
     sync_generated_line_subdivision(obj)
+    try:
+        from . import intersection_shell
+
+        intersection_shell.sync_proxy_subdivision_for_target(obj)
+    except Exception:  # noqa: BLE001 - 交差線プロキシが無い場合も通常操作を止めない
+        pass
     return removed
 
 
@@ -323,7 +333,7 @@ def _on_depsgraph_update(_scene, depsgraph=None):
     for update in getattr(depsgraph, "updates", ()):
         item = getattr(update, "id", None)
         if isinstance(item, bpy.types.Object) and item.type == "MESH":
-            if auto_subsurf_modifier(item) is not None:
+            if has_subsurf_modifier(item):
                 _queue_sync(item)
 
 

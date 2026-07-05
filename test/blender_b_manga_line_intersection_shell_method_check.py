@@ -134,7 +134,7 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
         (
             node
             for node in tree.nodes
-            if getattr(node, "label", "") == "BML_IntersectionShellPathWidthV16Midpoints"
+            if getattr(node, "label", "") == "BML_IntersectionShellPathWidthV17Midpoints"
         ),
         None,
     )
@@ -148,7 +148,7 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
                 and node.data_type == "FLOAT"
                 and node.operation == "GREATER_THAN"
                 and getattr(node, "label", "") == (
-                    "BML_IntersectionShellPathWidthV16Angle"
+                    "BML_IntersectionShellPathWidthV17Angle"
                 )
             )
         ),
@@ -163,7 +163,7 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
                 and node.data_type == "FLOAT"
                 and node.operation == "GREATER_THAN"
                 and getattr(node, "label", "") == (
-                    "BML_IntersectionShellPathWidthV16AngleConfirm"
+                    "BML_IntersectionShellPathWidthV17AngleConfirm"
                 )
             )
         ),
@@ -172,6 +172,7 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
     assert angle_confirm is not None, "交差線の角端点判定に確認用の近傍判定がありません"
     assert not any(
         str(getattr(node, "label", "")).startswith("BML_IntersectionShellPathWidthV15")
+        or str(getattr(node, "label", "")).startswith("BML_IntersectionShellPathWidthV16")
         for node in tree.nodes
     ), "旧世代の交差線中間頂点ノードが残っています"
     assert any(

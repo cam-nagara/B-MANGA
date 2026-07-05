@@ -3,6 +3,37 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-05 — 通常サブディビジョンサーフェスへの交差線追従を修正 (B-MANGA Line v0.3.108)
+
+### 症状
+
+- 自動追加した中間頂点用サブディビジョンではなく、ユーザーが通常のサブディビジョンサーフェスを追加・変更した場合、交差線の参照形状がその段数に追従しないことがあった。
+- 保存済みファイル内の交差線ノードでは、サブディビジョンやブーリアン由来の細かい補間点を、中間頂点の線幅調整の端点として拾いやすい設定が残る可能性があった。
+
+### 原因
+
+- 交差線の参照用プロキシが、自動追加した中間頂点用サブディビジョンだけを複製し、通常のサブディビジョンサーフェスを複製していなかった。
+- サブディビジョン変更の同期トリガーも、自動追加した中間頂点用サブディビジョンがある場合に偏っていた。
+- 交差線の角端点判定ノードは更新済みでも、保存済み `.blend` 内の旧ノードグループを必ず再構築する世代判定が不足していた。
+
+### 修正
+
+- 交差線の参照用プロキシへ、対象オブジェクト上のすべてのサブディビジョンサーフェスを複製し、ビューポートのレベル数・レンダー・表示状態を同期するようにした。
+- サブディビジョンサーフェスを持つメッシュの更新時は、交差線プロキシと生成線の同期を予約するようにした。
+- 交差線の中間頂点端点判定を、より長い近傍と最小区間長で確認する新世代ノードへ更新し、保存済みファイルでも旧ノードが残らないようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_subdivision_level_sync_check.py`
+- `test/blender_b_manga_line_intersection_shell_method_check.py`
+- `test/blender_b_manga_line_midpoint_targets_check.py`
+- `test/blender_b_manga_line_full_visual_audit_check.py`
+- `test/blender_b_manga_line_sheet_and_proxy_follow_check.py`
+- `_verify/2026-07-05_bml_goal_run/test_line04_projected_geometry.png`
+- `_verify/2026-07-05_bml_goal_run/goal_intersection_box_cone_plane.png`
+
+---
+
 ## 2026-07-05 — 交差線の角端点判定を確認付きに修正 (B-MANGA Line v0.3.107)
 
 ### 症状

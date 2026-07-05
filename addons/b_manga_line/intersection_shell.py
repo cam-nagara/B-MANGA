@@ -46,8 +46,8 @@ _CURVE_RADIUS_NORMALIZER_LABEL = "BML_IntersectionShellCurveRadius"
 _SHELL_COMBINED_THICKNESS_NODE_LABEL = "BML_IntersectionShellCombinedThickness"
 _SHELL_PROFILE_NODE_LABEL = "BML_IntersectionShellProfile"
 _SHELL_GAP_COVERAGE_NODE_LABEL = "BML_IntersectionShellGapCoverage"
-_SHELL_BRANCH_SPLIT_NODE_LABEL = "BML_IntersectionShellPathWidthV16"
-_SHELL_SUBDIVIDE_NODE_LABEL = "BML_IntersectionShellPathWidthV16Midpoints"
+_SHELL_BRANCH_SPLIT_NODE_LABEL = "BML_IntersectionShellPathWidthV17"
+_SHELL_SUBDIVIDE_NODE_LABEL = "BML_IntersectionShellPathWidthV17Midpoints"
 SHELL_TUBE_PROFILE_RESOLUTION = 12
 SHELL_GAP_COVERAGE_FACTOR = 1.08
 
@@ -430,11 +430,11 @@ def _add_shell_tube_nodes(nodes, links, curve_output, gin, radius_output, x_offs
         ),
         jitter_output=gin.outputs[_MIDPOINT_JITTER_SOCKET],
         # Boolean/subdivision contact curves can contain many tiny bends that are
-        # not user-visible corners. A corner is accepted only when both the
-        # immediate point and a wider neighborhood agree, so real bends become
-        # endpoints while tiny contact-fragment wiggles are ignored.
-        angle_split_min_segment_fraction=0.04,
-        angle_split_confirmation_offset=3,
+        # not user-visible corners. A corner is accepted only when a longer
+        # neighborhood agrees, so real bends become endpoints while contact
+        # fragments and interpolation points are ignored.
+        angle_split_min_segment_fraction=0.10,
+        angle_split_confirmation_offset=5,
     )
 
     circle = nodes.new("GeometryNodeCurvePrimitiveCircle")
@@ -841,6 +841,7 @@ def _proxy_name(source: bpy.types.Object, target: bpy.types.Object) -> str:
 
 _PROXY_SOLIDIFY_NAME = "BML_ProxySolidify"
 _PROXY_SUBSURF_NAME = "BML_ProxyMidpointSubsurf"
+_PROXY_SUBSURF_PREFIX = "BML_ProxySubsurf_"
 _PROXY_BOUNDARY_SIGNATURE_PROP = "bml_proxy_boundary_signature"
 _PROXY_HAS_BOUNDARY_PROP = "bml_proxy_has_boundary"
 
@@ -889,35 +890,69 @@ def _sync_proxy_thickness(proxy: bpy.types.Object) -> None:
         proxy.modifiers.remove(mod)
 
 
+def _is_proxy_subsurf_modifier(mod: bpy.types.Modifier) -> bool:
+    return (
+        mod.type == "SUBSURF"
+        and (
+            mod.name == _PROXY_SUBSURF_NAME
+            or mod.name.startswith(_PROXY_SUBSURF_PREFIX)
+        )
+    )
+
+
+def _proxy_subsurf_name(source_mod: bpy.types.Modifier) -> str:
+    from . import subdivision_lod
+
+    if subdivision_lod.is_auto_subsurf_modifier(source_mod):
+        return _PROXY_SUBSURF_NAME
+    cleaned = "".join(
+        ch if ch.isalnum() else "_"
+        for ch in str(source_mod.name or "Subsurf")
+    ).strip("_") or "Subsurf"
+    return f"{_PROXY_SUBSURF_PREFIX}{cleaned[:42]}"
+
+
+def _copy_subsurf_settings(
+    proxy_mod: bpy.types.Modifier,
+    source_mod: bpy.types.Modifier,
+) -> None:
+    if hasattr(proxy_mod, "subdivision_type") and hasattr(source_mod, "subdivision_type"):
+        if proxy_mod.subdivision_type != source_mod.subdivision_type:
+            proxy_mod.subdivision_type = source_mod.subdivision_type
+    for prop_name in (
+        "levels",
+        "render_levels",
+        "quality",
+        "show_viewport",
+        "show_render",
+        "show_on_cage",
+        "show_in_editmode",
+    ):
+        if not hasattr(proxy_mod, prop_name) or not hasattr(source_mod, prop_name):
+            continue
+        value = getattr(source_mod, prop_name)
+        if getattr(proxy_mod, prop_name) != value:
+            setattr(proxy_mod, prop_name, value)
+
+
 def _sync_proxy_subdivision(
     proxy: bpy.types.Object,
     target: bpy.types.Object,
 ) -> None:
-    from . import subdivision_lod
+    expected_names: set[str] = set()
+    for source_mod in target.modifiers:
+        if source_mod.type != "SUBSURF":
+            continue
+        name = _proxy_subsurf_name(source_mod)
+        expected_names.add(name)
+        proxy_mod = proxy.modifiers.get(name)
+        if proxy_mod is None:
+            proxy_mod = proxy.modifiers.new(name, "SUBSURF")
+        _copy_subsurf_settings(proxy_mod, source_mod)
 
-    source_mod = subdivision_lod.auto_subsurf_modifier(target)
-    proxy_mod = proxy.modifiers.get(_PROXY_SUBSURF_NAME)
-    if source_mod is None:
-        if proxy_mod is not None:
+    for proxy_mod in list(proxy.modifiers):
+        if _is_proxy_subsurf_modifier(proxy_mod) and proxy_mod.name not in expected_names:
             proxy.modifiers.remove(proxy_mod)
-        return
-    if proxy_mod is None:
-        proxy_mod = proxy.modifiers.new(_PROXY_SUBSURF_NAME, "SUBSURF")
-    if hasattr(proxy_mod, "subdivision_type") and hasattr(source_mod, "subdivision_type"):
-        if proxy_mod.subdivision_type != source_mod.subdivision_type:
-            proxy_mod.subdivision_type = source_mod.subdivision_type
-    levels = int(getattr(source_mod, "levels", 0))
-    render_levels = int(getattr(source_mod, "render_levels", 0))
-    show_viewport = bool(getattr(source_mod, "show_viewport", True))
-    show_render = bool(getattr(source_mod, "show_render", True))
-    if proxy_mod.levels != levels:
-        proxy_mod.levels = levels
-    if proxy_mod.render_levels != render_levels:
-        proxy_mod.render_levels = render_levels
-    if proxy_mod.show_viewport != show_viewport:
-        proxy_mod.show_viewport = show_viewport
-    if proxy_mod.show_render != show_render:
-        proxy_mod.show_render = show_render
 
 
 def _get_or_create_proxy(
