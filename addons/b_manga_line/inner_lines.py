@@ -39,6 +39,8 @@ _EDGE_ANGLE_COMPARE_LABEL = "BML_InnerEdgeAngleCompareGE"
 _CHAIN_SELECTION_COMPARE_LABEL = "BML_InnerChainSelectionGE"
 _CHAIN_ANGLE_FILTER_LABEL = "BML_InnerChainAngleFilter"
 _CURVE_JITTER_CENTER_LABEL = "BML_InnerCurveJitterCenter"
+_SAFE_CURVE_SCALE_LABEL = "BML_InnerCurveSafeScale"
+_MIN_CURVE_TO_MESH_SCALE = 0.04
 _CHAIN_ID_ATTR = inner_line_chains.CHAIN_ID_ATTR
 _SHARP_EDGE_ATTR = "sharp_edge"
 _CREASE_EDGE_ATTR = "crease_edge"
@@ -546,6 +548,13 @@ def _create_node_tree() -> bpy.types.NodeTree:
     links.new(width_max.outputs[0], combined_scale.inputs[0])
     links.new(curve_scale, combined_scale.inputs[1])
 
+    safe_curve_scale = nodes.new("ShaderNodeMath")
+    safe_curve_scale.label = _SAFE_CURVE_SCALE_LABEL
+    safe_curve_scale.location = (940, 120)
+    safe_curve_scale.operation = "MAXIMUM"
+    safe_curve_scale.inputs[1].default_value = _MIN_CURVE_TO_MESH_SCALE
+    links.new(combined_scale.outputs[0], safe_curve_scale.inputs[0])
+
     # Curve Circle: チューブ断面
     circle = nodes.new("GeometryNodeCurvePrimitiveCircle")
     circle.location = (220, -400)
@@ -567,7 +576,7 @@ def _create_node_tree() -> bpy.types.NodeTree:
     links.new(resample.outputs["Curve"], c2m.inputs[0])  # Curve
     links.new(circle.outputs[0], c2m.inputs[1])  # Profile Curve
     if "Scale" in c2m.inputs:
-        links.new(combined_scale.outputs[0], c2m.inputs["Scale"])  # 頂点/線上位置ごとの太さ倍率
+        links.new(safe_curve_scale.outputs[0], c2m.inputs["Scale"])  # 頂点/線上位置ごとの太さ倍率
     if "Fill Caps" in c2m.inputs:
         c2m.inputs["Fill Caps"].default_value = True
 
@@ -684,6 +693,9 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
         if not any(getattr(n, "label", "") == _CURVE_JITTER_CENTER_LABEL for n in tree.nodes):
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
+        if not any(getattr(n, "label", "") == _SAFE_CURVE_SCALE_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
         if not _uses_named_attribute(tree, _CHAIN_ID_ATTR):

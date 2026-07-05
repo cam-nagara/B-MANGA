@@ -140,6 +140,20 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
     )
     assert midpoint is not None, "区間ごとの中心点を追加するノードがありません"
     assert midpoint.bl_idname == "GeometryNodeSubdivideCurve"
+    cuts_input = midpoint.inputs.get("Cuts")
+    assert cuts_input is not None
+    assert int(cuts_input.default_value) >= intersection_shell._SHELL_SUBDIVIDE_CUTS
+    safe_scale = next(
+        (
+            node for node in tree.nodes
+            if getattr(node, "label", "") == intersection_shell._SHELL_SAFE_SCALE_NODE_LABEL
+        ),
+        None,
+    )
+    assert safe_scale is not None, "交差線の極細部を安定化するノードがありません"
+    assert safe_scale.bl_idname == "ShaderNodeMath"
+    assert safe_scale.operation == "MAXIMUM"
+    assert 0.0 < float(safe_scale.inputs[1].default_value) <= 0.05
     angle_compare = next(
         (
             node for node in tree.nodes

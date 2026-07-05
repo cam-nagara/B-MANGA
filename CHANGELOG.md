@@ -3,6 +3,42 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-05 — 生成線の中間点細りを安定化 (B-MANGA Line v0.3.112)
+
+### 症状
+
+- v0.3.111 の修正後も、`test_line04.blend` では内部線と交差線の中間点付近で、線幅が細くなる箇所に欠けや急な段差が残っていた。
+- 交差線は、細分化前の端点判定自体は改善していても、区間内の補間点が少なく、太い線から細い線への変化が硬く見える場合があった。
+
+### 原因
+
+- 生成線の線幅倍率が完全に0になると、チューブ形状の断面が退化し、細り部分の表示が欠けやギザつきとして見えることがあった。
+- 交差線の区間内補間点が少なく、端点から中間点までの線幅変化が荒く見えることがあった。
+
+### 修正
+
+- 内部線と交差線は、見た目上ほぼ0幅を維持しつつ、チューブ形状が破綻しない最小倍率を生成線の断面にだけ適用するようにした。
+- 交差線の中間点用補間を増やし、端点・角・交差点から中間点へ線幅がより滑らかに変化するようにした。
+- 保存済みファイル内の旧交差線ノードを再構築するため、交差線の線幅ノード世代を更新した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `D:\TM Dropbox\Miura Tadahiro\Develop\B-MANGAテスト\test_line04.blend`
+- `_verify/2026-07-05_bml_line04_codex_repro/before_d988ad9_ui_mm_intersection_only.png`
+- `_verify/2026-07-05_bml_line04_codex_repro/after_ui_mm_outline_only.png`
+- `_verify/2026-07-05_bml_line04_codex_repro/after_ui_mm_inner_only.png`
+- `_verify/2026-07-05_bml_line04_codex_repro/after_ui_mm_intersection_only.png`
+- `test/blender_b_manga_line_inner_width_check.py`
+- `test/blender_b_manga_line_intersection_shell_method_check.py`
+- `test/blender_b_manga_line_midpoint_targets_check.py`
+- `test/blender_b_manga_line_midpoint_jitter_check.py`
+- `test/blender_b_manga_line_inner_branch_endpoint_check.py`
+- `test/blender_b_manga_line_subdivision_level_sync_check.py`
+- `test/blender_b_manga_line_inner_angle_threshold_check.py`
+- `python -m py_compile addons\b_manga_line\inner_lines.py addons\b_manga_line\intersection_shell.py addons\b_manga_line\subdivision_lod.py test\blender_b_manga_line_intersection_shell_method_check.py`
+
+---
+
 ## 2026-07-05 — 中間頂点の端点判定を細分化前に固定 (B-MANGA Line v0.3.111)
 
 ### 症状

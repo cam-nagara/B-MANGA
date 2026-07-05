@@ -46,9 +46,12 @@ _CURVE_RADIUS_NORMALIZER_LABEL = "BML_IntersectionShellCurveRadius"
 _SHELL_COMBINED_THICKNESS_NODE_LABEL = "BML_IntersectionShellCombinedThickness"
 _SHELL_PROFILE_NODE_LABEL = "BML_IntersectionShellProfile"
 _SHELL_GAP_COVERAGE_NODE_LABEL = "BML_IntersectionShellGapCoverage"
-_SHELL_BRANCH_SPLIT_NODE_LABEL = "BML_IntersectionShellPathWidthV18"
-_SHELL_SUBDIVIDE_NODE_LABEL = "BML_IntersectionShellPathWidthV18Midpoints"
-_SHELL_SPLIT_ATTR = "BML_IntersectionShellSplitV18"
+_SHELL_BRANCH_SPLIT_NODE_LABEL = "BML_IntersectionShellPathWidthV19"
+_SHELL_SUBDIVIDE_NODE_LABEL = "BML_IntersectionShellPathWidthV19Midpoints"
+_SHELL_SPLIT_ATTR = "BML_IntersectionShellSplitV19"
+_SHELL_SUBDIVIDE_CUTS = 3
+_SHELL_SAFE_SCALE_NODE_LABEL = "BML_IntersectionShellSafeScale"
+_MIN_CURVE_TO_MESH_SCALE = 0.04
 SHELL_TUBE_PROFILE_RESOLUTION = 12
 SHELL_GAP_COVERAGE_FACTOR = 1.08
 
@@ -346,7 +349,7 @@ def _create_node_tree() -> bpy.types.NodeTree:
     subdivide_curve = nodes.new("GeometryNodeSubdivideCurve")
     subdivide_curve.label = _SHELL_SUBDIVIDE_NODE_LABEL
     subdivide_curve.location = (1260, -120)
-    subdivide_curve.inputs["Cuts"].default_value = 1
+    subdivide_curve.inputs["Cuts"].default_value = _SHELL_SUBDIVIDE_CUTS
     links.new(split_marked_curve, subdivide_curve.inputs["Curve"])
 
     scale = (
@@ -464,7 +467,13 @@ def _add_shell_tube_nodes(nodes, links, curve_output, gin, radius_output, scale,
     links.new(curve_output, c2m.inputs["Curve"])
     links.new(circle.outputs["Curve"], c2m.inputs["Profile Curve"])
     if "Scale" in c2m.inputs:
-        links.new(scale, c2m.inputs["Scale"])
+        safe_scale = nodes.new("ShaderNodeMath")
+        safe_scale.label = _SHELL_SAFE_SCALE_NODE_LABEL
+        safe_scale.location = (x_offset + 0, -300)
+        safe_scale.operation = "MAXIMUM"
+        safe_scale.inputs[1].default_value = _MIN_CURVE_TO_MESH_SCALE
+        links.new(scale, safe_scale.inputs[0])
+        links.new(safe_scale.outputs[0], c2m.inputs["Scale"])
     if "Fill Caps" in c2m.inputs:
         c2m.inputs["Fill Caps"].default_value = True
 
@@ -631,6 +640,10 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
             # 追加したため、v0.3.80ツリーも再構築する。
             and any(
                 getattr(node, "label", "") == _SHELL_GAP_COVERAGE_NODE_LABEL
+                for node in tree.nodes
+            )
+            and any(
+                getattr(node, "label", "") == _SHELL_SAFE_SCALE_NODE_LABEL
                 for node in tree.nodes
             )
         )
