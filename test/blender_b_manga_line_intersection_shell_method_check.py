@@ -234,6 +234,22 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
         node.bl_idname == "GeometryNodeMergeByDistance"
         for node in tree.nodes
     )
+    contact_offset = next(
+        (
+            node for node in tree.nodes
+            if getattr(node, "label", "") == intersection_shell._SHELL_CONTACT_OFFSET_NODE_LABEL
+        ),
+        None,
+    )
+    assert contact_offset is not None, "固定微小値で接触判定するノードがありません"
+    assert contact_offset.bl_idname == "GeometryNodeSetPosition"
+    assert not any(
+        node.bl_idname == "ShaderNodeMath"
+        and node.operation == "MAXIMUM"
+        and len(node.inputs) > 1
+        and abs(float(node.inputs[1].default_value) - 0.0005) < 1.0e-9
+        for node in tree.nodes
+    ), "線幅に連動して交差対象を押し出す旧世代ノードが残っています"
     assert not any(
         node.bl_idname == "ShaderNodeMath"
         and node.operation == "MAXIMUM"

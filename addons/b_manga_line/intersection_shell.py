@@ -51,6 +51,8 @@ _SHELL_SUBDIVIDE_NODE_LABEL = "BML_IntersectionShellPathWidthV19Midpoints"
 _SHELL_SPLIT_ATTR = "BML_IntersectionShellSplitV19"
 _SHELL_SUBDIVIDE_CUTS = 3
 _SHELL_SAFE_SCALE_NODE_LABEL = "BML_IntersectionShellSafeScale"
+_SHELL_CONTACT_OFFSET_NODE_LABEL = "BML_IntersectionShellFixedContactOffsetV20"
+_SHELL_CONTACT_EPSILON = 0.0005
 _MIN_CURVE_TO_MESH_SCALE = 0.04
 SHELL_TUBE_PROFILE_RESOLUTION = 12
 SHELL_GAP_COVERAGE_FACTOR = 1.08
@@ -210,29 +212,24 @@ def _create_node_tree() -> bpy.types.NodeTree:
     # 大きくズレた位置に生成される。
     combined_thickness = _add_combined_thickness(nodes, links, gin, (-900, -640))
 
-    # 接触検出: 交差相手を線の太さ（設定値のみ）ぶんだけ法線方向へ
-    # 膨らませる。交差線は元の面との交差位置に一本だけ生成する
-    # （位置ズレは線の太さの範囲内に収まり、接している相手にも線が出る）。
-    inflate_eps = nodes.new("ShaderNodeMath")
-    inflate_eps.location = (-640, -700)
-    inflate_eps.operation = "MAXIMUM"
-    inflate_eps.inputs[1].default_value = 0.0005
-    links.new(gin.outputs[_THICKNESS_SOCKET], inflate_eps.inputs[0])
-
+    # 交差位置は、交差相手の元の面を基準にする。完全接触だけはBooleanが
+    # 空になりやすいため、線幅とは無関係の固定微小値だけ法線方向へ動かす。
+    # ここを線幅に連動させると、太い設定ほど交差線そのものが外側へずれる。
     target_normal = nodes.new("GeometryNodeInputNormal")
     target_normal.location = (-640, -840)
 
-    inflate_offset = nodes.new("ShaderNodeVectorMath")
-    inflate_offset.location = (-440, -700)
-    inflate_offset.operation = "SCALE"
-    links.new(target_normal.outputs["Normal"], inflate_offset.inputs[0])
-    links.new(inflate_eps.outputs[0], inflate_offset.inputs["Scale"])
+    contact_offset = nodes.new("ShaderNodeVectorMath")
+    contact_offset.location = (-440, -700)
+    contact_offset.operation = "SCALE"
+    links.new(target_normal.outputs["Normal"], contact_offset.inputs[0])
+    contact_offset.inputs["Scale"].default_value = _SHELL_CONTACT_EPSILON
 
-    inflate = nodes.new("GeometryNodeSetPosition")
-    inflate.location = (-240, -520)
-    links.new(target_geo, inflate.inputs["Geometry"])
-    links.new(inflate_offset.outputs["Vector"], inflate.inputs["Offset"])
-    target_geo = inflate.outputs["Geometry"]
+    contact_set_position = nodes.new("GeometryNodeSetPosition")
+    contact_set_position.label = _SHELL_CONTACT_OFFSET_NODE_LABEL
+    contact_set_position.location = (-240, -520)
+    links.new(target_geo, contact_set_position.inputs["Geometry"])
+    links.new(contact_offset.outputs["Vector"], contact_set_position.inputs["Offset"])
+    target_geo = contact_set_position.outputs["Geometry"]
 
     # 交差対象同士が重なっていると、結合オペランドの自己交差で
     # DIFFERENCE が空になるため、UNION で清浄な一体メッシュへまとめる。
@@ -644,6 +641,12 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
             )
             and any(
                 getattr(node, "label", "") == _SHELL_SAFE_SCALE_NODE_LABEL
+                for node in tree.nodes
+            )
+            # v0.3.113: 交差対象を線幅分だけ押し出す旧ツリーは、
+            # 実際の面同士の交差ラインより外側へ線を生成するため再構築する。
+            and any(
+                getattr(node, "label", "") == _SHELL_CONTACT_OFFSET_NODE_LABEL
                 for node in tree.nodes
             )
         )

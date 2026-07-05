@@ -3,6 +3,48 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-05 — 平面アウトライン消失と交差線位置ずれを修正 (B-MANGA Line v0.3.113)
+
+### 症状
+
+- `test_line05.blend` で「中間頂点の線幅調整」を動かすと、平面の板ポリ用アウトラインが極細部で途切れ、画面上で消えたように見えることがあった。
+- 交差線が、オブジェクトの面同士が実際に交差しているラインより外側へ出ることがあった。
+
+### 原因
+
+- 板ポリ用アウトラインの境界チューブだけ、内部線・交差線に入れた極細部の断面安定化が未適用だった。
+- 交差線の判定時に交差対象を線幅分だけ押し出していたため、線幅が太いほど交差位置そのものが外側へずれていた。
+
+### 修正
+
+- 板ポリ用アウトラインにも、線幅調整で断面が完全に0にならない最小倍率を適用し、形状は変えず線幅だけが変わるようにした。
+- 交差線は線幅に連動して交差対象を押し出さず、接触判定用の固定微小値だけを使って、元の面同士の交差ラインを基準に生成するようにした。
+- 保存済みファイル内の旧ノードを自動再構築するよう、板ポリ用アウトラインと交差線のノード更新条件を追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `D:\TM Dropbox\Miura Tadahiro\Develop\B-MANGAテスト\test_line05.blend`
+- `_verify/2026-07-05_bml_line05_goal_repro/before_intersection_only.png`
+- `_verify/2026-07-05_bml_line05_goal_repro/after_outline_only.png`
+- `_verify/2026-07-05_bml_line05_goal_repro/after_inner_only.png`
+- `_verify/2026-07-05_bml_line05_goal_repro/after_intersection_only.png`
+- `_verify/2026-07-05_bml_line05_goal_repro/after_plane_outline_focus.png`
+- `_verify/2026-07-05_bml_line05_goal_repro/after_plane_outline_top.png`
+- `D:\TM Dropbox\Miura Tadahiro\Develop\B-MANGAテスト\test_line04.blend`
+- `_verify/2026-07-05_bml_line04_codex_repro/after_v03113_outline_only.png`
+- `_verify/2026-07-05_bml_line04_codex_repro/after_v03113_inner_only.png`
+- `_verify/2026-07-05_bml_line04_codex_repro/after_v03113_intersection_only.png`
+- `test/blender_b_manga_line_open_mesh_outline_check.py`
+- `test/blender_b_manga_line_intersection_shell_method_check.py`
+- `test/blender_b_manga_line_inner_width_check.py`
+- `test/blender_b_manga_line_midpoint_targets_check.py`
+- `test/blender_b_manga_line_midpoint_jitter_check.py`
+- `test/blender_b_manga_line_inner_branch_endpoint_check.py`
+- `test/blender_b_manga_line_subdivision_level_sync_check.py`
+- `test/blender_b_manga_line_inner_angle_threshold_check.py`
+
+---
+
 ## 2026-07-05 — 生成線の中間点細りを安定化 (B-MANGA Line v0.3.112)
 
 ### 症状

@@ -136,15 +136,16 @@ def main() -> None:
         assert tube_mod is not None, "板ポリに境界チューブがありません"
         assert tube_mod.node_group is not None
         assert any(
-            getattr(node, "label", "") == "BML_SheetOutlinePathWidthV16Angle"
+            getattr(node, "label", "") == outline_setup._SHEET_TUBE_ANGLE_SPLIT_LABEL + "Angle"
             for node in tube_mod.node_group.nodes
         ), "板ポリアウトラインが検出角度で分割されていません"
         assert any(
-            getattr(node, "label", "") == "BML_SheetOutlinePathWidthV16Midpoints"
+            getattr(node, "label", "") == outline_setup._SHEET_TUBE_SUBDIVIDE_LABEL
             for node in tube_mod.node_group.nodes
         ), "板ポリアウトラインに区間ごとの中心点がありません"
         assert not any(
             str(getattr(node, "label", "")).startswith("BML_SheetOutlinePathWidthV15")
+            or str(getattr(node, "label", "")).startswith("BML_SheetOutlinePathWidthV16")
             for node in tube_mod.node_group.nodes
         ), "旧世代の板ポリアウトライン中間頂点ノードが残っています"
         assert any(
@@ -159,13 +160,24 @@ def main() -> None:
             node.bl_idname == "GeometryNodeSplitEdges"
             for node in tube_mod.node_group.nodes
         ), "板ポリアウトラインが線そのものを分割しています"
+        safe_scale = next(
+            (
+                node for node in tube_mod.node_group.nodes
+                if getattr(node, "label", "") == outline_setup._SHEET_TUBE_SAFE_SCALE_LABEL
+            ),
+            None,
+        )
+        assert safe_scale is not None, "板ポリアウトラインの極細部を安定化するノードがありません"
+        assert safe_scale.bl_idname == "ShaderNodeMath"
+        assert safe_scale.operation == "MAXIMUM"
+        assert 0.0 < float(safe_scale.inputs[1].default_value) <= 0.05
         assert not any(
             node.bl_idname == "ShaderNodeMath"
             and node.operation == "MAXIMUM"
             and len(node.inputs) > 1
             and abs(float(node.inputs[1].default_value) - 0.02) < 1.0e-9
             for node in tube_mod.node_group.nodes
-        ), "板ポリアウトラインに0幅を妨げる下限が残っています"
+        ), "板ポリアウトラインに旧世代の0.02下限が残っています"
         plane.bmanga_line_settings.edge_smooth_factor = -0.75
         plane.bmanga_line_settings.edge_midpoint_jitter_percent = 12.0
         plane.bmanga_line_settings.edge_midpoint_angle = math.radians(55.0)

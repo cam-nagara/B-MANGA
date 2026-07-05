@@ -60,8 +60,10 @@ _SHEET_TUBE_MIDPOINT_ANGLE_SOCKET = "検出角度"
 _SHEET_TUBE_WIDTH_CURVE_25_SOCKET = "変化グラフ 25%"
 _SHEET_TUBE_WIDTH_CURVE_50_SOCKET = "変化グラフ 50%"
 _SHEET_TUBE_WIDTH_CURVE_75_SOCKET = "変化グラフ 75%"
-_SHEET_TUBE_ANGLE_SPLIT_LABEL = "BML_SheetOutlinePathWidthV16"
-_SHEET_TUBE_SUBDIVIDE_LABEL = "BML_SheetOutlinePathWidthV16Midpoints"
+_SHEET_TUBE_ANGLE_SPLIT_LABEL = "BML_SheetOutlinePathWidthV17"
+_SHEET_TUBE_SUBDIVIDE_LABEL = "BML_SheetOutlinePathWidthV17Midpoints"
+_SHEET_TUBE_SAFE_SCALE_LABEL = "BML_SheetOutlineSafeScale"
+_MIN_CURVE_TO_MESH_SCALE = 0.04
 _LINE_MATERIAL_NAMES = {
     "outline": MATERIAL_NAME,
     "inner": f"{MATERIAL_NAME}_Inner",
@@ -834,6 +836,10 @@ def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
                 getattr(node, "label", "") == _SHEET_TUBE_SUBDIVIDE_LABEL
                 for node in tree.nodes
             )
+            and any(
+                getattr(node, "label", "") == _SHEET_TUBE_SAFE_SCALE_LABEL
+                for node in tree.nodes
+            )
         ):
             return tree
         bpy.data.node_groups.remove(tree)
@@ -960,7 +966,13 @@ def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
     links.new(subdivide_curve.outputs["Curve"], tube.inputs["Curve"])
     links.new(profile.outputs["Curve"], tube.inputs["Profile Curve"])
     if "Scale" in tube.inputs:
-        links.new(scale, tube.inputs["Scale"])
+        safe_scale = nodes.new("ShaderNodeMath")
+        safe_scale.label = _SHEET_TUBE_SAFE_SCALE_LABEL
+        safe_scale.location = (1400, -420)
+        safe_scale.operation = "MAXIMUM"
+        safe_scale.inputs[1].default_value = _MIN_CURVE_TO_MESH_SCALE
+        links.new(scale, safe_scale.inputs[0])
+        links.new(safe_scale.outputs[0], tube.inputs["Scale"])
 
     smooth = nodes.new("GeometryNodeSetShadeSmooth")
     smooth.location = (1540, 0)
