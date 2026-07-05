@@ -657,7 +657,7 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
                 getattr(node, "label", "") == _SHELL_SUBDIVIDE_NODE_LABEL
                 for node in tree.nodes
             )
-            # v0.3.115: 交差線カーブ上の角を、細分化前に端点として保存する。
+            # v0.3.116: 交差線カーブ上の角を、細分化前に端点として保存する。
             # 細分化後に増える補間点だけで区間を切る旧ツリーは再構築する。
             and any(
                 node.bl_idname == "FunctionNodeCompare"

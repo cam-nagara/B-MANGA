@@ -3,6 +3,41 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-06 — 交差線のカーブ角端点と区間別線幅補間を再修正 (B-MANGA Line v0.3.116)
+
+### 症状
+
+- 交差線で「カーブの角を端点にする」ことと、「端点間の中間点をほぼゼロまで細くする」ことが同時に保証できていなかった。
+- 短い交差線カーブでは、少し離れた確認点が取れないため、本来の角が端点候補から落ちる余地があった。
+- 複数カーブが同じ区間番号を再利用すると、距離集計が別カーブ同士で混ざり、中間点が十分に細くならないことがあった。
+
+### 原因
+
+- v0.3.115 で追加した角確認が、確認点を取れない短いカーブ角まで除外していた。
+- 中間点へ向かう距離集計をカーブごとにリセットしていたため、別カーブの同じ区間番号が同じ集計グループとして扱われていた。
+
+### 修正
+
+- 交差線の角確認は、離れた確認点が取れる場合だけ追加判定し、確認点が取れない短いカーブ角では近接の角検出を端点として採用するようにした。
+- 中間点線幅補間の区間番号をジオメトリ全体で一意に増やし、アウトライン・内部線・交差線の各カーブが別カーブと距離集計を共有しないようにした。
+- 短いL字カーブで、角は太い端点として残り、両側の区間中間点がほぼゼロまで細くなる実機テストを追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_intersection_shell_method_check.py`
+- `test/blender_b_manga_line_midpoint_targets_check.py`
+- `D:\TM Dropbox\Miura Tadahiro\Develop\B-MANGAテスト\test_line05.blend`
+- `_verify/2026-07-05_bml_line05_goal_repro/after_v03116_normal_check_outline_only.png`
+- `_verify/2026-07-05_bml_line05_goal_repro/after_v03116_normal_check_inner_only.png`
+- `_verify/2026-07-05_bml_line05_goal_repro/after_v03116_normal_check_intersection_only.png`
+- `_verify/2026-07-05_bml_line05_goal_repro/after_v03116_intersection_midzero_intersection_only.png`
+- `D:\TM Dropbox\Miura Tadahiro\Develop\B-MANGAテスト\test_line04.blend`
+- `_verify/2026-07-05_bml_line04_codex_repro/after_v03116_outline_only.png`
+- `_verify/2026-07-05_bml_line04_codex_repro/after_v03116_inner_only.png`
+- `_verify/2026-07-05_bml_line04_codex_repro/after_v03116_intersection_only.png`
+
+---
+
 ## 2026-07-06 — 交差線の中間点をほぼゼロまで細らせる処理を修正 (B-MANGA Line v0.3.115)
 
 ### 症状

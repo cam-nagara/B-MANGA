@@ -456,6 +456,88 @@ def _curve_point_split_from_offsets(
     return _bool_or(nodes, links, angle_split, endpoint, (x + 1520, y + 40))
 
 
+def _curve_point_angle_confirmation_or_unavailable(
+    nodes,
+    links,
+    curve_output,
+    position_output,
+    index_output,
+    offset: int,
+    angle_cos_output,
+    min_segment_length_output,
+    loc,
+    *,
+    label: str | None = None,
+):
+    x, y = loc
+    before = _offset_point(nodes, links, index_output, -offset, (x, y + 180))
+    center = _offset_point(nodes, links, index_output, 0, (x, y + 20))
+    after = _offset_point(nodes, links, index_output, offset, (x, y - 140))
+    before_pos = _sample_curve_position(
+        nodes,
+        links,
+        curve_output,
+        position_output,
+        before.outputs["Point Index"],
+        (x + 220, y + 180),
+    )
+    center_pos = _sample_curve_position(
+        nodes,
+        links,
+        curve_output,
+        position_output,
+        center.outputs["Point Index"],
+        (x + 220, y + 20),
+    )
+    after_pos = _sample_curve_position(
+        nodes,
+        links,
+        curve_output,
+        position_output,
+        after.outputs["Point Index"],
+        (x + 220, y - 140),
+    )
+    confirmed_angle_split = _curve_angle_split_from_positions(
+        nodes,
+        links,
+        before_pos,
+        center_pos,
+        after_pos,
+        angle_cos_output,
+        min_segment_length_output,
+        (x + 440, y + 20),
+        label=label,
+    )
+    invalid_before = _bool_not(
+        nodes,
+        links,
+        before.outputs["Is Valid Offset"],
+        (x + 1120, y + 140),
+    )
+    invalid_after = _bool_not(
+        nodes,
+        links,
+        after.outputs["Is Valid Offset"],
+        (x + 1120, y - 60),
+    )
+    confirmation_unavailable = nodes.new("FunctionNodeBooleanMath")
+    confirmation_unavailable.location = (x + 1320, y + 40)
+    confirmation_unavailable.operation = "OR"
+    if label:
+        confirmation_unavailable.label = label + "Unavailable"
+    links.new(invalid_before, confirmation_unavailable.inputs[0])
+    links.new(invalid_after, confirmation_unavailable.inputs[1])
+
+    confirmation_ok = nodes.new("FunctionNodeBooleanMath")
+    confirmation_ok.location = (x + 1520, y + 40)
+    confirmation_ok.operation = "OR"
+    if label:
+        confirmation_ok.label = label + "UnavailableOK"
+    links.new(confirmed_angle_split, confirmation_ok.inputs[0])
+    links.new(confirmation_unavailable.outputs[0], confirmation_ok.inputs[1])
+    return confirmation_ok.outputs[0]
+
+
 def _curve_angle_split_from_positions(
     nodes,
     links,
@@ -599,26 +681,23 @@ def add_curve_midpoint_width_scale(
 
     confirm_offset = max(1, int(angle_split_confirmation_offset))
     if confirm_offset > 1:
-        confirmed_angle_split = _curve_point_split_from_offsets(
+        confirmation_ok = _curve_point_angle_confirmation_or_unavailable(
             nodes,
             links,
             curve_output,
             position.outputs["Position"],
             index.outputs["Index"],
-            -confirm_offset,
-            0,
             confirm_offset,
             angle_cos.outputs[0],
             min_segment_length.outputs[0],
             (x + 360, y + 40),
             label=label + "Confirm",
-            include_endpoints=False,
         )
         angle_split = _bool_and(
             nodes,
             links,
             angle_split,
-            confirmed_angle_split,
+            confirmation_ok,
             (x + 2040, y + 520),
         )
 
@@ -672,7 +751,6 @@ def add_curve_midpoint_width_scale(
     split_accumulate.data_type = "FLOAT"
     split_accumulate.domain = "POINT"
     links.new(split_value, split_accumulate.inputs["Value"])
-    links.new(spline.outputs["Index"], split_accumulate.inputs["Group ID"])
     segment_id = _math(nodes, "SUBTRACT", (x + 3260, y + 420))
     links.new(split_accumulate.outputs["Leading"], segment_id.inputs[0])
     links.new(split_value, segment_id.inputs[1])
@@ -813,26 +891,23 @@ def store_curve_midpoint_split_attribute(
 
     confirm_offset = max(1, int(angle_split_confirmation_offset))
     if confirm_offset > 1:
-        confirmed_angle_split = _curve_point_split_from_offsets(
+        confirmation_ok = _curve_point_angle_confirmation_or_unavailable(
             nodes,
             links,
             curve_output,
             position.outputs["Position"],
             index.outputs["Index"],
-            -confirm_offset,
-            0,
             confirm_offset,
             angle_cos.outputs[0],
             min_segment_length.outputs[0],
             (x + 360, y + 40),
             label=label + "Confirm",
-            include_endpoints=False,
         )
         angle_split = _bool_and(
             nodes,
             links,
             angle_split,
-            confirmed_angle_split,
+            confirmation_ok,
             (x + 2040, y + 520),
         )
 
@@ -909,7 +984,6 @@ def store_curve_midpoint_split_attribute(
     split_accumulate.data_type = "FLOAT"
     split_accumulate.domain = "POINT"
     links.new(split_value, split_accumulate.inputs["Value"])
-    links.new(spline.outputs["Index"], split_accumulate.inputs["Group ID"])
     split_index = _math(nodes, "SUBTRACT", (x + 3280, y + 420), value1=1.0)
     links.new(split_accumulate.outputs["Leading"], split_index.inputs[0])
 
@@ -950,6 +1024,39 @@ def add_curve_midpoint_width_scale_from_split_attribute(
 ):
     """Return a width scale field using pre-marked split points only."""
     x, y = loc
+    split_attr = nodes.new("GeometryNodeInputNamedAttribute")
+    split_attr.location = (x + 360, y + 440)
+    split_attr.data_type = "FLOAT"
+    split_attr.inputs["Name"].default_value = attribute_name
+    return add_curve_midpoint_width_scale_from_split_field(
+        nodes,
+        links,
+        curve_output,
+        split_attr.outputs["Attribute"],
+        factor_output,
+        loc,
+        label=label,
+        width_curve_outputs=width_curve_outputs,
+        jitter_output=jitter_output,
+        split_exists_output=split_attr.outputs["Exists"],
+    )
+
+
+def add_curve_midpoint_width_scale_from_split_field(
+    nodes,
+    links,
+    curve_output,
+    split_value_output,
+    factor_output,
+    loc,
+    *,
+    label: str,
+    width_curve_outputs=None,
+    jitter_output=None,
+    split_exists_output=None,
+):
+    """Return a width scale field using pre-marked split key values."""
+    x, y = loc
     index = nodes.new("GeometryNodeInputIndex")
     index.location = (x, y + 520)
     position = nodes.new("GeometryNodeInputPosition")
@@ -957,15 +1064,10 @@ def add_curve_midpoint_width_scale_from_split_attribute(
     spline = nodes.new("GeometryNodeSplineParameter")
     spline.location = (x, y + 160)
 
-    split_attr = nodes.new("GeometryNodeInputNamedAttribute")
-    split_attr.location = (x + 360, y + 440)
-    split_attr.data_type = "FLOAT"
-    split_attr.inputs["Name"].default_value = attribute_name
-
     rounded_key = _math(nodes, "ROUND", (x + 560, y + 520))
-    links.new(split_attr.outputs["Attribute"], rounded_key.inputs[0])
+    links.new(split_value_output, rounded_key.inputs[0])
     key_delta = _math(nodes, "SUBTRACT", (x + 760, y + 520))
-    links.new(split_attr.outputs["Attribute"], key_delta.inputs[0])
+    links.new(split_value_output, key_delta.inputs[0])
     links.new(rounded_key.outputs[0], key_delta.inputs[1])
     abs_delta = _math(nodes, "ABSOLUTE", (x + 960, y + 520))
     links.new(key_delta.outputs[0], abs_delta.inputs[0])
@@ -981,7 +1083,7 @@ def add_curve_midpoint_width_scale_from_split_attribute(
     key_non_negative.data_type = "FLOAT"
     key_non_negative.operation = "GREATER_EQUAL"
     key_non_negative.inputs[1].default_value = -0.001
-    links.new(split_attr.outputs["Attribute"], key_non_negative.inputs[0])
+    links.new(split_value_output, key_non_negative.inputs[0])
 
     valid_key = _bool_and(
         nodes,
@@ -990,13 +1092,16 @@ def add_curve_midpoint_width_scale_from_split_attribute(
         key_non_negative.outputs[0],
         (x + 1360, y + 440),
     )
-    split_marked = _bool_and(
-        nodes,
-        links,
-        split_attr.outputs["Exists"],
-        valid_key,
-        (x + 1560, y + 440),
-    )
+    if split_exists_output is None:
+        split_marked = valid_key
+    else:
+        split_marked = _bool_and(
+            nodes,
+            links,
+            split_exists_output,
+            valid_key,
+            (x + 1560, y + 440),
+        )
 
     spline_start = nodes.new("FunctionNodeCompare")
     spline_start.location = (x + 1760, y + 420)
@@ -1024,7 +1129,6 @@ def add_curve_midpoint_width_scale_from_split_attribute(
     split_accumulate.data_type = "FLOAT"
     split_accumulate.domain = "POINT"
     links.new(split_value, split_accumulate.inputs["Value"])
-    links.new(spline.outputs["Index"], split_accumulate.inputs["Group ID"])
     segment_id = _math(nodes, "SUBTRACT", (x + 2580, y + 420))
     links.new(split_accumulate.outputs["Leading"], segment_id.inputs[0])
     links.new(split_value, segment_id.inputs[1])
