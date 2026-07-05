@@ -773,6 +773,8 @@ def store_curve_midpoint_split_attribute(
     label: str,
     angle_split_min_segment_fraction: float = _ANGLE_SPLIT_MIN_SEGMENT_FRACTION,
     angle_split_confirmation_offset: int = 1,
+    base_split_attribute_name: str | None = None,
+    include_curve_endpoints: bool = True,
 ):
     """Mark only original curve points that can split midpoint-width segments."""
     x, y = loc
@@ -850,13 +852,35 @@ def store_curve_midpoint_split_attribute(
         include_endpoints=True,
         include_angle=False,
     )
-    current_split = _bool_or(
-        nodes,
-        links,
-        angle_split,
-        endpoint_split,
-        (x + 2240, y + 520),
-    )
+    current_split = angle_split
+    if include_curve_endpoints:
+        current_split = _bool_or(
+            nodes,
+            links,
+            current_split,
+            endpoint_split,
+            (x + 2240, y + 520),
+        )
+
+    if base_split_attribute_name:
+        base_split_attr = nodes.new("GeometryNodeInputNamedAttribute")
+        base_split_attr.location = (x + 2040, y + 700)
+        base_split_attr.data_type = "BOOLEAN"
+        base_split_attr.inputs["Name"].default_value = base_split_attribute_name
+        base_split = _bool_and(
+            nodes,
+            links,
+            base_split_attr.outputs["Exists"],
+            base_split_attr.outputs["Attribute"],
+            (x + 2240, y + 700),
+        )
+        current_split = _bool_or(
+            nodes,
+            links,
+            current_split,
+            base_split,
+            (x + 2440, y + 620),
+        )
 
     spline_start = nodes.new("FunctionNodeCompare")
     spline_start.location = (x + 2440, y + 420)

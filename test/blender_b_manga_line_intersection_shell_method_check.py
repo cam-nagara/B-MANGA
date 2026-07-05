@@ -180,6 +180,21 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
         None,
     )
     assert angle_compare is not None
+    angle_confirm = next(
+        (
+            node for node in tree.nodes
+            if (
+                node.bl_idname == "FunctionNodeCompare"
+                and node.data_type == "FLOAT"
+                and node.operation == "GREATER_THAN"
+                and getattr(node, "label", "") == (
+                    intersection_shell._SHELL_BRANCH_SPLIT_NODE_LABEL + "AngleConfirm"
+                )
+            )
+        ),
+        None,
+    )
+    assert angle_confirm is not None, "交差線の微細な折れを除外する角確認判定がありません"
     angle_input_link = _incoming_link(tree, angle_compare, angle_compare.inputs[1])
     assert angle_input_link is not None, "交差線の角端点判定に検出角度が接続されていません"
     angle_cos = angle_input_link.from_node
@@ -222,11 +237,54 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
         None,
     )
     assert split_read is not None, "保存済み端点候補を線幅補間へ渡していません"
+    topology_compare = next(
+        (
+            node for node in tree.nodes
+            if (
+                node.bl_idname == "FunctionNodeCompare"
+                and node.data_type == "INT"
+                and node.operation == "NOT_EQUAL"
+                and getattr(node, "label", "") == intersection_shell._SHELL_TOPO_SPLIT_NODE_LABEL
+            )
+        ),
+        None,
+    )
+    assert topology_compare is not None, "交差エッジの接続数で実端・分岐を判定していません"
+    topology_store = next(
+        (
+            node for node in tree.nodes
+            if (
+                node.bl_idname == "GeometryNodeStoreNamedAttribute"
+                and getattr(node, "label", "") == (
+                    intersection_shell._SHELL_TOPO_SPLIT_NODE_LABEL + "Store"
+                )
+                and node.data_type == "BOOLEAN"
+                and node.inputs["Name"].default_value == intersection_shell._SHELL_TOPO_SPLIT_ATTR
+            )
+        ),
+        None,
+    )
+    assert topology_store is not None, "接続数で判定した実端・分岐をカーブ化前に保存していません"
+    topology_read = next(
+        (
+            node for node in tree.nodes
+            if (
+                node.bl_idname == "GeometryNodeInputNamedAttribute"
+                and node.data_type == "BOOLEAN"
+                and node.inputs["Name"].default_value == intersection_shell._SHELL_TOPO_SPLIT_ATTR
+            )
+        ),
+        None,
+    )
+    assert topology_read is not None, "カーブ化前の実端・分岐印を角端点保存へ渡していません"
     assert not any(
         str(getattr(node, "label", "")).startswith("BML_IntersectionShellPathWidthV15")
         or str(getattr(node, "label", "")).startswith("BML_IntersectionShellPathWidthV16")
         or str(getattr(node, "label", "")).startswith("BML_IntersectionShellPathWidthV17")
         or str(getattr(node, "label", "")).startswith("BML_IntersectionShellPathWidthV19")
+        or str(getattr(node, "label", "")).startswith("BML_IntersectionShellCurveEndpointV21")
+        or str(getattr(node, "label", "")).startswith("BML_IntersectionShellCurveEndpointV22")
+        or str(getattr(node, "label", "")).startswith("BML_IntersectionShellCurveEndpointV23")
         for node in tree.nodes
     ), "旧世代の交差線中間頂点ノードが残っています"
     assert any(

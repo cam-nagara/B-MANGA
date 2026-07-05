@@ -3,6 +3,39 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-06 — 交差線の中間点をほぼゼロまで細らせる処理を修正 (B-MANGA Line v0.3.115)
+
+### 症状
+
+- 交差線だけ「中間頂点の線幅調整」を中間点がほぼゼロになる設定にすると、曲線や直線の途中に不自然な太い塊が残り、細かい点を端点扱いしているように見えた。
+- `test_line05.blend` の交差線だけ画像で、交差線の各区間が期待どおり中間へ細くならない箇所が残っていた。
+
+### 原因
+
+- 交差線カーブの角端点判定が、ブーリアン生成時にできる微細な折れも拾いやすく、意味のある角ではない点まで端点候補にしていた。
+- さらに、交差線カーブはブーリアン結果の断片から作られるため、人工的な断片端点が「実端」のように扱われ、中間点を細くする設定が見た目へ十分に出ていなかった。
+
+### 修正
+
+- 交差線だけ、近接点で角に見えることに加えて、少し離れた点でも角として確認できる場合だけカーブ上の角端点として保存するようにした。
+- 交差線のカーブ化前に、交差エッジ上の接続数が2ではない点だけを実端・分岐として保存し、カーブ化で生じる人工的な断片端点を端点扱いしないようにした。
+- カーブ上の角、実端、分岐を保存してから中間点用の点を追加し、端点間の距離に沿って中間点へ線幅が変わるようにした。
+- 保存済みファイル内の旧交差線ノードを再構築するため、交差線の端点判定ノード世代を更新した。
+- 実機テストで、交差線の角確認判定ノードと接続数による実端・分岐ノードが存在することを確認するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_intersection_shell_method_check.py`
+- `test/blender_b_manga_line_midpoint_targets_check.py`
+- `D:\TM Dropbox\Miura Tadahiro\Develop\B-MANGAテスト\test_line05.blend`
+- `D:\TM Dropbox\Miura Tadahiro\Develop\B-MANGAテスト\test_line04.blend`
+- `_verify/2026-07-05_bml_line05_goal_repro/after_v03114_intersection_midzero_intersection_only.png`（修正前再現）
+- `_verify/2026-07-05_bml_line05_goal_repro/after_v03115_intersection_midzero_intersection_only.png`
+- `_verify/2026-07-05_bml_line05_goal_repro/after_v03115_normal_check_intersection_only.png`
+- `_verify/2026-07-05_bml_line04_codex_repro/after_v03115_topology_intersection_only.png`
+
+---
+
 ## 2026-07-06 — 交差線カーブの角を中間頂点調整の端点に固定 (B-MANGA Line v0.3.114)
 
 ### 症状
