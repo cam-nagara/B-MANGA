@@ -3,6 +3,35 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-06 — 交差線カーブの角を中間頂点調整の端点に固定 (B-MANGA Line v0.3.114)
+
+### 症状
+
+- 交差線の中間頂点調整について、実端・分岐・交差点だけでなく「カーブ上の角」も端点にする仕様が明示確認できなかった。
+- 保存済みファイル内の旧交差線ノードが残ると、交差線カーブを細分化した後の補間点を端点扱いする余地があった。
+
+### 原因
+
+- 交差線のカーブ角端点判定は既存ノード内にあったが、ノード世代とテストが「検出角度でカーブ上の角を端点にする」ことを直接保証していなかった。
+- そのため、旧世代ノードが保存済みファイル内に残った場合に、角端点の固定条件が十分に強制されなかった。
+
+### 修正
+
+- 交差線は、細分化前の実交差カーブ上で検出角度未満の角を端点候補として保存し、細分化後はその保存済み端点だけを区間端点として線幅を補間する世代へ更新した。
+- 保存済みファイル内の旧交差線ノードを自動再構築する条件に、カーブ角端点の保存ノードを追加した。
+- 実機テストで、交差線の「検出角度」がカーブ角端点判定へ接続され、角端点候補が細分化前に保存されることを確認するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_intersection_shell_method_check.py`
+- `test/blender_b_manga_line_midpoint_targets_check.py`
+- `D:\TM Dropbox\Miura Tadahiro\Develop\B-MANGAテスト\test_line04.blend`
+- `_verify/2026-07-05_bml_line04_codex_repro/after_v03114_intersection_only.png`
+- `D:\TM Dropbox\Miura Tadahiro\Develop\B-MANGAテスト\test_line05.blend`
+- `_verify/2026-07-05_bml_line05_goal_repro/after_v03114_intersection_only.png`
+
+---
+
 ## 2026-07-05 — 平面アウトライン消失と交差線位置ずれを修正 (B-MANGA Line v0.3.113)
 
 ### 症状

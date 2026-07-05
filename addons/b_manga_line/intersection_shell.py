@@ -46,9 +46,9 @@ _CURVE_RADIUS_NORMALIZER_LABEL = "BML_IntersectionShellCurveRadius"
 _SHELL_COMBINED_THICKNESS_NODE_LABEL = "BML_IntersectionShellCombinedThickness"
 _SHELL_PROFILE_NODE_LABEL = "BML_IntersectionShellProfile"
 _SHELL_GAP_COVERAGE_NODE_LABEL = "BML_IntersectionShellGapCoverage"
-_SHELL_BRANCH_SPLIT_NODE_LABEL = "BML_IntersectionShellPathWidthV19"
-_SHELL_SUBDIVIDE_NODE_LABEL = "BML_IntersectionShellPathWidthV19Midpoints"
-_SHELL_SPLIT_ATTR = "BML_IntersectionShellSplitV19"
+_SHELL_BRANCH_SPLIT_NODE_LABEL = "BML_IntersectionShellCurveEndpointV21"
+_SHELL_SUBDIVIDE_NODE_LABEL = "BML_IntersectionShellCurveEndpointV21Midpoints"
+_SHELL_SPLIT_ATTR = "BML_IntersectionShellCurveEndpointV21"
 _SHELL_SUBDIVIDE_CUTS = 3
 _SHELL_SAFE_SCALE_NODE_LABEL = "BML_IntersectionShellSafeScale"
 _SHELL_CONTACT_OFFSET_NODE_LABEL = "BML_IntersectionShellFixedContactOffsetV20"
@@ -619,6 +619,23 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
             )
             and any(
                 getattr(node, "label", "") == _SHELL_SUBDIVIDE_NODE_LABEL
+                for node in tree.nodes
+            )
+            # v0.3.114: 交差線カーブ上の角を、細分化前に端点として保存する。
+            # 細分化後に増える補間点だけで区間を切る旧ツリーは再構築する。
+            and any(
+                node.bl_idname == "FunctionNodeCompare"
+                and getattr(node, "label", "") == (
+                    _SHELL_BRANCH_SPLIT_NODE_LABEL + "Angle"
+                )
+                for node in tree.nodes
+            )
+            and any(
+                node.bl_idname == "GeometryNodeStoreNamedAttribute"
+                and getattr(node, "label", "") == (
+                    _SHELL_BRANCH_SPLIT_NODE_LABEL + "AngleStore"
+                )
+                and node.inputs["Name"].default_value == _SHELL_SPLIT_ATTR
                 for node in tree.nodes
             )
             and _tree_uses_generated_mark(tree)

@@ -126,6 +126,17 @@ def _profile_resolutions(tree: bpy.types.NodeTree) -> list[int]:
     return values
 
 
+def _incoming_link(
+    tree: bpy.types.NodeTree,
+    node: bpy.types.Node,
+    socket: bpy.types.NodeSocket,
+) -> bpy.types.NodeLink | None:
+    for link in tree.links:
+        if link.to_node == node and link.to_socket == socket:
+            return link
+    return None
+
+
 def _assert_shell_tree_has_midpoint_width_nodes() -> None:
     tree = intersection_shell._get_or_create_tree()
     assert _socket_id(tree, "中間頂点の乱れ (%)")
@@ -169,6 +180,15 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
         None,
     )
     assert angle_compare is not None
+    angle_input_link = _incoming_link(tree, angle_compare, angle_compare.inputs[1])
+    assert angle_input_link is not None, "交差線の角端点判定に検出角度が接続されていません"
+    angle_cos = angle_input_link.from_node
+    assert angle_cos.bl_idname == "ShaderNodeMath"
+    assert angle_cos.operation == "COSINE"
+    ui_angle_link = _incoming_link(tree, angle_cos, angle_cos.inputs[0])
+    assert ui_angle_link is not None, "検出角度UI値が角端点判定へ届いていません"
+    assert ui_angle_link.from_node.bl_idname == "NodeGroupInput"
+    assert ui_angle_link.from_socket.name == "検出角度"
     split_store = next(
         (
             node for node in tree.nodes
@@ -184,6 +204,12 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
     assert split_store is not None, "交差線の端点候補を細分化前に保存していません"
     assert split_store.data_type == "FLOAT"
     assert split_store.inputs["Name"].default_value == intersection_shell._SHELL_SPLIT_ATTR
+    assert any(
+        link.from_node == split_store
+        and link.to_node == midpoint
+        and link.to_socket == midpoint.inputs["Curve"]
+        for link in tree.links
+    ), "角端点候補を保存した交差線カーブが細分化へ渡っていません"
     split_read = next(
         (
             node for node in tree.nodes
@@ -200,6 +226,7 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
         str(getattr(node, "label", "")).startswith("BML_IntersectionShellPathWidthV15")
         or str(getattr(node, "label", "")).startswith("BML_IntersectionShellPathWidthV16")
         or str(getattr(node, "label", "")).startswith("BML_IntersectionShellPathWidthV17")
+        or str(getattr(node, "label", "")).startswith("BML_IntersectionShellPathWidthV19")
         for node in tree.nodes
     ), "旧世代の交差線中間頂点ノードが残っています"
     assert any(
