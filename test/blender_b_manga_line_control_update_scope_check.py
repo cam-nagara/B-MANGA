@@ -217,7 +217,11 @@ def _install_counters():
 
 def _assert_common(prop_name: str, counts: dict) -> None:
     assert counts["line_settings_apply"] == 0, (prop_name, counts)
-    assert counts["outline_apply"] == 0, (prop_name, counts)
+    if prop_name not in {
+        "use_outline_creation_limit",
+        "outline_creation_max_distance",
+    }:
+        assert counts["outline_apply"] == 0, (prop_name, counts)
     assert counts["camera"] == 0, (prop_name, counts)
 
 
@@ -236,6 +240,14 @@ def _assert_width_scope(prop_name: str, counts: dict, target: str | None) -> Non
         if counts["camera_objects"] == 0:
             return
         assert all(scope == ("intersection",) for scope in counts["camera_scopes"]), (
+            prop_name,
+            counts,
+        )
+        return
+    if target == "optional_outline":
+        if counts["camera_objects"] == 0:
+            return
+        assert all(scope == ("outline",) for scope in counts["camera_scopes"]), (
             prop_name,
             counts,
         )
@@ -291,8 +303,8 @@ def _change(settings, prop_name: str, value, counts: dict, reset, *, width_targe
 
 def _run_baseline_cases(settings, counts, reset) -> None:
     no_rebuild_cases = [
-        ("outline_enabled", False, None),
-        ("outline_enabled", True, None),
+        ("outline_enabled", False, "optional_outline"),
+        ("outline_enabled", True, "optional_outline"),
         ("outline_color", (0.15, 0.25, 0.35, 1.0), None),
         ("outline_offset", 0.35, None),
         ("even_thickness", False, None),
@@ -309,6 +321,9 @@ def _run_baseline_cases(settings, counts, reset) -> None:
         ("edge_width_curve_50", 0.45, None),
         ("edge_width_curve_75", 0.80, None),
         ("edge_smooth_factor", 0.0, None),
+        ("use_outline_creation_limit", True, "optional_outline"),
+        ("outline_creation_max_distance", 12.0, "optional_outline"),
+        ("use_outline_creation_limit", False, "optional_outline"),
         ("inner_line_angle", math.radians(70), None),
         ("inner_line_offset", 0.25, None),
         ("inner_edge_smooth_factor", 0.12, None),
@@ -382,6 +397,7 @@ def _run_baseline_cases(settings, counts, reset) -> None:
             assert counts["intersection_update"] <= 3, (prop_name, counts)
 
     visibility_cases = [
+        ("use_camera_culling", False),
         ("use_camera_culling", True),
         ("culling_margin", math.radians(5)),
         ("use_camera_culling", False),

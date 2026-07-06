@@ -40,7 +40,6 @@ def _make_cube(name: str, z: float) -> bpy.types.Object:
     settings = obj.bmanga_line_settings
     settings.inner_line_enabled = False
     settings.intersection_enabled = True
-    settings.intersection_method = "BOOLEAN"
     return obj
 
 
@@ -64,7 +63,6 @@ def _make_data_cube(name: str, location: tuple[float, float, float]) -> bpy.type
     settings = obj.bmanga_line_settings
     settings.inner_line_enabled = False
     settings.intersection_enabled = True
-    settings.intersection_method = "BOOLEAN"
     return obj
 
 
@@ -101,7 +99,10 @@ def main() -> None:
         for obj in (source, exact, far):
             settings = obj.bmanga_line_settings
             assert abs(settings.intersection_creation_max_distance - 10.0) < 1.0e-7
-            assert settings.use_intersection_creation_limit is True
+            assert settings.use_intersection_creation_limit is False
+        for obj in (source, exact, far):
+            settings = obj.bmanga_line_settings
+            settings.use_intersection_creation_limit = True
             _apply(obj)
 
         assert math.isclose(
@@ -140,7 +141,8 @@ def main() -> None:
         stale_transform = _make_data_cube(
             "BML_intersection_range_D_stale_transform", (-4.0, -11.5, 0.0),
         )
-        assert stale_transform.bmanga_line_settings.use_intersection_creation_limit is True
+        assert stale_transform.bmanga_line_settings.use_intersection_creation_limit is False
+        stale_transform.bmanga_line_settings.use_intersection_creation_limit = True
         _apply(stale_transform)
         intersection_lines.refresh_scene_intersections(bpy.context.scene)
         assert stale_transform.name not in _target_names(source), (

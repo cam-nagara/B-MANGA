@@ -171,6 +171,19 @@ def inner_line_creation_in_range(obj: bpy.types.Object, scene, settings=None) ->
     )
 
 
+def outline_line_creation_in_range(obj: bpy.types.Object, scene, settings=None) -> bool:
+    """アウトラインを作成してよいカメラ距離内か判定."""
+    if settings is None:
+        settings = getattr(obj, "bmanga_line_settings", None)
+    return _line_creation_in_range(
+        obj,
+        scene,
+        settings,
+        "use_outline_creation_limit",
+        "outline_creation_max_distance",
+    )
+
+
 def intersection_line_creation_in_range(obj: bpy.types.Object, scene, settings=None) -> bool:
     """交差線を作成してよいカメラ距離内か判定."""
     if settings is None:

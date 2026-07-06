@@ -1349,6 +1349,30 @@ def ensure_aov_passes(scene=None) -> int:
     return count
 
 
+def remove_outline_geometry(obj: bpy.types.Object) -> bool:
+    """アウトライン用の実体だけを削除する。線種別マテリアルは残す。"""
+    if obj.type != "MESH":
+        return False
+
+    removed = False
+    for name in (MODIFIER_NAME, SHEET_OUTLINE_MODIFIER_NAME):
+        mod = obj.modifiers.get(name)
+        if mod is not None:
+            obj.modifiers.remove(mod)
+            removed = True
+
+    from . import outline_width_attribute
+    if outline_width_attribute.remove_outline_width_attribute(obj):
+        removed = True
+
+    vg = obj.vertex_groups.get(VG_LINE_WIDTH)
+    if vg is not None:
+        obj.vertex_groups.remove(vg)
+        removed = True
+
+    return removed
+
+
 def remove_outline(obj: bpy.types.Object) -> bool:
     """オブジェクトからアウトラインを削除. 削除した場合 True."""
     if obj.type != "MESH":
@@ -1356,19 +1380,7 @@ def remove_outline(obj: bpy.types.Object) -> bool:
 
     removed = False
 
-    mod = obj.modifiers.get(MODIFIER_NAME)
-    if mod is not None:
-        obj.modifiers.remove(mod)
-        removed = True
-
-    from . import outline_width_attribute
-    if outline_width_attribute.remove_outline_width_attribute(obj):
-        removed = True
-
-    # シートの境界チューブも一緒に削除
-    tube = obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME)
-    if tube is not None:
-        obj.modifiers.remove(tube)
+    if remove_outline_geometry(obj):
         removed = True
 
     set_line_only(obj, False)

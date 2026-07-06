@@ -141,6 +141,7 @@ def _assert_multi_select_manual_setting_propagation(
     _select(first, [first, second])
     source = first.bmanga_line_settings
     target = second.bmanga_line_settings
+    source.use_camera_culling = False
 
     source.outline_thickness_mm = 0.9
     assert math.isclose(target.outline_thickness_mm, 0.9, rel_tol=0.001)
@@ -190,6 +191,13 @@ def _assert_multi_select_manual_setting_propagation(
     assert first.modifiers[core.MODIFIER_NAME].show_render
     assert second.modifiers[core.MODIFIER_NAME].show_viewport
     assert second.modifiers[core.MODIFIER_NAME].show_render
+
+    source.use_outline_creation_limit = True
+    source.outline_creation_max_distance = 6.0
+    assert target.use_outline_creation_limit is True
+    assert math.isclose(target.outline_creation_max_distance, 6.0, rel_tol=0.001)
+    source.use_outline_creation_limit = False
+    assert target.use_outline_creation_limit is False
 
     source.hide_through_transparent = True
     mat = outline_setup.get_outline_material(second)
@@ -308,10 +316,8 @@ def _assert_multi_select_manual_setting_propagation(
     assert not _intersection_mods(second)
     source.use_intersection_creation_limit = False
     source.intersection_enabled = True
-    source.intersection_method = "BOOLEAN"
     source.intersection_thickness_mm = 1.4
     assert target.intersection_enabled is True
-    assert target.intersection_method == "BOOLEAN"
     intersection_mods = _intersection_mods(first) + _intersection_mods(second)
     assert intersection_mods
     # 2026-07-03 確定仕様: 生成方式はSHELL固定（BOOLEAN指定してもSHELLで生成）
@@ -384,6 +390,7 @@ def _assert_multi_select_manual_setting_propagation(
     source.intersection_creation_max_distance = 10.0
     source.use_selection_line_creation_limit = True
     source.selection_line_creation_max_distance = 10.0
+    source.use_outline_creation_limit = False
     source.use_camera_compensation = False
     source.use_uniform_line_width = False
     source.use_vertex_color = False
@@ -392,7 +399,6 @@ def _assert_multi_select_manual_setting_propagation(
     source.inner_line_thickness_mm = 1.2
     source.intersection_enabled = True
     source.intersection_thickness_mm = 1.4
-    source.intersection_method = "SDF"
     source.selection_line_enabled = True
     source.selection_line_thickness_mm = 1.3
     for obj in (first, second):
@@ -415,7 +421,6 @@ def main() -> None:
     settings.inner_line_angle = math.radians(12.0)
     settings.inner_line_thickness = 0.021
     settings.intersection_enabled = True
-    settings.intersection_method = "SDF"
     settings.intersection_thickness = 0.017
     settings.edge_smooth_factor = -1.0
     settings.edge_midpoint_jitter_percent = 20.0
@@ -456,7 +461,7 @@ def main() -> None:
         assert tuple(round(v, 3) for v in applied.outline_color) == (0.1, 0.2, 0.3, 1.0)
         assert applied.inner_line_enabled
         assert applied.intersection_enabled
-        assert applied.intersection_method == "SDF"
+        assert applied.intersection_method == "SHELL"
         assert abs(applied.edge_midpoint_angle - math.radians(44.0)) < 1.0e-7
         assert abs(applied.edge_width_curve_50 - 0.4) < 1.0e-7
         assert abs(applied.inner_edge_smooth_factor + 0.55) < 1.0e-7
@@ -496,6 +501,7 @@ def main() -> None:
     _select(source, [source])
     settings.use_inner_line_creation_limit = False
     settings.use_intersection_creation_limit = False
+    settings.use_camera_culling = False
     settings.use_inner_line_distance_limit = True
     settings.inner_line_max_distance = 0.5
     scene.bmanga_line_preset_name = "距離制限テスト"
@@ -511,6 +517,7 @@ def main() -> None:
     _select(source, [source])
     settings.use_inner_line_creation_limit = False
     settings.use_intersection_creation_limit = False
+    settings.use_camera_culling = False
     settings.use_inner_line_distance_limit = False
     settings.use_outline_distance_limit = True
     settings.outline_max_distance = 0.5

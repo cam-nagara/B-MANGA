@@ -39,11 +39,8 @@ def _assert_registered() -> None:
     # 2026-07-03: 基本設定パネル（板ポリ除外のみ）はオプション廃止に伴い撤去
     subpanels = (
         "BMANGA_LINE_PT_presets",
-        "BMANGA_LINE_PT_outline",
+        "BMANGA_LINE_PT_line_settings",
         "BMANGA_LINE_PT_camera",
-        "BMANGA_LINE_PT_inner_line",
-        "BMANGA_LINE_PT_intersection",
-        "BMANGA_LINE_PT_selection_line",
     )
     for name in subpanels:
         panel = getattr(bpy.types, name, None)
@@ -133,11 +130,8 @@ def _assert_panels_draw_items() -> None:
     for panel_cls in (
         panels.BMANGA_LINE_PT_main,
         panels.BMANGA_LINE_PT_presets,
-        panels.BMANGA_LINE_PT_outline,
+        panels.BMANGA_LINE_PT_line_settings,
         panels.BMANGA_LINE_PT_camera,
-        panels.BMANGA_LINE_PT_inner_line,
-        panels.BMANGA_LINE_PT_intersection,
-        panels.BMANGA_LINE_PT_selection_line,
     ):
         assert panel_cls.poll(bpy.context) if hasattr(panel_cls, "poll") else True
         panel_cls.draw(dummy, bpy.context)
@@ -146,6 +140,8 @@ def _assert_panels_draw_items() -> None:
         "outline_enabled",
         "outline_thickness_mm",
         "outline_color",
+        "use_outline_creation_limit",
+        "outline_creation_max_distance",
         "auto_subdivision_for_midpoint",
         "lines_visible",
         "line_only_visible",
@@ -171,6 +167,13 @@ def _assert_panels_draw_items() -> None:
     ):
         assert prop_name in records["props"], f"{prop_name} がパネルにありません"
     assert "BMANGA_LINE_PT_width_details" not in dir(panels)
+    for old_panel in (
+        "BMANGA_LINE_PT_outline",
+        "BMANGA_LINE_PT_inner_line",
+        "BMANGA_LINE_PT_intersection",
+        "BMANGA_LINE_PT_selection_line",
+    ):
+        assert old_panel not in dir(panels), f"{old_panel} が残っています"
     assert "bmanga_line.detail_settings" in records["operators"]
     bool_props = [
         prop.identifier
@@ -181,9 +184,7 @@ def _assert_panels_draw_items() -> None:
     initially_on_props = {
         "outline_enabled",
         "lines_visible",
-        "use_inner_line_creation_limit",
-        "use_intersection_creation_limit",
-        "use_selection_line_creation_limit",
+        "use_camera_culling",
         # 2026-07-03 ユーザー確定: 板ポリ除外だけは初期値オン
         "exclude_sheet_meshes",
     }

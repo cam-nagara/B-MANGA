@@ -153,9 +153,19 @@ def _ensure_outline_modifier(obj: bpy.types.Object, context) -> bool:
     )
 
 
+def _outline_creation_in_range(obj: bpy.types.Object, context) -> bool:
+    return camera_comp.outline_line_creation_in_range(
+        obj,
+        getattr(context, "scene", None),
+        obj.bmanga_line_settings,
+    )
+
+
 def _update_outline_enabled(objects: list[bpy.types.Object], context) -> None:
     needs_view_update = any(
-        obj.bmanga_line_settings.outline_enabled and not _has_outline_target(obj)
+        obj.bmanga_line_settings.outline_enabled
+        and _outline_creation_in_range(obj, context)
+        and not _has_outline_target(obj)
         for obj in objects
     )
     if any(obj.bmanga_line_settings.outline_enabled for obj in objects):
@@ -166,8 +176,11 @@ def _update_outline_enabled(objects: list[bpy.types.Object], context) -> None:
     for obj in objects:
         settings = obj.bmanga_line_settings
         created = False
-        if settings.outline_enabled and not _has_outline_target(obj):
-            if _ensure_outline_modifier(obj, context):
+        if settings.outline_enabled:
+            if not _outline_creation_in_range(obj, context):
+                outline_setup.remove_outline_geometry(obj)
+                continue
+            if not _has_outline_target(obj) and _ensure_outline_modifier(obj, context):
                 created = True
                 refresh_targets.append(obj)
         visibility_changed = core.set_outline_visibility_from_settings(obj)
@@ -189,6 +202,38 @@ def _update_outline_enabled(objects: list[bpy.types.Object], context) -> None:
     if enabled_targets and len(enabled_targets) <= MAX_IMMEDIATE_VISIBILITY_OBJECTS:
         _refresh_camera_objects(
             enabled_targets,
+            context,
+            update_visibility=True,
+            width_targets=("outline",),
+        )
+
+
+def _update_outline_creation_range(objects: list[bpy.types.Object], context) -> None:
+    refresh_targets = []
+    needs_view_update = any(
+        obj.bmanga_line_settings.outline_enabled
+        and _outline_creation_in_range(obj, context)
+        and not _has_outline_target(obj)
+        for obj in objects
+    )
+    if needs_view_update:
+        presets._update_view_layer(context)
+    for obj in objects:
+        settings = obj.bmanga_line_settings
+        if not settings.outline_enabled:
+            continue
+        if not _outline_creation_in_range(obj, context):
+            outline_setup.remove_outline_geometry(obj)
+            continue
+        if not _has_outline_target(obj):
+            if _ensure_outline_modifier(obj, context):
+                refresh_targets.append(obj)
+            continue
+        if core.set_outline_visibility_from_settings(obj):
+            refresh_targets.append(obj)
+    if refresh_targets and len(refresh_targets) <= MAX_IMMEDIATE_VISIBILITY_OBJECTS:
+        _refresh_camera_objects(
+            refresh_targets,
             context,
             update_visibility=True,
             width_targets=("outline",),
@@ -940,6 +985,12 @@ def refresh_propagated_property(
         return
     if prop_name == "outline_enabled":
         _update_outline_enabled(line_objects, context)
+        return
+    if prop_name in {
+        "use_outline_creation_limit",
+        "outline_creation_max_distance",
+    }:
+        _update_outline_creation_range(line_objects, context)
         return
     if prop_name == "use_rim":
         _update_outline_flag(line_objects, "use_rim", prop_name)

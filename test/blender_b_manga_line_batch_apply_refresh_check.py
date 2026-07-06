@@ -175,6 +175,9 @@ def main() -> None:
                 ("edge_width_curve_50", 0.45),
                 ("edge_width_curve_75", 0.8),
                 ("edge_smooth_factor", 0.0),
+                ("use_outline_creation_limit", True),
+                ("outline_creation_max_distance", 12.0),
+                ("use_outline_creation_limit", False),
                 ("inner_line_angle", 0.7),
                 ("inner_line_thickness", 0.0011),
                 ("inner_line_offset", 0.25),
@@ -197,9 +200,6 @@ def main() -> None:
                 ("intersection_edge_width_curve_50", 0.52),
                 ("intersection_edge_width_curve_75", 0.82),
                 ("intersection_edge_smooth_factor", 0.0),
-                ("intersection_method", "SDF"),
-                ("intersection_method", "BOOLEAN"),
-                ("intersection_method", "SHELL"),
                 ("use_intersection_creation_limit", False),
                 ("use_intersection_creation_limit", True),
                 ("intersection_creation_max_distance", 12.0),
@@ -210,6 +210,7 @@ def main() -> None:
                 ("camera_compensation_influence", 0.6),
                 ("line_width_reference_distance", 3.0),
                 ("use_camera_compensation", False),
+                ("use_camera_culling", False),
                 ("use_camera_culling", True),
                 ("culling_margin", 0.05),
                 ("use_camera_culling", False),
@@ -250,6 +251,8 @@ def main() -> None:
                     assert refresh_counts["intersection"] == 0, (prop_name, refresh_counts)
                     assert refresh_counts["camera_objects"] == 0, (prop_name, refresh_counts)
                 if prop_name in {
+                    "use_outline_creation_limit",
+                    "outline_creation_max_distance",
                     "use_inner_line_creation_limit",
                     "inner_line_creation_max_distance",
                     "use_intersection_creation_limit",

@@ -1548,7 +1548,7 @@ def _refresh_source_intersections(
         ),
         offset=settings.intersection_line_offset,
         material=outline_setup.get_line_material(obj, "intersection"),
-        method=settings.intersection_method,
+        method="SHELL",
         scene=scene,
     )
     return any(iter_intersection_modifiers(obj))

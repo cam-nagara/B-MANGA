@@ -357,6 +357,26 @@ def _outline_visibility_rules_enabled(settings) -> bool:
     )
 
 
+def _outline_creation_in_range(
+    owner: bpy.types.Object,
+    settings,
+    context,
+) -> bool:
+    from . import camera_comp
+
+    return camera_comp.outline_line_creation_in_range(
+        owner,
+        getattr(context, "scene", None),
+        settings,
+    )
+
+
+def _remove_outline_geometry(owner: bpy.types.Object) -> bool:
+    from . import outline_setup
+
+    return outline_setup.remove_outline_geometry(owner)
+
+
 def _on_outline_enabled_changed(self, context):
     if _propagating:
         return
@@ -366,7 +386,9 @@ def _on_outline_enabled_changed(self, context):
     if owner.type == "MESH" and has_line(owner):
         if self.outline_enabled:
             from . import batch_update; batch_update.defer_intersection_viewport([owner])
-            if owner.modifiers.get(MODIFIER_NAME) is None:
+            if not _outline_creation_in_range(owner, self, context):
+                visibility_changed = _remove_outline_geometry(owner)
+            elif owner.modifiers.get(MODIFIER_NAME) is None:
                 created_owner = _ensure_outline_for_settings(owner, self, context)
         if set_outline_visibility_from_settings(owner):
             visibility_changed = True
@@ -381,6 +403,37 @@ def _on_outline_enabled_changed(self, context):
             update_visibility=True,
             width_targets=("outline",),
         )
+
+
+def _on_outline_creation_range_changed(self, context, prop_name: str) -> None:
+    if _propagating:
+        return
+    owner = self.id_data
+    refreshed_owner = False
+    if owner.type == "MESH" and has_line(owner):
+        if not _outline_creation_in_range(owner, self, context):
+            refreshed_owner = _remove_outline_geometry(owner)
+        elif self.outline_enabled:
+            if owner.modifiers.get(MODIFIER_NAME) is None and owner.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME) is None:
+                refreshed_owner = _ensure_outline_for_settings(owner, self, context)
+            if set_outline_visibility_from_settings(owner):
+                refreshed_owner = True
+    _propagate(self, context, prop_name)
+    if refreshed_owner:
+        _refresh_print_widths_for(
+            context,
+            [owner],
+            update_visibility=True,
+            width_targets=("outline",),
+        )
+
+
+def _on_outline_creation_limit_changed(self, context):
+    _on_outline_creation_range_changed(self, context, "use_outline_creation_limit")
+
+
+def _on_outline_creation_distance_changed(self, context):
+    _on_outline_creation_range_changed(self, context, "outline_creation_max_distance")
 
 
 def _on_color_changed(self, context):
@@ -1128,7 +1181,7 @@ def _sync_intersection_creation(owner: bpy.types.Object, settings, context) -> N
         ),
         offset=settings.intersection_line_offset,
         material=mat,
-        method=settings.intersection_method,
+        method="SHELL",
         scene=getattr(context, "scene", None),
     )
 
@@ -1596,7 +1649,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     """オブジェクトごとの B-MANGA Line 設定."""
 
     outline_enabled: BoolProperty(
-        name="アウトラインを追加",
+        name="アウトライン",
         description="外側のアウトラインを描画する",
         default=True,
         update=_on_outline_enabled_changed,
@@ -1638,6 +1691,23 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     outline_color: _line_color_property(
         "アウトラインの色",
         _on_color_changed,
+    )  # type: ignore[valid-type]
+
+    use_outline_creation_limit: BoolProperty(
+        name="作成範囲を制限",
+        description="カメラに写り、指定距離以内にあるオブジェクトにだけアウトラインを作成する",
+        default=False,
+        update=_on_outline_creation_limit_changed,
+    )  # type: ignore[valid-type]
+
+    outline_creation_max_distance: FloatProperty(
+        name="作成する距離 (m)",
+        description="カメラに写るオブジェクトのうち、この距離以内のものだけにアウトラインを作成する",
+        default=10.0,
+        min=0.1,
+        max=1000.0,
+        subtype="DISTANCE",
+        update=_on_outline_creation_distance_changed,
     )  # type: ignore[valid-type]
 
     use_vertex_color: BoolProperty(
@@ -1718,7 +1788,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     )  # type: ignore[valid-type]
 
     inner_line_enabled: BoolProperty(
-        name="稜谷線を追加",
+        name="稜谷線",
         description="折れ目（稜線・谷線）を検出して線を追加する",
         default=False,
         update=_on_inner_line_enabled_changed,
@@ -1784,7 +1854,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     use_inner_line_creation_limit: BoolProperty(
         name="作成範囲を制限",
         description="カメラに写り、指定距離以内にあるオブジェクトにだけ稜谷線を作成する",
-        default=True,
+        default=False,
         update=_on_inner_creation_limit_changed,
     )  # type: ignore[valid-type]
 
@@ -1816,7 +1886,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     )  # type: ignore[valid-type]
 
     intersection_enabled: BoolProperty(
-        name="交差線を追加",
+        name="交差線",
         description="他のオブジェクトとの交差部分に線を描画する",
         default=False,
         update=_on_intersection_enabled_changed,
@@ -1866,7 +1936,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     use_intersection_creation_limit: BoolProperty(
         name="作成範囲を制限",
         description="カメラに写り、指定距離以内にあるオブジェクトにだけ交差線を作成する",
-        default=True,
+        default=False,
         update=_on_intersection_creation_limit_changed,
     )  # type: ignore[valid-type]
 
@@ -1883,7 +1953,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     # --- 選択線設定 ---
 
     selection_line_enabled: BoolProperty(
-        name="選択線を追加",
+        name="選択線",
         description="Freestyle辺をマークした辺に線を描画する",
         default=False,
         update=_on_selection_line_enabled_changed,
@@ -1942,7 +2012,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     use_selection_line_creation_limit: BoolProperty(
         name="作成範囲を制限",
         description="カメラに写り、指定距離以内にあるオブジェクトにだけ選択線を作成する",
-        default=True,
+        default=False,
         update=_on_selection_creation_limit_changed,
     )  # type: ignore[valid-type]
 
@@ -2124,7 +2194,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     use_camera_culling: BoolProperty(
         name="カメラ範囲外を非表示",
         description="カメラビュー外のオブジェクトのラインを非表示にして動作を軽くする",
-        default=False,
+        default=True,
         update=_on_culling_changed,
     )  # type: ignore[valid-type]
 

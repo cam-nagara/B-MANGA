@@ -108,8 +108,8 @@ def _draw_outline(layout, context, settings) -> None:
         "outline_enabled",
         "outline_thickness_mm",
         "outline_color",
-        "use_outline_distance_limit",
-        "outline_max_distance",
+        "use_outline_creation_limit",
+        "outline_creation_max_distance",
         dpi,
     )
 
@@ -162,7 +162,9 @@ def _draw_basic_line_settings(
     dpi: int,
 ) -> None:
     col = layout.column(align=True)
-    col.prop(settings, enabled_prop)
+    head = col.row(align=True)
+    head.prop(settings, enabled_prop)
+    head.prop(settings, color_prop, text="")
     sub = col.column(align=True)
     sub.enabled = bool(getattr(settings, enabled_prop))
     row = sub.row(align=True)
@@ -170,12 +172,30 @@ def _draw_basic_line_settings(
     sub_label = row.row(align=True)
     sub_label.alignment = "RIGHT"
     sub_label.label(text=_mm_to_px_label(getattr(settings, thickness_prop), dpi))
-    sub.prop(settings, color_prop)
-    sub.separator()
-    sub.prop(settings, range_enabled_prop)
-    range_col = sub.column(align=True)
-    range_col.enabled = bool(getattr(settings, range_enabled_prop))
-    range_col.prop(settings, range_distance_prop)
+    range_row = sub.row(align=True)
+    range_row.prop(settings, range_enabled_prop)
+    range_cell = range_row.row(align=True)
+    range_cell.enabled = bool(getattr(settings, range_enabled_prop))
+    range_cell.prop(settings, range_distance_prop)
+
+
+def _draw_line_settings(layout, context, settings) -> None:
+    if settings is None:
+        return
+    row = layout.row(align=True)
+    row.prop(settings, "auto_subdivision_for_midpoint")
+    row.operator("bmanga_line.detail_settings", icon="PREFERENCES")
+
+    layout.separator()
+    for label, draw_func in (
+        ("アウトライン", _draw_outline),
+        ("稜谷線", _draw_inner_line),
+        ("交差線", _draw_intersection),
+        ("選択線", _draw_selection_line),
+    ):
+        layout.label(text=label)
+        draw_func(layout, context, settings)
+        layout.separator()
 
 
 def _draw_inner_line(layout, context, settings) -> None:
@@ -231,9 +251,12 @@ def _draw_detail_cell(row, settings, prop_name: str | None) -> None:
 def _draw_line_detail_grid(layout, settings) -> None:
     box = layout.box()
     header = box.row(align=True)
-    for label in ("アウトライン", "稜谷線", "交差線", "選択線"):
+    labels = ("アウトライン", "稜谷線", "交差線", "選択線")
+    for index, label in enumerate(labels):
         col = header.column(align=True)
         col.label(text=label)
+        if index < len(labels) - 1:
+            header.separator()
 
     rows = (
         ("edge_midpoint_angle", "inner_line_angle", "intersection_edge_midpoint_angle", "selection_edge_midpoint_angle"),
@@ -249,12 +272,13 @@ def _draw_line_detail_grid(layout, settings) -> None:
         ("use_rim", None, None, None),
         ("hide_through_transparent", None, None, None),
         ("use_vertex_color", None, None, None),
-        (None, None, "intersection_method", None),
     )
     for props in rows:
         row = box.row(align=True)
-        for prop_name in props:
+        for index, prop_name in enumerate(props):
             _draw_detail_cell(row, settings, prop_name)
+            if index < len(props) - 1:
+                row.separator()
 
 
 class BMANGA_LINE_OT_detail_settings(bpy.types.Operator):
@@ -292,9 +316,6 @@ def _draw_actions(layout, context, obj) -> None:
     row.scale_y = 1.4
     row.operator("bmanga_line.apply", icon="ADD")
     settings = getattr(obj, "bmanga_line_settings", None)
-    if settings is not None:
-        layout.prop(settings, "auto_subdivision_for_midpoint")
-        layout.operator("bmanga_line.detail_settings", icon="PREFERENCES")
 
     linked_line_count = sum(
         1 for linked_obj in context.scene.objects
@@ -354,12 +375,12 @@ class BMANGA_LINE_PT_presets(_BMangaLineMeshPanel, bpy.types.Panel):
         _draw_presets(self.layout, context)
 
 
-class BMANGA_LINE_PT_outline(_BMangaLineMeshPanel, bpy.types.Panel):
-    bl_label = "アウトライン設定"
-    bl_idname = "BMANGA_LINE_PT_outline"
+class BMANGA_LINE_PT_line_settings(_BMangaLineMeshPanel, bpy.types.Panel):
+    bl_label = "ライン設定"
+    bl_idname = "BMANGA_LINE_PT_line_settings"
 
     def draw(self, context):
-        _draw_outline(self.layout, context, _active_settings(context))
+        _draw_line_settings(self.layout, context, _active_settings(context))
 
 
 class BMANGA_LINE_PT_camera(_BMangaLineMeshPanel, bpy.types.Panel):
@@ -370,42 +391,12 @@ class BMANGA_LINE_PT_camera(_BMangaLineMeshPanel, bpy.types.Panel):
         _draw_camera(self.layout, context, _active_settings(context))
 
 
-class BMANGA_LINE_PT_inner_line(_BMangaLineMeshPanel, bpy.types.Panel):
-    bl_label = "稜谷線"
-    bl_idname = "BMANGA_LINE_PT_inner_line"
-    bl_options = {"DEFAULT_CLOSED"}
-
-    def draw(self, context):
-        _draw_inner_line(self.layout, context, _active_settings(context))
-
-
-class BMANGA_LINE_PT_intersection(_BMangaLineMeshPanel, bpy.types.Panel):
-    bl_label = "交差線（オブジェクト間）"
-    bl_idname = "BMANGA_LINE_PT_intersection"
-    bl_options = {"DEFAULT_CLOSED"}
-
-    def draw(self, context):
-        _draw_intersection(self.layout, context, _active_settings(context))
-
-
-class BMANGA_LINE_PT_selection_line(_BMangaLineMeshPanel, bpy.types.Panel):
-    bl_label = "選択線"
-    bl_idname = "BMANGA_LINE_PT_selection_line"
-    bl_options = {"DEFAULT_CLOSED"}
-
-    def draw(self, context):
-        _draw_selection_line(self.layout, context, _active_settings(context))
-
-
 _CLASSES = (
     BMANGA_LINE_OT_detail_settings,
     BMANGA_LINE_PT_main,
     BMANGA_LINE_PT_presets,
-    BMANGA_LINE_PT_outline,
+    BMANGA_LINE_PT_line_settings,
     BMANGA_LINE_PT_camera,
-    BMANGA_LINE_PT_inner_line,
-    BMANGA_LINE_PT_intersection,
-    BMANGA_LINE_PT_selection_line,
 )
 
 

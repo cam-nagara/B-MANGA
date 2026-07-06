@@ -3,6 +3,45 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-06 — B-MANGA Lineのライン設定UIと作成範囲を整理 (B-MANGA Line v0.3.124)
+
+### 症状
+
+- アウトライン・稜谷線・交差線・選択線がサイドバー上で別パネルに分かれており、基本設定の見通しが悪かった。
+- 詳細設定ダイアログの4列が詰まって見え、同じ高さの項目を見比べにくかった。
+- 交差線の作成方式ドロップダウンが残っていたが、現在仕様では「ライン素材（高速）」固定だった。
+- アウトラインだけ「作成範囲を制限」「作成する距離」がなく、サイドバーでは旧来の遠距離非表示設定になっていた。
+- 「作成範囲を制限」の初期値がオンの線種が残っていた。
+
+### 原因
+
+- 選択線追加時に基本設定を線種別パネルへ分けたまま、後続のUI統合要望へ未対応だった。
+- 交差線の実処理は高速方式固定に移行済みだったが、UI・プリセット経路には旧方式選択の痕跡が残っていた。
+- 作成範囲制限は稜谷線・交差線・選択線だけに実装され、アウトラインは距離による非表示だけだった。
+
+### 修正
+
+- サイドバーの4線種パネルを「ライン設定」パネルへ統合し、中間頂点用サブディビジョンと詳細設定ボタンも同パネルへ移動した。
+- 各線種の基本設定を、オン/オフと線色、作成範囲と距離が横並びになるよう整理した。
+- 詳細設定ダイアログの4列の間に余白を入れ、交差線の作成方式行を削除した。
+- アウトラインにも「作成範囲を制限」「作成する距離」を追加し、範囲外ではアウトライン部分だけを作らないようにした。
+- 「作成範囲を制限」は全線種で初期値オフ、「カメラ範囲外を非表示」は初期値オンにした。
+- 交差線は呼び出し側でも「ライン素材（高速）」固定にし、プリセット保存・復元では旧作成方式を引き継がないようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_register_reenable_check.py`
+- `test/blender_b_manga_line_outline_creation_range_check.py`
+- `test/blender_b_manga_line_inner_creation_range_check.py`
+- `test/blender_b_manga_line_intersection_creation_range_check.py`
+- `test/blender_b_manga_line_batch_apply_refresh_check.py`
+- `test/blender_b_manga_line_control_update_scope_check.py`
+- `test/blender_b_manga_line_preset_visibility_check.py`
+- `test/blender_b_manga_line_slider_step_check.py`
+- `python -m py_compile`（変更したB-MANGA Line本体・関連テスト）
+
+---
+
 ## 2026-07-06 — B-MANGA Lineの交差線端点と頂点単位の線幅均一化を修正 (B-MANGA Line v0.3.123)
 
 ### 症状

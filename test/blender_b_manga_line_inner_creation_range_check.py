@@ -81,7 +81,10 @@ def main() -> None:
         for obj in (near, exact, far):
             settings = obj.bmanga_line_settings
             assert abs(settings.inner_line_creation_max_distance - 10.0) < 1.0e-7
-            assert settings.use_inner_line_creation_limit is True
+            assert settings.use_inner_line_creation_limit is False
+        for obj in (near, exact, far):
+            settings = obj.bmanga_line_settings
+            settings.use_inner_line_creation_limit = True
             _apply(obj)
 
         assert camera_comp.object_distance_from_camera(near, camera) < 10.0
@@ -105,7 +108,8 @@ def main() -> None:
         assert not _has_inner(far), "作成距離を戻しても遠距離内部線が残っています"
 
         stale_transform = _make_data_cube("BML_内部線_移動直後", (-4.0, -11.5, 0.0))
-        assert stale_transform.bmanga_line_settings.use_inner_line_creation_limit is True
+        assert stale_transform.bmanga_line_settings.use_inner_line_creation_limit is False
+        stale_transform.bmanga_line_settings.use_inner_line_creation_limit = True
         _apply(stale_transform)
         assert not _has_inner(stale_transform), (
             "移動直後の遠距離オブジェクトに内部線が作成されています"

@@ -21,6 +21,8 @@ _SETTING_FIELDS = (
     "outline_thickness",
     "outline_offset",
     "outline_color",
+    "use_outline_creation_limit",
+    "outline_creation_max_distance",
     "use_vertex_color",
     "auto_subdivision_for_midpoint",
     "even_thickness",
@@ -35,7 +37,6 @@ _SETTING_FIELDS = (
     "inner_line_color",
     "use_inner_line_creation_limit",
     "inner_line_creation_max_distance",
-    "intersection_method",
     "intersection_enabled",
     "intersection_thickness",
     "intersection_line_offset",
@@ -195,24 +196,30 @@ def apply_line_settings(
     else:
         subdivision_lod.remove_auto_subdivision(obj)
 
-    use_vg = (
-        settings.use_uniform_line_width
-        or vertex_analysis.has_width_controls(settings, "outline")
-    )
-    ok = outline_setup.apply_outline(
-        obj,
-        thickness=settings.outline_thickness,
-        color=tuple(settings.outline_color),
-        use_vertex_color=settings.use_vertex_color,
-        even_thickness=settings.even_thickness,
-        use_rim=settings.use_rim,
-        offset=settings.outline_offset,
-        use_vertex_group=use_vg,
-        hide_through_transparent=settings.hide_through_transparent,
-        scene=context.scene,
-    )
-    if not ok:
-        return False
+    if (
+        settings.outline_enabled
+        and camera_comp.outline_line_creation_in_range(obj, context.scene, settings)
+    ):
+        use_vg = (
+            settings.use_uniform_line_width
+            or vertex_analysis.has_width_controls(settings, "outline")
+        )
+        ok = outline_setup.apply_outline(
+            obj,
+            thickness=settings.outline_thickness,
+            color=tuple(settings.outline_color),
+            use_vertex_color=settings.use_vertex_color,
+            even_thickness=settings.even_thickness,
+            use_rim=settings.use_rim,
+            offset=settings.outline_offset,
+            use_vertex_group=use_vg,
+            hide_through_transparent=settings.hide_through_transparent,
+            scene=context.scene,
+        )
+        if not ok:
+            return False
+    else:
+        outline_setup.remove_outline_geometry(obj)
 
     skip_inner = plane_filter.should_skip_inner_lines(obj, settings)
     if (
@@ -320,6 +327,8 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
         min=0.0,
         max=1.0,
     )
+    use_outline_creation_limit: BoolProperty(default=False)
+    outline_creation_max_distance: FloatProperty(default=10.0, min=0.1, max=1000.0)
     use_vertex_color: BoolProperty(default=False)
     auto_subdivision_for_midpoint: BoolProperty(default=False)
     even_thickness: BoolProperty(default=False)
@@ -341,7 +350,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
         min=0.0,
         max=1.0,
     )
-    use_inner_line_creation_limit: BoolProperty(default=True)
+    use_inner_line_creation_limit: BoolProperty(default=False)
     inner_line_creation_max_distance: FloatProperty(default=10.0, min=0.1, max=1000.0)
 
     intersection_method: EnumProperty(
@@ -362,7 +371,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
         min=0.0,
         max=1.0,
     )
-    use_intersection_creation_limit: BoolProperty(default=True)
+    use_intersection_creation_limit: BoolProperty(default=False)
     intersection_creation_max_distance: FloatProperty(default=10.0, min=0.1, max=1000.0)
 
     selection_line_enabled: BoolProperty(default=False)
@@ -376,7 +385,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
         min=0.0,
         max=1.0,
     )
-    use_selection_line_creation_limit: BoolProperty(default=True)
+    use_selection_line_creation_limit: BoolProperty(default=False)
     selection_line_creation_max_distance: FloatProperty(default=10.0, min=0.1, max=1000.0)
 
     use_camera_compensation: BoolProperty(default=False)
@@ -415,7 +424,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     selection_edge_width_curve_50: FloatProperty(default=0.50, min=0.0, max=1.0)
     selection_edge_width_curve_75: FloatProperty(default=0.75, min=0.0, max=1.0)
 
-    use_camera_culling: BoolProperty(default=False)
+    use_camera_culling: BoolProperty(default=True)
     culling_margin: FloatProperty(default=0.1745329252, min=0.0, max=1.5707963268)
 
     use_outline_distance_limit: BoolProperty(default=False)

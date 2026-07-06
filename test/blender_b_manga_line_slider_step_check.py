@@ -27,6 +27,7 @@ ANGLE_PROPS = (
 NUDGE_PROPS = (
     ("outline_thickness_mm", 0.1),
     ("outline_offset", -0.1),
+    ("outline_creation_max_distance", 1.0),
     ("inner_line_angle", math.radians(1.0)),
     ("inner_line_thickness_mm", 0.1),
     ("inner_line_offset", -0.1),
