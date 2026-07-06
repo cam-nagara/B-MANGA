@@ -42,7 +42,7 @@ _TARGET_COLLECTION_PREFIX = "BML_IntersectionTargets"
 _PROXY_SOURCE_PROP = "bml_intersection_shell_proxy_source"
 _PROXY_PREFIX = "BML_IntersectionProxy"
 _SHELL_RADIUS_NODE_LABEL = "BML_IntersectionShellOwnRadius"
-_SHELL_VISUAL_RADIUS_NODE_LABEL = "BML_IntersectionShellVisualRadiusV118"
+_SHELL_VISUAL_RADIUS_NODE_LABEL = "BML_IntersectionShellVisualRadiusV125"
 _CURVE_RADIUS_NORMALIZER_LABEL = "BML_IntersectionShellCurveRadius"
 _SHELL_COMBINED_THICKNESS_NODE_LABEL = "BML_IntersectionShellCombinedThickness"
 _SHELL_PROFILE_NODE_LABEL = "BML_IntersectionShellProfile"
@@ -60,6 +60,7 @@ _SHELL_WELD_DISTANCE = 0.01
 _MIN_CURVE_TO_MESH_SCALE = 0.008
 SHELL_TUBE_PROFILE_RESOLUTION = 12
 SHELL_GAP_COVERAGE_FACTOR = 1.08
+SHELL_VISUAL_RADIUS_FACTOR = 0.8
 
 
 def is_shell_modifier(mod: bpy.types.Modifier) -> bool:
@@ -466,11 +467,20 @@ def _add_shell_radius(nodes, links, line_thickness, gin, loc):
     offset_half.inputs[1].default_value = 0.5
     links.new(offset_amount.outputs[0], offset_half.inputs[0])
 
+    visual_radius = nodes.new("ShaderNodeMath")
+    visual_radius.location = (loc[0] - 220, loc[1])
+    visual_radius.operation = "MULTIPLY"
+    # ライン素材の交差線は円断面をメッシュ化するため、設定値をそのまま
+    # 半径へ入れると600dpiの実ピクセル幅が太く出る。中心位置は変えず、
+    # 表示半径だけを実レンダー測定に合わせる。
+    visual_radius.inputs[1].default_value = SHELL_VISUAL_RADIUS_FACTOR
+    links.new(line_thickness, visual_radius.inputs[0])
+
     radius = nodes.new("ShaderNodeMath")
     radius.label = _SHELL_RADIUS_NODE_LABEL
     radius.location = loc
     radius.operation = "ADD"
-    links.new(line_thickness, radius.inputs[0])
+    links.new(visual_radius.outputs[0], radius.inputs[0])
     links.new(offset_half.outputs[0], radius.inputs[1])
 
     radius_min = nodes.new("ShaderNodeMath")

@@ -318,10 +318,13 @@ def _target_pixels(scene, width_m: float) -> float:
 
 
 def _world_per_pixel(scene, camera, world_co: Vector) -> float:
-    _, height = _effective_render_size(scene)
+    width, height = _effective_render_size(scene)
     cam_data = camera.data
     if cam_data.type == "ORTHO":
-        return max(1.0e-9, float(cam_data.ortho_scale) / height)
+        # Blender の Orthographic Scale はカメラビューの横幅（Blender unit）
+        # として扱われるため、横解像度で割る。縦解像度で割ると 16:9 では
+        # 600dpi 換算の線幅が約 1.78 倍に太くなる。
+        return max(1.0e-9, float(cam_data.ortho_scale) / width)
 
     local = camera.matrix_world.inverted() @ world_co
     depth = max(0.001, -float(local.z))

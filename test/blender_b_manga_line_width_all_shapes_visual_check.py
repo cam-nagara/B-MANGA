@@ -8,12 +8,13 @@ import sys
 from pathlib import Path
 
 import bpy
+from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 
 
 ROOT = Path(__file__).resolve().parents[1]
 ADDON_DIR = ROOT / "addons" / "b_manga_line"
-OUT_DIR = ROOT / "_verify" / "2026-07-06_bml_width_all_shapes_final"
+OUT_DIR = ROOT / "_verify" / "2026-07-06_bml_width_all_shapes_strict"
 
 SHAPES = (
     "平面",
@@ -33,7 +34,7 @@ LINE_TYPE_LABELS = {
     "selection": "選択線",
 }
 
-LINE_WIDTH_MM = 1.0
+LINE_WIDTH_MM = 0.3
 DPI = 600
 EXPECTED_PX = LINE_WIDTH_MM * DPI / 25.4
 
@@ -206,7 +207,14 @@ def _create_pair_scene() -> list[dict[str, object]]:
             surface_mats[(index + 1) % 2],
         )
         _create_label(f"{index:02d} {shape_a}x{shape_b}", (center.x, center.y - 1.9, 1.35), label_mat)
-        pairs.append({"index": index, "shapes": (shape_a, shape_b), "objects": (obj_a, obj_b)})
+        pairs.append(
+            {
+                "index": index,
+                "shapes": (shape_a, shape_b),
+                "objects": (obj_a, obj_b),
+                "center": tuple(center),
+            }
+        )
 
     bpy.ops.object.select_all(action="DESELECT")
     return pairs
@@ -344,6 +352,29 @@ def _modifier_width_px(scene, camera_comp, scale_utils, obj: bpy.types.Object, m
     return _world_to_px(scene, camera_comp, scale_utils, obj, width_world)
 
 
+def _project_pixel(scene: bpy.types.Scene, camera: bpy.types.Object, co: Vector) -> list[int]:
+    projected = world_to_camera_view(scene, camera, co)
+    x = int(round(projected.x * scene.render.resolution_x))
+    y = int(round((1.0 - projected.y) * scene.render.resolution_y))
+    return [x, y]
+
+
+def _pair_crop(scene: bpy.types.Scene, camera: bpy.types.Object, center: Vector) -> list[int]:
+    center_px = _project_pixel(scene, camera, center)
+    right_px = _project_pixel(scene, camera, center + Vector((2.15, 0.0, 0.0)))
+    up_px = _project_pixel(scene, camera, center + Vector((0.0, 2.15, 0.0)))
+    half_w = max(90, abs(right_px[0] - center_px[0]) + 30)
+    half_h = max(90, abs(up_px[1] - center_px[1]) + 30)
+    width = scene.render.resolution_x
+    height = scene.render.resolution_y
+    return [
+        max(0, center_px[0] - half_w),
+        max(0, center_px[1] - half_h),
+        min(width, center_px[0] + half_w),
+        min(height, center_px[1] + half_h),
+    ]
+
+
 def _collect_metrics(pairs: list[dict[str, object]], objects: list[bpy.types.Object], camera_comp, core, scale_utils) -> dict[str, object]:
     scene = bpy.context.scene
     ref_distance = (scene.camera.location - Vector((0.0, 0.0, 0.0))).length
@@ -377,6 +408,8 @@ def _collect_metrics(pairs: list[dict[str, object]], objects: list[bpy.types.Obj
             {
                 "index": pair["index"],
                 "shapes": list(pair["shapes"]),
+                "center_px": _project_pixel(scene, scene.camera, Vector(pair["center"])),
+                "crop_px": _pair_crop(scene, scene.camera, Vector(pair["center"])),
                 "type_counts": type_counts,
                 "sampled_modifier_base_px": {
                     key: [round(value, 3) for value in values[:8]]
@@ -428,7 +461,15 @@ def _collect_metrics(pairs: list[dict[str, object]], objects: list[bpy.types.Obj
         "dpi": DPI,
         "reference_distance_origin": round(ref_distance, 6),
         "pair_count": len(pairs),
-        "shape_pairs": [{"index": p["index"], "shapes": list(p["shapes"])} for p in pairs],
+        "shape_pairs": [
+            {
+                "index": p["index"],
+                "shapes": list(p["shapes"]),
+                "center_px": _project_pixel(scene, scene.camera, Vector(p["center"])),
+                "crop_px": _pair_crop(scene, scene.camera, Vector(p["center"])),
+            }
+            for p in pairs
+        ],
         "pair_results": pair_results,
         "missing": missing,
         "settings_failures": settings_failures,
