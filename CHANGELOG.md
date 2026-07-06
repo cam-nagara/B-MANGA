@@ -3,6 +3,28 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-07 — B-MANGA Lineのサイドバーパネル初期展開を統一 (B-MANGA Line v0.3.134)
+
+### 症状
+
+- B-MANGA Lineタブを表示した時、「ラインプリセット」だけが初期状態で閉じていた。
+
+### 原因
+
+- ラインプリセットパネルに、初期状態で閉じる指定が残っていた。
+
+### 修正
+
+- B-MANGA Lineタブ内の全パネルが初期状態で展開されるよう、ラインプリセットの初期クローズ指定を削除した。
+- 再有効化テストで、B-MANGA Lineタブ内の全パネルが初期クローズ指定を持たないことを確認するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_register_reenable_check.py`
+- `python -m py_compile addons/b_manga_line/panels.py test/blender_b_manga_line_register_reenable_check.py`
+
+---
+
 ## 2026-07-07 — B-MANGA Lineのライン適用時設定反映を補正 (B-MANGA Line v0.3.133)
 
 ### 症状

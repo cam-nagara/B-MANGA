@@ -37,22 +37,23 @@ def _assert_registered() -> None:
     assert getattr(bpy.types.Scene, "bmanga_line_camera", None) is not None
     assert getattr(bpy.types, "BMANGA_LINE_PT_main", None) is not None
     # 2026-07-03: 基本設定パネル（板ポリ除外のみ）はオプション廃止に伴い撤去
-    subpanels = (
+    panels = (
+        "BMANGA_LINE_PT_main",
         "BMANGA_LINE_PT_presets",
         "BMANGA_LINE_PT_line_settings",
         "BMANGA_LINE_PT_camera",
     )
-    for name in subpanels:
+    for name in panels:
         panel = getattr(bpy.types, name, None)
         assert panel is not None, f"{name} が登録されていません"
+        assert "DEFAULT_CLOSED" not in getattr(panel, "bl_options", set()), (
+            f"{name} が初期状態で閉じる設定です"
+        )
+    for name in panels[1:]:
+        panel = getattr(bpy.types, name, None)
         assert not getattr(panel, "bl_parent_id", ""), (
             f"{name} が親パネル配下でインデントされます"
         )
-    assert "DEFAULT_CLOSED" not in getattr(
-        bpy.types.BMANGA_LINE_PT_camera,
-        "bl_options",
-        set(),
-    ), "カメラ設定パネルが初期状態で閉じる設定です"
 
 
 def _assert_unregistered() -> None:

@@ -412,7 +412,6 @@ class BMANGA_LINE_PT_presets(_BMangaLineMeshPanel, bpy.types.Panel):
     bl_label = "ラインプリセット"
     bl_idname = "BMANGA_LINE_PT_presets"
     bl_order = 1
-    bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
         _draw_presets(self.layout, context)
