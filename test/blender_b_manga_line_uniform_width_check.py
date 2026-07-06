@@ -639,6 +639,33 @@ def _test_low_influence_keeps_configured_line_widths() -> None:
     )
 
 
+def _test_camera_compensation_influence_blends_far_width() -> None:
+    scene = bpy.context.scene
+    _clear_scene()
+    _configure_scene(scene)
+
+    bpy.ops.mesh.primitive_cube_add(size=0.8, location=(0.0, 0.0, -6.0))
+    obj = bpy.context.object
+    obj.name = "BML_influence_far_source"
+    _select(obj)
+    settings = obj.bmanga_line_settings
+    settings.outline_thickness_mm = 0.40
+    settings.use_camera_compensation = True
+    settings.line_width_reference_distance = 1.2
+    settings.camera_compensation_influence = 0.0
+    assert presets.apply_line_settings(obj, bpy.context)
+    low = _line_world_width(obj)
+    expected_low = _expected_world_width(scene, 1.2, 0.40)
+    assert math.isclose(low, expected_low, rel_tol=0.001), (low, expected_low)
+
+    settings.camera_compensation_influence = 1.0
+    camera_comp.refresh_objects(bpy.context, [obj])
+    high = _line_world_width(obj)
+    expected_high = _expected_world_width(scene, 6.0, 0.40)
+    assert math.isclose(high, expected_high, rel_tol=0.001), (high, expected_high)
+    assert high > low * 3.0, (low, high)
+
+
 def _test_resolution_percentage_does_not_change_width() -> None:
     """プレビュー縮小（解像度%）でも線幅の実体は印刷 mm 基準のまま変わらない."""
     scene = bpy.context.scene
@@ -776,6 +803,7 @@ def main() -> None:
     _test_intersection_target_scale_conversion()
     _test_camera_compensation_uses_mesh_position_not_origin()
     _test_low_influence_keeps_configured_line_widths()
+    _test_camera_compensation_influence_blends_far_width()
     _test_resolution_percentage_does_not_change_width()
     _test_evaluated_orthographic_width()
     _test_linked_uniform_width_refresh_does_not_crash()

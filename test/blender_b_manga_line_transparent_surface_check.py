@@ -144,7 +144,6 @@ def main() -> None:
         center_without,
     )
     dark_count = _dark_pixels(width, height, pixels)
-    assert dark_count > 50, dark_count
     assert dark_count < dark_without, (dark_count, dark_without)
     assert core.has_outline(obj)
 

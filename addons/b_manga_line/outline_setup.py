@@ -51,7 +51,7 @@ PROP_SURFACE_AOV_MASK = "bml_surface_aov_mask"
 # 古い・壊れたノードツリーを次回適用時に確実に再構築するため。
 # フラグ比較だけだと「フラグは合っているが中身が壊れている」素材を
 # 修復できない — 2026-07-03 交差線不可視の実例）
-_LINE_MATERIAL_BUILD_VERSION = 3
+_LINE_MATERIAL_BUILD_VERSION = 4
 SHEET_OUTLINE_TREE_NAME = "BML_SheetOutlineTube"
 SHEET_RIM_HIDDEN_MATERIAL_NAME = "BML_SheetRimHidden"
 _SHEET_TUBE_THICKNESS_SOCKET = "線の太さ"
@@ -321,7 +321,7 @@ def _build_outline_nodes(
         depth_cmp.location = (390, -260)
         depth_cmp.operation = "GREATER_THAN"
         links.new(lightpath.outputs["Transparent Depth"], depth_cmp.inputs[0])
-        depth_cmp.inputs[1].default_value = 1.0
+        depth_cmp.inputs[1].default_value = 0.5
         transparent_depth_mask = depth_cmp.outputs[0]
 
         trans_td = nodes.new("ShaderNodeBsdfTransparent")

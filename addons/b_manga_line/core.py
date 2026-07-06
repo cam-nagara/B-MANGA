@@ -81,6 +81,12 @@ LINE_MODIFIER_NAMES = (
 # ------------------------------------------------------------------
 
 _propagating = False
+_LINE_CREATION_PROPS = {
+    "outline_enabled",
+    "inner_line_enabled",
+    "intersection_enabled",
+    "selection_line_enabled",
+}
 
 
 def record_override_edits(obj) -> None:
@@ -116,7 +122,9 @@ def _propagate(self, context, prop_name):
             if s is not None:
                 setattr(s, prop_name, value)
                 record_override_edits(obj)
-                if has_line(obj):
+                if has_line(obj) or (
+                    prop_name in _LINE_CREATION_PROPS and bool(value)
+                ):
                     changed.append(obj)
     finally:
         _propagating = False
@@ -126,6 +134,36 @@ def _propagate(self, context, prop_name):
         return True
     else:
         return False
+
+
+def _selected_mesh_targets(owner: bpy.types.Object, context) -> list[bpy.types.Object]:
+    targets = _selected_mesh_objects(context, owner)
+    if owner.type == "MESH" and owner not in targets:
+        targets.insert(0, owner)
+    return targets
+
+
+def _set_prop_on_selected_targets(
+    owner: bpy.types.Object,
+    context,
+    prop_name: str,
+    value,
+) -> list[bpy.types.Object]:
+    global _propagating
+    targets = _selected_mesh_targets(owner, context)
+    _propagating = True
+    try:
+        for obj in targets:
+            if obj == owner or obj.type != "MESH":
+                continue
+            settings = getattr(obj, "bmanga_line_settings", None)
+            if settings is None:
+                continue
+            setattr(settings, prop_name, value)
+            record_override_edits(obj)
+    finally:
+        _propagating = False
+    return targets
 
 
 def _refresh_full_line_settings(obj: bpy.types.Object, context) -> None:
@@ -381,28 +419,13 @@ def _on_outline_enabled_changed(self, context):
     if _propagating:
         return
     owner = self.id_data
-    created_owner = False
-    visibility_changed = False
-    if owner.type == "MESH" and has_line(owner):
-        if self.outline_enabled:
-            from . import batch_update; batch_update.defer_intersection_viewport([owner])
-            if not _outline_creation_in_range(owner, self, context):
-                visibility_changed = _remove_outline_geometry(owner)
-            elif owner.modifiers.get(MODIFIER_NAME) is None:
-                created_owner = _ensure_outline_for_settings(owner, self, context)
-        if set_outline_visibility_from_settings(owner):
-            visibility_changed = True
-    _propagate(self, context, "outline_enabled")
-    if self.outline_enabled and (
-        created_owner
-        or (visibility_changed and _outline_visibility_rules_enabled(self))
-    ):
-        _refresh_print_widths_for(
-            context,
-            [owner],
-            update_visibility=True,
-            width_targets=("outline",),
-        )
+    if owner.type != "MESH":
+        return
+    targets = _set_prop_on_selected_targets(
+        owner, context, "outline_enabled", bool(self.outline_enabled),
+    )
+    from . import batch_update
+    batch_update.refresh_propagated_property("outline_enabled", targets, context)
 
 
 def _on_outline_creation_range_changed(self, context, prop_name: str) -> None:
@@ -898,15 +921,11 @@ def _on_inner_line_enabled_changed(self, context):
     if _propagating:
         return
     owner = self.id_data
-    refreshed_owner = _sync_inner_line_creation(owner, self, context)
-    _propagate(self, context, "inner_line_enabled")
-    if refreshed_owner:
-        _refresh_print_widths_for(
-            context,
-            [owner],
-            update_visibility=True,
-            width_targets=("inner",),
-        )
+    targets = _set_prop_on_selected_targets(
+        owner, context, "inner_line_enabled", bool(self.inner_line_enabled),
+    )
+    from . import batch_update
+    batch_update.refresh_propagated_property("inner_line_enabled", targets, context)
 
 
 def _on_inner_angle_changed(self, context):
@@ -1059,15 +1078,11 @@ def _on_selection_line_enabled_changed(self, context):
     if _propagating:
         return
     owner = self.id_data
-    refreshed_owner = _sync_selection_line_creation(owner, self, context)
-    _propagate(self, context, "selection_line_enabled")
-    if refreshed_owner:
-        _refresh_print_widths_for(
-            context,
-            [owner],
-            update_visibility=True,
-            width_targets=("selection",),
-        )
+    targets = _set_prop_on_selected_targets(
+        owner, context, "selection_line_enabled", bool(self.selection_line_enabled),
+    )
+    from . import batch_update
+    batch_update.refresh_propagated_property("selection_line_enabled", targets, context)
 
 
 def _on_selection_angle_changed(self, context):
@@ -1198,44 +1213,11 @@ def _on_intersection_enabled_changed(self, context):
     if _propagating:
         return
     owner = self.id_data
-    disabling = not bool(self.intersection_enabled)
-    if disabling:
-        _sync_intersection_creation(owner, self, context)
-        propagated = _propagate(self, context, "intersection_enabled")
-        if not propagated:
-            from . import intersection_lines
-            if intersection_lines.scene_has_enabled_intersections(
-                getattr(context, "scene", None),
-            ):
-                refreshed = _refresh_intersection_scene(context)
-                if refreshed:
-                    _refresh_print_widths_for(
-                        context,
-                        refreshed,
-                        update_visibility=True,
-                        width_targets=("intersection",),
-                    )
-        return
-    propagated = _propagate(self, context, "intersection_enabled")
-    if propagated:
-        if any(iter_intersection_modifiers(owner)):
-            _refresh_print_widths_for(
-                context,
-                [owner],
-                update_visibility=True,
-                width_targets=("intersection",),
-            )
-    else:
-        refreshed = _refresh_intersection_scene(context)
-        if any(iter_intersection_modifiers(owner)) and owner not in refreshed:
-            refreshed.append(owner)
-        if refreshed:
-            _refresh_print_widths_for(
-                context,
-                refreshed,
-                update_visibility=True,
-                width_targets=("intersection",),
-            )
+    targets = _set_prop_on_selected_targets(
+        owner, context, "intersection_enabled", bool(self.intersection_enabled),
+    )
+    from . import batch_update
+    batch_update.refresh_propagated_property("intersection_enabled", targets, context)
 
 
 def _on_intersection_method_changed(self, context):

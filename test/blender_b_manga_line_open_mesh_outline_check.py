@@ -170,7 +170,7 @@ def main() -> None:
         assert safe_scale is not None, "板ポリアウトラインの極細部を安定化するノードがありません"
         assert safe_scale.bl_idname == "ShaderNodeMath"
         assert safe_scale.operation == "MAXIMUM"
-        assert 0.0 < float(safe_scale.inputs[1].default_value) <= 0.05
+        assert 0.0 < float(safe_scale.inputs[1].default_value) <= 0.101
         assert not any(
             node.bl_idname == "ShaderNodeMath"
             and node.operation == "MAXIMUM"

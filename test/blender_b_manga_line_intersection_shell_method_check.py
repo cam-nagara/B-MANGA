@@ -329,6 +329,18 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
         None,
     )
     assert visual_radius_marker is not None, "交差線の表示半径が現行仕様ではありません"
+    offset_width_link = _incoming_link(
+        tree, visual_radius_marker, visual_radius_marker.inputs[0],
+    )
+    assert offset_width_link is not None, "交差線の線幅入力がオフセット補正へ届いていません"
+    assert offset_width_link.from_node.bl_idname == "NodeGroupInput"
+    assert offset_width_link.from_socket.name == "線の太さ"
+    offset_value_link = _incoming_link(
+        tree, visual_radius_marker, visual_radius_marker.inputs[1],
+    )
+    assert offset_value_link is not None, "交差線のオフセット入力が表示半径補正へ届いていません"
+    assert offset_value_link.from_node.bl_idname == "NodeGroupInput"
+    assert offset_value_link.from_socket.name == "オフセット"
     radius = next(
         (
             node for node in tree.nodes
@@ -339,8 +351,21 @@ def _assert_shell_tree_has_midpoint_width_nodes() -> None:
     assert radius is not None, "交差線の表示半径ノードがありません"
     radius_link = _incoming_link(tree, radius, radius.inputs[0])
     assert radius_link is not None, "交差線の線幅入力が表示半径へ届いていません"
-    assert radius_link.from_node.bl_idname == "NodeGroupInput"
-    assert radius_link.from_socket.name == "線の太さ"
+    assert radius_link.from_node.bl_idname == "ShaderNodeMath"
+    offset_half_link = _incoming_link(tree, radius, radius.inputs[1])
+    assert offset_half_link is not None, "交差線のオフセット補正が表示半径へ届いていません"
+    visual_radius_nodes = []
+    for node in tree.nodes:
+        if node.bl_idname != "ShaderNodeMath" or node.operation != "MULTIPLY":
+            continue
+        if abs(float(node.inputs[1].default_value) - intersection_shell.SHELL_VISUAL_RADIUS_FACTOR) >= 1.0e-5:
+            continue
+        link = _incoming_link(tree, node, node.inputs[0])
+        if link is None:
+            continue
+        if link.from_node.bl_idname == "NodeGroupInput" and link.from_socket.name == "線の太さ":
+            visual_radius_nodes.append(node)
+    assert visual_radius_nodes, "交差線の表示半径が線幅から補正されていません"
     assert not any(
         node.bl_idname == "ShaderNodeMath"
         and node.operation == "MAXIMUM"

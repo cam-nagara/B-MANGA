@@ -789,7 +789,7 @@ def phase4(audit: Audit, _max_targets: int) -> None:
         apply_selected(audit, targets, "toggle")
         save_visual_line_proxy(audit, scene, targets, {"inner"}, "inner_midpoint_smooth")
 
-        set_visual_line_settings(targets, False, False, True)
+        set_visual_line_settings(targets, True, False, True)
         for obj in targets:
             settings = obj.bmanga_line_settings
             settings.intersection_edge_smooth_factor = 1.0

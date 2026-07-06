@@ -246,6 +246,10 @@ def _configure_line_settings(objects: list[bpy.types.Object], camera: bpy.types.
             settings.use_inner_line_distance_limit = False
             settings.use_intersection_distance_limit = False
             settings.use_selection_line_distance_limit = False
+            settings.use_outline_creation_limit = False
+            settings.use_inner_line_creation_limit = False
+            settings.use_intersection_creation_limit = False
+            settings.use_selection_line_creation_limit = False
             settings.use_camera_culling = False
 
             settings.even_thickness = True
@@ -255,13 +259,13 @@ def _configure_line_settings(objects: list[bpy.types.Object], camera: bpy.types.
             settings.line_width_reference_distance = ref_distance
 
             settings.edge_smooth_factor = 0.0
-            settings.inner_line_smooth_factor = 0.0
-            settings.intersection_line_smooth_factor = 0.0
-            settings.selection_line_smooth_factor = 0.0
-            settings.midpoint_jitter_strength = 0.0
-            settings.inner_line_midpoint_jitter_strength = 0.0
-            settings.intersection_line_midpoint_jitter_strength = 0.0
-            settings.selection_line_midpoint_jitter_strength = 0.0
+            settings.inner_edge_smooth_factor = 0.0
+            settings.intersection_edge_smooth_factor = 0.0
+            settings.selection_edge_smooth_factor = 0.0
+            settings.edge_midpoint_jitter_percent = 0.0
+            settings.inner_edge_midpoint_jitter_percent = 0.0
+            settings.intersection_edge_midpoint_jitter_percent = 0.0
+            settings.selection_edge_midpoint_jitter_percent = 0.0
 
             settings.edge_angle = math.radians(1.0)
             settings.inner_line_angle = math.radians(1.0)
@@ -270,7 +274,7 @@ def _configure_line_settings(objects: list[bpy.types.Object], camera: bpy.types.
 
             settings.outline_color = (0.0, 0.0, 0.0, 1.0)
             settings.inner_line_color = (0.0, 0.2, 1.0, 1.0)
-            settings.intersection_line_color = (0.0, 0.85, 0.0, 1.0)
+            settings.intersection_color = (0.0, 0.85, 0.0, 1.0)
             settings.selection_line_color = (1.0, 0.0, 1.0, 1.0)
     finally:
         core._propagating = old_propagating

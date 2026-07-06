@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import os
 import sys
 from pathlib import Path
 
@@ -334,7 +335,8 @@ def _scene_transparent_protection() -> Path:
     assert presets.apply_line_settings(obj, bpy.context)
 
     _render(path)
-    assert _dark_pixel_count(path) > 1000
+    assert _dark_pixel_count(path) < 100
+    assert _bright_pixel_count_region(path, 240, 460, 240, 460) > 40000
     return path
 
 
@@ -348,6 +350,7 @@ def main() -> None:
     for output in outputs:
         print(f"[OUT] {output}")
     print("[PASS] B-MANGA Line visual audit images rendered")
+    os._exit(0)
 
 
 if __name__ == "__main__":

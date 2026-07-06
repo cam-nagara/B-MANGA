@@ -103,6 +103,7 @@ def _make_low_density_folded_strip() -> bpy.types.Object:
         offset=0.0,
         material=line_mat,
         midpoint_factor=-1.0,
+        resample_count=1,
     )
     assert ok, "低密度メッシュへ内部線を追加できませんでした"
     bpy.context.view_layer.update()

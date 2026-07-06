@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import core, intersection_lines, presets  # noqa: E402
+from b_manga_line import core, intersection_lines, intersection_shell, presets  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -27,15 +27,21 @@ def _make_cube(name: str, location: tuple[float, float, float]) -> bpy.types.Obj
 
 
 def _target_names(obj: bpy.types.Object) -> set[str]:
-    names: set[str] = set()
-    for mod in core.iter_intersection_modifiers(obj):
-        target = intersection_lines._modifier_target(mod)
-        if target is not None:
-            names.add(target.name)
-    return names
+    mod = obj.modifiers.get(intersection_shell.SHELL_MODIFIER_NAME)
+    if mod is None:
+        return set()
+    return {target.name for target in intersection_shell.modifier_targets(mod)}
 
 
 def _apply_all(objects: list[bpy.types.Object]) -> None:
+    enabled_states = []
+    for obj in objects:
+        settings = obj.bmanga_line_settings
+        enabled_states.append((settings, bool(settings.intersection_enabled)))
+        settings.intersection_enabled = False
+        assert presets.apply_line_settings(obj, bpy.context)
+    for settings, enabled in enabled_states:
+        settings.intersection_enabled = enabled
     for obj in objects:
         assert presets.apply_line_settings(obj, bpy.context)
 
@@ -74,16 +80,15 @@ def _test_name_fallback_without_camera() -> None:
         expected = _expected_targets(obj, objects)
         actual = _target_names(obj)
         assert actual == expected, (obj.name, actual, expected)
-        assert all(
-            mod.name.startswith(core.INTERSECTION_MODIFIER_PREFIX)
-            for mod in core.iter_intersection_modifiers(obj)
-        )
+        assert all(mod.name == intersection_shell.SHELL_MODIFIER_NAME for mod in core.iter_intersection_modifiers(obj))
 
     bpy.ops.object.select_all(action="DESELECT")
     first.select_set(True)
     bpy.context.view_layer.objects.active = first
     first.bmanga_line_settings.intersection_enabled = False
     assert not list(core.iter_intersection_modifiers(first))
+    assert presets.apply_line_settings(second, bpy.context)
+    assert presets.apply_line_settings(third, bpy.context)
     assert first.name in _target_names(second)
     assert first.name in _target_names(third)
 

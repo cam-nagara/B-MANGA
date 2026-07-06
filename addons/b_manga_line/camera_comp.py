@@ -402,8 +402,23 @@ def _compensated_width_for_mesh(
     settings,
     width_m: float,
 ) -> float:
-    del settings
-    return _reference_width_for_mesh(scene, camera, obj, width_m)
+    mesh_width = _reference_width_for_mesh(scene, camera, obj, width_m)
+    ref_width = _reference_width_for_distance(
+        scene,
+        camera,
+        width_m,
+        _line_width_reference_distance(settings),
+    )
+    influence = min(1.0, max(0.0, float(
+        getattr(settings, "camera_compensation_influence", 1.0) or 0.0
+    )))
+    adjusted = ref_width + (mesh_width - ref_width) * influence
+    # 低い補正値で近距離オブジェクトが基準距離の太い線幅へ膨らむのを防ぐ。
+    # 「線幅の均一化（オブジェクト単位）」がオンの間は、設定した線幅より
+    # 太い方向へはブレンドせず、最低でもオブジェクト位置の指定線幅に留める。
+    if ref_width > mesh_width:
+        return mesh_width
+    return adjusted
 
 
 def _prepare_style_weights(obj, settings, target: str) -> bool:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import os
 import sys
 from pathlib import Path
 
@@ -15,6 +16,7 @@ sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
 from b_manga_line import inner_lines  # noqa: E402
+from b_manga_line.core import FREESTYLE_EDGE_ATTR  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -32,21 +34,52 @@ def _make_material(name: str, color: tuple[float, float, float, float]):
     return mat
 
 
+def _make_marked_edge_mesh(
+    name: str,
+    core_verts: list[tuple[float, float, float]],
+    selected_edges: list[tuple[int, int]],
+) -> bpy.types.Mesh:
+    verts = list(core_verts)
+    faces = []
+    side_offset = 0.12
+    for a, b in selected_edges:
+        start = Vector(core_verts[a])
+        end = Vector(core_verts[b])
+        direction = end - start
+        perp = Vector((-direction.y, direction.x, 0.0))
+        if perp.length <= 1.0e-8:
+            perp = Vector((0.0, 0.0, side_offset))
+        else:
+            perp.normalize()
+            perp *= side_offset
+        side_a = len(verts)
+        side_b = side_a + 1
+        verts.append(tuple(start + perp))
+        verts.append(tuple(end + perp))
+        faces.append((a, b, side_b, side_a))
+
+    mesh = bpy.data.meshes.new(name)
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+
+    attr = mesh.attributes.new(FREESTYLE_EDGE_ATTR, "BOOLEAN", "EDGE")
+    selected_lookup = {tuple(sorted(pair)) for pair in selected_edges}
+    for edge in mesh.edges:
+        attr.data[edge.index].value = tuple(sorted(edge.vertices)) in selected_lookup
+    return mesh
+
+
 def _make_marked_t_junction() -> tuple[bpy.types.Object, bpy.types.Material]:
-    mesh = bpy.data.meshes.new("BML_inner_branch_endpoint_mesh")
-    verts = [
+    mesh = _make_marked_edge_mesh(
+        "BML_inner_branch_endpoint_mesh",
+        [
         (-2.0, 0.0, 0.0),
         (0.0, 0.0, 0.0),
         (2.0, 0.0, 0.0),
         (0.0, 2.0, 0.0),
-    ]
-    edges = [(0, 1), (1, 2), (1, 3)]
-    mesh.from_pydata(verts, edges, [])
-    mesh.update()
-
-    attr = mesh.attributes.new("sharp_edge", "BOOLEAN", "EDGE")
-    for item in attr.data:
-        item.value = True
+        ],
+        [(0, 1), (1, 2), (1, 3)],
+    )
 
     obj = bpy.data.objects.new("BML_inner_branch_endpoint", mesh)
     bpy.context.collection.objects.link(obj)
@@ -57,8 +90,9 @@ def _make_marked_t_junction() -> tuple[bpy.types.Object, bpy.types.Material]:
 
 
 def _make_marked_subdivided_t_junction() -> tuple[bpy.types.Object, bpy.types.Material]:
-    mesh = bpy.data.meshes.new("BML_inner_branch_endpoint_subdivided_mesh")
-    verts = [
+    mesh = _make_marked_edge_mesh(
+        "BML_inner_branch_endpoint_subdivided_mesh",
+        [
         (-2.0, 0.0, 0.0),
         (-1.0, 0.0, 0.0),
         (0.0, 0.0, 0.0),
@@ -66,14 +100,9 @@ def _make_marked_subdivided_t_junction() -> tuple[bpy.types.Object, bpy.types.Ma
         (2.0, 0.0, 0.0),
         (0.0, 1.0, 0.0),
         (0.0, 2.0, 0.0),
-    ]
-    edges = [(0, 1), (1, 2), (2, 3), (3, 4), (2, 5), (5, 6)]
-    mesh.from_pydata(verts, edges, [])
-    mesh.update()
-
-    attr = mesh.attributes.new("sharp_edge", "BOOLEAN", "EDGE")
-    for item in attr.data:
-        item.value = True
+        ],
+        [(0, 1), (1, 2), (2, 3), (3, 4), (2, 5), (5, 6)],
+    )
 
     obj = bpy.data.objects.new("BML_inner_branch_endpoint_subdivided", mesh)
     bpy.context.collection.objects.link(obj)
@@ -185,12 +214,14 @@ def main() -> None:
             },
             flush=True,
         )
+        os._exit(0)
     finally:
         try:
             b_manga_line.unregister()
         except Exception:
             pass
         bpy.ops.wm.read_factory_settings(use_empty=True)
+        bpy.ops.wm.quit_blender()
 
 
 if __name__ == "__main__":

@@ -115,13 +115,14 @@ def _assert_outline_toggle() -> None:
     assert presets.apply_line_settings(off_at_apply, bpy.context)
     off_outline = off_at_apply.modifiers.get(core.MODIFIER_NAME)
     off_inner = off_at_apply.modifiers.get(core.GN_MODIFIER_NAME)
-    assert off_outline is not None
-    assert not off_outline.show_viewport
-    assert not off_outline.show_render
+    if off_outline is not None:
+        assert not off_outline.show_viewport
+        assert not off_outline.show_render
     assert off_inner is not None and off_inner.show_viewport and off_inner.show_render
 
     core.set_line_visibility(off_at_apply, True)
-    assert not off_outline.show_viewport
+    off_outline = off_at_apply.modifiers.get(core.MODIFIER_NAME)
+    assert off_outline is None or not off_outline.show_viewport
     assert off_inner.show_viewport
 
 

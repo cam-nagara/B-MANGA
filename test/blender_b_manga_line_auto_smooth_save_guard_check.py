@@ -50,12 +50,12 @@ def _make_material(name: str, color: tuple[float, float, float, float]) -> bpy.t
 
 def _make_line_target() -> bpy.types.Object:
     surface = _make_material("AutoSmooth_Surface", (0.82, 0.91, 1.0, 1.0))
-    bpy.ops.mesh.primitive_cylinder_add(vertices=32, radius=0.7, depth=1.25, location=(0.0, 0.0, 0.0))
+    bpy.ops.mesh.primitive_cube_add(size=0.9, location=(0.0, 0.0, 0.0))
     obj = bpy.context.object
     obj.name = "AutoSmoothSaveProbe"
     obj.data.materials.append(surface)
 
-    bpy.ops.mesh.primitive_cube_add(size=0.9, location=(0.42, 0.0, 0.0))
+    bpy.ops.mesh.primitive_cylinder_add(vertices=32, radius=0.7, depth=1.25, location=(0.42, 0.0, 0.0))
     other = bpy.context.object
     other.name = "AutoSmoothSaveProbe_IntersectionTarget"
     other.data.materials.append(surface)
@@ -63,12 +63,12 @@ def _make_line_target() -> bpy.types.Object:
     for item in (obj, other):
         settings = item.bmanga_line_settings
         settings.outline_enabled = True
-        settings.inner_enabled = True
+        settings.inner_line_enabled = True
         settings.intersection_enabled = True
         settings.use_intersection_creation_limit = False
         settings.intersection_method = "SHELL"
         settings.outline_thickness = 0.025
-        settings.inner_thickness = 0.014
+        settings.inner_line_thickness = 0.014
         settings.intersection_thickness = 0.018
 
     bpy.ops.object.select_all(action="DESELECT")

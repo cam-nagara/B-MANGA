@@ -947,15 +947,6 @@ def collect_targets(context) -> list[LayerTarget]:
                         page, {key: panel}, include_page_children=False
                     )
                 )
-                targets.append(
-                    LayerTarget(
-                        COMA_PREVIEW_KIND,
-                        coma_preview_key(key),
-                        "コマプレビュー",
-                        key,
-                        2,
-                    )
-                )
 
     elif gp_root_targets or effect_root_targets:
         targets.extend(effect_root_targets)

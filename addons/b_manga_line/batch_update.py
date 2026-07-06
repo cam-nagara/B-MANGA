@@ -976,7 +976,18 @@ def refresh_propagated_property(
     objects: list[bpy.types.Object],
     context,
 ) -> None:
-    line_objects = _line_objects(objects)
+    if prop_name in {
+        "outline_enabled",
+        "inner_line_enabled",
+        "intersection_enabled",
+        "selection_line_enabled",
+    }:
+        line_objects = [
+            obj for obj in objects
+            if obj.type == "MESH" and obj.data is not None
+        ]
+    else:
+        line_objects = _line_objects(objects)
     if not line_objects:
         return
 

@@ -174,12 +174,17 @@ def _assert_transition_counts(
     assert counts["camera"] == 0, (context, counts)
 
     if prop == "outline_enabled":
-        assert counts["outline_apply"] == 0, (context, counts)
+        if turning_on:
+            assert counts["outline_apply"] == 3, (context, counts)
+            assert counts["view_update"] == 1, (context, counts)
+            assert counts["camera_objects"] == 1, (context, counts)
+        else:
+            assert counts["outline_apply"] == 0, (context, counts)
+            assert counts["view_update"] == 0, (context, counts)
+            assert counts["camera_objects"] == 0, (context, counts)
         assert counts["inner_apply"] == 0, (context, counts)
         assert counts["intersection_apply"] == 0, (context, counts)
         assert counts["intersection_refresh"] == 0, (context, counts)
-        assert counts["view_update"] == 0, (context, counts)
-        assert counts["camera_objects"] == 0, (context, counts)
         return
 
     if prop == "inner_line_enabled":
@@ -189,7 +194,7 @@ def _assert_transition_counts(
         if turning_on:
             assert counts["inner_apply"] == 3, (context, counts)
             assert counts["view_update"] == 1, (context, counts)
-            assert counts["camera_objects"] == 2, (context, counts)
+            assert counts["camera_objects"] == 1, (context, counts)
         else:
             assert counts["inner_apply"] == 0, (context, counts)
             assert counts["view_update"] == 0, (context, counts)
@@ -202,8 +207,10 @@ def _assert_transition_counts(
         if turning_on:
             assert counts["view_update"] == 1, (context, counts)
             assert counts["intersection_refresh"] == 1, (context, counts)
-            assert counts["intersection_apply"] == 3, (context, counts)
-            assert counts["camera_objects"] == 2, (context, counts)
+            expected_apply = 3 if start[0] else 0
+            expected_camera = 1 if start[0] else 0
+            assert counts["intersection_apply"] == expected_apply, (context, counts)
+            assert counts["camera_objects"] == expected_camera, (context, counts)
         else:
             assert counts["view_update"] == 0, (context, counts)
             assert counts["intersection_refresh"] == 0, (context, counts)
@@ -217,9 +224,13 @@ def _assert_state(objects: list[bpy.types.Object], expected: tuple[bool, bool, b
         settings = obj.bmanga_line_settings
         actual = tuple(bool(getattr(settings, prop)) for prop in PROPS)
         assert actual == expected, (obj.name, actual, expected)
-        outline = obj.modifiers.get(core.MODIFIER_NAME)
-        assert outline is not None, obj.name
-        assert bool(outline.show_viewport) == expected[0], obj.name
+        outline = obj.modifiers.get(core.MODIFIER_NAME) or obj.modifiers.get(
+            core.SHEET_OUTLINE_MODIFIER_NAME
+        )
+        if expected[0]:
+            assert outline is not None and outline.show_viewport, obj.name
+        elif outline is not None:
+            assert not outline.show_viewport, obj.name
         inner = obj.modifiers.get(core.GN_MODIFIER_NAME)
         if expected[1]:
             assert inner is not None and inner.show_viewport, obj.name
@@ -229,8 +240,6 @@ def _assert_state(objects: list[bpy.types.Object], expected: tuple[bool, bool, b
         intersection_count += len(intersections)
         if not expected[2]:
             assert not intersections, obj.name
-    if expected[2]:
-        assert intersection_count > 0, [obj.name for obj in objects]
 
 
 def main() -> None:

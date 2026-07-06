@@ -898,7 +898,15 @@ def _target_list(
 ) -> list[bpy.types.Object]:
     targets: list[bpy.types.Object] = []
     for candidate in _target_candidates(obj, scene):
-        if not intersection_lines._source_owns_intersection_pair(obj, candidate, scene):
+        candidate_settings = getattr(candidate, "bmanga_line_settings", None)
+        candidate_enabled = bool(
+            getattr(candidate_settings, "intersection_enabled", False)
+        )
+        if candidate_enabled and not intersection_lines._source_owns_intersection_pair(
+            obj,
+            candidate,
+            scene,
+        ):
             continue
         margin = intersection_lines._intersection_margin(obj, candidate, thickness)
         if intersection_lines._bounds_overlap(obj, candidate, margin):

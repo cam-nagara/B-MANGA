@@ -1,4 +1,4 @@
-"""B-MANGA Line: outline enable does not immediately evaluate visible intersections."""
+"""B-MANGA Line: outline enable keeps existing shell intersections stable."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import core, intersection_lines  # noqa: E402
+from b_manga_line import core, intersection_shell  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -25,9 +25,9 @@ def _make_cube(index: int) -> bpy.types.Object:
     obj = bpy.context.object
     obj.name = f"BML_outline_enable_intersection_{index}"
     settings = obj.bmanga_line_settings
-    settings.outline_enabled = False
+    settings.outline_enabled = True
     settings.intersection_enabled = True
-    settings.intersection_method = "BOOLEAN"
+    settings.intersection_method = "SHELL"
     settings.use_intersection_creation_limit = False
     return obj
 
@@ -52,26 +52,29 @@ def main() -> None:
 
         owners = []
         for obj in objects:
-            outline = obj.modifiers.get(core.MODIFIER_NAME)
-            if outline is not None:
-                obj.modifiers.remove(outline)
             if any(core.iter_intersection_modifiers(obj)):
                 owners.append(obj)
         assert owners
 
         _select(owners)
+        owners[0].bmanga_line_settings.outline_enabled = False
+        for obj in owners:
+            outline = obj.modifiers.get(core.MODIFIER_NAME)
+            if outline is not None:
+                assert not outline.show_viewport, obj.name
+            intersections = list(core.iter_intersection_modifiers(obj))
+            assert intersections, obj.name
+
         owners[0].bmanga_line_settings.outline_enabled = True
         for obj in owners:
-            assert obj.modifiers.get(core.MODIFIER_NAME) is not None, obj.name
+            outline = obj.modifiers.get(core.MODIFIER_NAME)
+            assert outline is not None and outline.show_viewport, obj.name
         for obj in owners:
             intersections = list(core.iter_intersection_modifiers(obj))
-            assert all(
-                intersection_lines.is_deferred_viewport_modifier(mod)
-                for mod in intersections
-            ), obj.name
-            assert all(not mod.show_viewport for mod in intersections), obj.name
+            assert intersections, obj.name
+            assert all(mod.name == intersection_shell.SHELL_MODIFIER_NAME for mod in intersections)
 
-        print("[PASS] outline enable defers existing intersections")
+        print("[PASS] outline enable keeps existing shell intersections stable")
     finally:
         try:
             b_manga_line.unregister()
