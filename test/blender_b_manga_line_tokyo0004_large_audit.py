@@ -6,6 +6,7 @@ import argparse
 import importlib
 import json
 import math
+import os
 import sys
 import time
 import traceback
@@ -122,6 +123,7 @@ def load_scene(audit: Audit):
     import b_manga_line
 
     b_manga_line = importlib.reload(b_manga_line)
+    os.environ.setdefault("BMANGA_LINE_PRESET_STORE_DIR", str(OUT_DIR / "preset_store"))
     try:
         b_manga_line.register()
     except ValueError:

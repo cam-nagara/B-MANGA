@@ -11,8 +11,10 @@ import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
+sys.path.insert(0, str(ROOT / "test"))
 
 import b_manga_line  # noqa: E402
+from b_manga_line_test_utils import temporary_line_preset_store  # noqa: E402
 from b_manga_line import core, presets  # noqa: E402
 
 
@@ -143,7 +145,7 @@ def _assert_preset_roundtrip() -> None:
         )
 
 
-def main() -> None:
+def _run() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     b_manga_line.register()
     try:
@@ -159,6 +161,11 @@ def main() -> None:
         except Exception:
             pass
         bpy.ops.wm.read_factory_settings(use_empty=True)
+
+
+def main() -> None:
+    with temporary_line_preset_store():
+        _run()
 
 
 if __name__ == "__main__":

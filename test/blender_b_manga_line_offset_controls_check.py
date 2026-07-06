@@ -9,8 +9,10 @@ import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
+sys.path.insert(0, str(ROOT / "test"))
 
 import b_manga_line  # noqa: E402
+from b_manga_line_test_utils import temporary_line_preset_store  # noqa: E402
 from b_manga_line import core  # noqa: E402
 
 
@@ -72,7 +74,7 @@ def _background_node(world: bpy.types.World):
     return world.node_tree.nodes.new("ShaderNodeBackground")
 
 
-def main() -> None:
+def _run() -> None:
     b_manga_line.register()
     try:
         _clear_scene()
@@ -171,6 +173,11 @@ def main() -> None:
         except Exception:
             pass
         bpy.ops.wm.read_factory_settings(use_empty=True)
+
+
+def main() -> None:
+    with temporary_line_preset_store():
+        _run()
 
 
 if __name__ == "__main__":

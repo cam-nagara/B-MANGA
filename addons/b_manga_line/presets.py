@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import os
+from pathlib import Path
+
 import bpy
+from bpy.app.handlers import persistent
 from bpy.props import (
     BoolProperty,
     CollectionProperty,
@@ -14,6 +19,12 @@ from bpy.props import (
 )
 
 from . import core, modifier_stack, registration
+
+
+_STORE_FILE_NAME = "b_manga_line_presets.json"
+_STORE_VERSION = 1
+_loaded_scene_pointers: set[int] = set()
+_saving_scene_snapshots: dict[int, tuple[object, list[dict], int, str]] = {}
 
 
 _SETTING_FIELDS = (
@@ -105,12 +116,150 @@ def _selected_meshes(context) -> list[bpy.types.Object]:
     return [obj for obj in context.selected_objects if obj.type == "MESH"]
 
 
+def _store_path() -> Path:
+    override = os.environ.get("BMANGA_LINE_PRESET_STORE_DIR", "").strip()
+    if override:
+        return Path(override) / _STORE_FILE_NAME
+    cfg = bpy.utils.user_resource("CONFIG", create=True)
+    return Path(cfg) / _STORE_FILE_NAME
+
+
+def _preset_to_dict(preset) -> dict:
+    settings = {}
+    for name in _SETTING_FIELDS:
+        value = getattr(preset, name)
+        if name in _COLOR_FIELDS:
+            value = list(value)
+        settings[name] = value
+    return {
+        "name": str(getattr(preset, "name", "") or "ラインプリセット"),
+        "settings": settings,
+    }
+
+
+def _apply_dict_to_preset(data: dict, preset) -> None:
+    preset.name = str(data.get("name", "") or "ラインプリセット")
+    settings = data.get("settings", {})
+    if not isinstance(settings, dict):
+        return
+    for name in _SETTING_FIELDS:
+        if name not in settings:
+            continue
+        value = settings[name]
+        if name in _COLOR_FIELDS and isinstance(value, list):
+            value = tuple(value)
+        try:
+            setattr(preset, name, value)
+        except (TypeError, ValueError):
+            pass
+
+
+def _read_store() -> dict:
+    path = _store_path()
+    if not path.is_file():
+        return {"version": _STORE_VERSION, "presets": []}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 - 壊れた外部設定でアドオン起動を止めない
+        return {"version": _STORE_VERSION, "presets": []}
+    if not isinstance(raw, dict):
+        return {"version": _STORE_VERSION, "presets": []}
+    presets = raw.get("presets", [])
+    if not isinstance(presets, list):
+        raw["presets"] = []
+    return raw
+
+
+def _scene_preset_dicts(scene) -> list[dict]:
+    if scene is None or not hasattr(scene, "bmanga_line_presets"):
+        return []
+    return [_preset_to_dict(item) for item in scene.bmanga_line_presets]
+
+
+def _merge_preset_dicts(primary: list[dict], additions: list[dict]) -> tuple[list[dict], bool]:
+    merged = list(primary)
+    names = {str(item.get("name", "") or "") for item in merged}
+    changed = False
+    for item in additions:
+        name = str(item.get("name", "") or "")
+        if not name or name in names:
+            continue
+        merged.append(item)
+        names.add(name)
+        changed = True
+    return merged, changed
+
+
+def _safe_int(value, fallback: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _populate_scene_presets(scene, preset_dicts: list[dict], *, index: int, name: str) -> None:
+    collection = scene.bmanga_line_presets
+    collection.clear()
+    for data in preset_dicts:
+        item = collection.add()
+        _apply_dict_to_preset(data, item)
+    if collection:
+        scene.bmanga_line_preset_index = max(0, min(index, len(collection) - 1))
+    else:
+        scene.bmanga_line_preset_index = -1
+    scene.bmanga_line_preset_name = str(name or "ラインプリセット")
+
+
+def _write_store(scene) -> Path:
+    data = {
+        "version": _STORE_VERSION,
+        "presets": _scene_preset_dicts(scene),
+        "active_index": int(getattr(scene, "bmanga_line_preset_index", -1)),
+        "preset_name": str(getattr(scene, "bmanga_line_preset_name", "") or "ラインプリセット"),
+    }
+    path = _store_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
+def _scene_snapshot(scene) -> tuple[list[dict], int, str]:
+    return (
+        _scene_preset_dicts(scene),
+        _safe_int(getattr(scene, "bmanga_line_preset_index", -1), -1),
+        str(getattr(scene, "bmanga_line_preset_name", "") or "ラインプリセット"),
+    )
+
+
+def ensure_presets_loaded(scene) -> None:
+    if scene is None or not hasattr(scene, "bmanga_line_presets"):
+        return
+    pointer = scene.as_pointer()
+    if pointer in _loaded_scene_pointers:
+        return
+    existing = _scene_preset_dicts(scene)
+    stored = _read_store()
+    stored_presets = [
+        item for item in stored.get("presets", [])
+        if isinstance(item, dict)
+    ]
+    merged, changed = _merge_preset_dicts(stored_presets, existing)
+    index = _safe_int(stored.get("active_index", -1), -1)
+    name = str(stored.get("preset_name", "") or "ラインプリセット")
+    _populate_scene_presets(scene, merged, index=index, name=name)
+    _loaded_scene_pointers.add(pointer)
+    if changed or (existing and not stored_presets):
+        _write_store(scene)
+
+
 def _preset_name(scene) -> str:
+    ensure_presets_loaded(scene)
     raw = getattr(scene, "bmanga_line_preset_name", "")
     return str(raw).strip() or "ラインプリセット"
 
 
 def _active_preset(scene):
+    ensure_presets_loaded(scene)
     presets = scene.bmanga_line_presets
     index = scene.bmanga_line_preset_index
     if 0 <= index < len(presets):
@@ -527,6 +676,7 @@ class BMANGA_LINE_OT_preset_save(bpy.types.Operator):
 
     def execute(self, context):
         scene = context.scene
+        ensure_presets_loaded(scene)
         obj = context.active_object
         name = _preset_name(scene)
         presets = scene.bmanga_line_presets
@@ -544,6 +694,7 @@ class BMANGA_LINE_OT_preset_save(bpy.types.Operator):
         copy_settings_to_preset(obj.bmanga_line_settings, preset)
         scene.bmanga_line_preset_index = index
         scene.bmanga_line_preset_name = name
+        _write_store(scene)
         self.report({"INFO"}, f"ラインプリセット「{name}」を保存しました")
         return {"FINISHED"}
 
@@ -560,6 +711,7 @@ class BMANGA_LINE_OT_preset_apply_selected(bpy.types.Operator):
         return _active_preset(context.scene) is not None and bool(_selected_meshes(context))
 
     def execute(self, context):
+        ensure_presets_loaded(context.scene)
         preset = _active_preset(context.scene)
         if preset is None:
             self.report({"WARNING"}, "プリセットが選択されていません")
@@ -596,6 +748,7 @@ class BMANGA_LINE_OT_preset_duplicate(bpy.types.Operator):
 
     def execute(self, context):
         scene = context.scene
+        ensure_presets_loaded(scene)
         presets = scene.bmanga_line_presets
         source = _active_preset(scene)
         if source is None:
@@ -607,6 +760,7 @@ class BMANGA_LINE_OT_preset_duplicate(bpy.types.Operator):
         copy_preset_to_preset(source, duplicate)
         scene.bmanga_line_preset_index = len(presets) - 1
         scene.bmanga_line_preset_name = name
+        _write_store(scene)
         self.report({"INFO"}, f"ラインプリセット「{name}」を複製しました")
         return {"FINISHED"}
 
@@ -624,6 +778,7 @@ class BMANGA_LINE_OT_preset_delete(bpy.types.Operator):
 
     def execute(self, context):
         scene = context.scene
+        ensure_presets_loaded(scene)
         presets = scene.bmanga_line_presets
         index = scene.bmanga_line_preset_index
         if not (0 <= index < len(presets)):
@@ -631,6 +786,11 @@ class BMANGA_LINE_OT_preset_delete(bpy.types.Operator):
         name = presets[index].name
         presets.remove(index)
         scene.bmanga_line_preset_index = min(index, len(presets) - 1)
+        if 0 <= scene.bmanga_line_preset_index < len(presets):
+            scene.bmanga_line_preset_name = presets[scene.bmanga_line_preset_index].name
+        else:
+            scene.bmanga_line_preset_name = "ラインプリセット"
+        _write_store(scene)
         self.report({"INFO"}, f"ラインプリセット「{name}」を削除しました")
         return {"FINISHED"}
 
@@ -644,6 +804,63 @@ _CLASSES = (
 )
 
 
+@persistent
+def _on_load_post(_dummy) -> None:
+    _loaded_scene_pointers.clear()
+    for scene in _iter_scenes():
+        ensure_presets_loaded(scene)
+
+
+@persistent
+def _on_save_pre(_dummy) -> None:
+    _saving_scene_snapshots.clear()
+    for scene in _iter_scenes():
+        if not hasattr(scene, "bmanga_line_presets"):
+            continue
+        ensure_presets_loaded(scene)
+        preset_dicts, index, name = _scene_snapshot(scene)
+        _saving_scene_snapshots[scene.as_pointer()] = (scene, preset_dicts, index, name)
+        if preset_dicts:
+            _write_store(scene)
+        scene.bmanga_line_presets.clear()
+        scene.bmanga_line_preset_index = -1
+        scene.bmanga_line_preset_name = "ラインプリセット"
+
+
+@persistent
+def _on_save_post(_dummy) -> None:
+    for pointer, (scene, preset_dicts, index, name) in list(_saving_scene_snapshots.items()):
+        if hasattr(scene, "bmanga_line_presets"):
+            _populate_scene_presets(scene, preset_dicts, index=index, name=name)
+            _loaded_scene_pointers.add(pointer)
+    _saving_scene_snapshots.clear()
+
+
+def _iter_scenes():
+    try:
+        return tuple(bpy.data.scenes)
+    except Exception:  # noqa: BLE001 - 制限状態では後で通常登録時に読み込む
+        return ()
+
+
+def _append_handler(name: str, handler) -> None:
+    try:
+        handlers = getattr(bpy.app.handlers, name, None)
+        if handlers is not None and handler not in handlers:
+            handlers.append(handler)
+    except Exception:  # noqa: BLE001 - 制限状態では登録だけ継続
+        pass
+
+
+def _remove_handler(name: str, handler) -> None:
+    try:
+        handlers = getattr(bpy.app.handlers, name, None)
+        if handlers is not None and handler in handlers:
+            handlers.remove(handler)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def register() -> None:
     for attr in (
         "bmanga_line_preset_name",
@@ -654,15 +871,35 @@ def register() -> None:
             delattr(bpy.types.Scene, attr)
     for cls in _CLASSES:
         registration.register_class(cls)
-    bpy.types.Scene.bmanga_line_presets = CollectionProperty(type=BMangaLinePreset)
-    bpy.types.Scene.bmanga_line_preset_index = IntProperty(default=-1)
+    bpy.types.Scene.bmanga_line_presets = CollectionProperty(
+        type=BMangaLinePreset,
+        options={"SKIP_SAVE"},
+    )
+    bpy.types.Scene.bmanga_line_preset_index = IntProperty(
+        default=-1,
+        options={"SKIP_SAVE"},
+    )
     bpy.types.Scene.bmanga_line_preset_name = StringProperty(
         name="プリセット名",
         default="ラインプリセット",
+        options={"SKIP_SAVE"},
     )
+    _loaded_scene_pointers.clear()
+    for scene in _iter_scenes():
+        ensure_presets_loaded(scene)
+    _append_handler("load_post", _on_load_post)
+    _append_handler("save_pre", _on_save_pre)
+    _append_handler("save_post", _on_save_post)
+    _append_handler("save_post_fail", _on_save_post)
 
 
 def unregister() -> None:
+    _remove_handler("load_post", _on_load_post)
+    _remove_handler("save_pre", _on_save_pre)
+    _remove_handler("save_post", _on_save_post)
+    _remove_handler("save_post_fail", _on_save_post)
+    _saving_scene_snapshots.clear()
+    _loaded_scene_pointers.clear()
     for attr in (
         "bmanga_line_preset_name",
         "bmanga_line_preset_index",

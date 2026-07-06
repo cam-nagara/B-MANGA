@@ -11,8 +11,10 @@ import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
+sys.path.insert(0, str(ROOT / "test"))
 
 import b_manga_line  # noqa: E402
+from b_manga_line_test_utils import temporary_line_preset_store  # noqa: E402
 from b_manga_line import (  # noqa: E402
     camera_comp,
     core,
@@ -792,7 +794,7 @@ def _test_linked_uniform_width_refresh_does_not_crash() -> None:
         pass
 
 
-def main() -> None:
+def _run() -> None:
     b_manga_line.register()
     _clear_scene()
     _test_uniform_width_depth_and_resolution()
@@ -808,6 +810,11 @@ def main() -> None:
     _test_evaluated_orthographic_width()
     _test_linked_uniform_width_refresh_does_not_crash()
     print("[PASS] B-MANGA Line uniform width follows mm, DPI, and resolution")
+
+
+def main() -> None:
+    with temporary_line_preset_store():
+        _run()
 
 
 if __name__ == "__main__":

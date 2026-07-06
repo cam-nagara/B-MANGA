@@ -14,6 +14,9 @@ import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_ROOT = ROOT / "addons" / "b_manga_line"
+sys.path.insert(0, str(ROOT / "test"))
+
+from b_manga_line_test_utils import temporary_line_preset_store  # noqa: E402
 
 
 def _load_package(package_name: str):
@@ -54,6 +57,17 @@ def _assert_registered() -> None:
         assert not getattr(panel, "bl_parent_id", ""), (
             f"{name} が親パネル配下でインデントされます"
         )
+    scene_props = bpy.types.Scene.bl_rna.properties
+    for prop_name in (
+        "bmanga_line_presets",
+        "bmanga_line_preset_index",
+        "bmanga_line_preset_name",
+    ):
+        options = getattr(scene_props[prop_name], "options", None)
+        if options is not None:
+            assert "SKIP_SAVE" in options, (
+                f"{prop_name} が.blend保存対象になっています"
+            )
 
 
 def _assert_unregistered() -> None:
@@ -309,27 +323,28 @@ def _assert_blender_restrict_blend_register_safe(mod) -> None:
 
 
 def main() -> None:
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    mod = _load_package("b_manga_line_reenable_check")
-    try:
-        _assert_restricted_data_register_safe()
-        _assert_blender_restrict_blend_register_safe(mod)
-        mod.register()
-        _assert_registered()
-        _assert_panels_draw_items()
-        mod.register()
-        _assert_registered()
-        mod.unregister()
-        _assert_unregistered()
-        mod.register()
-        _assert_registered()
-        print("BMANGA_LINE_REGISTER_REENABLE_OK")
-    finally:
-        try:
-            mod.unregister()
-        except Exception:
-            pass
+    with temporary_line_preset_store():
         bpy.ops.wm.read_factory_settings(use_empty=True)
+        mod = _load_package("b_manga_line_reenable_check")
+        try:
+            _assert_restricted_data_register_safe()
+            _assert_blender_restrict_blend_register_safe(mod)
+            mod.register()
+            _assert_registered()
+            _assert_panels_draw_items()
+            mod.register()
+            _assert_registered()
+            mod.unregister()
+            _assert_unregistered()
+            mod.register()
+            _assert_registered()
+            print("BMANGA_LINE_REGISTER_REENABLE_OK")
+        finally:
+            try:
+                mod.unregister()
+            except Exception:
+                pass
+            bpy.ops.wm.read_factory_settings(use_empty=True)
 
 
 if __name__ == "__main__":

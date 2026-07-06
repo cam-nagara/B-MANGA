@@ -74,6 +74,9 @@ def _active_settings(context):
 
 
 def _draw_presets(layout, context) -> None:
+    from . import presets as line_presets
+
+    line_presets.ensure_presets_loaded(context.scene)
     col = layout.column(align=True)
     col.prop(context.scene, "bmanga_line_preset_name")
     col.operator("bmanga_line.preset_save", icon="ADD")

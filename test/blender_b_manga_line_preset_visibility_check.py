@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import sys
 from pathlib import Path
@@ -11,8 +12,10 @@ import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
+sys.path.insert(0, str(ROOT / "test"))
 
 import b_manga_line  # noqa: E402
+from b_manga_line_test_utils import temporary_line_preset_store  # noqa: E402
 from b_manga_line import (  # noqa: E402
     camera_comp,
     core,
@@ -480,7 +483,12 @@ def _assert_preset_display_settings_apply(
         _assert_line_state(obj, visible=True)
 
 
-def main() -> None:
+def _store_names(path: Path) -> list[str]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return [item["name"] for item in data.get("presets", [])]
+
+
+def _run(store_path: Path) -> None:
     b_manga_line.register()
     _clear_scene()
 
@@ -514,6 +522,8 @@ def main() -> None:
     _select(source, [source])
     assert bpy.ops.bmanga_line.preset_save() == {"FINISHED"}
     assert len(scene.bmanga_line_presets) == 1
+    assert store_path.is_file()
+    assert _store_names(store_path) == ["太線テスト"]
 
     settings.outline_thickness = 0.018
     settings.outline_enabled = False
@@ -530,6 +540,7 @@ def main() -> None:
     assert scene.bmanga_line_preset_index == 1
     duplicate = scene.bmanga_line_presets[1]
     assert duplicate.name == "太線テスト コピー"
+    assert _store_names(store_path)[:2] == ["太線テスト", "太線テスト コピー"]
     assert scene.bmanga_line_preset_name == duplicate.name
     assert abs(duplicate.outline_thickness - scene.bmanga_line_presets[0].outline_thickness) < 1.0e-7
     assert tuple(round(v, 3) for v in duplicate.outline_color) == (
@@ -541,6 +552,21 @@ def main() -> None:
     assert bpy.ops.bmanga_line.preset_duplicate() == {"FINISHED"}
     assert len(scene.bmanga_line_presets) == 3
     assert scene.bmanga_line_presets[2].name == "太線テスト コピー 2"
+    assert _store_names(store_path)[:3] == [
+        "太線テスト",
+        "太線テスト コピー",
+        "太線テスト コピー 2",
+    ]
+
+    presets._loaded_scene_pointers.clear()
+    scene.bmanga_line_presets.clear()
+    scene.bmanga_line_preset_index = -1
+    presets.ensure_presets_loaded(scene)
+    assert [item.name for item in scene.bmanga_line_presets][:3] == [
+        "太線テスト",
+        "太線テスト コピー",
+        "太線テスト コピー 2",
+    ]
     scene.bmanga_line_preset_index = 0
 
     first = _make_cube("BML_適用先A", (2.0, 0.0, 0.0))
@@ -658,8 +684,14 @@ def main() -> None:
         before = len(scene.bmanga_line_presets)
         assert bpy.ops.bmanga_line.preset_delete() == {"FINISHED"}
         assert len(scene.bmanga_line_presets) == before - 1
+    assert _store_names(store_path) == []
 
     print("[PASS] line presets apply to selected objects and visibility/delete work")
+
+
+def main() -> None:
+    with temporary_line_preset_store() as store_path:
+        _run(store_path)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,36 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-07 — B-MANGA Lineのラインプリセット保存先を共通化 (B-MANGA Line v0.3.136)
+
+### 症状
+
+- ラインプリセットが `.blend` ファイルごとの保存になっており、別の `.blend` ファイルで共有されなかった。
+
+### 原因
+
+- ラインプリセット一覧と選択状態をシーン側の保存対象プロパティとして持っていたため、プリセットが `.blend` 内へ保存されていた。
+
+### 修正
+
+- ラインプリセットを Blender のユーザー設定フォルダ内の `b_manga_line_presets.json` へ保存するようにした。
+- シーン上のプリセット一覧・選択状態・名前欄は一時表示用にし、`.blend` へ保存されない設定に変更した。
+- 既存の `.blend` 内に残っている旧ラインプリセットは、初回読み込み時に共有保存先へ取り込むようにした。
+- プリセットの保存・複製・削除を、共有保存先へ即時反映するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_preset_global_store_check.py`
+- `test/blender_b_manga_line_preset_visibility_check.py`
+- `test/blender_b_manga_line_register_reenable_check.py`
+- `test/blender_b_manga_line_settings_contract_check.py`
+- `test/blender_b_manga_line_offset_controls_check.py`
+- `test/blender_b_manga_line_separate_line_colors_check.py`
+- `test/blender_b_manga_line_uniform_width_check.py`
+- `python -m py_compile addons/b_manga_line/presets.py addons/b_manga_line/panels.py test/b_manga_line_test_utils.py test/blender_b_manga_line_preset_global_store_check.py test/blender_b_manga_line_preset_visibility_check.py test/blender_b_manga_line_register_reenable_check.py test/blender_b_manga_line_offset_controls_check.py test/blender_b_manga_line_separate_line_colors_check.py test/blender_b_manga_line_settings_contract_check.py test/blender_b_manga_line_uniform_width_check.py test/blender_b_manga_line_tokyo0004_large_audit.py`
+
+---
+
 ## 2026-07-07 — B-MANGA Lineのラインプリセット複製を追加 (B-MANGA Line v0.3.135)
 
 ### 症状
