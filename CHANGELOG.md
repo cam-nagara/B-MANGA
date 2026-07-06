@@ -3,6 +3,33 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-07 — B-MANGA Linerのラインのみ表示パネル描画を修正 (B-MANGA Liner v0.3.138)
+
+### 症状
+
+- 「ラインのみを表示」をオンにした後、ラインのみ表示の状態がパネル上で安定せず、「ラインを表示」「ラインのみを表示」チェックボックスがパネルから消えることがあった。
+- Blenderのコンソールに、パネル描画中のPythonエラーが繰り返し表示されていた。
+
+### 原因
+
+- ビューポートのラインのみ表示経路では、ライン用AOV表示を使うため、通常の一時素材差し替えフラグは立たない。
+- パネル描画中にそのフラグだけを見てチェックボックス状態を同期しようとしていたため、チェック状態を戻そうとする書き込みがBlenderに拒否され、パネル描画が途中で止まっていた。
+
+### 修正
+
+- パネル描画中にライン表示チェックボックスの状態を書き換えないようにした。
+- 「ラインのみを表示」中のパネル描画が、チェック状態を勝手に戻さない回帰テストを追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_ui_controls_check.py`
+- `test/blender_b_manga_line_display_modes_check.py`
+- `test/blender_b_manga_line_camera_aov_line_only_check.py`
+- `test/blender_b_manga_line_aov_view_line_only_check.py`
+- `python -m py_compile addons/b_manga_line/panels.py test/blender_b_manga_line_ui_controls_check.py`
+
+---
+
 ## 2026-07-07 — B-MANGA Liner/BMRender変更の徹底チェック (検証追記)
 
 ### 症状

@@ -5,7 +5,7 @@ from __future__ import annotations
 import bpy
 
 from . import registration
-from .core import PROP_LINE_ONLY, has_line, has_outline, sync_line_display_settings
+from .core import PROP_LINE_ONLY, has_line, has_outline
 
 
 def _get_paper_dpi(scene) -> int:
@@ -380,7 +380,6 @@ def _draw_actions(layout, context, obj) -> None:
     )
 
     if settings is not None:
-        sync_line_display_settings(obj)
         row = layout.row(align=True)
         row.enabled = has_line_any
         row.prop(settings, "lines_visible")
