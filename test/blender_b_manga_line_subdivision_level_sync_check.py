@@ -124,7 +124,8 @@ def _assert_inner_lines_do_not_follow_subdivision_grid() -> None:
         if name.startswith("BML_Outline_Inner")
     )
     surface_faces = counts.get(obj.data.materials[0].name, 0)
-    assert 0 < line_faces <= 480, counts
+    max_expected_faces = 48 * inner_lines.INNER_TUBE_PROFILE_RESOLUTION * 3
+    assert 0 < line_faces <= max_expected_faces, counts
     assert surface_faces == 96, counts
 
 

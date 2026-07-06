@@ -267,8 +267,11 @@ def update_chain_id_attribute(
         }
         anchors |= _hard_endpoint_anchors(bm, neighbors, midpoint_angle)
         visited: set[int] = set()
+        # Subdivision Surface can give generated edges the integer attribute
+        # default 0. Use positive IDs for real source chains so generated grid
+        # edges can be filtered out reliably in Geometry Nodes.
         chain_id = _write_anchor_chains(
-            attr, edge_lookup, neighbors, anchors, visited, 0,
+            attr, edge_lookup, neighbors, anchors, visited, 1,
         )
         _write_remaining_components(
             attr, selected_edges, edge_vertices, vertex_edges, visited, chain_id,

@@ -41,7 +41,7 @@ _SUBDIVIDE_CURVE_LABEL = "BML_InnerCurveSubdivide"
 _SELECTED_EDGE_MESH_LABEL = "BML_InnerSelectedEdgeMesh"
 _CHAIN_INSTANCE_SPLIT_LABEL = "BML_InnerChainInstanceSplit"
 _EDGE_ANGLE_COMPARE_LABEL = "BML_InnerEdgeAngleCompareGE"
-_CHAIN_SELECTION_COMPARE_LABEL = "BML_InnerChainSelectionGE"
+_CHAIN_SELECTION_COMPARE_LABEL = "BML_InnerChainSelectionGT"
 _CHAIN_ANGLE_FILTER_LABEL = "BML_InnerChainAngleFilter"
 _AUTO_EDGE_ALLOWED_LABEL = "BML_InnerAutoEdgeAllowed"
 _AUTO_ANGLE_FILTER_LABEL = "BML_InnerAutoAngleFilter"
@@ -439,7 +439,7 @@ def _create_node_tree(
     chain_selected.label = _CHAIN_SELECTION_COMPARE_LABEL
     chain_selected.location = (-400, -600)
     chain_selected.data_type = "INT"
-    chain_selected.operation = "GREATER_EQUAL"
+    chain_selected.operation = "GREATER_THAN"
     links.new(chain_selection_attr.outputs["Attribute"], chain_selected.inputs[2])
     chain_selected.inputs[3].default_value = 0
 
@@ -755,7 +755,7 @@ def _get_or_create_tree(
             (n for n in tree.nodes if getattr(n, "label", "") == _CHAIN_SELECTION_COMPARE_LABEL),
             None,
         )
-        if chain_compare is None or getattr(chain_compare, "operation", "") != "GREATER_EQUAL":
+        if chain_compare is None or getattr(chain_compare, "operation", "") != "GREATER_THAN":
             bpy.data.node_groups.remove(tree)
             return _rebuild()
         if not any(getattr(n, "label", "") == _CURVE_JITTER_CENTER_LABEL for n in tree.nodes):

@@ -181,6 +181,7 @@ def main() -> None:
 
     white_mat = _emission_material("確認用_白", (1.0, 1.0, 1.0, 1.0))
     source = _make_source_slab(white_mat)
+    source.bmanga_line_settings.intersection_enabled = True
     target = _make_target_cylinder(white_mat)
     # SHELL 方式はソース側アウトラインのソリッド厚みを交差判定に使う
     outline_setup.apply_outline(

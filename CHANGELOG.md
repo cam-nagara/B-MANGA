@@ -3,6 +3,39 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-07 — B-MANGA Linerの稜谷線細分割判定を補正 (B-MANGA Liner v0.3.139)
+
+### 症状
+
+- 「ラインのみを表示」周辺の全体的な徹底チェック中に、細分割を含む稜谷線の同期テストが失敗していた。
+- 交差線の塗りつぶし確認テストも、交差線を有効にした状態を正しく作れていなかった。
+
+### 原因
+
+- 細分割で生成された辺に、稜谷線の識別値の初期値が入る場合があり、元の稜谷線と細分割後の追加辺を区別しきれなかった。
+- 交差線の塗りつぶし確認テストは、直接ライン生成を呼ぶ前提なのに、対象オブジェクト側の交差線設定をオンにしていなかった。
+
+### 修正
+
+- 稜谷線の識別値を1始まりにし、0は「稜谷線ではない」値として扱うようにした。
+- 細分割後も元の稜谷線だけを使うよう、ライン生成側の判定を0より大きい値へ変更した。
+- 交差線の塗りつぶし確認テストと、細分割・角度しきい値関連のテスト期待値を現在の仕様に合わせて更新した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- B-MANGA Liner高速回帰 42本
+- `test/blender_b_manga_line_full_visual_audit_check.py`
+- `test/blender_b_manga_line_width_all_shapes_visual_check.py`
+- `test/blender_b_manga_line_aov_view_line_only_check.py`
+- `test/blender_b_manga_line_tokyo0004_large_audit.py -- --phase phase1`
+- `test/blender_b_manga_line_tokyo0004_large_audit.py -- --phase phase2 --max-targets 3`
+- `test/blender_b_manga_line_tokyo0004_large_audit.py -- --phase phase3 --max-targets 3`
+- `test/blender_b_manga_line_tokyo0004_large_audit.py -- --phase phase4`
+- `test/blender_b_manga_line_tokyo0004_large_audit.py -- --phase phase5 --max-targets 5`
+- `python -m py_compile` による B-MANGA Liner 関連ファイル確認
+
+---
+
 ## 2026-07-07 — B-MANGA Linerのラインのみ表示パネル描画を修正 (B-MANGA Liner v0.3.138)
 
 ### 症状

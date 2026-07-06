@@ -50,7 +50,7 @@ def _edge_selection_sets(obj: bpy.types.Object) -> tuple[set[int], set[int], set
     assert attr is not None
     selected = {
         i for i, item in enumerate(attr.data)
-        if int(getattr(item, "value", -1)) >= 0
+        if int(getattr(item, "value", 0)) > 0
     }
     vertical = set()
     cap_spokes = set()
@@ -159,7 +159,7 @@ def _assert_saved_current_tree_refreshes_stale_cap_selection() -> None:
 
     attr = obj.data.attributes[inner_line_chains.CHAIN_ID_ATTR]
     for edge_index in cap_spokes:
-        attr.data[edge_index].value = 0
+        attr.data[edge_index].value = 1
     selected, _vertical, cap_spokes = _edge_selection_sets(obj)
     assert cap_spokes & selected, "テスト用の古い三角分割選択を作れません"
 
@@ -189,7 +189,7 @@ def _assert_node_tree_uses_inclusive_angle() -> None:
         node for node in tree.nodes
         if getattr(node, "label", "") == inner_lines._CHAIN_SELECTION_COMPARE_LABEL
     )
-    assert chain_compare.operation == "GREATER_EQUAL"
+    assert chain_compare.operation == "GREATER_THAN"
     chain_angle_filter = next(
         node for node in tree.nodes
         if getattr(node, "label", "") == inner_lines._CHAIN_ANGLE_FILTER_LABEL
