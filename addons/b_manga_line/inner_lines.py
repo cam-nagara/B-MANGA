@@ -17,6 +17,7 @@ from .core import (
     GN_MODIFIER_NAME,
     GN_TREE_NAME,
     MATERIAL_NAME,
+    PROP_LINES_HIDDEN,
     VG_INNER_LINE_WIDTH,
     inner_width_split_angle,
 )
@@ -873,12 +874,13 @@ def apply_inner_lines(
     mod = obj.modifiers.get(modifier_name)
     if mod is None:
         mod = obj.modifiers.new(name=modifier_name, type="NODES")
-    if not enable:
+    visible = bool(enable) and not bool(obj.get(PROP_LINES_HIDDEN, False))
+    if not visible:
         mod.show_viewport = False
         mod.show_render = False
     mod.node_group = tree
-    mod.show_viewport = enable
-    mod.show_render = enable
+    mod.show_viewport = visible
+    mod.show_render = visible
 
     # パラメータ設定
     sid_angle = _find_socket_id(tree, "検出角度")

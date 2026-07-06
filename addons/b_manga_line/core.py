@@ -769,18 +769,35 @@ def set_scene_line_only(context, enabled: bool) -> int:
     """シーン内のライン適用済みオブジェクトを一括でラインのみ表示にする."""
     from . import outline_setup, viewport_aov
 
-    viewport_aov.disable_line_aov(context)
     line_objects = _scene_line_objects(context)
     if enabled:
+        if not bpy.app.background and viewport_aov.enable_line_aov(context):
+            changed = 0
+            for obj in line_objects:
+                set_line_visibility(obj, True)
+                if bool(obj.get(PROP_LINE_ONLY, False)):
+                    outline_setup.set_line_only(obj, False)
+                _set_bool_setting_without_update(obj, "line_only_visible", True)
+                changed += 1
+            scene = getattr(context, "scene", None)
+            if scene is not None and PROP_LINE_ONLY_WORLD in scene:
+                _restore_line_only_world(context)
+            return changed
+
         _ensure_line_only_world(context)
         for obj in line_objects:
             set_line_visibility(obj, True)
     changed = 0
+    if not enabled:
+        aov_changed = viewport_aov.disable_line_aov(context)
+    else:
+        aov_changed = False
     for obj in line_objects:
         before = bool(obj.get(PROP_LINE_ONLY, False))
         if outline_setup.set_line_only(obj, enabled):
             after = bool(obj.get(PROP_LINE_ONLY, False))
-            if before != after or enabled:
+            _set_bool_setting_without_update(obj, "line_only_visible", enabled)
+            if before != after or enabled or aov_changed:
                 changed += 1
     if not enabled:
         _restore_line_only_world(context)

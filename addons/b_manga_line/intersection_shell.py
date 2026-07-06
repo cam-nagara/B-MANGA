@@ -13,6 +13,7 @@ from . import modifier_stack, outline_setup, scale_utils
 from .core import (
     INTERSECTION_MODIFIER_PREFIX,
     MODIFIER_NAME,
+    PROP_LINES_HIDDEN,
     SHEET_OUTLINE_MODIFIER_NAME,
 )
 
@@ -1364,10 +1365,18 @@ def apply_intersection_shell(
     update_modifier_parameters(mod, thickness, offset, material)
     _set_target_collection_parameters(mod, collection, targets)
 
-    if not mod.show_viewport:
-        mod.show_viewport = True
-    if not mod.show_render:
-        mod.show_render = True
+    settings = getattr(obj, "bmanga_line_settings", None)
+    visible = (
+        not bool(obj.get(PROP_LINES_HIDDEN, False))
+        and (
+            settings is None
+            or bool(getattr(settings, "intersection_enabled", False))
+        )
+    )
+    if mod.show_viewport != visible:
+        mod.show_viewport = visible
+    if mod.show_render != visible:
+        mod.show_render = visible
     _position_modifier(obj, mod)
     return True
 

@@ -3,6 +3,35 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-07 — B-MANGA Lineのライン表示切替を補正 (B-MANGA Line v0.3.132)
+
+### 症状
+
+- 「ラインを表示」をオフにしても、交差線だけ表示されたまま戻る場合があった。
+- 「ラインのみを表示」をオンにすると、稜谷線が消え、円柱ではアウトラインも見えなくなる場合があった。
+- その状態でアウトラインをオフにすると稜谷線が再表示され、アウトラインと稜谷線の表示が干渉していた。
+
+### 原因
+
+- 交差線の再生成処理が、全体のライン非表示状態を見ずに交差線を表示ONへ戻していた。
+- 通常画面の「ラインのみを表示」が素材差し替え方式を使っており、アウトライン生成形状が稜谷線の表示を隠す組み合わせがあった。
+
+### 修正
+
+- 交差線・稜谷線・選択線の再生成時に、全体のライン非表示状態を必ず反映するようにした。
+- 通常の3Dビューでは「ラインのみを表示」をライン専用表示へ切り替える方式にし、素材差し替えはバックグラウンド実行など画面表示を切り替えられない場合のフォールバックに限定した。
+- 交差線再生成後の非表示維持と、ラインのみ表示中に円柱のアウトライン・稜谷線が同時に残る回帰テストを追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_display_modes_check.py`
+- `test/blender_b_manga_line_aov_view_line_only_check.py`（通常Blender画面）
+- `test/blender_b_manga_line_ui_controls_check.py`
+- `test/blender_b_manga_line_preset_visibility_check.py`
+- `python -m py_compile addons/b_manga_line/core.py addons/b_manga_line/inner_lines.py addons/b_manga_line/intersection_shell.py test/blender_b_manga_line_display_modes_check.py test/blender_b_manga_line_aov_view_line_only_check.py`
+
+---
+
 ## 2026-07-07 — B-MANGA Lineの稜谷線の見た目線幅を補正 (B-MANGA Line v0.3.131)
 
 ### 症状

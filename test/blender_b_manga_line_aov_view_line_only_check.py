@@ -203,9 +203,9 @@ def main() -> None:
     )
     assert aov_counts["colored"] > 300, aov_counts
     assert aov_counts["dark"] > 100, aov_counts
-    for mod_name in core.LINE_MODIFIER_NAMES:
-        mod = obj.modifiers.get(mod_name)
-        assert mod is not None
+    line_modifiers = list(core.iter_line_modifiers(obj))
+    assert line_modifiers
+    for mod in line_modifiers:
         assert mod.show_viewport and mod.show_render
 
     with bpy.context.temp_override(**override):
@@ -217,10 +217,12 @@ def main() -> None:
 
     with bpy.context.temp_override(**_non_view3d_override()):
         assert bpy.ops.bmanga_line.set_line_only(line_only=True) == {"FINISHED"}
-    assert bool(obj.get(core.PROP_LINE_ONLY, False))
-    assert [mat.name if mat else "" for mat in obj.data.materials] != original_materials
+    assert viewport_aov.is_line_aov_active(bpy.context)
+    assert not bool(obj.get(core.PROP_LINE_ONLY, False))
+    assert [mat.name if mat else "" for mat in obj.data.materials] == original_materials
     with bpy.context.temp_override(**_non_view3d_override()):
         assert bpy.ops.bmanga_line.set_line_only(line_only=False) == {"FINISHED"}
+    assert not viewport_aov.is_line_aov_active(bpy.context)
     assert not bool(obj.get(core.PROP_LINE_ONLY, False))
     assert [mat.name if mat else "" for mat in obj.data.materials] == original_materials
     print("[PASS] B-MANGA Line line-only display uses the BML_Line AOV")
