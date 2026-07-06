@@ -484,6 +484,39 @@ def _assert_inner_chain_ids_split_at_branch_and_acute_points() -> None:
     assert ids[0] != ids[2], ids
 
 
+def _assert_inner_repair_preserves_midpoint_angle_split() -> None:
+    obj = _make_diamond_loop_graph("BML_inner_repair_midpoint_angle_split")
+    _mark_all_edges(obj)
+    settings = obj.bmanga_line_settings
+    settings.inner_line_enabled = True
+    settings.use_marked_inner_edges = True
+    settings.inner_edge_smooth_factor = -1.0
+    settings.inner_edge_midpoint_angle = math.radians(100.0)
+    material = bpy.data.materials.new("BML_inner_repair_midpoint_angle_split_material")
+    assert inner_lines.apply_inner_lines(
+        obj,
+        angle=settings.inner_line_angle,
+        thickness=0.01,
+        material=material,
+        use_marked_edges=settings.use_marked_inner_edges,
+        midpoint_factor=settings.inner_edge_smooth_factor,
+        midpoint_angle=settings.inner_edge_midpoint_angle,
+    )
+
+    attr = obj.data.attributes.get(inner_line_chains.CHAIN_ID_ATTR)
+    assert attr is not None
+    for item in attr.data:
+        item.value = 0
+    assert len(set(_edge_chain_ids(obj))) == 1
+
+    assert inner_lines.repair_scene_inner_lines(bpy.context.scene) == 0
+    ids = _edge_chain_ids(obj)
+    assert len(set(ids)) == 2, ids
+    assert ids[0] == ids[1], ids
+    assert ids[2] == ids[3], ids
+    assert ids[0] != ids[2], ids
+
+
 def _assert_inner_jitter_uses_chain_id() -> None:
     tree = inner_lines._get_or_create_tree()
     random = next(
@@ -592,6 +625,7 @@ def main() -> None:
         "intersection_edge_midpoint_angle",
     )
     _assert_inner_chain_ids_split_at_branch_and_acute_points()
+    _assert_inner_repair_preserves_midpoint_angle_split()
     _assert_inner_jitter_uses_chain_id()
 
     print("[PASS] midpoint width settings are independent per line type")
