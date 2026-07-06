@@ -47,9 +47,11 @@ _CURVE_RADIUS_NORMALIZER_LABEL = "BML_IntersectionShellCurveRadius"
 _SHELL_COMBINED_THICKNESS_NODE_LABEL = "BML_IntersectionShellCombinedThickness"
 _SHELL_PROFILE_NODE_LABEL = "BML_IntersectionShellProfile"
 _SHELL_GAP_COVERAGE_NODE_LABEL = "BML_IntersectionShellGapCoverage"
-_SHELL_BRANCH_SPLIT_NODE_LABEL = "BML_IntersectionShellCurveEndpointV25"
-_SHELL_SUBDIVIDE_NODE_LABEL = "BML_IntersectionShellCurveEndpointV25Midpoints"
-_SHELL_SPLIT_ATTR = "BML_IntersectionShellCurveEndpointV25"
+_SHELL_BRANCH_SPLIT_NODE_LABEL = "BML_IntersectionShellCurveEndpointV26"
+_SHELL_SUBDIVIDE_NODE_LABEL = "BML_IntersectionShellCurveEndpointV26Midpoints"
+_SHELL_SPLIT_ATTR = "BML_IntersectionShellCurveEndpointV26"
+_SHELL_GRAPH_SPLIT_NODE_LABEL = "BML_IntersectionShellGraphEndpointV26"
+_SHELL_GRAPH_SPLIT_ATTR = "BML_IntersectionShellGraphEndpointV26"
 _SHELL_SUBDIVIDE_CUTS = 3
 _SHELL_SAFE_SCALE_NODE_LABEL = "BML_IntersectionShellSafeScale"
 _SHELL_CONTACT_OFFSET_NODE_LABEL = "BML_IntersectionShellFixedContactOffsetV20"
@@ -322,9 +324,16 @@ def _create_node_tree() -> bpy.types.NodeTree:
     weld.inputs["Distance"].default_value = _SHELL_WELD_DISTANCE
     links.new(separate.outputs["Selection"], weld.inputs["Geometry"])
 
+    graph_split_mesh = _store_mesh_graph_split_attribute(
+        nodes,
+        links,
+        weld.outputs["Geometry"],
+        (760, -520),
+    )
+
     m2c = nodes.new("GeometryNodeMeshToCurve")
     m2c.location = (900, -120)
-    links.new(weld.outputs["Geometry"], m2c.inputs["Mesh"])
+    links.new(graph_split_mesh, m2c.inputs["Mesh"])
 
     normalized_curve = _add_curve_radius_normalizer(
         nodes, links, m2c.outputs["Curve"], (1040, -120),
@@ -343,6 +352,7 @@ def _create_node_tree() -> bpy.types.NodeTree:
             # 中間頂点の線幅補間用の点としてだけ使われる。
             angle_split_min_segment_fraction=0.0,
             angle_split_confirmation_offset=1,
+            base_split_attribute_name=_SHELL_GRAPH_SPLIT_ATTR,
             include_curve_endpoints=True,
         )
     )
@@ -375,6 +385,32 @@ def _create_node_tree() -> bpy.types.NodeTree:
     )
     links.new(join.outputs[0], gout.inputs[0])
     return tree
+
+
+def _store_mesh_graph_split_attribute(nodes, links, mesh_output, loc):
+    """カーブ化前の交差エッジで、実端・分岐点を端点印として保存する."""
+    x, y = loc
+    vertex_neighbors = nodes.new("GeometryNodeInputMeshVertexNeighbors")
+    vertex_neighbors.label = _SHELL_GRAPH_SPLIT_NODE_LABEL + "Neighbors"
+    vertex_neighbors.location = (x, y)
+
+    degree_not_two = nodes.new("FunctionNodeCompare")
+    degree_not_two.label = _SHELL_GRAPH_SPLIT_NODE_LABEL
+    degree_not_two.location = (x + 220, y)
+    degree_not_two.data_type = "INT"
+    degree_not_two.operation = "NOT_EQUAL"
+    links.new(vertex_neighbors.outputs["Vertex Count"], degree_not_two.inputs[2])
+    degree_not_two.inputs[3].default_value = 2
+
+    store = nodes.new("GeometryNodeStoreNamedAttribute")
+    store.label = _SHELL_GRAPH_SPLIT_NODE_LABEL + "Store"
+    store.location = (x + 440, y)
+    store.data_type = "BOOLEAN"
+    store.domain = "POINT"
+    store.inputs["Name"].default_value = _SHELL_GRAPH_SPLIT_ATTR
+    links.new(mesh_output, store.inputs["Geometry"])
+    links.new(degree_not_two.outputs[0], store.inputs["Value"])
+    return store.outputs["Geometry"]
 
 
 def _add_combined_thickness(nodes, links, gin, loc):
@@ -642,6 +678,16 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
                     _SHELL_BRANCH_SPLIT_NODE_LABEL + "AngleStore"
                 )
                 and node.inputs["Name"].default_value == _SHELL_SPLIT_ATTR
+                for node in tree.nodes
+            )
+            # v0.3.123: 3つ以上の交差でできる短い見え線が、
+            # 分岐点をまたいで1区間扱いにならないようにする。
+            and any(
+                node.bl_idname == "GeometryNodeStoreNamedAttribute"
+                and getattr(node, "label", "") == (
+                    _SHELL_GRAPH_SPLIT_NODE_LABEL + "Store"
+                )
+                and node.inputs["Name"].default_value == _SHELL_GRAPH_SPLIT_ATTR
                 for node in tree.nodes
             )
             and _tree_uses_generated_mark(tree)

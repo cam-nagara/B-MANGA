@@ -46,9 +46,20 @@ def _make_depth_quad() -> bpy.types.Object:
             (1.0, -0.5, -2.0),
             (1.0, 0.5, -8.0),
             (-1.0, 0.5, -8.0),
+            (-0.95, -0.5, -2.0),
+            (1.05, -0.5, -2.0),
+            (1.05, 0.5, -8.0),
+            (-0.95, 0.5, -8.0),
         ],
         [],
-        [(0, 1, 2, 3)],
+        [
+            (0, 1, 2, 3),
+            (4, 7, 6, 5),
+            (0, 4, 5, 1),
+            (1, 5, 6, 2),
+            (2, 6, 7, 3),
+            (3, 7, 4, 0),
+        ],
     )
     mesh.update()
     obj = bpy.data.objects.new("BML_uniform_depth_quad", mesh)
@@ -173,6 +184,7 @@ def _test_uniform_width_depth_and_resolution() -> None:
     near = _expected_world_width(scene, 2.0, 0.5)
     far = _expected_world_width(scene, 8.0, 0.5)
     assert math.isclose(mod.thickness, far, rel_tol=0.001), (mod.thickness, far)
+    assert mod.vertex_group == core.VG_LINE_WIDTH
     values = _weights(obj)
     assert math.isclose(values[0], near / far, rel_tol=0.001), values
     assert math.isclose(values[2], 1.0, rel_tol=0.001), values
@@ -467,9 +479,20 @@ def _make_offset_origin_quad(name: str) -> bpy.types.Object:
             (0.5, -0.5, -7.5),
             (0.5, 0.5, -6.5),
             (-0.5, 0.5, -6.5),
+            (-0.45, -0.5, -7.5),
+            (0.55, -0.5, -7.5),
+            (0.55, 0.5, -6.5),
+            (-0.45, 0.5, -6.5),
         ],
         [],
-        [(0, 1, 2, 3)],
+        [
+            (0, 1, 2, 3),
+            (4, 7, 6, 5),
+            (0, 4, 5, 1),
+            (1, 5, 6, 2),
+            (2, 6, 7, 3),
+            (3, 7, 4, 0),
+        ],
     )
     mesh.update()
     obj = bpy.data.objects.new(name, mesh)
@@ -571,7 +594,9 @@ def _test_evaluated_orthographic_width() -> None:
         _evaluated_outline_world_width(obj)
         / (camera.data.ortho_scale / scene.render.resolution_y)
     )
-    expected = _target_pixels(0.5)
+    # アウトラインのオフセット初期値は0なので、評価済みメッシュ上で
+    # 元面から外側へ見える張り出しは線幅の半分になる。
+    expected = _target_pixels(0.5) * 0.5
     assert abs(measured - expected) <= 1.0, (measured, expected)
 
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(1.0, 0.0, 0.0))

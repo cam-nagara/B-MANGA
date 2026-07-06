@@ -433,13 +433,13 @@ def _apply_uniform_line_width(scene, camera, obj, settings, mod) -> None:
     max_outline_world = max(max(outline_widths), 1.0e-9)
     mod.thickness = modifier_thickness_for_world_width(obj, max_outline_world)
     outline_setup.sync_sheet_outline_width(obj)
-    mod.vertex_group = VG_LINE_WIDTH
-    mod.thickness_vertex_group = 0.0
     vertex_analysis.multiply_width_weights(
         obj,
         [width / max_outline_world for width in outline_widths],
         group_name=VG_LINE_WIDTH,
     )
+    mod.vertex_group = VG_LINE_WIDTH
+    mod.thickness_vertex_group = 0.0
     outline_width_attribute.ensure_outline_width_attribute(obj, settings)
 
     has_inner = _has_inner_modifier(obj)
