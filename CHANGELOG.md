@@ -3,6 +3,37 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-07 — B-MANGA Liner/BMRender変更の徹底チェック (検証追記)
+
+### 症状
+
+- B-MANGA Linerのプリセット共有保存と、B-MANGA Liner / B-MANGA Renderの表示名・タブ名変更について、保存/読込/再登録/サイドバー表示の経路を改めて確認する必要があった。
+
+### 原因
+
+- 直近修正が、`.blend` 保存前後の一時退避、共有JSON保存、アドオン再有効化、3Dビュー/ノードエディターのサイドバー表示にまたがっていた。
+- 直近修正監査のB-MANGA Renderタブ確認だけ、古い「通常ファイルでもタブを表示する」前提が残っていた。
+
+### 修正
+
+- 製品側の追加修正はなし。B-MANGA Linerの保存/読込/複製/削除/表示名変更、B-MANGA RenderのBMRenderタブ表示はいずれも現行実装で整合していることを確認した。
+- 直近修正監査のB-MANGA Renderタブ確認を、現在仕様どおり「通常ファイルでは非表示、コマファイルではBMRenderタブとして表示」へ更新した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_preset_global_store_check.py`
+- `test/blender_b_manga_line_preset_visibility_check.py`
+- `test/blender_b_manga_line_register_reenable_check.py`
+- `test/blender_b_manga_render_ui_audit.py`
+- `test/blender_b_manga_line_settings_contract_check.py`
+- `test/blender_b_manga_line_offset_controls_check.py`
+- `test/blender_b_manga_line_separate_line_colors_check.py`
+- `test/blender_b_manga_line_uniform_width_check.py`
+- `test/blender_recent_fixes_visual_audit.py`
+- `python -m py_compile addons/b_manga_line/__init__.py addons/b_manga_line/panels.py addons/b_manga_line/presets.py addons/b_manga_render/__init__.py addons/b_manga_render/panels.py test/b_manga_line_test_utils.py test/blender_b_manga_line_preset_global_store_check.py test/blender_b_manga_line_preset_visibility_check.py test/blender_b_manga_line_register_reenable_check.py test/blender_b_manga_render_ui_audit.py test/blender_recent_fixes_visual_audit.py test/blender_b_manga_line_settings_contract_check.py test/blender_b_manga_line_offset_controls_check.py test/blender_b_manga_line_separate_line_colors_check.py test/blender_b_manga_line_uniform_width_check.py`
+
+---
+
 ## 2026-07-07 — B-MANGA LineをB-MANGA Linerへ改名しタブ名を短縮 (B-MANGA Liner v0.3.137 / B-MANGA Render v0.1.035)
 
 ### 症状

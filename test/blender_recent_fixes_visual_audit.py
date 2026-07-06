@@ -210,40 +210,35 @@ def _check_line_register() -> dict[str, Any]:
         _unregister(mod)
 
 
-class _NoticeLayout:
-    def __init__(self):
-        self.labels: list[str] = []
-
-    def box(self):
-        return self
-
-    def column(self, align=False):
-        del align
-        return self
-
-    def label(self, text: str = "", **_kwargs):
-        self.labels.append(str(text))
-
-
-def _check_render_tab_notice() -> dict[str, Any]:
+def _check_render_tab_context() -> dict[str, Any]:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     mod = _load_package("bmanga_render_recent_visual", ROOT / "addons" / "b_manga_render")
     try:
         from bmanga_render_recent_visual import panels
 
-        layout = _NoticeLayout()
-        panels.draw_context_notice(layout)
+        normal_visible = panels.BMANGA_RENDER_PT_main.poll(bpy.context)
+        coma_context = SimpleNamespace(
+            scene=SimpleNamespace(
+                bmanga_current_coma_page_id="p0001",
+                bmanga_current_coma_id="c01",
+            )
+        )
+        coma_visible = panels.BMANGA_RENDER_PT_main.poll(coma_context)
         ok = (
             getattr(bpy.types, "BMANGA_RENDER_PT_main", None) is not None
-            and panels.BMANGA_RENDER_PT_main.poll(bpy.context)
-            and "B-MANGA Renderはインストール済みです。" in layout.labels
-            and "出力プリセットはコマファイルを開くと表示されます。" in layout.labels
+            and getattr(bpy.types, "BMANGA_RENDER_PT_main").bl_category == "BMRender"
+            and normal_visible is False
+            and coma_visible is True
         )
         return _result(
             "BMRender タブ表示",
             ok,
-            "通常ファイルでもタブ自体は表示され、コマファイルで使う案内を出す。",
-            evidence={"labels": layout.labels},
+            "通常ファイルでは非表示、コマファイルではBMRenderタブとして表示される。",
+            evidence={
+                "normal_visible": normal_visible,
+                "coma_visible": coma_visible,
+                "category": getattr(bpy.types, "BMANGA_RENDER_PT_main").bl_category,
+            },
         )
     finally:
         _unregister(mod)
@@ -597,7 +592,7 @@ def main() -> None:
     results: list[dict[str, Any]] = []
     try:
         results.append(_check_line_register())
-        results.append(_check_render_tab_notice())
+        results.append(_check_render_tab_context())
         results.extend(_check_main_addon())
         contact = _make_contact_sheet(results)
         payload = {"contact_sheet": contact, "results": results}
