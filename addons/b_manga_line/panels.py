@@ -190,14 +190,15 @@ def _draw_midpoint_width_controls(
     label: str,
     factor_prop: str,
     jitter_prop: str,
-    angle_prop: str,
+    angle_prop: str | None,
 ) -> None:
     box = layout.box()
     col = box.column(align=True)
     col.label(text=label)
     col.prop(settings, factor_prop)
     col.prop(settings, jitter_prop)
-    col.prop(settings, angle_prop)
+    if angle_prop is not None:
+        col.prop(settings, angle_prop)
     curve = col.column(align=True)
     curve.label(text="中間頂点への変化グラフ")
     edge_width_curve.schedule_node_sync(settings, target)
@@ -249,7 +250,7 @@ def _draw_inner_line(layout, context, settings) -> None:
         "線幅の詳細",
         "inner_edge_smooth_factor",
         "inner_edge_midpoint_jitter_percent",
-        "inner_edge_midpoint_angle",
+        None,
     )
 
 

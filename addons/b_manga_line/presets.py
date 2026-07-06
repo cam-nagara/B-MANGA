@@ -56,7 +56,6 @@ _SETTING_FIELDS = (
     "edge_width_curve_75",
     "inner_edge_smooth_factor",
     "inner_edge_midpoint_jitter_percent",
-    "inner_edge_midpoint_angle",
     "inner_edge_width_curve_25",
     "inner_edge_width_curve_50",
     "inner_edge_width_curve_75",
@@ -220,7 +219,7 @@ def apply_line_settings(
                 if settings.auto_subdivision_for_midpoint
                 else 0.0
             ),
-            midpoint_angle=settings.inner_edge_midpoint_angle,
+            midpoint_angle=core.inner_width_split_angle(settings),
             midpoint_jitter_percent=settings.inner_edge_midpoint_jitter_percent,
             width_curve_25=settings.inner_edge_width_curve_25,
             width_curve_50=settings.inner_edge_width_curve_50,

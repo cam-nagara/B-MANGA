@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import bpy
 
-from .core import GN_MODIFIER_NAME, VG_INNER_LINE_WIDTH
+from .core import GN_MODIFIER_NAME, VG_INNER_LINE_WIDTH, inner_width_split_angle
 
 
 _timer_running = False
@@ -107,7 +107,7 @@ def _refresh_chain_attribute(
         inner_lines._MARKED_ONLY_SOCKET_NAME,
         use_marked_edges,
     )
-    midpoint_angle = float(getattr(settings, "inner_edge_midpoint_angle", 1.7453292520))
+    midpoint_angle = inner_width_split_angle(settings, angle)
     inner_line_chains.update_chain_id_attribute(
         obj,
         angle,
@@ -150,7 +150,7 @@ def _repair_object(obj: bpy.types.Object) -> bool:
         material=outline_setup.get_line_material(obj, "inner"),
         use_marked_edges=bool(getattr(settings, "use_marked_inner_edges", False)),
         midpoint_factor=midpoint_factor,
-        midpoint_angle=float(getattr(settings, "inner_edge_midpoint_angle", 1.7453292520)),
+        midpoint_angle=inner_width_split_angle(settings),
         midpoint_jitter_percent=float(
             getattr(settings, "inner_edge_midpoint_jitter_percent", 0.0)
         ),

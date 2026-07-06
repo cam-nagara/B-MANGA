@@ -192,7 +192,6 @@ def main() -> None:
                 ("inner_line_offset", 0.25),
                 ("inner_edge_smooth_factor", 0.12),
                 ("inner_edge_midpoint_jitter_percent", 2.0),
-                ("inner_edge_midpoint_angle", 0.9),
                 ("inner_edge_width_curve_25", 0.22),
                 ("inner_edge_width_curve_50", 0.52),
                 ("inner_edge_width_curve_75", 0.82),

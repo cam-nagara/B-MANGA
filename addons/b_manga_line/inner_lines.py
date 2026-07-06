@@ -17,6 +17,7 @@ from .core import (
     GN_TREE_NAME,
     MATERIAL_NAME,
     VG_INNER_LINE_WIDTH,
+    inner_width_split_angle,
 )
 
 
@@ -837,7 +838,11 @@ def apply_inner_lines(
 
     if midpoint_angle is None:
         settings = getattr(obj, "bmanga_line_settings", None)
-        midpoint_angle = getattr(settings, "inner_edge_midpoint_angle", None)
+        midpoint_angle = (
+            inner_width_split_angle(settings, angle)
+            if settings is not None
+            else angle
+        )
     inner_line_chains.update_chain_id_attribute(
         obj,
         angle,
@@ -1002,7 +1007,14 @@ def update_parameters(
                         current_marked = None
         if midpoint_angle is None:
             settings = getattr(obj, "bmanga_line_settings", None)
-            midpoint_angle = getattr(settings, "inner_edge_midpoint_angle", None)
+            midpoint_angle = (
+                inner_width_split_angle(
+                    settings,
+                    current_angle if current_angle is not None else None,
+                )
+                if settings is not None
+                else current_angle
+            )
         inner_line_chains.update_chain_id_attribute(
             obj,
             float(current_angle if current_angle is not None else 0.5236),

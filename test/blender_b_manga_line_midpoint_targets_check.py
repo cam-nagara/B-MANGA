@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import bpy
 
@@ -12,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import core, inner_line_chains, inner_lines, vertex_analysis  # noqa: E402
+from b_manga_line import core, inner_line_chains, inner_lines, panels, vertex_analysis  # noqa: E402
 
 
 LEVELS = 9
@@ -234,15 +235,60 @@ def _edge_chain_ids(obj: bpy.types.Object) -> list[int]:
     return [int(item.value) for item in attr.data]
 
 
+class _DummyLayout:
+    enabled = True
+    alignment = ""
+
+    def column(self, *args, **kwargs):
+        return self
+
+    def row(self, *args, **kwargs):
+        return self
+
+    def prop(self, *args, **kwargs):
+        return None
+
+    def label(self, *args, **kwargs):
+        return None
+
+    def separator(self, *args, **kwargs):
+        return None
+
+
+def _assert_inner_midpoint_angle_is_hidden() -> None:
+    obj = _make_subdivided_rectangle("BML_inner_midpoint_angle_hidden")
+    settings = obj.bmanga_line_settings
+    captured = []
+    real_draw = panels._draw_midpoint_width_controls
+    try:
+        panels._draw_midpoint_width_controls = lambda *args, **_kwargs: captured.append(args)
+        panels._draw_inner_line(
+            _DummyLayout(),
+            SimpleNamespace(scene=bpy.context.scene),
+            settings,
+        )
+    finally:
+        panels._draw_midpoint_width_controls = real_draw
+    assert captured, "内部線の線幅詳細が描画されていません"
+    assert captured[0][-1] is None, "内部線の線幅詳細に旧検出角度が表示されています"
+
+
+def _set_detection_angle(settings, target: str, angle_prop: str, value: float) -> None:
+    if target == "inner":
+        settings.inner_line_angle = value
+    else:
+        setattr(settings, angle_prop, value)
+
+
 def _assert_target_only(target: str, group_name: str, factor_prop: str) -> None:
     obj = _make_subdivided_rectangle("BML_midpoint_" + target)
     settings = obj.bmanga_line_settings
     angle_prop = {
         "outline": "edge_midpoint_angle",
-        "inner": "inner_edge_midpoint_angle",
+        "inner": "inner_line_angle",
         "intersection": "intersection_edge_midpoint_angle",
     }[target]
-    setattr(settings, angle_prop, math.radians(100.0))
+    _set_detection_angle(settings, target, angle_prop, math.radians(100.0))
     _reset_all_groups(obj)
     setattr(settings, factor_prop, -1.0)
 
@@ -325,13 +371,15 @@ def _assert_generated_target_uses_detection_angle(
 
     try:
         vertex_analysis._edge_is_sharp = lambda _edge, _threshold: True
+        if target == "inner":
+            settings.inner_edge_midpoint_angle = math.radians(100.0)
         settings.inner_line_angle = math.radians(60.0)
-        setattr(settings, angle_prop, math.radians(60.0))
+        _set_detection_angle(settings, target, angle_prop, math.radians(60.0))
         vertex_analysis.compute_and_apply_weights(obj, settings, target)
         assert _weight(obj, group_name, bend_vertex) < 0.001
 
         settings.inner_line_angle = math.radians(60.0)
-        setattr(settings, angle_prop, math.radians(100.0))
+        _set_detection_angle(settings, target, angle_prop, math.radians(100.0))
         vertex_analysis.compute_and_apply_weights(obj, settings, target)
         assert _weight(obj, group_name, bend_vertex) > 0.999
     finally:
@@ -344,7 +392,7 @@ def _assert_closed_cylinder_rim_uses_camera_view_endpoints() -> None:
     obj.name = "BML_midpoint_closed_rim"
     settings = obj.bmanga_line_settings
     settings.inner_edge_smooth_factor = -1.0
-    settings.inner_edge_midpoint_angle = math.radians(100.0)
+    settings.inner_line_angle = math.radians(60.0)
 
     vertex_analysis.compute_and_apply_weights(obj, settings, "inner")
     top_vertices = [v for v in obj.data.vertices if v.co.z > 0.49]
@@ -390,7 +438,7 @@ def _assert_bent_path_uses_detection_angle(
     obj = _make_bent_graph("BML_midpoint_bent_" + target)
     settings = obj.bmanga_line_settings
     setattr(settings, factor_prop, -1.0)
-    setattr(settings, angle_prop, math.radians(100.0))
+    _set_detection_angle(settings, target, angle_prop, math.radians(100.0))
     real_edge_is_sharp = vertex_analysis._edge_is_sharp
     try:
         vertex_analysis._edge_is_sharp = lambda _edge, _threshold: True
@@ -415,7 +463,7 @@ def _assert_acute_path_splits_below_detection_angle(
     obj = _make_acute_graph("BML_midpoint_acute_" + target)
     settings = obj.bmanga_line_settings
     setattr(settings, factor_prop, -1.0)
-    setattr(settings, angle_prop, math.radians(100.0))
+    _set_detection_angle(settings, target, angle_prop, math.radians(100.0))
     real_edge_is_sharp = vertex_analysis._edge_is_sharp
     try:
         vertex_analysis._edge_is_sharp = lambda _edge, _threshold: True
@@ -440,7 +488,7 @@ def _assert_diamond_loop_splits_only_acute_points(
     obj = _make_diamond_loop_graph("BML_midpoint_diamond_" + target)
     settings = obj.bmanga_line_settings
     setattr(settings, factor_prop, -1.0)
-    setattr(settings, angle_prop, math.radians(100.0))
+    _set_detection_angle(settings, target, angle_prop, math.radians(100.0))
     real_edge_is_sharp = vertex_analysis._edge_is_sharp
     try:
         vertex_analysis._edge_is_sharp = lambda _edge, _threshold: True
@@ -491,7 +539,8 @@ def _assert_inner_repair_preserves_midpoint_angle_split() -> None:
     settings.inner_line_enabled = True
     settings.use_marked_inner_edges = True
     settings.inner_edge_smooth_factor = -1.0
-    settings.inner_edge_midpoint_angle = math.radians(100.0)
+    settings.inner_line_angle = math.radians(100.0)
+    settings.inner_edge_midpoint_angle = math.radians(60.0)
     material = bpy.data.materials.new("BML_inner_repair_midpoint_angle_split_material")
     assert inner_lines.apply_inner_lines(
         obj,
@@ -500,7 +549,6 @@ def _assert_inner_repair_preserves_midpoint_angle_split() -> None:
         material=material,
         use_marked_edges=settings.use_marked_inner_edges,
         midpoint_factor=settings.inner_edge_smooth_factor,
-        midpoint_angle=settings.inner_edge_midpoint_angle,
     )
 
     attr = obj.data.attributes.get(inner_line_chains.CHAIN_ID_ATTR)
@@ -545,13 +593,14 @@ def main() -> None:
         "intersection_edge_smooth_factor",
     )
     _assert_outline_uses_detection_angle()
+    _assert_inner_midpoint_angle_is_hidden()
     _assert_rectangle_corners_are_outline_endpoints()
     _assert_cylinder_rims_use_view_endpoints()
     _assert_generated_target_uses_detection_angle(
         "inner",
         core.VG_INNER_LINE_WIDTH,
         "inner_edge_smooth_factor",
-        "inner_edge_midpoint_angle",
+        "inner_line_angle",
     )
     _assert_generated_target_uses_detection_angle(
         "intersection",
@@ -580,7 +629,7 @@ def main() -> None:
         "inner",
         core.VG_INNER_LINE_WIDTH,
         "inner_edge_smooth_factor",
-        "inner_edge_midpoint_angle",
+        "inner_line_angle",
     )
     _assert_bent_path_uses_detection_angle(
         "intersection",
@@ -598,7 +647,7 @@ def main() -> None:
         "inner",
         core.VG_INNER_LINE_WIDTH,
         "inner_edge_smooth_factor",
-        "inner_edge_midpoint_angle",
+        "inner_line_angle",
     )
     _assert_acute_path_splits_below_detection_angle(
         "intersection",
@@ -616,7 +665,7 @@ def main() -> None:
         "inner",
         core.VG_INNER_LINE_WIDTH,
         "inner_edge_smooth_factor",
-        "inner_edge_midpoint_angle",
+        "inner_line_angle",
     )
     _assert_diamond_loop_splits_only_acute_points(
         "intersection",

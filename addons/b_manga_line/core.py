@@ -241,6 +241,28 @@ def _midpoint_angle_property(prop_name: str, description: str):
     )
 
 
+def _sealed_midpoint_angle_property(description: str):
+    return FloatProperty(
+        name="検出角度",
+        description=description,
+        default=math.radians(100),
+        min=math.radians(1),
+        max=math.radians(180),
+        precision=1,
+        step=100,
+        subtype="ANGLE",
+    )
+
+
+def inner_width_split_angle(settings=None, fallback: float | None = None) -> float:
+    if fallback is not None:
+        return max(0.0, float(fallback))
+    return max(
+        0.0,
+        float(getattr(settings, "inner_line_angle", math.radians(60.0))),
+    )
+
+
 def _curve_point_property(prop_name: str, label: str, description: str, default: float):
     return FloatProperty(
         name=label,
@@ -760,7 +782,7 @@ def _sync_inner_line_creation(
                 if settings.auto_subdivision_for_midpoint
                 else 0.0
             ),
-            midpoint_angle=settings.inner_edge_midpoint_angle,
+            midpoint_angle=inner_width_split_angle(settings),
             midpoint_jitter_percent=settings.inner_edge_midpoint_jitter_percent,
             width_curve_25=settings.inner_edge_width_curve_25,
             width_curve_50=settings.inner_edge_width_curve_50,
@@ -778,7 +800,7 @@ def _inner_midpoint_kwargs(settings) -> dict[str, float]:
     )
     return {
         "midpoint_factor": factor,
-        "midpoint_angle": float(settings.inner_edge_midpoint_angle),
+        "midpoint_angle": inner_width_split_angle(settings),
         "midpoint_jitter_percent": float(settings.inner_edge_midpoint_jitter_percent),
         "width_curve_25": float(settings.inner_edge_width_curve_25),
         "width_curve_50": float(settings.inner_edge_width_curve_50),
@@ -1787,9 +1809,8 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         "inner_edge_midpoint_jitter_percent",
         "内部線の中間頂点位置を辺の中央から前後何%の範囲でずらす",
     )  # type: ignore[valid-type]
-    inner_edge_midpoint_angle: _midpoint_angle_property(
-        "inner_edge_midpoint_angle",
-        "内部線を分割する角度。これ未満の角で分割し、以上の角は接続します",
+    inner_edge_midpoint_angle: _sealed_midpoint_angle_property(
+        "旧設定との互換用。現在は内部線の検出角度を線幅変化の区間分割にも使います",
     )  # type: ignore[valid-type]
     inner_edge_width_curve_25: _curve_point_property(
         "inner_edge_width_curve_25", "25%",

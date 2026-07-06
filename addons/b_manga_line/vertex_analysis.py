@@ -432,7 +432,10 @@ def _target_midpoint_props(settings, target: str) -> tuple[float, float, tuple[f
 def _angle_threshold(settings, target: str = "outline") -> float:
     target = _normalize_target(target)
     if target == "inner":
-        prop_name = "inner_edge_midpoint_angle"
+        return max(
+            0.0,
+            float(getattr(settings, "inner_line_angle", math.radians(60.0))),
+        )
     elif target == "intersection":
         prop_name = "intersection_edge_midpoint_angle"
     else:

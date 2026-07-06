@@ -23,7 +23,6 @@ MAX_IMMEDIATE_INTERSECTION_REBUILD_OBJECTS = 64
 MAX_IMMEDIATE_SHEET_REBUILD_OBJECTS = 64
 _GENERATED_WIDTH_DETAIL_PROPS = {
     "inner_edge_midpoint_jitter_percent",
-    "inner_edge_midpoint_angle",
     "inner_edge_width_curve_25",
     "inner_edge_width_curve_50",
     "inner_edge_width_curve_75",
@@ -224,7 +223,7 @@ def _inner_midpoint_kwargs(settings) -> dict[str, float]:
     )
     return {
         "midpoint_factor": factor,
-        "midpoint_angle": float(settings.inner_edge_midpoint_angle),
+        "midpoint_angle": core.inner_width_split_angle(settings),
         "midpoint_jitter_percent": float(settings.inner_edge_midpoint_jitter_percent),
         "width_curve_25": float(settings.inner_edge_width_curve_25),
         "width_curve_50": float(settings.inner_edge_width_curve_50),
@@ -880,7 +879,6 @@ def refresh_propagated_property(
     if prop_name in {
         "inner_edge_smooth_factor",
         "inner_edge_midpoint_jitter_percent",
-        "inner_edge_midpoint_angle",
         "inner_edge_width_curve_25",
         "inner_edge_width_curve_50",
         "inner_edge_width_curve_75",

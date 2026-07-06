@@ -3,6 +3,33 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-06 — B-MANGA Lineの内部線の線幅区間角度を内部線検出角度へ統一 (B-MANGA Line v0.3.121)
+
+### 症状
+
+- 内部線の「線幅の詳細」にある検出角度は、内部線そのものの検出角度とは別の値として存在しており、使い所が分かりにくかった。
+- 内部線には「内部線を検出する角度」と「線幅変化の区間を切る角度」が並び、同じ内部線に対して角度設定が二重に見えていた。
+
+### 原因
+
+- アウトライン・内部線・交差線で線幅変化用の検出角度を個別に持たせたため、内部線だけは本体の検出角度と線幅詳細側の検出角度が重複していた。
+
+### 修正
+
+- 内部線の「線幅の詳細」から検出角度を表示しないようにした。
+- 内部線の線幅変化の区間分割は、内部線本体の「検出角度」を使うように統一した。
+- 保存済み互換用の旧設定値は残しつつ、内部線の適用・更新・修復・プリセット適用・線幅ウェイト計算では参照しないようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_midpoint_targets_check.py`
+- `test/blender_b_manga_line_preset_visibility_check.py`
+- `test/blender_b_manga_line_slider_step_check.py`
+- `test/blender_b_manga_line_batch_apply_refresh_check.py`
+- `test/blender_b_manga_line_control_update_scope_check.py`
+
+---
+
 ## 2026-07-06 — B-MANGA Lineの内部線区間分割角度を修復経路にも反映 (B-MANGA Line v0.3.120)
 
 ### 症状

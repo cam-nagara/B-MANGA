@@ -18,7 +18,6 @@ from b_manga_line import core  # noqa: E402
 ANGLE_PROPS = (
     "inner_line_angle",
     "edge_midpoint_angle",
-    "inner_edge_midpoint_angle",
     "intersection_edge_midpoint_angle",
     "culling_margin",
 )
@@ -44,7 +43,6 @@ NUDGE_PROPS = (
     ("edge_width_curve_75", -0.1),
     ("inner_edge_smooth_factor", 0.1),
     ("inner_edge_midpoint_jitter_percent", 1.0),
-    ("inner_edge_midpoint_angle", math.radians(1.0)),
     ("inner_edge_width_curve_25", 0.1),
     ("inner_edge_width_curve_50", 0.1),
     ("inner_edge_width_curve_75", -0.1),

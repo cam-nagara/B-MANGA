@@ -239,13 +239,11 @@ def _assert_multi_select_manual_setting_propagation(
 
     source.inner_edge_smooth_factor = -0.35
     source.inner_edge_midpoint_jitter_percent = 8.0
-    source.inner_edge_midpoint_angle = math.radians(47.0)
     source.inner_edge_width_curve_25 = 0.15
     source.inner_edge_width_curve_50 = 0.25
     source.inner_edge_width_curve_75 = 0.35
     assert math.isclose(target.inner_edge_smooth_factor, -0.35, rel_tol=0.001)
     assert math.isclose(target.inner_edge_midpoint_jitter_percent, 8.0, rel_tol=0.001)
-    assert math.isclose(target.inner_edge_midpoint_angle, math.radians(47.0), rel_tol=0.001)
     assert math.isclose(target.inner_edge_width_curve_25, 0.15, rel_tol=0.001)
     assert math.isclose(target.inner_edge_width_curve_50, 0.25, rel_tol=0.001)
     assert math.isclose(target.inner_edge_width_curve_75, 0.35, rel_tol=0.001)
@@ -413,7 +411,6 @@ def main() -> None:
     settings.edge_width_curve_50 = 0.4
     settings.edge_width_curve_75 = 0.8
     settings.inner_edge_smooth_factor = -0.55
-    settings.inner_edge_midpoint_angle = math.radians(46.0)
     settings.inner_edge_width_curve_50 = 0.45
     settings.intersection_edge_smooth_factor = -0.65
     settings.intersection_edge_midpoint_angle = math.radians(48.0)
@@ -450,7 +447,6 @@ def main() -> None:
         assert abs(applied.edge_midpoint_angle - math.radians(44.0)) < 1.0e-7
         assert abs(applied.edge_width_curve_50 - 0.4) < 1.0e-7
         assert abs(applied.inner_edge_smooth_factor + 0.55) < 1.0e-7
-        assert abs(applied.inner_edge_midpoint_angle - math.radians(46.0)) < 1.0e-7
         assert abs(applied.inner_edge_width_curve_50 - 0.45) < 1.0e-7
         assert abs(applied.intersection_edge_smooth_factor + 0.65) < 1.0e-7
         assert abs(applied.intersection_edge_midpoint_angle - math.radians(48.0)) < 1.0e-7
