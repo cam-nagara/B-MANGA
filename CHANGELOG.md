@@ -3,6 +3,33 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-07 — B-MANGA Lineの稜谷線の見た目線幅を補正 (B-MANGA Line v0.3.131)
+
+### 症状
+
+- アウトライン・稜谷線・交差線を同じ線幅にしても、稜谷線がアウトラインや交差線より細く見える場合があった。
+- 円柱のアウトラインと稜谷線、円錐の直線部分のアウトラインで、周囲より線が細く見える場合があった。
+
+### 原因
+
+- 稜谷線と選択線のチューブ断面が粗く、スムーズ化もされていなかったため、曲面や斜線上で同じ線幅設定でも表示上の黒い幅が細く出ていた。
+- 交差線側はより滑らかな断面で作られていたため、同じ線幅でも線種間で見た目に差が出ていた。
+
+### 修正
+
+- 稜谷線と選択線のチューブ断面を交差線側に近い滑らかな断面へ変更し、スムーズ表示も適用するようにした。
+- 保存済みファイル内の古い稜谷線生成ノードは、次回ライン適用時に新しい断面へ自動再構築されるようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_inner_width_check.py`
+- `test/blender_b_manga_line_width_all_shapes_visual_check.py`
+- `test/blender_b_manga_line_uniform_width_check.py`
+- 添付画像相当の 0.75mm 設定で、円柱・円錐・立方体を含む検証シーンを生成し、稜谷線・アウトライン・交差線の線幅設定と表示を確認。
+- `python -m py_compile addons/b_manga_line/inner_lines.py test/blender_b_manga_line_inner_width_check.py _verify/2026-07-07_bml_line08_width_probe.py`
+
+---
+
 ## 2026-07-06 — B-MANGA Lineの切替復帰と透過面保護を修正 (B-MANGA v0.6.435 / B-MANGA Line v0.3.130)
 
 ### 症状

@@ -137,10 +137,32 @@ def _sample_line_radii(mesh: bpy.types.Mesh) -> dict[float, float]:
     return radii
 
 
+def _assert_profile_quality(obj: bpy.types.Object) -> None:
+    mod = obj.modifiers.get("BML_InnerLines")
+    assert mod is not None and mod.node_group is not None, "内部線ノードが見つかりません"
+    profile = next(
+        (
+            node for node in mod.node_group.nodes
+            if getattr(node, "label", "") == "BML_InnerLineProfileV2"
+        ),
+        None,
+    )
+    assert profile is not None, "内部線の滑らかな断面ノードがありません"
+    resolution = profile.inputs.get("Resolution")
+    assert resolution is not None and int(resolution.default_value) >= 12, (
+        "内部線の断面解像度が低すぎます"
+    )
+    assert any(
+        getattr(node, "label", "") == "BML_InnerLineSmoothV2"
+        for node in mod.node_group.nodes
+    ), "内部線チューブがスムーズ化されていません"
+
+
 def main() -> None:
     b_manga_line.register()
     _clear_scene()
     obj = _make_folded_strip()
+    _assert_profile_quality(obj)
 
     depsgraph = bpy.context.evaluated_depsgraph_get()
     mesh = bpy.data.meshes.new_from_object(obj.evaluated_get(depsgraph))

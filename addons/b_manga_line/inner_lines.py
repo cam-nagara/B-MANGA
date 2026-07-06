@@ -24,6 +24,8 @@ from .core import (
 
 _GENERATED_LINE_NODE_LABEL = "BML_GeneratedLineMark"
 _RADIUS_HALF_NODE_LABEL = "BML_InnerLineRadiusHalf"
+_PROFILE_NODE_LABEL = "BML_InnerLineProfileV2"
+_SMOOTH_NODE_LABEL = "BML_InnerLineSmoothV2"
 _OFFSET_SOCKET_NAME = "オフセット"
 _MARKED_ONLY_SOCKET_NAME = "Freestyleマーク辺だけ線にする"
 _MIDPOINT_FACTOR_SOCKET_NAME = "中間頂点の線幅調整"
@@ -46,6 +48,7 @@ _CURVE_JITTER_CENTER_LABEL = "BML_InnerCurveJitterCenter"
 _CURVE_JITTER_CHAIN_ID_LABEL = "BML_InnerCurveJitterChainID"
 _SAFE_CURVE_SCALE_LABEL = "BML_InnerCurveSafeScale"
 _MIN_CURVE_TO_MESH_SCALE = 0.04
+INNER_TUBE_PROFILE_RESOLUTION = 12
 _CHAIN_ID_ATTR = inner_line_chains.CHAIN_ID_ATTR
 _FREESTYLE_EDGE_ATTR = FREESTYLE_EDGE_ATTR
 _EDGE_ANGLE_EPSILON = 1.0e-7
@@ -588,11 +591,12 @@ def _create_node_tree(
 
     # Curve Circle: チューブ断面
     circle = nodes.new("GeometryNodeCurvePrimitiveCircle")
+    circle.label = _PROFILE_NODE_LABEL
     circle.location = (220, -400)
     circle.mode = "RADIUS"
     for inp in circle.inputs:
         if inp.name == "Resolution" and inp.enabled:
-            inp.default_value = 4
+            inp.default_value = INNER_TUBE_PROFILE_RESOLUTION
     radius_half = nodes.new("ShaderNodeMath")
     radius_half.label = _RADIUS_HALF_NODE_LABEL
     radius_half.location = (20, -360)
@@ -620,10 +624,15 @@ def _create_node_tree(
     mark_generated.inputs["Value"].default_value = True
     links.new(c2m.outputs[0], mark_generated.inputs["Geometry"])
 
+    smooth = nodes.new("GeometryNodeSetShadeSmooth")
+    smooth.label = _SMOOTH_NODE_LABEL
+    smooth.location = (820, -360)
+    links.new(mark_generated.outputs["Geometry"], smooth.inputs["Geometry"])
+
     # Set Material: マテリアル入力ソケットから割り当て
     setmat = nodes.new("GeometryNodeSetMaterial")
     setmat.location = (900, -200)
-    links.new(mark_generated.outputs["Geometry"], setmat.inputs[0])
+    links.new(smooth.outputs["Geometry"], setmat.inputs[0])
     links.new(gin.outputs["マテリアル"], setmat.inputs["Material"])
 
     # Join Geometry: 元メッシュ + 内部線ジオメトリ
@@ -699,6 +708,12 @@ def _get_or_create_tree(
             bpy.data.node_groups.remove(tree)
             return _rebuild()
         if not any(getattr(n, "label", "") == _RADIUS_HALF_NODE_LABEL for n in tree.nodes):
+            bpy.data.node_groups.remove(tree)
+            return _rebuild()
+        if not any(getattr(n, "label", "") == _PROFILE_NODE_LABEL for n in tree.nodes):
+            bpy.data.node_groups.remove(tree)
+            return _rebuild()
+        if not any(getattr(n, "label", "") == _SMOOTH_NODE_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return _rebuild()
         if not any(getattr(n, "label", "") == _MARKED_SELECTION_SWITCH_LABEL for n in tree.nodes):
