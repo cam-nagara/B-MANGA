@@ -98,7 +98,7 @@ class BMANGA_RENDER_PT_main(Panel):
     bl_label = "B-MANGA Render"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "B-MANGA Render"
+    bl_category = "BMRender"
     bl_order = 50
 
     @classmethod
@@ -118,7 +118,7 @@ class BMANGA_RENDER_PT_fisheye(Panel):
     bl_parent_id = "BMANGA_RENDER_PT_main"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "B-MANGA Render"
+    bl_category = "BMRender"
     bl_options = {"DEFAULT_CLOSED"}
 
     @classmethod
@@ -134,7 +134,7 @@ class BMANGA_RENDER_PT_node(Panel):
     bl_label = "B-MANGA Render"
     bl_space_type = "NODE_EDITOR"
     bl_region_type = "UI"
-    bl_category = "B-MANGA Render"
+    bl_category = "BMRender"
 
     @classmethod
     def poll(cls, context):
@@ -151,7 +151,7 @@ class BMANGA_RENDER_PT_node_fisheye(Panel):
     bl_parent_id = "BMANGA_RENDER_PT_node"
     bl_space_type = "NODE_EDITOR"
     bl_region_type = "UI"
-    bl_category = "B-MANGA Render"
+    bl_category = "BMRender"
     bl_options = {"DEFAULT_CLOSED"}
 
     @classmethod

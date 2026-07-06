@@ -1,4 +1,4 @@
-"""B-MANGA Line UI パネル."""
+"""B-MANGA Liner UI パネル."""
 
 from __future__ import annotations
 
@@ -36,13 +36,13 @@ def _is_linked_line_object(obj: bpy.types.Object) -> bool:
 
 
 class BMANGA_LINE_PT_main(bpy.types.Panel):
-    """B-MANGA Line メインパネル"""
+    """B-MANGA Liner メインパネル"""
 
-    bl_label = "B-MANGA Line"
+    bl_label = "B-MANGA Liner"
     bl_idname = "BMANGA_LINE_PT_main"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "B-MANGA Line"
+    bl_category = "BMLiner"
     bl_order = 0
 
     def draw(self, context):
@@ -60,7 +60,7 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
 class _BMangaLineMeshPanel:
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "B-MANGA Line"
+    bl_category = "BMLiner"
 
     @classmethod
     def poll(cls, context):

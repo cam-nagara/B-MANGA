@@ -3,6 +3,31 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-07 — B-MANGA LineをB-MANGA Linerへ改名しタブ名を短縮 (B-MANGA Liner v0.3.137 / B-MANGA Render v0.1.035)
+
+### 症状
+
+- アドオン一覧やサイドバータブに表示される名称が長く、B-MANGA Line / B-MANGA Render のタブ名がサイドバー上で場所を取りやすかった。
+
+### 原因
+
+- アドオン表示名とサイドバータブ名に、正式名称をそのまま使っていた。
+
+### 修正
+
+- B-MANGA Lineのアドオン表示名を「B-MANGA Liner」に変更した。
+- B-MANGA Linerのサイドバータブ名を「BMLiner」に変更した。
+- B-MANGA Renderのサイドバータブ名を「BMRender」に変更した。
+- 既存ファイルとの互換性を保つため、内部IDや保存データ名は変更していない。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_register_reenable_check.py`
+- `test/blender_b_manga_render_ui_audit.py`
+- `python -m py_compile addons/b_manga_line/__init__.py addons/b_manga_line/panels.py addons/b_manga_render/__init__.py addons/b_manga_render/panels.py test/blender_b_manga_line_register_reenable_check.py test/blender_b_manga_render_ui_audit.py`
+
+---
+
 ## 2026-07-07 — B-MANGA Lineのラインプリセット保存先を共通化 (B-MANGA Line v0.3.136)
 
 ### 症状

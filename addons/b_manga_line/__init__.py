@@ -1,11 +1,11 @@
-"""B-MANGA Line — 背面法（反転ハル）によるマンガ風アウトラインアドオン."""
+"""B-MANGA Liner — 背面法（反転ハル）によるマンガ風アウトラインアドオン."""
 
 from __future__ import annotations
 
 bl_info = {
-    "name": "B-MANGA Line",
+    "name": "B-MANGA Liner",
     "author": "B-MANGA Project",
-    "version": (0, 3, 136),
+    "version": (0, 3, 137),
     "blender": (4, 3, 0),
     "description": "背面法（反転ハル）によるマンガ風アウトライン",
     "category": "Render",

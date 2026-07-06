@@ -153,12 +153,17 @@ def _assert_panel_access(mod) -> dict:
     assert getattr(bpy.types, "BMANGA_RENDER_PT_node", None) is not None
     main = bpy.types.BMANGA_RENDER_PT_main
     node = bpy.types.BMANGA_RENDER_PT_node
+    for panel in (
+        main,
+        mod.panels.BMANGA_RENDER_PT_fisheye,
+        node,
+        mod.panels.BMANGA_RENDER_PT_node_fisheye,
+    ):
+        assert panel.bl_category == "BMRender"
     assert main.bl_space_type == "VIEW_3D"
     assert main.bl_region_type == "UI"
-    assert main.bl_category == "B-MANGA Render"
     assert node.bl_space_type == "NODE_EDITOR"
     assert node.bl_region_type == "UI"
-    assert node.bl_category == "B-MANGA Render"
     # 2026-07-03 ユーザー確定仕様: タブはコマファイルのみ表示する
     assert main.poll(bpy.context) is False
     assert node.poll(bpy.context) is False
@@ -193,7 +198,7 @@ def _assert_panel_access(mod) -> dict:
         assert required_op in capture.operators, required_op
     assert any(item.startswith("sound_enabled:") for item in capture.props)
     return {
-        "entry_points": ["3Dビュー > サイドバー > B-MANGA Render", "ノードエディター > サイドバー > B-MANGA Render"],
+        "entry_points": ["3Dビュー > サイドバー > BMRender", "ノードエディター > サイドバー > BMRender"],
         "preset_count": len(state.presets),
         "command_count": sum(len(preset.commands) for preset in state.presets),
         "panel_props": capture.props[:80],

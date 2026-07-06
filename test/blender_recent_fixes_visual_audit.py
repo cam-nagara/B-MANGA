@@ -202,7 +202,7 @@ def _check_line_register() -> dict[str, Any]:
             and getattr(bpy.types, "BMANGA_LINE_PT_main", None) is not None
         )
         return _result(
-            "B-MANGA Line の再有効化",
+            "B-MANGA Liner の再有効化",
             ok,
             "register → unregister → register を実機で実行し、重複登録エラーなし。",
         )
@@ -240,7 +240,7 @@ def _check_render_tab_notice() -> dict[str, Any]:
             and "出力プリセットはコマファイルを開くと表示されます。" in layout.labels
         )
         return _result(
-            "B-MANGA Render タブ表示",
+            "BMRender タブ表示",
             ok,
             "通常ファイルでもタブ自体は表示され、コマファイルで使う案内を出す。",
             evidence={"labels": layout.labels},

@@ -1,4 +1,4 @@
-"""Blender実機用: B-MANGA Lineの再有効化登録を確認."""
+"""Blender実機用: B-MANGA Linerの再有効化登録を確認."""
 
 from __future__ import annotations
 
@@ -34,7 +34,9 @@ def _load_package(package_name: str):
 
 def _assert_registered() -> None:
     from b_manga_line_reenable_check import core
+    import b_manga_line_reenable_check as mod
 
+    assert mod.bl_info["name"] == "B-MANGA Liner"
     assert bool(getattr(core.BMangaLineSettings, "is_registered", False))
     assert getattr(bpy.types.Object, "bmanga_line_settings", None) is not None
     assert getattr(bpy.types.Scene, "bmanga_line_camera", None) is not None
@@ -49,9 +51,13 @@ def _assert_registered() -> None:
     for name in panels:
         panel = getattr(bpy.types, name, None)
         assert panel is not None, f"{name} が登録されていません"
+        assert getattr(panel, "bl_category", "") == "BMLiner", (
+            f"{name} のサイドバータブ名がBMLinerではありません"
+        )
         assert "DEFAULT_CLOSED" not in getattr(panel, "bl_options", set()), (
             f"{name} が初期状態で閉じる設定です"
         )
+    assert bpy.types.BMANGA_LINE_PT_main.bl_label == "B-MANGA Liner"
     for name in panels[1:]:
         panel = getattr(bpy.types, name, None)
         assert not getattr(panel, "bl_parent_id", ""), (
