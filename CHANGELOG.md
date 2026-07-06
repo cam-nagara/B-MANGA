@@ -3,6 +3,32 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-06 — B-MANGA Lineの中間頂点への変化グラフを詳細設定に表示 (B-MANGA Line v0.3.126)
+
+### 症状
+
+- 詳細設定ダイアログで、中間頂点までの線幅変化を25%・50%・75%の数値スライダーで調整する形になっていた。
+- 変化の形を直感的に見ながら調整できず、線幅がどの位置でどの程度変わるのか分かりにくかった。
+
+### 原因
+
+- 内部には中間頂点への変化グラフ用のカーブ編集データがあったが、詳細設定ダイアログでは従来の数値項目をそのまま表示していた。
+- 選択線が追加された後も、グラフ同期の対象がアウトライン・稜谷線・交差線までに留まっていた。
+
+### 修正
+
+- 詳細設定ダイアログのアウトライン・稜谷線・交差線・選択線それぞれに「中間頂点への変化グラフ」を表示するようにした。
+- 25%・50%・75%の数値スライダー行は表示から外し、グラフ編集値を従来の内部値へ同期する形にした。
+- 選択線も中間頂点への変化グラフの同期対象に追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_curve_and_linked_batch_check.py`
+- `test/blender_b_manga_line_midpoint_targets_check.py`
+- `python -m py_compile addons/b_manga_line/panels.py addons/b_manga_line/edge_width_curve.py test/blender_b_manga_line_curve_and_linked_batch_check.py`
+
+---
+
 ## 2026-07-06 — B-MANGA Lineの600dpi線幅換算を実ピクセル基準で補正 (B-MANGA Line v0.3.125)
 
 ### 症状

@@ -248,6 +248,30 @@ def _draw_detail_cell(row, settings, prop_name: str | None) -> None:
         col.label(text="")
 
 
+def _draw_midpoint_width_controls(
+    layout,
+    settings,
+    target: str,
+    _label: str,
+    factor_prop: str,
+    jitter_prop: str,
+    angle_prop: str | None,
+) -> None:
+    from . import edge_width_curve
+
+    col = layout.column(align=True)
+    if angle_prop:
+        col.prop(settings, angle_prop)
+    col.prop(settings, factor_prop)
+    col.prop(settings, jitter_prop)
+    col.label(text="中間頂点への変化グラフ")
+    node = edge_width_curve.get_node(target)
+    draw_curve = getattr(col, "template_curve_mapping", None)
+    if node is not None and callable(draw_curve):
+        draw_curve(node, "mapping", type="NONE")
+    edge_width_curve.schedule_node_sync(settings, target)
+
+
 def _draw_line_detail_grid(layout, settings) -> None:
     box = layout.box()
     header = box.row(align=True)
@@ -259,13 +283,7 @@ def _draw_line_detail_grid(layout, settings) -> None:
             header.separator()
 
     rows = (
-        ("edge_midpoint_angle", "inner_line_angle", "intersection_edge_midpoint_angle", "selection_edge_midpoint_angle"),
         ("outline_offset", "inner_line_offset", "intersection_line_offset", "selection_line_offset"),
-        ("edge_smooth_factor", "inner_edge_smooth_factor", "intersection_edge_smooth_factor", "selection_edge_smooth_factor"),
-        ("edge_midpoint_jitter_percent", "inner_edge_midpoint_jitter_percent", "intersection_edge_midpoint_jitter_percent", "selection_edge_midpoint_jitter_percent"),
-        ("edge_width_curve_25", "inner_edge_width_curve_25", "intersection_edge_width_curve_25", "selection_edge_width_curve_25"),
-        ("edge_width_curve_50", "inner_edge_width_curve_50", "intersection_edge_width_curve_50", "selection_edge_width_curve_50"),
-        ("edge_width_curve_75", "inner_edge_width_curve_75", "intersection_edge_width_curve_75", "selection_edge_width_curve_75"),
         ("use_outline_distance_limit", "use_inner_line_distance_limit", "use_intersection_distance_limit", "use_selection_line_distance_limit"),
         ("outline_max_distance", "inner_line_max_distance", "intersection_max_distance", "selection_line_max_distance"),
         ("even_thickness", None, None, None),
@@ -279,6 +297,18 @@ def _draw_line_detail_grid(layout, settings) -> None:
             _draw_detail_cell(row, settings, prop_name)
             if index < len(props) - 1:
                 row.separator()
+
+    row = box.row(align=True)
+    controls = (
+        ("outline", "線幅の詳細", "edge_smooth_factor", "edge_midpoint_jitter_percent", "edge_midpoint_angle"),
+        ("inner", "線幅の詳細", "inner_edge_smooth_factor", "inner_edge_midpoint_jitter_percent", "inner_line_angle"),
+        ("intersection", "線幅の詳細", "intersection_edge_smooth_factor", "intersection_edge_midpoint_jitter_percent", "intersection_edge_midpoint_angle"),
+        ("selection", "線幅の詳細", "selection_edge_smooth_factor", "selection_edge_midpoint_jitter_percent", "selection_edge_midpoint_angle"),
+    )
+    for index, control in enumerate(controls):
+        _draw_midpoint_width_controls(row, settings, *control)
+        if index < len(controls) - 1:
+            row.separator()
 
 
 class BMANGA_LINE_OT_detail_settings(bpy.types.Operator):
@@ -294,6 +324,12 @@ class BMANGA_LINE_OT_detail_settings(bpy.types.Operator):
         return obj is not None and obj.type == "MESH"
 
     def invoke(self, context, _event):
+        from . import edge_width_curve
+
+        settings = _active_settings(context)
+        if settings is not None:
+            for target in ("outline", "inner", "intersection", "selection"):
+                edge_width_curve.sync_settings_and_node(settings, target)
         return context.window_manager.invoke_props_dialog(self, width=980)
 
     def execute(self, _context):

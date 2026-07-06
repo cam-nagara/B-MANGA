@@ -26,6 +26,11 @@ _TARGET_PROPS = {
         "intersection_edge_width_curve_50",
         "intersection_edge_width_curve_75",
     ),
+    "selection": (
+        "selection_edge_width_curve_25",
+        "selection_edge_width_curve_50",
+        "selection_edge_width_curve_75",
+    ),
 }
 DEFAULT_POINTS = (
     (0.0, 0.0),

@@ -17,22 +17,40 @@ from b_manga_line import core, edge_width_curve, panels, presets  # noqa: E402
 
 
 class _DummyLayout:
-    def __setattr__(self, _name, _value):
-        return
+    def __init__(self) -> None:
+        self.props: list[str] = []
+        self.labels: list[str] = []
+        self.curves = 0
+        self.enabled = True
+        self.alignment = "LEFT"
+        self.scale_y = 1.0
 
     def box(self):
+        return self
+
+    def row(self, **_kwargs):
         return self
 
     def column(self, **_kwargs):
         return self
 
-    def label(self, **_kwargs) -> None:
+    def separator(self) -> None:
         return
 
-    def prop(self, *_args, **_kwargs) -> None:
-        return
+    def label(self, text: str = "", **_kwargs) -> None:
+        self.labels.append(str(text))
+
+    def prop(self, _data, prop_name: str, **_kwargs) -> None:
+        self.props.append(str(prop_name))
 
     def template_curve_mapping(self, *_args, **_kwargs) -> None:
+        self.curves += 1
+        return
+
+    def operator(self, *_args, **_kwargs):
+        return self
+
+    def template_list(self, *_args, **_kwargs) -> None:
         return
 
 
@@ -65,23 +83,46 @@ def _test_edge_width_curve_sync() -> None:
     _clear_scene()
     obj = _make_cube("BML_curve_source")
     settings = obj.bmanga_line_settings
-    node = edge_width_curve.ensure_node(settings)
-    assert node is not None
-
-    edge_width_curve._apply_points_to_node(
-        node,
-        (
-            (0.0, 0.0),
-            (0.25, 0.80),
-            (0.50, 0.20),
-            (0.75, 0.60),
-            (1.0, 1.0),
+    cases = {
+        "outline": (
+            "edge_width_curve_25",
+            "edge_width_curve_50",
+            "edge_width_curve_75",
         ),
-    )
-    assert edge_width_curve.sync_node_to_settings(settings)
-    assert abs(settings.edge_width_curve_25 - 0.80) < 1.0e-4
-    assert abs(settings.edge_width_curve_50 - 0.20) < 1.0e-4
-    assert abs(settings.edge_width_curve_75 - 0.60) < 1.0e-4
+        "inner": (
+            "inner_edge_width_curve_25",
+            "inner_edge_width_curve_50",
+            "inner_edge_width_curve_75",
+        ),
+        "intersection": (
+            "intersection_edge_width_curve_25",
+            "intersection_edge_width_curve_50",
+            "intersection_edge_width_curve_75",
+        ),
+        "selection": (
+            "selection_edge_width_curve_25",
+            "selection_edge_width_curve_50",
+            "selection_edge_width_curve_75",
+        ),
+    }
+    for target, props in cases.items():
+        node = edge_width_curve.ensure_node(settings, target)
+        assert node is not None
+
+        edge_width_curve._apply_points_to_node(
+            node,
+            (
+                (0.0, 0.0),
+                (0.25, 0.80),
+                (0.50, 0.20),
+                (0.75, 0.60),
+                (1.0, 1.0),
+            ),
+        )
+        assert edge_width_curve.sync_node_to_settings(settings, target)
+        assert abs(getattr(settings, props[0]) - 0.80) < 1.0e-4
+        assert abs(getattr(settings, props[1]) - 0.20) < 1.0e-4
+        assert abs(getattr(settings, props[2]) - 0.60) < 1.0e-4
 
 
 def _remove_curve_ui_material() -> None:
@@ -137,6 +178,30 @@ def _test_panel_draw_defers_edge_width_curve_writes() -> None:
 
     edge_width_curve.sync_settings_and_node(settings, "outline")
     assert edge_width_curve.get_node("outline") is not None
+
+    for target in ("inner", "intersection", "selection"):
+        edge_width_curve.sync_settings_and_node(settings, target)
+    layout = _DummyLayout()
+    panels._draw_line_detail_grid(layout, settings)  # noqa: SLF001
+    assert layout.curves == 4, f"中間頂点への変化グラフが4列ぶん表示されていません: {layout.curves}"
+    assert "中間頂点への変化グラフ" in layout.labels
+    hidden_curve_sliders = {
+        "edge_width_curve_25",
+        "edge_width_curve_50",
+        "edge_width_curve_75",
+        "inner_edge_width_curve_25",
+        "inner_edge_width_curve_50",
+        "inner_edge_width_curve_75",
+        "intersection_edge_width_curve_25",
+        "intersection_edge_width_curve_50",
+        "intersection_edge_width_curve_75",
+        "selection_edge_width_curve_25",
+        "selection_edge_width_curve_50",
+        "selection_edge_width_curve_75",
+    }
+    assert hidden_curve_sliders.isdisjoint(layout.props), (
+        "25/50/75%の数値スライダーが詳細設定に残っています"
+    )
 
 
 def _save_link_source(path: Path) -> None:
