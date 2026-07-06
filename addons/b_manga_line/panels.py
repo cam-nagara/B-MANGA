@@ -273,6 +273,7 @@ def _draw_midpoint_width_controls(
 
 
 def _draw_line_detail_grid(layout, settings) -> None:
+    layout.prop(settings, "auto_subdivision_for_midpoint")
     box = layout.box()
     header = box.row(align=True)
     labels = ("アウトライン", "稜谷線", "交差線", "選択線")
@@ -283,6 +284,11 @@ def _draw_line_detail_grid(layout, settings) -> None:
             header.separator()
 
     rows = (
+        ("outline_enabled", "inner_line_enabled", "intersection_enabled", "selection_line_enabled"),
+        ("outline_thickness_mm", "inner_line_thickness_mm", "intersection_thickness_mm", "selection_line_thickness_mm"),
+        ("outline_color", "inner_line_color", "intersection_color", "selection_line_color"),
+        ("use_outline_creation_limit", "use_inner_line_creation_limit", "use_intersection_creation_limit", "use_selection_line_creation_limit"),
+        ("outline_creation_max_distance", "inner_line_creation_max_distance", "intersection_creation_max_distance", "selection_line_creation_max_distance"),
         ("outline_offset", "inner_line_offset", "intersection_line_offset", "selection_line_offset"),
         ("use_outline_distance_limit", "use_inner_line_distance_limit", "use_intersection_distance_limit", "use_selection_line_distance_limit"),
         ("outline_max_distance", "inner_line_max_distance", "intersection_max_distance", "selection_line_max_distance"),

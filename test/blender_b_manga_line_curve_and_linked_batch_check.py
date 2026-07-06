@@ -202,6 +202,31 @@ def _test_panel_draw_defers_edge_width_curve_writes() -> None:
     assert hidden_curve_sliders.isdisjoint(layout.props), (
         "25/50/75%の数値スライダーが詳細設定に残っています"
     )
+    sidebar_line_props = {
+        "auto_subdivision_for_midpoint",
+        "outline_enabled",
+        "outline_thickness_mm",
+        "outline_color",
+        "use_outline_creation_limit",
+        "outline_creation_max_distance",
+        "inner_line_enabled",
+        "inner_line_thickness_mm",
+        "inner_line_color",
+        "use_inner_line_creation_limit",
+        "inner_line_creation_max_distance",
+        "intersection_enabled",
+        "intersection_thickness_mm",
+        "intersection_color",
+        "use_intersection_creation_limit",
+        "intersection_creation_max_distance",
+        "selection_line_enabled",
+        "selection_line_thickness_mm",
+        "selection_line_color",
+        "use_selection_line_creation_limit",
+        "selection_line_creation_max_distance",
+    }
+    missing = sidebar_line_props.difference(layout.props)
+    assert not missing, f"ライン設定の項目が詳細設定にありません: {sorted(missing)}"
 
 
 def _save_link_source(path: Path) -> None:
