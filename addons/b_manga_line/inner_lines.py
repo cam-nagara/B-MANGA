@@ -32,12 +32,14 @@ _WIDTH_CURVE_50_SOCKET_NAME = "線幅カーブ50%"
 _WIDTH_CURVE_75_SOCKET_NAME = "線幅カーブ75%"
 _MARKED_SELECTION_SWITCH_LABEL = "BML_MarkedInnerEdgeSelection"
 _CURVE_WIDTH_SCALE_LABEL = "BML_InnerCurveWidthScale"
-_RESAMPLE_CURVE_LABEL = "BML_InnerCurveResample"
+_SUBDIVIDE_CURVE_LABEL = "BML_InnerCurveSubdivide"
 _SELECTED_EDGE_MESH_LABEL = "BML_InnerSelectedEdgeMesh"
 _CHAIN_INSTANCE_SPLIT_LABEL = "BML_InnerChainInstanceSplit"
 _EDGE_ANGLE_COMPARE_LABEL = "BML_InnerEdgeAngleCompareGE"
 _CHAIN_SELECTION_COMPARE_LABEL = "BML_InnerChainSelectionGE"
 _CHAIN_ANGLE_FILTER_LABEL = "BML_InnerChainAngleFilter"
+_AUTO_EDGE_ALLOWED_LABEL = "BML_InnerAutoEdgeAllowed"
+_AUTO_ANGLE_FILTER_LABEL = "BML_InnerAutoAngleFilter"
 _CURVE_JITTER_CENTER_LABEL = "BML_InnerCurveJitterCenter"
 _CURVE_JITTER_CHAIN_ID_LABEL = "BML_InnerCurveJitterChainID"
 _SAFE_CURVE_SCALE_LABEL = "BML_InnerCurveSafeScale"
@@ -45,6 +47,11 @@ _MIN_CURVE_TO_MESH_SCALE = 0.04
 _CHAIN_ID_ATTR = inner_line_chains.CHAIN_ID_ATTR
 _SHARP_EDGE_ATTR = "sharp_edge"
 _CREASE_EDGE_ATTR = "crease_edge"
+_EDGE_ANGLE_EPSILON = 1.0e-7
+
+
+def _node_angle_threshold(angle: float) -> float:
+    return max(0.0, float(angle) - _EDGE_ANGLE_EPSILON)
 
 
 def _vector_scale_input(node):
@@ -327,9 +334,9 @@ def _create_node_tree() -> bpy.types.NodeTree:
         in_out="INPUT",
         socket_type="NodeSocketInt",
     )
-    resample_count_sock.default_value = 17
-    resample_count_sock.min_value = 2
-    resample_count_sock.max_value = 256
+    resample_count_sock.default_value = 4
+    resample_count_sock.min_value = 1
+    resample_count_sock.max_value = 32
     for name, default in (
         (_WIDTH_CURVE_25_SOCKET_NAME, 0.25),
         (_WIDTH_CURVE_50_SOCKET_NAME, 0.50),
@@ -457,12 +464,28 @@ def _create_node_tree() -> bpy.types.NodeTree:
     links.new(chain_selected.outputs[0], chain_angle_filtered.inputs[0])
     links.new(compare.outputs[0], chain_angle_filtered.inputs[1])
 
+    auto_edge_allowed = nodes.new("FunctionNodeBooleanMath")
+    auto_edge_allowed.label = _AUTO_EDGE_ALLOWED_LABEL
+    auto_edge_allowed.location = (-40, -560)
+    auto_edge_allowed.operation = "OR"
+    links.new(chain_selected.outputs[0], auto_edge_allowed.inputs[0])
+    links.new(marked_selection.outputs[0], auto_edge_allowed.inputs[1])
+
+    auto_angle_filtered = nodes.new("FunctionNodeBooleanMath")
+    auto_angle_filtered.label = _AUTO_ANGLE_FILTER_LABEL
+    auto_angle_filtered.location = (-20, -420)
+    auto_angle_filtered.operation = "AND"
+    links.new(auto_edge_allowed.outputs[0], auto_angle_filtered.inputs[0])
+    links.new(compare.outputs[0], auto_angle_filtered.inputs[1])
+
     selection_switch = nodes.new("GeometryNodeSwitch")
     selection_switch.label = _MARKED_SELECTION_SWITCH_LABEL
     selection_switch.location = (-20, -200)
     selection_switch.input_type = "BOOLEAN"
     links.new(gin.outputs[_MARKED_ONLY_SOCKET_NAME], selection_switch.inputs["Switch"])
-    links.new(chain_angle_filtered.outputs[0], selection_switch.inputs["False"])
+    # 評価後メッシュではチェーンID属性が細分化辺へ伝播しない場合がある。
+    # 元チェーンまたは形状保持用の印を持つ辺だけを角度検出し、細分面グリッドを拾わない。
+    links.new(auto_angle_filtered.outputs[0], selection_switch.inputs["False"])
     links.new(marked_selection.outputs[0], selection_switch.inputs["True"])
 
     offset_amount = nodes.new("ShaderNodeMath")
@@ -523,16 +546,12 @@ def _create_node_tree() -> bpy.types.NodeTree:
     links.new(realize_chains.outputs["Geometry"], m2c.inputs[0])
     m2c.inputs["Selection"].default_value = True
 
-    resample = nodes.new("GeometryNodeResampleCurve")
-    resample.label = _RESAMPLE_CURVE_LABEL
-    resample.location = (580, -200)
-    if hasattr(resample, "mode"):
-        resample.mode = "COUNT"
-    count_input = resample.inputs.get("Count")
-    if count_input is not None:
-        count_input.default_value = 17
-        links.new(gin.outputs[_RESAMPLE_COUNT_SOCKET_NAME], count_input)
-    links.new(m2c.outputs[0], resample.inputs["Curve"])
+    subdivide = nodes.new("GeometryNodeSubdivideCurve")
+    subdivide.label = _SUBDIVIDE_CURVE_LABEL
+    subdivide.location = (580, -200)
+    subdivide.inputs["Cuts"].default_value = 4
+    links.new(gin.outputs[_RESAMPLE_COUNT_SOCKET_NAME], subdivide.inputs["Cuts"])
+    links.new(m2c.outputs[0], subdivide.inputs["Curve"])
 
     curve_chain_id = nodes.new("GeometryNodeInputNamedAttribute")
     curve_chain_id.label = _CURVE_JITTER_CHAIN_ID_LABEL
@@ -603,7 +622,7 @@ def _create_node_tree() -> bpy.types.NodeTree:
     # Curve to Mesh: カーブをチューブメッシュに変換
     c2m = nodes.new("GeometryNodeCurveToMesh")
     c2m.location = (740, -200)
-    links.new(resample.outputs["Curve"], c2m.inputs[0])  # Curve
+    links.new(subdivide.outputs["Curve"], c2m.inputs[0])  # Curve
     links.new(circle.outputs[0], c2m.inputs[1])  # Profile Curve
     if "Scale" in c2m.inputs:
         links.new(safe_curve_scale.outputs[0], c2m.inputs["Scale"])  # 頂点/線上位置ごとの太さ倍率
@@ -696,7 +715,10 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
         if not any(getattr(n, "label", "") == _CURVE_WIDTH_SCALE_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
-        if not any(getattr(n, "label", "") == _RESAMPLE_CURVE_LABEL for n in tree.nodes):
+        if not any(getattr(n, "label", "") == _SUBDIVIDE_CURVE_LABEL for n in tree.nodes):
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
+        if any(n.bl_idname == "GeometryNodeResampleCurve" for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
         if not any(getattr(n, "label", "") == _SELECTED_EDGE_MESH_LABEL for n in tree.nodes):
@@ -706,6 +728,12 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
         if not any(getattr(n, "label", "") == _CHAIN_ANGLE_FILTER_LABEL for n in tree.nodes):
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
+        if not any(getattr(n, "label", "") == _AUTO_EDGE_ALLOWED_LABEL for n in tree.nodes):
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
+        if not any(getattr(n, "label", "") == _AUTO_ANGLE_FILTER_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
         compare_node = next(
@@ -841,7 +869,7 @@ def apply_inner_lines(
     sid_curve_50 = _find_socket_id(tree, _WIDTH_CURVE_50_SOCKET_NAME)
     sid_curve_75 = _find_socket_id(tree, _WIDTH_CURVE_75_SOCKET_NAME)
     if sid_angle is not None:
-        mod[sid_angle] = angle
+        mod[sid_angle] = _node_angle_threshold(angle)
     if sid_thickness is not None:
         mod[sid_thickness] = thickness
     if sid_offset is not None:
@@ -857,7 +885,7 @@ def apply_inner_lines(
             from . import subdivision_lod
 
             resample_count = subdivision_lod.line_resample_count(obj)
-        mod[sid_resample_count] = max(2, int(resample_count))
+        mod[sid_resample_count] = max(1, int(resample_count))
     if sid_curve_25 is not None:
         mod[sid_curve_25] = float(width_curve_25)
     if sid_curve_50 is not None:
@@ -989,7 +1017,7 @@ def update_parameters(
     if angle is not None:
         sid = _find_socket_id(tree, "検出角度")
         if sid is not None:
-            mod[sid] = angle
+            mod[sid] = _node_angle_threshold(angle)
     if thickness is not None:
         sid = _find_socket_id(tree, "線の太さ")
         if sid is not None:
@@ -1013,7 +1041,7 @@ def update_parameters(
     if resample_count is not None:
         sid = _find_socket_id(tree, _RESAMPLE_COUNT_SOCKET_NAME)
         if sid is not None:
-            mod[sid] = max(2, int(resample_count))
+            mod[sid] = max(1, int(resample_count))
     if width_curve_25 is not None:
         sid = _find_socket_id(tree, _WIDTH_CURVE_25_SOCKET_NAME)
         if sid is not None:

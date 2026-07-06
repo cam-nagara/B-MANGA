@@ -16,9 +16,11 @@ SHARP_EDGE_ANGLE = math.radians(60.0)
 AUTO_SUBSURF_SUBDIVISION_TYPE = "CATMULL_CLARK"
 MAX_RENDER_LEVELS = 4
 DISTANCE_STEP_METERS = 5.0
-DEFAULT_LINE_RESAMPLE_COUNT = 17
-_MIN_LINE_RESAMPLE_COUNT = 3
+DEFAULT_LINE_RESAMPLE_COUNT = 4
+_MIN_LINE_RESAMPLE_COUNT = 1
 _ROUND_LOOP_RESAMPLE_CAP = 96
+_MAX_LINE_SUBDIVIDE_CUTS = 8
+_SHARP_EDGE_ANGLE_EPSILON = 1.0e-7
 _pending_sync_names: set[str] = set()
 _sync_timer_running = False
 _repair_timer_running = False
@@ -143,7 +145,7 @@ def mark_sharp_edges_for_subsurf(
                 sharp_indices.append(edge.index)
                 continue
             try:
-                if edge.calc_face_angle() >= threshold:
+                if edge.calc_face_angle() + _SHARP_EDGE_ANGLE_EPSILON >= threshold:
                     sharp_indices.append(edge.index)
             except ValueError:
                 continue
@@ -256,16 +258,22 @@ def remove_auto_subdivision(obj: bpy.types.Object) -> bool:
 
 
 def line_resample_count(obj: bpy.types.Object, *, for_render: bool = False) -> int:
+    """Return cuts per source edge for internal-line curve subdivision.
+
+    The value used to mean a whole-curve resample count. Internal lines now use
+    Subdivide Curve so polygonal edges stay in place; the value is intentionally
+    small and is applied per original edge.
+    """
     mod = auto_subsurf_modifier(obj)
     if mod is None:
-        return max(DEFAULT_LINE_RESAMPLE_COUNT, _closed_loop_min_resample_count(obj))
+        return DEFAULT_LINE_RESAMPLE_COUNT
     level = int(getattr(mod, "render_levels", 0) if for_render else getattr(mod, "levels", 0))
     if for_render and not bool(getattr(mod, "show_render", True)):
         level = 0
     if not for_render and not bool(getattr(mod, "show_viewport", True)):
         level = 0
     level = max(0, min(MAX_RENDER_LEVELS, level))
-    return max(_MIN_LINE_RESAMPLE_COUNT, (2 ** level) + 1, _closed_loop_min_resample_count(obj))
+    return max(1, min(_MAX_LINE_SUBDIVIDE_CUTS, 2 ** level))
 
 
 def _closed_loop_min_resample_count(obj: bpy.types.Object) -> int:

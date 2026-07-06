@@ -42,11 +42,13 @@ def _inner_tree_is_current(tree: bpy.types.NodeTree | None) -> bool:
         inner_lines._RADIUS_HALF_NODE_LABEL,
         inner_lines._MARKED_SELECTION_SWITCH_LABEL,
         inner_lines._CURVE_WIDTH_SCALE_LABEL,
-        inner_lines._RESAMPLE_CURVE_LABEL,
+        inner_lines._SUBDIVIDE_CURVE_LABEL,
         inner_lines._SELECTED_EDGE_MESH_LABEL,
         inner_lines._CHAIN_INSTANCE_SPLIT_LABEL,
         inner_lines._EDGE_ANGLE_COMPARE_LABEL,
         inner_lines._CHAIN_SELECTION_COMPARE_LABEL,
+        inner_lines._AUTO_EDGE_ALLOWED_LABEL,
+        inner_lines._AUTO_ANGLE_FILTER_LABEL,
         inner_lines._CURVE_JITTER_CENTER_LABEL,
     )
     labels = {getattr(node, "label", "") for node in tree.nodes}
@@ -58,6 +60,7 @@ def _inner_tree_is_current(tree: bpy.types.NodeTree | None) -> bool:
         and inner_lines._uses_named_attribute(tree, inner_lines._CREASE_EDGE_ATTR)
         and inner_lines._uses_named_attribute(tree, inner_lines._CHAIN_ID_ATTR)
         and not any(node.bl_idname == "GeometryNodeSetCurveRadius" for node in tree.nodes)
+        and not any(node.bl_idname == "GeometryNodeResampleCurve" for node in tree.nodes)
     )
 
 

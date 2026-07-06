@@ -92,17 +92,17 @@ def _assert_inner_levels_sync() -> None:
     mod.levels = 0
     mod.render_levels = 4
     subdivision_lod.sync_generated_line_subdivision(obj)
-    assert _inner_resample_count(obj) == 3
+    assert _inner_resample_count(obj) == 1
 
-    mod.levels = 3
+    mod.levels = 2
     subdivision_lod.sync_generated_line_subdivision(obj)
-    assert _inner_resample_count(obj) == 9
+    assert _inner_resample_count(obj) == 4
 
     subdivision_lod.sync_generated_line_subdivision(obj, for_render=True)
-    assert _inner_resample_count(obj) == 17
+    assert _inner_resample_count(obj) == 8
 
     subdivision_lod.sync_generated_line_subdivision(obj, for_render=False)
-    assert _inner_resample_count(obj) == 9
+    assert _inner_resample_count(obj) == 4
 
 
 def _assert_inner_lines_do_not_follow_subdivision_grid() -> None:
@@ -124,7 +124,7 @@ def _assert_inner_lines_do_not_follow_subdivision_grid() -> None:
         if name.startswith("BML_Outline_Inner")
     )
     surface_faces = counts.get(obj.data.materials[0].name, 0)
-    assert 0 < line_faces <= 240, counts
+    assert 0 < line_faces <= 480, counts
     assert surface_faces == 96, counts
 
 

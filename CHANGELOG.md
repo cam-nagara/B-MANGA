@@ -3,6 +3,52 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-06 — B-MANGA Lineの内部線をポリゴン辺上分割へ戻す (B-MANGA Line v0.3.119)
+
+### 症状
+
+- 円柱・円錐などの円周内部線が、ポリゴンの辺ではなく補間されたカーブのように見える場合があった。
+- 「ビューポートのレベル数をレンダーに合わせる」をオンにすると、六角柱の縦の内部線が途切れがちに見える場合があった。
+
+### 原因
+
+- 内部線をメッシュ辺からカーブへ変換した後、カーブ全体を等間隔に再サンプルしていたため、線幅用の中間点追加が元のポリゴン辺の折れをまたいでいた。
+- 内部線の自動選択が内部線チェーンIDに依存しており、サブディビジョンサーフェス評価後にその属性が細分化辺へ伝播しない場合、60度の縦辺が部分的に落ちる可能性があった。
+- 60度ちょうどの辺を形状保持用に判定する処理に浮動小数点の余裕がなく、境界値の辺を取りこぼす余地があった。
+
+### 修正
+
+- 内部線の補間点追加を、カーブ全体の再サンプルから「元の辺ごとの分割」に変更し、ポリゴン辺上から線が外れないようにした。
+- 内部線の自動選択は、元チェーンまたは形状保持用の印を持つ辺に対して角度検出を行う構成にし、評価後の細分面グリッドを拾わず、必要な縦辺は落とさないようにした。
+- 60度ちょうどの辺を形状保持対象に含めるため、角度比較に最小限の許容差を入れた。
+- 保存済みの旧内部線ノードは、次回適用時に現行仕様へ再構築されるようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\inner_lines.py addons\b_manga_line\inner_line_repair.py addons\b_manga_line\subdivision_lod.py`
+- `test/blender_b_manga_line_inner_angle_threshold_check.py`
+- `test/blender_b_manga_line_subdivision_level_sync_check.py`
+- `test/blender_b_manga_line_midpoint_targets_check.py`
+- `test/blender_b_manga_line_offset_controls_check.py`
+- `test/blender_b_manga_line_intersection_shell_method_check.py`
+- `test/blender_b_manga_line_open_mesh_outline_check.py`
+- `test/blender_b_manga_line_register_reenable_check.py`
+- `D:\TM Dropbox\Miura Tadahiro\Develop\B-MANGAテスト\test_line05.blend`
+- `_verify/2026-07-05_bml_line05_goal_repro/v03118_inner_current_repro_inner_only.png`
+- `_verify/2026-07-05_bml_line05_goal_repro/v03119_after_inner_fix_outline_only.png`
+- `_verify/2026-07-05_bml_line05_goal_repro/v03119_after_inner_fix_inner_only.png`
+- `_verify/2026-07-05_bml_line05_goal_repro/v03119_after_inner_fix_intersection_only.png`
+- `_verify/2026-07-06_bml_line05_inner_issue/inner_lod_off_overview.png`
+- `_verify/2026-07-06_bml_line05_inner_issue/inner_lod_on_overview.png`
+- `_verify/2026-07-06_bml_line05_inner_issue/inner_lod_on_cylinder_hex_focus.png`
+- `_verify/2026-07-06_bml_line05_inner_issue/all_lod_on_cylinder_hex_focus.png`
+- `D:\TM Dropbox\Miura Tadahiro\Develop\B-MANGAテスト\test_line04.blend`
+- `_verify/2026-07-06_bml_line04_current_regression/line04_outline_only.png`
+- `_verify/2026-07-06_bml_line04_current_regression/line04_inner_only.png`
+- `_verify/2026-07-06_bml_line04_current_regression/line04_intersection_only.png`
+
+---
+
 ## 2026-07-06 — B-MANGA Lineの乱れ・交差線位置・ラインのみ表示を修正 (B-MANGA Line v0.3.118)
 
 ### 症状

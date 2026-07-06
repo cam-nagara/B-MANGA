@@ -75,6 +75,16 @@ def _assert_hex_60_degree_edges_are_selected() -> None:
     assert vertical <= selected, f"60度の縦辺が内部線対象になっていません: {vertical - selected}"
     assert not (cap_spokes & selected), f"上下面の三角分割辺が内部線対象です: {cap_spokes & selected}"
 
+    count = subdivision_lod.mark_sharp_edges_for_subsurf(obj, math.radians(60.0))
+    attr = obj.data.attributes.get(subdivision_lod.CREASE_EDGE_ATTR)
+    assert attr is not None
+    creased = {
+        edge.index for edge in obj.data.edges
+        if edge.index < len(attr.data) and float(attr.data[edge.index].value) > 0.0
+    }
+    assert count >= len(vertical)
+    assert vertical <= creased, f"60度の縦辺にサブディビジョン保持が入りません: {vertical - creased}"
+
 
 def _assert_cylinder_cap_spokes_are_not_selected() -> None:
     obj = _new_cylinder("cylinder_cap_spoke_check", 32)
@@ -92,7 +102,7 @@ def _assert_cone_cap_spokes_are_not_selected() -> None:
     assert not (cap_spokes & selected), f"円錐底面の三角分割辺が内部線対象です: {cap_spokes & selected}"
 
 
-def _assert_round_rim_loops_are_not_resampled_as_triangles() -> None:
+def _assert_round_rim_loops_keep_polygon_edges() -> None:
     for maker, label in ((_new_cylinder, "円柱"), (_new_cone, "円錐")):
         obj = maker(f"{label}_rim_chain_check", 32)
         inner_line_chains.update_chain_id_attribute(obj, math.radians(60.0), False)
@@ -110,11 +120,25 @@ def _assert_round_rim_loops_are_not_resampled_as_triangles() -> None:
             if same_z and not near_center:
                 chain_edges[value] = chain_edges.get(value, 0) + 1
         assert chain_edges, f"{label}の円周内部線を検出できません"
-        rim_edge_count = max(chain_edges.values())
         count = subdivision_lod.line_resample_count(obj)
-        assert count >= min(96, rim_edge_count + 1), (
-            f"{label}の円周が低分割で三角形化します: count={count}, rim={rim_edge_count}"
+        assert 1 <= count <= 8, f"{label}の内部線分割数が辺ごと補間として過大です: {count}"
+        mat = outline_setup.get_line_material(obj, "inner")
+        assert inner_lines.apply_inner_lines(
+            obj,
+            angle=math.radians(60.0),
+            thickness=0.01,
+            material=mat,
         )
+        tree = obj.modifiers[inner_lines.GN_MODIFIER_NAME].node_group
+        assert any(
+            getattr(node, "label", "") == inner_lines._SUBDIVIDE_CURVE_LABEL
+            and node.bl_idname == "GeometryNodeSubdivideCurve"
+            for node in tree.nodes
+        ), f"{label}の内部線が辺上分割になっていません"
+        assert not any(
+            node.bl_idname == "GeometryNodeResampleCurve"
+            for node in tree.nodes
+        ), f"{label}の内部線に形状を変える再サンプルが残っています"
         _clear_scene()
 
 
@@ -181,7 +205,22 @@ def _assert_node_tree_uses_inclusive_angle() -> None:
     )
     false_links = list(selection_switch.inputs["False"].links)
     assert false_links, "内部線の自動選択入力が未接続です"
-    assert false_links[0].from_node == chain_angle_filter
+    auto_angle_filter = next(
+        node for node in tree.nodes
+        if getattr(node, "label", "") == inner_lines._AUTO_ANGLE_FILTER_LABEL
+    )
+    assert false_links[0].from_node == auto_angle_filter
+    auto_sources = {link.from_node for socket in auto_angle_filter.inputs for link in socket.links}
+    assert compare in auto_sources
+    assert any(
+        getattr(node, "label", "") == inner_lines._SUBDIVIDE_CURVE_LABEL
+        and node.bl_idname == "GeometryNodeSubdivideCurve"
+        for node in tree.nodes
+    )
+    assert not any(
+        node.bl_idname == "GeometryNodeResampleCurve"
+        for node in tree.nodes
+    )
     assert any(
         getattr(node, "label", "") == inner_lines._CURVE_JITTER_CENTER_LABEL
         for node in tree.nodes
@@ -220,6 +259,14 @@ def _assert_stale_inner_tree_is_repaired() -> None:
         getattr(node, "label", "") == inner_lines._CHAIN_SELECTION_COMPARE_LABEL
         for node in repaired.node_group.nodes
     )
+    assert any(
+        getattr(node, "label", "") == inner_lines._SUBDIVIDE_CURVE_LABEL
+        for node in repaired.node_group.nodes
+    )
+    assert any(
+        getattr(node, "label", "") == inner_lines._AUTO_ANGLE_FILTER_LABEL
+        for node in repaired.node_group.nodes
+    )
     sid = inner_lines._find_socket_id(
         repaired.node_group,
         inner_lines._MIDPOINT_JITTER_SOCKET_NAME,
@@ -239,7 +286,7 @@ def main() -> None:
         _clear_scene()
         _assert_cone_cap_spokes_are_not_selected()
         _clear_scene()
-        _assert_round_rim_loops_are_not_resampled_as_triangles()
+        _assert_round_rim_loops_keep_polygon_edges()
         _clear_scene()
         _assert_saved_current_tree_refreshes_stale_cap_selection()
         _clear_scene()
