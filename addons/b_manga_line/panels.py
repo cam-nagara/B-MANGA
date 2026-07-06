@@ -90,6 +90,7 @@ def _draw_presets(layout, context) -> None:
         )
         row = col.row(align=True)
         row.operator("bmanga_line.preset_apply_selected", icon="CHECKMARK")
+        row.operator("bmanga_line.preset_duplicate", icon="DUPLICATE")
         row.operator("bmanga_line.preset_delete", icon="TRASH")
     else:
         col.label(text="保存されたプリセットはありません", icon="INFO")

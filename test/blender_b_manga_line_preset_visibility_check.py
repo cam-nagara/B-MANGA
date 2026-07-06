@@ -524,6 +524,24 @@ def main() -> None:
     settings.outline_enabled = True
     assert bpy.ops.bmanga_line.preset_save() == {"FINISHED"}
     assert scene.bmanga_line_presets[0].outline_enabled is True
+    scene.bmanga_line_preset_index = 0
+    assert bpy.ops.bmanga_line.preset_duplicate() == {"FINISHED"}
+    assert len(scene.bmanga_line_presets) == 2
+    assert scene.bmanga_line_preset_index == 1
+    duplicate = scene.bmanga_line_presets[1]
+    assert duplicate.name == "太線テスト コピー"
+    assert scene.bmanga_line_preset_name == duplicate.name
+    assert abs(duplicate.outline_thickness - scene.bmanga_line_presets[0].outline_thickness) < 1.0e-7
+    assert tuple(round(v, 3) for v in duplicate.outline_color) == (
+        tuple(round(v, 3) for v in scene.bmanga_line_presets[0].outline_color)
+    )
+    assert duplicate.inner_line_enabled == scene.bmanga_line_presets[0].inner_line_enabled
+    assert duplicate.intersection_enabled == scene.bmanga_line_presets[0].intersection_enabled
+    scene.bmanga_line_preset_index = 0
+    assert bpy.ops.bmanga_line.preset_duplicate() == {"FINISHED"}
+    assert len(scene.bmanga_line_presets) == 3
+    assert scene.bmanga_line_presets[2].name == "太線テスト コピー 2"
+    scene.bmanga_line_preset_index = 0
 
     first = _make_cube("BML_適用先A", (2.0, 0.0, 0.0))
     second = _make_cube("BML_適用先B", (2.35, 0.0, 0.0))

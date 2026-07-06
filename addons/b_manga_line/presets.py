@@ -136,6 +136,14 @@ def copy_preset_to_settings(preset, settings) -> None:
         core._propagating = old
 
 
+def copy_preset_to_preset(source, target) -> None:
+    for name in _SETTING_FIELDS:
+        value = getattr(source, name)
+        if name in _COLOR_FIELDS:
+            value = tuple(value)
+        setattr(target, name, value)
+
+
 def copy_settings_to_settings(source, target) -> None:
     old = core._propagating
     core._propagating = True
@@ -170,6 +178,20 @@ def _refresh_after_line_settings(context) -> None:
             width_targets=("intersection",),
         )
     outline_setup.ensure_aov_passes(context.scene)
+
+
+def _duplicate_name(presets, source_name: str) -> str:
+    base = (source_name.strip() if source_name else "") or "ラインプリセット"
+    stem = f"{base} コピー"
+    existing = {item.name for item in presets}
+    if stem not in existing:
+        return stem
+    index = 2
+    while True:
+        candidate = f"{stem} {index}"
+        if candidate not in existing:
+            return candidate
+        index += 1
 
 
 def _reflect_applied_display_settings(
@@ -561,6 +583,34 @@ class BMANGA_LINE_OT_preset_apply_selected(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class BMANGA_LINE_OT_preset_duplicate(bpy.types.Operator):
+    """選択中のラインプリセットを複製"""
+
+    bl_idname = "bmanga_line.preset_duplicate"
+    bl_label = "複製"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return _active_preset(context.scene) is not None
+
+    def execute(self, context):
+        scene = context.scene
+        presets = scene.bmanga_line_presets
+        source = _active_preset(scene)
+        if source is None:
+            self.report({"WARNING"}, "プリセットが選択されていません")
+            return {"CANCELLED"}
+        name = _duplicate_name(presets, source.name)
+        duplicate = presets.add()
+        duplicate.name = name
+        copy_preset_to_preset(source, duplicate)
+        scene.bmanga_line_preset_index = len(presets) - 1
+        scene.bmanga_line_preset_name = name
+        self.report({"INFO"}, f"ラインプリセット「{name}」を複製しました")
+        return {"FINISHED"}
+
+
 class BMANGA_LINE_OT_preset_delete(bpy.types.Operator):
     """選択中のラインプリセットを削除"""
 
@@ -589,6 +639,7 @@ _CLASSES = (
     BMangaLinePreset,
     BMANGA_LINE_OT_preset_save,
     BMANGA_LINE_OT_preset_apply_selected,
+    BMANGA_LINE_OT_preset_duplicate,
     BMANGA_LINE_OT_preset_delete,
 )
 

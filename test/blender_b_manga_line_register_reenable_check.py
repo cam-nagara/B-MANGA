@@ -127,6 +127,9 @@ def _assert_panels_draw_items() -> None:
     obj = bpy.context.object
     bpy.context.view_layer.objects.active = obj
     obj.select_set(True)
+    preset = bpy.context.scene.bmanga_line_presets.add()
+    preset.name = "UI確認"
+    bpy.context.scene.bmanga_line_preset_index = 0
 
     records = {"props": [], "operators": [], "labels": [], "curves": []}
     dummy = SimpleNamespace(layout=_CaptureLayout(records))
@@ -267,6 +270,7 @@ def _assert_panels_draw_items() -> None:
     for operator_id in (
         "bmanga_line.apply",
         "bmanga_line.select_render_range_meshes",
+        "bmanga_line.preset_duplicate",
         "bmanga_line.reset_camera_ref",
         "bmanga_line.remove",
     ):

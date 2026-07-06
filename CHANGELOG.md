@@ -3,6 +3,30 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-07 — B-MANGA Lineのラインプリセット複製を追加 (B-MANGA Line v0.3.135)
+
+### 症状
+
+- ラインプリセットを元に少しだけ変えた別プリセットを作る時、既存プリセットを直接複製できなかった。
+
+### 原因
+
+- ラインプリセットの操作が保存/更新、選択中に適用、削除だけで、選択中プリセットをコピーして新規追加する操作が無かった。
+
+### 修正
+
+- ラインプリセット一覧に「複製」ボタンを追加した。
+- 複製名は「元名 コピー」とし、同名がある場合は「元名 コピー 2」のように重複しない名前を自動で付けるようにした。
+- 複製後は新しいプリセットを選択状態にし、プリセット名欄も複製後の名前に更新するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_preset_visibility_check.py`
+- `test/blender_b_manga_line_register_reenable_check.py`
+- `python -m py_compile addons/b_manga_line/presets.py addons/b_manga_line/panels.py test/blender_b_manga_line_preset_visibility_check.py test/blender_b_manga_line_register_reenable_check.py`
+
+---
+
 ## 2026-07-07 — B-MANGA Lineのサイドバーパネル初期展開を統一 (B-MANGA Line v0.3.134)
 
 ### 症状
