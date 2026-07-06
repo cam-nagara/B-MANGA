@@ -109,6 +109,15 @@ def _assert_line_only_checkbox(active: bpy.types.Object, other: bpy.types.Object
         assert not bool(obj.bmanga_line_settings.line_only_visible), obj.name
 
 
+def _set_setting_without_update(settings, name: str, value) -> None:
+    old = core._propagating
+    core._propagating = True
+    try:
+        setattr(settings, name, value)
+    finally:
+        core._propagating = old
+
+
 def _assert_subsurf_checkbox(active: bpy.types.Object, other: bpy.types.Object) -> None:
     for index, obj in enumerate((active, other), start=2):
         mod = obj.modifiers.new(f"ユーザーSubsurf_{index}", "SUBSURF")
@@ -117,6 +126,36 @@ def _assert_subsurf_checkbox(active: bpy.types.Object, other: bpy.types.Object) 
 
     _select(active, [active, other])
     active.bmanga_line_settings.match_subsurf_viewport_to_render = True
+    for obj in (active, other):
+        for mod in obj.modifiers:
+            if mod.type == "SUBSURF":
+                assert int(mod.levels) == int(mod.render_levels), (obj.name, mod.name)
+
+    for obj in (active, other):
+        _set_setting_without_update(
+            obj.bmanga_line_settings,
+            "match_subsurf_viewport_to_render",
+            False,
+        )
+        for mod in obj.modifiers:
+            if mod.type == "SUBSURF":
+                mod.levels = int(mod.render_levels)
+    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+    for obj in (active, other):
+        for mod in obj.modifiers:
+            if mod.type == "SUBSURF":
+                assert int(mod.levels) == 0, (obj.name, mod.name, mod.levels)
+
+    for obj in (active, other):
+        _set_setting_without_update(
+            obj.bmanga_line_settings,
+            "match_subsurf_viewport_to_render",
+            True,
+        )
+        for mod in obj.modifiers:
+            if mod.type == "SUBSURF":
+                mod.levels = 0
+    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
     for obj in (active, other):
         for mod in obj.modifiers:
             if mod.type == "SUBSURF":

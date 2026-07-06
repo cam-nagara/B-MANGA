@@ -57,6 +57,7 @@ class BMANGA_LINE_OT_apply(bpy.types.Operator):
     def execute(self, context):
         from .presets import (
             apply_line_settings,
+            _reflect_applied_display_settings,
             _refresh_after_line_settings,
             _update_view_layer,
         )
@@ -65,6 +66,7 @@ class BMANGA_LINE_OT_apply(bpy.types.Operator):
         outline_setup.ensure_aov_passes(context.scene)
 
         count = 0
+        applied_objects: list[bpy.types.Object] = []
         _update_view_layer(context)
         for obj in context.selected_objects:
             if obj.type != "MESH":
@@ -76,7 +78,9 @@ class BMANGA_LINE_OT_apply(bpy.types.Operator):
                 transforms_fresh=True,
             ):
                 count += 1
+                applied_objects.append(obj)
         _refresh_after_line_settings(context)
+        _reflect_applied_display_settings(applied_objects, context)
 
         self.report({"INFO"}, f"{count} オブジェクトにラインを適用しました")
         return {"FINISHED"}

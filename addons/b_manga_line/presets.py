@@ -238,6 +238,10 @@ def apply_line_settings(
         subdivision_lod.ensure_auto_subdivision(obj, context.scene)
     else:
         subdivision_lod.remove_auto_subdivision(obj)
+    if settings.match_subsurf_viewport_to_render:
+        subdivision_lod.sync_viewport_levels_to_render(obj)
+    else:
+        subdivision_lod.reset_viewport_levels_to_zero(obj)
 
     if (
         settings.outline_enabled

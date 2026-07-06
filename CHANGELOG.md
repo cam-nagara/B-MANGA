@@ -3,6 +3,35 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-07 — B-MANGA Lineのライン適用時設定反映を補正 (B-MANGA Line v0.3.133)
+
+### 症状
+
+- 「ビューポートのレベル数をレンダーに合わせる」をオンにした状態で「ラインを適用」しても、ビューポートのレベル数がレンダー側に揃わなかった。
+- 同じ設定はオン/オフを切り替えれば効くため、設定値そのものではなく「ラインを適用」経路だけ反映漏れがあった。
+
+### 原因
+
+- 「ラインを適用」は中間頂点用サブディビジョンの自動設定までは見ていたが、既存サブディビジョンのビューポート段数を設定値に合わせる処理を呼んでいなかった。
+- プリセット読込時には表示系設定の明示反映がある一方、「ラインを適用」後の表示系設定反映が一部のコールバック前提になっていた。
+
+### 修正
+
+- 「ラインを適用」の生成前に、「ビューポートのレベル数をレンダーに合わせる」のオン/オフを必ず既存サブディビジョンへ反映するようにした。
+- 「ラインを適用」後にも、ライン表示・ラインのみ表示・サブディビジョン段数同期の設定状態を明示反映するようにした。
+- B-MANGA Lineの全設定について、保存対象75項目とmm表示用別名4項目を機械的に照合し、保存→読込の往復値を検査する実機テストを追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_settings_contract_check.py`
+- `test/blender_b_manga_line_ui_controls_check.py`
+- `test/blender_b_manga_line_preset_visibility_check.py`
+- `test/blender_b_manga_line_display_modes_check.py`
+- `test/blender_b_manga_line_aov_view_line_only_check.py`（通常Blender画面）
+- `python -m py_compile addons/b_manga_line/presets.py addons/b_manga_line/operators.py test/blender_b_manga_line_ui_controls_check.py test/blender_b_manga_line_settings_contract_check.py`
+
+---
+
 ## 2026-07-07 — B-MANGA Lineのライン表示切替を補正 (B-MANGA Line v0.3.132)
 
 ### 症状
