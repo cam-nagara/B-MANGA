@@ -30,7 +30,6 @@ _SETTING_FIELDS = (
     "hide_through_transparent",
     "inner_line_enabled",
     "inner_line_angle",
-    "use_marked_inner_edges",
     "inner_line_thickness",
     "inner_line_offset",
     "inner_line_color",
@@ -43,11 +42,16 @@ _SETTING_FIELDS = (
     "intersection_color",
     "use_intersection_creation_limit",
     "intersection_creation_max_distance",
+    "selection_line_enabled",
+    "selection_line_angle",
+    "selection_line_thickness",
+    "selection_line_offset",
+    "selection_line_color",
+    "use_selection_line_creation_limit",
+    "selection_line_creation_max_distance",
     "use_camera_compensation",
     "camera_compensation_influence",
     "line_width_reference_distance",
-    "use_ao_influence",
-    "ao_influence_strength",
     "edge_smooth_factor",
     "edge_midpoint_jitter_percent",
     "edge_midpoint_angle",
@@ -65,6 +69,12 @@ _SETTING_FIELDS = (
     "intersection_edge_width_curve_25",
     "intersection_edge_width_curve_50",
     "intersection_edge_width_curve_75",
+    "selection_edge_smooth_factor",
+    "selection_edge_midpoint_jitter_percent",
+    "selection_edge_midpoint_angle",
+    "selection_edge_width_curve_25",
+    "selection_edge_width_curve_50",
+    "selection_edge_width_curve_75",
     "use_camera_culling",
     "culling_margin",
     "use_outline_distance_limit",
@@ -73,8 +83,15 @@ _SETTING_FIELDS = (
     "inner_line_max_distance",
     "use_intersection_distance_limit",
     "intersection_max_distance",
+    "use_selection_line_distance_limit",
+    "selection_line_max_distance",
 )
-_COLOR_FIELDS = {"outline_color", "inner_line_color", "intersection_color"}
+_COLOR_FIELDS = {
+    "outline_color",
+    "inner_line_color",
+    "intersection_color",
+    "selection_line_color",
+}
 
 
 def _selected_meshes(context) -> list[bpy.types.Object]:
@@ -167,6 +184,7 @@ def apply_line_settings(
         outline_setup,
         plane_filter,
         scale_utils,
+        selection_lines,
         subdivision_lod,
         vertex_analysis,
     )
@@ -213,7 +231,7 @@ def apply_line_settings(
             ),
             offset=settings.inner_line_offset,
             material=outline_setup.get_line_material(obj, "inner"),
-            use_marked_edges=settings.use_marked_inner_edges,
+            use_marked_edges=False,
             midpoint_factor=(
                 settings.inner_edge_smooth_factor
                 if settings.auto_subdivision_for_midpoint
@@ -228,6 +246,35 @@ def apply_line_settings(
     else:
         inner_lines.remove_inner_lines(obj)
 
+    if (
+        settings.selection_line_enabled
+        and camera_comp.selection_line_creation_in_range(
+            obj, context.scene, settings,
+        )
+    ):
+        selection_lines.apply_selection_lines(
+            obj,
+            angle=settings.selection_line_angle,
+            thickness=scale_utils.modifier_thickness_for_world_width(
+                obj,
+                settings.selection_line_thickness,
+            ),
+            offset=settings.selection_line_offset,
+            material=outline_setup.get_line_material(obj, "selection"),
+            midpoint_factor=(
+                settings.selection_edge_smooth_factor
+                if settings.auto_subdivision_for_midpoint
+                else 0.0
+            ),
+            midpoint_angle=settings.selection_edge_midpoint_angle,
+            midpoint_jitter_percent=settings.selection_edge_midpoint_jitter_percent,
+            width_curve_25=settings.selection_edge_width_curve_25,
+            width_curve_50=settings.selection_edge_width_curve_50,
+            width_curve_75=settings.selection_edge_width_curve_75,
+        )
+    else:
+        selection_lines.remove_selection_lines(obj)
+
     intersection_in_range = camera_comp.intersection_line_creation_in_range(
         obj, context.scene, settings,
     )
@@ -241,7 +288,7 @@ def apply_line_settings(
     camera_comp.store_unit_reference(obj, context.scene)
 
     if not settings.use_uniform_line_width:
-        for target in ("outline", "inner", "intersection"):
+        for target in ("outline", "inner", "intersection", "selection"):
             group_name = vertex_analysis.width_group_name(target)
             if vertex_analysis.has_width_controls(settings, target):
                 vertex_analysis.compute_and_apply_weights(obj, settings, target)
@@ -318,6 +365,20 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     use_intersection_creation_limit: BoolProperty(default=True)
     intersection_creation_max_distance: FloatProperty(default=10.0, min=0.1, max=1000.0)
 
+    selection_line_enabled: BoolProperty(default=False)
+    selection_line_angle: FloatProperty(default=1.0471975512, min=0.0174532925, max=3.1415926536)
+    selection_line_thickness: FloatProperty(default=0.0003, min=0.0001, max=1.0)
+    selection_line_offset: FloatProperty(default=0.0, min=-1.0, max=1.0)
+    selection_line_color: FloatVectorProperty(
+        subtype="COLOR",
+        size=4,
+        default=(0.0, 0.0, 0.0, 1.0),
+        min=0.0,
+        max=1.0,
+    )
+    use_selection_line_creation_limit: BoolProperty(default=True)
+    selection_line_creation_max_distance: FloatProperty(default=10.0, min=0.1, max=1000.0)
+
     use_camera_compensation: BoolProperty(default=False)
     camera_compensation_influence: FloatProperty(default=1.0, min=0.0, max=1.0)
     line_width_reference_distance: FloatProperty(
@@ -325,9 +386,6 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
         min=0.001,
         max=1000.0,
     )
-
-    use_ao_influence: BoolProperty(default=False)
-    ao_influence_strength: FloatProperty(default=0.5, min=0.0, max=1.0)
 
     edge_smooth_factor: FloatProperty(default=0.0, min=-1.0, max=1.0)
     edge_midpoint_jitter_percent: FloatProperty(default=0.0, min=0.0, max=50.0)
@@ -350,6 +408,13 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     intersection_edge_width_curve_50: FloatProperty(default=0.50, min=0.0, max=1.0)
     intersection_edge_width_curve_75: FloatProperty(default=0.75, min=0.0, max=1.0)
 
+    selection_edge_smooth_factor: FloatProperty(default=0.0, min=-1.0, max=1.0)
+    selection_edge_midpoint_jitter_percent: FloatProperty(default=0.0, min=0.0, max=50.0)
+    selection_edge_midpoint_angle: FloatProperty(default=1.7453292520, min=0.0174532925, max=3.1415926536)
+    selection_edge_width_curve_25: FloatProperty(default=0.25, min=0.0, max=1.0)
+    selection_edge_width_curve_50: FloatProperty(default=0.50, min=0.0, max=1.0)
+    selection_edge_width_curve_75: FloatProperty(default=0.75, min=0.0, max=1.0)
+
     use_camera_culling: BoolProperty(default=False)
     culling_margin: FloatProperty(default=0.1745329252, min=0.0, max=1.5707963268)
 
@@ -361,6 +426,9 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
 
     use_intersection_distance_limit: BoolProperty(default=False)
     intersection_max_distance: FloatProperty(default=20.0, min=0.1, max=1000.0)
+
+    use_selection_line_distance_limit: BoolProperty(default=False)
+    selection_line_max_distance: FloatProperty(default=20.0, min=0.1, max=1000.0)
 
 
 class BMANGA_LINE_OT_preset_save(bpy.types.Operator):

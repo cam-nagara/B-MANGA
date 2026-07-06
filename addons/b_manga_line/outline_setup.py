@@ -21,6 +21,7 @@ from .core import (
     AOV_NAMES,
     AOV_OBJECT_MASK_NAME,
     AOV_OUTLINE_RAW_NAME,
+    AOV_SELECTION_LINES_NAME,
     COLOR_ATTR_NAME,
     DEFAULT_LINE_WIDTH_REFERENCE_DISTANCE,
     MATERIAL_NAME,
@@ -34,6 +35,7 @@ from .core import (
     VG_INNER_LINE_WIDTH,
     VG_INTERSECTION_LINE_WIDTH,
     VG_LINE_WIDTH,
+    VG_SELECTION_LINE_WIDTH,
 )
 from .scale_utils import modifier_thickness_for_world_width, world_width_from_modifier
 
@@ -68,16 +70,19 @@ _LINE_MATERIAL_NAMES = {
     "outline": MATERIAL_NAME,
     "inner": f"{MATERIAL_NAME}_Inner",
     "intersection": f"{MATERIAL_NAME}_Intersection",
+    "selection": f"{MATERIAL_NAME}_Selection",
 }
 _LINE_COLOR_PROPS = {
     "outline": "outline_color",
     "inner": "inner_line_color",
     "intersection": "intersection_color",
+    "selection": "selection_line_color",
 }
 _LINE_TARGET_AOVS = {
     "outline": AOV_OUTLINE_RAW_NAME,
     "inner": AOV_INNER_LINES_NAME,
     "intersection": AOV_INTERSECTION_LINES_NAME,
+    "selection": AOV_SELECTION_LINES_NAME,
 }
 _repair_scene_line_materials_timer_running = False
 

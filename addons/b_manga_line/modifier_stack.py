@@ -10,6 +10,7 @@ from .core import (
     INTERSECTION_MODIFIER_PREFIX,
     MODIFIER_NAME,
     OUTLINE_WIDTH_ATTR_MODIFIER_NAME,
+    SELECTION_LINE_MODIFIER_NAME,
     SHEET_OUTLINE_MODIFIER_NAME,
 )
 
@@ -21,6 +22,7 @@ def is_line_modifier_name(name: str) -> bool:
         or name == OUTLINE_WIDTH_ATTR_MODIFIER_NAME
         or name == MODIFIER_NAME
         or name == GN_MODIFIER_NAME
+        or name == SELECTION_LINE_MODIFIER_NAME
         or name == INTERSECTION_MODIFIER_NAME
         or name.startswith(INTERSECTION_MODIFIER_PREFIX)
     )
@@ -37,8 +39,10 @@ def _line_modifier_order(mod: bpy.types.Modifier) -> tuple[int, str]:
         return (2, name)
     if name == GN_MODIFIER_NAME:
         return (3, name)
-    if name == INTERSECTION_MODIFIER_NAME or name.startswith(INTERSECTION_MODIFIER_PREFIX):
+    if name == SELECTION_LINE_MODIFIER_NAME:
         return (4, name)
+    if name == INTERSECTION_MODIFIER_NAME or name.startswith(INTERSECTION_MODIFIER_PREFIX):
+        return (5, name)
     return (99, name)
 
 

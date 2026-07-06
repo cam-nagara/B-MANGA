@@ -9,8 +9,10 @@ import bpy
 
 
 CHAIN_ID_ATTR = "BML_InnerLineChainID"
+SELECTION_CHAIN_ID_ATTR = "BML_SelectionLineChainID"
 SHARP_EDGE_ATTR = "sharp_edge"
 CREASE_EDGE_ATTR = "crease_edge"
+FREESTYLE_EDGE_ATTR = "BML_FreestyleMarkedEdge"
 HARD_ENDPOINT_MIN_SEGMENT_FRACTION = 0.04
 
 
@@ -23,7 +25,13 @@ def _edge_attr_value(mesh: bpy.types.Mesh, attr_name: str, edge_index: int):
     return getattr(attr.data[edge_index], "value", None)
 
 
-def _edge_is_marked(mesh: bpy.types.Mesh, edge_index: int) -> bool:
+def _edge_is_marked(
+    mesh: bpy.types.Mesh,
+    edge_index: int,
+    marked_attr_name: str | None = None,
+) -> bool:
+    if marked_attr_name:
+        return bool(_edge_attr_value(mesh, marked_attr_name, edge_index))
     if bool(_edge_attr_value(mesh, SHARP_EDGE_ATTR, edge_index)):
         return True
     crease = _edge_attr_value(mesh, CREASE_EDGE_ATTR, edge_index)
@@ -44,8 +52,8 @@ def _edge_is_angle_selected(edge, threshold: float) -> bool:
         return False
 
 
-def _ensure_chain_id_attribute(mesh: bpy.types.Mesh):
-    attr = mesh.attributes.get(CHAIN_ID_ATTR)
+def _ensure_chain_id_attribute(mesh: bpy.types.Mesh, attr_name: str = CHAIN_ID_ATTR):
+    attr = mesh.attributes.get(attr_name)
     if (
         attr is not None
         and getattr(attr, "domain", None) == "EDGE"
@@ -54,10 +62,16 @@ def _ensure_chain_id_attribute(mesh: bpy.types.Mesh):
         return attr
     if attr is not None:
         mesh.attributes.remove(attr)
-    return mesh.attributes.new(CHAIN_ID_ATTR, "INT", "EDGE")
+    return mesh.attributes.new(attr_name, "INT", "EDGE")
 
 
-def _collect_selected_graph(mesh, bm, angle: float, use_marked_edges: bool):
+def _collect_selected_graph(
+    mesh,
+    bm,
+    angle: float,
+    use_marked_edges: bool,
+    marked_attr_name: str | None = None,
+):
     selected_edges: set[int] = set()
     edge_vertices: dict[int, tuple[int, int]] = {}
     edge_lookup: dict[tuple[int, int], int] = {}
@@ -66,7 +80,7 @@ def _collect_selected_graph(mesh, bm, angle: float, use_marked_edges: bool):
     for edge in bm.edges:
         edge_index = edge.index
         selected = (
-            _edge_is_marked(mesh, edge_index)
+            _edge_is_marked(mesh, edge_index, marked_attr_name)
             if use_marked_edges
             else _edge_is_angle_selected(edge, angle)
         )
@@ -223,11 +237,14 @@ def update_chain_id_attribute(
     angle: float,
     use_marked_edges: bool,
     midpoint_angle: float | None = None,
+    *,
+    chain_id_attr: str = CHAIN_ID_ATTR,
+    marked_attr_name: str | None = None,
 ) -> None:
     if obj.type != "MESH" or obj.data is None:
         return
     mesh = obj.data
-    attr = _ensure_chain_id_attribute(mesh)
+    attr = _ensure_chain_id_attribute(mesh, chain_id_attr)
     for item in attr.data:
         item.value = -1
 
@@ -236,7 +253,13 @@ def update_chain_id_attribute(
         bm.from_mesh(mesh)
         bm.edges.ensure_lookup_table()
         bm.verts.ensure_lookup_table()
-        graph = _collect_selected_graph(mesh, bm, angle, use_marked_edges)
+        graph = _collect_selected_graph(
+            mesh,
+            bm,
+            angle,
+            use_marked_edges,
+            marked_attr_name,
+        )
         selected_edges, edge_vertices, edge_lookup, neighbors, vertex_edges = graph
         anchors = {
             i for i, connected in enumerate(neighbors)

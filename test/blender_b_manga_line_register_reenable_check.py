@@ -43,11 +43,17 @@ def _assert_registered() -> None:
         "BMANGA_LINE_PT_camera",
         "BMANGA_LINE_PT_inner_line",
         "BMANGA_LINE_PT_intersection",
+        "BMANGA_LINE_PT_selection_line",
     )
     for name in subpanels:
         panel = getattr(bpy.types, name, None)
         assert panel is not None, f"{name} が登録されていません"
         assert panel.bl_parent_id == "BMANGA_LINE_PT_main"
+    assert "DEFAULT_CLOSED" not in getattr(
+        bpy.types.BMANGA_LINE_PT_camera,
+        "bl_options",
+        set(),
+    ), "カメラ設定パネルが初期状態で閉じる設定です"
 
 
 def _assert_unregistered() -> None:
@@ -131,6 +137,7 @@ def _assert_panels_draw_items() -> None:
         panels.BMANGA_LINE_PT_camera,
         panels.BMANGA_LINE_PT_inner_line,
         panels.BMANGA_LINE_PT_intersection,
+        panels.BMANGA_LINE_PT_selection_line,
     ):
         assert panel_cls.poll(bpy.context) if hasattr(panel_cls, "poll") else True
         panel_cls.draw(dummy, bpy.context)
@@ -146,21 +153,25 @@ def _assert_panels_draw_items() -> None:
         "use_camera_compensation",
         "line_width_reference_distance",
         "use_uniform_line_width",
-        "edge_smooth_factor",
-        "inner_edge_smooth_factor",
-        "intersection_edge_smooth_factor",
         "inner_line_enabled",
-        "use_marked_inner_edges",
+        "inner_line_thickness_mm",
         "inner_line_color",
         "use_inner_line_creation_limit",
         "inner_line_creation_max_distance",
         "intersection_enabled",
+        "intersection_thickness_mm",
         "intersection_color",
         "use_intersection_creation_limit",
         "intersection_creation_max_distance",
+        "selection_line_enabled",
+        "selection_line_thickness_mm",
+        "selection_line_color",
+        "use_selection_line_creation_limit",
+        "selection_line_creation_max_distance",
     ):
         assert prop_name in records["props"], f"{prop_name} がパネルにありません"
     assert "BMANGA_LINE_PT_width_details" not in dir(panels)
+    assert "bmanga_line.detail_settings" in records["operators"]
     bool_props = [
         prop.identifier
         for prop in props
@@ -172,6 +183,7 @@ def _assert_panels_draw_items() -> None:
         "lines_visible",
         "use_inner_line_creation_limit",
         "use_intersection_creation_limit",
+        "use_selection_line_creation_limit",
         # 2026-07-03 ユーザー確定: 板ポリ除外だけは初期値オン
         "exclude_sheet_meshes",
     }
@@ -189,7 +201,7 @@ def _assert_panels_draw_items() -> None:
         math.radians(60.0),
         rel_tol=0.0,
         abs_tol=1.0e-7,
-    ), "内部線の検出角度の初期値が60度ではありません"
+    ), "稜谷線の検出角度の初期値が60度ではありません"
     assert math.isclose(
         obj.bmanga_line_settings.outline_offset,
         0.0,
@@ -201,13 +213,19 @@ def _assert_panels_draw_items() -> None:
         0.0,
         rel_tol=0.0,
         abs_tol=1.0e-7,
-    ), "内部線のオフセット初期値が0.0ではありません"
+    ), "稜谷線のオフセット初期値が0.0ではありません"
     assert math.isclose(
         obj.bmanga_line_settings.intersection_line_offset,
         0.0,
         rel_tol=0.0,
         abs_tol=1.0e-7,
     ), "交差線のオフセット初期値が0.0ではありません"
+    assert math.isclose(
+        obj.bmanga_line_settings.selection_line_offset,
+        0.0,
+        rel_tol=0.0,
+        abs_tol=1.0e-7,
+    ), "選択線のオフセット初期値が0.0ではありません"
     preset = bpy.context.scene.bmanga_line_presets.add()
     preset_bool_props = [
         prop.identifier
@@ -229,9 +247,10 @@ def _assert_panels_draw_items() -> None:
         math.radians(60.0),
         rel_tol=0.0,
         abs_tol=1.0e-7,
-    ), "プリセットの内部線の検出角度の初期値が60度ではありません"
+    ), "プリセットの稜谷線の検出角度の初期値が60度ではありません"
     assert math.isclose(preset.inner_line_offset, 0.0, rel_tol=0.0, abs_tol=1.0e-7)
     assert math.isclose(preset.intersection_line_offset, 0.0, rel_tol=0.0, abs_tol=1.0e-7)
+    assert math.isclose(preset.selection_line_offset, 0.0, rel_tol=0.0, abs_tol=1.0e-7)
     camera_props = [
         "line_width_reference_distance",
         "use_camera_compensation",

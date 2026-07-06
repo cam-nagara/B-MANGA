@@ -19,6 +19,7 @@ from b_manga_line import (  # noqa: E402
     intersection_lines,
     outline_setup,
     presets,
+    selection_lines,
 )
 
 
@@ -75,6 +76,8 @@ def _install_counters():
         "inner_update": 0,
         "intersection_apply": 0,
         "intersection_update": 0,
+        "selection_apply": 0,
+        "selection_update": 0,
         "intersection_refresh": 0,
         "intersection_defer": 0,
         "camera": 0,
@@ -92,6 +95,8 @@ def _install_counters():
         "inner_update": inner_lines.update_parameters,
         "intersection_apply": intersection_lines.apply_intersection_lines,
         "intersection_update": intersection_lines.update_parameters,
+        "selection_apply": selection_lines.apply_selection_lines,
+        "selection_update": selection_lines.update_parameters,
         "intersection_refresh": intersection_lines.refresh_scene_intersections,
         "intersection_defer": intersection_lines._queue_deferred_viewport_modifier,
         "camera": camera_comp.refresh,
@@ -128,6 +133,14 @@ def _install_counters():
     def counted_intersection_update(*args, **kwargs):
         counts["intersection_update"] += 1
         return originals["intersection_update"](*args, **kwargs)
+
+    def counted_selection_apply(*args, **kwargs):
+        counts["selection_apply"] += 1
+        return originals["selection_apply"](*args, **kwargs)
+
+    def counted_selection_update(*args, **kwargs):
+        counts["selection_update"] += 1
+        return originals["selection_update"](*args, **kwargs)
 
     def counted_intersection_refresh(*args, **kwargs):
         counts["intersection_refresh"] += 1
@@ -167,6 +180,8 @@ def _install_counters():
     inner_lines.update_parameters = counted_inner_update
     intersection_lines.apply_intersection_lines = counted_intersection_apply
     intersection_lines.update_parameters = counted_intersection_update
+    selection_lines.apply_selection_lines = counted_selection_apply
+    selection_lines.update_parameters = counted_selection_update
     intersection_lines.refresh_scene_intersections = counted_intersection_refresh
     intersection_lines._queue_deferred_viewport_modifier = counted_intersection_defer
     camera_comp.refresh = counted_camera
@@ -187,6 +202,8 @@ def _install_counters():
         inner_lines.update_parameters = originals["inner_update"]
         intersection_lines.apply_intersection_lines = originals["intersection_apply"]
         intersection_lines.update_parameters = originals["intersection_update"]
+        selection_lines.apply_selection_lines = originals["selection_apply"]
+        selection_lines.update_parameters = originals["selection_update"]
         intersection_lines.refresh_scene_intersections = originals["intersection_refresh"]
         intersection_lines._queue_deferred_viewport_modifier = originals["intersection_defer"]
         camera_comp.refresh = originals["camera"]
@@ -207,6 +224,7 @@ def _assert_common(prop_name: str, counts: dict) -> None:
 def _assert_no_generated_rebuild(prop_name: str, counts: dict) -> None:
     assert counts["inner_apply"] == 0, (prop_name, counts)
     assert counts["intersection_apply"] == 0, (prop_name, counts)
+    assert counts["selection_apply"] == 0, (prop_name, counts)
     assert counts["intersection_refresh"] == 0, (prop_name, counts)
 
 
@@ -284,9 +302,6 @@ def _run_baseline_cases(settings, counts, reset) -> None:
         ("exclude_sheet_meshes", False, None),
         ("use_vertex_color", True, None),
         ("use_vertex_color", False, None),
-        ("use_ao_influence", True, None),
-        ("ao_influence_strength", 0.25, None),
-        ("use_ao_influence", False, None),
         ("edge_smooth_factor", 0.15, None),
         ("edge_midpoint_jitter_percent", 3.0, None),
         ("edge_midpoint_angle", math.radians(55.0), None),
@@ -295,8 +310,6 @@ def _run_baseline_cases(settings, counts, reset) -> None:
         ("edge_width_curve_75", 0.80, None),
         ("edge_smooth_factor", 0.0, None),
         ("inner_line_angle", math.radians(70), None),
-        ("use_marked_inner_edges", True, None),
-        ("use_marked_inner_edges", False, None),
         ("inner_line_offset", 0.25, None),
         ("inner_edge_smooth_factor", 0.12, None),
         ("inner_edge_midpoint_jitter_percent", 2.0, None),
@@ -315,6 +328,15 @@ def _run_baseline_cases(settings, counts, reset) -> None:
         ("intersection_edge_width_curve_50", 0.52, None),
         ("intersection_edge_width_curve_75", 0.82, None),
         ("intersection_edge_smooth_factor", 0.0, None),
+        ("selection_line_angle", math.radians(70), None),
+        ("selection_line_offset", 0.25, None),
+        ("selection_edge_smooth_factor", 0.12, None),
+        ("selection_edge_midpoint_jitter_percent", 2.0, None),
+        ("selection_edge_midpoint_angle", math.radians(55.0), None),
+        ("selection_edge_width_curve_25", 0.22, None),
+        ("selection_edge_width_curve_50", 0.52, None),
+        ("selection_edge_width_curve_75", 0.82, None),
+        ("selection_edge_smooth_factor", 0.0, None),
     ]
     for prop_name, value, width_target in no_rebuild_cases:
         _change(settings, prop_name, value, counts, reset, width_target=width_target)
@@ -342,6 +364,7 @@ def _run_baseline_cases(settings, counts, reset) -> None:
         ("outline_thickness", 0.0011, "outline"),
         ("inner_line_thickness", 0.0012, "inner"),
         ("intersection_thickness", 0.0013, "intersection"),
+        ("selection_line_thickness", 0.0014, "selection"),
         ("use_uniform_line_width", True, "all"),
         ("use_uniform_line_width", False, "all"),
         ("use_camera_compensation", True, "all"),
@@ -371,6 +394,9 @@ def _run_baseline_cases(settings, counts, reset) -> None:
         ("use_intersection_distance_limit", True),
         ("intersection_max_distance", 18.0),
         ("use_intersection_distance_limit", False),
+        ("use_selection_line_distance_limit", True),
+        ("selection_line_max_distance", 18.0),
+        ("use_selection_line_distance_limit", False),
     ]
     for prop_name, value in visibility_cases:
         _change(settings, prop_name, value, counts, reset, width_target=None)
@@ -398,6 +424,8 @@ def _run_uniform_mode_cases(settings, counts, reset) -> None:
         ("inner_edge_smooth_factor", 0.18, "inner"),
         ("intersection_thickness", 0.0017, "intersection"),
         ("intersection_edge_smooth_factor", 0.18, "intersection"),
+        ("selection_line_thickness", 0.0018, "selection"),
+        ("selection_edge_smooth_factor", 0.18, "selection"),
     ]
     for prop_name, value, width_target in target_cases:
         _change(settings, prop_name, value, counts, reset, width_target=width_target)

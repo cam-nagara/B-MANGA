@@ -146,7 +146,6 @@ def _assert_saved_current_tree_refreshes_stale_cap_selection() -> None:
     obj = _new_cone("inner_stale_chain_refresh_check", 16)
     settings = obj.bmanga_line_settings
     settings.inner_line_angle = math.radians(60.0)
-    settings.use_marked_inner_edges = False
     mat = outline_setup.get_line_material(obj, "inner")
     assert inner_lines.apply_inner_lines(
         obj,

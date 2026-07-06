@@ -1,6 +1,6 @@
-"""B-MANGA Line — 頂点解析（AO焼き付け・エッジ角度ウェイト計算）.
+"""B-MANGA Line — 頂点解析（エッジ角度ウェイト計算）.
 
-複数の情報源（手動頂点カラー・AO・エッジ角度）を合成して
+複数の情報源（手動頂点カラー・エッジ角度）を合成して
 最終的な頂点グループウェイトを生成する。
 """
 
@@ -13,11 +13,11 @@ import bmesh
 import bpy
 
 from .core import (
-    AO_ATTR_NAME,
     COLOR_ATTR_NAME,
     VG_INNER_LINE_WIDTH,
     VG_INTERSECTION_LINE_WIDTH,
     VG_LINE_WIDTH,
+    VG_SELECTION_LINE_WIDTH,
 )
 
 
@@ -379,7 +379,7 @@ def _clamp01(value: float) -> float:
 
 
 def _normalize_target(target: str) -> str:
-    if target in {"inner", "intersection"}:
+    if target in {"inner", "intersection", "selection"}:
         return target
     return "outline"
 
@@ -391,19 +391,22 @@ def width_group_name(target: str = "outline") -> str:
         return VG_INNER_LINE_WIDTH
     if target == "intersection":
         return VG_INTERSECTION_LINE_WIDTH
+    if target == "selection":
+        return VG_SELECTION_LINE_WIDTH
     return VG_LINE_WIDTH
 
 
 def has_width_controls(settings, target: str = "outline") -> bool:
-    """線種別の中間頂点・色・AOによる線幅制御が有効か返す."""
+    """線種別の中間頂点・色による線幅制御が有効か返す."""
     target = _normalize_target(target)
     if target == "inner":
         return abs(getattr(settings, "inner_edge_smooth_factor", 0.0)) > 0.001
     if target == "intersection":
         return abs(getattr(settings, "intersection_edge_smooth_factor", 0.0)) > 0.001
+    if target == "selection":
+        return abs(getattr(settings, "selection_edge_smooth_factor", 0.0)) > 0.001
     return (
         bool(getattr(settings, "use_vertex_color", False))
-        or bool(getattr(settings, "use_ao_influence", False))
         or abs(getattr(settings, "edge_smooth_factor", 0.0)) > 0.001
     )
 
@@ -422,6 +425,12 @@ def _target_midpoint_props(settings, target: str) -> tuple[float, float, tuple[f
             float(getattr(settings, "intersection_edge_midpoint_jitter_percent", 0.0)),
             _curve_points_from_settings(settings, target),
         )
+    if target == "selection":
+        return (
+            float(getattr(settings, "selection_edge_smooth_factor", 0.0)),
+            float(getattr(settings, "selection_edge_midpoint_jitter_percent", 0.0)),
+            _curve_points_from_settings(settings, target),
+        )
     return (
         float(getattr(settings, "edge_smooth_factor", 0.0)),
         float(getattr(settings, "edge_midpoint_jitter_percent", 0.0)),
@@ -438,6 +447,8 @@ def _angle_threshold(settings, target: str = "outline") -> float:
         )
     elif target == "intersection":
         prop_name = "intersection_edge_midpoint_angle"
+    elif target == "selection":
+        prop_name = "selection_edge_midpoint_angle"
     else:
         prop_name = "edge_midpoint_angle"
     fallback = getattr(settings, "inner_line_angle", math.pi / 2)
@@ -445,8 +456,11 @@ def _angle_threshold(settings, target: str = "outline") -> float:
 
 
 def _line_graph_threshold(settings, target: str = "outline") -> float:
-    if _normalize_target(target) == "inner":
+    normalized = _normalize_target(target)
+    if normalized == "inner":
         return max(0.0, float(getattr(settings, "inner_line_angle", math.radians(60.0))))
+    if normalized == "selection":
+        return max(0.0, float(getattr(settings, "selection_line_angle", math.radians(60.0))))
     return math.radians(60.0)
 
 
@@ -530,6 +544,12 @@ def _curve_points_from_settings(settings, target: str = "outline") -> tuple[floa
             "intersection_edge_width_curve_25",
             "intersection_edge_width_curve_50",
             "intersection_edge_width_curve_75",
+        )
+    elif target == "selection":
+        names = (
+            "selection_edge_width_curve_25",
+            "selection_edge_width_curve_50",
+            "selection_edge_width_curve_75",
         )
     else:
         names = (
@@ -652,7 +672,7 @@ def _calc_midpoint_factor(
 # 統合ウェイト計算
 # ------------------------------------------------------------------
 
-def _base_weights(obj, settings, n: int, *, use_color: bool, use_ao: bool) -> list[float]:
+def _base_weights(obj, settings, n: int, *, use_color: bool) -> list[float]:
     mesh = obj.data
     weights = [1.0] * n
 
@@ -663,16 +683,6 @@ def _base_weights(obj, settings, n: int, *, use_color: bool, use_ao: bool) -> li
                 c = attr.data[i].color
                 weights[i] = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]
 
-    if use_ao:
-        attr_ao = mesh.color_attributes.get(AO_ATTR_NAME)
-        if attr_ao is not None and attr_ao.domain == "POINT":
-            strength = settings.ao_influence_strength
-            for i in range(min(n, len(attr_ao.data))):
-                c = attr_ao.data[i].color
-                ao_lum = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]
-                ao_thick = 1.0 - ao_lum
-                weights[i] = weights[i] * (1.0 - strength) + ao_thick * strength
-
     return weights
 
 
@@ -681,8 +691,7 @@ def compute_and_apply_weights(obj, settings, target: str = "outline") -> int:
 
     合成順序:
     1. 手動頂点カラー（BML_LineWidth）の明度 → ベースウェイト
-    2. AO（BML_AO）の暗さ → 暗い部分ほど太い線
-    3. 検出角度未満で分割した線ごとの両端と中心 → 中間頂点の線幅差
+    2. 検出角度未満で分割した線ごとの両端と中心 → 中間頂点の線幅差
     """
     if obj.type != "MESH":
         return 0
@@ -694,8 +703,7 @@ def compute_and_apply_weights(obj, settings, target: str = "outline") -> int:
 
     target = _normalize_target(target)
     use_color = target == "outline" and settings.use_vertex_color
-    use_ao = target == "outline" and settings.use_ao_influence
-    weights = _base_weights(obj, settings, n, use_color=use_color, use_ao=use_ao)
+    weights = _base_weights(obj, settings, n, use_color=use_color)
 
     # 3. 中間頂点の線幅調整
     factor, jitter, curve_points = _target_midpoint_props(settings, target)
@@ -710,7 +718,7 @@ def compute_and_apply_weights(obj, settings, target: str = "outline") -> int:
         if obj.data is not before_mesh or len(obj.data.vertices) != before_count:
             mesh = obj.data
             n = len(mesh.vertices)
-            weights = _base_weights(obj, settings, n, use_color=use_color, use_ao=use_ao)
+            weights = _base_weights(obj, settings, n, use_color=use_color)
         midpoint = _calc_midpoint_factor(
             obj,
             base_anchors or None,
@@ -732,39 +740,3 @@ def compute_and_apply_weights(obj, settings, target: str = "outline") -> int:
 
     # 頂点グループに書き込み
     return _write_vertex_group_weights(obj, weights, width_group_name(target))
-
-
-# ------------------------------------------------------------------
-# AO 焼き付け
-# ------------------------------------------------------------------
-
-def bake_ao(context, obj) -> bool:
-    """Cycles で AO を頂点カラーに焼き付け. 成功時 True."""
-    if obj.type != "MESH":
-        return False
-
-    mesh = obj.data
-
-    attr = mesh.color_attributes.get(AO_ATTR_NAME)
-    if attr is None:
-        attr = mesh.color_attributes.new(
-            name=AO_ATTR_NAME, type="FLOAT_COLOR", domain="POINT"
-        )
-
-    mesh.color_attributes.active_color = attr
-    context.view_layer.objects.active = obj
-
-    prev_engine = context.scene.render.engine
-    context.scene.render.engine = "CYCLES"
-
-    prev_samples = context.scene.cycles.samples
-    context.scene.cycles.samples = 32
-
-    try:
-        result = bpy.ops.object.bake(type="AO", target="VERTEX_COLORS")
-        return result == {"FINISHED"}
-    except RuntimeError:
-        return False
-    finally:
-        context.scene.render.engine = prev_engine
-        context.scene.cycles.samples = prev_samples

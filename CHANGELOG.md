@@ -3,6 +3,46 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-06 — B-MANGA Lineに選択線と詳細設定ダイアログを追加 (B-MANGA Line v0.3.122)
+
+### 症状
+
+- 「AOで線幅を制御」と旧「指定済みの辺だけ線にする」が不要になっていた。
+- Freestyle辺をマークした辺だけを線にする独立した線種がなく、稜谷線の設定に混ざっていた。
+- アウトライン・稜谷線・交差線の詳細項目がサイドバーに散らばり、基本設定だけを触りたい時にも項目が多かった。
+
+### 原因
+
+- Freestyleマーク辺を読む専用線種がなく、旧来の稜谷線のマーク辺モードへ寄せていた。
+- Blender 5.1ではFreestyle辺マークが辺ごとの属性として保存されるため、専用の属性同期が必要だった。
+- 詳細設定と基本設定が同じパネル内で描画されていた。
+
+### 修正
+
+- 「AOで線幅を制御」と関連設定・AO焼き込み操作を削除した。
+- 「内部線」を「稜谷線」へ改名し、旧「指定済みの辺だけ線にする」を通常UIから削除した。
+- Freestyleマーク辺を読む「選択線」を追加し、角度検出による線幅区間分割・中間頂点の線幅調整・乱れ・線色・作成範囲・遠距離非表示・AOV合成へ対応した。
+- アウトライン・稜谷線・交差線・選択線の詳細項目を「詳細設定」ダイアログへ集約し、4列で同じ項目が同じ高さに並ぶようにした。
+- サイドバーの各線種パネルは、オン/オフ、線幅、線の色、作成範囲だけに整理した。
+- カメラ設定パネルは初期状態で閉じないようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_selection_line_check.py`
+- `test/blender_b_manga_line_register_reenable_check.py`
+- `test/blender_b_manga_line_slider_step_check.py`
+- `test/blender_b_manga_line_batch_apply_refresh_check.py`
+- `test/blender_b_manga_line_control_update_scope_check.py`
+- `test/blender_b_manga_line_preset_visibility_check.py`
+- `test/blender_b_manga_line_aov_composite_check.py`
+- `test/blender_b_manga_line_aov_view_line_only_check.py`
+- `test/blender_b_manga_line_midpoint_targets_check.py`
+- `test/blender_b_manga_line_inner_angle_threshold_check.py`
+- `test/blender_b_manga_line_midpoint_jitter_check.py`
+- `python -m py_compile`（変更したB-MANGA Line本体・関連テスト）
+
+---
+
 ## 2026-07-06 — B-MANGA Lineの内部線の線幅区間角度を内部線検出角度へ統一 (B-MANGA Line v0.3.121)
 
 ### 症状

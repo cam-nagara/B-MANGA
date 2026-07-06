@@ -148,6 +148,7 @@ class BMANGA_LINE_OT_remove(bpy.types.Operator):
             outline_setup,
             inner_lines,
             plane_filter,
+            selection_lines,
             subdivision_lod,
         )
         from .core import (
@@ -164,6 +165,7 @@ class BMANGA_LINE_OT_remove(bpy.types.Operator):
             removed_any = False
             removed_any |= outline_setup.remove_outline(obj)
             removed_any |= inner_lines.remove_inner_lines(obj)
+            removed_any |= selection_lines.remove_selection_lines(obj)
             removed_any |= intersection_lines.remove_intersection_lines(obj)
             removed_any |= subdivision_lod.remove_auto_subdivision(obj)
             if removed_any:
@@ -326,49 +328,10 @@ class BMANGA_LINE_OT_sync_weights(bpy.types.Operator):
             if obj.type != "MESH":
                 continue
             settings = obj.bmanga_line_settings
-            for target in ("outline", "inner", "intersection"):
+            for target in ("outline", "inner", "intersection", "selection"):
                 total += vertex_analysis.compute_and_apply_weights(obj, settings, target)
 
         self.report({"INFO"}, f"{total} 頂点のウェイトを更新しました")
-        return {"FINISHED"}
-
-
-class BMANGA_LINE_OT_bake_ao(bpy.types.Operator):
-    """Cycles で AO を頂点カラーに焼き付け"""
-
-    bl_idname = "bmanga_line.bake_ao"
-    bl_label = "AOを焼き付け"
-    bl_options = {"REGISTER", "UNDO"}
-
-    @classmethod
-    def poll(cls, context):
-        return (
-            context.mode == "OBJECT"
-            and any(obj.type == "MESH" for obj in context.selected_objects)
-        )
-
-    def execute(self, context):
-        from . import vertex_analysis
-
-        prev_active = context.view_layer.objects.active
-        meshes = [o for o in context.selected_objects if o.type == "MESH"]
-
-        count = 0
-        for obj in meshes:
-            context.view_layer.objects.active = obj
-            ok = vertex_analysis.bake_ao(context, obj)
-            if ok:
-                count += 1
-
-        context.view_layer.objects.active = prev_active
-
-        if count > 0:
-            for obj in meshes:
-                settings = obj.bmanga_line_settings
-                if settings.use_ao_influence:
-                    vertex_analysis.compute_and_apply_weights(obj, settings, "outline")
-
-        self.report({"INFO"}, f"{count} オブジェクトにAOを焼き付けました")
         return {"FINISHED"}
 
 
@@ -488,7 +451,6 @@ _CLASSES = (
     BMANGA_LINE_OT_refresh_linked,
     BMANGA_LINE_OT_apply_active_to_linked,
     BMANGA_LINE_OT_sync_weights,
-    BMANGA_LINE_OT_bake_ao,
     BMANGA_LINE_OT_refresh_camera,
     BMANGA_LINE_OT_reset_camera_ref,
     BMANGA_LINE_OT_add_aov,

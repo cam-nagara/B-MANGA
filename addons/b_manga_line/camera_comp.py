@@ -24,10 +24,12 @@ from .core import (
     PROP_REF_MODE,
     REF_MODE_LOCKED,
     REF_MODE_VIEW,
+    SELECTION_LINE_MODIFIER_NAME,
     SHEET_OUTLINE_MODIFIER_NAME,
     VG_INNER_LINE_WIDTH,
     VG_INTERSECTION_LINE_WIDTH,
     VG_LINE_WIDTH,
+    VG_SELECTION_LINE_WIDTH,
     iter_intersection_modifiers,
 )
 from .scale_utils import modifier_thickness_for_world_width
@@ -157,7 +159,7 @@ def _line_creation_in_range(
 
 
 def inner_line_creation_in_range(obj: bpy.types.Object, scene, settings=None) -> bool:
-    """内部線を作成してよいカメラ距離内か判定."""
+    """稜谷線を作成してよいカメラ距離内か判定."""
     if settings is None:
         settings = getattr(obj, "bmanga_line_settings", None)
     return _line_creation_in_range(
@@ -179,6 +181,19 @@ def intersection_line_creation_in_range(obj: bpy.types.Object, scene, settings=N
         settings,
         "use_intersection_creation_limit",
         "intersection_creation_max_distance",
+    )
+
+
+def selection_line_creation_in_range(obj: bpy.types.Object, scene, settings=None) -> bool:
+    """選択線を作成してよいカメラ距離内か判定."""
+    if settings is None:
+        settings = getattr(obj, "bmanga_line_settings", None)
+    return _line_creation_in_range(
+        obj,
+        scene,
+        settings,
+        "use_selection_line_creation_limit",
+        "selection_line_creation_max_distance",
     )
 
 
@@ -404,6 +419,7 @@ def _apply_uniform_line_width(scene, camera, obj, settings, mod) -> None:
         intersection_lines,
         outline_setup,
         outline_width_attribute,
+        selection_lines,
         vertex_analysis,
     )
 
@@ -428,6 +444,7 @@ def _apply_uniform_line_width(scene, camera, obj, settings, mod) -> None:
 
     has_inner = _has_inner_modifier(obj)
     has_intersection = _has_intersection_modifier(obj)
+    has_selection = _has_selection_modifier(obj)
     if has_inner:
         _prepare_style_weights(obj, settings, "inner")
         vertex_analysis.multiply_width_weights(
@@ -447,10 +464,20 @@ def _apply_uniform_line_width(scene, camera, obj, settings, mod) -> None:
         )
     else:
         vertex_analysis.clear_width_weights(obj, group_name=VG_INTERSECTION_LINE_WIDTH)
+    if has_selection:
+        _prepare_style_weights(obj, settings, "selection")
+        vertex_analysis.multiply_width_weights(
+            obj,
+            [width / max_outline_world for width in outline_widths],
+            group_name=VG_SELECTION_LINE_WIDTH,
+        )
+    else:
+        vertex_analysis.clear_width_weights(obj, group_name=VG_SELECTION_LINE_WIDTH)
 
     outline_base = max(abs(float(settings.outline_thickness)), 1.0e-9)
     inner_scale = abs(float(settings.inner_line_thickness)) / outline_base
     intersection_scale = abs(float(settings.intersection_thickness)) / outline_base
+    selection_scale = abs(float(settings.selection_line_thickness)) / outline_base
     if has_inner:
         inner_lines.update_parameters(
             obj,
@@ -467,10 +494,18 @@ def _apply_uniform_line_width(scene, camera, obj, settings, mod) -> None:
                 max_outline_world * intersection_scale,
             ),
         )
+    if has_selection:
+        selection_lines.update_parameters(
+            obj,
+            thickness=modifier_thickness_for_world_width(
+                obj,
+                max_outline_world * selection_scale,
+            ),
+        )
 
 
 def _apply_reference_line_width(scene, camera, obj, settings, mod) -> None:
-    from . import inner_lines, intersection_lines, outline_setup, vertex_analysis
+    from . import inner_lines, intersection_lines, outline_setup, selection_lines, vertex_analysis
 
     ref_distance = _line_width_reference_distance(settings)
     outline_width_world = max(
@@ -492,6 +527,7 @@ def _apply_reference_line_width(scene, camera, obj, settings, mod) -> None:
         mod.vertex_group = ""
     has_inner = _has_inner_modifier(obj)
     has_intersection = _has_intersection_modifier(obj)
+    has_selection = _has_selection_modifier(obj)
     if has_inner:
         _prepare_style_weights(obj, settings, "inner")
     else:
@@ -500,10 +536,15 @@ def _apply_reference_line_width(scene, camera, obj, settings, mod) -> None:
         _prepare_style_weights(obj, settings, "intersection")
     else:
         vertex_analysis.clear_width_weights(obj, group_name=VG_INTERSECTION_LINE_WIDTH)
+    if has_selection:
+        _prepare_style_weights(obj, settings, "selection")
+    else:
+        vertex_analysis.clear_width_weights(obj, group_name=VG_SELECTION_LINE_WIDTH)
 
     outline_base = max(abs(float(settings.outline_thickness)), 1.0e-9)
     inner_scale = abs(float(settings.inner_line_thickness)) / outline_base
     intersection_scale = abs(float(settings.intersection_thickness)) / outline_base
+    selection_scale = abs(float(settings.selection_line_thickness)) / outline_base
     if has_inner:
         inner_lines.update_parameters(
             obj,
@@ -518,6 +559,14 @@ def _apply_reference_line_width(scene, camera, obj, settings, mod) -> None:
             thickness=modifier_thickness_for_world_width(
                 obj,
                 outline_width_world * intersection_scale,
+            ),
+        )
+    if has_selection:
+        selection_lines.update_parameters(
+            obj,
+            thickness=modifier_thickness_for_world_width(
+                obj,
+                outline_width_world * selection_scale,
             ),
         )
 
@@ -560,12 +609,16 @@ def _has_intersection_modifier(obj) -> bool:
     return any(iter_intersection_modifiers(obj))
 
 
+def _has_selection_modifier(obj) -> bool:
+    return obj.modifiers.get(SELECTION_LINE_MODIFIER_NAME) is not None
+
+
 def _normalize_width_targets(width_targets) -> tuple[str, ...] | None:
     if width_targets is None:
         return None
     requested = set(width_targets)
     return tuple(
-        target for target in ("outline", "inner", "intersection")
+        target for target in ("outline", "inner", "intersection", "selection")
         if target in requested
     )
 
@@ -575,6 +628,8 @@ def _target_width_setting(settings, target: str) -> float:
         return float(settings.inner_line_thickness)
     if target == "intersection":
         return float(settings.intersection_thickness)
+    if target == "selection":
+        return float(settings.selection_line_thickness)
     return float(settings.outline_thickness)
 
 
@@ -583,7 +638,7 @@ def _apply_target_width(
     target: str,
     width: float,
 ) -> None:
-    from . import inner_lines, intersection_lines, outline_setup
+    from . import inner_lines, intersection_lines, outline_setup, selection_lines
 
     scaled = modifier_thickness_for_world_width(obj, max(width, 1.0e-9))
     if target == "inner":
@@ -593,6 +648,10 @@ def _apply_target_width(
     if target == "intersection":
         if _has_intersection_modifier(obj):
             intersection_lines.update_parameters(obj, thickness=scaled)
+        return
+    if target == "selection":
+        if _has_selection_modifier(obj):
+            selection_lines.update_parameters(obj, thickness=scaled)
         return
     mod = obj.modifiers.get(MODIFIER_NAME)
     if mod is not None:
@@ -623,6 +682,9 @@ def _apply_target_style_weights(obj, settings, target: str) -> None:
     if target == "intersection" and not _has_intersection_modifier(obj):
         vertex_analysis.clear_width_weights(obj, group_name=group_name)
         return
+    if target == "selection" and not _has_selection_modifier(obj):
+        vertex_analysis.clear_width_weights(obj, group_name=group_name)
+        return
     _prepare_style_weights(obj, settings, target)
 
 
@@ -634,6 +696,9 @@ def _apply_uniform_target_line_width(scene, camera, obj, settings, target: str) 
         return
     if target == "intersection" and not _has_intersection_modifier(obj):
         vertex_analysis.clear_width_weights(obj, group_name=VG_INTERSECTION_LINE_WIDTH)
+        return
+    if target == "selection" and not _has_selection_modifier(obj):
+        vertex_analysis.clear_width_weights(obj, group_name=VG_SELECTION_LINE_WIDTH)
         return
 
     width_m = _target_width_setting(settings, target)
@@ -690,7 +755,7 @@ def _apply_targeted_line_widths(scene, camera, obj, settings, targets: tuple[str
 
 def _update_camera_compensation(scene, camera, objects=None, width_targets=None):
     """線幅 (mm) をカメラビュー基準の太さとして各オブジェクトへ反映."""
-    from . import inner_lines, intersection_lines, vertex_analysis
+    from . import inner_lines, intersection_lines, selection_lines, vertex_analysis
 
     normalized_targets = _normalize_width_targets(width_targets)
     outline_targets: list[bpy.types.Object] = []
@@ -713,7 +778,7 @@ def _update_camera_compensation(scene, camera, objects=None, width_targets=None)
                 camera,
                 obj,
                 settings,
-                ("outline", "inner", "intersection"),
+                ("outline", "inner", "intersection", "selection"),
             )
             outline_targets.append(obj)
             continue
@@ -733,6 +798,7 @@ def _update_camera_compensation(scene, camera, objects=None, width_targets=None)
             mod.vertex_group = ""
         has_inner = _has_inner_modifier(obj)
         has_intersection = _has_intersection_modifier(obj)
+        has_selection = _has_selection_modifier(obj)
         if has_inner:
             _prepare_style_weights(obj, settings, "inner")
         else:
@@ -741,6 +807,10 @@ def _update_camera_compensation(scene, camera, objects=None, width_targets=None)
             _prepare_style_weights(obj, settings, "intersection")
         else:
             vertex_analysis.clear_width_weights(obj, group_name=VG_INTERSECTION_LINE_WIDTH)
+        if has_selection:
+            _prepare_style_weights(obj, settings, "selection")
+        else:
+            vertex_analysis.clear_width_weights(obj, group_name=VG_SELECTION_LINE_WIDTH)
 
         ref_d = _line_width_reference_distance(settings)
         base_t = max(
@@ -770,9 +840,11 @@ def _update_camera_compensation(scene, camera, objects=None, width_targets=None)
         outline_base = max(abs(float(settings.outline_thickness)), 1.0e-9)
         inner_scale = abs(float(settings.inner_line_thickness)) / outline_base
         intersection_scale = abs(float(settings.intersection_thickness)) / outline_base
+        selection_scale = abs(float(settings.selection_line_thickness)) / outline_base
         scale = adjusted / base_t
         inner_adjusted = base_t * inner_scale * scale
         intersection_adjusted = base_t * intersection_scale * scale
+        selection_adjusted = base_t * selection_scale * scale
         if has_inner:
             inner_lines.update_parameters(
                 obj,
@@ -784,6 +856,14 @@ def _update_camera_compensation(scene, camera, objects=None, width_targets=None)
                 thickness=modifier_thickness_for_world_width(
                     obj,
                     intersection_adjusted,
+                ),
+            )
+        if has_selection:
+            selection_lines.update_parameters(
+                obj,
+                thickness=modifier_thickness_for_world_width(
+                    obj,
+                    selection_adjusted,
                 ),
             )
     if outline_targets:
@@ -803,11 +883,13 @@ def _update_visibility(scene, camera, cam_loc, cam_fwd, objects=None):
         do_outline_distance = settings.use_outline_distance_limit
         do_inner_distance = settings.use_inner_line_distance_limit
         do_intersection_distance = settings.use_intersection_distance_limit
+        do_selection_distance = settings.use_selection_line_distance_limit
         if not (
             do_culling
             or do_outline_distance
             or do_inner_distance
             or do_intersection_distance
+            or do_selection_distance
         ):
             continue
 
@@ -815,12 +897,13 @@ def _update_visibility(scene, camera, cam_loc, cam_fwd, objects=None):
         if outline_mod is None:
             outline_mod = obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME)
         inner_mod = obj.modifiers.get(GN_MODIFIER_NAME)
+        selection_mod = obj.modifiers.get(SELECTION_LINE_MODIFIER_NAME)
         intersection_mods = list(iter_intersection_modifiers(obj))
-        if outline_mod is None and inner_mod is None and not intersection_mods:
+        if outline_mod is None and inner_mod is None and selection_mod is None and not intersection_mods:
             continue
 
         if bool(obj.get(PROP_LINES_HIDDEN, False)):
-            for mod in (outline_mod, inner_mod, *intersection_mods):
+            for mod in (outline_mod, inner_mod, selection_mod, *intersection_mods):
                 if mod is not None:
                     _set_modifier_visibility(mod, False)
             continue
@@ -854,6 +937,13 @@ def _update_visibility(scene, camera, cam_loc, cam_fwd, objects=None):
                 or dist < settings.intersection_max_distance
             )
         )
+        selection_in_range = (
+            settings.selection_line_enabled
+            and (
+                not do_selection_distance
+                or dist < settings.selection_line_max_distance
+            )
+        )
 
         if outline_mod is not None:
             visible = in_view and outline_in_range and outline_enabled
@@ -866,6 +956,10 @@ def _update_visibility(scene, camera, cam_loc, cam_fwd, objects=None):
         if inner_mod is not None:
             visible = in_view and inner_in_range
             _set_modifier_visibility(inner_mod, visible)
+
+        if selection_mod is not None:
+            visible = in_view and selection_in_range
+            _set_modifier_visibility(selection_mod, visible)
 
 
 # ------------------------------------------------------------------

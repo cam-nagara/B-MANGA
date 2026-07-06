@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import bpy
 
-from . import edge_width_curve, registration
+from . import registration
 from .core import PROP_LINE_ONLY, has_line, has_outline, sync_line_display_settings
 
 
@@ -102,48 +102,16 @@ def _draw_render_range_selection(layout, _context) -> None:
 
 def _draw_outline(layout, context, settings) -> None:
     dpi = _get_paper_dpi(context.scene)
-    has_any = any(has_outline(o) for o in context.selected_objects)
-    col = layout.column(align=True)
-    col.prop(settings, "outline_enabled")
-    sub = col.column(align=True)
-    sub.enabled = settings.outline_enabled
-    row = sub.row(align=True)
-    row.prop(settings, "outline_thickness_mm")
-    sub_label = row.row(align=True)
-    sub_label.alignment = "RIGHT"
-    sub_label.label(text=_mm_to_px_label(settings.outline_thickness_mm, dpi))
-    sub.prop(settings, "outline_offset")
-    sub.prop(settings, "outline_color")
-    sub.prop(settings, "even_thickness")
-    sub.prop(settings, "use_rim")
-    sub.prop(settings, "hide_through_transparent")
-    sub.prop(settings, "use_vertex_color")
-    sub.separator()
-    sub.prop(settings, "use_ao_influence")
-    ao_sub = sub.column(align=True)
-    ao_sub.enabled = settings.outline_enabled and settings.use_ao_influence
-    ao_sub.prop(settings, "ao_influence_strength")
-    row = ao_sub.row(align=True)
-    row.operator("bmanga_line.bake_ao", icon="SHADING_RENDERED")
-    sub.separator()
-    _draw_midpoint_width_controls(
-        sub,
+    _draw_basic_line_settings(
+        layout,
         settings,
-        "outline",
-        "線幅の詳細",
-        "edge_smooth_factor",
-        "edge_midpoint_jitter_percent",
-        "edge_midpoint_angle",
+        "outline_enabled",
+        "outline_thickness_mm",
+        "outline_color",
+        "use_outline_distance_limit",
+        "outline_max_distance",
+        dpi,
     )
-    sub.separator()
-    sub.prop(settings, "use_outline_distance_limit")
-    dist_sub = sub.column(align=True)
-    dist_sub.enabled = settings.outline_enabled and settings.use_outline_distance_limit
-    dist_sub.prop(settings, "outline_max_distance")
-    sub.separator()
-    row = sub.row(align=True)
-    row.enabled = has_any and settings.outline_enabled
-    row.operator("bmanga_line.sync_weights", icon="VPAINT_HLT")
 
 
 def _draw_camera(layout, context, settings) -> None:
@@ -183,110 +151,134 @@ def _draw_camera(layout, context, settings) -> None:
     sub.prop(settings, "culling_margin")
 
 
-def _draw_midpoint_width_controls(
+def _draw_basic_line_settings(
     layout,
     settings,
-    target: str,
-    label: str,
-    factor_prop: str,
-    jitter_prop: str,
-    angle_prop: str | None,
+    enabled_prop: str,
+    thickness_prop: str,
+    color_prop: str,
+    range_enabled_prop: str,
+    range_distance_prop: str,
+    dpi: int,
 ) -> None:
-    box = layout.box()
-    col = box.column(align=True)
-    col.label(text=label)
-    col.prop(settings, factor_prop)
-    col.prop(settings, jitter_prop)
-    if angle_prop is not None:
-        col.prop(settings, angle_prop)
-    curve = col.column(align=True)
-    curve.label(text="中間頂点への変化グラフ")
-    edge_width_curve.schedule_node_sync(settings, target)
-    curve_node = edge_width_curve.get_node(target)
-    if curve_node is not None:
-        curve.template_curve_mapping(curve_node, "mapping", type="NONE")
-    else:
-        curve.label(text="グラフを準備中です", icon="TIME")
+    col = layout.column(align=True)
+    col.prop(settings, enabled_prop)
+    sub = col.column(align=True)
+    sub.enabled = bool(getattr(settings, enabled_prop))
+    row = sub.row(align=True)
+    row.prop(settings, thickness_prop)
+    sub_label = row.row(align=True)
+    sub_label.alignment = "RIGHT"
+    sub_label.label(text=_mm_to_px_label(getattr(settings, thickness_prop), dpi))
+    sub.prop(settings, color_prop)
+    sub.separator()
+    sub.prop(settings, range_enabled_prop)
+    range_col = sub.column(align=True)
+    range_col.enabled = bool(getattr(settings, range_enabled_prop))
+    range_col.prop(settings, range_distance_prop)
 
 
 def _draw_inner_line(layout, context, settings) -> None:
     dpi = _get_paper_dpi(context.scene)
-    col = layout.column(align=True)
-    col.prop(settings, "inner_line_enabled")
-    sub = col.column(align=True)
-    sub.enabled = settings.inner_line_enabled
-    sub.prop(settings, "use_marked_inner_edges")
-    angle_row = sub.row(align=True)
-    angle_row.enabled = not settings.use_marked_inner_edges
-    angle_row.prop(settings, "inner_line_angle")
-    row = sub.row(align=True)
-    row.prop(settings, "inner_line_thickness_mm")
-    sub_label = row.row(align=True)
-    sub_label.alignment = "RIGHT"
-    sub_label.label(text=_mm_to_px_label(settings.inner_line_thickness_mm, dpi))
-    sub.prop(settings, "inner_line_offset")
-    sub.prop(settings, "inner_line_color")
-    col.separator()
-    sub_create = col.column(align=True)
-    sub_create.enabled = settings.inner_line_enabled
-    sub_create.prop(settings, "use_inner_line_creation_limit")
-    sub_create2 = sub_create.column(align=True)
-    sub_create2.enabled = settings.use_inner_line_creation_limit
-    sub_create2.prop(settings, "inner_line_creation_max_distance")
-    col.separator()
-    sub_dist = col.column(align=True)
-    sub_dist.enabled = settings.inner_line_enabled
-    sub_dist.prop(settings, "use_inner_line_distance_limit")
-    sub_dist2 = sub_dist.column(align=True)
-    sub_dist2.enabled = settings.use_inner_line_distance_limit
-    sub_dist2.prop(settings, "inner_line_max_distance")
-    col.separator()
-    sub_width = col.column(align=True)
-    sub_width.enabled = settings.inner_line_enabled
-    _draw_midpoint_width_controls(
-        sub_width,
+    _draw_basic_line_settings(
+        layout,
         settings,
-        "inner",
-        "線幅の詳細",
-        "inner_edge_smooth_factor",
-        "inner_edge_midpoint_jitter_percent",
-        None,
+        "inner_line_enabled",
+        "inner_line_thickness_mm",
+        "inner_line_color",
+        "use_inner_line_creation_limit",
+        "inner_line_creation_max_distance",
+        dpi,
     )
 
 
 def _draw_intersection(layout, context, settings) -> None:
     dpi = _get_paper_dpi(context.scene)
-    col = layout.column(align=True)
-    col.prop(settings, "intersection_enabled")
-    sub = col.column(align=True)
-    sub.enabled = settings.intersection_enabled
-    row = sub.row(align=True)
-    row.prop(settings, "intersection_thickness_mm")
-    sub_label = row.row(align=True)
-    sub_label.alignment = "RIGHT"
-    sub_label.label(text=_mm_to_px_label(settings.intersection_thickness_mm, dpi))
-    sub.prop(settings, "intersection_line_offset")
-    sub.prop(settings, "intersection_color")
-    sub.separator()
-    sub.prop(settings, "use_intersection_creation_limit")
-    sub_create = sub.column(align=True)
-    sub_create.enabled = settings.use_intersection_creation_limit
-    sub_create.prop(settings, "intersection_creation_max_distance")
-    sub.separator()
-    sub.prop(settings, "use_intersection_distance_limit")
-    sub_dist = sub.column(align=True)
-    sub_dist.enabled = settings.use_intersection_distance_limit
-    sub_dist.prop(settings, "intersection_max_distance")
-    sub.separator()
-    _draw_midpoint_width_controls(
-        sub,
+    _draw_basic_line_settings(
+        layout,
         settings,
-        "intersection",
-        "線幅の詳細",
-        "intersection_edge_smooth_factor",
-        "intersection_edge_midpoint_jitter_percent",
-        "intersection_edge_midpoint_angle",
+        "intersection_enabled",
+        "intersection_thickness_mm",
+        "intersection_color",
+        "use_intersection_creation_limit",
+        "intersection_creation_max_distance",
+        dpi,
     )
+
+
+def _draw_selection_line(layout, context, settings) -> None:
+    dpi = _get_paper_dpi(context.scene)
+    _draw_basic_line_settings(
+        layout,
+        settings,
+        "selection_line_enabled",
+        "selection_line_thickness_mm",
+        "selection_line_color",
+        "use_selection_line_creation_limit",
+        "selection_line_creation_max_distance",
+        dpi,
+    )
+
+
+def _draw_detail_cell(row, settings, prop_name: str | None) -> None:
+    col = row.column(align=True)
+    if prop_name:
+        col.prop(settings, prop_name)
+    else:
+        col.label(text="")
+
+
+def _draw_line_detail_grid(layout, settings) -> None:
+    box = layout.box()
+    header = box.row(align=True)
+    for label in ("アウトライン", "稜谷線", "交差線", "選択線"):
+        col = header.column(align=True)
+        col.label(text=label)
+
+    rows = (
+        ("edge_midpoint_angle", "inner_line_angle", "intersection_edge_midpoint_angle", "selection_edge_midpoint_angle"),
+        ("outline_offset", "inner_line_offset", "intersection_line_offset", "selection_line_offset"),
+        ("edge_smooth_factor", "inner_edge_smooth_factor", "intersection_edge_smooth_factor", "selection_edge_smooth_factor"),
+        ("edge_midpoint_jitter_percent", "inner_edge_midpoint_jitter_percent", "intersection_edge_midpoint_jitter_percent", "selection_edge_midpoint_jitter_percent"),
+        ("edge_width_curve_25", "inner_edge_width_curve_25", "intersection_edge_width_curve_25", "selection_edge_width_curve_25"),
+        ("edge_width_curve_50", "inner_edge_width_curve_50", "intersection_edge_width_curve_50", "selection_edge_width_curve_50"),
+        ("edge_width_curve_75", "inner_edge_width_curve_75", "intersection_edge_width_curve_75", "selection_edge_width_curve_75"),
+        ("use_outline_distance_limit", "use_inner_line_distance_limit", "use_intersection_distance_limit", "use_selection_line_distance_limit"),
+        ("outline_max_distance", "inner_line_max_distance", "intersection_max_distance", "selection_line_max_distance"),
+        ("even_thickness", None, None, None),
+        ("use_rim", None, None, None),
+        ("hide_through_transparent", None, None, None),
+        ("use_vertex_color", None, None, None),
+        (None, None, "intersection_method", None),
+    )
+    for props in rows:
+        row = box.row(align=True)
+        for prop_name in props:
+            _draw_detail_cell(row, settings, prop_name)
+
+
+class BMANGA_LINE_OT_detail_settings(bpy.types.Operator):
+    """ライン詳細設定を表示"""
+
+    bl_idname = "bmanga_line.detail_settings"
+    bl_label = "詳細設定"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.type == "MESH"
+
+    def invoke(self, context, _event):
+        return context.window_manager.invoke_props_dialog(self, width=980)
+
+    def execute(self, _context):
+        return {"FINISHED"}
+
+    def draw(self, context):
+        settings = _active_settings(context)
+        if settings is not None:
+            _draw_line_detail_grid(self.layout, settings)
 
 
 def _draw_actions(layout, context, obj) -> None:
@@ -302,6 +294,7 @@ def _draw_actions(layout, context, obj) -> None:
     settings = getattr(obj, "bmanga_line_settings", None)
     if settings is not None:
         layout.prop(settings, "auto_subdivision_for_midpoint")
+        layout.operator("bmanga_line.detail_settings", icon="PREFERENCES")
 
     linked_line_count = sum(
         1 for linked_obj in context.scene.objects
@@ -372,14 +365,13 @@ class BMANGA_LINE_PT_outline(_BMangaLineMeshPanel, bpy.types.Panel):
 class BMANGA_LINE_PT_camera(_BMangaLineMeshPanel, bpy.types.Panel):
     bl_label = "カメラ設定"
     bl_idname = "BMANGA_LINE_PT_camera"
-    bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
         _draw_camera(self.layout, context, _active_settings(context))
 
 
 class BMANGA_LINE_PT_inner_line(_BMangaLineMeshPanel, bpy.types.Panel):
-    bl_label = "内部線（稜線・谷線）"
+    bl_label = "稜谷線"
     bl_idname = "BMANGA_LINE_PT_inner_line"
     bl_options = {"DEFAULT_CLOSED"}
 
@@ -396,13 +388,24 @@ class BMANGA_LINE_PT_intersection(_BMangaLineMeshPanel, bpy.types.Panel):
         _draw_intersection(self.layout, context, _active_settings(context))
 
 
+class BMANGA_LINE_PT_selection_line(_BMangaLineMeshPanel, bpy.types.Panel):
+    bl_label = "選択線"
+    bl_idname = "BMANGA_LINE_PT_selection_line"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        _draw_selection_line(self.layout, context, _active_settings(context))
+
+
 _CLASSES = (
+    BMANGA_LINE_OT_detail_settings,
     BMANGA_LINE_PT_main,
     BMANGA_LINE_PT_presets,
     BMANGA_LINE_PT_outline,
     BMANGA_LINE_PT_camera,
     BMANGA_LINE_PT_inner_line,
     BMANGA_LINE_PT_intersection,
+    BMANGA_LINE_PT_selection_line,
 )
 
 

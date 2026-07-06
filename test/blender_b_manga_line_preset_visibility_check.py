@@ -214,10 +214,6 @@ def _assert_multi_select_manual_setting_propagation(
     source.use_vertex_color = True
     assert target.use_vertex_color is True
     assert second.modifiers[core.MODIFIER_NAME].vertex_group == core.VG_LINE_WIDTH
-    source.use_ao_influence = True
-    source.ao_influence_strength = 0.8
-    assert target.use_ao_influence is True
-    assert math.isclose(target.ao_influence_strength, 0.8, rel_tol=0.001)
 
     source.use_uniform_line_width = True
     assert target.use_uniform_line_width is True
@@ -273,10 +269,8 @@ def _assert_multi_select_manual_setting_propagation(
     source.use_inner_line_creation_limit = False
     source.inner_line_enabled = True
     source.inner_line_angle = math.radians(45.0)
-    source.use_marked_inner_edges = True
     source.inner_line_thickness_mm = 1.2
     assert target.inner_line_enabled is True
-    assert target.use_marked_inner_edges is True
     inner_mod = second.modifiers.get(core.GN_MODIFIER_NAME)
     assert inner_mod is not None
     assert math.isclose(
@@ -284,8 +278,20 @@ def _assert_multi_select_manual_setting_propagation(
         math.radians(45.0),
         rel_tol=0.001,
     )
-    assert _modifier_input(inner_mod, "指定済みの辺だけ線にする") is True
     assert math.isclose(target.inner_line_thickness_mm, 1.2, rel_tol=0.001)
+
+    source.use_selection_line_creation_limit = False
+    source.selection_line_enabled = True
+    source.selection_line_angle = math.radians(50.0)
+    source.selection_line_thickness_mm = 1.3
+    source.selection_line_color = (1.0, 0.0, 1.0, 1.0)
+    assert target.selection_line_enabled is True
+    assert math.isclose(target.selection_line_angle, math.radians(50.0), rel_tol=0.001)
+    assert math.isclose(target.selection_line_thickness_mm, 1.3, rel_tol=0.001)
+    assert tuple(round(v, 3) for v in target.selection_line_color) == (1.0, 0.0, 1.0, 1.0)
+    selection_mod = second.modifiers.get(core.SELECTION_LINE_MODIFIER_NAME)
+    assert selection_mod is not None
+    assert _modifier_input(selection_mod, "Freestyleマーク辺だけ線にする") is True
 
     source.inner_line_thickness_mm = 70.0
     assert math.isclose(target.inner_line_thickness_mm, 70.0, rel_tol=0.001)
@@ -351,6 +357,10 @@ def _assert_multi_select_manual_setting_propagation(
     source.intersection_max_distance = 0.45
     assert target.use_intersection_distance_limit is True
     assert math.isclose(target.intersection_max_distance, 0.45, rel_tol=0.001)
+    source.use_selection_line_distance_limit = True
+    source.selection_line_max_distance = 0.55
+    assert target.use_selection_line_distance_limit is True
+    assert math.isclose(target.selection_line_max_distance, 0.55, rel_tol=0.001)
 
     old = core._propagating
     core._propagating = True
@@ -367,21 +377,24 @@ def _assert_multi_select_manual_setting_propagation(
     source.use_outline_distance_limit = False
     source.use_inner_line_distance_limit = False
     source.use_intersection_distance_limit = False
+    source.use_selection_line_distance_limit = False
     source.use_inner_line_creation_limit = True
     source.inner_line_creation_max_distance = 10.0
     source.use_intersection_creation_limit = True
     source.intersection_creation_max_distance = 10.0
+    source.use_selection_line_creation_limit = True
+    source.selection_line_creation_max_distance = 10.0
     source.use_camera_compensation = False
     source.use_uniform_line_width = False
     source.use_vertex_color = False
-    source.use_ao_influence = False
     source.edge_smooth_factor = 0.0
     source.inner_line_enabled = True
-    source.use_marked_inner_edges = False
     source.inner_line_thickness_mm = 1.2
     source.intersection_enabled = True
     source.intersection_thickness_mm = 1.4
     source.intersection_method = "SDF"
+    source.selection_line_enabled = True
+    source.selection_line_thickness_mm = 1.3
     for obj in (first, second):
         core.set_line_visibility(obj, True)
         _assert_line_state(obj, visible=True)

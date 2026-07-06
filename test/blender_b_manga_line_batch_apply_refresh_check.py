@@ -154,16 +154,7 @@ def main() -> None:
             assert refresh_counts["camera"] == 0, refresh_counts
             assert refresh_counts["camera_objects"] == 2, refresh_counts
 
-            reset_refresh_counts()
-            objects[0].bmanga_line_settings.use_marked_inner_edges = True
-            assert all(obj.bmanga_line_settings.use_marked_inner_edges for obj in objects)
-            assert refresh_counts["apply"] == 0, refresh_counts
-            assert refresh_counts["inner_apply"] == 0, refresh_counts
-            assert refresh_counts["intersection"] == 0, refresh_counts
-            assert refresh_counts["camera"] == 0, refresh_counts
-
             settings = objects[0].bmanga_line_settings
-            settings.use_marked_inner_edges = False
             setting_changes = [
                 ("outline_enabled", False),
                 ("outline_enabled", True),
@@ -177,9 +168,6 @@ def main() -> None:
                 ("exclude_sheet_meshes", True),
                 ("use_vertex_color", True),
                 ("use_vertex_color", False),
-                ("use_ao_influence", True),
-                ("ao_influence_strength", 0.25),
-                ("use_ao_influence", False),
                 ("edge_smooth_factor", 0.15),
                 ("edge_midpoint_jitter_percent", 3.0),
                 ("edge_midpoint_angle", 0.9),
@@ -234,6 +222,23 @@ def main() -> None:
                 ("use_intersection_distance_limit", True),
                 ("intersection_max_distance", 18.0),
                 ("use_intersection_distance_limit", False),
+                ("selection_line_angle", 0.7),
+                ("selection_line_thickness", 0.0014),
+                ("selection_line_offset", 0.25),
+                ("selection_line_color", (1.0, 0.0, 1.0, 1.0)),
+                ("use_selection_line_creation_limit", False),
+                ("use_selection_line_creation_limit", True),
+                ("selection_line_creation_max_distance", 12.0),
+                ("selection_edge_smooth_factor", 0.12),
+                ("selection_edge_midpoint_jitter_percent", 2.0),
+                ("selection_edge_midpoint_angle", 0.9),
+                ("selection_edge_width_curve_25", 0.22),
+                ("selection_edge_width_curve_50", 0.52),
+                ("selection_edge_width_curve_75", 0.82),
+                ("selection_edge_smooth_factor", 0.0),
+                ("use_selection_line_distance_limit", True),
+                ("selection_line_max_distance", 18.0),
+                ("use_selection_line_distance_limit", False),
             ]
             for prop_name, value in setting_changes:
                 reset_refresh_counts()
@@ -267,6 +272,7 @@ def main() -> None:
                     "outline_offset",
                     "inner_line_offset",
                     "intersection_line_offset",
+                    "selection_line_offset",
                 }:
                     assert refresh_counts["inner_apply"] == 0, (prop_name, refresh_counts)
                     assert refresh_counts["intersection"] == 0, (prop_name, refresh_counts)

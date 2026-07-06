@@ -19,6 +19,8 @@ ANGLE_PROPS = (
     "inner_line_angle",
     "edge_midpoint_angle",
     "intersection_edge_midpoint_angle",
+    "selection_line_angle",
+    "selection_edge_midpoint_angle",
     "culling_margin",
 )
 
@@ -32,9 +34,12 @@ NUDGE_PROPS = (
     ("intersection_thickness_mm", 0.1),
     ("intersection_line_offset", -0.1),
     ("intersection_creation_max_distance", 1.0),
+    ("selection_line_angle", math.radians(1.0)),
+    ("selection_line_thickness_mm", 0.1),
+    ("selection_line_offset", -0.1),
+    ("selection_line_creation_max_distance", 1.0),
     ("camera_compensation_influence", -0.1),
     ("line_width_reference_distance", 0.5),
-    ("ao_influence_strength", -0.1),
     ("edge_smooth_factor", 0.1),
     ("edge_midpoint_jitter_percent", 1.0),
     ("edge_midpoint_angle", math.radians(1.0)),
@@ -52,10 +57,17 @@ NUDGE_PROPS = (
     ("intersection_edge_width_curve_25", 0.1),
     ("intersection_edge_width_curve_50", 0.1),
     ("intersection_edge_width_curve_75", -0.1),
+    ("selection_edge_smooth_factor", 0.1),
+    ("selection_edge_midpoint_jitter_percent", 1.0),
+    ("selection_edge_midpoint_angle", math.radians(1.0)),
+    ("selection_edge_width_curve_25", 0.1),
+    ("selection_edge_width_curve_50", 0.1),
+    ("selection_edge_width_curve_75", -0.1),
     ("culling_margin", math.radians(1.0)),
     ("outline_max_distance", 1.0),
     ("inner_line_max_distance", 1.0),
     ("intersection_max_distance", 1.0),
+    ("selection_line_max_distance", 1.0),
 )
 
 

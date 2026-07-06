@@ -14,6 +14,7 @@ from . import (
     outline_width_attribute,
     plane_filter,
     presets,
+    selection_lines,
 )
 from .scale_utils import modifier_thickness_for_world_width
 
@@ -31,6 +32,11 @@ _GENERATED_WIDTH_DETAIL_PROPS = {
     "intersection_edge_width_curve_25",
     "intersection_edge_width_curve_50",
     "intersection_edge_width_curve_75",
+    "selection_edge_midpoint_jitter_percent",
+    "selection_edge_midpoint_angle",
+    "selection_edge_width_curve_25",
+    "selection_edge_width_curve_50",
+    "selection_edge_width_curve_75",
 }
 
 
@@ -60,6 +66,8 @@ def _target_modifier_exists(obj: bpy.types.Object, target: str) -> bool:
         return obj.modifiers.get(core.GN_MODIFIER_NAME) is not None
     if target == "intersection":
         return any(core.iter_intersection_modifiers(obj))
+    if target == "selection":
+        return obj.modifiers.get(core.SELECTION_LINE_MODIFIER_NAME) is not None
     return _has_outline_target(obj)
 
 
@@ -213,6 +221,8 @@ def _update_generated_color(objects: list[bpy.types.Object], target: str) -> Non
             inner_lines.update_parameters(obj, material=material)
         elif target == "intersection":
             intersection_lines.update_parameters(obj, material=material)
+        elif target == "selection":
+            selection_lines.update_parameters(obj, material=material)
 
 
 def _inner_midpoint_kwargs(settings) -> dict[str, float]:
@@ -228,6 +238,22 @@ def _inner_midpoint_kwargs(settings) -> dict[str, float]:
         "width_curve_25": float(settings.inner_edge_width_curve_25),
         "width_curve_50": float(settings.inner_edge_width_curve_50),
         "width_curve_75": float(settings.inner_edge_width_curve_75),
+    }
+
+
+def _selection_midpoint_kwargs(settings) -> dict[str, float]:
+    factor = (
+        float(settings.selection_edge_smooth_factor)
+        if bool(getattr(settings, "auto_subdivision_for_midpoint", False))
+        else 0.0
+    )
+    return {
+        "midpoint_factor": factor,
+        "midpoint_angle": float(settings.selection_edge_midpoint_angle),
+        "midpoint_jitter_percent": float(settings.selection_edge_midpoint_jitter_percent),
+        "width_curve_25": float(settings.selection_edge_width_curve_25),
+        "width_curve_50": float(settings.selection_edge_width_curve_50),
+        "width_curve_75": float(settings.selection_edge_width_curve_75),
     }
 
 
@@ -282,6 +308,15 @@ def _update_generated_thickness(
                     settings.intersection_thickness,
                 ),
             )
+        elif target == "selection":
+            selection_lines.update_parameters(
+                obj,
+                thickness=modifier_thickness_for_world_width(
+                    obj,
+                    settings.selection_line_thickness,
+                ),
+                **_selection_midpoint_kwargs(settings),
+            )
 
 
 def _update_generated_offset(objects: list[bpy.types.Object], target: str) -> None:
@@ -298,6 +333,12 @@ def _update_generated_offset(objects: list[bpy.types.Object], target: str) -> No
             intersection_lines.update_parameters(
                 obj,
                 offset=settings.intersection_line_offset,
+            )
+        elif target == "selection":
+            selection_lines.update_parameters(
+                obj,
+                offset=settings.selection_line_offset,
+                **_selection_midpoint_kwargs(settings),
             )
 
 
@@ -341,6 +382,14 @@ def _update_camera_compensation(objects: list[bpy.types.Object], context) -> Non
                 obj,
                 settings.intersection_thickness,
             ),
+        )
+        selection_lines.update_parameters(
+            obj,
+            thickness=modifier_thickness_for_world_width(
+                obj,
+                settings.selection_line_thickness,
+            ),
+            **_selection_midpoint_kwargs(settings),
         )
 
 
@@ -400,7 +449,7 @@ def _update_uniform_line_width(objects: list[bpy.types.Object], context) -> None
             mod.vertex_group = ""
             vertex_analysis.clear_width_weights(obj, group_name=core.VG_LINE_WIDTH)
         outline_width_attribute.ensure_outline_width_attribute(obj, settings)
-        for target in ("inner", "intersection"):
+        for target in ("inner", "intersection", "selection"):
             group_name = vertex_analysis.width_group_name(target)
             if not _target_modifier_exists(obj, target):
                 vertex_analysis.clear_width_weights(obj, group_name=group_name)
@@ -423,6 +472,14 @@ def _update_uniform_line_width(objects: list[bpy.types.Object], context) -> None
                 obj,
                 settings.intersection_thickness,
             ),
+        )
+        selection_lines.update_parameters(
+            obj,
+            thickness=modifier_thickness_for_world_width(
+                obj,
+                settings.selection_line_thickness,
+            ),
+            **_selection_midpoint_kwargs(settings),
         )
 
 
@@ -453,7 +510,6 @@ def _update_width_controls(objects: list[bpy.types.Object], context) -> None:
             continue
         use_vg = (
             settings.use_vertex_color
-            or settings.use_ao_influence
             or vertex_analysis.has_width_controls(settings, "outline")
         )
         if use_vg:
@@ -516,6 +572,8 @@ def _update_width_target(
             intersection_lines.update_parameters(obj)
         elif target == "inner":
             inner_lines.update_parameters(obj, **_inner_midpoint_kwargs(settings))
+        elif target == "selection":
+            selection_lines.update_parameters(obj, **_selection_midpoint_kwargs(settings))
 
 
 def _update_inner_angle(objects: list[bpy.types.Object], context) -> None:
@@ -540,58 +598,30 @@ def _update_inner_angle(objects: list[bpy.types.Object], context) -> None:
     _update_width_target(pending_targets, context, "inner")
 
 
-def _update_marked_inner_edges(objects: list[bpy.types.Object], context) -> None:
-    from . import plane_filter
-
-    create_targets = []
-    refresh_targets = []
-    for obj in objects:
-        settings = obj.bmanga_line_settings
-        if plane_filter.should_skip_inner_lines(obj, settings):
-            inner_lines.remove_inner_lines(obj)
-            continue
-        if not camera_comp.inner_line_creation_in_range(obj, context.scene, settings):
-            inner_lines.disable_inner_lines(obj)
-            continue
-        if obj.modifiers.get(core.GN_MODIFIER_NAME) is not None:
-            inner_lines.update_parameters(
-                obj,
-                use_marked_edges=settings.use_marked_inner_edges,
-                **_inner_midpoint_kwargs(settings),
-            )
-        elif not settings.inner_line_enabled:
-            continue
-        else:
-            create_targets.append(obj)
-    if not create_targets:
-        return
-    defer_intersection_viewport(objects)
-    presets._update_view_layer(context)
-    for obj in create_targets:
-        settings = obj.bmanga_line_settings
-        if inner_lines.apply_inner_lines(
+def _update_selection_angle(objects: list[bpy.types.Object], context) -> None:
+    targets = _generated_line_objects(objects, "selection")
+    for obj in targets:
+        selection_lines.update_parameters(
             obj,
-            angle=settings.inner_line_angle,
-            thickness=modifier_thickness_for_world_width(
-                obj,
-                settings.inner_line_thickness,
-            ),
-            material=outline_setup.get_line_material(obj, "inner"),
-            offset=settings.inner_line_offset,
-            use_marked_edges=settings.use_marked_inner_edges,
-            **_inner_midpoint_kwargs(settings),
-            enable=False,
-        ):
-            refresh_targets.append(obj)
-    for obj in refresh_targets:
-        inner_lines.enable_inner_lines(obj)
-    if refresh_targets:
-        _refresh_camera_objects(
-            refresh_targets,
-            context,
-            update_visibility=True,
-            width_targets=("inner",),
+            angle=obj.bmanga_line_settings.selection_line_angle,
+            **_selection_midpoint_kwargs(obj.bmanga_line_settings),
         )
+    pending_targets = targets
+    uniform_targets = [
+        obj for obj in targets
+        if obj.bmanga_line_settings.use_uniform_line_width
+    ]
+    if uniform_targets and _refresh_camera_objects(
+        uniform_targets,
+        context,
+        width_targets=("selection",),
+    ):
+        pending_targets = [obj for obj in targets if obj not in uniform_targets]
+    _update_width_target(pending_targets, context, "selection")
+
+
+def _update_marked_inner_edges(objects: list[bpy.types.Object], context) -> None:
+    return
 
 
 def _update_inner_lines(
@@ -631,7 +661,7 @@ def _update_inner_lines(
                 ),
                 material=outline_setup.get_line_material(obj, "inner"),
                 offset=settings.inner_line_offset,
-                use_marked_edges=settings.use_marked_inner_edges,
+                use_marked_edges=False,
                 **_inner_midpoint_kwargs(settings),
                 enable=False,
             ):
@@ -650,7 +680,7 @@ def _update_inner_lines(
 
 
 def _update_inner_creation_range(objects: list[bpy.types.Object], context) -> None:
-    """作成範囲の設定変更を内部線へ反映（状態が変わるオブジェクトだけ再構築）."""
+    """作成範囲の設定変更を稜谷線へ反映（状態が変わるオブジェクトだけ再構築）."""
     from . import plane_filter
 
     create_targets = []
@@ -687,7 +717,7 @@ def _update_inner_creation_range(objects: list[bpy.types.Object], context) -> No
                 ),
                 material=outline_setup.get_line_material(obj, "inner"),
                 offset=settings.inner_line_offset,
-                use_marked_edges=settings.use_marked_inner_edges,
+                use_marked_edges=False,
                 **_inner_midpoint_kwargs(settings),
             ):
                 refresh_targets.append(obj)
@@ -697,6 +727,101 @@ def _update_inner_creation_range(objects: list[bpy.types.Object], context) -> No
             context,
             update_visibility=True,
             width_targets=("inner",),
+        )
+
+
+def _update_selection_lines(
+    objects: list[bpy.types.Object],
+    context,
+    *,
+    create_missing: bool = True,
+) -> None:
+    if not any(obj.bmanga_line_settings.selection_line_enabled for obj in objects):
+        for obj in _generated_line_objects(objects, "selection"):
+            selection_lines.disable_selection_lines(obj)
+        return
+
+    presets._update_view_layer(context)
+    refresh_targets = []
+    for obj in objects:
+        settings = obj.bmanga_line_settings
+        if settings.selection_line_enabled and camera_comp.selection_line_creation_in_range(
+            obj,
+            context.scene,
+            settings,
+        ):
+            if not create_missing:
+                if obj.modifiers.get(core.SELECTION_LINE_MODIFIER_NAME) is not None:
+                    selection_lines.enable_selection_lines(obj)
+                continue
+            if selection_lines.apply_selection_lines(
+                obj,
+                angle=settings.selection_line_angle,
+                thickness=modifier_thickness_for_world_width(
+                    obj,
+                    settings.selection_line_thickness,
+                ),
+                material=outline_setup.get_line_material(obj, "selection"),
+                offset=settings.selection_line_offset,
+                **_selection_midpoint_kwargs(settings),
+                enable=False,
+            ):
+                refresh_targets.append(obj)
+        else:
+            selection_lines.disable_selection_lines(obj)
+    for obj in refresh_targets:
+        selection_lines.enable_selection_lines(obj)
+    if refresh_targets:
+        _refresh_camera_objects(
+            refresh_targets,
+            context,
+            update_visibility=True,
+            width_targets=("selection",),
+        )
+
+
+def _update_selection_creation_range(objects: list[bpy.types.Object], context) -> None:
+    create_targets = []
+    refresh_targets = []
+    for obj in objects:
+        settings = obj.bmanga_line_settings
+        if not settings.selection_line_enabled:
+            continue
+        in_range = camera_comp.selection_line_creation_in_range(
+            obj,
+            context.scene,
+            settings,
+        )
+        mod = obj.modifiers.get(core.SELECTION_LINE_MODIFIER_NAME)
+        if not in_range:
+            selection_lines.disable_selection_lines(obj)
+            continue
+        if mod is None:
+            create_targets.append(obj)
+        elif selection_lines.enable_selection_lines(obj):
+            refresh_targets.append(obj)
+    if create_targets:
+        presets._update_view_layer(context)
+        for obj in create_targets:
+            settings = obj.bmanga_line_settings
+            if selection_lines.apply_selection_lines(
+                obj,
+                angle=settings.selection_line_angle,
+                thickness=modifier_thickness_for_world_width(
+                    obj,
+                    settings.selection_line_thickness,
+                ),
+                material=outline_setup.get_line_material(obj, "selection"),
+                offset=settings.selection_line_offset,
+                **_selection_midpoint_kwargs(settings),
+            ):
+                refresh_targets.append(obj)
+    if refresh_targets:
+        _refresh_camera_objects(
+            refresh_targets,
+            context,
+            update_visibility=True,
+            width_targets=("selection",),
         )
 
 
@@ -789,6 +914,7 @@ def _update_visibility_rules(objects: list[bpy.types.Object], context) -> None:
             or settings.use_outline_distance_limit
             or settings.use_inner_line_distance_limit
             or settings.use_intersection_distance_limit
+            or settings.use_selection_line_distance_limit
         ):
             needs_refresh.append(obj)
         else:
@@ -845,6 +971,9 @@ def refresh_propagated_property(
     if prop_name == "intersection_color":
         _update_generated_color(line_objects, "intersection")
         return
+    if prop_name == "selection_line_color":
+        _update_generated_color(line_objects, "selection")
+        return
     if prop_name == "outline_thickness":
         _update_outline_thickness(line_objects, context)
         return
@@ -863,7 +992,7 @@ def refresh_propagated_property(
     if prop_name == "use_uniform_line_width":
         _update_uniform_line_width(line_objects, context)
         return
-    if prop_name in {"use_vertex_color", "use_ao_influence", "ao_influence_strength"}:
+    if prop_name == "use_vertex_color":
         _update_width_controls(line_objects, context)
         return
     if prop_name in {
@@ -906,6 +1035,21 @@ def refresh_propagated_property(
         _update_width_target(line_objects, context, "intersection")
         return
     if prop_name in {
+        "selection_edge_smooth_factor",
+        "selection_edge_midpoint_jitter_percent",
+        "selection_edge_midpoint_angle",
+        "selection_edge_width_curve_25",
+        "selection_edge_width_curve_50",
+        "selection_edge_width_curve_75",
+    }:
+        if (
+            prop_name in _GENERATED_WIDTH_DETAIL_PROPS
+            and len(line_objects) > MAX_IMMEDIATE_GENERATED_WIDTH_OBJECTS
+        ):
+            return
+        _update_width_target(line_objects, context, "selection")
+        return
+    if prop_name in {
         "use_camera_culling",
         "culling_margin",
         "use_outline_distance_limit",
@@ -914,6 +1058,8 @@ def refresh_propagated_property(
         "inner_line_max_distance",
         "use_intersection_distance_limit",
         "intersection_max_distance",
+        "use_selection_line_distance_limit",
+        "selection_line_max_distance",
     }:
         _update_visibility_rules(line_objects, context)
         return
@@ -937,6 +1083,24 @@ def refresh_propagated_property(
         return
     if prop_name == "inner_line_offset":
         _update_generated_offset(line_objects, "inner")
+        return
+    if prop_name == "selection_line_enabled":
+        _update_selection_lines(line_objects, context)
+        return
+    if prop_name in {
+        "use_selection_line_creation_limit",
+        "selection_line_creation_max_distance",
+    }:
+        _update_selection_creation_range(line_objects, context)
+        return
+    if prop_name == "selection_line_angle":
+        _update_selection_angle(line_objects, context)
+        return
+    if prop_name == "selection_line_thickness":
+        _update_generated_thickness(line_objects, context, "selection")
+        return
+    if prop_name == "selection_line_offset":
+        _update_generated_offset(line_objects, "selection")
         return
     if prop_name in {
         "intersection_enabled",

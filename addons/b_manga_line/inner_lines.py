@@ -12,6 +12,7 @@ import bpy
 
 from . import inner_line_chains, modifier_stack
 from .core import (
+    FREESTYLE_EDGE_ATTR,
     GENERATED_LINE_ATTR,
     GN_MODIFIER_NAME,
     GN_TREE_NAME,
@@ -24,7 +25,7 @@ from .core import (
 _GENERATED_LINE_NODE_LABEL = "BML_GeneratedLineMark"
 _RADIUS_HALF_NODE_LABEL = "BML_InnerLineRadiusHalf"
 _OFFSET_SOCKET_NAME = "オフセット"
-_MARKED_ONLY_SOCKET_NAME = "指定済みの辺だけ線にする"
+_MARKED_ONLY_SOCKET_NAME = "Freestyleマーク辺だけ線にする"
 _MIDPOINT_FACTOR_SOCKET_NAME = "中間頂点の線幅調整"
 _MIDPOINT_JITTER_SOCKET_NAME = "中間頂点の乱れ (%)"
 _RESAMPLE_COUNT_SOCKET_NAME = "線の分割数"
@@ -46,8 +47,7 @@ _CURVE_JITTER_CHAIN_ID_LABEL = "BML_InnerCurveJitterChainID"
 _SAFE_CURVE_SCALE_LABEL = "BML_InnerCurveSafeScale"
 _MIN_CURVE_TO_MESH_SCALE = 0.04
 _CHAIN_ID_ATTR = inner_line_chains.CHAIN_ID_ATTR
-_SHARP_EDGE_ATTR = "sharp_edge"
-_CREASE_EDGE_ATTR = "crease_edge"
+_FREESTYLE_EDGE_ATTR = FREESTYLE_EDGE_ATTR
 _EDGE_ANGLE_EPSILON = 1.0e-7
 
 
@@ -267,9 +267,14 @@ def _add_jittered_midpoint_factor(
 # ノードツリー構築
 # ------------------------------------------------------------------
 
-def _create_node_tree() -> bpy.types.NodeTree:
+def _create_node_tree(
+    tree_name: str = GN_TREE_NAME,
+    width_attr_name: str = VG_INNER_LINE_WIDTH,
+    chain_id_attr_name: str = _CHAIN_ID_ATTR,
+    marked_attr_name: str = _FREESTYLE_EDGE_ATTR,
+) -> bpy.types.NodeTree:
     """内部線用ジオメトリノードツリーを新規作成."""
-    tree = bpy.data.node_groups.new(name=GN_TREE_NAME, type="GeometryNodeTree")
+    tree = bpy.data.node_groups.new(name=tree_name, type="GeometryNodeTree")
 
     # --- インターフェース定義 ---
     tree.interface.new_socket(
@@ -410,45 +415,21 @@ def _create_node_tree() -> bpy.types.NodeTree:
     links.new(edge_angle.outputs[0], compare.inputs["A"])  # Unsigned Angle
     links.new(gin.outputs[1], compare.inputs["B"])  # 検出角度
 
-    sharp_attr = nodes.new("GeometryNodeInputNamedAttribute")
-    sharp_attr.location = (-600, 40)
-    sharp_attr.data_type = "BOOLEAN"
-    sharp_attr.inputs["Name"].default_value = _SHARP_EDGE_ATTR
-
-    sharp_marked = nodes.new("FunctionNodeBooleanMath")
-    sharp_marked.location = (-400, 40)
-    sharp_marked.operation = "AND"
-    links.new(sharp_attr.outputs["Exists"], sharp_marked.inputs[0])
-    links.new(sharp_attr.outputs["Attribute"], sharp_marked.inputs[1])
-
-    crease_attr = nodes.new("GeometryNodeInputNamedAttribute")
-    crease_attr.location = (-600, -40)
-    crease_attr.data_type = "FLOAT"
-    crease_attr.inputs["Name"].default_value = _CREASE_EDGE_ATTR
-
-    crease_positive = nodes.new("FunctionNodeCompare")
-    crease_positive.location = (-400, -60)
-    crease_positive.data_type = "FLOAT"
-    crease_positive.operation = "GREATER_THAN"
-    crease_positive.inputs["B"].default_value = 0.0
-    links.new(crease_attr.outputs["Attribute"], crease_positive.inputs["A"])
-
-    crease_marked = nodes.new("FunctionNodeBooleanMath")
-    crease_marked.location = (-220, -40)
-    crease_marked.operation = "AND"
-    links.new(crease_attr.outputs["Exists"], crease_marked.inputs[0])
-    links.new(crease_positive.outputs[0], crease_marked.inputs[1])
+    marked_attr = nodes.new("GeometryNodeInputNamedAttribute")
+    marked_attr.location = (-600, 40)
+    marked_attr.data_type = "BOOLEAN"
+    marked_attr.inputs["Name"].default_value = marked_attr_name
 
     marked_selection = nodes.new("FunctionNodeBooleanMath")
-    marked_selection.location = (-40, 0)
-    marked_selection.operation = "OR"
-    links.new(sharp_marked.outputs[0], marked_selection.inputs[0])
-    links.new(crease_marked.outputs[0], marked_selection.inputs[1])
+    marked_selection.location = (-400, 40)
+    marked_selection.operation = "AND"
+    links.new(marked_attr.outputs["Exists"], marked_selection.inputs[0])
+    links.new(marked_attr.outputs["Attribute"], marked_selection.inputs[1])
 
     chain_selection_attr = nodes.new("GeometryNodeInputNamedAttribute")
     chain_selection_attr.location = (-600, -600)
     chain_selection_attr.data_type = "INT"
-    chain_selection_attr.inputs["Name"].default_value = _CHAIN_ID_ATTR
+    chain_selection_attr.inputs["Name"].default_value = chain_id_attr_name
 
     chain_selected = nodes.new("FunctionNodeCompare")
     chain_selected.label = _CHAIN_SELECTION_COMPARE_LABEL
@@ -527,7 +508,7 @@ def _create_node_tree() -> bpy.types.NodeTree:
     chain_id = nodes.new("GeometryNodeInputNamedAttribute")
     chain_id.location = (-20, -560)
     chain_id.data_type = "INT"
-    chain_id.inputs["Name"].default_value = _CHAIN_ID_ATTR
+    chain_id.inputs["Name"].default_value = chain_id_attr_name
 
     split_chains = nodes.new("GeometryNodeSplitToInstances")
     split_chains.label = _CHAIN_INSTANCE_SPLIT_LABEL
@@ -558,13 +539,13 @@ def _create_node_tree() -> bpy.types.NodeTree:
     curve_chain_id.label = _CURVE_JITTER_CHAIN_ID_LABEL
     curve_chain_id.location = (580, -600)
     curve_chain_id.data_type = "INT"
-    curve_chain_id.inputs["Name"].default_value = _CHAIN_ID_ATTR
+    curve_chain_id.inputs["Name"].default_value = chain_id_attr_name
 
-    # 内部線専用の線幅値を反映する。
+    # 線種ごとの線幅値を反映する。
     width_attr = nodes.new("GeometryNodeInputNamedAttribute")
     width_attr.location = (-20, 120)
     width_attr.data_type = "FLOAT"
-    width_attr.inputs["Name"].default_value = VG_INNER_LINE_WIDTH
+    width_attr.inputs["Name"].default_value = width_attr_name
 
     width_switch = nodes.new("GeometryNodeSwitch")
     width_switch.location = (180, 120)
@@ -656,122 +637,132 @@ def _create_node_tree() -> bpy.types.NodeTree:
     return tree
 
 
-def _get_or_create_tree() -> bpy.types.NodeTree:
-    tree = bpy.data.node_groups.get(GN_TREE_NAME)
+def _get_or_create_tree(
+    tree_name: str = GN_TREE_NAME,
+    width_attr_name: str = VG_INNER_LINE_WIDTH,
+    chain_id_attr_name: str = _CHAIN_ID_ATTR,
+    marked_attr_name: str = _FREESTYLE_EDGE_ATTR,
+) -> bpy.types.NodeTree:
+    def _rebuild():
+        return _create_node_tree(
+            tree_name,
+            width_attr_name,
+            chain_id_attr_name,
+            marked_attr_name,
+        )
+
+    tree = bpy.data.node_groups.get(tree_name)
     if tree is not None:
         if _find_socket_id(tree, "マテリアル") is None:
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if _find_socket_id(tree, "ライン素材番号") is None:
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if _find_socket_id(tree, _MARKED_ONLY_SOCKET_NAME) is None:
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if _find_socket_id(tree, _OFFSET_SOCKET_NAME) is None:
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if _find_socket_id(tree, _MIDPOINT_FACTOR_SOCKET_NAME) is None:
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if _find_socket_id(tree, _MIDPOINT_JITTER_SOCKET_NAME) is None:
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if _find_socket_id(tree, _RESAMPLE_COUNT_SOCKET_NAME) is None:
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if _find_socket_id(tree, _WIDTH_CURVE_25_SOCKET_NAME) is None:
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if _find_socket_id(tree, _WIDTH_CURVE_50_SOCKET_NAME) is None:
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if _find_socket_id(tree, _WIDTH_CURVE_75_SOCKET_NAME) is None:
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if not any(n.bl_idname == "GeometryNodeDeleteGeometry" for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if not any(n.bl_idname == "GeometryNodeInputNamedAttribute" for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
-        if not _uses_named_attribute(tree, VG_INNER_LINE_WIDTH):
+            return _rebuild()
+        if not _uses_named_attribute(tree, width_attr_name):
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
-        if not _uses_named_attribute(tree, _SHARP_EDGE_ATTR):
+            return _rebuild()
+        if not _uses_named_attribute(tree, marked_attr_name):
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
-        if not _uses_named_attribute(tree, _CREASE_EDGE_ATTR):
-            bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if not any(getattr(n, "label", "") == _GENERATED_LINE_NODE_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if not any(getattr(n, "label", "") == _RADIUS_HALF_NODE_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if not any(getattr(n, "label", "") == _MARKED_SELECTION_SWITCH_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if not any(getattr(n, "label", "") == _CURVE_WIDTH_SCALE_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if not any(getattr(n, "label", "") == _SUBDIVIDE_CURVE_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if any(n.bl_idname == "GeometryNodeResampleCurve" for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if not any(getattr(n, "label", "") == _SELECTED_EDGE_MESH_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if not any(getattr(n, "label", "") == _CHAIN_INSTANCE_SPLIT_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if not any(getattr(n, "label", "") == _CHAIN_ANGLE_FILTER_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if not any(getattr(n, "label", "") == _AUTO_EDGE_ALLOWED_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if not any(getattr(n, "label", "") == _AUTO_ANGLE_FILTER_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         compare_node = next(
             (n for n in tree.nodes if getattr(n, "label", "") == _EDGE_ANGLE_COMPARE_LABEL),
             None,
         )
         if compare_node is None or getattr(compare_node, "operation", "") != "GREATER_EQUAL":
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         chain_compare = next(
             (n for n in tree.nodes if getattr(n, "label", "") == _CHAIN_SELECTION_COMPARE_LABEL),
             None,
         )
         if chain_compare is None or getattr(chain_compare, "operation", "") != "GREATER_EQUAL":
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if not any(getattr(n, "label", "") == _CURVE_JITTER_CENTER_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if not any(getattr(n, "label", "") == _CURVE_JITTER_CHAIN_ID_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if not any(getattr(n, "label", "") == _SAFE_CURVE_SCALE_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
-        if not _uses_named_attribute(tree, _CHAIN_ID_ATTR):
+            return _rebuild()
+        if not _uses_named_attribute(tree, chain_id_attr_name):
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         if any(n.bl_idname == "GeometryNodeSetCurveRadius" for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         radius_socket = _find_interface_socket(tree, "線の太さ")
         if radius_socket is not None and getattr(radius_socket, "max_value", 0.0) < 1.0:
             bpy.data.node_groups.remove(tree)
-            return _create_node_tree()
+            return _rebuild()
         return tree
-    return _create_node_tree()
+    return _rebuild()
 
 
 def _find_interface_socket(tree: bpy.types.NodeTree, name: str):
@@ -831,6 +822,11 @@ def apply_inner_lines(
     width_curve_50: float = 0.50,
     width_curve_75: float = 0.75,
     enable: bool = True,
+    modifier_name: str = GN_MODIFIER_NAME,
+    tree_name: str = GN_TREE_NAME,
+    width_group_name: str = VG_INNER_LINE_WIDTH,
+    chain_id_attr_name: str = _CHAIN_ID_ATTR,
+    marked_attr_name: str = _FREESTYLE_EDGE_ATTR,
 ) -> bool:
     """内部線 GN モディファイアを適用. 成功時 True."""
     if obj.type != "MESH":
@@ -848,13 +844,20 @@ def apply_inner_lines(
         angle,
         use_marked_edges,
         midpoint_angle,
+        chain_id_attr=chain_id_attr_name,
+        marked_attr_name=marked_attr_name,
     )
-    tree = _get_or_create_tree()
+    tree = _get_or_create_tree(
+        tree_name,
+        width_group_name,
+        chain_id_attr_name,
+        marked_attr_name,
+    )
 
     # 既存モディファイアを更新 or 新規作成
-    mod = obj.modifiers.get(GN_MODIFIER_NAME)
+    mod = obj.modifiers.get(modifier_name)
     if mod is None:
-        mod = obj.modifiers.new(name=GN_MODIFIER_NAME, type="NODES")
+        mod = obj.modifiers.new(name=modifier_name, type="NODES")
     if not enable:
         mod.show_viewport = False
         mod.show_render = False
@@ -912,9 +915,9 @@ def apply_inner_lines(
         mod[sid_line_material] = line_material_index
 
     # 頂点グループ: 元メッシュ頂点 = weight 1.0
-    vg = obj.vertex_groups.get(VG_INNER_LINE_WIDTH)
+    vg = obj.vertex_groups.get(width_group_name)
     if vg is None:
-        vg = obj.vertex_groups.new(name=VG_INNER_LINE_WIDTH)
+        vg = obj.vertex_groups.new(name=width_group_name)
         vg.add(list(range(len(obj.data.vertices))), 1.0, "REPLACE")
 
     # 既存のメッシュ調整を先に通し、ライン生成は最後にまとめる。
@@ -923,22 +926,28 @@ def apply_inner_lines(
     return True
 
 
-def remove_inner_lines(obj: bpy.types.Object) -> bool:
+def remove_inner_lines(
+    obj: bpy.types.Object,
+    modifier_name: str = GN_MODIFIER_NAME,
+) -> bool:
     """内部線 GN モディファイアを削除."""
     if obj.type != "MESH":
         return False
-    mod = obj.modifiers.get(GN_MODIFIER_NAME)
+    mod = obj.modifiers.get(modifier_name)
     if mod is None:
         return False
     obj.modifiers.remove(mod)
     return True
 
 
-def disable_inner_lines(obj: bpy.types.Object) -> bool:
+def disable_inner_lines(
+    obj: bpy.types.Object,
+    modifier_name: str = GN_MODIFIER_NAME,
+) -> bool:
     """内部線を削除せず無効化する."""
     if obj.type != "MESH":
         return False
-    mod = obj.modifiers.get(GN_MODIFIER_NAME)
+    mod = obj.modifiers.get(modifier_name)
     if mod is None:
         return False
     changed = bool(mod.show_viewport or mod.show_render)
@@ -949,11 +958,14 @@ def disable_inner_lines(obj: bpy.types.Object) -> bool:
     return changed
 
 
-def enable_inner_lines(obj: bpy.types.Object) -> bool:
+def enable_inner_lines(
+    obj: bpy.types.Object,
+    modifier_name: str = GN_MODIFIER_NAME,
+) -> bool:
     """内部線を表示・レンダー有効に戻す."""
     if obj.type != "MESH":
         return False
-    mod = obj.modifiers.get(GN_MODIFIER_NAME)
+    mod = obj.modifiers.get(modifier_name)
     if mod is None:
         return False
     changed = not bool(mod.show_viewport and mod.show_render)
@@ -978,6 +990,9 @@ def update_parameters(
     width_curve_50: float | None = None,
     width_curve_75: float | None = None,
     material: bpy.types.Material | None = None,
+    modifier_name: str = GN_MODIFIER_NAME,
+    chain_id_attr_name: str = _CHAIN_ID_ATTR,
+    marked_attr_name: str = _FREESTYLE_EDGE_ATTR,
 ) -> bool:
     """既存モディファイアのパラメータを更新."""
     if (
@@ -988,7 +1003,7 @@ def update_parameters(
     ):
         current_angle = angle
         current_marked = use_marked_edges
-        current_mod = obj.modifiers.get(GN_MODIFIER_NAME)
+        current_mod = obj.modifiers.get(modifier_name)
         if current_mod is not None and current_mod.node_group is not None:
             tree_for_current = current_mod.node_group
             if current_angle is None:
@@ -1020,9 +1035,11 @@ def update_parameters(
             float(current_angle if current_angle is not None else 0.5236),
             bool(current_marked if current_marked is not None else False),
             midpoint_angle,
+            chain_id_attr=chain_id_attr_name,
+            marked_attr_name=marked_attr_name,
         )
 
-    mod = obj.modifiers.get(GN_MODIFIER_NAME)
+    mod = obj.modifiers.get(modifier_name)
     if mod is None or mod.node_group is None:
         return False
     tree = mod.node_group

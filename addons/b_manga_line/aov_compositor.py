@@ -12,6 +12,7 @@ from .core import (
     AOV_INTERSECTION_LINES_NAME,
     AOV_OBJECT_MASK_NAME,
     AOV_OUTLINE_RAW_NAME,
+    AOV_SELECTION_LINES_NAME,
 )
 
 
@@ -182,6 +183,7 @@ def _create_line_composite_group() -> bpy.types.NodeTree:
         AOV_OBJECT_MASK_NAME,
         AOV_INNER_LINES_NAME,
         AOV_INTERSECTION_LINES_NAME,
+        AOV_SELECTION_LINES_NAME,
     ):
         tree.interface.new_socket(
             name=name,
@@ -207,6 +209,7 @@ def _create_line_composite_group() -> bpy.types.NodeTree:
     object_mask_socket = _socket(gin, "outputs", AOV_OBJECT_MASK_NAME)
     inner_lines_socket = _socket(gin, "outputs", AOV_INNER_LINES_NAME)
     intersection_lines_socket = _socket(gin, "outputs", AOV_INTERSECTION_LINES_NAME)
+    selection_lines_socket = _socket(gin, "outputs", AOV_SELECTION_LINES_NAME)
 
     invert_mask = _new_owned_node(tree, "CompositorNodeInvert", "InvertObjectMask", (-740.0, -120.0))
     invert_mask.inputs["Factor"].default_value = 1.0
@@ -272,19 +275,59 @@ def _create_line_composite_group() -> bpy.types.NodeTree:
     )
 
     add_intersection = _new_vector_math(tree, "AddIntersectionLines", "ADD", (600.0, 0.0))
-    final_color_socket = _link_vector_math(
+    outline_inner_intersection = _link_vector_math(
         tree,
         add_intersection,
         outline_inner_for_intersection,
         intersection_lines_socket,
     )
 
+    selection_alpha = _alpha_socket(
+        tree,
+        selection_lines_socket,
+        "SelectionLinesAlpha",
+        (360.0, -900.0),
+    )
+    inverted_selection_alpha = _invert_value(
+        tree,
+        selection_alpha,
+        "InvertSelectionLinesAlpha",
+        (600.0, -900.0),
+    )
+    color_without_selection = _new_vector_math(
+        tree,
+        "ColorWithoutSelectionLines",
+        "MULTIPLY",
+        (760.0, 80.0),
+    )
+    line_color_for_selection = _link_vector_math(
+        tree,
+        color_without_selection,
+        outline_inner_intersection,
+        inverted_selection_alpha,
+    )
+
+    add_selection = _new_vector_math(tree, "AddSelectionLines", "ADD", (980.0, 0.0))
+    final_color_socket = _link_vector_math(
+        tree,
+        add_selection,
+        line_color_for_selection,
+        selection_lines_socket,
+    )
+
     add_outline_inner_alpha = _new_math(tree, "AddOutlineInnerAlpha", "ADD", (100.0, -400.0), clamp=True)
     outline_inner_alpha = _link_math(tree, add_outline_inner_alpha, outline_only_alpha, inner_alpha)
     add_final_alpha = _new_math(tree, "AddIntersectionAlpha", "ADD", (360.0, -460.0), clamp=True)
-    final_alpha_socket = _link_math(tree, add_final_alpha, outline_inner_alpha, intersection_alpha)
+    outline_inner_intersection_alpha = _link_math(tree, add_final_alpha, outline_inner_alpha, intersection_alpha)
+    add_selection_alpha = _new_math(tree, "AddSelectionAlpha", "ADD", (600.0, -520.0), clamp=True)
+    final_alpha_socket = _link_math(
+        tree,
+        add_selection_alpha,
+        outline_inner_intersection_alpha,
+        selection_alpha,
+    )
 
-    set_alpha = _new_owned_node(tree, "CompositorNodeSetAlpha", "SetTransparentLineAlpha", (840.0, -20.0))
+    set_alpha = _new_owned_node(tree, "CompositorNodeSetAlpha", "SetTransparentLineAlpha", (1220.0, -20.0))
     tree.links.new(final_color_socket, _socket(set_alpha, "inputs", "Image"))
     tree.links.new(final_alpha_socket, _socket(set_alpha, "inputs", "Alpha"))
     tree.links.new(_socket(set_alpha, "outputs", "Image"), _socket(gout, "inputs", AOV_COMPOSITE_NAME))
@@ -320,6 +363,7 @@ def setup_line_aov_compositor(
     object_mask_socket = _aov_socket(rlayers, AOV_OBJECT_MASK_NAME)
     inner_lines_socket = _aov_socket(rlayers, AOV_INNER_LINES_NAME)
     intersection_lines_socket = _aov_socket(rlayers, AOV_INTERSECTION_LINES_NAME)
+    selection_lines_socket = _aov_socket(rlayers, AOV_SELECTION_LINES_NAME)
 
     group = _new_owned_node(tree, "CompositorNodeGroup", "Group", (-420.0, -20.0))
     group.node_tree = group_tree
@@ -327,6 +371,7 @@ def setup_line_aov_compositor(
     tree.links.new(object_mask_socket, _socket(group, "inputs", AOV_OBJECT_MASK_NAME))
     tree.links.new(inner_lines_socket, _socket(group, "inputs", AOV_INNER_LINES_NAME))
     tree.links.new(intersection_lines_socket, _socket(group, "inputs", AOV_INTERSECTION_LINES_NAME))
+    tree.links.new(selection_lines_socket, _socket(group, "inputs", AOV_SELECTION_LINES_NAME))
     final_socket = _socket(group, "outputs", AOV_COMPOSITE_NAME)
 
     result = _new_owned_node(tree, "NodeReroute", "Result", (-80.0, -20.0))

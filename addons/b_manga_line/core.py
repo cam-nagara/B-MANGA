@@ -28,20 +28,25 @@ MATERIAL_NAME = "BML_Outline"
 VG_LINE_WIDTH = "BML_LineWidth"
 VG_INNER_LINE_WIDTH = "BML_InnerLineWidth"
 VG_INTERSECTION_LINE_WIDTH = "BML_IntersectionLineWidth"
+VG_SELECTION_LINE_WIDTH = "BML_SelectionLineWidth"
 COLOR_ATTR_NAME = "BML_LineWidth"
 GENERATED_LINE_ATTR = "BML_GeneratedLine"
 GN_MODIFIER_NAME = "BML_InnerLines"
 GN_TREE_NAME = "BML_InnerLines"
+SELECTION_LINE_MODIFIER_NAME = "BML_SelectionLines"
+SELECTION_LINE_TREE_NAME = "BML_SelectionLines"
+SELECTION_LINE_CHAIN_ID_ATTR = "BML_SelectionLineChainID"
+FREESTYLE_EDGE_ATTR = "BML_FreestyleMarkedEdge"
 INTERSECTION_MODIFIER_NAME = "BML_IntersectionLines"
 INTERSECTION_MODIFIER_PREFIX = INTERSECTION_MODIFIER_NAME + "__"
 INTERSECTION_TREE_BOOLEAN = "BML_Intersection_Boolean"
 INTERSECTION_TREE_SDF = "BML_Intersection_SDF"
-AO_ATTR_NAME = "BML_AO"
 AOV_NAME = "BML_Line"
 AOV_OUTLINE_RAW_NAME = "BML_OutlineRaw"
 AOV_OBJECT_MASK_NAME = "BML_ObjectMask"
 AOV_INNER_LINES_NAME = "BML_InnerLines"
 AOV_INTERSECTION_LINES_NAME = "BML_IntersectionLines"
+AOV_SELECTION_LINES_NAME = "BML_SelectionLines"
 AOV_COMPOSITE_NAME = "BML_LineComposite"
 AOV_NAMES = (
     AOV_NAME,
@@ -49,6 +54,7 @@ AOV_NAMES = (
     AOV_OBJECT_MASK_NAME,
     AOV_INNER_LINES_NAME,
     AOV_INTERSECTION_LINES_NAME,
+    AOV_SELECTION_LINES_NAME,
 )
 PROP_LINES_HIDDEN = "bml_lines_hidden"
 PROP_LINE_ONLY = "bml_line_only"
@@ -66,6 +72,7 @@ LINE_MODIFIER_NAMES = (
     OUTLINE_WIDTH_ATTR_MODIFIER_NAME,
     MODIFIER_NAME,
     GN_MODIFIER_NAME,
+    SELECTION_LINE_MODIFIER_NAME,
 )
 
 
@@ -173,6 +180,8 @@ def _line_width_target_for_prop(prop_name: str) -> str:
         return "inner"
     if prop_name.startswith("intersection_edge_"):
         return "intersection"
+    if prop_name.startswith("selection_edge_"):
+        return "selection"
     return "outline"
 
 
@@ -183,10 +192,11 @@ def _needs_line_width_weights(settings, target: str = "outline") -> bool:
         return abs(settings.inner_edge_smooth_factor) > 0.001
     if target == "intersection":
         return abs(settings.intersection_edge_smooth_factor) > 0.001
+    if target == "selection":
+        return abs(settings.selection_edge_smooth_factor) > 0.001
     return (
         abs(settings.edge_smooth_factor) > 0.001
         or settings.use_vertex_color
-        or settings.use_ao_influence
     )
 
 
@@ -386,12 +396,15 @@ def _on_color_changed(self, context):
 def _on_generated_color_changed(self, context, target: str, prop_name: str):
     if _propagating:
         return
-    from . import inner_lines, intersection_lines, outline_setup
+    from . import inner_lines, intersection_lines, outline_setup, selection_lines
     owner = self.id_data
     if owner.type == "MESH":
         if target == "inner" and owner.modifiers.get(GN_MODIFIER_NAME) is not None:
             material = outline_setup.get_line_material(owner, target)
             inner_lines.update_parameters(owner, material=material)
+        elif target == "selection" and owner.modifiers.get(SELECTION_LINE_MODIFIER_NAME) is not None:
+            material = outline_setup.get_line_material(owner, target)
+            selection_lines.update_parameters(owner, material=material)
         elif target == "intersection" and any(iter_intersection_modifiers(owner)):
             material = outline_setup.get_line_material(owner, target)
             intersection_lines.update_parameters(owner, material=material)
@@ -404,6 +417,10 @@ def _on_inner_color_changed(self, context):
 
 def _on_intersection_color_changed(self, context):
     _on_generated_color_changed(self, context, "intersection", "intersection_color")
+
+
+def _on_selection_color_changed(self, context):
+    _on_generated_color_changed(self, context, "selection", "selection_line_color")
 
 
 def _on_thickness_changed(self, context):
@@ -776,7 +793,7 @@ def _sync_inner_line_creation(
             ),
             offset=settings.inner_line_offset,
             material=mat,
-            use_marked_edges=settings.use_marked_inner_edges,
+            use_marked_edges=False,
             midpoint_factor=(
                 settings.inner_edge_smooth_factor
                 if settings.auto_subdivision_for_midpoint
@@ -805,6 +822,22 @@ def _inner_midpoint_kwargs(settings) -> dict[str, float]:
         "width_curve_25": float(settings.inner_edge_width_curve_25),
         "width_curve_50": float(settings.inner_edge_width_curve_50),
         "width_curve_75": float(settings.inner_edge_width_curve_75),
+    }
+
+
+def _selection_midpoint_kwargs(settings) -> dict[str, float]:
+    factor = (
+        float(settings.selection_edge_smooth_factor)
+        if bool(getattr(settings, "auto_subdivision_for_midpoint", False))
+        else 0.0
+    )
+    return {
+        "midpoint_factor": factor,
+        "midpoint_angle": float(settings.selection_edge_midpoint_angle),
+        "midpoint_jitter_percent": float(settings.selection_edge_midpoint_jitter_percent),
+        "width_curve_25": float(settings.selection_edge_width_curve_25),
+        "width_curve_50": float(settings.selection_edge_width_curve_50),
+        "width_curve_75": float(settings.selection_edge_width_curve_75),
     }
 
 
@@ -839,38 +872,10 @@ def _on_inner_angle_changed(self, context):
 
 
 def _on_marked_inner_edges_changed(self, context):
+    # 旧設定との互換用。現在の稜谷線は常に検出角度で作成する。
     if _propagating:
         return
-    from . import camera_comp, inner_lines, plane_filter
-    owner = self.id_data
-    refreshed_owner = False
-    if owner.type == "MESH" and has_line(owner):
-        if plane_filter.should_skip_inner_lines(owner, self):
-            inner_lines.remove_inner_lines(owner)
-        elif not camera_comp.inner_line_creation_in_range(
-            owner,
-            getattr(context, "scene", None),
-            self,
-        ):
-            inner_lines.disable_inner_lines(owner)
-        elif owner.modifiers.get(GN_MODIFIER_NAME) is not None:
-            inner_lines.update_parameters(
-                owner,
-                use_marked_edges=self.use_marked_inner_edges,
-                **_inner_midpoint_kwargs(self),
-            )
-        elif not self.inner_line_enabled:
-            refreshed_owner = False
-        else:
-            refreshed_owner = _sync_inner_line_creation(owner, self, context)
     _propagate(self, context, "use_marked_inner_edges")
-    if refreshed_owner:
-        _refresh_print_widths_for(
-            context,
-            [owner],
-            update_visibility=True,
-            width_targets=("inner",),
-        )
 
 
 def _on_inner_thickness_changed(self, context):
@@ -906,7 +911,7 @@ def _on_inner_offset_changed(self, context):
 
 
 def _sync_inner_creation_range(owner: bpy.types.Object, settings, context) -> bool:
-    """作成範囲の設定変更を内部線の実状態へ反映する。
+    """作成範囲の設定変更を稜谷線の実状態へ反映する。
 
     範囲判定と実状態が食い違う時だけ作成/有効化/無効化を行い、
     スライダードラッグ中の無駄な再構築を避ける。
@@ -956,6 +961,151 @@ def _on_inner_creation_distance_changed(self, context):
     if _propagating:
         return
     _on_inner_creation_range_changed(self, context, "inner_line_creation_max_distance")
+
+
+def _sync_selection_line_creation(
+    owner: bpy.types.Object,
+    settings,
+    context,
+    *,
+    create_missing: bool = True,
+) -> bool:
+    from . import camera_comp, outline_setup, selection_lines
+    if owner.type != "MESH":
+        return False
+    if not settings.selection_line_enabled:
+        selection_lines.disable_selection_lines(owner)
+        return False
+    if camera_comp.selection_line_creation_in_range(
+        owner,
+        getattr(context, "scene", None),
+        settings,
+    ):
+        if not create_missing and owner.modifiers.get(SELECTION_LINE_MODIFIER_NAME) is None:
+            return False
+        if not create_missing:
+            selection_lines.enable_selection_lines(owner)
+            return False
+        mat = outline_setup.get_line_material(owner, "selection")
+        return selection_lines.apply_selection_lines(
+            owner,
+            angle=settings.selection_line_angle,
+            thickness=modifier_thickness_for_world_width(
+                owner,
+                settings.selection_line_thickness,
+            ),
+            offset=settings.selection_line_offset,
+            material=mat,
+            **_selection_midpoint_kwargs(settings),
+        )
+    selection_lines.disable_selection_lines(owner)
+    return False
+
+
+def _on_selection_line_enabled_changed(self, context):
+    if _propagating:
+        return
+    owner = self.id_data
+    refreshed_owner = _sync_selection_line_creation(owner, self, context)
+    _propagate(self, context, "selection_line_enabled")
+    if refreshed_owner:
+        _refresh_print_widths_for(
+            context,
+            [owner],
+            update_visibility=True,
+            width_targets=("selection",),
+        )
+
+
+def _on_selection_angle_changed(self, context):
+    if _propagating:
+        return
+    from . import selection_lines
+    owner = self.id_data
+    if owner.type == "MESH" and owner.modifiers.get(SELECTION_LINE_MODIFIER_NAME) is not None:
+        selection_lines.update_parameters(
+            owner,
+            angle=self.selection_line_angle,
+            **_selection_midpoint_kwargs(self),
+        )
+        _refresh_line_width_weights(self, context, "selection")
+    _propagate(self, context, "selection_line_angle")
+
+
+def _on_selection_thickness_changed(self, context):
+    if _propagating:
+        return
+    from . import selection_lines
+    owner = self.id_data
+    if owner.type == "MESH":
+        if not _refresh_print_widths_for(context, [owner], width_targets=("selection",)):
+            selection_lines.update_parameters(
+                owner,
+                thickness=modifier_thickness_for_world_width(
+                    owner,
+                    self.selection_line_thickness,
+                ),
+                **_selection_midpoint_kwargs(self),
+            )
+    _propagate(self, context, "selection_line_thickness")
+
+
+def _on_selection_offset_changed(self, context):
+    if _propagating:
+        return
+    from . import selection_lines
+    owner = self.id_data
+    if owner.type == "MESH":
+        selection_lines.update_parameters(
+            owner,
+            offset=self.selection_line_offset,
+            **_selection_midpoint_kwargs(self),
+        )
+    _propagate(self, context, "selection_line_offset")
+
+
+def _sync_selection_creation_range(owner: bpy.types.Object, settings, context) -> bool:
+    from . import camera_comp, selection_lines
+    if owner.type != "MESH" or not settings.selection_line_enabled:
+        return False
+    in_range = camera_comp.selection_line_creation_in_range(
+        owner,
+        getattr(context, "scene", None),
+        settings,
+    )
+    mod = owner.modifiers.get(SELECTION_LINE_MODIFIER_NAME)
+    if not in_range:
+        if mod is not None:
+            selection_lines.disable_selection_lines(owner)
+        return False
+    if mod is None:
+        return _sync_selection_line_creation(owner, settings, context)
+    return selection_lines.enable_selection_lines(owner)
+
+
+def _on_selection_creation_range_changed(self, context, prop_name: str) -> None:
+    owner = self.id_data
+    refreshed_owner = _sync_selection_creation_range(owner, self, context)
+    _propagate(self, context, prop_name)
+    if refreshed_owner:
+        _refresh_print_widths_for(
+            context,
+            [owner],
+            update_visibility=True,
+            width_targets=("selection",),
+        )
+
+
+def _on_selection_creation_limit_changed(self, context):
+    if _propagating:
+        return
+    _on_selection_creation_range_changed(self, context, "use_selection_line_creation_limit")
+
+
+def _on_selection_creation_distance_changed(self, context):
+    if _propagating:
+        return
+    _on_selection_creation_range_changed(self, context, "selection_line_creation_max_distance")
 
 
 def _sync_intersection_creation(owner: bpy.types.Object, settings, context) -> None:
@@ -1144,7 +1294,7 @@ def _refresh_line_width_weights(self, context, target: str | None = None) -> Non
             )
             return
 
-        targets = ("outline", "inner", "intersection") if target is None else (target,)
+        targets = ("outline", "inner", "intersection", "selection") if target is None else (target,)
         for item in targets:
             if item == "outline":
                 _refresh_outline_width_weights(owner, self, vertex_analysis)
@@ -1178,6 +1328,8 @@ def _refresh_generated_width_weights(owner, settings, target, vertex_analysis) -
         return
     if target == "intersection" and not any(iter_intersection_modifiers(owner)):
         return
+    if target == "selection" and owner.modifiers.get(SELECTION_LINE_MODIFIER_NAME) is None:
+        return
     group_name = vertex_analysis.width_group_name(target)
     if _needs_line_width_weights(settings, target):
         vertex_analysis.compute_and_apply_weights(owner, settings, target)
@@ -1189,6 +1341,9 @@ def _refresh_generated_width_weights(owner, settings, target, vertex_analysis) -
     elif target == "inner":
         from . import inner_lines
         inner_lines.update_parameters(owner, **_inner_midpoint_kwargs(settings))
+    elif target == "selection":
+        from . import selection_lines
+        selection_lines.update_parameters(owner, **_selection_midpoint_kwargs(settings))
 
 
 def _on_edge_smooth_changed(self, context):
@@ -1226,7 +1381,7 @@ def _on_camera_comp_changed(self, context):
                     owner,
                     self.outline_thickness,
                 )
-            from . import inner_lines, intersection_lines
+            from . import inner_lines, intersection_lines, selection_lines
             inner_lines.update_parameters(
                 owner,
                 thickness=modifier_thickness_for_world_width(
@@ -1241,6 +1396,14 @@ def _on_camera_comp_changed(self, context):
                     owner,
                     self.intersection_thickness,
                 ),
+            )
+            selection_lines.update_parameters(
+                owner,
+                thickness=modifier_thickness_for_world_width(
+                    owner,
+                    self.selection_line_thickness,
+                ),
+                **_selection_midpoint_kwargs(self),
             )
     _propagate(self, context, "use_camera_compensation")
 
@@ -1290,7 +1453,7 @@ def _on_uniform_line_width_changed(self, context):
                         mod.thickness_vertex_group = 0.0
                 else:
                     _refresh_line_width_weights(self, context)
-                from . import inner_lines, intersection_lines
+                from . import inner_lines, intersection_lines, selection_lines
                 inner_lines.update_parameters(
                     owner,
                     thickness=modifier_thickness_for_world_width(
@@ -1305,6 +1468,14 @@ def _on_uniform_line_width_changed(self, context):
                         owner,
                         self.intersection_thickness,
                     ),
+                )
+                selection_lines.update_parameters(
+                    owner,
+                    thickness=modifier_thickness_for_world_width(
+                        owner,
+                        self.selection_line_thickness,
+                    ),
+                    **_selection_midpoint_kwargs(self),
                 )
     _propagate(self, context, "use_uniform_line_width")
 
@@ -1328,6 +1499,13 @@ def _on_inner_distance_changed(self, context):
         return
     _refresh_visibility_rules(self, context)
     _propagate(self, context, "use_inner_line_distance_limit")
+
+
+def _on_selection_distance_changed(self, context):
+    if _propagating:
+        return
+    _refresh_visibility_rules(self, context)
+    _propagate(self, context, "use_selection_line_distance_limit")
 
 
 def _on_outline_distance_changed(self, context):
@@ -1363,6 +1541,7 @@ def _refresh_visibility_rules(self, context):
             or self.use_outline_distance_limit
             or self.use_inner_line_distance_limit
             or self.use_intersection_distance_limit
+            or self.use_selection_line_distance_limit
         ):
             camera_comp.refresh_visibility_objects(context, [owner])
         else:
@@ -1399,6 +1578,14 @@ def _get_intersection_mm(self):
 
 def _set_intersection_mm(self, value):
     self.intersection_thickness = value * _BU_PER_MM
+
+
+def _get_selection_mm(self):
+    return self.selection_line_thickness / _BU_PER_MM
+
+
+def _set_selection_mm(self, value):
+    self.selection_line_thickness = value * _BU_PER_MM
 
 
 # ------------------------------------------------------------------
@@ -1523,15 +1710,15 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     )  # type: ignore[valid-type]
 
     exclude_sheet_meshes: BoolProperty(
-        name="板ポリは内部線・交差線を作らない",
-        description="薄い板状のメッシュではアウトラインだけを作り、内部線と交差線を作らない",
+        name="板ポリは稜谷線・交差線を作らない",
+        description="薄い板状のメッシュではアウトラインだけを作り、稜谷線と交差線を作らない",
         # 2026-07-03 ユーザー確定: 板ポリ除外だけは「初期値全オフ」の対象外でオン
         default=True,
         update=_on_sheet_exclusion_changed,
     )  # type: ignore[valid-type]
 
     inner_line_enabled: BoolProperty(
-        name="内部線を追加",
+        name="稜谷線を追加",
         description="折れ目（稜線・谷線）を検出して線を追加する",
         default=False,
         update=_on_inner_line_enabled_changed,
@@ -1550,15 +1737,15 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     )  # type: ignore[valid-type]
 
     use_marked_inner_edges: BoolProperty(
-        name="指定済みの辺だけ線にする",
-        description="シャープまたはクリースを指定した辺だけを内部線にする",
+        name="旧・稜谷線互換設定",
+        description="旧設定との互換用。現在の稜谷線では使用しません",
         default=False,
         update=_on_marked_inner_edges_changed,
     )  # type: ignore[valid-type]
 
     inner_line_thickness: FloatProperty(
-        name="内部線の太さ",
-        description="印刷時の内部線の太さを保持する内部値",
+        name="稜谷線の太さ",
+        description="印刷時の稜谷線の太さを保持する内部値",
         default=0.0003,
         min=0.0001,
         max=1.0,
@@ -1568,8 +1755,8 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     )  # type: ignore[valid-type]
 
     inner_line_thickness_mm: FloatProperty(
-        name="内部線の太さ (mm)",
-        description="印刷時の内部線の太さ (mm)",
+        name="稜谷線の太さ (mm)",
+        description="印刷時の稜谷線の太さ (mm)",
         get=_get_inner_mm,
         set=_set_inner_mm,
         min=0.1,
@@ -1580,7 +1767,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
 
     inner_line_offset: FloatProperty(
         name="オフセット",
-        description="内部線を元の面からどれだけ浮かせるかを線幅基準で調整する",
+        description="稜谷線を元の面からどれだけ浮かせるかを線幅基準で調整する",
         default=0.0,
         min=-1.0,
         max=1.0,
@@ -1590,20 +1777,20 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     )  # type: ignore[valid-type]
 
     inner_line_color: _line_color_property(
-        "内部線の色",
+        "稜谷線の色",
         _on_inner_color_changed,
     )  # type: ignore[valid-type]
 
     use_inner_line_creation_limit: BoolProperty(
         name="作成範囲を制限",
-        description="カメラに写り、指定距離以内にあるオブジェクトにだけ内部線を作成する",
+        description="カメラに写り、指定距離以内にあるオブジェクトにだけ稜谷線を作成する",
         default=True,
         update=_on_inner_creation_limit_changed,
     )  # type: ignore[valid-type]
 
     inner_line_creation_max_distance: FloatProperty(
         name="作成する距離 (m)",
-        description="カメラに写るオブジェクトのうち、この距離以内のものだけに内部線を作成する",
+        description="カメラに写るオブジェクトのうち、この距離以内のものだけに稜谷線を作成する",
         default=10.0,
         min=0.1,
         max=1000.0,
@@ -1693,6 +1880,82 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         update=_on_intersection_creation_distance_changed,
     )  # type: ignore[valid-type]
 
+    # --- 選択線設定 ---
+
+    selection_line_enabled: BoolProperty(
+        name="選択線を追加",
+        description="Freestyle辺をマークした辺に線を描画する",
+        default=False,
+        update=_on_selection_line_enabled_changed,
+    )  # type: ignore[valid-type]
+
+    selection_line_angle: FloatProperty(
+        name="検出角度",
+        description="選択線の線幅変化区間を分割する角度",
+        default=math.radians(60),
+        min=math.radians(1),
+        max=math.radians(180),
+        precision=1,
+        step=100,
+        subtype="ANGLE",
+        update=_on_selection_angle_changed,
+    )  # type: ignore[valid-type]
+
+    selection_line_thickness: FloatProperty(
+        name="選択線の太さ",
+        description="印刷時の選択線の太さを保持する内部値",
+        default=0.0003,
+        min=0.0001,
+        max=1.0,
+        precision=4,
+        step=0.01,
+        update=_on_selection_thickness_changed,
+    )  # type: ignore[valid-type]
+
+    selection_line_thickness_mm: FloatProperty(
+        name="選択線の太さ (mm)",
+        description="印刷時の選択線の太さ (mm)",
+        get=_get_selection_mm,
+        set=_set_selection_mm,
+        min=0.1,
+        max=1000.0,
+        precision=2,
+        step=5,
+    )  # type: ignore[valid-type]
+
+    selection_line_offset: FloatProperty(
+        name="オフセット",
+        description="選択線を元の面からどれだけ浮かせるかを線幅基準で調整する",
+        default=0.0,
+        min=-1.0,
+        max=1.0,
+        precision=3,
+        step=10,
+        update=_on_selection_offset_changed,
+    )  # type: ignore[valid-type]
+
+    selection_line_color: _line_color_property(
+        "選択線の色",
+        _on_selection_color_changed,
+    )  # type: ignore[valid-type]
+
+    use_selection_line_creation_limit: BoolProperty(
+        name="作成範囲を制限",
+        description="カメラに写り、指定距離以内にあるオブジェクトにだけ選択線を作成する",
+        default=True,
+        update=_on_selection_creation_limit_changed,
+    )  # type: ignore[valid-type]
+
+    selection_line_creation_max_distance: FloatProperty(
+        name="作成する距離 (m)",
+        description="カメラに写るオブジェクトのうち、この距離以内のものだけに選択線を作成する",
+        default=10.0,
+        min=0.1,
+        max=1000.0,
+        subtype="DISTANCE",
+        update=_on_selection_creation_distance_changed,
+    )  # type: ignore[valid-type]
+
     # --- カメラ距離補正 ---
 
     use_camera_compensation: BoolProperty(
@@ -1721,25 +1984,6 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         precision=2,
         subtype="DISTANCE",
         update=_on_line_width_reference_distance_changed,
-    )  # type: ignore[valid-type]
-
-    # --- AO 線幅制御 ---
-
-    use_ao_influence: BoolProperty(
-        name="AOで線幅を制御",
-        description="焼き付けたAOの暗い部分で線を太くする",
-        default=False,
-        update=_make_weight_refresh_propagator("use_ao_influence"),
-    )  # type: ignore[valid-type]
-
-    ao_influence_strength: FloatProperty(
-        name="AO影響度",
-        description="AO情報が線幅に影響する強さ",
-        default=0.5,
-        min=0.0,
-        max=1.0,
-        subtype="FACTOR",
-        update=_make_weight_refresh_propagator("ao_influence_strength"),
     )  # type: ignore[valid-type]
 
     # --- エッジ角度による線幅調整 ---
@@ -1803,26 +2047,26 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
 
     inner_edge_smooth_factor: _midpoint_factor_property(
         "inner_edge_smooth_factor",
-        "分割された内部線ごとの中心付近の線幅を調整（正: 太く / 負: 細く）",
+        "分割された稜谷線ごとの中心付近の線幅を調整（正: 太く / 負: 細く）",
     )  # type: ignore[valid-type]
     inner_edge_midpoint_jitter_percent: _midpoint_jitter_property(
         "inner_edge_midpoint_jitter_percent",
-        "内部線の中間頂点位置を辺の中央から前後何%の範囲でずらす",
+        "稜谷線の中間頂点位置を辺の中央から前後何%の範囲でずらす",
     )  # type: ignore[valid-type]
     inner_edge_midpoint_angle: _sealed_midpoint_angle_property(
-        "旧設定との互換用。現在は内部線の検出角度を線幅変化の区間分割にも使います",
+        "旧設定との互換用。現在は稜谷線の検出角度を線幅変化の区間分割にも使います",
     )  # type: ignore[valid-type]
     inner_edge_width_curve_25: _curve_point_property(
         "inner_edge_width_curve_25", "25%",
-        "内部線の角から中間頂点まで25%進んだ地点の細り具合", 0.25,
+        "稜谷線の角から中間頂点まで25%進んだ地点の細り具合", 0.25,
     )  # type: ignore[valid-type]
     inner_edge_width_curve_50: _curve_point_property(
         "inner_edge_width_curve_50", "50%",
-        "内部線の角から中間頂点まで50%進んだ地点の細り具合", 0.50,
+        "稜谷線の角から中間頂点まで50%進んだ地点の細り具合", 0.50,
     )  # type: ignore[valid-type]
     inner_edge_width_curve_75: _curve_point_property(
         "inner_edge_width_curve_75", "75%",
-        "内部線の角から中間頂点まで75%進んだ地点の細り具合", 0.75,
+        "稜谷線の角から中間頂点まで75%進んだ地点の細り具合", 0.75,
     )  # type: ignore[valid-type]
 
     intersection_edge_smooth_factor: _midpoint_factor_property(
@@ -1848,6 +2092,31 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     intersection_edge_width_curve_75: _curve_point_property(
         "intersection_edge_width_curve_75", "75%",
         "交差線の角から中間頂点まで75%進んだ地点の細り具合", 0.75,
+    )  # type: ignore[valid-type]
+
+    selection_edge_smooth_factor: _midpoint_factor_property(
+        "selection_edge_smooth_factor",
+        "分割された選択線ごとの中心付近の線幅を調整（正: 太く / 負: 細く）",
+    )  # type: ignore[valid-type]
+    selection_edge_midpoint_jitter_percent: _midpoint_jitter_property(
+        "selection_edge_midpoint_jitter_percent",
+        "選択線の中間頂点位置を辺の中央から前後何%の範囲でずらす",
+    )  # type: ignore[valid-type]
+    selection_edge_midpoint_angle: _midpoint_angle_property(
+        "selection_edge_midpoint_angle",
+        "選択線を分割する角度。これ未満の角で分割し、以上の角は接続します",
+    )  # type: ignore[valid-type]
+    selection_edge_width_curve_25: _curve_point_property(
+        "selection_edge_width_curve_25", "25%",
+        "選択線の角から中間頂点まで25%進んだ地点の細り具合", 0.25,
+    )  # type: ignore[valid-type]
+    selection_edge_width_curve_50: _curve_point_property(
+        "selection_edge_width_curve_50", "50%",
+        "選択線の角から中間頂点まで50%進んだ地点の細り具合", 0.50,
+    )  # type: ignore[valid-type]
+    selection_edge_width_curve_75: _curve_point_property(
+        "selection_edge_width_curve_75", "75%",
+        "選択線の角から中間頂点まで75%進んだ地点の細り具合", 0.75,
     )  # type: ignore[valid-type]
 
     # --- カメラ範囲カリング ---
@@ -1892,14 +2161,14 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
 
     use_inner_line_distance_limit: BoolProperty(
         name="遠距離ラインを非表示",
-        description="カメラから指定距離以上離れたオブジェクトの内部線を非表示にして軽くする",
+        description="カメラから指定距離以上離れたオブジェクトの稜谷線を非表示にして軽くする",
         default=False,
         update=_on_inner_distance_changed,
     )  # type: ignore[valid-type]
 
     inner_line_max_distance: FloatProperty(
         name="非表示にする距離 (m)",
-        description="この距離以上離れたオブジェクトの内部線を非表示にする",
+        description="この距離以上離れたオブジェクトの稜谷線を非表示にする",
         default=20.0,
         min=0.1,
         max=1000.0,
@@ -1922,6 +2191,23 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         max=1000.0,
         subtype="DISTANCE",
         update=_make_visibility_value_propagator("intersection_max_distance"),
+    )  # type: ignore[valid-type]
+
+    use_selection_line_distance_limit: BoolProperty(
+        name="遠距離ラインを非表示",
+        description="カメラから指定距離以上離れたオブジェクトの選択線を非表示にして軽くする",
+        default=False,
+        update=_on_selection_distance_changed,
+    )  # type: ignore[valid-type]
+
+    selection_line_max_distance: FloatProperty(
+        name="非表示にする距離 (m)",
+        description="この距離以上離れたオブジェクトの選択線を非表示にする",
+        default=20.0,
+        min=0.1,
+        max=1000.0,
+        subtype="DISTANCE",
+        update=_make_visibility_value_propagator("selection_line_max_distance"),
     )  # type: ignore[valid-type]
 
 

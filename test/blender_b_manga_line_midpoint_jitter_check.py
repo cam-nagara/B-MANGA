@@ -95,7 +95,6 @@ def _apply_weights(
     settings.edge_width_curve_50 = curve_points[1]
     settings.edge_width_curve_75 = curve_points[2]
     settings.use_vertex_color = False
-    settings.use_ao_influence = False
     vertex_analysis.compute_and_apply_weights(obj, settings)
 
 

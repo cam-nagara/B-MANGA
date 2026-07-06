@@ -56,8 +56,7 @@ def _inner_tree_is_current(tree: bpy.types.NodeTree | None) -> bool:
         return False
     return (
         inner_lines._uses_named_attribute(tree, VG_INNER_LINE_WIDTH)
-        and inner_lines._uses_named_attribute(tree, inner_lines._SHARP_EDGE_ATTR)
-        and inner_lines._uses_named_attribute(tree, inner_lines._CREASE_EDGE_ATTR)
+        and inner_lines._uses_named_attribute(tree, inner_lines._FREESTYLE_EDGE_ATTR)
         and inner_lines._uses_named_attribute(tree, inner_lines._CHAIN_ID_ATTR)
         and not any(node.bl_idname == "GeometryNodeSetCurveRadius" for node in tree.nodes)
         and not any(node.bl_idname == "GeometryNodeResampleCurve" for node in tree.nodes)
@@ -99,14 +98,8 @@ def _refresh_chain_attribute(
     if tree is None:
         return
     angle = float(getattr(settings, "inner_line_angle", 0.5236))
-    use_marked_edges = bool(getattr(settings, "use_marked_inner_edges", False))
+    use_marked_edges = False
     angle = _modifier_float(mod, tree, "検出角度", angle)
-    use_marked_edges = _modifier_bool(
-        mod,
-        tree,
-        inner_lines._MARKED_ONLY_SOCKET_NAME,
-        use_marked_edges,
-    )
     midpoint_angle = inner_width_split_angle(settings, angle)
     inner_line_chains.update_chain_id_attribute(
         obj,
@@ -148,7 +141,7 @@ def _repair_object(obj: bpy.types.Object) -> bool:
         ),
         offset=float(getattr(settings, "inner_line_offset", 0.0)),
         material=outline_setup.get_line_material(obj, "inner"),
-        use_marked_edges=bool(getattr(settings, "use_marked_inner_edges", False)),
+        use_marked_edges=False,
         midpoint_factor=midpoint_factor,
         midpoint_angle=inner_width_split_angle(settings),
         midpoint_jitter_percent=float(
