@@ -3,6 +3,48 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-06 — B-MANGA Lineのプリセットと板ポリアウトラインを補正 (B-MANGA Line v0.3.128)
+
+### 症状
+
+- ラインプリセットで、ライン表示、ラインのみ表示、ビューポートのレベル数同期、一部の互換設定が保存・適用対象から漏れていた。
+- サイドバーの「ラインプリセット」「ライン設定」「カメラ設定」が親パネル配下としてインデント表示されていた。
+- 「検出角度」が、線そのものの検出と線幅変化区間の分割で読み分けにくかった。
+- 線幅の最小値が `0.1mm` のままで、`0.01mm` まで下げられなかった。
+- 板ポリのアウトラインが、「中間頂点の線幅調整」を動かした時に極端に細くなり、表示上消える場合があった。
+
+### 原因
+
+- プリセットの保存対象リストが、直近で追加した表示系・サブディビジョン系プロパティを含んでいなかった。
+- パネルはメインパネルの子パネルとして登録されていたため、Blender側の標準表示で見出しがインデントされていた。
+- 線幅変化区間の角度説明が線種ごとに少しずつ異なり、稜谷線の「線を描く角度」と同名で並んでいた。
+- UI上のmm入力と内部保持値の最小値が、旧仕様の `0.1mm` 相当のままだった。
+- 板ポリ境界チューブの線幅下限が小さすぎ、保存済みノードグループも旧下限のまま再利用され得た。
+
+### 修正
+
+- ラインプリセットで、ライン表示、ラインのみ表示、ビューポートのレベル数同期、稜谷線互換設定、交差線方式、稜谷線の旧区間角度を保存・適用するようにした。
+- プリセット適用後の「ラインを表示」は、カメラ範囲外・距離制限による非表示を強制解除せず、表示ルールを再評価するようにした。
+- 「ラインプリセット」「ライン設定」「カメラ設定」をトップレベルパネルに変更し、見出しのインデントをなくした。
+- 線幅の最小値をアウトライン・稜谷線・交差線・選択線すべてで `0.01mm` にした。
+- 「検出角度」の説明を、線検出は「以上」、線幅変化区間は「未満で分割・以上は接続」と分かる表現に揃えた。
+- 板ポリ境界チューブの線幅下限ノードを更新し、保存済みノードグループを再構築する世代へ上げた。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_register_reenable_check.py`
+- `test/blender_b_manga_line_slider_step_check.py`
+- `test/blender_b_manga_line_preset_visibility_check.py`
+- `test/blender_b_manga_line_sheet_and_proxy_follow_check.py`
+- `test/blender_b_manga_line_midpoint_targets_check.py`
+- `test/blender_b_manga_line_inner_angle_threshold_check.py`
+- `test/blender_b_manga_line_selection_line_check.py`
+- `test/blender_b_manga_line_ui_controls_check.py`
+- `test/blender_b_manga_line_curve_and_linked_batch_check.py`
+- `python -m py_compile addons/b_manga_line/core.py addons/b_manga_line/presets.py addons/b_manga_line/panels.py addons/b_manga_line/outline_setup.py test/blender_b_manga_line_preset_visibility_check.py test/blender_b_manga_line_register_reenable_check.py test/blender_b_manga_line_slider_step_check.py test/blender_b_manga_line_sheet_and_proxy_follow_check.py`
+
+---
+
 ## 2026-07-06 — B-MANGA Lineのライン設定項目を詳細設定にも表示 (B-MANGA Line v0.3.127)
 
 ### 症状

@@ -1659,7 +1659,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         name="線幅",
         description="印刷時のアウトラインの太さを保持する内部値",
         default=0.0003,
-        min=0.0001,
+        min=0.00001,
         max=1.0,
         precision=4,
         step=0.1,
@@ -1671,7 +1671,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         description="印刷時のアウトラインの太さ (mm)",
         get=_get_outline_mm,
         set=_set_outline_mm,
-        min=0.1,
+        min=0.01,
         max=1000.0,
         precision=2,
         step=5,
@@ -1796,7 +1796,10 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
 
     inner_line_angle: FloatProperty(
         name="検出角度",
-        description="この角度以上の折れ目に線を描画する",
+        description=(
+            "この角度以上の折れ目に線を描画します。線幅変化の区間は、"
+            "この角度未満の曲がりで分割し、以上は接続します"
+        ),
         default=math.radians(60),
         min=math.radians(1),
         max=math.radians(180),
@@ -1817,7 +1820,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         name="稜谷線の太さ",
         description="印刷時の稜谷線の太さを保持する内部値",
         default=0.0003,
-        min=0.0001,
+        min=0.00001,
         max=1.0,
         precision=4,
         step=0.01,
@@ -1829,7 +1832,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         description="印刷時の稜谷線の太さ (mm)",
         get=_get_inner_mm,
         set=_set_inner_mm,
-        min=0.1,
+        min=0.01,
         max=1000.0,
         precision=2,
         step=5,
@@ -1896,7 +1899,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         name="交差線の太さ",
         description="印刷時の交差線の太さを保持する内部値",
         default=0.0003,
-        min=0.0001,
+        min=0.00001,
         max=1.0,
         precision=4,
         step=0.01,
@@ -1911,7 +1914,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         ),
         get=_get_intersection_mm,
         set=_set_intersection_mm,
-        min=0.1,
+        min=0.01,
         max=1000.0,
         precision=2,
         step=5,
@@ -1961,7 +1964,10 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
 
     selection_line_angle: FloatProperty(
         name="検出角度",
-        description="選択線の線幅変化区間を分割する角度",
+        description=(
+            "選択線の基本検出角度。線幅変化の区間は、詳細内の検出角度未満の"
+            "曲がりで分割し、以上は接続します"
+        ),
         default=math.radians(60),
         min=math.radians(1),
         max=math.radians(180),
@@ -1975,7 +1981,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         name="選択線の太さ",
         description="印刷時の選択線の太さを保持する内部値",
         default=0.0003,
-        min=0.0001,
+        min=0.00001,
         max=1.0,
         precision=4,
         step=0.01,
@@ -1987,7 +1993,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         description="印刷時の選択線の太さ (mm)",
         get=_get_selection_mm,
         set=_set_selection_mm,
-        min=0.1,
+        min=0.01,
         max=1000.0,
         precision=2,
         step=5,
@@ -2082,7 +2088,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
 
     edge_midpoint_angle: _midpoint_angle_property(
         "edge_midpoint_angle",
-        "アウトラインを分割する角度。これ未満の角で分割し、以上の角は接続します",
+        "アウトラインの線幅変化区間を、この角度未満の曲がりで分割し、以上は接続します",
     )  # type: ignore[valid-type]
 
     edge_width_curve_25: FloatProperty(
@@ -2149,7 +2155,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     )  # type: ignore[valid-type]
     intersection_edge_midpoint_angle: _midpoint_angle_property(
         "intersection_edge_midpoint_angle",
-        "交差線を分割する角度。これ未満の角で分割し、以上の角は接続します",
+        "交差線の線幅変化区間を、この角度未満の曲がりで分割し、以上は接続します",
     )  # type: ignore[valid-type]
     intersection_edge_width_curve_25: _curve_point_property(
         "intersection_edge_width_curve_25", "25%",
@@ -2174,7 +2180,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     )  # type: ignore[valid-type]
     selection_edge_midpoint_angle: _midpoint_angle_property(
         "selection_edge_midpoint_angle",
-        "選択線を分割する角度。これ未満の角で分割し、以上の角は接続します",
+        "選択線の線幅変化区間を、この角度未満の曲がりで分割し、以上は接続します",
     )  # type: ignore[valid-type]
     selection_edge_width_curve_25: _curve_point_property(
         "selection_edge_width_curve_25", "25%",

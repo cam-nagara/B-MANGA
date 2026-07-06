@@ -43,6 +43,7 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "B-MANGA Line"
+    bl_order = 0
 
     def draw(self, context):
         layout = self.layout
@@ -60,7 +61,6 @@ class _BMangaLineMeshPanel:
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "B-MANGA Line"
-    bl_parent_id = "BMANGA_LINE_PT_main"
 
     @classmethod
     def poll(cls, context):
@@ -411,6 +411,7 @@ def _draw_actions(layout, context, obj) -> None:
 class BMANGA_LINE_PT_presets(_BMangaLineMeshPanel, bpy.types.Panel):
     bl_label = "ラインプリセット"
     bl_idname = "BMANGA_LINE_PT_presets"
+    bl_order = 1
     bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
@@ -420,6 +421,7 @@ class BMANGA_LINE_PT_presets(_BMangaLineMeshPanel, bpy.types.Panel):
 class BMANGA_LINE_PT_line_settings(_BMangaLineMeshPanel, bpy.types.Panel):
     bl_label = "ライン設定"
     bl_idname = "BMANGA_LINE_PT_line_settings"
+    bl_order = 2
 
     def draw(self, context):
         _draw_line_settings(self.layout, context, _active_settings(context))
@@ -428,6 +430,7 @@ class BMANGA_LINE_PT_line_settings(_BMangaLineMeshPanel, bpy.types.Panel):
 class BMANGA_LINE_PT_camera(_BMangaLineMeshPanel, bpy.types.Panel):
     bl_label = "カメラ設定"
     bl_idname = "BMANGA_LINE_PT_camera"
+    bl_order = 3
 
     def draw(self, context):
         _draw_camera(self.layout, context, _active_settings(context))

@@ -169,6 +169,42 @@ def _test_sheet_outline_tube() -> None:
     assert _eval_material_poly_count(plane, outline_setup.MATERIAL_NAME) >= 32, (
         "板ポリ境界チューブがライン素材で評価されていません"
     )
+    safe_nodes = [
+        node for node in tube_mod.node_group.nodes
+        if getattr(node, "label", "") == outline_setup._SHEET_TUBE_SAFE_SCALE_LABEL
+    ]
+    assert safe_nodes, "板ポリ境界チューブの線幅下限ノードがありません"
+    assert abs(
+        float(safe_nodes[0].inputs[1].default_value)
+        - float(outline_setup._MIN_CURVE_TO_MESH_SCALE)
+    ) < 1.0e-7, "板ポリ境界チューブの線幅下限値が古いままです"
+
+
+def _test_sheet_midpoint_adjustment_keeps_tube_visible() -> None:
+    """中間頂点の線幅調整だけを動かしても板ポリのアウトラインが消えないこと."""
+    _clear_scene()
+    _cube, plane = _setup_pair()
+    settings = plane.bmanga_line_settings
+    settings.edge_smooth_factor = -1.0
+    settings.edge_width_curve_25 = 0.0
+    settings.edge_width_curve_50 = 0.0
+    settings.edge_width_curve_75 = 0.0
+    settings.edge_midpoint_jitter_percent = 25.0
+
+    tube_mod = plane.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME)
+    assert tube_mod is not None, "シートに境界チューブモディファイアがありません"
+    assert tube_mod.show_viewport and tube_mod.show_render, (
+        "中間頂点の線幅調整で境界チューブが非表示になっています"
+    )
+    factor_sid = outline_setup._find_socket_identifier(
+        tube_mod.node_group,
+        outline_setup._SHEET_TUBE_MIDPOINT_FACTOR_SOCKET,
+    )
+    assert factor_sid is not None
+    assert abs(float(tube_mod[factor_sid]) + 1.0) < 1.0e-7
+    assert _eval_material_poly_count(plane, outline_setup.MATERIAL_NAME) >= 32, (
+        "中間頂点の線幅調整後に板ポリ境界チューブが評価されていません"
+    )
 
 
 def _test_sheet_never_owns_intersection_pair() -> None:
@@ -358,6 +394,7 @@ def main() -> None:
     _clear_scene()
     _test_sheet_outline_is_double_sided()
     _test_sheet_outline_tube()
+    _test_sheet_midpoint_adjustment_keeps_tube_visible()
     _test_sheet_never_owns_intersection_pair()
     _test_pair_ownership_is_deterministic()
     _test_proxy_follows_object_move()

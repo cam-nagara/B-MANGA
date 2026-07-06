@@ -17,6 +17,9 @@ from . import core, modifier_stack, registration
 
 
 _SETTING_FIELDS = (
+    "lines_visible",
+    "line_only_visible",
+    "match_subsurf_viewport_to_render",
     "outline_enabled",
     "outline_thickness",
     "outline_offset",
@@ -32,11 +35,13 @@ _SETTING_FIELDS = (
     "hide_through_transparent",
     "inner_line_enabled",
     "inner_line_angle",
+    "use_marked_inner_edges",
     "inner_line_thickness",
     "inner_line_offset",
     "inner_line_color",
     "use_inner_line_creation_limit",
     "inner_line_creation_max_distance",
+    "intersection_method",
     "intersection_enabled",
     "intersection_thickness",
     "intersection_line_offset",
@@ -61,6 +66,7 @@ _SETTING_FIELDS = (
     "edge_width_curve_75",
     "inner_edge_smooth_factor",
     "inner_edge_midpoint_jitter_percent",
+    "inner_edge_midpoint_angle",
     "inner_edge_width_curve_25",
     "inner_edge_width_curve_50",
     "inner_edge_width_curve_75",
@@ -164,6 +170,43 @@ def _refresh_after_line_settings(context) -> None:
             width_targets=("intersection",),
         )
     outline_setup.ensure_aov_passes(context.scene)
+
+
+def _reflect_applied_display_settings(
+    objects: list[bpy.types.Object],
+    context,
+) -> None:
+    """プリセット適用時に抑制した表示系コールバックを明示反映する."""
+    if not objects:
+        return
+    from . import camera_comp, subdivision_lod
+
+    line_only_enabled = any(
+        bool(getattr(obj.bmanga_line_settings, "line_only_visible", False))
+        for obj in objects
+    )
+    for obj in objects:
+        settings = obj.bmanga_line_settings
+        if bool(getattr(settings, "lines_visible", True)):
+            obj[core.PROP_LINES_HIDDEN] = False
+            core.sync_line_visibility_setting(obj)
+            if (
+                bool(getattr(settings, "use_camera_culling", False))
+                or bool(getattr(settings, "use_outline_distance_limit", False))
+                or bool(getattr(settings, "use_inner_line_distance_limit", False))
+                or bool(getattr(settings, "use_intersection_distance_limit", False))
+                or bool(getattr(settings, "use_selection_line_distance_limit", False))
+            ):
+                camera_comp.refresh_visibility_objects(context, [obj])
+            else:
+                core.set_line_visibility(obj, True)
+        else:
+            core.set_line_visibility(obj, False)
+        if bool(getattr(settings, "match_subsurf_viewport_to_render", False)):
+            subdivision_lod.sync_viewport_levels_to_render(obj)
+        else:
+            subdivision_lod.reset_viewport_levels_to_zero(obj)
+    core.set_scene_line_only(context, line_only_enabled)
 
 
 def apply_line_settings(
@@ -317,8 +360,12 @@ def apply_line_settings(
 class BMangaLinePreset(bpy.types.PropertyGroup):
     """Saved B-MANGA Line settings."""
 
+    lines_visible: BoolProperty(default=True)
+    line_only_visible: BoolProperty(default=False)
+    match_subsurf_viewport_to_render: BoolProperty(default=False)
+
     outline_enabled: BoolProperty(default=True)
-    outline_thickness: FloatProperty(default=0.0003, min=0.0001, max=1.0)
+    outline_thickness: FloatProperty(default=0.0003, min=0.00001, max=1.0)
     outline_offset: FloatProperty(default=0.0, min=-1.0, max=1.0)
     outline_color: FloatVectorProperty(
         subtype="COLOR",
@@ -341,7 +388,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     inner_line_enabled: BoolProperty(default=False)
     inner_line_angle: FloatProperty(default=1.0471975512, min=0.0174532925, max=3.1415926536)
     use_marked_inner_edges: BoolProperty(default=False)
-    inner_line_thickness: FloatProperty(default=0.0003, min=0.0001, max=1.0)
+    inner_line_thickness: FloatProperty(default=0.0003, min=0.00001, max=1.0)
     inner_line_offset: FloatProperty(default=0.0, min=-1.0, max=1.0)
     inner_line_color: FloatVectorProperty(
         subtype="COLOR",
@@ -362,7 +409,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
         default="SHELL",
     )
     intersection_enabled: BoolProperty(default=False)
-    intersection_thickness: FloatProperty(default=0.0003, min=0.0001, max=1.0)
+    intersection_thickness: FloatProperty(default=0.0003, min=0.00001, max=1.0)
     intersection_line_offset: FloatProperty(default=0.0, min=-1.0, max=1.0)
     intersection_color: FloatVectorProperty(
         subtype="COLOR",
@@ -376,7 +423,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
 
     selection_line_enabled: BoolProperty(default=False)
     selection_line_angle: FloatProperty(default=1.0471975512, min=0.0174532925, max=3.1415926536)
-    selection_line_thickness: FloatProperty(default=0.0003, min=0.0001, max=1.0)
+    selection_line_thickness: FloatProperty(default=0.0003, min=0.00001, max=1.0)
     selection_line_offset: FloatProperty(default=0.0, min=-1.0, max=1.0)
     selection_line_color: FloatVectorProperty(
         subtype="COLOR",
@@ -492,6 +539,7 @@ class BMANGA_LINE_OT_preset_apply_selected(bpy.types.Operator):
             self.report({"WARNING"}, "プリセットが選択されていません")
             return {"CANCELLED"}
         count = 0
+        applied_objects: list[bpy.types.Object] = []
         _update_view_layer(context)
         for obj in _selected_meshes(context):
             copy_preset_to_settings(preset, obj.bmanga_line_settings)
@@ -502,7 +550,9 @@ class BMANGA_LINE_OT_preset_apply_selected(bpy.types.Operator):
                 transforms_fresh=True,
             ):
                 count += 1
+                applied_objects.append(obj)
         _refresh_after_line_settings(context)
+        _reflect_applied_display_settings(applied_objects, context)
         self.report({"INFO"}, f"{count} オブジェクトにプリセットを適用しました")
         return {"FINISHED"}
 

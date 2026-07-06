@@ -19,6 +19,7 @@ from b_manga_line import (  # noqa: E402
     intersection_lines,
     outline_setup,
     presets,
+    subdivision_lod,
 )
 
 
@@ -406,6 +407,79 @@ def _assert_multi_select_manual_setting_propagation(
         _assert_line_state(obj, visible=True)
 
 
+def _assert_preset_display_settings_apply(
+    scene: bpy.types.Scene,
+    source: bpy.types.Object,
+    first: bpy.types.Object,
+    second: bpy.types.Object,
+) -> None:
+    source_settings = source.bmanga_line_settings
+    source_settings.lines_visible = False
+    source_settings.line_only_visible = False
+    source_settings.match_subsurf_viewport_to_render = False
+    source_settings.auto_subdivision_for_midpoint = False
+    source_settings.inner_edge_midpoint_angle = math.radians(77.0)
+    scene.bmanga_line_preset_name = "表示設定テスト"
+    _select(source, [source])
+    assert bpy.ops.bmanga_line.preset_save() == {"FINISHED"}
+
+    _select(first, [first, second])
+    assert bpy.ops.bmanga_line.preset_apply_selected() == {"FINISHED"}
+    for obj in (first, second):
+        applied = obj.bmanga_line_settings
+        assert applied.lines_visible is False
+        assert applied.line_only_visible is False
+        assert applied.match_subsurf_viewport_to_render is False
+        assert math.isclose(
+            applied.inner_edge_midpoint_angle,
+            math.radians(77.0),
+            rel_tol=0.001,
+        )
+        _assert_line_state(obj, visible=False)
+        assert bool(obj.get(core.PROP_LINES_HIDDEN, False))
+
+    source_settings.lines_visible = True
+    source_settings.line_only_visible = True
+    source_settings.match_subsurf_viewport_to_render = True
+    source_settings.auto_subdivision_for_midpoint = True
+    assert bpy.ops.bmanga_line.preset_save() == {"FINISHED"}
+
+    _select(first, [first, second])
+    assert bpy.ops.bmanga_line.preset_apply_selected() == {"FINISHED"}
+    for obj in (first, second):
+        applied = obj.bmanga_line_settings
+        assert applied.lines_visible is True
+        assert applied.line_only_visible is True
+        assert applied.match_subsurf_viewport_to_render is True
+        assert applied.auto_subdivision_for_midpoint is True
+        _assert_line_state(obj, visible=True)
+        assert bool(obj.get(core.PROP_LINE_ONLY, False)), (
+            f"{obj.name}: ラインのみ表示がプリセットから反映されていません"
+        )
+        subsurfs = [mod for mod in obj.modifiers if mod.type == "SUBSURF"]
+        assert subsurfs, f"{obj.name}: 同期確認用のサブディビジョンがありません"
+        assert any(
+            subdivision_lod.is_auto_subsurf_modifier(sub)
+            and sub.levels == sub.render_levels
+            for sub in subsurfs
+        ), (
+            f"{obj.name}: ビューポートのレベル数がレンダー値へ同期されていません"
+        )
+
+    core.set_scene_line_only(bpy.context, False)
+    source_settings.lines_visible = True
+    source_settings.line_only_visible = False
+    source_settings.match_subsurf_viewport_to_render = False
+    source_settings.auto_subdivision_for_midpoint = False
+    for obj in (first, second):
+        obj.bmanga_line_settings.line_only_visible = False
+        obj.bmanga_line_settings.auto_subdivision_for_midpoint = False
+        subdivision_lod.remove_auto_subdivision(obj)
+        core.set_line_visibility(obj, True)
+        assert not bool(obj.get(core.PROP_LINE_ONLY, False))
+        _assert_line_state(obj, visible=True)
+
+
 def main() -> None:
     b_manga_line.register()
     _clear_scene()
@@ -472,6 +546,7 @@ def main() -> None:
         assert abs(applied.line_width_reference_distance - 3.5) < 1.0e-7
         _assert_line_state(obj, visible=True)
 
+    _assert_preset_display_settings_apply(scene, source, first, second)
     _assert_multi_select_manual_setting_propagation(scene, first, second)
 
     assert bpy.ops.bmanga_line.set_visibility(visible=False) == {"FINISHED"}
@@ -561,14 +636,10 @@ def main() -> None:
         assert not core.has_line(obj), f"{obj.name}: ラインが残っています"
         assert core.PROP_LINES_HIDDEN not in obj
 
-    assert bpy.ops.bmanga_line.preset_delete() == {"FINISHED"}
-    assert len(scene.bmanga_line_presets) == 3
-    assert bpy.ops.bmanga_line.preset_delete() == {"FINISHED"}
-    assert len(scene.bmanga_line_presets) == 2
-    assert bpy.ops.bmanga_line.preset_delete() == {"FINISHED"}
-    assert len(scene.bmanga_line_presets) == 1
-    assert bpy.ops.bmanga_line.preset_delete() == {"FINISHED"}
-    assert len(scene.bmanga_line_presets) == 0
+    while scene.bmanga_line_presets:
+        before = len(scene.bmanga_line_presets)
+        assert bpy.ops.bmanga_line.preset_delete() == {"FINISHED"}
+        assert len(scene.bmanga_line_presets) == before - 1
 
     print("[PASS] line presets apply to selected objects and visibility/delete work")
 

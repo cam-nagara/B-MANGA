@@ -25,18 +25,18 @@ ANGLE_PROPS = (
 )
 
 NUDGE_PROPS = (
-    ("outline_thickness_mm", 0.1),
+    ("outline_thickness_mm", 0.01),
     ("outline_offset", -0.1),
     ("outline_creation_max_distance", 1.0),
     ("inner_line_angle", math.radians(1.0)),
-    ("inner_line_thickness_mm", 0.1),
+    ("inner_line_thickness_mm", 0.01),
     ("inner_line_offset", -0.1),
     ("inner_line_creation_max_distance", 1.0),
-    ("intersection_thickness_mm", 0.1),
+    ("intersection_thickness_mm", 0.01),
     ("intersection_line_offset", -0.1),
     ("intersection_creation_max_distance", 1.0),
     ("selection_line_angle", math.radians(1.0)),
-    ("selection_line_thickness_mm", 0.1),
+    ("selection_line_thickness_mm", 0.01),
     ("selection_line_offset", -0.1),
     ("selection_line_creation_max_distance", 1.0),
     ("camera_compensation_influence", -0.1),
@@ -71,6 +71,13 @@ NUDGE_PROPS = (
     ("selection_line_max_distance", 1.0),
 )
 
+MIN_VALUE_PROPS = (
+    "outline_thickness_mm",
+    "inner_line_thickness_mm",
+    "intersection_thickness_mm",
+    "selection_line_thickness_mm",
+)
+
 
 def _clear_scene() -> None:
     bpy.ops.object.select_all(action="SELECT")
@@ -92,6 +99,15 @@ def _assert_angle_steps_are_visible() -> None:
         )
 
 
+def _assert_line_width_minimums() -> None:
+    props = core.BMangaLineSettings.bl_rna.properties
+    for prop_name in MIN_VALUE_PROPS:
+        prop = props[prop_name]
+        assert abs(float(getattr(prop, "hard_min", 0.0)) - 0.01) < 1.0e-9, (
+            f"{prop_name} の最小値が0.01mmではありません: {prop.hard_min}"
+        )
+
+
 def _assert_numeric_nudges(settings) -> None:
     for prop_name, delta in NUDGE_PROPS:
         before = float(getattr(settings, prop_name))
@@ -110,6 +126,7 @@ def main() -> None:
         obj = bpy.context.object
         settings = obj.bmanga_line_settings
         _assert_angle_steps_are_visible()
+        _assert_line_width_minimums()
         _assert_numeric_nudges(settings)
         print("BMANGA_LINE_SLIDER_STEP_OK")
     finally:

@@ -45,7 +45,9 @@ def _assert_registered() -> None:
     for name in subpanels:
         panel = getattr(bpy.types, name, None)
         assert panel is not None, f"{name} が登録されていません"
-        assert panel.bl_parent_id == "BMANGA_LINE_PT_main"
+        assert not getattr(panel, "bl_parent_id", ""), (
+            f"{name} が親パネル配下でインデントされます"
+        )
     assert "DEFAULT_CLOSED" not in getattr(
         bpy.types.BMANGA_LINE_PT_camera,
         "bl_options",
