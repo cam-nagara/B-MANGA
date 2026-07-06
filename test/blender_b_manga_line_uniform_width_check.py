@@ -134,6 +134,24 @@ def _intersection_target_thickness(obj: bpy.types.Object) -> float:
     return float(mod[sid])
 
 
+def _selection_thickness(obj: bpy.types.Object) -> float:
+    mod = obj.modifiers.get(core.SELECTION_LINE_MODIFIER_NAME)
+    assert mod is not None
+    sid = inner_lines._find_socket_id(mod.node_group, "線の太さ")
+    assert sid is not None
+    return float(mod[sid])
+
+
+def _mark_all_freestyle_edges(obj: bpy.types.Object) -> None:
+    mesh = obj.data
+    attr = mesh.attributes.get("freestyle_edge")
+    if attr is None:
+        attr = mesh.attributes.new("freestyle_edge", "BOOLEAN", "EDGE")
+    for item in attr.data:
+        item.value = True
+    mesh.update()
+
+
 def _evaluated_outline_world_width(obj: bpy.types.Object) -> float:
     depsgraph = bpy.context.evaluated_depsgraph_get()
     mesh = bpy.data.meshes.new_from_object(obj.evaluated_get(depsgraph))
@@ -522,6 +540,105 @@ def _test_camera_compensation_uses_mesh_position_not_origin() -> None:
     assert math.isclose(actual, expected, rel_tol=0.001), (actual, expected)
 
 
+def _test_low_influence_keeps_configured_line_widths() -> None:
+    scene = bpy.context.scene
+    _clear_scene()
+    _configure_scene(scene)
+
+    bpy.ops.mesh.primitive_cube_add(size=0.8, location=(0.25, 0.0, -1.2))
+    target = bpy.context.object
+    target.name = "BML_low_influence_target"
+    _select(target)
+    target.bmanga_line_settings.outline_thickness_mm = 0.35
+    assert presets.apply_line_settings(target, bpy.context)
+
+    bpy.ops.mesh.primitive_cube_add(size=0.8, location=(0.0, 0.0, -1.2))
+    source = bpy.context.object
+    source.name = "BML_low_influence_source"
+    _mark_all_freestyle_edges(source)
+    _select(source)
+    settings = source.bmanga_line_settings
+    settings.outline_thickness_mm = 0.40
+    settings.inner_line_enabled = True
+    settings.inner_line_thickness_mm = 0.20
+    settings.intersection_enabled = True
+    settings.intersection_method = "BOOLEAN"
+    settings.intersection_thickness_mm = 0.15
+    settings.selection_line_enabled = True
+    settings.selection_line_thickness_mm = 0.10
+    settings.use_camera_compensation = True
+    settings.camera_compensation_influence = 0.0
+    settings.line_width_reference_distance = 6.0
+    assert presets.apply_line_settings(source, bpy.context)
+    assert source.modifiers.get(core.GN_MODIFIER_NAME) is not None
+    assert next(core.iter_intersection_modifiers(source), None) is not None
+    assert source.modifiers.get(core.SELECTION_LINE_MODIFIER_NAME) is not None
+
+    expected_outline = _expected_world_width(scene, 1.2, 0.40)
+    expected_inner = _expected_world_width(scene, 1.2, 0.20)
+    expected_intersection = _expected_world_width(scene, 1.2, 0.15)
+    expected_selection = _expected_world_width(scene, 1.2, 0.10)
+
+    assert math.isclose(_line_world_width(source), expected_outline, rel_tol=0.001), (
+        _line_world_width(source),
+        expected_outline,
+    )
+    assert math.isclose(
+        _socket_world_width(source, _inner_thickness(source)),
+        expected_inner,
+        rel_tol=0.001,
+    )
+    assert math.isclose(
+        _socket_world_width(source, _intersection_thickness(source)),
+        expected_intersection,
+        rel_tol=0.001,
+    )
+    assert math.isclose(
+        _socket_world_width(source, _selection_thickness(source)),
+        expected_selection,
+        rel_tol=0.001,
+    )
+
+    settings.use_uniform_line_width = True
+    camera_comp.refresh_objects(bpy.context, [source])
+    expected_outline_uniform = max(
+        camera_comp._uniform_widths_for_mesh(
+            scene, scene.camera, source, settings.outline_thickness,
+        )
+    )
+    expected_inner_uniform = max(
+        camera_comp._uniform_widths_for_mesh(
+            scene, scene.camera, source, settings.inner_line_thickness,
+        )
+    )
+    expected_intersection_uniform = max(
+        camera_comp._uniform_widths_for_mesh(
+            scene, scene.camera, source, settings.intersection_thickness,
+        )
+    )
+    expected_selection_uniform = max(
+        camera_comp._uniform_widths_for_mesh(
+            scene, scene.camera, source, settings.selection_line_thickness,
+        )
+    )
+    assert math.isclose(_line_world_width(source), expected_outline_uniform, rel_tol=0.001)
+    assert math.isclose(
+        _socket_world_width(source, _inner_thickness(source)),
+        expected_inner_uniform,
+        rel_tol=0.001,
+    )
+    assert math.isclose(
+        _socket_world_width(source, _intersection_thickness(source)),
+        expected_intersection_uniform,
+        rel_tol=0.001,
+    )
+    assert math.isclose(
+        _socket_world_width(source, _selection_thickness(source)),
+        expected_selection_uniform,
+        rel_tol=0.001,
+    )
+
+
 def _test_resolution_percentage_does_not_change_width() -> None:
     """プレビュー縮小（解像度%）でも線幅の実体は印刷 mm 基準のまま変わらない."""
     scene = bpy.context.scene
@@ -658,6 +775,7 @@ def main() -> None:
     _test_object_scale_compensates_modifier_width()
     _test_intersection_target_scale_conversion()
     _test_camera_compensation_uses_mesh_position_not_origin()
+    _test_low_influence_keeps_configured_line_widths()
     _test_resolution_percentage_does_not_change_width()
     _test_evaluated_orthographic_width()
     _test_linked_uniform_width_refresh_does_not_crash()
