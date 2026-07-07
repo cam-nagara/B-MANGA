@@ -402,6 +402,7 @@ def apply_line_settings(
     *,
     refresh_scene: bool = True,
     transforms_fresh: bool = False,
+    line_targets=None,
 ) -> bool:
     if obj.type != "MESH":
         return False
@@ -421,115 +422,124 @@ def apply_line_settings(
     )
 
     settings = obj.bmanga_line_settings
-    if settings.auto_subdivision_for_midpoint:
+    target_set = set(line_targets or ("outline", "inner", "intersection", "selection"))
+    if target_set and target_set - {"outline", "inner", "intersection", "selection"}:
+        target_set = {"outline", "inner", "intersection", "selection"}
+
+    generated_targets = target_set & {"inner", "intersection", "selection"}
+    if generated_targets and settings.auto_subdivision_for_midpoint:
         subdivision_lod.ensure_auto_subdivision(obj, context.scene)
-    else:
+    elif generated_targets:
         subdivision_lod.remove_auto_subdivision(obj)
-    if settings.match_subsurf_viewport_to_render:
+    if generated_targets and settings.match_subsurf_viewport_to_render:
         subdivision_lod.sync_viewport_levels_to_render(obj)
-    else:
+    elif generated_targets:
         subdivision_lod.reset_viewport_levels_to_zero(obj)
 
-    if (
-        settings.outline_enabled
-        and camera_comp.outline_line_creation_in_range(obj, context.scene, settings)
-    ):
-        use_vg = (
-            settings.use_uniform_line_width
-            or vertex_analysis.has_width_controls(settings, "outline")
-        )
-        ok = outline_setup.apply_outline(
-            obj,
-            thickness=settings.outline_thickness,
-            color=tuple(settings.outline_color),
-            use_vertex_color=settings.use_vertex_color,
-            even_thickness=settings.even_thickness,
-            use_rim=settings.use_rim,
-            offset=settings.outline_offset,
-            use_vertex_group=use_vg,
-            hide_through_transparent=settings.hide_through_transparent,
-            scene=context.scene,
-        )
-        if not ok:
-            return False
-    else:
-        outline_setup.remove_outline_geometry(obj)
+    if "outline" in target_set:
+        if (
+            settings.outline_enabled
+            and camera_comp.outline_line_creation_in_range(obj, context.scene, settings)
+        ):
+            use_vg = (
+                settings.use_uniform_line_width
+                or vertex_analysis.has_width_controls(settings, "outline")
+            )
+            ok = outline_setup.apply_outline(
+                obj,
+                thickness=settings.outline_thickness,
+                color=tuple(settings.outline_color),
+                use_vertex_color=settings.use_vertex_color,
+                even_thickness=settings.even_thickness,
+                use_rim=settings.use_rim,
+                offset=settings.outline_offset,
+                use_vertex_group=use_vg,
+                hide_through_transparent=settings.hide_through_transparent,
+                scene=context.scene,
+            )
+            if not ok:
+                return False
+        else:
+            outline_setup.remove_outline_geometry(obj)
 
     skip_inner = plane_filter.should_skip_inner_lines(obj, settings)
-    if (
-        settings.inner_line_enabled
-        and not skip_inner
-        and camera_comp.inner_line_creation_in_range(
-            obj, context.scene, settings,
-        )
-    ):
-        inner_lines.apply_inner_lines(
-            obj,
-            angle=settings.inner_line_angle,
-            thickness=scale_utils.modifier_thickness_for_world_width(
+    if "inner" in target_set:
+        if (
+            settings.inner_line_enabled
+            and not skip_inner
+            and camera_comp.inner_line_creation_in_range(
+                obj, context.scene, settings,
+            )
+        ):
+            inner_lines.apply_inner_lines(
                 obj,
-                settings.inner_line_thickness,
-            ),
-            offset=settings.inner_line_offset,
-            material=outline_setup.get_line_material(obj, "inner"),
-            use_marked_edges=False,
-            midpoint_factor=(
-                settings.inner_edge_smooth_factor
-                if settings.auto_subdivision_for_midpoint
-                else 0.0
-            ),
-            midpoint_angle=core.inner_width_split_angle(settings),
-            midpoint_jitter_percent=settings.inner_edge_midpoint_jitter_percent,
-            width_curve_25=settings.inner_edge_width_curve_25,
-            width_curve_50=settings.inner_edge_width_curve_50,
-            width_curve_75=settings.inner_edge_width_curve_75,
-        )
-    else:
-        inner_lines.remove_inner_lines(obj)
+                angle=settings.inner_line_angle,
+                thickness=scale_utils.modifier_thickness_for_world_width(
+                    obj,
+                    settings.inner_line_thickness,
+                ),
+                offset=settings.inner_line_offset,
+                material=outline_setup.get_line_material(obj, "inner"),
+                use_marked_edges=False,
+                midpoint_factor=(
+                    settings.inner_edge_smooth_factor
+                    if settings.auto_subdivision_for_midpoint
+                    else 0.0
+                ),
+                midpoint_angle=core.inner_width_split_angle(settings),
+                midpoint_jitter_percent=settings.inner_edge_midpoint_jitter_percent,
+                width_curve_25=settings.inner_edge_width_curve_25,
+                width_curve_50=settings.inner_edge_width_curve_50,
+                width_curve_75=settings.inner_edge_width_curve_75,
+            )
+        else:
+            inner_lines.remove_inner_lines(obj)
 
-    if (
-        settings.selection_line_enabled
-        and camera_comp.selection_line_creation_in_range(
-            obj, context.scene, settings,
-        )
-    ):
-        selection_lines.apply_selection_lines(
-            obj,
-            angle=settings.selection_line_angle,
-            thickness=scale_utils.modifier_thickness_for_world_width(
+    if "selection" in target_set:
+        if (
+            settings.selection_line_enabled
+            and camera_comp.selection_line_creation_in_range(
+                obj, context.scene, settings,
+            )
+        ):
+            selection_lines.apply_selection_lines(
                 obj,
-                settings.selection_line_thickness,
-            ),
-            offset=settings.selection_line_offset,
-            material=outline_setup.get_line_material(obj, "selection"),
-            midpoint_factor=(
-                settings.selection_edge_smooth_factor
-                if settings.auto_subdivision_for_midpoint
-                else 0.0
-            ),
-            midpoint_angle=settings.selection_edge_midpoint_angle,
-            midpoint_jitter_percent=settings.selection_edge_midpoint_jitter_percent,
-            width_curve_25=settings.selection_edge_width_curve_25,
-            width_curve_50=settings.selection_edge_width_curve_50,
-            width_curve_75=settings.selection_edge_width_curve_75,
-        )
-    else:
-        selection_lines.remove_selection_lines(obj)
+                angle=settings.selection_line_angle,
+                thickness=scale_utils.modifier_thickness_for_world_width(
+                    obj,
+                    settings.selection_line_thickness,
+                ),
+                offset=settings.selection_line_offset,
+                material=outline_setup.get_line_material(obj, "selection"),
+                midpoint_factor=(
+                    settings.selection_edge_smooth_factor
+                    if settings.auto_subdivision_for_midpoint
+                    else 0.0
+                ),
+                midpoint_angle=settings.selection_edge_midpoint_angle,
+                midpoint_jitter_percent=settings.selection_edge_midpoint_jitter_percent,
+                width_curve_25=settings.selection_edge_width_curve_25,
+                width_curve_50=settings.selection_edge_width_curve_50,
+                width_curve_75=settings.selection_edge_width_curve_75,
+            )
+        else:
+            selection_lines.remove_selection_lines(obj)
 
     intersection_in_range = camera_comp.intersection_line_creation_in_range(
         obj, context.scene, settings,
     )
-    if not (
-        settings.intersection_enabled
-        and not plane_filter.should_exclude_generated_lines(obj, settings)
-        and intersection_in_range
-    ):
-        intersection_lines.remove_intersection_lines(obj)
+    if "intersection" in target_set:
+        if not (
+            settings.intersection_enabled
+            and not plane_filter.should_exclude_generated_lines(obj, settings)
+            and intersection_in_range
+        ):
+            intersection_lines.remove_intersection_lines(obj)
 
     camera_comp.store_unit_reference(obj, context.scene)
 
     if not settings.use_uniform_line_width:
-        for target in ("outline", "inner", "intersection", "selection"):
+        for target in target_set:
             group_name = vertex_analysis.width_group_name(target)
             if vertex_analysis.has_width_controls(settings, target):
                 vertex_analysis.compute_and_apply_weights(obj, settings, target)
@@ -733,21 +743,12 @@ class BMANGA_LINE_OT_preset_apply_selected(bpy.types.Operator):
             self.report({"WARNING"}, "プリセットが選択されていません")
             return {"CANCELLED"}
         count = 0
-        applied_objects: list[bpy.types.Object] = []
-        _update_view_layer(context)
+        from . import update_state
         for obj in _selected_meshes(context):
             copy_preset_to_settings(preset, obj.bmanga_line_settings)
-            if apply_line_settings(
-                obj,
-                context,
-                refresh_scene=False,
-                transforms_fresh=True,
-            ):
-                count += 1
-                applied_objects.append(obj)
-        _refresh_after_line_settings(context)
-        _reflect_applied_display_settings(applied_objects, context)
-        self.report({"INFO"}, f"{count} オブジェクトにプリセットを適用しました")
+            update_state.mark_pending(obj)
+            count += 1
+        self.report({"INFO"}, f"{count} オブジェクトにプリセット設定を適用しました")
         return {"FINISHED"}
 
 

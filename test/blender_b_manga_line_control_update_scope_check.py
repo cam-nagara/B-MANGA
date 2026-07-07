@@ -1,4 +1,4 @@
-"""B-MANGA Line: every UI checkbox/slider update is scoped to needed work."""
+"""B-MANGA Line: setting edits defer heavy work until explicit updates."""
 
 from __future__ import annotations
 
@@ -20,6 +20,8 @@ from b_manga_line import (  # noqa: E402
     outline_setup,
     presets,
     selection_lines,
+    update_state,
+    vertex_analysis,
 )
 
 
@@ -37,15 +39,26 @@ def _clear_scene() -> None:
                 collection.remove(datablock)
 
 
+def _set_without_update(settings, prop_name: str, value) -> None:
+    old = core._propagating
+    core._propagating = True
+    try:
+        setattr(settings, prop_name, value)
+    finally:
+        core._propagating = old
+
+
 def _make_cube(index: int) -> bpy.types.Object:
-    bpy.ops.mesh.primitive_cube_add(size=1.3, location=((index - 1) * 0.45, 0.0, -4.0))
+    bpy.ops.mesh.primitive_cube_add(size=1.2, location=((index - 1) * 0.45, 0.0, -4.0))
     obj = bpy.context.object
-    obj.name = f"BML_control_scope_{index}"
+    obj.name = f"BML_manual_update_scope_{index}"
     settings = obj.bmanga_line_settings
-    settings.inner_line_enabled = True
-    settings.intersection_enabled = True
-    settings.use_inner_line_creation_limit = False
-    settings.use_intersection_creation_limit = False
+    _set_without_update(settings, "inner_line_enabled", True)
+    _set_without_update(settings, "intersection_enabled", True)
+    _set_without_update(settings, "selection_line_enabled", True)
+    _set_without_update(settings, "use_inner_line_creation_limit", False)
+    _set_without_update(settings, "use_intersection_creation_limit", False)
+    _set_without_update(settings, "use_selection_line_creation_limit", False)
     return obj
 
 
@@ -71,38 +84,26 @@ def _install_counters():
     counts = {
         "line_settings_apply": 0,
         "outline_apply": 0,
-        "outline_thickness_update": 0,
         "inner_apply": 0,
-        "inner_update": 0,
         "intersection_apply": 0,
-        "intersection_update": 0,
         "selection_apply": 0,
-        "selection_update": 0,
         "intersection_refresh": 0,
-        "intersection_defer": 0,
         "camera": 0,
         "camera_objects": 0,
-        "visibility_objects": 0,
-        "visibility_rule": 0,
+        "weights": 0,
         "view_update": 0,
         "camera_scopes": [],
     }
     originals = {
         "line_settings_apply": presets.apply_line_settings,
         "outline_apply": outline_setup.apply_outline,
-        "outline_thickness_update": outline_setup.update_modifier_thickness,
         "inner_apply": inner_lines.apply_inner_lines,
-        "inner_update": inner_lines.update_parameters,
         "intersection_apply": intersection_lines.apply_intersection_lines,
-        "intersection_update": intersection_lines.update_parameters,
         "selection_apply": selection_lines.apply_selection_lines,
-        "selection_update": selection_lines.update_parameters,
         "intersection_refresh": intersection_lines.refresh_scene_intersections,
-        "intersection_defer": intersection_lines._queue_deferred_viewport_modifier,
         "camera": camera_comp.refresh,
         "camera_objects": camera_comp.refresh_objects,
-        "visibility_objects": camera_comp.refresh_visibility_objects,
-        "visibility_rule": core._refresh_visibility_rules,
+        "weights": vertex_analysis.compute_and_apply_weights,
         "view_update": presets._update_view_layer,
     }
 
@@ -114,41 +115,21 @@ def _install_counters():
         counts["outline_apply"] += 1
         return originals["outline_apply"](*args, **kwargs)
 
-    def counted_outline_thickness_update(*args, **kwargs):
-        counts["outline_thickness_update"] += 1
-        return originals["outline_thickness_update"](*args, **kwargs)
-
     def counted_inner_apply(*args, **kwargs):
         counts["inner_apply"] += 1
         return originals["inner_apply"](*args, **kwargs)
-
-    def counted_inner_update(*args, **kwargs):
-        counts["inner_update"] += 1
-        return originals["inner_update"](*args, **kwargs)
 
     def counted_intersection_apply(*args, **kwargs):
         counts["intersection_apply"] += 1
         return originals["intersection_apply"](*args, **kwargs)
 
-    def counted_intersection_update(*args, **kwargs):
-        counts["intersection_update"] += 1
-        return originals["intersection_update"](*args, **kwargs)
-
     def counted_selection_apply(*args, **kwargs):
         counts["selection_apply"] += 1
         return originals["selection_apply"](*args, **kwargs)
 
-    def counted_selection_update(*args, **kwargs):
-        counts["selection_update"] += 1
-        return originals["selection_update"](*args, **kwargs)
-
     def counted_intersection_refresh(*args, **kwargs):
         counts["intersection_refresh"] += 1
         return originals["intersection_refresh"](*args, **kwargs)
-
-    def counted_intersection_defer(*args, **kwargs):
-        counts["intersection_defer"] += 1
-        return originals["intersection_defer"](*args, **kwargs)
 
     def counted_camera(*args, **kwargs):
         counts["camera"] += 1
@@ -160,14 +141,9 @@ def _install_counters():
         counts["camera_scopes"].append(tuple(scope) if scope is not None else ("all",))
         return originals["camera_objects"](*args, **kwargs)
 
-    def counted_visibility_objects(*args, **kwargs):
-        counts["visibility_objects"] += 1
-        return originals["visibility_objects"](*args, **kwargs)
-
-    def counted_visibility_rule(*args, **kwargs):
-        counts["visibility_rule"] += 1
-        settings = args[0]
-        return originals["visibility_rule"](*args, **kwargs)
+    def counted_weights(*args, **kwargs):
+        counts["weights"] += 1
+        return originals["weights"](*args, **kwargs)
 
     def counted_view_update(*args, **kwargs):
         counts["view_update"] += 1
@@ -175,19 +151,13 @@ def _install_counters():
 
     presets.apply_line_settings = counted_line_settings_apply
     outline_setup.apply_outline = counted_outline_apply
-    outline_setup.update_modifier_thickness = counted_outline_thickness_update
     inner_lines.apply_inner_lines = counted_inner_apply
-    inner_lines.update_parameters = counted_inner_update
     intersection_lines.apply_intersection_lines = counted_intersection_apply
-    intersection_lines.update_parameters = counted_intersection_update
     selection_lines.apply_selection_lines = counted_selection_apply
-    selection_lines.update_parameters = counted_selection_update
     intersection_lines.refresh_scene_intersections = counted_intersection_refresh
-    intersection_lines._queue_deferred_viewport_modifier = counted_intersection_defer
     camera_comp.refresh = counted_camera
     camera_comp.refresh_objects = counted_camera_objects
-    camera_comp.refresh_visibility_objects = counted_visibility_objects
-    core._refresh_visibility_rules = counted_visibility_rule
+    vertex_analysis.compute_and_apply_weights = counted_weights
     presets._update_view_layer = counted_view_update
 
     def reset() -> None:
@@ -197,285 +167,155 @@ def _install_counters():
     def restore() -> None:
         presets.apply_line_settings = originals["line_settings_apply"]
         outline_setup.apply_outline = originals["outline_apply"]
-        outline_setup.update_modifier_thickness = originals["outline_thickness_update"]
         inner_lines.apply_inner_lines = originals["inner_apply"]
-        inner_lines.update_parameters = originals["inner_update"]
         intersection_lines.apply_intersection_lines = originals["intersection_apply"]
-        intersection_lines.update_parameters = originals["intersection_update"]
         selection_lines.apply_selection_lines = originals["selection_apply"]
-        selection_lines.update_parameters = originals["selection_update"]
         intersection_lines.refresh_scene_intersections = originals["intersection_refresh"]
-        intersection_lines._queue_deferred_viewport_modifier = originals["intersection_defer"]
         camera_comp.refresh = originals["camera"]
         camera_comp.refresh_objects = originals["camera_objects"]
-        camera_comp.refresh_visibility_objects = originals["visibility_objects"]
-        core._refresh_visibility_rules = originals["visibility_rule"]
+        vertex_analysis.compute_and_apply_weights = originals["weights"]
         presets._update_view_layer = originals["view_update"]
 
     return counts, reset, restore
 
 
-def _assert_common(prop_name: str, counts: dict) -> None:
-    assert counts["line_settings_apply"] == 0, (prop_name, counts)
-    if prop_name not in {
-        "use_outline_creation_limit",
-        "outline_creation_max_distance",
-    }:
-        assert counts["outline_apply"] == 0, (prop_name, counts)
-    assert counts["camera"] == 0, (prop_name, counts)
+def _assert_no_heavy_work(prop_name: str, counts: dict) -> None:
+    heavy_keys = (
+        "line_settings_apply",
+        "outline_apply",
+        "inner_apply",
+        "intersection_apply",
+        "selection_apply",
+        "intersection_refresh",
+        "camera",
+        "camera_objects",
+        "weights",
+        "view_update",
+    )
+    assert all(counts[key] == 0 for key in heavy_keys), (prop_name, counts)
 
 
-def _assert_no_generated_rebuild(prop_name: str, counts: dict) -> None:
-    assert counts["inner_apply"] == 0, (prop_name, counts)
-    assert counts["intersection_apply"] == 0, (prop_name, counts)
-    assert counts["selection_apply"] == 0, (prop_name, counts)
-    assert counts["intersection_refresh"] == 0, (prop_name, counts)
-
-
-def _assert_width_scope(prop_name: str, counts: dict, target: str | None) -> None:
-    if target is None:
-        assert counts["camera_objects"] == 0, (prop_name, counts)
-        return
-    if target == "optional_intersection":
-        if counts["camera_objects"] == 0:
-            return
-        assert all(scope == ("intersection",) for scope in counts["camera_scopes"]), (
-            prop_name,
-            counts,
+def _assert_pending(objects: list[bpy.types.Object], targets: set[str]) -> None:
+    for obj in objects:
+        assert targets.issubset(set(update_state.pending_targets(obj))), (
+            obj.name,
+            targets,
+            update_state.pending_targets(obj),
         )
-        return
-    if target == "optional_outline":
-        if counts["camera_objects"] == 0:
-            return
-        assert all(scope == ("outline",) for scope in counts["camera_scopes"]), (
-            prop_name,
-            counts,
-        )
-        return
-    expected = ("all",) if target == "all" else (target,)
-    assert counts["camera_objects"] > 0, (prop_name, counts)
-    assert all(scope == expected for scope in counts["camera_scopes"]), (prop_name, counts)
-
-
-def _silent_set(settings, prop_name: str, value) -> None:
-    old = core._propagating
-    core._propagating = True
-    try:
-        setattr(settings, prop_name, value)
-    finally:
-        core._propagating = old
-
-
-def _ensure_changed_value(settings, prop_name: str, value) -> None:
-    current = getattr(settings, prop_name)
-    if not _values_equal(current, value):
-        return
-    if isinstance(value, bool):
-        _silent_set(settings, prop_name, not value)
-    elif isinstance(value, (int, float)):
-        _silent_set(settings, prop_name, value + 0.01)
-    elif isinstance(value, str):
-        fallback = "BOOLEAN" if value != "BOOLEAN" else "SDF"
-        _silent_set(settings, prop_name, fallback)
 
 
 def _values_equal(actual, expected) -> bool:
     if isinstance(expected, tuple):
         return all(
-            abs(float(a) - float(b)) < 1.0e-6
+            math.isclose(float(a), float(b), abs_tol=1.0e-8)
             for a, b in zip(actual, expected)
         )
     if isinstance(expected, float):
-        return abs(float(actual) - expected) < 1.0e-6
+        return math.isclose(float(actual), expected, abs_tol=1.0e-8)
     return actual == expected
 
 
-def _change(settings, prop_name: str, value, counts: dict, reset, *, width_target=None) -> None:
-    _ensure_changed_value(settings, prop_name, value)
-    assert not core._propagating, prop_name
-    assert not _values_equal(getattr(settings, prop_name), value), prop_name
+def _change_setting(
+    objects: list[bpy.types.Object],
+    prop_name: str,
+    value,
+    expected_targets: set[str],
+    counts: dict,
+    reset,
+) -> None:
+    settings = objects[0].bmanga_line_settings
     reset()
     setattr(settings, prop_name, value)
-    assert _values_equal(getattr(settings, prop_name), value), prop_name
-    _assert_common(prop_name, counts)
-    _assert_width_scope(prop_name, counts, width_target)
-
-
-def _run_baseline_cases(settings, counts, reset) -> None:
-    no_rebuild_cases = [
-        ("outline_enabled", False, "optional_outline"),
-        ("outline_enabled", True, "optional_outline"),
-        ("outline_color", (0.15, 0.25, 0.35, 1.0), None),
-        ("outline_offset", 0.35, None),
-        ("even_thickness", False, None),
-        ("use_rim", False, None),
-        ("hide_through_transparent", True, None),
-        ("exclude_sheet_meshes", True, None),
-        ("exclude_sheet_meshes", False, None),
-        ("use_vertex_color", True, None),
-        ("use_vertex_color", False, None),
-        ("edge_smooth_factor", 0.15, None),
-        ("edge_midpoint_jitter_percent", 3.0, None),
-        ("edge_midpoint_angle", math.radians(55.0), None),
-        ("edge_width_curve_25", 0.20, None),
-        ("edge_width_curve_50", 0.45, None),
-        ("edge_width_curve_75", 0.80, None),
-        ("edge_smooth_factor", 0.0, None),
-        ("use_outline_creation_limit", True, "optional_outline"),
-        ("outline_creation_max_distance", 12.0, "optional_outline"),
-        ("use_outline_creation_limit", False, "optional_outline"),
-        ("inner_line_angle", math.radians(70), None),
-        ("inner_line_offset", 0.25, None),
-        ("inner_edge_smooth_factor", 0.12, None),
-        ("inner_edge_midpoint_jitter_percent", 2.0, None),
-        ("inner_edge_width_curve_25", 0.22, None),
-        ("inner_edge_width_curve_50", 0.52, None),
-        ("inner_edge_width_curve_75", 0.82, None),
-        ("inner_edge_smooth_factor", 0.0, None),
-        ("use_inner_line_creation_limit", False, None),
-        ("use_inner_line_creation_limit", True, None),
-        ("inner_line_creation_max_distance", 12.0, None),
-        ("intersection_line_offset", -0.25, None),
-        ("intersection_edge_smooth_factor", 0.12, None),
-        ("intersection_edge_midpoint_jitter_percent", 2.0, None),
-        ("intersection_edge_midpoint_angle", math.radians(55.0), None),
-        ("intersection_edge_width_curve_25", 0.22, None),
-        ("intersection_edge_width_curve_50", 0.52, None),
-        ("intersection_edge_width_curve_75", 0.82, None),
-        ("intersection_edge_smooth_factor", 0.0, None),
-        ("selection_line_angle", math.radians(70), None),
-        ("selection_line_offset", 0.25, None),
-        ("selection_edge_smooth_factor", 0.12, None),
-        ("selection_edge_midpoint_jitter_percent", 2.0, None),
-        ("selection_edge_midpoint_angle", math.radians(55.0), None),
-        ("selection_edge_width_curve_25", 0.22, None),
-        ("selection_edge_width_curve_50", 0.52, None),
-        ("selection_edge_width_curve_75", 0.82, None),
-        ("selection_edge_smooth_factor", 0.0, None),
-    ]
-    for prop_name, value, width_target in no_rebuild_cases:
-        _change(settings, prop_name, value, counts, reset, width_target=width_target)
-        _assert_no_generated_rebuild(prop_name, counts)
-
-    intersection_creation_cases = [
-        ("use_intersection_creation_limit", False),
-        ("use_intersection_creation_limit", True),
-        ("intersection_creation_max_distance", 12.0),
-    ]
-    for prop_name, value in intersection_creation_cases:
-        _change(
-            settings,
+    _assert_no_heavy_work(prop_name, counts)
+    _assert_pending(objects, expected_targets)
+    for obj in objects[1:]:
+        other_value = getattr(obj.bmanga_line_settings, prop_name)
+        assert _values_equal(other_value, value), (
+            obj.name,
             prop_name,
+            other_value,
             value,
-            counts,
-            reset,
-            width_target="optional_intersection",
         )
-        assert counts["inner_apply"] == 0, (prop_name, counts)
-        assert counts["inner_update"] == 0, (prop_name, counts)
-        assert counts["intersection_refresh"] == 1, (prop_name, counts)
-
-    width_cases = [
-        ("outline_thickness", 0.0011, "outline"),
-        ("inner_line_thickness", 0.0012, "inner"),
-        ("intersection_thickness", 0.0013, "intersection"),
-        ("selection_line_thickness", 0.0014, "selection"),
-        ("use_uniform_line_width", True, "all"),
-        ("use_uniform_line_width", False, "all"),
-        ("use_camera_compensation", True, "all"),
-        ("camera_compensation_influence", 0.55, "all"),
-        ("line_width_reference_distance", 3.0, "all"),
-        ("use_camera_compensation", False, "all"),
-    ]
-    for prop_name, value, width_target in width_cases:
-        _change(settings, prop_name, value, counts, reset, width_target=width_target)
-        _assert_no_generated_rebuild(prop_name, counts)
-        if prop_name in {"outline_thickness", "use_camera_compensation"}:
-            assert counts["outline_thickness_update"] == 0, (prop_name, counts)
-        if prop_name == "use_camera_compensation":
-            assert counts["inner_update"] <= 3, (prop_name, counts)
-            assert counts["intersection_update"] <= 3, (prop_name, counts)
-
-    visibility_cases = [
-        ("use_camera_culling", False),
-        ("use_camera_culling", True),
-        ("culling_margin", math.radians(5)),
-        ("use_camera_culling", False),
-        ("use_outline_distance_limit", True),
-        ("outline_max_distance", 18.0),
-        ("use_outline_distance_limit", False),
-        ("use_inner_line_distance_limit", True),
-        ("inner_line_max_distance", 18.0),
-        ("use_inner_line_distance_limit", False),
-        ("use_intersection_distance_limit", True),
-        ("intersection_max_distance", 18.0),
-        ("use_intersection_distance_limit", False),
-        ("use_selection_line_distance_limit", True),
-        ("selection_line_max_distance", 18.0),
-        ("use_selection_line_distance_limit", False),
-    ]
-    for prop_name, value in visibility_cases:
-        _change(settings, prop_name, value, counts, reset, width_target=None)
-        _assert_no_generated_rebuild(prop_name, counts)
-        assert counts["visibility_rule"] > 0, (prop_name, counts)
 
 
-def _run_uniform_mode_cases(settings, counts, reset) -> None:
-    settings.use_uniform_line_width = True
+def _test_setting_edits_are_deferred(objects, counts, reset) -> None:
+    for obj in objects:
+        update_state.clear_pending(obj)
 
-    no_effect_cases = [
-        ("use_camera_compensation", True),
-        ("camera_compensation_influence", 0.25),
-        ("line_width_reference_distance", 4.0),
-        ("use_camera_compensation", False),
-    ]
-    for prop_name, value in no_effect_cases:
-        _change(settings, prop_name, value, counts, reset, width_target=None)
-        _assert_no_generated_rebuild(prop_name, counts)
-
-    target_cases = [
-        ("outline_thickness", 0.0015, "outline"),
-        ("edge_smooth_factor", 0.18, "outline"),
-        ("inner_line_thickness", 0.0016, "inner"),
-        ("inner_edge_smooth_factor", 0.18, "inner"),
-        ("intersection_thickness", 0.0017, "intersection"),
-        ("intersection_edge_smooth_factor", 0.18, "intersection"),
-        ("selection_line_thickness", 0.0018, "selection"),
-        ("selection_edge_smooth_factor", 0.18, "selection"),
-    ]
-    for prop_name, value, width_target in target_cases:
-        _change(settings, prop_name, value, counts, reset, width_target=width_target)
-        _assert_no_generated_rebuild(prop_name, counts)
+    cases = (
+        ("outline_thickness", 0.0011, {"outline"}),
+        ("outline_color", (0.15, 0.25, 0.35, 1.0), {"outline"}),
+        ("inner_line_thickness", 0.0012, {"inner"}),
+        ("inner_edge_smooth_factor", 0.12, {"inner"}),
+        ("intersection_thickness", 0.0013, {"intersection"}),
+        ("intersection_enabled", False, {"intersection"}),
+        ("selection_line_thickness", 0.0014, {"selection"}),
+        ("use_camera_compensation", True, set(update_state.LINE_TARGETS)),
+        ("match_subsurf_viewport_to_render", True, set(update_state.LINE_TARGETS)),
+        ("use_camera_culling", False, set(update_state.LINE_TARGETS)),
+    )
+    for prop_name, value, targets in cases:
+        _change_setting(objects, prop_name, value, targets, counts, reset)
 
 
-def _run_mixed_uniform_cases(objects, counts, reset) -> None:
-    settings = objects[0].bmanga_line_settings
-    _silent_set(objects[1].bmanga_line_settings, "use_uniform_line_width", True)
-    _silent_set(objects[2].bmanga_line_settings, "use_uniform_line_width", False)
-    _select(objects)
-    _ensure_changed_value(settings, "inner_line_angle", math.radians(75))
-    reset()
-    settings.inner_line_angle = math.radians(75)
-    _assert_common("inner_line_angle_mixed_uniform", counts)
-    _assert_no_generated_rebuild("inner_line_angle_mixed_uniform", counts)
-    assert counts["camera_objects"] == 1, counts
-    assert counts["camera_scopes"] == [("inner",)], counts
-    assert counts["inner_update"] <= len(objects) * 2, counts
-
-
-def _run_inner_toggle_defers_intersections(objects, counts, reset) -> None:
-    settings = objects[0].bmanga_line_settings
-    reset()
-    settings.inner_line_enabled = False
-    assert counts["intersection_refresh"] == 0, counts
-    assert counts["intersection_apply"] == 0, counts
+def _test_target_update_clears_only_target(objects, counts, reset) -> None:
+    for obj in objects:
+        update_state.mark_pending(obj)
 
     reset()
-    settings.inner_line_enabled = True
+    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="inner") == {"FINISHED"}
+    assert counts["line_settings_apply"] == len(objects), counts
     assert counts["inner_apply"] > 0, counts
+    assert counts["outline_apply"] == 0, counts
     assert counts["intersection_refresh"] == 0, counts
-    assert counts["intersection_apply"] == 0, counts
-    assert counts["intersection_defer"] > 0, counts
+    assert ("inner",) in counts["camera_scopes"], counts
+    for obj in objects:
+        pending = set(update_state.pending_targets(obj))
+        assert "inner" not in pending, (obj.name, pending)
+        assert {"outline", "intersection", "selection"}.issubset(pending), (
+            obj.name,
+            pending,
+        )
+
+    reset()
+    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
+    assert counts["line_settings_apply"] == len(objects), counts
+    assert counts["intersection_refresh"] > 0, counts
+    for obj in objects:
+        assert "intersection" not in set(update_state.pending_targets(obj)), obj.name
+
+
+def _test_full_apply_clears_pending(objects, counts, reset) -> None:
+    for obj in objects:
+        update_state.mark_pending(obj)
+    reset()
+    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+    assert counts["line_settings_apply"] == len(objects), counts
+    for obj in objects:
+        assert update_state.pending_targets(obj) == (), obj.name
+
+
+def _test_preset_apply_is_settings_only(objects, counts, reset) -> None:
+    scene = bpy.context.scene
+    scene.bmanga_line_presets.clear()
+    preset = scene.bmanga_line_presets.add()
+    preset.name = "manual update preset"
+    presets.copy_settings_to_preset(objects[0].bmanga_line_settings, preset)
+    preset.outline_thickness = 0.004
+    preset.inner_line_thickness = 0.005
+    scene.bmanga_line_preset_index = 0
+    presets._loaded_scene_pointers.add(scene.as_pointer())
+
+    for obj in objects:
+        update_state.clear_pending(obj)
+    reset()
+    assert bpy.ops.bmanga_line.preset_apply_selected("EXEC_DEFAULT") == {"FINISHED"}
+    _assert_no_heavy_work("preset_apply_selected", counts)
+    _assert_pending(objects, set(update_state.LINE_TARGETS))
+    for obj in objects:
+        settings = obj.bmanga_line_settings
+        assert math.isclose(settings.outline_thickness, 0.004, abs_tol=1.0e-8)
+        assert math.isclose(settings.inner_line_thickness, 0.005, abs_tol=1.0e-8)
 
 
 def main() -> None:
@@ -483,15 +323,10 @@ def main() -> None:
     counts, reset, restore = _install_counters()
     try:
         objects = _setup_scene()
-        _run_inner_toggle_defers_intersections(objects, counts, reset)
-        objects = _setup_scene()
-        settings = objects[0].bmanga_line_settings
-        _run_baseline_cases(settings, counts, reset)
-        objects = _setup_scene()
-        settings = objects[0].bmanga_line_settings
-        _run_uniform_mode_cases(settings, counts, reset)
-        objects = _setup_scene()
-        _run_mixed_uniform_cases(objects, counts, reset)
+        _test_setting_edits_are_deferred(objects, counts, reset)
+        _test_target_update_clears_only_target(objects, counts, reset)
+        _test_full_apply_clears_pending(objects, counts, reset)
+        _test_preset_apply_is_settings_only(objects, counts, reset)
         print("BMANGA_LINE_CONTROL_UPDATE_SCOPE_OK")
     finally:
         restore()

@@ -352,7 +352,7 @@ class BMANGA_LINE_OT_detail_settings(bpy.types.Operator):
 
 
 def _draw_actions(layout, context, obj) -> None:
-    from . import viewport_aov
+    from . import update_state, viewport_aov
 
     has_line_any = any(has_line(o) for o in context.selected_objects)
     line_only_any = any(
@@ -362,6 +362,16 @@ def _draw_actions(layout, context, obj) -> None:
     row.scale_y = 1.4
     row.operator("bmanga_line.apply", icon="ADD")
     settings = getattr(obj, "bmanga_line_settings", None)
+
+    row = layout.grid_flow(row_major=True, columns=2, even_columns=True, align=True)
+    for target, label in (
+        ("outline", "アウトラインを更新"),
+        ("inner", "稜谷線を更新"),
+        ("intersection", "交差線を更新"),
+        ("selection", "選択線を更新"),
+    ):
+        op = row.operator("bmanga_line.update_target", text=label, icon="FILE_REFRESH")
+        op.target = target
 
     linked_line_count = sum(
         1 for linked_obj in context.scene.objects
@@ -409,6 +419,9 @@ def _draw_actions(layout, context, obj) -> None:
             text=f"選択メッシュ: {mesh_count}  ライン適用済み: {outline_count}",
             icon="INFO",
         )
+        pending = update_state.pending_label(obj)
+        if pending:
+            info.label(text=pending, icon="ERROR")
 
 
 class BMANGA_LINE_PT_presets(_BMangaLineMeshPanel, bpy.types.Panel):

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import bpy
-from bpy.props import BoolProperty
+from bpy.props import BoolProperty, EnumProperty
 
 from . import registration
 from .core import (
@@ -81,8 +81,80 @@ class BMANGA_LINE_OT_apply(bpy.types.Operator):
                 applied_objects.append(obj)
         _refresh_after_line_settings(context)
         _reflect_applied_display_settings(applied_objects, context)
+        from . import update_state
+        update_state.clear_pending_many(applied_objects)
 
         self.report({"INFO"}, f"{count} オブジェクトにラインを適用しました")
+        return {"FINISHED"}
+
+
+_LINE_TARGET_ITEMS = (
+    ("outline", "アウトライン", ""),
+    ("inner", "稜谷線", ""),
+    ("intersection", "交差線", ""),
+    ("selection", "選択線", ""),
+)
+
+
+class BMANGA_LINE_OT_update_target(bpy.types.Operator):
+    """選択オブジェクトの指定ラインだけを明示更新"""
+
+    bl_idname = "bmanga_line.update_target"
+    bl_label = "ラインを更新"
+    bl_options = {"REGISTER", "UNDO"}
+
+    target: EnumProperty(items=_LINE_TARGET_ITEMS, default="outline")  # type: ignore[valid-type]
+
+    @classmethod
+    def poll(cls, context):
+        return any(obj.type == "MESH" for obj in context.selected_objects)
+
+    def execute(self, context):
+        from . import camera_comp, update_state
+        from .presets import (
+            apply_line_settings,
+            _reflect_applied_display_settings,
+            _refresh_after_line_settings,
+            _update_view_layer,
+        )
+
+        target = str(self.target)
+        line_targets = (target,)
+        count = 0
+        applied_objects: list[bpy.types.Object] = []
+        _update_view_layer(context)
+        for obj in context.selected_objects:
+            if obj.type != "MESH":
+                continue
+            if apply_line_settings(
+                obj,
+                context,
+                refresh_scene=False,
+                transforms_fresh=True,
+                line_targets=line_targets,
+            ):
+                count += 1
+                applied_objects.append(obj)
+
+        if target == "intersection":
+            _refresh_after_line_settings(context)
+        elif applied_objects:
+            camera_comp.refresh_objects(
+                context,
+                applied_objects,
+                update_visibility=True,
+                width_targets=line_targets,
+            )
+        _reflect_applied_display_settings(applied_objects, context)
+        update_state.clear_pending_many(applied_objects, line_targets)
+
+        labels = {
+            "outline": "アウトライン",
+            "inner": "稜谷線",
+            "intersection": "交差線",
+            "selection": "選択線",
+        }
+        self.report({"INFO"}, f"{count} オブジェクトの{labels.get(target, 'ライン')}を更新しました")
         return {"FINISHED"}
 
 
@@ -275,7 +347,7 @@ class BMANGA_LINE_OT_apply_active_to_linked(bpy.types.Operator):
         return obj is not None and has_line(obj) and bool(_linked_line_objects(context.scene))
 
     def execute(self, context):
-        from . import presets
+        from . import presets, update_state
 
         source = context.active_object
         if source is None or not has_line(source):
@@ -290,19 +362,11 @@ class BMANGA_LINE_OT_apply_active_to_linked(bpy.types.Operator):
         for obj in linked:
             try:
                 presets.copy_settings_to_settings(source_settings, obj.bmanga_line_settings)
-                if presets.apply_line_settings(
-                    obj,
-                    context,
-                    refresh_scene=False,
-                    transforms_fresh=True,
-                ):
-                    applied += 1
-                else:
-                    failed += 1
+                update_state.mark_pending(obj)
+                applied += 1
                 record_override_edits(obj)
             except Exception:  # noqa: BLE001
                 failed += 1
-        presets._refresh_after_line_settings(context)
 
         if failed:
             self.report(
@@ -448,6 +512,7 @@ class BMANGA_LINE_OT_setup_aov_composite(bpy.types.Operator):
 
 _CLASSES = (
     BMANGA_LINE_OT_apply,
+    BMANGA_LINE_OT_update_target,
     BMANGA_LINE_OT_select_render_range_meshes,
     BMANGA_LINE_OT_remove,
     BMANGA_LINE_OT_set_visibility,

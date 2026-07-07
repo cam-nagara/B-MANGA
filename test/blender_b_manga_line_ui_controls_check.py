@@ -122,6 +122,9 @@ class _FakeUILayout:
     def column(self, *, align: bool = False):  # noqa: ARG002
         return self
 
+    def grid_flow(self, **_kwargs):
+        return self
+
     def operator(self, *_args, **_kwargs):
         return _FakeOperatorProps()
 
@@ -180,6 +183,11 @@ def _assert_subsurf_checkbox(active: bpy.types.Object, other: bpy.types.Object) 
 
     _select(active, [active, other])
     active.bmanga_line_settings.match_subsurf_viewport_to_render = True
+    for obj in (active, other):
+        for mod in obj.modifiers:
+            if mod.type == "SUBSURF":
+                assert int(mod.levels) == 0, (obj.name, mod.name)
+    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
     for obj in (active, other):
         for mod in obj.modifiers:
             if mod.type == "SUBSURF":

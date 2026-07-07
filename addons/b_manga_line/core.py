@@ -129,11 +129,13 @@ def _propagate(self, context, prop_name):
     finally:
         _propagating = False
     if changed:
-        from . import batch_update
-        batch_update.refresh_propagated_property(prop_name, changed, context)
+        from . import update_state
+        update_state.mark_pending_many(
+            changed,
+            update_state.targets_for_property(prop_name),
+        )
         return True
-    else:
-        return False
+    return False
 
 
 def _selected_mesh_targets(owner: bpy.types.Object, context) -> list[bpy.types.Object]:
@@ -164,6 +166,19 @@ def _set_prop_on_selected_targets(
     finally:
         _propagating = False
     return targets
+
+
+def _defer_line_setting(self, context, prop_name: str, targets=None) -> None:
+    if _propagating:
+        return
+    _propagate(self, context, prop_name)
+    owner = self.id_data
+    if owner.type == "MESH":
+        from . import update_state
+        update_state.mark_pending_many(
+            _selected_mesh_targets(owner, context),
+            targets or update_state.targets_for_property(prop_name),
+        )
 
 
 def _refresh_full_line_settings(obj: bpy.types.Object, context) -> None:
@@ -199,17 +214,21 @@ def _make_propagator(prop_name):
     def _callback(self, context):
         if _propagating:
             return
-        _propagate(self, context, prop_name)
+        _defer_line_setting(self, context, prop_name)
     return _callback
 
 
 def _make_weight_refresh_propagator(prop_name):
-    """線幅ウェイトを再計算してから選択中オブジェクトへ伝搬."""
+    """線幅ウェイトの再計算を明示更新まで保留して選択中へ伝搬."""
     def _callback(self, context):
         if _propagating:
             return
-        _refresh_line_width_weights(self, context, _line_width_target_for_prop(prop_name))
-        _propagate(self, context, prop_name)
+        _defer_line_setting(
+            self,
+            context,
+            prop_name,
+            (_line_width_target_for_prop(prop_name),),
+        )
     return _callback
 
 
@@ -424,31 +443,14 @@ def _on_outline_enabled_changed(self, context):
     targets = _set_prop_on_selected_targets(
         owner, context, "outline_enabled", bool(self.outline_enabled),
     )
-    from . import batch_update
-    batch_update.refresh_propagated_property("outline_enabled", targets, context)
+    from . import update_state
+    update_state.mark_pending_many(targets, ("outline",))
 
 
 def _on_outline_creation_range_changed(self, context, prop_name: str) -> None:
     if _propagating:
         return
-    owner = self.id_data
-    refreshed_owner = False
-    if owner.type == "MESH" and has_line(owner):
-        if not _outline_creation_in_range(owner, self, context):
-            refreshed_owner = _remove_outline_geometry(owner)
-        elif self.outline_enabled:
-            if owner.modifiers.get(MODIFIER_NAME) is None and owner.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME) is None:
-                refreshed_owner = _ensure_outline_for_settings(owner, self, context)
-            if set_outline_visibility_from_settings(owner):
-                refreshed_owner = True
-    _propagate(self, context, prop_name)
-    if refreshed_owner:
-        _refresh_print_widths_for(
-            context,
-            [owner],
-            update_visibility=True,
-            width_targets=("outline",),
-        )
+    _defer_line_setting(self, context, prop_name, ("outline",))
 
 
 def _on_outline_creation_limit_changed(self, context):
@@ -462,29 +464,13 @@ def _on_outline_creation_distance_changed(self, context):
 def _on_color_changed(self, context):
     if _propagating:
         return
-    from . import outline_setup
-    owner = self.id_data
-    if owner.type == "MESH":
-        outline_setup.update_material_color(owner, tuple(self.outline_color))
-    _propagate(self, context, "outline_color")
+    _defer_line_setting(self, context, "outline_color", ("outline",))
 
 
 def _on_generated_color_changed(self, context, target: str, prop_name: str):
     if _propagating:
         return
-    from . import inner_lines, intersection_lines, outline_setup, selection_lines
-    owner = self.id_data
-    if owner.type == "MESH":
-        if target == "inner" and owner.modifiers.get(GN_MODIFIER_NAME) is not None:
-            material = outline_setup.get_line_material(owner, target)
-            inner_lines.update_parameters(owner, material=material)
-        elif target == "selection" and owner.modifiers.get(SELECTION_LINE_MODIFIER_NAME) is not None:
-            material = outline_setup.get_line_material(owner, target)
-            selection_lines.update_parameters(owner, material=material)
-        elif target == "intersection" and any(iter_intersection_modifiers(owner)):
-            material = outline_setup.get_line_material(owner, target)
-            intersection_lines.update_parameters(owner, material=material)
-    _propagate(self, context, prop_name)
+    _defer_line_setting(self, context, prop_name, (target,))
 
 
 def _on_inner_color_changed(self, context):
@@ -502,61 +488,31 @@ def _on_selection_color_changed(self, context):
 def _on_thickness_changed(self, context):
     if _propagating:
         return
-    from . import outline_setup
-    owner = self.id_data
-    if owner.type == "MESH":
-        if self.use_camera_compensation and PROP_BASE_THICKNESS in owner:
-            owner[PROP_BASE_THICKNESS] = self.outline_thickness
-        if not _refresh_print_widths_for(context, [owner], width_targets=("outline",)):
-            outline_setup.update_modifier_thickness(owner, self.outline_thickness)
-    _propagate(self, context, "outline_thickness")
+    _defer_line_setting(self, context, "outline_thickness", ("outline",))
 
 
 def _on_outline_offset_changed(self, context):
     if _propagating:
         return
-    from . import outline_setup
-    owner = self.id_data
-    if owner.type == "MESH":
-        outline_setup.update_modifier_offset(owner, self.outline_offset)
-    _propagate(self, context, "outline_offset")
+    _defer_line_setting(self, context, "outline_offset", ("outline",))
 
 
 def _on_even_thickness_changed(self, context):
     if _propagating:
         return
-    owner = self.id_data
-    if owner.type == "MESH":
-        mod = owner.modifiers.get(MODIFIER_NAME)
-        if mod is not None:
-            mod.use_even_offset = self.even_thickness
-    _propagate(self, context, "even_thickness")
+    _defer_line_setting(self, context, "even_thickness", ("outline",))
 
 
 def _on_rim_changed(self, context):
     if _propagating:
         return
-    owner = self.id_data
-    if owner.type == "MESH":
-        mod = owner.modifiers.get(MODIFIER_NAME)
-        if mod is not None:
-            from . import outline_setup
-            outline_setup.update_modifier_rim(owner, self.use_rim)
-    _propagate(self, context, "use_rim")
+    _defer_line_setting(self, context, "use_rim", ("outline",))
 
 
 def _on_transparent_protection_changed(self, context):
     if _propagating:
         return
-    from . import outline_setup
-    owner = self.id_data
-    if owner.type == "MESH":
-        outline_setup.update_transparent_protection(
-            owner,
-            self.hide_through_transparent,
-            tuple(self.outline_color),
-        )
-    _propagate(self, context, "hide_through_transparent")
+    _defer_line_setting(self, context, "hide_through_transparent", ("outline",))
 
 
 def _on_sheet_exclusion_changed(self, context):
@@ -564,25 +520,13 @@ def _on_sheet_exclusion_changed(self, context):
     # 旧ファイル互換のためプロパティと伝搬だけ残す。
     if _propagating:
         return
-    _propagate(self, context, "exclude_sheet_meshes")
+    _defer_line_setting(self, context, "exclude_sheet_meshes")
 
 
 def _on_auto_subdivision_changed(self, context):
     if _propagating:
         return
-    owner = self.id_data
-    if owner.type == "MESH" and has_line(owner):
-        from . import modifier_stack, subdivision_lod
-
-        if self.auto_subdivision_for_midpoint:
-            subdivision_lod.ensure_auto_subdivision(
-                owner,
-                getattr(context, "scene", None),
-            )
-            modifier_stack.reorder_line_modifiers(owner)
-        else:
-            subdivision_lod.remove_auto_subdivision(owner)
-    _propagate(self, context, "auto_subdivision_for_midpoint")
+    _defer_line_setting(self, context, "auto_subdivision_for_midpoint")
 
 
 def _set_bool_setting_without_update(
@@ -809,11 +753,12 @@ def _on_lines_visible_changed(self, context):
         return
     owner = self.id_data
     visible = bool(self.lines_visible)
-    if owner.type == "MESH" and has_line(owner):
-        set_line_visibility(owner, visible)
-        if visible:
-            _refresh_print_widths(context)
-    _propagate(self, context, "lines_visible")
+    targets = _set_prop_on_selected_targets(owner, context, "lines_visible", visible)
+    for obj in targets:
+        if obj.type == "MESH" and has_line(obj):
+            set_line_visibility(obj, visible)
+    if visible:
+        _refresh_print_widths(context)
 
 
 def _on_line_only_visible_changed(self, context):
@@ -825,33 +770,7 @@ def _on_line_only_visible_changed(self, context):
 def _on_match_subsurf_viewport_to_render_changed(self, context):
     if _propagating:
         return
-    from . import camera_comp, intersection_lines, subdivision_lod
-
-    owner = self.id_data
-    targets = _selected_mesh_objects(context, owner)
-    if owner.type == "MESH" and owner not in targets:
-        targets.append(owner)
-    changed_targets = []
-    if self.match_subsurf_viewport_to_render:
-        for obj in targets:
-            if subdivision_lod.sync_viewport_levels_to_render(obj):
-                changed_targets.append(obj)
-    else:
-        for obj in targets:
-            if subdivision_lod.reset_viewport_levels_to_zero(obj):
-                changed_targets.append(obj)
-    if changed_targets:
-        refreshed = _refresh_intersection_scene(context)
-        if not refreshed:
-            for obj in changed_targets:
-                intersection_lines.update_parameters(obj)
-            refreshed = changed_targets
-        camera_comp.refresh_objects(
-            context,
-            refreshed,
-            width_targets=("intersection",),
-        )
-    _propagate(self, context, "match_subsurf_viewport_to_render")
+    _defer_line_setting(self, context, "match_subsurf_viewport_to_render")
 
 
 def _sync_inner_line_creation(
@@ -941,62 +860,33 @@ def _on_inner_line_enabled_changed(self, context):
     targets = _set_prop_on_selected_targets(
         owner, context, "inner_line_enabled", bool(self.inner_line_enabled),
     )
-    from . import batch_update
-    batch_update.refresh_propagated_property("inner_line_enabled", targets, context)
+    from . import update_state
+    update_state.mark_pending_many(targets, ("inner",))
 
 
 def _on_inner_angle_changed(self, context):
     if _propagating:
         return
-    from . import inner_lines
-    owner = self.id_data
-    if owner.type == "MESH" and owner.modifiers.get(GN_MODIFIER_NAME) is not None:
-        inner_lines.update_parameters(
-            owner,
-            angle=self.inner_line_angle,
-            **_inner_midpoint_kwargs(self),
-        )
-        _refresh_line_width_weights(self, context, "inner")
-    _propagate(self, context, "inner_line_angle")
+    _defer_line_setting(self, context, "inner_line_angle", ("inner",))
 
 
 def _on_marked_inner_edges_changed(self, context):
     # 旧設定との互換用。現在の稜谷線は常に検出角度で作成する。
     if _propagating:
         return
-    _propagate(self, context, "use_marked_inner_edges")
+    _defer_line_setting(self, context, "use_marked_inner_edges", ("inner",))
 
 
 def _on_inner_thickness_changed(self, context):
     if _propagating:
         return
-    from . import inner_lines
-    owner = self.id_data
-    if owner.type == "MESH":
-        if not _refresh_print_widths_for(context, [owner], width_targets=("inner",)):
-            inner_lines.update_parameters(
-                owner,
-                thickness=modifier_thickness_for_world_width(
-                    owner,
-                    self.inner_line_thickness,
-                ),
-                **_inner_midpoint_kwargs(self),
-            )
-    _propagate(self, context, "inner_line_thickness")
+    _defer_line_setting(self, context, "inner_line_thickness", ("inner",))
 
 
 def _on_inner_offset_changed(self, context):
     if _propagating:
         return
-    from . import inner_lines
-    owner = self.id_data
-    if owner.type == "MESH":
-        inner_lines.update_parameters(
-            owner,
-            offset=self.inner_line_offset,
-            **_inner_midpoint_kwargs(self),
-        )
-    _propagate(self, context, "inner_line_offset")
+    _defer_line_setting(self, context, "inner_line_offset", ("inner",))
 
 
 def _sync_inner_creation_range(owner: bpy.types.Object, settings, context) -> bool:
@@ -1028,16 +918,7 @@ def _sync_inner_creation_range(owner: bpy.types.Object, settings, context) -> bo
 
 
 def _on_inner_creation_range_changed(self, context, prop_name: str) -> None:
-    owner = self.id_data
-    refreshed_owner = _sync_inner_creation_range(owner, self, context)
-    _propagate(self, context, prop_name)
-    if refreshed_owner:
-        _refresh_print_widths_for(
-            context,
-            [owner],
-            update_visibility=True,
-            width_targets=("inner",),
-        )
+    _defer_line_setting(self, context, prop_name, ("inner",))
 
 
 def _on_inner_creation_limit_changed(self, context):
@@ -1098,55 +979,26 @@ def _on_selection_line_enabled_changed(self, context):
     targets = _set_prop_on_selected_targets(
         owner, context, "selection_line_enabled", bool(self.selection_line_enabled),
     )
-    from . import batch_update
-    batch_update.refresh_propagated_property("selection_line_enabled", targets, context)
+    from . import update_state
+    update_state.mark_pending_many(targets, ("selection",))
 
 
 def _on_selection_angle_changed(self, context):
     if _propagating:
         return
-    from . import selection_lines
-    owner = self.id_data
-    if owner.type == "MESH" and owner.modifiers.get(SELECTION_LINE_MODIFIER_NAME) is not None:
-        selection_lines.update_parameters(
-            owner,
-            angle=self.selection_line_angle,
-            **_selection_midpoint_kwargs(self),
-        )
-        _refresh_line_width_weights(self, context, "selection")
-    _propagate(self, context, "selection_line_angle")
+    _defer_line_setting(self, context, "selection_line_angle", ("selection",))
 
 
 def _on_selection_thickness_changed(self, context):
     if _propagating:
         return
-    from . import selection_lines
-    owner = self.id_data
-    if owner.type == "MESH":
-        if not _refresh_print_widths_for(context, [owner], width_targets=("selection",)):
-            selection_lines.update_parameters(
-                owner,
-                thickness=modifier_thickness_for_world_width(
-                    owner,
-                    self.selection_line_thickness,
-                ),
-                **_selection_midpoint_kwargs(self),
-            )
-    _propagate(self, context, "selection_line_thickness")
+    _defer_line_setting(self, context, "selection_line_thickness", ("selection",))
 
 
 def _on_selection_offset_changed(self, context):
     if _propagating:
         return
-    from . import selection_lines
-    owner = self.id_data
-    if owner.type == "MESH":
-        selection_lines.update_parameters(
-            owner,
-            offset=self.selection_line_offset,
-            **_selection_midpoint_kwargs(self),
-        )
-    _propagate(self, context, "selection_line_offset")
+    _defer_line_setting(self, context, "selection_line_offset", ("selection",))
 
 
 def _sync_selection_creation_range(owner: bpy.types.Object, settings, context) -> bool:
@@ -1169,16 +1021,7 @@ def _sync_selection_creation_range(owner: bpy.types.Object, settings, context) -
 
 
 def _on_selection_creation_range_changed(self, context, prop_name: str) -> None:
-    owner = self.id_data
-    refreshed_owner = _sync_selection_creation_range(owner, self, context)
-    _propagate(self, context, prop_name)
-    if refreshed_owner:
-        _refresh_print_widths_for(
-            context,
-            [owner],
-            update_visibility=True,
-            width_targets=("selection",),
-        )
+    _defer_line_setting(self, context, prop_name, ("selection",))
 
 
 def _on_selection_creation_limit_changed(self, context):
@@ -1233,82 +1076,30 @@ def _on_intersection_enabled_changed(self, context):
     targets = _set_prop_on_selected_targets(
         owner, context, "intersection_enabled", bool(self.intersection_enabled),
     )
-    from . import batch_update
-    batch_update.refresh_propagated_property("intersection_enabled", targets, context)
+    from . import update_state
+    update_state.mark_pending_many(targets, ("intersection",))
 
 
 def _on_intersection_method_changed(self, context):
     if _propagating:
         return
-    owner = self.id_data
-    if not _propagate(self, context, "intersection_method"):
-        refreshed = _refresh_intersection_scene(context)
-    else:
-        refreshed = []
-    if any(iter_intersection_modifiers(owner)) and owner not in refreshed:
-        refreshed.append(owner)
-    if refreshed:
-        _refresh_print_widths_for(
-            context,
-            refreshed,
-            update_visibility=True,
-            width_targets=("intersection",),
-        )
+    _defer_line_setting(self, context, "intersection_method", ("intersection",))
 
 
 def _on_intersection_thickness_changed(self, context):
     if _propagating:
         return
-    from . import intersection_lines
-    owner = self.id_data
-    if owner.type == "MESH":
-        if not _refresh_print_widths_for(
-            context,
-            [owner],
-            width_targets=("intersection",),
-        ):
-            intersection_lines.update_parameters(
-                owner,
-                thickness=modifier_thickness_for_world_width(
-                    owner,
-                    self.intersection_thickness,
-                ),
-            )
-    _propagate(self, context, "intersection_thickness")
+    _defer_line_setting(self, context, "intersection_thickness", ("intersection",))
 
 
 def _on_intersection_offset_changed(self, context):
     if _propagating:
         return
-    from . import intersection_lines
-    owner = self.id_data
-    if owner.type == "MESH":
-        intersection_lines.update_parameters(
-            owner,
-            offset=self.intersection_line_offset,
-        )
-    _propagate(self, context, "intersection_line_offset")
+    _defer_line_setting(self, context, "intersection_line_offset", ("intersection",))
 
 
 def _on_intersection_creation_range_changed(self, context, prop_name: str) -> None:
-    owner = self.id_data
-    propagated = _propagate(self, context, prop_name)
-    if propagated:
-        return
-    from . import intersection_lines
-    scene = getattr(context, "scene", None)
-    if not intersection_lines.scene_has_enabled_intersections(scene):
-        return
-    refreshed = _refresh_intersection_scene(context)
-    if any(iter_intersection_modifiers(owner)) and owner not in refreshed:
-        refreshed.append(owner)
-    if refreshed:
-        _refresh_print_widths_for(
-            context,
-            refreshed,
-            update_visibility=True,
-            width_targets=("intersection",),
-        )
+    _defer_line_setting(self, context, prop_name, ("intersection",))
 
 
 def _on_intersection_creation_limit_changed(self, context):
@@ -1401,186 +1192,81 @@ def _refresh_generated_width_weights(owner, settings, target, vertex_analysis) -
 def _on_edge_smooth_changed(self, context):
     if _propagating:
         return
-    _refresh_line_width_weights(self, context, "outline")
-    _propagate(self, context, "edge_smooth_factor")
+    _defer_line_setting(self, context, "edge_smooth_factor", ("outline",))
 
 
 def _on_edge_midpoint_jitter_changed(self, context):
     if _propagating:
         return
-    _refresh_line_width_weights(self, context, "outline")
-    _propagate(self, context, "edge_midpoint_jitter_percent")
+    _defer_line_setting(self, context, "edge_midpoint_jitter_percent", ("outline",))
 
 
 def _on_camera_comp_changed(self, context):
     if _propagating:
         return
-    from . import camera_comp
-    owner = self.id_data
-    if self.use_uniform_line_width:
-        _propagate(self, context, "use_camera_compensation")
-        return
-    if owner.type == "MESH":
-        if self.use_camera_compensation:
-            camera_comp.store_unit_reference(owner, context.scene)
-        if (
-            not camera_comp.refresh_objects(context, [owner])
-            and not self.use_camera_compensation
-        ):
-            mod = owner.modifiers.get(MODIFIER_NAME)
-            if mod is not None:
-                mod.thickness = modifier_thickness_for_world_width(
-                    owner,
-                    self.outline_thickness,
-                )
-            from . import inner_lines, intersection_lines, selection_lines
-            inner_lines.update_parameters(
-                owner,
-                thickness=modifier_thickness_for_world_width(
-                    owner,
-                    self.inner_line_thickness,
-                ),
-                **_inner_midpoint_kwargs(self),
-            )
-            intersection_lines.update_parameters(
-                owner,
-                thickness=modifier_thickness_for_world_width(
-                    owner,
-                    self.intersection_thickness,
-                ),
-            )
-            selection_lines.update_parameters(
-                owner,
-                thickness=modifier_thickness_for_world_width(
-                    owner,
-                    self.selection_line_thickness,
-                ),
-                **_selection_midpoint_kwargs(self),
-            )
-    _propagate(self, context, "use_camera_compensation")
+    _defer_line_setting(self, context, "use_camera_compensation")
 
 
 def _on_camera_influence_changed(self, context):
     if _propagating:
         return
-    from . import camera_comp
-    owner = self.id_data
-    if (
-        owner.type == "MESH"
-        and self.use_camera_compensation
-        and not self.use_uniform_line_width
-    ):
-        camera_comp.refresh_objects(context, [owner])
-    _propagate(self, context, "camera_compensation_influence")
+    _defer_line_setting(self, context, "camera_compensation_influence")
 
 
 def _on_line_width_reference_distance_changed(self, context):
     if _propagating:
         return
-    from . import camera_comp
-    owner = self.id_data
-    if owner.type == "MESH" and not self.use_uniform_line_width:
-        camera_comp.store_unit_reference(owner, context.scene)
-        camera_comp.refresh_objects(context, [owner])
-    _propagate(self, context, "line_width_reference_distance")
+    _defer_line_setting(self, context, "line_width_reference_distance")
 
 
 def _on_uniform_line_width_changed(self, context):
     if _propagating:
         return
-    from . import camera_comp
-    owner = self.id_data
-    if owner.type == "MESH":
-        mod = owner.modifiers.get(MODIFIER_NAME)
-        if mod is not None:
-            if not camera_comp.refresh_objects(context, [owner]):
-                mod.thickness = modifier_thickness_for_world_width(
-                    owner,
-                    self.outline_thickness,
-                )
-                if self.use_uniform_line_width:
-                    vg = _ensure_vertex_group(owner, VG_LINE_WIDTH)
-                    if vg is not None:
-                        mod.vertex_group = vg.name
-                        mod.thickness_vertex_group = 0.0
-                else:
-                    _refresh_line_width_weights(self, context)
-                from . import inner_lines, intersection_lines, selection_lines
-                inner_lines.update_parameters(
-                    owner,
-                    thickness=modifier_thickness_for_world_width(
-                        owner,
-                        self.inner_line_thickness,
-                    ),
-                    **_inner_midpoint_kwargs(self),
-                )
-                intersection_lines.update_parameters(
-                    owner,
-                    thickness=modifier_thickness_for_world_width(
-                        owner,
-                        self.intersection_thickness,
-                    ),
-                )
-                selection_lines.update_parameters(
-                    owner,
-                    thickness=modifier_thickness_for_world_width(
-                        owner,
-                        self.selection_line_thickness,
-                    ),
-                    **_selection_midpoint_kwargs(self),
-                )
-    _propagate(self, context, "use_uniform_line_width")
+    _defer_line_setting(self, context, "use_uniform_line_width")
 
 
 def _on_culling_changed(self, context):
     if _propagating:
         return
-    _refresh_visibility_rules(self, context)
-    _propagate(self, context, "use_camera_culling")
+    _defer_line_setting(self, context, "use_camera_culling")
 
 
 def _on_culling_margin_changed(self, context):
     if _propagating:
         return
-    _refresh_visibility_rules(self, context)
-    _propagate(self, context, "culling_margin")
+    _defer_line_setting(self, context, "culling_margin")
 
 
 def _on_inner_distance_changed(self, context):
     if _propagating:
         return
-    _refresh_visibility_rules(self, context)
-    _propagate(self, context, "use_inner_line_distance_limit")
+    _defer_line_setting(self, context, "use_inner_line_distance_limit", ("inner",))
 
 
 def _on_selection_distance_changed(self, context):
     if _propagating:
         return
-    _refresh_visibility_rules(self, context)
-    _propagate(self, context, "use_selection_line_distance_limit")
+    _defer_line_setting(self, context, "use_selection_line_distance_limit", ("selection",))
 
 
 def _on_outline_distance_changed(self, context):
     if _propagating:
         return
-    _refresh_visibility_rules(self, context)
-    _propagate(self, context, "use_outline_distance_limit")
+    _defer_line_setting(self, context, "use_outline_distance_limit", ("outline",))
 
 
 def _on_intersection_distance_changed(self, context):
     if _propagating:
         return
-    _refresh_visibility_rules(self, context)
-    _propagate(self, context, "use_intersection_distance_limit")
+    _defer_line_setting(self, context, "use_intersection_distance_limit", ("intersection",))
 
 
 def _make_visibility_value_propagator(prop_name):
-    """表示距離の数値変更を即時反映してから選択中へ伝搬."""
+    """表示距離の数値変更を明示更新まで保留して選択中へ伝搬."""
     def _callback(self, context):
         if _propagating:
             return
-        _refresh_visibility_rules(self, context)
-        _propagate(self, context, prop_name)
+        _defer_line_setting(self, context, prop_name)
     return _callback
 
 
