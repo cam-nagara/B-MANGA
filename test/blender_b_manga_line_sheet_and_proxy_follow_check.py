@@ -190,6 +190,12 @@ def _test_sheet_midpoint_adjustment_keeps_tube_visible() -> None:
     settings.edge_width_curve_50 = 0.0
     settings.edge_width_curve_75 = 0.0
     settings.edge_midpoint_jitter_percent = 25.0
+    assert presets.apply_line_settings(
+        plane,
+        bpy.context,
+        refresh_scene=False,
+        line_targets=("outline",),
+    )
 
     tube_mod = plane.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME)
     assert tube_mod is not None, "シートに境界チューブモディファイアがありません"

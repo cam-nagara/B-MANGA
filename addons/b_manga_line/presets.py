@@ -395,6 +395,7 @@ def apply_line_settings(
         camera_comp,
         inner_lines,
         intersection_lines,
+        outline_fast_update,
         outline_setup,
         plane_filter,
         scale_utils,
@@ -428,18 +429,22 @@ def apply_line_settings(
                 settings.use_uniform_line_width
                 or vertex_analysis.has_width_controls(settings, "outline")
             )
-            ok = outline_setup.apply_outline(
-                obj,
-                thickness=settings.outline_thickness,
-                color=tuple(settings.outline_color),
-                use_vertex_color=settings.use_vertex_color,
-                even_thickness=settings.even_thickness,
-                use_rim=settings.use_rim,
-                offset=settings.outline_offset,
-                use_vertex_group=use_vg,
-                hide_through_transparent=settings.hide_through_transparent,
-                scene=context.scene,
-            )
+            outline_kwargs = {
+                "thickness": settings.outline_thickness,
+                "color": tuple(settings.outline_color),
+                "use_vertex_color": settings.use_vertex_color,
+                "even_thickness": settings.even_thickness,
+                "use_rim": settings.use_rim,
+                "offset": settings.outline_offset,
+                "use_vertex_group": use_vg,
+                "hide_through_transparent": settings.hide_through_transparent,
+                "scene": context.scene,
+            }
+            ok = False
+            if has_outline:
+                ok = outline_fast_update.update_existing_outline(obj, **outline_kwargs)
+            if not ok:
+                ok = outline_setup.apply_outline(obj, **outline_kwargs)
             if not ok:
                 return False
         elif not settings.outline_enabled:
