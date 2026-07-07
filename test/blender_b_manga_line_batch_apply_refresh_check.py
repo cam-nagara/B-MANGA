@@ -55,9 +55,9 @@ def main() -> None:
         real_camera = camera_comp.refresh
         real_view_update = presets._update_view_layer
 
-        def counted_intersection(scene):
+        def counted_intersection(scene, **kwargs):
             counts["intersection"] += 1
-            return real_intersection(scene)
+            return real_intersection(scene, **kwargs)
 
         def counted_camera(context):
             counts["camera"] += 1
@@ -106,9 +106,9 @@ def main() -> None:
             refresh_counts["inner_apply"] += 1
             return real_inner_apply(obj, *args, **kwargs)
 
-        def counted_intersection(scene):
+        def counted_intersection(scene, **kwargs):
             refresh_counts["intersection"] += 1
-            return real_intersection(scene)
+            return real_intersection(scene, **kwargs)
 
         def counted_camera(context):
             refresh_counts["camera"] += 1

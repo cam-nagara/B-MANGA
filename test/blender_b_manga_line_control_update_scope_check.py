@@ -96,6 +96,7 @@ def _install_counters():
         "weights": 0,
         "view_update": 0,
         "camera_scopes": [],
+        "intersection_refresh_sources": [],
     }
     originals = {
         "line_settings_apply": presets.apply_line_settings,
@@ -142,6 +143,10 @@ def _install_counters():
 
     def counted_intersection_refresh(*args, **kwargs):
         counts["intersection_refresh"] += 1
+        sources = kwargs.get("sources")
+        counts["intersection_refresh_sources"].append(
+            None if sources is None else tuple(obj.name for obj in sources)
+        )
         return originals["intersection_refresh"](*args, **kwargs)
 
     def counted_camera(*args, **kwargs):
@@ -177,7 +182,7 @@ def _install_counters():
 
     def reset() -> None:
         for key in counts:
-            counts[key] = [] if key == "camera_scopes" else 0
+            counts[key] = [] if key in {"camera_scopes", "intersection_refresh_sources"} else 0
 
     def restore() -> None:
         presets.apply_line_settings = originals["line_settings_apply"]
@@ -344,6 +349,9 @@ def _test_target_update_clears_only_target(objects, counts, reset) -> None:
     assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
     assert counts["line_settings_apply"] == len(objects), counts
     assert counts["intersection_refresh"] > 0, counts
+    assert counts["intersection_refresh_sources"] == [
+        tuple(obj.name for obj in objects)
+    ], counts
     for obj in objects:
         assert "intersection" not in set(update_state.pending_targets(obj)), obj.name
 
@@ -354,6 +362,9 @@ def _test_full_apply_clears_pending(objects, counts, reset) -> None:
     reset()
     assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
     assert counts["line_settings_apply"] == len(objects), counts
+    assert counts["intersection_refresh_sources"] == [
+        tuple(obj.name for obj in objects)
+    ], counts
     for obj in objects:
         assert update_state.pending_targets(obj) == (), obj.name
 

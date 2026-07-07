@@ -3,6 +3,37 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-08 — B-MANGA Linerの交差線更新範囲を選択起点へ限定 (B-MANGA Liner v0.3.152)
+
+### 症状
+
+- 「ラインを適用」や「交差線を更新」で選択中の範囲だけを更新したい場合でも、交差線の再集約がシーン内メッシュ全体を起点に走っていた。
+- tokyo0004のような大量メッシュの街シーンでは、レンダリング範囲内だけを選んでいるのに、範囲外の交差線更新候補まで走査する余地が残っていた。
+
+### 原因
+
+- 交差線の整合性回復関数が、常にシーン全体を起点にしていた。
+- 選択範囲を起点にしてよいユーザー操作と、削除後の全体整合確認のように全体が必要な操作が分離されていなかった。
+
+### 修正
+
+- 交差線の再集約処理に更新起点の指定を追加した。
+- 「ラインを適用」と「交差線を更新」では、選択中に実際に適用されたオブジェクトだけを起点に交差線を再集約するようにした。
+- 単体適用や削除後の整合性確認など、全体の再確認が必要な経路は従来どおり全体起点のまま維持した。
+- 更新範囲分離テストに、交差線更新へ選択起点だけが渡ることの確認を追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_control_update_scope_check.py`
+- `test/blender_b_manga_line_batch_apply_refresh_check.py`
+- `test/blender_b_manga_line_intersection_creation_range_check.py`
+- `test/blender_b_manga_line_sheet_and_proxy_follow_check.py`
+- `test/blender_b_manga_line*_check.py` 全51本を、Traceback/AssertionError検出込みでPASS
+- `python -m py_compile` による関連ファイル確認
+- `git diff --check`
+
+---
+
 ## 2026-07-08 — B-MANGA Linerの保存済み交差線更新を補正 (B-MANGA Liner v0.3.151)
 
 ### 症状

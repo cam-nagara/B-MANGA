@@ -79,7 +79,7 @@ class BMANGA_LINE_OT_apply(bpy.types.Operator):
             ):
                 count += 1
                 applied_objects.append(obj)
-        _refresh_after_line_settings(context)
+        _refresh_after_line_settings(context, sources=applied_objects)
         _reflect_applied_display_settings(applied_objects, context)
         from . import update_state
         update_state.clear_pending_many(applied_objects)
@@ -135,7 +135,10 @@ class BMANGA_LINE_OT_update_target(bpy.types.Operator):
                 applied_objects.append(obj)
 
         if target == "intersection":
-            intersection_targets = intersection_lines.refresh_scene_intersections(context.scene)
+            intersection_targets = intersection_lines.refresh_scene_intersections(
+                context.scene,
+                sources=applied_objects,
+            )
             if intersection_targets:
                 camera_comp.refresh_objects(
                     context,

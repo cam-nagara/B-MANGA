@@ -1557,14 +1557,24 @@ def update_target_width_references(
     return changed
 
 
-def _intersection_refresh_sources(scene: bpy.types.Scene) -> list[bpy.types.Object]:
+def _intersection_refresh_sources(
+    scene: bpy.types.Scene,
+    sources: list[bpy.types.Object] | tuple[bpy.types.Object, ...] | None = None,
+) -> list[bpy.types.Object]:
     objects = []
-    for obj in scene.objects:
+    seen: set[int] = set()
+    source_iter = sources if sources is not None else scene.objects
+    for obj in source_iter:
         try:
-            if obj.type == "MESH":
-                objects.append(obj)
+            if obj.type != "MESH":
+                continue
+            pointer = obj.as_pointer()
         except ReferenceError:
             continue
+        if pointer in seen:
+            continue
+        seen.add(pointer)
+        objects.append(obj)
     active = getattr(getattr(bpy.context, "view_layer", None), "objects", None)
     active_obj = getattr(active, "active", None)
     if active_obj is None or active_obj not in objects:
@@ -1616,13 +1626,16 @@ def _refresh_source_intersections(
     return any(iter_intersection_modifiers(obj))
 
 
-def refresh_scene_intersections(scene: bpy.types.Scene) -> list[bpy.types.Object]:
+def refresh_scene_intersections(
+    scene: bpy.types.Scene,
+    sources: list[bpy.types.Object] | tuple[bpy.types.Object, ...] | None = None,
+) -> list[bpy.types.Object]:
     """シーン内の交差線を、現在のメッシュ構成に合わせて作り直す."""
     from . import intersection_shell, outline_setup, plane_filter
 
     refreshed: list[bpy.types.Object] = []
-    sources = _intersection_refresh_sources(scene)
-    for obj in sources:
+    refresh_sources = _intersection_refresh_sources(scene, sources)
+    for obj in refresh_sources:
         if _refresh_source_intersections(obj, scene, outline_setup, plane_filter):
             refreshed.append(obj)
     intersection_shell.cleanup_orphan_proxies()
@@ -1856,12 +1869,15 @@ def _refresh_source_intersections(
     return any(iter_intersection_modifiers(obj))
 
 
-def refresh_scene_intersections(scene: bpy.types.Scene) -> list[bpy.types.Object]:
+def refresh_scene_intersections(
+    scene: bpy.types.Scene,
+    sources: list[bpy.types.Object] | tuple[bpy.types.Object, ...] | None = None,
+) -> list[bpy.types.Object]:
     """シーン内の交差線を、保存済み線として更新する."""
     from . import outline_setup, plane_filter
 
     refreshed: list[bpy.types.Object] = []
-    for obj in _intersection_refresh_sources(scene):
+    for obj in _intersection_refresh_sources(scene, sources):
         try:
             obj_type = obj.type
         except ReferenceError:
