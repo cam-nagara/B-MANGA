@@ -5,7 +5,7 @@ from __future__ import annotations
 import bpy
 
 from . import registration
-from .core import PROP_LINE_ONLY, has_line, has_outline
+from .core import has_line, has_outline, is_scene_line_only_enabled
 
 
 def _get_paper_dpi(scene) -> int:
@@ -358,9 +358,10 @@ def _draw_actions(layout, context, obj) -> None:
     from . import update_state, viewport_aov
 
     has_line_any = any(has_line(o) for o in context.selected_objects)
-    line_only_any = any(
-        bool(o.get(PROP_LINE_ONLY, False)) for o in context.selected_objects
-    ) or viewport_aov.is_line_aov_active(context)
+    line_only_any = (
+        is_scene_line_only_enabled(context)
+        or viewport_aov.is_line_aov_active(context)
+    )
     row = layout.row(align=True)
     row.scale_y = 1.4
     row.operator("bmanga_line.apply", icon="ADD")
@@ -389,7 +390,7 @@ def _draw_actions(layout, context, obj) -> None:
 
         row = layout.row(align=True)
         row.enabled = has_line_any or line_only_any
-        row.prop(settings, "line_only_visible")
+        row.prop(context.scene, "bmanga_line_line_only_visible")
 
         row = layout.row(align=True)
         row.prop(settings, "match_subsurf_viewport_to_render")

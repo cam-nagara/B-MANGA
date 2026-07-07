@@ -352,10 +352,6 @@ def _reflect_applied_display_settings(
         return
     from . import camera_comp
 
-    line_only_enabled = any(
-        bool(getattr(obj.bmanga_line_settings, "line_only_visible", False))
-        for obj in objects
-    )
     visibility_refresh_targets = []
     for obj in objects:
         settings = obj.bmanga_line_settings
@@ -378,22 +374,8 @@ def _reflect_applied_display_settings(
             core.set_line_visibility(obj, False)
     if visibility_refresh_targets:
         camera_comp.refresh_visibility_objects(context, visibility_refresh_targets)
-    scene = getattr(context, "scene", None)
-    line_only_active = line_only_enabled
-    if not line_only_active:
-        line_only_active = (
-            scene is not None
-            and (
-                core.PROP_LINE_ONLY_WORLD in scene
-                or "bml_line_aov_view_state" in scene
-                or any(
-                    obj.type == "MESH" and bool(obj.get(core.PROP_LINE_ONLY, False))
-                    for obj in scene.objects
-                )
-            )
-        )
-    if line_only_active:
-        core.set_scene_line_only(context, line_only_enabled)
+    if core.is_scene_line_only_enabled(context):
+        core.set_scene_line_only(context, True)
 
 
 def apply_line_settings(

@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import core, panels  # noqa: E402
+from b_manga_line import core, line_only_display, outline_setup, panels  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -89,24 +89,56 @@ def _assert_visibility_checkboxes(active: bpy.types.Object, other: bpy.types.Obj
 
 
 def _assert_line_only_checkbox(active: bpy.types.Object, other: bpy.types.Object) -> None:
+    scene = bpy.context.scene
     _select(active, [active, other])
-    active.bmanga_line_settings.line_only_visible = True
-    for obj in (active, other):
-        assert bool(obj.bmanga_line_settings.line_only_visible)
-        assert bool(obj.get(core.PROP_LINE_ONLY, False)), obj.name
-        _assert_line_visibility(obj, True)
+    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
 
-    active.bmanga_line_settings.line_only_visible = False
-    for obj in (active, other):
-        assert not bool(obj.bmanga_line_settings.line_only_visible)
-        assert not bool(obj.get(core.PROP_LINE_ONLY, False)), obj.name
+    old_object_line_only = outline_setup.set_line_only
+    old_set_line_visibility = core.set_line_visibility
+    outline_setup.set_line_only = lambda _obj, _enabled: _raise_object_line_only_call()
+    core.set_line_visibility = lambda _obj, _visible: _raise_object_line_only_call()
+    try:
+        scene.bmanga_line_line_only_visible = True
+        assert bool(scene.bmanga_line_line_only_visible)
+        _assert_material_outputs_in_line_only(True)
+        for obj in (active, other):
+            assert not bool(obj.get(core.PROP_LINE_ONLY, False)), obj.name
 
-    assert bpy.ops.bmanga_line.set_line_only("EXEC_DEFAULT", line_only=True) == {"FINISHED"}
-    for obj in (active, other):
-        assert bool(obj.bmanga_line_settings.line_only_visible), obj.name
-    assert bpy.ops.bmanga_line.set_line_only("EXEC_DEFAULT", line_only=False) == {"FINISHED"}
-    for obj in (active, other):
-        assert not bool(obj.bmanga_line_settings.line_only_visible), obj.name
+        scene.bmanga_line_line_only_visible = False
+        assert not bool(scene.bmanga_line_line_only_visible)
+        _assert_material_outputs_in_line_only(False)
+
+        assert bpy.ops.bmanga_line.set_line_only("EXEC_DEFAULT", line_only=True) == {"FINISHED"}
+        assert bool(scene.bmanga_line_line_only_visible)
+        _assert_material_outputs_in_line_only(True)
+        assert bpy.ops.bmanga_line.set_line_only("EXEC_DEFAULT", line_only=False) == {"FINISHED"}
+        assert not bool(scene.bmanga_line_line_only_visible)
+        _assert_material_outputs_in_line_only(False)
+    finally:
+        outline_setup.set_line_only = old_object_line_only
+        core.set_line_visibility = old_set_line_visibility
+
+
+def _raise_object_line_only_call():
+    raise AssertionError("ラインのみ表示でオブジェクト処理が呼ばれました")
+
+
+def _assert_material_outputs_in_line_only(enabled: bool) -> None:
+    checked = 0
+    for mat in bpy.data.materials:
+        if not line_only_display.is_line_only_surface_material(mat):
+            continue
+        if not mat.use_nodes or mat.node_tree is None:
+            assert not enabled, mat.name
+            continue
+        active = line_only_display.active_material_output(mat)
+        assert active is not None, mat.name
+        if enabled:
+            assert active.name == line_only_display.LINE_ONLY_OUTPUT_NAME, mat.name
+        else:
+            assert active.name != line_only_display.LINE_ONLY_OUTPUT_NAME, mat.name
+        checked += 1
+    assert checked >= 2, checked
 
 
 class _FakeUILayout:
@@ -152,15 +184,11 @@ class _FakeOperatorProps:
         self.icon = icon
 
 
-def _assert_panel_draw_does_not_reset_line_only(active: bpy.types.Object, other: bpy.types.Object) -> None:
+def _assert_panel_draw_uses_scene_line_only(active: bpy.types.Object, other: bpy.types.Object) -> None:
     from b_manga_line import viewport_aov
 
     _select(active, [active, other])
     assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
-    for obj in (active, other):
-        _set_setting_without_update(obj.bmanga_line_settings, "line_only_visible", True)
-        if core.PROP_LINE_ONLY in obj:
-            del obj[core.PROP_LINE_ONLY]
 
     old_is_line_aov_active = viewport_aov.is_line_aov_active
     viewport_aov.is_line_aov_active = lambda _context: True
@@ -170,9 +198,8 @@ def _assert_panel_draw_does_not_reset_line_only(active: bpy.types.Object, other:
     finally:
         viewport_aov.is_line_aov_active = old_is_line_aov_active
 
-    assert "line_only_visible" in layout.props
-    assert bool(active.bmanga_line_settings.line_only_visible)
-    assert bool(other.bmanga_line_settings.line_only_visible)
+    assert "bmanga_line_line_only_visible" in layout.props
+    assert "line_only_visible" not in layout.props
     assert not bool(active.get(core.PROP_LINE_ONLY, False))
 
 
@@ -274,7 +301,7 @@ def main() -> None:
         _assert_distance_button(active, other)
         _assert_visibility_checkboxes(active, other)
         _assert_line_only_checkbox(active, other)
-        _assert_panel_draw_does_not_reset_line_only(active, other)
+        _assert_panel_draw_uses_scene_line_only(active, other)
         _assert_update_buttons_are_in_line_settings(active)
         _assert_subsurf_checkbox(active, other)
         print("BMANGA_LINE_UI_CONTROLS_OK")

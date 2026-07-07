@@ -81,6 +81,7 @@ LINE_MODIFIER_NAMES = (
 # ------------------------------------------------------------------
 
 _propagating = False
+_line_only_scene_updating = False
 _LINE_CREATION_PROPS = {
     "outline_enabled",
     "inner_line_enabled",
@@ -571,16 +572,6 @@ def sync_line_display_settings(obj: bpy.types.Object) -> None:
     sync_line_only_setting(obj)
 
 
-def _scene_line_objects(context) -> list[bpy.types.Object]:
-    scene = getattr(context, "scene", None)
-    if scene is None:
-        return []
-    return [
-        obj for obj in scene.objects
-        if obj.type == "MESH" and obj.data is not None and has_line(obj)
-    ]
-
-
 def _world_background_node(world: bpy.types.World | None):
     if world is None or not getattr(world, "use_nodes", False) or world.node_tree is None:
         return None
@@ -710,29 +701,38 @@ def _restore_line_only_world(context) -> None:
 
 
 def set_scene_line_only(context, enabled: bool) -> int:
-    """シーン内のライン適用済みオブジェクトを一括でラインのみ表示にする."""
-    from . import outline_setup, viewport_aov
+    """通常マテリアルの出力を切り替えてラインのみ表示にする."""
+    from . import line_only_display, viewport_aov
 
-    line_objects = _scene_line_objects(context)
+    scene = getattr(context, "scene", None)
+    _set_scene_line_only_setting(scene, bool(enabled))
     if enabled:
         _ensure_line_only_world(context)
-        for obj in line_objects:
-            set_line_visibility(obj, True)
-    changed = 0
-    if not enabled:
-        aov_changed = viewport_aov.disable_line_aov(context)
-    else:
-        aov_changed = False
-    for obj in line_objects:
-        before = bool(obj.get(PROP_LINE_ONLY, False))
-        if outline_setup.set_line_only(obj, enabled):
-            after = bool(obj.get(PROP_LINE_ONLY, False))
-            _set_bool_setting_without_update(obj, "line_only_visible", enabled)
-            if before != after or enabled or aov_changed:
-                changed += 1
+        return line_only_display.set_materials_line_only(True)
+    aov_changed = viewport_aov.disable_line_aov(context)
+    changed = line_only_display.set_materials_line_only(False)
     if not enabled:
         _restore_line_only_world(context)
-    return changed
+    return changed + (1 if aov_changed else 0)
+
+
+def _set_scene_line_only_setting(scene, enabled: bool) -> None:
+    if scene is None or not hasattr(scene, "bmanga_line_line_only_visible"):
+        return
+    global _line_only_scene_updating
+    old = _line_only_scene_updating
+    _line_only_scene_updating = True
+    try:
+        scene.bmanga_line_line_only_visible = bool(enabled)
+    finally:
+        _line_only_scene_updating = old
+
+
+def is_scene_line_only_enabled(context) -> bool:
+    scene = getattr(context, "scene", None)
+    if scene is None:
+        return False
+    return bool(getattr(scene, "bmanga_line_line_only_visible", False))
 
 
 def _on_lines_visible_changed(self, context):
@@ -752,6 +752,12 @@ def _on_line_only_visible_changed(self, context):
     if _propagating:
         return
     set_scene_line_only(context, bool(self.line_only_visible))
+
+
+def _on_scene_line_only_visible_changed(self, context):
+    if _line_only_scene_updating:
+        return
+    set_scene_line_only(context, bool(self.bmanga_line_line_only_visible))
 
 
 def _on_match_subsurf_viewport_to_render_changed(self, context):
@@ -2020,6 +2026,8 @@ def _make_settings_overridable() -> None:
 
 
 def register() -> None:
+    if hasattr(bpy.types.Scene, "bmanga_line_line_only_visible"):
+        del bpy.types.Scene.bmanga_line_line_only_visible
     if hasattr(bpy.types.Scene, "bmanga_line_camera"):
         del bpy.types.Scene.bmanga_line_camera
     if hasattr(bpy.types.Object, "bmanga_line_settings"):
@@ -2037,9 +2045,17 @@ def register() -> None:
         description="通常はカメラビューのカメラを使います。別カメラで判定したい場合だけ指定します",
         poll=_camera_poll,
     )
+    bpy.types.Scene.bmanga_line_line_only_visible = BoolProperty(
+        name="ラインのみを表示",
+        description="通常マテリアルを白く表示し、ラインだけが見える表示へ切り替える",
+        default=False,
+        update=_on_scene_line_only_visible_changed,
+    )
 
 
 def unregister() -> None:
+    if hasattr(bpy.types.Scene, "bmanga_line_line_only_visible"):
+        del bpy.types.Scene.bmanga_line_line_only_visible
     if hasattr(bpy.types.Scene, "bmanga_line_camera"):
         del bpy.types.Scene.bmanga_line_camera
     if hasattr(bpy.types.Object, "bmanga_line_settings"):

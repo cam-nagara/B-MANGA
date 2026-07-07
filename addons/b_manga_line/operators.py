@@ -316,7 +316,7 @@ class BMANGA_LINE_OT_set_line_only(bpy.types.Operator):
 
         changed = set_scene_line_only(context, bool(self.line_only))
         action = "ラインのみ表示" if self.line_only else "通常表示"
-        self.report({"INFO"}, f"{changed} オブジェクトを{action}にしました")
+        self.report({"INFO"}, f"{changed} マテリアルを{action}にしました")
         return {"FINISHED"}
 
 

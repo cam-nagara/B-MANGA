@@ -952,7 +952,8 @@ def _update_lines_visible(objects: list[bpy.types.Object], context) -> None:
 
 
 def _update_line_only_visible(objects: list[bpy.types.Object], context) -> None:
-    enabled = any(bool(obj.bmanga_line_settings.line_only_visible) for obj in objects)
+    del objects
+    enabled = bool(getattr(context.scene, "bmanga_line_line_only_visible", False))
     core.set_scene_line_only(context, enabled)
 
 
@@ -990,6 +991,9 @@ def refresh_propagated_property(
     objects: list[bpy.types.Object],
     context,
 ) -> None:
+    if prop_name == "line_only_visible":
+        _update_line_only_visible([], context)
+        return
     if prop_name in {
         "outline_enabled",
         "inner_line_enabled",
@@ -1031,9 +1035,6 @@ def refresh_propagated_property(
         return
     if prop_name == "lines_visible":
         _update_lines_visible(line_objects, context)
-        return
-    if prop_name == "line_only_visible":
-        _update_line_only_visible(line_objects, context)
         return
     if prop_name == "match_subsurf_viewport_to_render":
         _update_match_subsurf_viewport_to_render(line_objects)
