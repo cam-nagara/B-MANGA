@@ -3,6 +3,43 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-08 — B-MANGA Linerの線種別更新を完全分離 (B-MANGA Liner v0.3.144)
+
+### 症状
+
+- 「アウトラインを更新」だけを押しても、交差線側の参照幅更新や表示更新が走り、交差線まで適用されたように見える経路があった。
+- ライン設定の稜谷線 / 交差線 / 選択線などのチェックボックス変更は、設定だけを変えるべきなのに、後続の別線種更新で対象外線種の表示状態まで反映されることがあった。
+
+### 原因
+
+- 線種別更新後のカメラ距離補正が、アウトライン更新時にも交差線の参照幅を更新していた。
+- 線種別更新の最後に、全ライン共通の表示反映処理を呼んでおり、対象外の線種も現在のチェック状態で表示オン/オフされていた。
+- 交差線更新だけ、全体更新用の後処理を使っていたため、線種別更新の分離が不完全だった。
+
+### 修正
+
+- 「アウトラインを更新」「稜谷線を更新」「交差線を更新」「選択線を更新」は、指定された線種の実体・線幅・距離表示だけを更新するようにした。
+- アウトライン更新時に交差線の参照幅を更新しないようにし、交差線の参照更新は「ラインを適用」または「交差線を更新」まで保留するようにした。
+- 線種別更新では、対象外の線種の表示状態を現在のチェックボックス設定で書き換えないようにした。
+- チェックボックス変更は未更新状態の記録だけに留め、重い生成・交差線整理・カメラ距離補正を呼ばないことをテストで固定した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_control_update_scope_check.py`
+- `test/blender_b_manga_line_batch_apply_refresh_check.py`
+- `test/blender_b_manga_line_generated_update_scope_check.py`
+- `test/blender_b_manga_line_preset_visibility_check.py`
+- `test/blender_b_manga_line_outline_creation_range_check.py`
+- `test/blender_b_manga_line_inner_creation_range_check.py`
+- `test/blender_b_manga_line_intersection_creation_range_check.py`
+- `test/blender_b_manga_line_selection_creation_range_check.py`
+- `test/blender_b_manga_line_distance_visibility_preserves_check.py`
+- `test/blender_b_manga_line_display_modes_check.py`
+- tokyo0004実ファイルで「レンダリング範囲内を選択」137個に対し、稜谷線チェックオフは 0.002 秒、交差線処理呼び出し 0 件。「アウトラインを更新」は 3.560 秒、交差線生成 / 交差線再整理 / 交差線参照幅更新 0 件、交差線表示状態の変更なし。
+- `python -m py_compile` による関連ファイル確認
+
+---
+
 ## 2026-07-07 — B-MANGA Liner明示更新・作成範囲保持の徹底チェック (検証追記)
 
 ### 症状

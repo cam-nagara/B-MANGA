@@ -51,6 +51,27 @@ def iter_line_modifiers(obj: bpy.types.Object):
     yield from iter_intersection_modifiers(obj)
 
 
+def iter_target_line_modifiers(obj: bpy.types.Object, targets):
+    if obj.type != "MESH":
+        return
+    target_set = set(targets or ())
+    if "outline" in target_set:
+        for name in (MODIFIER_NAME, SHEET_OUTLINE_MODIFIER_NAME):
+            mod = obj.modifiers.get(name)
+            if mod is not None:
+                yield mod
+    if "inner" in target_set:
+        mod = obj.modifiers.get(GN_MODIFIER_NAME)
+        if mod is not None:
+            yield mod
+    if "selection" in target_set:
+        mod = obj.modifiers.get(SELECTION_LINE_MODIFIER_NAME)
+        if mod is not None:
+            yield mod
+    if "intersection" in target_set:
+        yield from iter_intersection_modifiers(obj)
+
+
 def has_line(obj: bpy.types.Object) -> bool:
     return obj.type == "MESH" and any(iter_line_modifiers(obj))
 
@@ -99,3 +120,19 @@ def set_line_visibility(obj: bpy.types.Object, visible: bool) -> bool:
     except Exception:  # noqa: BLE001 - UI状態同期に失敗しても表示切替は維持する
         pass
     return True
+
+
+def set_line_targets_visibility(obj: bpy.types.Object, visible: bool, targets) -> bool:
+    mods = list(iter_target_line_modifiers(obj, targets))
+    if not mods:
+        return False
+    changed = False
+    for mod in mods:
+        mod_visible = visible and _line_modifier_enabled_by_settings(obj, mod)
+        if mod.show_viewport != mod_visible:
+            mod.show_viewport = mod_visible
+            changed = True
+        if mod.show_render != mod_visible:
+            mod.show_render = mod_visible
+            changed = True
+    return changed

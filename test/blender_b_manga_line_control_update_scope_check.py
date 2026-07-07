@@ -86,6 +86,7 @@ def _install_counters():
         "outline_apply": 0,
         "inner_apply": 0,
         "intersection_apply": 0,
+        "intersection_width_refs": 0,
         "selection_apply": 0,
         "intersection_refresh": 0,
         "camera": 0,
@@ -99,6 +100,7 @@ def _install_counters():
         "outline_apply": outline_setup.apply_outline,
         "inner_apply": inner_lines.apply_inner_lines,
         "intersection_apply": intersection_lines.apply_intersection_lines,
+        "intersection_width_refs": intersection_lines.update_target_width_references,
         "selection_apply": selection_lines.apply_selection_lines,
         "intersection_refresh": intersection_lines.refresh_scene_intersections,
         "camera": camera_comp.refresh,
@@ -122,6 +124,10 @@ def _install_counters():
     def counted_intersection_apply(*args, **kwargs):
         counts["intersection_apply"] += 1
         return originals["intersection_apply"](*args, **kwargs)
+
+    def counted_intersection_width_refs(*args, **kwargs):
+        counts["intersection_width_refs"] += 1
+        return originals["intersection_width_refs"](*args, **kwargs)
 
     def counted_selection_apply(*args, **kwargs):
         counts["selection_apply"] += 1
@@ -153,6 +159,7 @@ def _install_counters():
     outline_setup.apply_outline = counted_outline_apply
     inner_lines.apply_inner_lines = counted_inner_apply
     intersection_lines.apply_intersection_lines = counted_intersection_apply
+    intersection_lines.update_target_width_references = counted_intersection_width_refs
     selection_lines.apply_selection_lines = counted_selection_apply
     intersection_lines.refresh_scene_intersections = counted_intersection_refresh
     camera_comp.refresh = counted_camera
@@ -169,6 +176,7 @@ def _install_counters():
         outline_setup.apply_outline = originals["outline_apply"]
         inner_lines.apply_inner_lines = originals["inner_apply"]
         intersection_lines.apply_intersection_lines = originals["intersection_apply"]
+        intersection_lines.update_target_width_references = originals["intersection_width_refs"]
         selection_lines.apply_selection_lines = originals["selection_apply"]
         intersection_lines.refresh_scene_intersections = originals["intersection_refresh"]
         camera_comp.refresh = originals["camera"]
@@ -185,6 +193,7 @@ def _assert_no_heavy_work(prop_name: str, counts: dict) -> None:
         "outline_apply",
         "inner_apply",
         "intersection_apply",
+        "intersection_width_refs",
         "selection_apply",
         "intersection_refresh",
         "camera",
@@ -245,10 +254,17 @@ def _test_setting_edits_are_deferred(objects, counts, reset) -> None:
     cases = (
         ("outline_thickness", 0.0011, {"outline"}),
         ("outline_color", (0.15, 0.25, 0.35, 1.0), {"outline"}),
+        ("outline_enabled", False, {"outline"}),
+        ("outline_enabled", True, {"outline"}),
+        ("inner_line_enabled", False, {"inner"}),
+        ("inner_line_enabled", True, {"inner"}),
         ("inner_line_thickness", 0.0012, {"inner"}),
         ("inner_edge_smooth_factor", 0.12, {"inner"}),
         ("intersection_thickness", 0.0013, {"intersection"}),
         ("intersection_enabled", False, {"intersection"}),
+        ("intersection_enabled", True, {"intersection"}),
+        ("selection_line_enabled", False, {"selection"}),
+        ("selection_line_enabled", True, {"selection"}),
         ("selection_line_thickness", 0.0014, {"selection"}),
         ("use_camera_compensation", True, set(update_state.LINE_TARGETS)),
         ("match_subsurf_viewport_to_render", True, set(update_state.LINE_TARGETS)),
@@ -262,12 +278,46 @@ def _test_target_update_clears_only_target(objects, counts, reset) -> None:
     for obj in objects:
         update_state.mark_pending(obj)
 
+    def _intersection_visibility_state() -> tuple[tuple[str, bool, bool], ...]:
+        state = []
+        for obj in objects:
+            for mod in core.iter_intersection_modifiers(obj):
+                state.append((obj.name, bool(mod.show_viewport), bool(mod.show_render)))
+        return tuple(state)
+
+    objects[0].bmanga_line_settings.intersection_enabled = False
+    before_intersection_visibility = _intersection_visibility_state()
+    assert before_intersection_visibility
+
+    reset()
+    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
+    assert counts["line_settings_apply"] == len(objects), counts
+    assert counts["outline_apply"] > 0, counts
+    assert counts["inner_apply"] == 0, counts
+    assert counts["intersection_apply"] == 0, counts
+    assert counts["selection_apply"] == 0, counts
+    assert counts["intersection_refresh"] == 0, counts
+    assert counts["intersection_width_refs"] == 0, counts
+    assert ("outline",) in counts["camera_scopes"], counts
+    assert _intersection_visibility_state() == before_intersection_visibility
+    for obj in objects:
+        pending = set(update_state.pending_targets(obj))
+        assert "outline" not in pending, (obj.name, pending)
+        assert {"inner", "intersection", "selection"}.issubset(pending), (
+            obj.name,
+            pending,
+        )
+    objects[0].bmanga_line_settings.intersection_enabled = True
+
+    for obj in objects:
+        update_state.mark_pending(obj)
     reset()
     assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="inner") == {"FINISHED"}
     assert counts["line_settings_apply"] == len(objects), counts
     assert counts["inner_apply"] > 0, counts
     assert counts["outline_apply"] == 0, counts
     assert counts["intersection_refresh"] == 0, counts
+    assert counts["intersection_width_refs"] == 0, counts
     assert ("inner",) in counts["camera_scopes"], counts
     for obj in objects:
         pending = set(update_state.pending_targets(obj))
@@ -277,6 +327,8 @@ def _test_target_update_clears_only_target(objects, counts, reset) -> None:
             pending,
         )
 
+    for obj in objects:
+        update_state.mark_pending(obj)
     reset()
     assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
     assert counts["line_settings_apply"] == len(objects), counts

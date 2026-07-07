@@ -1989,6 +1989,7 @@ from .line_visibility import (  # noqa: E402
     iter_intersection_modifiers,
     iter_line_modifiers,
     set_line_visibility,
+    set_line_targets_visibility,
 )
 
 

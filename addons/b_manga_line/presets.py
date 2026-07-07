@@ -530,10 +530,10 @@ def apply_line_settings(
         elif not settings.selection_line_enabled:
             selection_lines.remove_selection_lines(obj)
 
-    intersection_in_range = camera_comp.intersection_line_creation_in_range(
-        obj, context.scene, settings,
-    )
     if "intersection" in target_set:
+        intersection_in_range = camera_comp.intersection_line_creation_in_range(
+            obj, context.scene, settings,
+        )
         if not (
             settings.intersection_enabled
             and not plane_filter.should_exclude_generated_lines(obj, settings)
@@ -554,10 +554,11 @@ def apply_line_settings(
             else:
                 vertex_analysis.clear_width_weights(obj, group_name=group_name)
 
-    if bool(obj.get(core.PROP_LINES_HIDDEN, False)):
-        core.set_line_visibility(obj, False)
+    visible = not bool(obj.get(core.PROP_LINES_HIDDEN, False))
+    if target_set == {"outline", "inner", "intersection", "selection"}:
+        core.set_line_visibility(obj, visible)
     else:
-        core.set_line_visibility(obj, True)
+        core.set_line_targets_visibility(obj, visible, target_set)
     modifier_stack.reorder_line_modifiers(obj)
 
     if refresh_scene:

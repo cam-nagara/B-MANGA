@@ -766,13 +766,24 @@ def _update_camera_compensation(scene, camera, objects=None, width_targets=None)
             )
         else:
             vertex_analysis.clear_width_weights(obj, group_name=VG_SELECTION_LINE_WIDTH)
-    if outline_targets:
+    if normalized_targets is None and outline_targets:
         intersection_lines.update_target_width_references(scene, outline_targets)
 
 
-def _update_visibility(scene, camera, cam_loc, cam_fwd, objects=None):
+def _normalize_visibility_targets(targets) -> set[str] | None:
+    if targets is None:
+        return None
+    if isinstance(targets, str):
+        targets = (targets,)
+    allowed = {"outline", "inner", "intersection", "selection"}
+    normalized = {str(target) for target in targets if str(target) in allowed}
+    return normalized or None
+
+
+def _update_visibility(scene, camera, cam_loc, cam_fwd, objects=None, line_targets=None):
     """ビューカリングと線種別の距離制限を統合処理."""
     half_angle_cache = None
+    target_set = _normalize_visibility_targets(line_targets)
 
     for obj in _line_width_objects(scene, objects):
         settings = getattr(obj, "bmanga_line_settings", None)
@@ -803,9 +814,18 @@ def _update_visibility(scene, camera, cam_loc, cam_fwd, objects=None):
             continue
 
         if bool(obj.get(PROP_LINES_HIDDEN, False)):
-            for mod in (outline_mod, inner_mod, selection_mod, *intersection_mods):
-                if mod is not None:
-                    _set_modifier_visibility(mod, False)
+            if target_set is None or "outline" in target_set:
+                if outline_mod is not None:
+                    _set_modifier_visibility(outline_mod, False)
+            if target_set is None or "inner" in target_set:
+                if inner_mod is not None:
+                    _set_modifier_visibility(inner_mod, False)
+            if target_set is None or "selection" in target_set:
+                if selection_mod is not None:
+                    _set_modifier_visibility(selection_mod, False)
+            if target_set is None or "intersection" in target_set:
+                for intersection_mod in intersection_mods:
+                    _set_modifier_visibility(intersection_mod, False)
             continue
 
         to_obj = obj.matrix_world.translation - cam_loc
@@ -845,19 +865,20 @@ def _update_visibility(scene, camera, cam_loc, cam_fwd, objects=None):
             )
         )
 
-        if outline_mod is not None:
+        if outline_mod is not None and (target_set is None or "outline" in target_set):
             visible = in_view and outline_in_range and outline_enabled
             _set_modifier_visibility(outline_mod, visible)
 
-        for intersection_mod in intersection_mods:
-            visible = in_view and intersection_in_range
-            _set_modifier_visibility(intersection_mod, visible)
+        if target_set is None or "intersection" in target_set:
+            for intersection_mod in intersection_mods:
+                visible = in_view and intersection_in_range
+                _set_modifier_visibility(intersection_mod, visible)
 
-        if inner_mod is not None:
+        if inner_mod is not None and (target_set is None or "inner" in target_set):
             visible = in_view and inner_in_range
             _set_modifier_visibility(inner_mod, visible)
 
-        if selection_mod is not None:
+        if selection_mod is not None and (target_set is None or "selection" in target_set):
             visible = in_view and selection_in_range
             _set_modifier_visibility(selection_mod, visible)
 
@@ -915,6 +936,7 @@ def refresh_objects(
     *,
     update_visibility: bool = False,
     width_targets=None,
+    visibility_targets=None,
 ) -> bool:
     """指定オブジェクトだけカメラ基準の線幅を更新."""
     global _updating
@@ -933,7 +955,14 @@ def refresh_objects(
         if update_visibility:
             cam_loc = camera.matrix_world.translation
             cam_fwd = camera.matrix_world.to_quaternion() @ Vector((0, 0, -1))
-            _update_visibility(scene, camera, cam_loc, cam_fwd, targets)
+            _update_visibility(
+                scene,
+                camera,
+                cam_loc,
+                cam_fwd,
+                targets,
+                line_targets=visibility_targets,
+            )
         return True
     finally:
         _updating = False

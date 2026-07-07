@@ -110,11 +110,9 @@ class BMANGA_LINE_OT_update_target(bpy.types.Operator):
         return any(obj.type == "MESH" for obj in context.selected_objects)
 
     def execute(self, context):
-        from . import camera_comp, update_state
+        from . import camera_comp, intersection_lines, outline_setup, update_state
         from .presets import (
             apply_line_settings,
-            _reflect_applied_display_settings,
-            _refresh_after_line_settings,
             _update_view_layer,
         )
 
@@ -137,15 +135,24 @@ class BMANGA_LINE_OT_update_target(bpy.types.Operator):
                 applied_objects.append(obj)
 
         if target == "intersection":
-            _refresh_after_line_settings(context)
+            intersection_targets = intersection_lines.refresh_scene_intersections(context.scene)
+            if intersection_targets:
+                camera_comp.refresh_objects(
+                    context,
+                    intersection_targets,
+                    update_visibility=True,
+                    width_targets=line_targets,
+                    visibility_targets=line_targets,
+                )
+            outline_setup.ensure_aov_passes(context.scene)
         elif applied_objects:
             camera_comp.refresh_objects(
                 context,
                 applied_objects,
                 update_visibility=True,
                 width_targets=line_targets,
+                visibility_targets=line_targets,
             )
-        _reflect_applied_display_settings(applied_objects, context)
         update_state.clear_pending_many(applied_objects, line_targets)
 
         labels = {
