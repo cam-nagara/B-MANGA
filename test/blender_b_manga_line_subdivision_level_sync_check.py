@@ -15,8 +15,10 @@ sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
 from b_manga_line import (  # noqa: E402
+    batch_update,
     core,
     inner_lines,
+    intersection_cache,
     intersection_lines,
     intersection_shell,
     outline_setup,
@@ -129,11 +131,12 @@ def _assert_inner_lines_do_not_follow_subdivision_grid() -> None:
     assert surface_faces == 96, counts
 
 
-def _proxy_for_target(target: bpy.types.Object) -> bpy.types.Object:
-    for obj in bpy.data.objects:
-        if str(obj.get(intersection_shell._PROXY_SOURCE_PROP, "") or "") == target.name_full:
-            return obj
-    raise AssertionError("交差対象プロキシが見つかりません")
+def _intersection_cache_for_source(source: bpy.types.Object) -> bpy.types.Object:
+    name = str(source.get(intersection_cache.CACHE_OBJECT_PROP, "") or "")
+    cache = bpy.data.objects.get(name)
+    assert cache is not None and cache.data is not None, "保存済み交差線キャッシュが見つかりません"
+    assert len(cache.data.edges) > 0, "保存済み交差線キャッシュが空です"
+    return cache
 
 
 def _assert_intersection_proxy_levels_sync() -> None:
@@ -154,18 +157,18 @@ def _assert_intersection_proxy_levels_sync() -> None:
         material=outline_setup.get_line_material(source, "intersection"),
         scene=bpy.context.scene,
     )
-    proxy = _proxy_for_target(target)
-    proxy_mod = proxy.modifiers.get(intersection_shell._PROXY_SUBSURF_NAME)
-    assert proxy_mod is not None
-    assert int(proxy_mod.levels) == 2
-    assert int(proxy_mod.render_levels) == 3
+    cache = _intersection_cache_for_source(source)
+    assert cache.hide_viewport and cache.hide_render
+    assert not any(
+        str(obj.get(intersection_shell._PROXY_SOURCE_PROP, "") or "") == target.name_full
+        for obj in bpy.data.objects
+    ), "保存済み交差線方式で旧プロキシが作成されています"
 
     target_mod.levels = 4
     target_mod.render_levels = 1
     changed = intersection_shell.sync_proxy_subdivision_for_target(target)
-    assert changed == 1
-    assert int(proxy_mod.levels) == 4
-    assert int(proxy_mod.render_levels) == 1
+    assert changed == 0
+    assert cache.name in bpy.data.objects
 
 
 def _assert_manual_subsurf_proxy_levels_sync() -> None:
@@ -185,22 +188,14 @@ def _assert_manual_subsurf_proxy_levels_sync() -> None:
         scene=bpy.context.scene,
     )
 
-    proxy = _proxy_for_target(target)
-    copied = [
-        mod for mod in proxy.modifiers
-        if mod.type == "SUBSURF" and mod.name.startswith("BML_ProxySubsurf_")
-    ]
-    assert len(copied) == 1, [mod.name for mod in proxy.modifiers]
-    proxy_mod = copied[0]
-    assert int(proxy_mod.levels) == 2
-    assert int(proxy_mod.render_levels) == 4
+    cache = _intersection_cache_for_source(source)
+    assert cache.hide_viewport and cache.hide_render
 
     manual.levels = 1
     manual.render_levels = 3
     changed = intersection_shell.sync_proxy_subdivision_for_target(target)
-    assert changed == 1
-    assert int(proxy_mod.levels) == 1
-    assert int(proxy_mod.render_levels) == 3
+    assert changed == 0
+    assert cache.name in bpy.data.objects
 
 
 def _assert_match_viewport_checkbox_restores_zero() -> None:
@@ -214,10 +209,12 @@ def _assert_match_viewport_checkbox_restores_zero() -> None:
 
     settings = obj.bmanga_line_settings
     settings.match_subsurf_viewport_to_render = True
+    batch_update._update_match_subsurf_viewport_to_render([obj])
     bpy.context.view_layer.update()
     assert int(mod.levels) == 2
 
     settings.match_subsurf_viewport_to_render = False
+    batch_update._update_match_subsurf_viewport_to_render([obj])
     bpy.context.view_layer.update()
     assert int(mod.levels) == 0
 

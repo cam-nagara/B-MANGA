@@ -19,10 +19,12 @@ def _scene_data_available() -> bool:
 
 
 def _inner_tree_is_current(tree: bpy.types.NodeTree | None) -> bool:
-    from . import inner_lines
+    from . import inner_line_cache, inner_lines
 
     if tree is None:
         return False
+    if inner_line_cache._tree_valid(tree):
+        return True
     required_sockets = (
         "検出角度",
         "線の太さ",

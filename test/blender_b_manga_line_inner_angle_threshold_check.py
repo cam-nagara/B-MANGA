@@ -12,7 +12,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import inner_line_chains, inner_lines, outline_setup, subdivision_lod  # noqa: E402
+from b_manga_line import (  # noqa: E402
+    inner_line_cache,
+    inner_line_chains,
+    inner_lines,
+    outline_setup,
+    subdivision_lod,
+)
 
 
 def _clear_scene() -> None:
@@ -129,12 +135,20 @@ def _assert_round_rim_loops_keep_polygon_edges() -> None:
             thickness=0.01,
             material=mat,
         )
-        tree = obj.modifiers[inner_lines.GN_MODIFIER_NAME].node_group
+        mod = obj.modifiers[inner_lines.GN_MODIFIER_NAME]
+        tree = mod.node_group
+        assert inner_line_cache.is_cached_modifier(mod), f"{label}の内部線が保存済み線方式ではありません"
+        cache = bpy.data.objects.get(str(obj.get(inner_line_cache.CACHE_OBJECT_PROP, "") or ""))
+        assert cache is not None and len(cache.data.edges) >= sum(chain_edges.values()), (
+            f"{label}の稜谷線キャッシュが不足しています",
+            len(cache.data.edges) if cache and cache.data else None,
+            chain_edges,
+        )
         assert any(
-            getattr(node, "label", "") == inner_lines._SUBDIVIDE_CURVE_LABEL
+            getattr(node, "label", "") == inner_line_cache._SUBDIVIDE_LABEL
             and node.bl_idname == "GeometryNodeSubdivideCurve"
             for node in tree.nodes
-        ), f"{label}の内部線が辺上分割になっていません"
+        ), f"{label}の保存済み稜谷線が表示時に辺上分割されていません"
         assert not any(
             node.bl_idname == "GeometryNodeResampleCurve"
             for node in tree.nodes
@@ -163,9 +177,11 @@ def _assert_saved_current_tree_refreshes_stale_cap_selection() -> None:
     selected, _vertical, cap_spokes = _edge_selection_sets(obj)
     assert cap_spokes & selected, "テスト用の古い三角分割選択を作れません"
 
+    cache = bpy.data.objects.get(str(obj.get(inner_line_cache.CACHE_OBJECT_PROP, "") or ""))
+    assert cache is not None
+    edge_count = len(cache.data.edges)
     assert inner_lines.repair_scene_inner_lines(bpy.context.scene) == 0
-    selected, _vertical, cap_spokes = _edge_selection_sets(obj)
-    assert not (cap_spokes & selected), f"保存済みの古い三角分割選択が残っています: {cap_spokes & selected}"
+    assert len(cache.data.edges) == edge_count, "現行の保存済み稜谷線が修復で作り直されています"
 
 
 def _assert_node_tree_uses_inclusive_angle() -> None:
@@ -180,39 +196,9 @@ def _assert_node_tree_uses_inclusive_angle() -> None:
         midpoint_jitter_percent=37.5,
     )
     tree = obj.modifiers[inner_lines.GN_MODIFIER_NAME].node_group
-    compare = next(
-        node for node in tree.nodes
-        if getattr(node, "label", "") == inner_lines._EDGE_ANGLE_COMPARE_LABEL
-    )
-    assert compare.operation == "GREATER_EQUAL"
-    chain_compare = next(
-        node for node in tree.nodes
-        if getattr(node, "label", "") == inner_lines._CHAIN_SELECTION_COMPARE_LABEL
-    )
-    assert chain_compare.operation == "GREATER_THAN"
-    chain_angle_filter = next(
-        node for node in tree.nodes
-        if getattr(node, "label", "") == inner_lines._CHAIN_ANGLE_FILTER_LABEL
-    )
-    assert chain_angle_filter.operation == "AND"
-    filter_sources = {link.from_node for socket in chain_angle_filter.inputs for link in socket.links}
-    assert chain_compare in filter_sources
-    assert compare in filter_sources
-    selection_switch = next(
-        node for node in tree.nodes
-        if getattr(node, "label", "") == inner_lines._MARKED_SELECTION_SWITCH_LABEL
-    )
-    false_links = list(selection_switch.inputs["False"].links)
-    assert false_links, "内部線の自動選択入力が未接続です"
-    auto_angle_filter = next(
-        node for node in tree.nodes
-        if getattr(node, "label", "") == inner_lines._AUTO_ANGLE_FILTER_LABEL
-    )
-    assert false_links[0].from_node == auto_angle_filter
-    auto_sources = {link.from_node for socket in auto_angle_filter.inputs for link in socket.links}
-    assert compare in auto_sources
+    assert inner_line_cache.is_cached_modifier(obj.modifiers[inner_lines.GN_MODIFIER_NAME])
     assert any(
-        getattr(node, "label", "") == inner_lines._SUBDIVIDE_CURVE_LABEL
+        getattr(node, "label", "") == inner_line_cache._SUBDIVIDE_LABEL
         and node.bl_idname == "GeometryNodeSubdivideCurve"
         for node in tree.nodes
     )
@@ -221,10 +207,10 @@ def _assert_node_tree_uses_inclusive_angle() -> None:
         for node in tree.nodes
     )
     assert any(
-        getattr(node, "label", "") == inner_lines._CURVE_JITTER_CENTER_LABEL
+        getattr(node, "label", "") == "BML_InnerCachedJitterCenter"
         for node in tree.nodes
     )
-    sid = inner_lines._find_socket_id(tree, inner_lines._MIDPOINT_JITTER_SOCKET_NAME)
+    sid = inner_line_cache._find_socket_id(tree, inner_line_cache._MIDPOINT_JITTER_SOCKET)
     assert sid is not None
     assert abs(float(obj.modifiers[inner_lines.GN_MODIFIER_NAME][sid]) - 37.5) < 1.0e-6
 
@@ -254,21 +240,10 @@ def _assert_stale_inner_tree_is_repaired() -> None:
     assert repaired.node_group != stale
     assert not repaired.show_viewport
     assert repaired.show_render
-    assert any(
-        getattr(node, "label", "") == inner_lines._CHAIN_SELECTION_COMPARE_LABEL
-        for node in repaired.node_group.nodes
-    )
-    assert any(
-        getattr(node, "label", "") == inner_lines._SUBDIVIDE_CURVE_LABEL
-        for node in repaired.node_group.nodes
-    )
-    assert any(
-        getattr(node, "label", "") == inner_lines._AUTO_ANGLE_FILTER_LABEL
-        for node in repaired.node_group.nodes
-    )
-    sid = inner_lines._find_socket_id(
+    assert inner_line_cache.is_cached_modifier(repaired)
+    sid = inner_line_cache._find_socket_id(
         repaired.node_group,
-        inner_lines._MIDPOINT_JITTER_SOCKET_NAME,
+        inner_line_cache._MIDPOINT_JITTER_SOCKET,
     )
     assert sid is not None
     assert abs(float(repaired[sid]) - 25.0) < 1.0e-6

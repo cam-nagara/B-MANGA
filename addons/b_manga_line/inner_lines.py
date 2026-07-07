@@ -972,6 +972,34 @@ def apply_inner_lines(
             if settings is not None
             else angle
         )
+    if (
+        modifier_name == GN_MODIFIER_NAME
+        and tree_name == GN_TREE_NAME
+        and chain_id_attr_name == _CHAIN_ID_ATTR
+        and not use_marked_edges
+    ):
+        from . import inner_line_cache, subdivision_lod
+
+        if resample_count is None:
+            resample_count = subdivision_lod.line_resample_count(obj)
+        return inner_line_cache.apply_cached_inner_lines(
+            obj,
+            angle=angle,
+            thickness=thickness,
+            offset=offset,
+            material=material,
+            midpoint_angle=midpoint_angle,
+            midpoint_factor=midpoint_factor,
+            midpoint_jitter_percent=midpoint_jitter_percent,
+            resample_count=resample_count,
+            width_curve_25=width_curve_25,
+            width_curve_50=width_curve_50,
+            width_curve_75=width_curve_75,
+            chain_id_attr=chain_id_attr_name,
+            marked_attr_name=marked_attr_name,
+            scene=getattr(bpy.context, "scene", None),
+            enable=enable,
+        )
     inner_line_chains.update_chain_id_attribute(
         obj,
         angle,
@@ -1068,6 +1096,10 @@ def remove_inner_lines(
     """内部線 GN モディファイアを削除."""
     if obj.type != "MESH":
         return False
+    if modifier_name == GN_MODIFIER_NAME:
+        from . import inner_line_cache
+
+        return inner_line_cache.remove_cached_inner_lines(obj)
     mod = obj.modifiers.get(modifier_name)
     if mod is None:
         return False
@@ -1131,6 +1163,22 @@ def update_parameters(
 ) -> bool:
     """既存モディファイアのパラメータを更新."""
     current_mod = obj.modifiers.get(modifier_name)
+    if modifier_name == GN_MODIFIER_NAME:
+        from . import inner_line_cache
+
+        if inner_line_cache.is_cached_modifier(current_mod):
+            return inner_line_cache.update_cached_parameters(
+                obj,
+                thickness=thickness,
+                offset=offset,
+                material=material,
+                midpoint_factor=midpoint_factor,
+                midpoint_jitter_percent=midpoint_jitter_percent,
+                resample_count=resample_count,
+                width_curve_25=width_curve_25,
+                width_curve_50=width_curve_50,
+                width_curve_75=width_curve_75,
+            )
     requested_midpoint_angle = midpoint_angle
     if requested_midpoint_angle is None and angle is not None:
         current_angle = angle if angle is not None else _current_chain_angle(current_mod)

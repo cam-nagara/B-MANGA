@@ -963,6 +963,8 @@ def _update_match_subsurf_viewport_to_render(objects: list[bpy.types.Object]) ->
     for obj in objects:
         if bool(obj.bmanga_line_settings.match_subsurf_viewport_to_render):
             subdivision_lod.sync_viewport_levels_to_render(obj)
+        else:
+            subdivision_lod.reset_viewport_levels_to_zero(obj)
 
 
 def _update_visibility_rules(objects: list[bpy.types.Object], context) -> None:

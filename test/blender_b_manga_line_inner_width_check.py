@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import inner_lines  # noqa: E402
+from b_manga_line import inner_line_cache, inner_lines  # noqa: E402
 from b_manga_line.core import VG_INNER_LINE_WIDTH  # noqa: E402
 
 
@@ -69,6 +69,7 @@ def _make_folded_strip() -> bpy.types.Object:
             vg.add([i * 3 + offset], weight, "REPLACE")
     obj.data.update()
     obj.update_tag(refresh={"DATA"})
+    assert inner_lines.update_parameters(obj), "保存済み稜谷線の線幅属性を更新できませんでした"
     bpy.context.view_layer.update()
     return obj
 
@@ -140,10 +141,11 @@ def _sample_line_radii(mesh: bpy.types.Mesh) -> dict[float, float]:
 def _assert_profile_quality(obj: bpy.types.Object) -> None:
     mod = obj.modifiers.get("BML_InnerLines")
     assert mod is not None and mod.node_group is not None, "内部線ノードが見つかりません"
+    assert inner_line_cache.is_cached_modifier(mod), "稜谷線が保存済み線方式ではありません"
     profile = next(
         (
             node for node in mod.node_group.nodes
-            if getattr(node, "label", "") == "BML_InnerLineProfileV2"
+            if getattr(node, "label", "") == inner_line_cache._PROFILE_LABEL
         ),
         None,
     )
@@ -153,7 +155,7 @@ def _assert_profile_quality(obj: bpy.types.Object) -> None:
         "内部線の断面解像度が低すぎます"
     )
     assert any(
-        getattr(node, "label", "") == "BML_InnerLineSmoothV2"
+        node.bl_idname == "GeometryNodeSetShadeSmooth"
         for node in mod.node_group.nodes
     ), "内部線チューブがスムーズ化されていません"
 

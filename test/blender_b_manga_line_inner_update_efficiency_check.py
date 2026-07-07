@@ -70,8 +70,22 @@ def main() -> None:
         )
 
         assert inner_lines.update_parameters(obj, angle=math.radians(60.0))
+        assert counts["chain_updates"] == 1, (
+            "検出角度設定の変更だけで保存済み稜谷線が再計算されています",
+            counts,
+        )
+
+        assert inner_lines.apply_inner_lines(
+            obj,
+            angle=math.radians(60.0),
+            thickness=0.001,
+            material=material,
+            midpoint_factor=0.0,
+            midpoint_angle=math.radians(60.0),
+            midpoint_jitter_percent=0.0,
+        )
         assert counts["chain_updates"] == 2, (
-            "検出角度変更で稜谷線チェーンが再計算されていません",
+            "稜谷線更新時に保存済み稜谷線が再計算されていません",
             counts,
         )
 
