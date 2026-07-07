@@ -776,7 +776,13 @@ def _sync_inner_line_creation(
     if plane_filter.should_skip_inner_lines(owner, settings):
         inner_lines.remove_inner_lines(owner)
         return False
-    if camera_comp.inner_line_creation_in_range(owner, getattr(context, "scene", None), settings):
+    has_inner = owner.modifiers.get(GN_MODIFIER_NAME) is not None
+    if (
+        has_inner
+        or camera_comp.inner_line_creation_in_range(
+            owner, getattr(context, "scene", None), settings,
+        )
+    ):
         if not create_missing and owner.modifiers.get(GN_MODIFIER_NAME) is None:
             return False
         if not create_missing:
@@ -804,7 +810,6 @@ def _sync_inner_line_creation(
             width_curve_50=settings.inner_edge_width_curve_50,
             width_curve_75=settings.inner_edge_width_curve_75,
         )
-    inner_lines.disable_inner_lines(owner)
     return False
 
 
@@ -897,7 +902,7 @@ def _sync_inner_creation_range(owner: bpy.types.Object, settings, context) -> bo
     mod = owner.modifiers.get(GN_MODIFIER_NAME)
     if not in_range:
         if mod is not None:
-            inner_lines.disable_inner_lines(owner)
+            return inner_lines.enable_inner_lines(owner)
         return False
     if mod is None:
         return _sync_inner_line_creation(owner, settings, context)
@@ -933,10 +938,14 @@ def _sync_selection_line_creation(
     if not settings.selection_line_enabled:
         selection_lines.disable_selection_lines(owner)
         return False
-    if camera_comp.selection_line_creation_in_range(
-        owner,
-        getattr(context, "scene", None),
-        settings,
+    has_selection = owner.modifiers.get(SELECTION_LINE_MODIFIER_NAME) is not None
+    if (
+        has_selection
+        or camera_comp.selection_line_creation_in_range(
+            owner,
+            getattr(context, "scene", None),
+            settings,
+        )
     ):
         if not create_missing and owner.modifiers.get(SELECTION_LINE_MODIFIER_NAME) is None:
             return False
@@ -955,7 +964,6 @@ def _sync_selection_line_creation(
             material=mat,
             **_selection_midpoint_kwargs(settings),
         )
-    selection_lines.disable_selection_lines(owner)
     return False
 
 
@@ -1000,7 +1008,7 @@ def _sync_selection_creation_range(owner: bpy.types.Object, settings, context) -
     mod = owner.modifiers.get(SELECTION_LINE_MODIFIER_NAME)
     if not in_range:
         if mod is not None:
-            selection_lines.disable_selection_lines(owner)
+            return selection_lines.enable_selection_lines(owner)
         return False
     if mod is None:
         return _sync_selection_line_creation(owner, settings, context)

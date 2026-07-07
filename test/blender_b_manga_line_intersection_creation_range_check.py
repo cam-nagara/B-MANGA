@@ -99,7 +99,6 @@ def main() -> None:
         for obj in (source, exact, far):
             settings = obj.bmanga_line_settings
             assert abs(settings.intersection_creation_max_distance - 10.0) < 1.0e-7
-            assert settings.use_intersection_creation_limit is False
         for obj in (source, exact, far):
             settings = obj.bmanga_line_settings
             settings.use_intersection_creation_limit = True
@@ -128,11 +127,18 @@ def main() -> None:
 
         source.bmanga_line_settings.intersection_creation_max_distance = 9.0
         intersection_lines.refresh_scene_intersections(bpy.context.scene)
-        assert not _target_names(source), (
-            "作成距離を狭めても交差線が残っています"
+        assert exact.name in _target_names(source), (
+            "作成距離を狭めただけで作成済み交差線が消えています"
+        )
+
+        exact.bmanga_line_settings.intersection_creation_max_distance = 9.0
+        intersection_lines.refresh_scene_intersections(bpy.context.scene)
+        assert exact.name in _target_names(source), (
+            "交差相手側の作成距離を狭めただけで作成済み交差線が消えています"
         )
 
         source.bmanga_line_settings.intersection_creation_max_distance = 10.0
+        exact.bmanga_line_settings.intersection_creation_max_distance = 10.0
         intersection_lines.refresh_scene_intersections(bpy.context.scene)
         assert exact.name in _target_names(source), (
             "作成距離を戻しても重なっている交差相手が戻っていません"
@@ -141,7 +147,6 @@ def main() -> None:
         stale_transform = _make_data_cube(
             "BML_intersection_range_D_stale_transform", (-4.0, -11.5, 0.0),
         )
-        assert stale_transform.bmanga_line_settings.use_intersection_creation_limit is False
         stale_transform.bmanga_line_settings.use_intersection_creation_limit = True
         _apply(stale_transform)
         intersection_lines.refresh_scene_intersections(bpy.context.scene)

@@ -99,12 +99,21 @@ def _assert_outline_toggle() -> None:
     assert inner_mod is not None and inner_mod.show_viewport and inner_mod.show_render
 
     settings.outline_enabled = False
-    assert not outline_mod.show_viewport
-    assert not outline_mod.show_render
+    assert presets.apply_line_settings(
+        obj, bpy.context, line_targets=("outline",),
+    )
+    outline_mod = obj.modifiers.get(core.MODIFIER_NAME)
+    assert outline_mod is None or not outline_mod.show_viewport
+    assert outline_mod is None or not outline_mod.show_render
     assert inner_mod.show_viewport
     assert inner_mod.show_render
 
     settings.outline_enabled = True
+    assert presets.apply_line_settings(
+        obj, bpy.context, line_targets=("outline",),
+    )
+    outline_mod = obj.modifiers.get(core.MODIFIER_NAME)
+    assert outline_mod is not None
     assert outline_mod.show_viewport
     assert outline_mod.show_render
 

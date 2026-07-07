@@ -79,7 +79,7 @@ def main() -> None:
 
         far.bmanga_line_settings.outline_creation_max_distance = 10.0
         _apply(far)
-        assert not _has_outline(far), "作成距離を戻しても遠距離アウトラインが残っています"
+        assert _has_outline(far), "作成距離を戻しただけで作成済みアウトラインが消えています"
 
         far.bmanga_line_settings.use_outline_creation_limit = False
         _apply(far)

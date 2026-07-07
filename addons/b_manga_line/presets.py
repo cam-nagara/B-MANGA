@@ -437,10 +437,11 @@ def apply_line_settings(
         subdivision_lod.reset_viewport_levels_to_zero(obj)
 
     if "outline" in target_set:
-        if (
-            settings.outline_enabled
-            and camera_comp.outline_line_creation_in_range(obj, context.scene, settings)
-        ):
+        has_outline = core.has_outline(obj)
+        in_creation_range = camera_comp.outline_line_creation_in_range(
+            obj, context.scene, settings,
+        )
+        if settings.outline_enabled and (has_outline or in_creation_range):
             use_vg = (
                 settings.use_uniform_line_width
                 or vertex_analysis.has_width_controls(settings, "outline")
@@ -459,17 +460,19 @@ def apply_line_settings(
             )
             if not ok:
                 return False
-        else:
+        elif not settings.outline_enabled:
             outline_setup.remove_outline_geometry(obj)
 
     skip_inner = plane_filter.should_skip_inner_lines(obj, settings)
     if "inner" in target_set:
+        has_inner = obj.modifiers.get(core.GN_MODIFIER_NAME) is not None
+        in_creation_range = camera_comp.inner_line_creation_in_range(
+            obj, context.scene, settings,
+        )
         if (
             settings.inner_line_enabled
             and not skip_inner
-            and camera_comp.inner_line_creation_in_range(
-                obj, context.scene, settings,
-            )
+            and (has_inner or in_creation_range)
         ):
             inner_lines.apply_inner_lines(
                 obj,
@@ -492,15 +495,17 @@ def apply_line_settings(
                 width_curve_50=settings.inner_edge_width_curve_50,
                 width_curve_75=settings.inner_edge_width_curve_75,
             )
-        else:
+        elif not settings.inner_line_enabled or skip_inner:
             inner_lines.remove_inner_lines(obj)
 
     if "selection" in target_set:
+        has_selection = obj.modifiers.get(core.SELECTION_LINE_MODIFIER_NAME) is not None
+        in_creation_range = camera_comp.selection_line_creation_in_range(
+            obj, context.scene, settings,
+        )
         if (
             settings.selection_line_enabled
-            and camera_comp.selection_line_creation_in_range(
-                obj, context.scene, settings,
-            )
+            and (has_selection or in_creation_range)
         ):
             selection_lines.apply_selection_lines(
                 obj,
@@ -522,7 +527,7 @@ def apply_line_settings(
                 width_curve_50=settings.selection_edge_width_curve_50,
                 width_curve_75=settings.selection_edge_width_curve_75,
             )
-        else:
+        elif not settings.selection_line_enabled:
             selection_lines.remove_selection_lines(obj)
 
     intersection_in_range = camera_comp.intersection_line_creation_in_range(
@@ -532,7 +537,10 @@ def apply_line_settings(
         if not (
             settings.intersection_enabled
             and not plane_filter.should_exclude_generated_lines(obj, settings)
-            and intersection_in_range
+            and (
+                intersection_in_range
+                or any(core.iter_intersection_modifiers(obj))
+            )
         ):
             intersection_lines.remove_intersection_lines(obj)
 

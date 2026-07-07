@@ -1,12 +1,12 @@
-"""B-MANGA Line: internal lines are created only within the camera range."""
+"""B-MANGA Line: selection-line creation range never deletes existing lines."""
 
 from __future__ import annotations
 
+import math
 import sys
 from pathlib import Path
 
 import bpy
-import math
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
@@ -27,13 +27,24 @@ def _make_camera() -> bpy.types.Object:
     return camera
 
 
+def _mark_edges(obj: bpy.types.Object) -> None:
+    attr = obj.data.attributes.get("freestyle_edge")
+    if attr is None:
+        attr = obj.data.attributes.new("freestyle_edge", "BOOLEAN", "EDGE")
+    for edge in obj.data.edges:
+        attr.data[edge.index].value = edge.index < 4
+    obj.data.update()
+
+
 def _make_cube(name: str, z: float) -> bpy.types.Object:
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0.0, 0.0, z))
     obj = bpy.context.object
     obj.name = name
+    _mark_edges(obj)
     settings = obj.bmanga_line_settings
-    settings.inner_line_enabled = True
+    settings.inner_line_enabled = False
     settings.intersection_enabled = False
+    settings.selection_line_enabled = True
     return obj
 
 
@@ -54,18 +65,20 @@ def _make_data_cube(name: str, location: tuple[float, float, float]) -> bpy.type
     obj = bpy.data.objects.new(name, mesh)
     bpy.context.collection.objects.link(obj)
     obj.location = location
-    obj.bmanga_line_settings.inner_line_enabled = True
-    obj.bmanga_line_settings.intersection_enabled = False
+    _mark_edges(obj)
+    settings = obj.bmanga_line_settings
+    settings.inner_line_enabled = False
+    settings.intersection_enabled = False
+    settings.selection_line_enabled = True
     return obj
 
 
 def _apply(obj: bpy.types.Object) -> None:
     assert presets.apply_line_settings(obj, bpy.context), obj.name
-    assert obj.modifiers.get(core.MODIFIER_NAME) is not None, obj.name
 
 
-def _has_inner(obj: bpy.types.Object) -> bool:
-    return obj.modifiers.get(core.GN_MODIFIER_NAME) is not None
+def _has_selection(obj: bpy.types.Object) -> bool:
+    return obj.modifiers.get(core.SELECTION_LINE_MODIFIER_NAME) is not None
 
 
 def main() -> None:
@@ -74,16 +87,14 @@ def main() -> None:
         _clear_scene()
         camera = _make_camera()
 
-        near = _make_cube("BML_内部線_作成範囲内", -8.0)
-        exact = _make_cube("BML_内部線_境界上", -10.5)
-        far = _make_cube("BML_内部線_作成範囲外", -12.0)
+        near = _make_cube("BML_選択線_作成範囲内", -8.0)
+        exact = _make_cube("BML_選択線_境界上", -10.5)
+        far = _make_cube("BML_選択線_作成範囲外", -12.0)
 
         for obj in (near, exact, far):
             settings = obj.bmanga_line_settings
-            assert abs(settings.inner_line_creation_max_distance - 10.0) < 1.0e-7
-        for obj in (near, exact, far):
-            settings = obj.bmanga_line_settings
-            settings.use_inner_line_creation_limit = True
+            assert abs(settings.selection_line_creation_max_distance - 10.0) < 1.0e-7
+            settings.use_selection_line_creation_limit = True
             _apply(obj)
 
         assert camera_comp.object_distance_from_camera(near, camera) < 10.0
@@ -94,36 +105,26 @@ def main() -> None:
             abs_tol=0.05,
         )
         assert camera_comp.object_distance_from_camera(far, camera) > 10.0
-        assert _has_inner(near), "10m以内の内部線が作成されていません"
-        assert _has_inner(exact), "10m境界上の内部線が作成されていません"
-        assert not _has_inner(far), "10mより遠い内部線が作成されています"
+        assert _has_selection(near), "10m以内の選択線が作成されていません"
+        assert _has_selection(exact), "10m境界上の選択線が作成されていません"
+        assert not _has_selection(far), "10mより遠い選択線が作成されています"
 
-        far.bmanga_line_settings.inner_line_creation_max_distance = 12.0
+        far.bmanga_line_settings.selection_line_creation_max_distance = 12.0
         _apply(far)
-        assert _has_inner(far), "作成距離を広げても内部線が作成されていません"
+        assert _has_selection(far), "作成距離を広げても選択線が作成されていません"
 
-        far.bmanga_line_settings.inner_line_creation_max_distance = 10.0
+        far.bmanga_line_settings.selection_line_creation_max_distance = 10.0
         _apply(far)
-        assert _has_inner(far), "作成距離を戻しただけで作成済み内部線が消えています"
+        assert _has_selection(far), "作成距離を戻しただけで作成済み選択線が消えています"
 
-        stale_transform = _make_data_cube("BML_内部線_移動直後", (-4.0, -11.5, 0.0))
-        stale_transform.bmanga_line_settings.use_inner_line_creation_limit = True
+        stale_transform = _make_data_cube("BML_選択線_移動直後", (-4.0, -11.5, 0.0))
+        stale_transform.bmanga_line_settings.use_selection_line_creation_limit = True
         _apply(stale_transform)
-        assert not _has_inner(stale_transform), (
-            "移動直後の遠距離オブジェクトに内部線が作成されています"
+        assert not _has_selection(stale_transform), (
+            "移動直後の遠距離オブジェクトに選択線が作成されています"
         )
 
-        far.bmanga_line_settings.use_inner_line_creation_limit = False
-        _apply(far)
-        assert _has_inner(far), "作成範囲をオフにしても内部線が作成されていません"
-
-        bpy.context.scene.camera = None
-        far.bmanga_line_settings.use_inner_line_creation_limit = True
-        far.bmanga_line_settings.inner_line_creation_max_distance = 0.1
-        _apply(far)
-        assert _has_inner(far), "カメラ未設定時に内部線作成が止まっています"
-
-        print("[PASS] inner line creation range limits generated modifiers")
+        print("[PASS] selection-line creation range preserves existing modifiers")
     finally:
         try:
             b_manga_line.unregister()

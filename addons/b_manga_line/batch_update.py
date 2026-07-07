@@ -178,7 +178,10 @@ def _update_outline_enabled(objects: list[bpy.types.Object], context) -> None:
         created = False
         if settings.outline_enabled:
             if not _outline_creation_in_range(obj, context):
-                outline_setup.remove_outline_geometry(obj)
+                if _has_outline_target(obj):
+                    visibility_changed = core.set_outline_visibility_from_settings(obj)
+                    if visibility_changed:
+                        refresh_targets.append(obj)
                 continue
             if not _has_outline_target(obj) and _ensure_outline_modifier(obj, context):
                 created = True
@@ -223,7 +226,8 @@ def _update_outline_creation_range(objects: list[bpy.types.Object], context) -> 
         if not settings.outline_enabled:
             continue
         if not _outline_creation_in_range(obj, context):
-            outline_setup.remove_outline_geometry(obj)
+            if _has_outline_target(obj) and core.set_outline_visibility_from_settings(obj):
+                refresh_targets.append(obj)
             continue
         if not _has_outline_target(obj):
             if _ensure_outline_modifier(obj, context):
@@ -712,7 +716,11 @@ def _update_inner_lines(
             ):
                 refresh_targets.append(obj)
         else:
-            inner_lines.disable_inner_lines(obj)
+            if not settings.inner_line_enabled:
+                inner_lines.disable_inner_lines(obj)
+            elif obj.modifiers.get(core.GN_MODIFIER_NAME) is not None:
+                if inner_lines.enable_inner_lines(obj):
+                    refresh_targets.append(obj)
     for obj in refresh_targets:
         inner_lines.enable_inner_lines(obj)
     if refresh_targets:
@@ -743,7 +751,8 @@ def _update_inner_creation_range(objects: list[bpy.types.Object], context) -> No
         )
         mod = obj.modifiers.get(core.GN_MODIFIER_NAME)
         if not in_range:
-            inner_lines.disable_inner_lines(obj)
+            if mod is not None and inner_lines.enable_inner_lines(obj):
+                refresh_targets.append(obj)
             continue
         if mod is None:
             create_targets.append(obj)
@@ -813,7 +822,11 @@ def _update_selection_lines(
             ):
                 refresh_targets.append(obj)
         else:
-            selection_lines.disable_selection_lines(obj)
+            if not settings.selection_line_enabled:
+                selection_lines.disable_selection_lines(obj)
+            elif obj.modifiers.get(core.SELECTION_LINE_MODIFIER_NAME) is not None:
+                if selection_lines.enable_selection_lines(obj):
+                    refresh_targets.append(obj)
     for obj in refresh_targets:
         selection_lines.enable_selection_lines(obj)
     if refresh_targets:
@@ -839,7 +852,8 @@ def _update_selection_creation_range(objects: list[bpy.types.Object], context) -
         )
         mod = obj.modifiers.get(core.SELECTION_LINE_MODIFIER_NAME)
         if not in_range:
-            selection_lines.disable_selection_lines(obj)
+            if mod is not None and selection_lines.enable_selection_lines(obj):
+                refresh_targets.append(obj)
             continue
         if mod is None:
             create_targets.append(obj)

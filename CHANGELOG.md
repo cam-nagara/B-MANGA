@@ -3,6 +3,41 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-07 — B-MANGA Linerの作成範囲で作成済みラインを保持 (B-MANGA Liner v0.3.143)
+
+### 症状
+
+- 「作成範囲を制限」や「レンダリング範囲内を選択」を使った後、範囲外になった作成済みラインが更新時に消える経路が残っていた。
+- 交差線では、選択中以外のシーン全体整理で、作成済みの交差相手が範囲外として落ちる可能性があった。
+
+### 原因
+
+- 作成範囲の判定を「新規作成してよいか」だけでなく、「既存ラインを残してよいか」にも使っていた。
+- 交差線の再整理時に、現在の作成範囲だけで交差相手リストを作り直していた。
+
+### 修正
+
+- 作成範囲は未作成ラインの新規作成だけを制限し、作成済みのアウトライン / 稜谷線 / 交差線 / 選択線は保持するようにした。
+- 交差線の作成済み交差相手は、作成範囲外になっただけでは交差対象から外さないようにした。
+- 「遠距離ラインを非表示」はラインを削除せず、表示とレンダーのオン/オフだけを切り替えることを専用テストで確認した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_outline_creation_range_check.py`
+- `test/blender_b_manga_line_inner_creation_range_check.py`
+- `test/blender_b_manga_line_intersection_creation_range_check.py`
+- `test/blender_b_manga_line_selection_creation_range_check.py`
+- `test/blender_b_manga_line_distance_visibility_preserves_check.py`
+- `test/blender_b_manga_line_camera_view_creation_range_check.py`
+- `test/blender_b_manga_line_select_range_outline_toggle_check.py`
+- `test/blender_b_manga_line_display_modes_check.py`
+- `test/blender_b_manga_line_control_update_scope_check.py`
+- `test/blender_b_manga_line_generated_update_scope_check.py`
+- tokyo0004実ファイルの `phase1` / `phase2 --max-targets 3`
+- `python -m py_compile` による関連ファイル確認
+
+---
+
 ## 2026-07-07 — B-MANGA Linerのラインのみ表示でAOV切替を使わないよう変更 (B-MANGA Liner v0.3.142)
 
 ### 症状

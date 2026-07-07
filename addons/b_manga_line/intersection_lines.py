@@ -869,6 +869,7 @@ def _auto_targets(
     from . import plane_filter
 
     targets: list[bpy.types.Object] = []
+    existing_targets = _existing_intersection_targets(obj)
     for src_scene in _iter_source_scenes(obj, scene):
         for candidate in src_scene.objects:
             if candidate == obj or candidate.type != "MESH" or candidate.data is None:
@@ -878,7 +879,10 @@ def _auto_targets(
             if not _has_outline_source(candidate):
                 continue
             candidate_settings = getattr(candidate, "bmanga_line_settings", None)
-            if not _creation_in_range(candidate, src_scene):
+            if (
+                not _creation_in_range(candidate, src_scene)
+                and candidate.name_full not in existing_targets
+            ):
                 continue
             if plane_filter.should_exclude_generated_lines(candidate, candidate_settings):
                 continue
@@ -942,6 +946,26 @@ def _creation_in_range(
         scene,
         getattr(obj, "bmanga_line_settings", None),
     )
+
+
+def _existing_intersection_targets(obj: bpy.types.Object) -> set[str]:
+    names: set[str] = set()
+    for mod in iter_intersection_modifiers(obj):
+        if _is_shell_modifier(mod):
+            from . import intersection_shell
+
+            names.update(
+                target.name_full
+                for target in intersection_shell.modifier_targets(mod)
+            )
+            continue
+        if _is_grouped_modifier(mod):
+            names.update(target.name_full for target in _multi_modifier_targets(mod))
+            continue
+        target = _modifier_target(mod)
+        if target is not None:
+            names.add(target.name_full)
+    return names
 
 
 def _world_bounds(obj: bpy.types.Object):
@@ -1276,7 +1300,8 @@ def apply_intersection_lines(
         remove_intersection_lines(obj)
         return True
     if not _creation_in_range(obj, scene):
-        remove_intersection_lines(obj)
+        if any(iter_intersection_modifiers(obj)):
+            update_parameters(obj, thickness=thickness, offset=offset, material=material)
         return True
 
     _ensure_intersection_width_group(obj)
@@ -1551,7 +1576,17 @@ def _refresh_source_intersections(
         remove_intersection_lines(obj)
         return False
     if not _creation_in_range(obj, scene):
-        remove_intersection_lines(obj)
+        if any(iter_intersection_modifiers(obj)):
+            update_parameters(
+                obj,
+                thickness=scale_utils.modifier_thickness_for_world_width(
+                    obj,
+                    settings.intersection_thickness,
+                ),
+                offset=settings.intersection_line_offset,
+                material=outline_setup.get_line_material(obj, "intersection"),
+            )
+            return True
         return False
     apply_intersection_lines(
         obj,

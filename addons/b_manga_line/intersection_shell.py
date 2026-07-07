@@ -866,6 +866,12 @@ def _target_candidates(
     from . import camera_comp, plane_filter
 
     targets: list[bpy.types.Object] = []
+    existing_names = {
+        target.name_full
+        for target in collection_real_targets(
+            bpy.data.collections.get(str(obj.get(_TARGET_COLLECTION_PROP, "") or ""))
+        )
+    }
     for src_scene in _iter_source_scenes(obj, scene):
         for candidate in src_scene.objects:
             if candidate == obj or candidate.type != "MESH" or candidate.data is None:
@@ -882,8 +888,11 @@ def _target_candidates(
             settings = getattr(candidate, "bmanga_line_settings", None)
             if plane_filter.should_exclude_generated_lines(candidate, settings):
                 continue
-            if not camera_comp.intersection_line_creation_in_range(
-                candidate, src_scene, settings,
+            if (
+                not camera_comp.intersection_line_creation_in_range(
+                    candidate, src_scene, settings,
+                )
+                and candidate.name_full not in existing_names
             ):
                 continue
             if candidate not in targets:
