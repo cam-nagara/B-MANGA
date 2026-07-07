@@ -16,7 +16,6 @@ from b_manga_line import (  # noqa: E402
     camera_comp,
     core,
     intersection_lines,
-    intersection_shell,
     presets,
 )
 
@@ -69,14 +68,7 @@ def _make_data_cube(name: str, location: tuple[float, float, float]) -> bpy.type
 def _target_names(obj: bpy.types.Object) -> set[str]:
     names: set[str] = set()
     for mod in core.iter_intersection_modifiers(obj):
-        if intersection_shell.is_shell_modifier(mod):
-            names.update(
-                target.name for target in intersection_shell.modifier_targets(mod)
-            )
-            continue
-        target = intersection_lines._modifier_target(mod)
-        if target is not None:
-            names.add(target.name)
+        names.update(target.name for target in intersection_lines.modifier_targets(mod))
     return names
 
 

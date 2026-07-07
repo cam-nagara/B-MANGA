@@ -66,10 +66,10 @@ def main() -> None:
         _clear_scene()
         source = _make_cube("BML_multi_intersection_source", (0.0, 0.0, 0.0), 2.0)
         cube_targets = [
-            _make_cube(f"BML_multi_intersection_target_{index}", (0.55, index * 0.2 - 0.3, 0.0), 0.8)
+            _make_cube(f"BML_multi_intersection_target_{index}", (1.05, index * 0.2 - 0.3, 0.0), 0.8)
             for index in range(3)
         ]
-        sheet_target = _make_plane("BML_multi_intersection_sheet_target", (0.55, 0.35, 0.0), 0.8)
+        sheet_target = _make_plane("BML_multi_intersection_sheet_target", (0.0, 0.0, 0.0), 2.5)
         targets = [*cube_targets, sheet_target]
         bpy.context.view_layer.objects.active = source
         for obj in [source, *targets]:
@@ -79,20 +79,18 @@ def main() -> None:
                 refresh_scene=False,
                 transforms_fresh=False,
             )
-        # 2026-07-03: 生成方式はSHELL固定 — 複数対象でもモディファイアは
-        # 1つ（__Shell）にまとまり、対象はコレクションで管理される
+        # 保存済み線方式では複数対象でも表示モディファイアは1つで、
+        # 対象名は保存済み線データ側に記録される。
         refreshed = intersection_lines.refresh_scene_intersections(bpy.context.scene)
         assert source in refreshed, "まとめ交差線の生成元が更新対象に含まれていません"
-
-        from b_manga_line import intersection_shell
 
         mods = list(core.iter_intersection_modifiers(source))
         assert len(mods) == 1, [mod.name for mod in mods]
         mod = mods[0]
-        assert intersection_shell.is_shell_modifier(mod), mod.name
+        assert mod.name == core.INTERSECTION_MODIFIER_NAME, mod.name
         assert mod.node_group is not None
         actual_targets = {
-            item.name for item in intersection_shell.modifier_targets(mod)
+            item.name for item in intersection_lines.modifier_targets(mod)
         }
         assert actual_targets == {item.name for item in targets}, actual_targets
 
@@ -102,7 +100,7 @@ def main() -> None:
         remaining_targets = {
             item.name
             for current in core.iter_intersection_modifiers(source)
-            for item in intersection_shell.modifier_targets(current)
+            for item in intersection_lines.modifier_targets(current)
         }
         assert remaining_targets == {item.name for item in targets}, remaining_targets
 

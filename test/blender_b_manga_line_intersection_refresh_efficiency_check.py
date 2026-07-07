@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import intersection_lines, intersection_shell, presets  # noqa: E402
+from b_manga_line import core, intersection_cache, intersection_lines, presets  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -46,28 +46,28 @@ def main() -> None:
         intersection_lines.remove_intersection_lines(source)
         intersection_lines.remove_intersection_lines(target)
 
-        counts = {"shell_apply": 0, "scene_refresh": 0}
-        real_shell_apply = intersection_shell.apply_intersection_shell
+        counts = {"build_segments": 0, "scene_refresh": 0}
+        real_build_segments = intersection_cache.build_cached_segments
         real_scene_refresh = intersection_lines.refresh_scene_intersections
 
-        def counted_shell_apply(*args, **kwargs):
-            counts["shell_apply"] += 1
-            return real_shell_apply(*args, **kwargs)
+        def counted_build_segments(*args, **kwargs):
+            counts["build_segments"] += 1
+            return real_build_segments(*args, **kwargs)
 
         def counted_scene_refresh(*args, **kwargs):
             counts["scene_refresh"] += 1
             return real_scene_refresh(*args, **kwargs)
 
-        intersection_shell.apply_intersection_shell = counted_shell_apply
+        intersection_cache.build_cached_segments = counted_build_segments
         intersection_lines.refresh_scene_intersections = counted_scene_refresh
         try:
             assert presets.apply_line_settings(source, bpy.context, refresh_scene=True)
         finally:
-            intersection_shell.apply_intersection_shell = real_shell_apply
+            intersection_cache.build_cached_segments = real_build_segments
             intersection_lines.refresh_scene_intersections = real_scene_refresh
 
-        assert counts == {"shell_apply": 1, "scene_refresh": 1}, counts
-        assert source.modifiers.get(intersection_shell.SHELL_MODIFIER_NAME) is not None
+        assert counts == {"build_segments": 1, "scene_refresh": 1}, counts
+        assert source.modifiers.get(core.INTERSECTION_MODIFIER_NAME) is not None
         print(f"[PASS] intersection refresh is not duplicated: {counts}")
     finally:
         b_manga_line.unregister()

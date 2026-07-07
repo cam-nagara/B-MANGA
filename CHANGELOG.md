@@ -3,6 +3,41 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-08 — B-MANGA Linerの交差線を保存済み線方式へ変更 (B-MANGA Liner v0.3.147)
+
+### 症状
+
+- tokyo0004のように大量の街オブジェクトがあるファイルで交差線をオンにすると、交差検出が重く、実用的な待ち時間に収まらない恐れがあった。
+- 線幅、カラー、カメラ距離による線幅補正、中間頂点の線幅調整のような表示設定まで、交差検出を再実行する設計では重すぎる。
+- 作成範囲や距離制限を使った場合、既に作成済みの交差線まで意図せず消えると、範囲内に線がある場所と無い場所が混在しやすい。
+
+### 原因
+
+- 交差線の検出と表示が同じ更新経路に混ざっており、表示だけを変えたい場面でも重い交差判定へ入りやすかった。
+- 交差線の実体を保存して使い回す層が無く、カメラ距離や線幅の変更を軽量に処理できなかった。
+
+### 修正
+
+- 「交差線を更新」または「ラインを適用」で交差位置を検出し、検出した中心線を保存済み線として保持する方式へ変更した。
+- 線幅、カラー、中間頂点の線幅調整、カメラ距離による線幅補正、遠距離ライン非表示は、保存済み線の表示だけを更新するようにした。
+- 作成範囲外になっただけの作成済み交差線は、再作成せず既存の保存済み線を使い続けるようにした。
+- 旧方式の自動追従処理は通常登録から外し、オブジェクト移動だけで交差線の重い再検出が走らないようにした。
+- 削除済みオブジェクト参照が交差線更新に残っていても安全にスキップするようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_intersection_cache_check.py`
+- `test/blender_b_manga_line_auto_intersection_targets_check.py`
+- `test/blender_b_manga_line_intersection_creation_range_check.py`
+- `test/blender_b_manga_line_intersection_refresh_efficiency_check.py`
+- `test/blender_b_manga_line_multi_intersection_modifier_check.py`
+- `test/blender_b_manga_line_outline_enable_with_intersections_check.py`
+- `test/blender_b_manga_line_preset_visibility_check.py`
+- tokyo0004: レンダリング範囲内137メッシュで、アウトライン作成9.85秒、交差線作成5.60秒、保存後の直接線幅更新0.001秒未満、カメラ距離線幅更新0.10秒未満。
+- `python -m py_compile` による関連ファイル確認
+
+---
+
 ## 2026-07-08 — B-MANGA Linerの「ラインのみを表示」をマテリアル出力切替へ変更 (B-MANGA Liner v0.3.146)
 
 ### 症状

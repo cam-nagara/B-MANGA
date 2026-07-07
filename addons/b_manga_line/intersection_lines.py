@@ -63,10 +63,13 @@ _deferred_viewport_timer_running = False
 
 
 def _has_outline_source(obj: bpy.types.Object) -> bool:
-    return (
-        obj.modifiers.get(MODIFIER_NAME) is not None
-        or obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME) is not None
-    )
+    try:
+        return (
+            obj.modifiers.get(MODIFIER_NAME) is not None
+            or obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME) is not None
+        )
+    except ReferenceError:
+        return False
 
 
 # ------------------------------------------------------------------
@@ -872,9 +875,14 @@ def _auto_targets(
     existing_targets = _existing_intersection_targets(obj)
     for src_scene in _iter_source_scenes(obj, scene):
         for candidate in src_scene.objects:
-            if candidate == obj or candidate.type != "MESH" or candidate.data is None:
+            try:
+                candidate_type = candidate.type
+                candidate_data = candidate.data
+            except ReferenceError:
                 continue
-            if not getattr(candidate.data, "polygons", None):
+            if candidate == obj or candidate_type != "MESH" or candidate_data is None:
+                continue
+            if not getattr(candidate_data, "polygons", None):
                 continue
             if not _has_outline_source(candidate):
                 continue
@@ -1550,7 +1558,13 @@ def update_target_width_references(
 
 
 def _intersection_refresh_sources(scene: bpy.types.Scene) -> list[bpy.types.Object]:
-    objects = [obj for obj in scene.objects if obj.type == "MESH"]
+    objects = []
+    for obj in scene.objects:
+        try:
+            if obj.type == "MESH":
+                objects.append(obj)
+        except ReferenceError:
+            continue
     active = getattr(getattr(bpy.context, "view_layer", None), "objects", None)
     active_obj = getattr(active, "active", None)
     if active_obj is None or active_obj not in objects:
@@ -1613,4 +1627,247 @@ def refresh_scene_intersections(scene: bpy.types.Scene) -> list[bpy.types.Object
             refreshed.append(obj)
     intersection_shell.cleanup_orphan_proxies()
     _defer_heavy_viewport_refresh(refreshed)
+    return refreshed
+
+
+# ------------------------------------------------------------------
+# 保存済み線方式
+# ------------------------------------------------------------------
+
+from . import intersection_cache as _intersection_cache
+from .core import INTERSECTION_MODIFIER_NAME as _CACHED_INTERSECTION_MODIFIER_NAME
+
+
+def _existing_intersection_targets(obj: bpy.types.Object) -> set[str]:
+    return _intersection_cache.target_names(obj)
+
+
+def apply_intersection_lines(
+    obj: bpy.types.Object,
+    target: bpy.types.Object | None = None,
+    thickness: float = 0.0005,
+    offset: float = 0.0,
+    material: bpy.types.Material | None = None,
+    method: str = "BOOLEAN",
+    scene: bpy.types.Scene | None = None,
+) -> bool:
+    """交差線を検出し、保存済み線として適用."""
+    del method
+    if obj.type != "MESH":
+        return False
+    from . import plane_filter
+
+    settings = getattr(obj, "bmanga_line_settings", None)
+    if plane_filter.should_exclude_generated_lines(obj, settings):
+        remove_intersection_lines(obj)
+        return True
+
+    existing_names = _existing_intersection_targets(obj)
+    if not _creation_in_range(obj, scene):
+        if existing_names and any(iter_intersection_modifiers(obj)):
+            update_parameters(obj, thickness=thickness, material=material)
+        return True
+
+    target_candidates = [target] if target is not None else _auto_targets(obj, scene)
+    targets: list[bpy.types.Object] = []
+    seen_targets: set[int] = set()
+    for item in target_candidates:
+        try:
+            item_type = getattr(item, "type", None)
+        except ReferenceError:
+            continue
+        if (
+            item is None
+            or item == obj
+            or item_type != "MESH"
+            or item.as_pointer() in seen_targets
+        ):
+            continue
+        already_cached = item.name_full in existing_names
+        if not already_cached and not _creation_in_range(item, scene):
+            continue
+        if not _bounds_overlap(obj, item, _intersection_margin(obj, item, thickness)):
+            continue
+        seen_targets.add(item.as_pointer())
+        targets.append(item)
+
+    if not targets:
+        remove_intersection_lines(obj)
+        return True
+
+    return _intersection_cache.apply_cached_intersection_lines(
+        obj,
+        targets,
+        thickness=thickness,
+        offset=offset,
+        material=material,
+        scene=scene,
+    )
+
+
+def remove_intersection_lines(obj: bpy.types.Object) -> bool:
+    """交差線の表示モディファイアと保存済み線データを削除."""
+    if obj.type != "MESH":
+        return False
+    item = (obj.name_full, _CACHED_INTERSECTION_MODIFIER_NAME)
+    while item in _deferred_viewport_queue:
+        _deferred_viewport_queue.remove(item)
+    return _intersection_cache.remove_cached_intersection_lines(obj)
+
+
+def is_deferred_viewport_modifier(mod: bpy.types.Modifier) -> bool:
+    """保存済み線方式では表示復帰待ちは発生しない."""
+    del mod
+    return False
+
+
+def _defer_heavy_viewport_refresh(objects: list[bpy.types.Object]) -> None:
+    """保存済み線方式では順次表示復帰処理は不要."""
+    del objects
+
+
+def update_parameters(
+    obj: bpy.types.Object,
+    target: bpy.types.Object | None = ...,
+    thickness: float | None = None,
+    offset: float | None = None,
+    material: bpy.types.Material | None = None,
+) -> bool:
+    """保存済み交差線の表示パラメータだけを更新."""
+    del target, offset
+    if obj.type != "MESH":
+        return False
+    return _intersection_cache.update_cached_parameters(
+        obj,
+        thickness=thickness,
+        material=material,
+    )
+
+
+def modifier_targets(mod: bpy.types.Modifier) -> list[bpy.types.Object]:
+    """保存済み交差線の対象オブジェクトを返す."""
+    return _intersection_cache.modifier_targets(mod)
+
+
+def update_target_width_references(
+    scene: bpy.types.Scene | None,
+    targets: list[bpy.types.Object] | tuple[bpy.types.Object, ...] | None = None,
+) -> int:
+    """交差対象側アウトライン幅の表示参照を更新."""
+    if scene is None:
+        return 0
+    target_set = {target.as_pointer() for target in targets} if targets else None
+    changed = 0
+    for obj in scene.objects:
+        try:
+            obj_type = obj.type
+        except ReferenceError:
+            continue
+        if obj_type != "MESH":
+            continue
+        mod = obj.modifiers.get(_CACHED_INTERSECTION_MODIFIER_NAME)
+        if mod is None:
+            continue
+        if target_set is not None:
+            current_targets = _intersection_cache.modifier_targets(mod)
+            if not any(target.as_pointer() in target_set for target in current_targets):
+                continue
+        if _intersection_cache.update_cached_parameters(obj):
+            changed += 1
+    return changed
+
+
+def prune_excluded_intersections(scene: bpy.types.Scene | None) -> int:
+    """除外対象が絡む保存済み交差線を更新または削除."""
+    if scene is None:
+        return 0
+    from . import outline_setup, plane_filter
+
+    changed = 0
+    for obj in scene.objects:
+        try:
+            obj_type = obj.type
+        except ReferenceError:
+            continue
+        if obj_type != "MESH":
+            continue
+        mod = obj.modifiers.get(_CACHED_INTERSECTION_MODIFIER_NAME)
+        if mod is None:
+            continue
+        settings = getattr(obj, "bmanga_line_settings", None)
+        if plane_filter.should_exclude_generated_lines(obj, settings):
+            if remove_intersection_lines(obj):
+                changed += 1
+            continue
+        current_targets = _intersection_cache.modifier_targets(mod)
+        if any(
+            plane_filter.should_exclude_generated_lines(
+                target,
+                getattr(target, "bmanga_line_settings", None),
+            )
+            for target in current_targets
+        ):
+            if _refresh_source_intersections(obj, scene, outline_setup, plane_filter):
+                changed += 1
+    return changed
+
+
+def _refresh_source_intersections(
+    obj: bpy.types.Object,
+    scene: bpy.types.Scene,
+    outline_setup,
+    plane_filter,
+) -> bool:
+    try:
+        obj_type = obj.type
+    except ReferenceError:
+        return False
+    if obj_type != "MESH":
+        return False
+    if not _has_outline_source(obj):
+        return False
+    settings = getattr(obj, "bmanga_line_settings", None)
+    if settings is None:
+        return False
+    if plane_filter.should_exclude_generated_lines(obj, settings):
+        remove_intersection_lines(obj)
+        return False
+    if not getattr(settings, "intersection_enabled", False):
+        remove_intersection_lines(obj)
+        return False
+    thickness = scale_utils.modifier_thickness_for_world_width(
+        obj,
+        settings.intersection_thickness,
+    )
+    material = outline_setup.get_line_material(obj, "intersection")
+    if not _creation_in_range(obj, scene):
+        if _existing_intersection_targets(obj) and any(iter_intersection_modifiers(obj)):
+            update_parameters(obj, thickness=thickness, material=material)
+            return True
+        return False
+    apply_intersection_lines(
+        obj,
+        thickness=thickness,
+        offset=settings.intersection_line_offset,
+        material=material,
+        scene=scene,
+    )
+    return any(iter_intersection_modifiers(obj))
+
+
+def refresh_scene_intersections(scene: bpy.types.Scene) -> list[bpy.types.Object]:
+    """シーン内の交差線を、保存済み線として更新する."""
+    from . import outline_setup, plane_filter
+
+    refreshed: list[bpy.types.Object] = []
+    for obj in _intersection_refresh_sources(scene):
+        try:
+            obj_type = obj.type
+        except ReferenceError:
+            continue
+        if obj_type != "MESH":
+            continue
+        if _refresh_source_intersections(obj, scene, outline_setup, plane_filter):
+            refreshed.append(obj)
+    _intersection_cache.cleanup_orphan_cache_objects()
     return refreshed

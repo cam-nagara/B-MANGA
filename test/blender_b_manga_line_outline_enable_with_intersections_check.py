@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import core, intersection_shell  # noqa: E402
+from b_manga_line import core  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -57,24 +57,27 @@ def main() -> None:
         assert owners
 
         _select(owners)
-        owners[0].bmanga_line_settings.outline_enabled = False
+        for obj in owners:
+            obj.bmanga_line_settings.outline_enabled = False
+        assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
         for obj in owners:
             outline = obj.modifiers.get(core.MODIFIER_NAME)
-            if outline is not None:
-                assert not outline.show_viewport, obj.name
+            assert outline is None or not outline.show_viewport, obj.name
             intersections = list(core.iter_intersection_modifiers(obj))
             assert intersections, obj.name
 
-        owners[0].bmanga_line_settings.outline_enabled = True
+        for obj in owners:
+            obj.bmanga_line_settings.outline_enabled = True
+        assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
         for obj in owners:
             outline = obj.modifiers.get(core.MODIFIER_NAME)
             assert outline is not None and outline.show_viewport, obj.name
         for obj in owners:
             intersections = list(core.iter_intersection_modifiers(obj))
             assert intersections, obj.name
-            assert all(mod.name == intersection_shell.SHELL_MODIFIER_NAME for mod in intersections)
+            assert all(mod.name == core.INTERSECTION_MODIFIER_NAME for mod in intersections)
 
-        print("[PASS] outline enable keeps existing shell intersections stable")
+        print("[PASS] outline enable keeps existing intersections stable")
     finally:
         try:
             b_manga_line.unregister()

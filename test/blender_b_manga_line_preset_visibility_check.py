@@ -310,12 +310,11 @@ def _assert_multi_select_manual_setting_propagation(
     assert target.intersection_enabled is True
     intersection_mods = _intersection_mods(first) + _intersection_mods(second)
     assert intersection_mods
-    # 2026-07-03 確定仕様: 生成方式はSHELL固定（BOOLEAN指定してもSHELLで生成）
-    from b_manga_line import intersection_shell
+    from b_manga_line import intersection_cache
 
     assert any(
         mod.node_group is not None
-        and mod.node_group.name.startswith(intersection_shell.SHELL_TREE_NAME)
+        and mod.node_group.name.startswith(intersection_cache.CACHE_TREE_NAME)
         for mod in intersection_mods
     )
     assert math.isclose(target.intersection_thickness_mm, 1.4, rel_tol=0.001)
@@ -457,15 +456,14 @@ def _assert_preset_display_settings_apply(
     for obj in (first, second):
         applied = obj.bmanga_line_settings
         assert applied.lines_visible is True
-        assert applied.line_only_visible is True
         assert applied.match_subsurf_viewport_to_render is True
         assert applied.auto_subdivision_for_midpoint is True
         _assert_pending(obj, "outline", "inner", "intersection", "selection")
     _apply_selected_lines(first, [first, second])
     for obj in (first, second):
         _assert_line_state(obj, visible=True)
-        assert bool(obj.get(core.PROP_LINE_ONLY, False)), (
-            f"{obj.name}: ラインのみ表示がプリセットから反映されていません"
+        assert not bool(obj.get(core.PROP_LINE_ONLY, False)), (
+            f"{obj.name}: プリセット適用だけでラインのみ表示が即反映されています"
         )
         subsurfs = [mod for mod in obj.modifiers if mod.type == "SUBSURF"]
         assert subsurfs, f"{obj.name}: 同期確認用のサブディビジョンがありません"
