@@ -1195,12 +1195,25 @@ def _restore_deferred_viewport_step():
     return None
 
 
+def cancel_deferred_viewport_refresh() -> None:
+    """アドオン終了時に未完了の順次表示復帰タイマーを止める."""
+    global _deferred_viewport_timer_running
+    timers = getattr(bpy.app, "timers", None)
+    if timers is not None:
+        try:
+            if timers.is_registered(_restore_deferred_viewport_step):
+                timers.unregister(_restore_deferred_viewport_step)
+        except (AttributeError, ValueError):
+            pass
+    _deferred_viewport_queue.clear()
+    _deferred_viewport_timer_running = False
+
+
 def _defer_heavy_viewport_refresh(objects: list[bpy.types.Object]) -> None:
     mods = [
         (obj, mod)
         for obj in objects
         for mod in iter_intersection_modifiers(obj)
-        if not _is_shell_modifier(mod)
     ]
     if len(mods) <= _DEFERRED_VIEWPORT_THRESHOLD:
         return

@@ -1167,6 +1167,12 @@ def refresh_propagated_property(
     if prop_name in {
         "intersection_enabled",
     }:
+        if len(line_objects) > MAX_IMMEDIATE_INTERSECTION_REBUILD_OBJECTS:
+            if any(obj.bmanga_line_settings.intersection_enabled for obj in line_objects):
+                return
+            for obj in _generated_line_objects(line_objects, "intersection"):
+                intersection_lines.remove_intersection_lines(obj)
+            return
         _update_intersections(line_objects, context)
         return
     if prop_name == "intersection_method":

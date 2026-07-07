@@ -1856,7 +1856,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     use_inner_line_creation_limit: BoolProperty(
         name="作成範囲を制限",
         description="カメラに写り、指定距離以内にあるオブジェクトにだけ稜谷線を作成する",
-        default=False,
+        default=True,
         update=_on_inner_creation_limit_changed,
     )  # type: ignore[valid-type]
 
@@ -1938,7 +1938,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     use_intersection_creation_limit: BoolProperty(
         name="作成範囲を制限",
         description="カメラに写り、指定距離以内にあるオブジェクトにだけ交差線を作成する",
-        default=False,
+        default=True,
         update=_on_intersection_creation_limit_changed,
     )  # type: ignore[valid-type]
 

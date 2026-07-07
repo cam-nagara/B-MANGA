@@ -350,15 +350,17 @@ def _reflect_applied_display_settings(
     """プリセット適用時に抑制した表示系コールバックを明示反映する."""
     if not objects:
         return
-    from . import camera_comp, subdivision_lod
+    from . import camera_comp
 
     line_only_enabled = any(
         bool(getattr(obj.bmanga_line_settings, "line_only_visible", False))
         for obj in objects
     )
+    visibility_refresh_targets = []
     for obj in objects:
         settings = obj.bmanga_line_settings
         if bool(getattr(settings, "lines_visible", True)):
+            was_hidden = bool(obj.get(core.PROP_LINES_HIDDEN, False))
             obj[core.PROP_LINES_HIDDEN] = False
             core.sync_line_visibility_setting(obj)
             if (
@@ -368,16 +370,30 @@ def _reflect_applied_display_settings(
                 or bool(getattr(settings, "use_intersection_distance_limit", False))
                 or bool(getattr(settings, "use_selection_line_distance_limit", False))
             ):
-                camera_comp.refresh_visibility_objects(context, [obj])
+                if was_hidden:
+                    visibility_refresh_targets.append(obj)
             else:
                 core.set_line_visibility(obj, True)
         else:
             core.set_line_visibility(obj, False)
-        if bool(getattr(settings, "match_subsurf_viewport_to_render", False)):
-            subdivision_lod.sync_viewport_levels_to_render(obj)
-        else:
-            subdivision_lod.reset_viewport_levels_to_zero(obj)
-    core.set_scene_line_only(context, line_only_enabled)
+    if visibility_refresh_targets:
+        camera_comp.refresh_visibility_objects(context, visibility_refresh_targets)
+    scene = getattr(context, "scene", None)
+    line_only_active = line_only_enabled
+    if not line_only_active:
+        line_only_active = (
+            scene is not None
+            and (
+                core.PROP_LINE_ONLY_WORLD in scene
+                or "bml_line_aov_view_state" in scene
+                or any(
+                    obj.type == "MESH" and bool(obj.get(core.PROP_LINE_ONLY, False))
+                    for obj in scene.objects
+                )
+            )
+        )
+    if line_only_active:
+        core.set_scene_line_only(context, line_only_enabled)
 
 
 def apply_line_settings(
@@ -572,7 +588,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
         min=0.0,
         max=1.0,
     )
-    use_inner_line_creation_limit: BoolProperty(default=False)
+    use_inner_line_creation_limit: BoolProperty(default=True)
     inner_line_creation_max_distance: FloatProperty(default=10.0, min=0.1, max=1000.0)
 
     intersection_method: EnumProperty(
@@ -593,7 +609,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
         min=0.0,
         max=1.0,
     )
-    use_intersection_creation_limit: BoolProperty(default=False)
+    use_intersection_creation_limit: BoolProperty(default=True)
     intersection_creation_max_distance: FloatProperty(default=10.0, min=0.1, max=1000.0)
 
     selection_line_enabled: BoolProperty(default=False)

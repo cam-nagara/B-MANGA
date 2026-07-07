@@ -5,7 +5,7 @@ from __future__ import annotations
 bl_info = {
     "name": "B-MANGA Liner",
     "author": "B-MANGA Project",
-    "version": (0, 3, 139),
+    "version": (0, 3, 140),
     "blender": (4, 3, 0),
     "description": "背面法（反転ハル）によるマンガ風アウトライン",
     "category": "Render",
@@ -18,6 +18,7 @@ from . import outline_setup
 from . import auto_smooth_guard
 from . import camera_comp
 from . import edge_width_curve
+from . import intersection_lines
 from . import intersection_shell
 from . import subdivision_lod
 from . import operators
@@ -46,5 +47,6 @@ def register() -> None:
 
 
 def unregister() -> None:
+    intersection_lines.cancel_deferred_viewport_refresh()
     for module in reversed(_MODULES):
         module.unregister()
