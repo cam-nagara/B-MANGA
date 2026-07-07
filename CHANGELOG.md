@@ -3,6 +3,38 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-07 — B-MANGA Linerのラインのみ表示でAOV切替を使わないよう変更 (B-MANGA Liner v0.3.142)
+
+### 症状
+
+- tokyo0004で「レンダリング範囲内を選択」後にアウトラインだけを適用した状態で「ラインのみを表示」をオンにすると、対話中のBlenderが長時間固まることがあった。
+
+### 原因
+
+- 対話中は「ラインのみを表示」でビューポートをAOV表示へ切り替える経路を優先しており、tokyo0004級の大規模シーンではそのレンダービュー評価が重くなっていた。
+- 素材差し替え経路自体はtokyo0004でも軽く、固まりの主因はAOV表示への切り替えだった。
+
+### 修正
+
+- 通常の「ラインのみを表示」ではAOV表示へ切り替えず、ワールド背景と一時素材差し替えの経路を使うようにした。
+- AOV関連の機能自体は残し、通常のラインのみ表示ボタンからは使わないようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_aov_view_line_only_check.py`
+- `test/blender_b_manga_line_camera_aov_line_only_check.py`
+- `test/blender_b_manga_line_display_modes_check.py`
+- `test/blender_b_manga_line_full_visual_audit_check.py`
+- `test/blender_b_manga_line_offset_controls_check.py`
+- `test/blender_b_manga_line_open_mesh_outline_check.py`
+- `test/blender_b_manga_line_preset_visibility_check.py`
+- `test/blender_b_manga_line_sheet_and_proxy_follow_check.py`
+- `test/blender_b_manga_line_ui_controls_check.py`
+- tokyo0004実ファイルで「レンダリング範囲内を選択」→アウトラインのみ適用→「ラインのみを表示」オン/オフを再計測。選択 137 個で、オン 0.515 秒、オフ 0.865 秒。
+- `python -m py_compile` による関連ファイル確認
+
+---
+
 ## 2026-07-07 — B-MANGA Linerの設定反映を明示更新方式へ変更 (B-MANGA Liner v0.3.141)
 
 ### 症状

@@ -715,19 +715,6 @@ def set_scene_line_only(context, enabled: bool) -> int:
 
     line_objects = _scene_line_objects(context)
     if enabled:
-        if not bpy.app.background and viewport_aov.enable_line_aov(context):
-            changed = 0
-            for obj in line_objects:
-                set_line_visibility(obj, True)
-                if bool(obj.get(PROP_LINE_ONLY, False)):
-                    outline_setup.set_line_only(obj, False)
-                _set_bool_setting_without_update(obj, "line_only_visible", True)
-                changed += 1
-            scene = getattr(context, "scene", None)
-            if scene is not None and PROP_LINE_ONLY_WORLD in scene:
-                _restore_line_only_world(context)
-            return changed
-
         _ensure_line_only_world(context)
         for obj in line_objects:
             set_line_visibility(obj, True)

@@ -1,4 +1,4 @@
-"""B-MANGA Line: line-only display uses the BML_Line AOV in a real View3D."""
+"""B-MANGA Line: line-only display avoids AOV switching in a real View3D."""
 
 from __future__ import annotations
 
@@ -180,28 +180,29 @@ def main() -> None:
     original_aov = space.shading.aov_name
     original_materials = [mat.name if mat else "" for mat in obj.data.materials]
     before_path = OUT_DIR / "01_before.png"
-    aov_path = OUT_DIR / "02_aov_line_only.png"
+    line_only_path = OUT_DIR / "02_material_line_only.png"
 
     _render_view(before_path, override)
     before_counts = _image_counts(before_path)
 
     with bpy.context.temp_override(**override):
         assert bpy.ops.bmanga_line.set_line_only(line_only=True) == {"FINISHED"}
-    assert viewport_aov.is_line_aov_active(bpy.context)
-    assert space.shading.type == "RENDERED"
-    assert space.shading.render_pass in {"AOV", core.AOV_NAME}
-    assert space.shading.aov_name == core.AOV_NAME
-    assert [mat.name if mat else "" for mat in obj.data.materials] == original_materials
+    assert not viewport_aov.is_line_aov_active(bpy.context)
+    assert space.shading.type == original_type
+    assert space.shading.render_pass == original_pass
+    assert space.shading.aov_name == original_aov
+    assert [mat.name if mat else "" for mat in obj.data.materials[:1]] == [
+        outline_setup.LINE_ONLY_MATERIAL_NAME
+    ]
     assert outline_setup.LINE_ONLY_WIREFRAME_NAME not in obj.modifiers
-    assert not bool(obj.get(core.PROP_LINE_ONLY, False))
-    _render_view(aov_path, override)
-    aov_counts = _image_counts(aov_path)
+    assert bool(obj.get(core.PROP_LINE_ONLY, False))
+    _render_view(line_only_path, override)
+    aov_counts = _image_counts(line_only_path)
     assert before_counts["blue_surface"] > 1000, before_counts
     assert aov_counts["blue_surface"] < before_counts["blue_surface"] * 0.01, (
         before_counts,
         aov_counts,
     )
-    assert aov_counts["colored"] > 300, aov_counts
     assert aov_counts["dark"] > 100, aov_counts
     line_modifiers = list(core.iter_line_modifiers(obj))
     assert line_modifiers
@@ -214,18 +215,22 @@ def main() -> None:
     assert space.shading.type == original_type
     assert space.shading.render_pass == original_pass
     assert space.shading.aov_name == original_aov
+    assert not bool(obj.get(core.PROP_LINE_ONLY, False))
+    assert [mat.name if mat else "" for mat in obj.data.materials] == original_materials
 
     with bpy.context.temp_override(**_non_view3d_override()):
         assert bpy.ops.bmanga_line.set_line_only(line_only=True) == {"FINISHED"}
-    assert viewport_aov.is_line_aov_active(bpy.context)
-    assert not bool(obj.get(core.PROP_LINE_ONLY, False))
-    assert [mat.name if mat else "" for mat in obj.data.materials] == original_materials
+    assert not viewport_aov.is_line_aov_active(bpy.context)
+    assert bool(obj.get(core.PROP_LINE_ONLY, False))
+    assert [mat.name if mat else "" for mat in obj.data.materials[:1]] == [
+        outline_setup.LINE_ONLY_MATERIAL_NAME
+    ]
     with bpy.context.temp_override(**_non_view3d_override()):
         assert bpy.ops.bmanga_line.set_line_only(line_only=False) == {"FINISHED"}
     assert not viewport_aov.is_line_aov_active(bpy.context)
     assert not bool(obj.get(core.PROP_LINE_ONLY, False))
     assert [mat.name if mat else "" for mat in obj.data.materials] == original_materials
-    print("[PASS] B-MANGA Line line-only display uses the BML_Line AOV")
+    print("[PASS] B-MANGA Line line-only display uses material mode without AOV")
 
 
 def _run_and_quit():
