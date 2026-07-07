@@ -112,6 +112,7 @@ def _assert_line_only_checkbox(active: bpy.types.Object, other: bpy.types.Object
 class _FakeUILayout:
     def __init__(self) -> None:
         self.props: list[str] = []
+        self.operators: list[_FakeOperatorProps] = []
         self.enabled = True
         self.scale_y = 1.0
         self.alignment = "LEFT"
@@ -125,8 +126,14 @@ class _FakeUILayout:
     def grid_flow(self, **_kwargs):
         return self
 
-    def operator(self, *_args, **_kwargs):
-        return _FakeOperatorProps()
+    def operator(self, idname: str, **kwargs):
+        op = _FakeOperatorProps(
+            idname,
+            text=str(kwargs.get("text", "") or ""),
+            icon=str(kwargs.get("icon", "") or ""),
+        )
+        self.operators.append(op)
+        return op
 
     def prop(self, _data, prop_name: str, **_kwargs) -> None:
         self.props.append(prop_name)
@@ -139,7 +146,10 @@ class _FakeUILayout:
 
 
 class _FakeOperatorProps:
-    pass
+    def __init__(self, idname: str, *, text: str, icon: str) -> None:
+        self.idname = idname
+        self.text = text
+        self.icon = icon
 
 
 def _assert_panel_draw_does_not_reset_line_only(active: bpy.types.Object, other: bpy.types.Object) -> None:
@@ -164,6 +174,33 @@ def _assert_panel_draw_does_not_reset_line_only(active: bpy.types.Object, other:
     assert bool(active.bmanga_line_settings.line_only_visible)
     assert bool(other.bmanga_line_settings.line_only_visible)
     assert not bool(active.get(core.PROP_LINE_ONLY, False))
+
+
+def _assert_update_buttons_are_in_line_settings(active: bpy.types.Object) -> None:
+    action_layout = _FakeUILayout()
+    panels._draw_actions(action_layout, bpy.context, active)
+    assert not any(
+        op.idname == "bmanga_line.update_target"
+        for op in action_layout.operators
+    ), [op.idname for op in action_layout.operators]
+
+    settings_layout = _FakeUILayout()
+    panels._draw_line_settings(
+        settings_layout,
+        bpy.context,
+        active.bmanga_line_settings,
+    )
+    update_ops = [
+        op for op in settings_layout.operators
+        if op.idname == "bmanga_line.update_target"
+    ]
+    assert [op.target for op in update_ops] == [
+        "outline",
+        "inner",
+        "intersection",
+        "selection",
+    ], [(op.idname, getattr(op, "target", None)) for op in update_ops]
+    assert all(op.text == "更新" for op in update_ops)
 
 
 def _set_setting_without_update(settings, name: str, value) -> None:
@@ -238,6 +275,7 @@ def main() -> None:
         _assert_visibility_checkboxes(active, other)
         _assert_line_only_checkbox(active, other)
         _assert_panel_draw_does_not_reset_line_only(active, other)
+        _assert_update_buttons_are_in_line_settings(active)
         _assert_subsurf_checkbox(active, other)
         print("BMANGA_LINE_UI_CONTROLS_OK")
     finally:

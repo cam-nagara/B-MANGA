@@ -191,13 +191,16 @@ def _draw_line_settings(layout, context, settings) -> None:
     row.operator("bmanga_line.detail_settings", icon="PREFERENCES")
 
     layout.separator()
-    for label, draw_func in (
-        ("アウトライン", _draw_outline),
-        ("稜谷線", _draw_inner_line),
-        ("交差線", _draw_intersection),
-        ("選択線", _draw_selection_line),
+    for target, label, draw_func in (
+        ("outline", "アウトライン", _draw_outline),
+        ("inner", "稜谷線", _draw_inner_line),
+        ("intersection", "交差線", _draw_intersection),
+        ("selection", "選択線", _draw_selection_line),
     ):
-        layout.label(text=label)
+        header = layout.row(align=True)
+        header.label(text=label)
+        op = header.operator("bmanga_line.update_target", text="更新", icon="FILE_REFRESH")
+        op.target = target
         draw_func(layout, context, settings)
         layout.separator()
 
@@ -362,16 +365,6 @@ def _draw_actions(layout, context, obj) -> None:
     row.scale_y = 1.4
     row.operator("bmanga_line.apply", icon="ADD")
     settings = getattr(obj, "bmanga_line_settings", None)
-
-    row = layout.grid_flow(row_major=True, columns=2, even_columns=True, align=True)
-    for target, label in (
-        ("outline", "アウトラインを更新"),
-        ("inner", "稜谷線を更新"),
-        ("intersection", "交差線を更新"),
-        ("selection", "選択線を更新"),
-    ):
-        op = row.operator("bmanga_line.update_target", text=label, icon="FILE_REFRESH")
-        op.target = target
 
     linked_line_count = sum(
         1 for linked_obj in context.scene.objects
