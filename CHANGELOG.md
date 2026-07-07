@@ -40,6 +40,9 @@ Blender 5.1.1 を対象としています。
 - `test/blender_b_manga_line_toggle_matrix_check.py`
 - `test/blender_b_manga_line_ui_controls_check.py`
 - `test/blender_b_manga_line*_check.py` 全51本PASS
+- 追加徹底チェック: 直近2コミットの更新ボタン経路・チェックボックス経路・保存済み線分割経路を再追跡し、チェックボックス変更では重い処理に進まず、各線種のオフ更新では対象線種の削除だけで不要な再検出へ進まないことを確認。
+- 追加徹底チェック: tokyo0004で再実機確認。137メッシュ選択、保存済み稜谷線・保存済み交差線の表示分割数はどちらも `[1]`、オフ更新はアウトライン約0.54秒、稜谷線約1.67秒、交差線約1.39秒、選択線約0.31秒。
+- 追加徹底チェック: `test/blender_b_manga_line*_check.py` 全51本を再実行しPASS。
 - `python -m py_compile` による関連ファイル確認
 - `git diff --check`
 
