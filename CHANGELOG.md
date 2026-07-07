@@ -3,6 +3,43 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-07 — B-MANGA Liner明示更新・作成範囲保持の徹底チェック (検証追記)
+
+### 症状
+
+- B-MANGA Linerを明示更新方式へ変更した後も、古い実機テストの一部が「プリセット適用」や設定変更だけでライン実体まで即時反映される前提のまま残っていた。
+- そのままでは、意図しない重い処理を止める仕様がテスト上で十分に固定されていなかった。
+
+### 原因
+
+- 旧テストが、設定値の伝搬確認とライン実体の更新確認を同じ段階で行っていた。
+- 現行仕様では、プリセット適用と通常設定変更は設定だけを反映し、ライン実体の更新は「ラインを適用」または線種別の更新操作まで保留する。
+
+### 修正
+
+- 製品側の追加修正はなし。
+- プリセット適用テストを、適用直後は設定反映と未更新状態を確認し、その後の明示更新でライン実体へ反映されることを確認する形へ更新した。
+- 一括設定変更テストを、設定変更だけではアウトライン / 稜谷線 / 交差線 / カメラ距離補正の重い更新が呼ばれないことを確認する形へ更新した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_preset_visibility_check.py`
+- `test/blender_b_manga_line_batch_apply_refresh_check.py`
+- `test/blender_b_manga_line_outline_creation_range_check.py`
+- `test/blender_b_manga_line_inner_creation_range_check.py`
+- `test/blender_b_manga_line_intersection_creation_range_check.py`
+- `test/blender_b_manga_line_selection_creation_range_check.py`
+- `test/blender_b_manga_line_distance_visibility_preserves_check.py`
+- `test/blender_b_manga_line_camera_view_creation_range_check.py`
+- `test/blender_b_manga_line_select_range_outline_toggle_check.py`
+- `test/blender_b_manga_line_display_modes_check.py`
+- `test/blender_b_manga_line_control_update_scope_check.py`
+- `test/blender_b_manga_line_generated_update_scope_check.py`
+- tokyo0004実ファイルで「レンダリング範囲内を選択」→アウトラインのみ適用→「ラインのみを表示」オン/オフを再計測。選択 137 個で、選択 0.028 秒、アウトライン適用 8.094 秒、オン 0.485 秒、オフ 0.728 秒。
+- `python -m py_compile` による関連テスト確認
+
+---
+
 ## 2026-07-07 — B-MANGA Linerの作成範囲で作成済みラインを保持 (B-MANGA Liner v0.3.143)
 
 ### 症状

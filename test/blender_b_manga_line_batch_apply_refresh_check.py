@@ -17,6 +17,7 @@ from b_manga_line import (  # noqa: E402
     inner_lines,
     intersection_lines,
     presets,
+    update_state,
     vertex_analysis,
 )
 
@@ -136,23 +137,26 @@ def main() -> None:
         camera_comp.refresh_objects = counted_camera_objects
         vertex_analysis.reset_width_weights = forbidden_reset_weights
         try:
+            update_state.clear_pending_many(objects)
             objects[0].bmanga_line_settings.use_uniform_line_width = True
             assert all(obj.bmanga_line_settings.use_uniform_line_width for obj in objects)
             assert refresh_counts["apply"] == 0, refresh_counts
+            assert refresh_counts["inner_apply"] == 0, refresh_counts
             assert refresh_counts["intersection"] == 0, refresh_counts
             assert refresh_counts["camera"] == 0, refresh_counts
-            assert refresh_counts["camera_objects"] == 2, refresh_counts
+            assert refresh_counts["camera_objects"] == 0, refresh_counts
+            assert all("outline" in update_state.pending_targets(obj) for obj in objects)
 
             reset_refresh_counts()
+            update_state.clear_pending_many(objects)
             objects[0].bmanga_line_settings.use_uniform_line_width = False
             assert not any(obj.bmanga_line_settings.use_uniform_line_width for obj in objects)
-            assert not any(obj.vertex_groups.get(core.VG_LINE_WIDTH) for obj in objects)
-            assert not any(obj.vertex_groups.get(core.VG_INNER_LINE_WIDTH) for obj in objects)
-            assert not any(obj.vertex_groups.get(core.VG_INTERSECTION_LINE_WIDTH) for obj in objects)
             assert refresh_counts["apply"] == 0, refresh_counts
+            assert refresh_counts["inner_apply"] == 0, refresh_counts
             assert refresh_counts["intersection"] == 0, refresh_counts
             assert refresh_counts["camera"] == 0, refresh_counts
-            assert refresh_counts["camera_objects"] == 2, refresh_counts
+            assert refresh_counts["camera_objects"] == 0, refresh_counts
+            assert all("outline" in update_state.pending_targets(obj) for obj in objects)
 
             settings = objects[0].bmanga_line_settings
             setting_changes = [
@@ -245,41 +249,10 @@ def main() -> None:
                 reset_refresh_counts()
                 setattr(settings, prop_name, value)
                 assert refresh_counts["apply"] == 0, (prop_name, refresh_counts)
+                assert refresh_counts["inner_apply"] == 0, (prop_name, refresh_counts)
                 assert refresh_counts["camera"] == 0, (prop_name, refresh_counts)
-                if prop_name == "outline_enabled" and value is False:
-                    assert refresh_counts["inner_apply"] == 0, (prop_name, refresh_counts)
-                    assert refresh_counts["intersection"] == 0, (prop_name, refresh_counts)
-                    assert refresh_counts["camera_objects"] == 0, (prop_name, refresh_counts)
-                if prop_name in {
-                    "use_outline_creation_limit",
-                    "outline_creation_max_distance",
-                    "use_inner_line_creation_limit",
-                    "inner_line_creation_max_distance",
-                    "use_intersection_creation_limit",
-                    "intersection_creation_max_distance",
-                }:
-                    # 作成範囲の変更は範囲内外が変わったラインの作成・削除を
-                    # 伴ってよい（2026-07-03 修正: 変更が無反応だったのはバグ）。
-                    # フル再適用（apply）と全体カメラ更新（camera）の禁止は
-                    # 冒頭の共通 assert で引き続き担保される。
-                    pass
-                if prop_name == "inner_line_enabled" and value is False:
-                    assert refresh_counts["inner_apply"] == 0, (prop_name, refresh_counts)
-                    assert refresh_counts["intersection"] == 0, (prop_name, refresh_counts)
-                    assert refresh_counts["camera_objects"] == 0, (prop_name, refresh_counts)
-                if prop_name == "intersection_enabled" and value is False:
-                    assert refresh_counts["inner_apply"] == 0, (prop_name, refresh_counts)
-                    assert refresh_counts["intersection"] == 0, (prop_name, refresh_counts)
-                    assert refresh_counts["camera_objects"] == 0, (prop_name, refresh_counts)
-                if prop_name in {
-                    "outline_offset",
-                    "inner_line_offset",
-                    "intersection_line_offset",
-                    "selection_line_offset",
-                }:
-                    assert refresh_counts["inner_apply"] == 0, (prop_name, refresh_counts)
-                    assert refresh_counts["intersection"] == 0, (prop_name, refresh_counts)
-                    assert refresh_counts["camera_objects"] == 0, (prop_name, refresh_counts)
+                assert refresh_counts["intersection"] == 0, (prop_name, refresh_counts)
+                assert refresh_counts["camera_objects"] == 0, (prop_name, refresh_counts)
         finally:
             presets.apply_line_settings = real_apply
             inner_lines.apply_inner_lines = real_inner_apply

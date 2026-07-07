@@ -17,12 +17,12 @@ sys.path.insert(0, str(ROOT / "test"))
 import b_manga_line  # noqa: E402
 from b_manga_line_test_utils import temporary_line_preset_store  # noqa: E402
 from b_manga_line import (  # noqa: E402
-    camera_comp,
     core,
     intersection_lines,
     outline_setup,
     presets,
     subdivision_lod,
+    update_state,
 )
 
 
@@ -135,6 +135,19 @@ def _assert_line_color(obj: bpy.types.Object, color: tuple[float, float, float, 
     raise AssertionError(f"{obj.name}: line color node not found")
 
 
+def _assert_pending(obj: bpy.types.Object, *targets: str) -> None:
+    pending = set(update_state.pending_targets(obj))
+    missing = set(targets) - pending
+    assert not missing, f"{obj.name}: 未更新対象が不足しています: {missing} / {pending}"
+
+
+def _apply_selected_lines(active: bpy.types.Object, objects: list[bpy.types.Object]) -> None:
+    _select(active, objects)
+    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+    for obj in objects:
+        assert update_state.pending_targets(obj) == (), f"{obj.name}: 未更新が残っています"
+
+
 def _assert_multi_select_manual_setting_propagation(
     scene: bpy.types.Scene,
     first: bpy.types.Object,
@@ -146,49 +159,37 @@ def _assert_multi_select_manual_setting_propagation(
     source = first.bmanga_line_settings
     target = second.bmanga_line_settings
     source.use_camera_culling = False
+    assert target.use_camera_culling is False
+
+    update_state.clear_pending_many([first, second])
+    old_thickness = second.modifiers[core.MODIFIER_NAME].thickness
 
     source.outline_thickness_mm = 0.9
     assert math.isclose(target.outline_thickness_mm, 0.9, rel_tol=0.001)
-    expected = camera_comp._reference_width_for_distance(
-        scene,
-        scene.camera,
-        target.outline_thickness,
-        target.line_width_reference_distance,
-    )
-    assert math.isclose(
-        second.modifiers[core.MODIFIER_NAME].thickness,
-        expected,
-        rel_tol=0.001,
-    )
+    assert math.isclose(second.modifiers[core.MODIFIER_NAME].thickness, old_thickness)
+    _assert_pending(first, "outline")
+    _assert_pending(second, "outline")
 
     source.line_width_reference_distance = 4.25
     assert math.isclose(target.line_width_reference_distance, 4.25, rel_tol=0.001)
-    expected = camera_comp._reference_width_for_distance(
-        scene,
-        scene.camera,
-        target.outline_thickness,
-        4.25,
-    )
-    assert math.isclose(
-        second.modifiers[core.MODIFIER_NAME].thickness,
-        expected,
-        rel_tol=0.001,
-    )
+    assert math.isclose(second.modifiers[core.MODIFIER_NAME].thickness, old_thickness)
+    _assert_pending(second, "outline", "inner", "intersection", "selection")
 
     source.outline_color = (0.4, 0.5, 0.6, 1.0)
     assert tuple(round(v, 3) for v in target.outline_color) == (0.4, 0.5, 0.6, 1.0)
-    _assert_line_color(second, (0.4, 0.5, 0.6, 1.0))
+    _assert_pending(second, "outline")
 
     source.outline_enabled = False
     assert target.outline_enabled is False
-    assert not first.modifiers[core.MODIFIER_NAME].show_viewport
-    assert not first.modifiers[core.MODIFIER_NAME].show_render
-    assert not second.modifiers[core.MODIFIER_NAME].show_viewport
-    assert not second.modifiers[core.MODIFIER_NAME].show_render
+    assert first.modifiers[core.MODIFIER_NAME].show_viewport
+    assert first.modifiers[core.MODIFIER_NAME].show_render
+    assert second.modifiers[core.MODIFIER_NAME].show_viewport
+    assert second.modifiers[core.MODIFIER_NAME].show_render
     first_inner = first.modifiers.get(core.GN_MODIFIER_NAME)
     second_inner = second.modifiers.get(core.GN_MODIFIER_NAME)
     assert first_inner is not None and first_inner.show_viewport
     assert second_inner is not None and second_inner.show_viewport
+    _assert_pending(second, "outline")
     source.outline_enabled = True
     assert target.outline_enabled is True
     assert first.modifiers[core.MODIFIER_NAME].show_viewport
@@ -200,36 +201,28 @@ def _assert_multi_select_manual_setting_propagation(
     source.outline_creation_max_distance = 6.0
     assert target.use_outline_creation_limit is True
     assert math.isclose(target.outline_creation_max_distance, 6.0, rel_tol=0.001)
+    _assert_pending(second, "outline")
     source.use_outline_creation_limit = False
     assert target.use_outline_creation_limit is False
 
     source.hide_through_transparent = True
-    mat = outline_setup.get_outline_material(second)
-    assert mat is not None
-    assert bool(mat.get(outline_setup.PROP_HIDE_THROUGH_TRANSPARENT, False))
+    assert target.hide_through_transparent is True
     source.hide_through_transparent = False
-    mat = outline_setup.get_outline_material(second)
-    assert mat is not None
-    assert not bool(mat.get(outline_setup.PROP_HIDE_THROUGH_TRANSPARENT, False))
+    assert target.hide_through_transparent is False
 
     source.use_rim = True
     assert target.use_rim is True
-    assert second.modifiers[core.MODIFIER_NAME].use_rim is True
 
     source.even_thickness = False
     assert target.even_thickness is False
-    assert second.modifiers[core.MODIFIER_NAME].use_even_offset is False
     source.even_thickness = True
     assert target.even_thickness is True
-    assert second.modifiers[core.MODIFIER_NAME].use_even_offset is True
 
     source.use_vertex_color = True
     assert target.use_vertex_color is True
-    assert second.modifiers[core.MODIFIER_NAME].vertex_group == core.VG_LINE_WIDTH
 
     source.use_uniform_line_width = True
     assert target.use_uniform_line_width is True
-    assert second.modifiers[core.MODIFIER_NAME].vertex_group == core.VG_LINE_WIDTH
 
     source.edge_smooth_factor = -0.75
     source.edge_midpoint_jitter_percent = 12.0
@@ -275,9 +268,8 @@ def _assert_multi_select_manual_setting_propagation(
     source.inner_line_enabled = False
     assert target.inner_line_enabled is False
     disabled_inner = second.modifiers.get(core.GN_MODIFIER_NAME)
-    assert disabled_inner is None or (
-        not disabled_inner.show_viewport and not disabled_inner.show_render
-    )
+    assert disabled_inner is not None and disabled_inner.show_viewport
+    _assert_pending(second, "inner")
     source.use_inner_line_creation_limit = False
     source.inner_line_enabled = True
     source.inner_line_angle = math.radians(45.0)
@@ -285,11 +277,6 @@ def _assert_multi_select_manual_setting_propagation(
     assert target.inner_line_enabled is True
     inner_mod = second.modifiers.get(core.GN_MODIFIER_NAME)
     assert inner_mod is not None
-    assert math.isclose(
-        _modifier_input(inner_mod, "検出角度"),
-        math.radians(45.0),
-        rel_tol=0.001,
-    )
     assert math.isclose(target.inner_line_thickness_mm, 1.2, rel_tol=0.001)
 
     source.use_selection_line_creation_limit = False
@@ -302,8 +289,7 @@ def _assert_multi_select_manual_setting_propagation(
     assert math.isclose(target.selection_line_thickness_mm, 1.3, rel_tol=0.001)
     assert tuple(round(v, 3) for v in target.selection_line_color) == (1.0, 0.0, 1.0, 1.0)
     selection_mod = second.modifiers.get(core.SELECTION_LINE_MODIFIER_NAME)
-    assert selection_mod is not None
-    assert _modifier_input(selection_mod, "Freestyleマーク辺だけ線にする") is True
+    assert selection_mod is None
 
     source.inner_line_thickness_mm = 70.0
     assert math.isclose(target.inner_line_thickness_mm, 70.0, rel_tol=0.001)
@@ -317,7 +303,7 @@ def _assert_multi_select_manual_setting_propagation(
 
     source.intersection_enabled = False
     assert target.intersection_enabled is False
-    assert not _intersection_mods(second)
+    _assert_pending(second, "intersection")
     source.use_intersection_creation_limit = False
     source.intersection_enabled = True
     source.intersection_thickness_mm = 1.4
@@ -348,7 +334,6 @@ def _assert_multi_select_manual_setting_propagation(
     source.camera_compensation_influence = 0.35
     assert target.use_camera_compensation is True
     assert math.isclose(target.camera_compensation_influence, 0.35, rel_tol=0.001)
-    assert core.PROP_REF_DISTANCE in second
 
     source.use_camera_culling = True
     source.culling_margin = 0.0
@@ -382,6 +367,7 @@ def _assert_multi_select_manual_setting_propagation(
     fake_context = SimpleNamespace(selected_objects=[first], scene=scene)
     core._propagate(source, fake_context, "outline_thickness")
     assert math.isclose(target.outline_thickness, 0.006, rel_tol=0.001)
+    _assert_pending(second, "outline")
 
     source.use_camera_culling = False
     source.use_outline_distance_limit = False
@@ -405,6 +391,22 @@ def _assert_multi_select_manual_setting_propagation(
     source.intersection_thickness_mm = 1.4
     source.selection_line_enabled = True
     source.selection_line_thickness_mm = 1.3
+    source.outline_color = (0.4, 0.5, 0.6, 1.0)
+    _apply_selected_lines(first, [first, second])
+    assert second.modifiers[core.MODIFIER_NAME].thickness != old_thickness
+    _assert_line_color(second, (0.4, 0.5, 0.6, 1.0))
+    updated_inner = second.modifiers.get(core.GN_MODIFIER_NAME)
+    assert updated_inner is not None
+    assert math.isclose(
+        _modifier_input(updated_inner, "検出角度"),
+        math.radians(45.0),
+        rel_tol=0.001,
+    )
+    selection_mod = second.modifiers.get(core.SELECTION_LINE_MODIFIER_NAME)
+    if selection_mod is not None:
+        assert _modifier_input(selection_mod, "Freestyleマーク辺だけ線にする") is True
+    assert _intersection_mods(first) or _intersection_mods(second)
+    assert core.PROP_REF_DISTANCE in second
     for obj in (first, second):
         core.set_line_visibility(obj, True)
         _assert_line_state(obj, visible=True)
@@ -438,6 +440,9 @@ def _assert_preset_display_settings_apply(
             math.radians(77.0),
             rel_tol=0.001,
         )
+        _assert_pending(obj, "outline", "inner", "intersection", "selection")
+    _apply_selected_lines(first, [first, second])
+    for obj in (first, second):
         _assert_line_state(obj, visible=False)
         assert bool(obj.get(core.PROP_LINES_HIDDEN, False))
 
@@ -455,6 +460,9 @@ def _assert_preset_display_settings_apply(
         assert applied.line_only_visible is True
         assert applied.match_subsurf_viewport_to_render is True
         assert applied.auto_subdivision_for_midpoint is True
+        _assert_pending(obj, "outline", "inner", "intersection", "selection")
+    _apply_selected_lines(first, [first, second])
+    for obj in (first, second):
         _assert_line_state(obj, visible=True)
         assert bool(obj.get(core.PROP_LINE_ONLY, False)), (
             f"{obj.name}: ラインのみ表示がプリセットから反映されていません"
@@ -588,6 +596,10 @@ def _run(store_path: Path) -> None:
         assert abs(applied.intersection_edge_midpoint_angle - math.radians(48.0)) < 1.0e-7
         assert abs(applied.intersection_edge_width_curve_50 - 0.35) < 1.0e-7
         assert abs(applied.line_width_reference_distance - 3.5) < 1.0e-7
+        assert not core.has_line(obj), f"{obj.name}: プリセット適用だけでラインが作られています"
+        _assert_pending(obj, "outline", "inner", "intersection", "selection")
+    _apply_selected_lines(first, [first, second])
+    for obj in (first, second):
         _assert_line_state(obj, visible=True)
 
     _assert_preset_display_settings_apply(scene, source, first, second)
@@ -631,6 +643,9 @@ def _run(store_path: Path) -> None:
     for obj in (first, second):
         assert obj.bmanga_line_settings.use_inner_line_distance_limit
         assert abs(obj.bmanga_line_settings.inner_line_max_distance - 0.5) < 1.0e-7
+        _assert_pending(obj, "outline", "inner", "intersection", "selection")
+    _apply_selected_lines(first, [first, second])
+    for obj in (first, second):
         _assert_distance_limited_inner(obj)
 
     _select(source, [source])
@@ -653,6 +668,9 @@ def _run(store_path: Path) -> None:
         assert abs(applied.outline_max_distance - 0.5) < 1.0e-7
         assert applied.use_intersection_distance_limit
         assert abs(applied.intersection_max_distance - 0.5) < 1.0e-7
+        _assert_pending(obj, "outline", "inner", "intersection", "selection")
+    _apply_selected_lines(first, [first, second])
+    for obj in (first, second):
         _assert_distance_limited_outline_and_intersection(obj)
 
     assert bpy.ops.bmanga_line.set_visibility(visible=True) == {"FINISHED"}
@@ -673,6 +691,9 @@ def _run(store_path: Path) -> None:
     assert bpy.ops.bmanga_line.preset_apply_selected() == {"FINISHED"}
     for obj in (first, second):
         assert obj.bmanga_line_settings.use_camera_culling
+        _assert_pending(obj, "outline", "inner", "intersection", "selection")
+    _apply_selected_lines(first, [first, second])
+    for obj in (first, second):
         _assert_camera_culled_line(obj)
 
     assert bpy.ops.bmanga_line.remove() == {"FINISHED"}
