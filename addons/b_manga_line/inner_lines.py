@@ -53,6 +53,10 @@ INNER_TUBE_PROFILE_RESOLUTION = 12
 _CHAIN_ID_ATTR = inner_line_chains.CHAIN_ID_ATTR
 _FREESTYLE_EDGE_ATTR = FREESTYLE_EDGE_ATTR
 _EDGE_ANGLE_EPSILON = 1.0e-7
+_CHAIN_ANGLE_PROP = "bml_inner_chain_angle"
+_CHAIN_MARKED_PROP = "bml_inner_chain_marked_edges"
+_CHAIN_MIDPOINT_ANGLE_PROP = "bml_inner_chain_midpoint_angle"
+_CHAIN_INPUT_EPSILON = 1.0e-6
 
 
 def _node_angle_threshold(angle: float) -> float:
@@ -819,6 +823,119 @@ def _ensure_material_slot(
     return 999
 
 
+def _modifier_float_prop(mod: bpy.types.Modifier, prop_name: str) -> float | None:
+    try:
+        value = mod.get(prop_name, None)
+    except TypeError:
+        return None
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _modifier_bool_prop(mod: bpy.types.Modifier, prop_name: str) -> bool | None:
+    try:
+        value = mod.get(prop_name, None)
+    except TypeError:
+        return None
+    if value is None:
+        return None
+    return bool(value)
+
+
+def _modifier_socket_float(mod: bpy.types.Modifier, socket_name: str) -> float | None:
+    tree = getattr(mod, "node_group", None)
+    sid = _find_socket_id(tree, socket_name) if tree is not None else None
+    if sid is None:
+        return None
+    try:
+        return float(mod[sid])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _modifier_socket_bool(mod: bpy.types.Modifier, socket_name: str) -> bool | None:
+    tree = getattr(mod, "node_group", None)
+    sid = _find_socket_id(tree, socket_name) if tree is not None else None
+    if sid is None:
+        return None
+    try:
+        return bool(mod[sid])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _float_changed(current: float | None, requested: float | None) -> bool:
+    if requested is None:
+        return False
+    if current is None:
+        return True
+    return abs(float(current) - float(requested)) > _CHAIN_INPUT_EPSILON
+
+
+def _bool_changed(current: bool | None, requested: bool | None) -> bool:
+    if requested is None:
+        return False
+    if current is None:
+        return True
+    return bool(current) != bool(requested)
+
+
+def _current_chain_angle(mod: bpy.types.Modifier | None) -> float | None:
+    if mod is None:
+        return None
+    value = _modifier_float_prop(mod, _CHAIN_ANGLE_PROP)
+    if value is not None:
+        return value
+    return _modifier_socket_float(mod, "検出角度")
+
+
+def _current_chain_marked(mod: bpy.types.Modifier | None) -> bool | None:
+    if mod is None:
+        return None
+    value = _modifier_bool_prop(mod, _CHAIN_MARKED_PROP)
+    if value is not None:
+        return value
+    return _modifier_socket_bool(mod, _MARKED_ONLY_SOCKET_NAME)
+
+
+def _current_chain_midpoint_angle(mod: bpy.types.Modifier | None) -> float | None:
+    if mod is None:
+        return None
+    return _modifier_float_prop(mod, _CHAIN_MIDPOINT_ANGLE_PROP)
+
+
+def _store_chain_inputs(
+    mod: bpy.types.Modifier,
+    angle: float,
+    use_marked_edges: bool,
+    midpoint_angle: float | None,
+) -> None:
+    mod[_CHAIN_ANGLE_PROP] = float(angle)
+    mod[_CHAIN_MARKED_PROP] = bool(use_marked_edges)
+    if midpoint_angle is not None:
+        mod[_CHAIN_MIDPOINT_ANGLE_PROP] = float(midpoint_angle)
+
+
+def _chain_inputs_changed(
+    mod: bpy.types.Modifier | None,
+    *,
+    angle: float | None = None,
+    use_marked_edges: bool | None = None,
+    midpoint_angle: float | None = None,
+) -> bool:
+    if mod is None:
+        return True
+    return (
+        _float_changed(_current_chain_angle(mod), angle)
+        or _bool_changed(_current_chain_marked(mod), use_marked_edges)
+        or _float_changed(_current_chain_midpoint_angle(mod), midpoint_angle)
+    )
+
+
 # ------------------------------------------------------------------
 # 適用 / 削除 / 更新
 # ------------------------------------------------------------------
@@ -874,6 +991,7 @@ def apply_inner_lines(
     mod = obj.modifiers.get(modifier_name)
     if mod is None:
         mod = obj.modifiers.new(name=modifier_name, type="NODES")
+    _store_chain_inputs(mod, angle, use_marked_edges, midpoint_angle)
     visible = bool(enable) and not bool(obj.get(PROP_LINES_HIDDEN, False))
     if not visible:
         mod.show_viewport = False
@@ -1012,34 +1130,44 @@ def update_parameters(
     marked_attr_name: str = _FREESTYLE_EDGE_ATTR,
 ) -> bool:
     """既存モディファイアのパラメータを更新."""
-    if (
+    current_mod = obj.modifiers.get(modifier_name)
+    requested_midpoint_angle = midpoint_angle
+    if requested_midpoint_angle is None and angle is not None:
+        current_angle = angle if angle is not None else _current_chain_angle(current_mod)
+        settings = getattr(obj, "bmanga_line_settings", None)
+        requested_midpoint_angle = (
+            inner_width_split_angle(
+                settings,
+                current_angle if current_angle is not None else None,
+            )
+            if settings is not None
+            else current_angle
+        )
+    chain_input_requested = (
         angle is not None
         or use_marked_edges is not None
-        or midpoint_factor is not None
-        or midpoint_angle is not None
+        or requested_midpoint_angle is not None
+    )
+    if chain_input_requested and _chain_inputs_changed(
+        current_mod,
+        angle=angle,
+        use_marked_edges=use_marked_edges,
+        midpoint_angle=requested_midpoint_angle,
     ):
-        current_angle = angle
-        current_marked = use_marked_edges
-        current_mod = obj.modifiers.get(modifier_name)
-        if current_mod is not None and current_mod.node_group is not None:
-            tree_for_current = current_mod.node_group
-            if current_angle is None:
-                sid = _find_socket_id(tree_for_current, "検出角度")
-                if sid is not None:
-                    try:
-                        current_angle = float(current_mod[sid])
-                    except (KeyError, TypeError, ValueError):
-                        current_angle = None
-            if current_marked is None:
-                sid = _find_socket_id(tree_for_current, _MARKED_ONLY_SOCKET_NAME)
-                if sid is not None:
-                    try:
-                        current_marked = bool(current_mod[sid])
-                    except (KeyError, TypeError, ValueError):
-                        current_marked = None
-        if midpoint_angle is None:
+        current_angle = angle if angle is not None else _current_chain_angle(current_mod)
+        current_marked = (
+            use_marked_edges
+            if use_marked_edges is not None
+            else _current_chain_marked(current_mod)
+        )
+        current_midpoint_angle = (
+            requested_midpoint_angle
+            if requested_midpoint_angle is not None
+            else _current_chain_midpoint_angle(current_mod)
+        )
+        if current_midpoint_angle is None:
             settings = getattr(obj, "bmanga_line_settings", None)
-            midpoint_angle = (
+            current_midpoint_angle = (
                 inner_width_split_angle(
                     settings,
                     current_angle if current_angle is not None else None,
@@ -1051,10 +1179,17 @@ def update_parameters(
             obj,
             float(current_angle if current_angle is not None else 0.5236),
             bool(current_marked if current_marked is not None else False),
-            midpoint_angle,
+            current_midpoint_angle,
             chain_id_attr=chain_id_attr_name,
             marked_attr_name=marked_attr_name,
         )
+        if current_mod is not None:
+            _store_chain_inputs(
+                current_mod,
+                float(current_angle if current_angle is not None else 0.5236),
+                bool(current_marked if current_marked is not None else False),
+                current_midpoint_angle,
+            )
 
     mod = obj.modifiers.get(modifier_name)
     if mod is None or mod.node_group is None:
