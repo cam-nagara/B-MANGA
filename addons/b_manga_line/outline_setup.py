@@ -752,6 +752,17 @@ def _apply_solidify_algorithm_mode(mod: bpy.types.Modifier, is_sheet: bool) -> N
     mod.solidify_mode = "EXTRUDE" if is_sheet else "NON_MANIFOLD"
 
 
+def _mesh_has_boundary_edges(obj: bpy.types.Object) -> bool:
+    if obj.type != "MESH" or obj.data is None:
+        return False
+    edge_use_count: dict[tuple[int, int], int] = {}
+    for poly in obj.data.polygons:
+        for edge_key in poly.edge_keys:
+            key = tuple(sorted(edge_key))
+            edge_use_count[key] = edge_use_count.get(key, 0) + 1
+    return any(count == 1 for count in edge_use_count.values())
+
+
 def _configure_solidify_shape(
     obj: bpy.types.Object,
     mod: bpy.types.Modifier,
@@ -759,10 +770,11 @@ def _configure_solidify_shape(
     offset: float = 0.0,
 ) -> None:
     is_sheet = plane_filter.is_sheet_mesh(obj)
+    needs_boundary_rim = (not is_sheet) and _mesh_has_boundary_edges(obj)
     mod.offset = offset
     if hasattr(mod, "use_rim_only"):
         mod.use_rim_only = is_sheet
-    mod.use_rim = True if is_sheet else use_rim
+    mod.use_rim = True if (is_sheet or needs_boundary_rim) else use_rim
     _apply_solidify_algorithm_mode(mod, is_sheet)
 
 
@@ -780,10 +792,11 @@ def _configure_line_only_solidify_shape(
     if offset is None:
         offset = float(getattr(settings, "outline_offset", 0.0))
     is_sheet = plane_filter.is_sheet_mesh(obj)
+    needs_boundary_rim = (not is_sheet) and _mesh_has_boundary_edges(obj)
     mod.offset = offset
     if hasattr(mod, "use_rim_only"):
         mod.use_rim_only = is_sheet
-    mod.use_rim = True if is_sheet else bool(use_rim)
+    mod.use_rim = True if (is_sheet or needs_boundary_rim) else bool(use_rim)
     _apply_solidify_algorithm_mode(mod, is_sheet)
 
 

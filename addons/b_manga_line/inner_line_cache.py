@@ -13,6 +13,8 @@ from . import inner_line_chains, intersection_shell_node_helpers, modifier_stack
 from .core import (
     GENERATED_LINE_ATTR,
     GN_MODIFIER_NAME,
+    INTERSECTION_MODIFIER_NAME,
+    INTERSECTION_MODIFIER_PREFIX,
     MODIFIER_NAME,
     OUTLINE_WIDTH_ATTR_MODIFIER_NAME,
     PROP_LINES_HIDDEN,
@@ -48,6 +50,21 @@ _GENERATED_MARK_LABEL = "BML_InnerCachedGeneratedMark"
 _PROFILE_RESOLUTION = 12
 _MIN_CURVE_TO_MESH_SCALE = 0.04
 _EPS = 1.0e-7
+
+
+def _needs_curve_subdivision(
+    midpoint_factor: float | None,
+    midpoint_jitter_percent: float | None,
+) -> bool:
+    try:
+        if abs(float(midpoint_factor or 0.0)) > _EPS:
+            return True
+    except (TypeError, ValueError):
+        pass
+    try:
+        return abs(float(midpoint_jitter_percent or 0.0)) > _EPS
+    except (TypeError, ValueError):
+        return False
 
 
 @dataclass
@@ -338,11 +355,14 @@ def _line_modifier_names() -> tuple[str, ...]:
         SHEET_OUTLINE_MODIFIER_NAME,
         GN_MODIFIER_NAME,
         SELECTION_LINE_MODIFIER_NAME,
+        INTERSECTION_MODIFIER_NAME,
     )
 
 
 def _is_line_modifier(mod: bpy.types.Modifier) -> bool:
-    return mod.name in _line_modifier_names()
+    return mod.name in _line_modifier_names() or mod.name.startswith(
+        INTERSECTION_MODIFIER_PREFIX
+    )
 
 
 def _disabled_line_modifiers(objects: list[bpy.types.Object]):
@@ -680,7 +700,14 @@ def _set_width_control_parameters(
     if values[_RESAMPLE_COUNT_SOCKET] is None:
         from . import subdivision_lod
 
-        values[_RESAMPLE_COUNT_SOCKET] = subdivision_lod.line_resample_count(owner)
+        values[_RESAMPLE_COUNT_SOCKET] = (
+            subdivision_lod.line_resample_count(owner)
+            if _needs_curve_subdivision(
+                values[_MIDPOINT_FACTOR_SOCKET],
+                values[_MIDPOINT_JITTER_SOCKET],
+            )
+            else 1
+        )
     for name, value in values.items():
         if value is None:
             continue

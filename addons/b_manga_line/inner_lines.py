@@ -980,7 +980,10 @@ def apply_inner_lines(
     ):
         from . import inner_line_cache, subdivision_lod
 
-        if resample_count is None:
+        if resample_count is None and (
+            abs(float(midpoint_factor or 0.0)) > 1.0e-7
+            or abs(float(midpoint_jitter_percent or 0.0)) > 1.0e-7
+        ):
             resample_count = subdivision_lod.line_resample_count(obj)
         return inner_line_cache.apply_cached_inner_lines(
             obj,

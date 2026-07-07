@@ -115,6 +115,41 @@ def _add_open_box_mesh() -> bpy.types.Object:
     return obj
 
 
+def _add_mixed_cube_plane_mesh() -> bpy.types.Object:
+    mesh = bpy.data.meshes.new("BML_mixed_cube_plane_mesh")
+    verts = [
+        (-0.5, -0.5, -0.5),
+        (0.5, -0.5, -0.5),
+        (0.5, 0.5, -0.5),
+        (-0.5, 0.5, -0.5),
+        (-0.5, -0.5, 0.5),
+        (0.5, -0.5, 0.5),
+        (0.5, 0.5, 0.5),
+        (-0.5, 0.5, 0.5),
+        (1.2, -0.5, 0.0),
+        (2.2, -0.5, 0.0),
+        (2.2, 0.5, 0.0),
+        (1.2, 0.5, 0.0),
+    ]
+    faces = [
+        (0, 1, 2, 3),
+        (4, 7, 6, 5),
+        (0, 4, 5, 1),
+        (1, 5, 6, 2),
+        (2, 6, 7, 3),
+        (3, 7, 4, 0),
+        (8, 9, 10, 11),
+    ]
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    obj = bpy.data.objects.new("BML_mixed_cube_plane", mesh)
+    bpy.context.collection.objects.link(obj)
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    obj.data.materials.append(_surface_material("BML_mixed_cube_plane_surface"))
+    return obj
+
+
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     b_manga_line.register()
@@ -247,15 +282,30 @@ def main() -> None:
         open_box_mod = _apply_line(open_box, use_rim=False)
         if hasattr(open_box_mod, "use_rim_only"):
             assert not open_box_mod.use_rim_only, "開いた立体を板ポリ扱いしています"
-        assert not open_box_mod.use_rim, "開いた立体でリム面が強制されています"
+        assert open_box_mod.use_rim, "開いた立体の境界アウトラインが作成されていません"
         assert open_box_mod.offset == 0.0, "通常表示の開いた立体のオフセット初期値が違います"
         assert outline_setup.set_line_only(open_box, True)
         assert open_box_mod.offset == 0.0, "ラインのみ表示の開いた立体でオフセットが変わっています"
         if hasattr(open_box_mod, "use_rim_only"):
             assert not open_box_mod.use_rim_only, "ラインのみ表示で開いた立体を板ポリ扱いしています"
-        assert not open_box_mod.use_rim, "ラインのみ表示の開いた立体でリム面が強制されています"
+        assert open_box_mod.use_rim, "ラインのみ表示の開いた立体で境界アウトラインが消えています"
         assert outline_setup.set_line_only(open_box, False)
         assert open_box_mod.offset == 0.0, "通常表示へ戻した開いた立体が内側形状のままです"
+
+        mixed = _add_mixed_cube_plane_mesh()
+        mixed_mod = _apply_line(mixed, use_rim=False)
+        assert mixed_mod is not None, "混在メッシュに通常アウトラインがありません"
+        assert not outline_setup.plane_filter.is_sheet_mesh(mixed), (
+            "立体と平面が混在したオブジェクトを板ポリ扱いしています"
+        )
+        if hasattr(mixed_mod, "use_rim_only"):
+            assert not mixed_mod.use_rim_only, "混在メッシュを縁だけ生成にしています"
+        assert mixed_mod.use_rim, (
+            "立体と平面が混在したオブジェクト内の平面境界にアウトラインが作成されていません"
+        )
+        assert mixed.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME) is None, (
+            "混在メッシュに板ポリ専用チューブが作成されています"
+        )
 
         assert outline_setup.set_line_only(plane, True)
         assert plane.modifiers.get(core.MODIFIER_NAME) is None

@@ -15,6 +15,7 @@ import b_manga_line  # noqa: E402
 from b_manga_line import (  # noqa: E402
     camera_comp,
     core,
+    inner_line_cache,
     intersection_cache,
     intersection_lines,
     presets,
@@ -80,6 +81,12 @@ def _evaluated_polygon_count(obj: bpy.types.Object) -> int:
         return len(mesh.polygons)
     finally:
         evaluated.to_mesh_clear()
+
+
+def _socket_value(mod: bpy.types.Modifier, socket_name: str):
+    sid = inner_line_cache._find_socket_id(mod.node_group, socket_name)
+    assert sid is not None, f"socket not found: {socket_name}"
+    return mod[sid]
 
 
 def main() -> None:
@@ -160,6 +167,37 @@ def main() -> None:
             visibility_targets=("intersection",),
         )
         assert mod.show_viewport and mod.show_render
+
+        source.bmanga_line_settings.inner_line_enabled = True
+        source.bmanga_line_settings.inner_line_thickness_mm = 0.7
+        source.bmanga_line_settings.use_inner_line_creation_limit = False
+        source.bmanga_line_settings.use_inner_line_distance_limit = False
+        source.bmanga_line_settings.inner_edge_smooth_factor = 0.0
+        source.bmanga_line_settings.inner_edge_midpoint_jitter_percent = 0.0
+        assert presets.apply_line_settings(
+            source,
+            bpy.context,
+            refresh_scene=False,
+            line_targets=("inner",),
+        )
+        bpy.context.view_layer.update()
+        inner_mod = source.modifiers.get(core.GN_MODIFIER_NAME)
+        assert inner_mod is not None, "稜谷線の表示モディファイアがありません"
+        assert int(_socket_value(inner_mod, "線の分割数")) == 1, (
+            "中間頂点調整が無効な稜谷線に余分な分割が入っています"
+        )
+        inner_cache_name = str(source.get(inner_line_cache.CACHE_OBJECT_PROP, "") or "")
+        inner_cache = bpy.data.objects.get(inner_cache_name)
+        assert inner_cache is not None, "保存済み稜谷線オブジェクトが作られていません"
+        assert 0 < len(inner_cache.data.edges) <= 24, (
+            f"稜谷線の保存済み中心線が過剰に増えています: {len(inner_cache.data.edges)}"
+        )
+        assert mod.show_viewport and mod.show_render, (
+            "稜谷線更新後に交差線の表示がオフになっています"
+        )
+        assert _evaluated_polygon_count(source) > len(source.data.polygons), (
+            "稜谷線更新後に交差線が表示結果に残っていません"
+        )
 
         intersection_cache.build_cached_segments = real_builder
         assert intersection_lines.remove_intersection_lines(source)
