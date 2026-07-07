@@ -103,6 +103,9 @@ def main() -> None:
         assert mod is not None, "保存済み交差線の表示モディファイアがありません"
         assert mod.node_group is not None
         assert mod.node_group.name.startswith(intersection_cache.CACHE_TREE_NAME)
+        assert int(_socket_value(mod, "線の分割数")) == 1, (
+            "中間頂点調整が無効な交差線に余分な分割が入っています"
+        )
 
         cache_name = str(source.get(intersection_cache.CACHE_OBJECT_PROP, "") or "")
         cache = bpy.data.objects.get(cache_name)

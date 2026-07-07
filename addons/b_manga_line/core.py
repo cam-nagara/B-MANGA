@@ -90,6 +90,35 @@ _LINE_CREATION_PROPS = {
 }
 
 
+def _normalized_setting_value(value):
+    if hasattr(value, "__iter__") and not isinstance(value, str):
+        return tuple(value)
+    return value
+
+
+def _setting_values_equal(left, right) -> bool:
+    left = _normalized_setting_value(left)
+    right = _normalized_setting_value(right)
+    if isinstance(left, tuple) or isinstance(right, tuple):
+        if not isinstance(left, tuple) or not isinstance(right, tuple):
+            return False
+        if len(left) != len(right):
+            return False
+        try:
+            return all(
+                math.isclose(float(a), float(b), abs_tol=1.0e-8)
+                for a, b in zip(left, right)
+            )
+        except (TypeError, ValueError):
+            return left == right
+    if isinstance(left, float) or isinstance(right, float):
+        try:
+            return math.isclose(float(left), float(right), abs_tol=1.0e-8)
+        except (TypeError, ValueError):
+            return left == right
+    return left == right
+
+
 def record_override_edits(obj) -> None:
     """Python 書き込みした設定をライブラリオーバーライドの操作として記録する.
 
@@ -115,12 +144,14 @@ def _propagate(self, context, prop_name):
     try:
         owner = self.id_data
         raw = getattr(self, prop_name)
-        value = tuple(raw) if hasattr(raw, "__iter__") and not isinstance(raw, str) else raw
+        value = _normalized_setting_value(raw)
         for obj in _selected_mesh_objects(context, owner):
             if obj == owner or obj.type != "MESH":
                 continue
             s = getattr(obj, "bmanga_line_settings", None)
             if s is not None:
+                if _setting_values_equal(getattr(s, prop_name), value):
+                    continue
                 setattr(s, prop_name, value)
                 record_override_edits(obj)
                 if has_line(obj) or (
@@ -154,6 +185,9 @@ def _set_prop_on_selected_targets(
 ) -> list[bpy.types.Object]:
     global _propagating
     targets = _selected_mesh_targets(owner, context)
+    changed: list[bpy.types.Object] = []
+    if owner.type == "MESH":
+        changed.append(owner)
     _propagating = True
     try:
         for obj in targets:
@@ -162,11 +196,14 @@ def _set_prop_on_selected_targets(
             settings = getattr(obj, "bmanga_line_settings", None)
             if settings is None:
                 continue
+            if _setting_values_equal(getattr(settings, prop_name), value):
+                continue
             setattr(settings, prop_name, value)
             record_override_edits(obj)
+            changed.append(obj)
     finally:
         _propagating = False
-    return targets
+    return changed
 
 
 def _defer_line_setting(self, context, prop_name: str, targets=None) -> None:
@@ -1406,7 +1443,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     auto_subdivision_for_midpoint: BoolProperty(
         name="中間頂点用サブディビジョンを自動設定",
         description=(
-            "ライン適用時に鋭い辺へクリースを付け、"
+            "ラインを適用、または稜谷線・交差線・選択線の更新時に、"
             "カメラ距離に応じたサブディビジョンサーフェスを設定する"
         ),
         default=False,

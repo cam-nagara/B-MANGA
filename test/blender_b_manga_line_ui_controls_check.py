@@ -145,6 +145,7 @@ class _FakeUILayout:
     def __init__(self) -> None:
         self.props: list[str] = []
         self.operators: list[_FakeOperatorProps] = []
+        self.separator_count = 0
         self.enabled = True
         self.scale_y = 1.0
         self.alignment = "LEFT"
@@ -174,7 +175,7 @@ class _FakeUILayout:
         return None
 
     def separator(self) -> None:
-        return None
+        self.separator_count += 1
 
 
 class _FakeOperatorProps:
@@ -228,6 +229,7 @@ def _assert_update_buttons_are_in_line_settings(active: bpy.types.Object) -> Non
         "selection",
     ], [(op.idname, getattr(op, "target", None)) for op in update_ops]
     assert all(op.text == "更新" for op in update_ops)
+    assert settings_layout.separator_count >= 4, settings_layout.separator_count
 
 
 def _set_setting_without_update(settings, name: str, value) -> None:

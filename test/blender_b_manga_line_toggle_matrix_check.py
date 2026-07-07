@@ -19,12 +19,18 @@ from b_manga_line import (  # noqa: E402
     intersection_lines,
     outline_setup,
     presets,
+    selection_lines,
     update_state,
 )
 
 
-PROPS = ("outline_enabled", "inner_line_enabled", "intersection_enabled")
-LABELS = ("アウトライン", "内部線", "交差線")
+PROPS = (
+    "outline_enabled",
+    "inner_line_enabled",
+    "intersection_enabled",
+    "selection_line_enabled",
+)
+LABELS = ("アウトライン", "稜谷線", "交差線", "選択線")
 
 
 def _clear_scene() -> None:
@@ -48,6 +54,7 @@ def _make_cube(index: int) -> bpy.types.Object:
     settings = obj.bmanga_line_settings
     settings.use_inner_line_creation_limit = False
     settings.use_intersection_creation_limit = False
+    settings.use_selection_line_creation_limit = False
     return obj
 
 
@@ -58,7 +65,7 @@ def _select(objects: list[bpy.types.Object]) -> None:
     bpy.context.view_layer.objects.active = objects[0]
 
 
-def _set_state(objects: list[bpy.types.Object], state: tuple[bool, bool, bool]) -> None:
+def _set_state(objects: list[bpy.types.Object], state: tuple[bool, ...]) -> None:
     old = core._propagating
     core._propagating = True
     try:
@@ -70,7 +77,7 @@ def _set_state(objects: list[bpy.types.Object], state: tuple[bool, bool, bool]) 
         core._propagating = old
 
 
-def _setup_state(state: tuple[bool, bool, bool]) -> list[bpy.types.Object]:
+def _setup_state(state: tuple[bool, ...]) -> list[bpy.types.Object]:
     _clear_scene()
     bpy.ops.object.camera_add(location=(0.0, -4.0, 1.0), rotation=(1.25, 0.0, 0.0))
     bpy.context.scene.camera = bpy.context.object
@@ -88,6 +95,7 @@ def _install_counters():
         "outline_apply": 0,
         "inner_apply": 0,
         "intersection_apply": 0,
+        "selection_apply": 0,
         "intersection_refresh": 0,
         "camera": 0,
         "camera_objects": 0,
@@ -98,6 +106,7 @@ def _install_counters():
         "outline_apply": outline_setup.apply_outline,
         "inner_apply": inner_lines.apply_inner_lines,
         "intersection_apply": intersection_lines.apply_intersection_lines,
+        "selection_apply": selection_lines.apply_selection_lines,
         "intersection_refresh": intersection_lines.refresh_scene_intersections,
         "camera": camera_comp.refresh,
         "camera_objects": camera_comp.refresh_objects,
@@ -120,6 +129,10 @@ def _install_counters():
         counts["intersection_apply"] += 1
         return originals["intersection_apply"](*args, **kwargs)
 
+    def counted_selection_apply(*args, **kwargs):
+        counts["selection_apply"] += 1
+        return originals["selection_apply"](*args, **kwargs)
+
     def counted_intersection_refresh(*args, **kwargs):
         counts["intersection_refresh"] += 1
         return originals["intersection_refresh"](*args, **kwargs)
@@ -140,6 +153,7 @@ def _install_counters():
     outline_setup.apply_outline = counted_outline_apply
     inner_lines.apply_inner_lines = counted_inner_apply
     intersection_lines.apply_intersection_lines = counted_intersection_apply
+    selection_lines.apply_selection_lines = counted_selection_apply
     intersection_lines.refresh_scene_intersections = counted_intersection_refresh
     camera_comp.refresh = counted_camera
     camera_comp.refresh_objects = counted_camera_objects
@@ -150,6 +164,7 @@ def _install_counters():
         outline_setup.apply_outline = originals["outline_apply"]
         inner_lines.apply_inner_lines = originals["inner_apply"]
         intersection_lines.apply_intersection_lines = originals["intersection_apply"]
+        selection_lines.apply_selection_lines = originals["selection_apply"]
         intersection_lines.refresh_scene_intersections = originals["intersection_refresh"]
         camera_comp.refresh = originals["camera"]
         camera_comp.refresh_objects = originals["camera_objects"]
@@ -158,12 +173,12 @@ def _install_counters():
     return counts, restore
 
 
-def _state_label(state: tuple[bool, bool, bool]) -> str:
+def _state_label(state: tuple[bool, ...]) -> str:
     return "".join("1" if item else "0" for item in state)
 
 
 def _assert_transition_counts(
-    start: tuple[bool, bool, bool],
+    start: tuple[bool, ...],
     prop_index: int,
     counts: dict[str, int],
 ) -> None:
@@ -174,7 +189,7 @@ def _assert_transition_counts(
         assert value == 0, (context, key, counts)
 
 
-def _assert_state(objects: list[bpy.types.Object], expected: tuple[bool, bool, bool]) -> None:
+def _assert_state(objects: list[bpy.types.Object], expected: tuple[bool, ...]) -> None:
     for obj in objects:
         settings = obj.bmanga_line_settings
         actual = tuple(bool(getattr(settings, prop)) for prop in PROPS)
@@ -185,7 +200,7 @@ def main() -> None:
     b_manga_line.register()
     checked = []
     try:
-        for start in itertools.product((False, True), repeat=3):
+        for start in itertools.product((False, True), repeat=len(PROPS)):
             for prop_index, prop in enumerate(PROPS):
                 objects = _setup_state(start)
                 counts, restore = _install_counters()

@@ -42,6 +42,7 @@ _MATERIAL_SOCKET = "マテリアル"
 _MIDPOINT_FACTOR_SOCKET = "中間頂点の線幅調整"
 _MIDPOINT_JITTER_SOCKET = "中間頂点の乱れ (%)"
 _MIDPOINT_ANGLE_SOCKET = "検出角度"
+_RESAMPLE_COUNT_SOCKET = "線の分割数"
 _WIDTH_CURVE_25_SOCKET = "変化グラフ 25%"
 _WIDTH_CURVE_50_SOCKET = "変化グラフ 50%"
 _WIDTH_CURVE_75_SOCKET = "変化グラフ 75%"
@@ -51,10 +52,24 @@ _SPLIT_ATTR = "BML_IntersectionCachedEndpoint"
 _SPLIT_LABEL = "BML_IntersectionCachedEndpoint"
 _SUBDIVIDE_LABEL = "BML_IntersectionCachedSubdivide"
 _PROFILE_RESOLUTION = 12
-_SUBDIVIDE_CUTS = 3
 _VISUAL_RADIUS_FACTOR = 0.8
 _EPS = 1.0e-6
 _KEY_SCALE = 100000.0
+
+
+def _needs_curve_subdivision(
+    midpoint_factor: float | None,
+    midpoint_jitter_percent: float | None,
+) -> bool:
+    try:
+        if abs(float(midpoint_factor or 0.0)) > _EPS:
+            return True
+    except (TypeError, ValueError):
+        pass
+    try:
+        return abs(float(midpoint_jitter_percent or 0.0)) > _EPS
+    except (TypeError, ValueError):
+        return False
 
 
 @dataclass
@@ -134,6 +149,14 @@ def _setup_interface(tree: bpy.types.NodeTree) -> None:
     angle_sock.max_value = 3.1415926536
     if hasattr(angle_sock, "subtype"):
         angle_sock.subtype = "ANGLE"
+    cuts_sock = tree.interface.new_socket(
+        name=_RESAMPLE_COUNT_SOCKET,
+        in_out="INPUT",
+        socket_type="NodeSocketInt",
+    )
+    cuts_sock.default_value = 1
+    cuts_sock.min_value = 1
+    cuts_sock.max_value = 32
     for name, default in (
         (_WIDTH_CURVE_25_SOCKET, 0.25),
         (_WIDTH_CURVE_50_SOCKET, 0.50),
@@ -211,8 +234,8 @@ def _create_display_tree() -> bpy.types.NodeTree:
     subdivide = nodes.new("GeometryNodeSubdivideCurve")
     subdivide.label = _SUBDIVIDE_LABEL
     subdivide.location = (-260, -260)
-    subdivide.inputs["Cuts"].default_value = _SUBDIVIDE_CUTS
     links.new(split_curve, subdivide.inputs["Curve"])
+    links.new(gin.outputs[_RESAMPLE_COUNT_SOCKET], subdivide.inputs["Cuts"])
 
     scale = intersection_shell_node_helpers.add_curve_midpoint_width_scale_from_split_attribute(
         nodes,
@@ -289,6 +312,7 @@ def _tree_valid(tree: bpy.types.NodeTree | None) -> bool:
         and _find_socket_id(tree, _THICKNESS_SOCKET) is not None
         and _find_socket_id(tree, _OFFSET_SOCKET) is not None
         and _find_socket_id(tree, _MATERIAL_SOCKET) is not None
+        and _find_socket_id(tree, _RESAMPLE_COUNT_SOCKET) is not None
         and any(getattr(node, "label", "") == _SUBDIVIDE_LABEL for node in tree.nodes)
     )
 
@@ -529,16 +553,23 @@ def _set_width_control_parameters(mod: bpy.types.Modifier) -> None:
     settings = getattr(owner, "bmanga_line_settings", None)
     if tree is None or settings is None:
         return
+    midpoint_factor = float(
+        getattr(settings, "intersection_edge_smooth_factor", 0.0)
+    )
+    midpoint_jitter_percent = float(
+        getattr(settings, "intersection_edge_midpoint_jitter_percent", 0.0)
+    )
+    resample_count = 1
+    if _needs_curve_subdivision(midpoint_factor, midpoint_jitter_percent):
+        from . import subdivision_lod
+        resample_count = subdivision_lod.line_resample_count(owner)
     values = {
-        _MIDPOINT_FACTOR_SOCKET: float(
-            getattr(settings, "intersection_edge_smooth_factor", 0.0)
-        ),
-        _MIDPOINT_JITTER_SOCKET: float(
-            getattr(settings, "intersection_edge_midpoint_jitter_percent", 0.0)
-        ),
+        _MIDPOINT_FACTOR_SOCKET: midpoint_factor,
+        _MIDPOINT_JITTER_SOCKET: midpoint_jitter_percent,
         _MIDPOINT_ANGLE_SOCKET: float(
             getattr(settings, "intersection_edge_midpoint_angle", 1.7453292520)
         ),
+        _RESAMPLE_COUNT_SOCKET: int(resample_count),
         _WIDTH_CURVE_25_SOCKET: float(
             getattr(settings, "intersection_edge_width_curve_25", 0.25)
         ),

@@ -190,19 +190,19 @@ def _draw_line_settings(layout, context, settings) -> None:
     row.prop(settings, "auto_subdivision_for_midpoint")
     row.operator("bmanga_line.detail_settings", icon="PREFERENCES")
 
-    layout.separator()
-    for target, label, draw_func in (
+    for index, (target, label, draw_func) in enumerate((
         ("outline", "アウトライン", _draw_outline),
         ("inner", "稜谷線", _draw_inner_line),
         ("intersection", "交差線", _draw_intersection),
         ("selection", "選択線", _draw_selection_line),
-    ):
-        header = layout.row(align=True)
+    )):
+        layout.separator()
+        section = layout.column(align=True)
+        header = section.row(align=True)
         header.label(text=label)
         op = header.operator("bmanga_line.update_target", text="更新", icon="FILE_REFRESH")
         op.target = target
-        draw_func(layout, context, settings)
-        layout.separator()
+        draw_func(section, context, settings)
 
 
 def _draw_inner_line(layout, context, settings) -> None:

@@ -59,8 +59,13 @@ def pending_targets(obj: bpy.types.Object) -> tuple[str, ...]:
 def mark_pending(obj: bpy.types.Object, targets=None) -> None:
     if obj is None or obj.type != "MESH":
         return
+    add = set(normalize_targets(targets))
+    if not add:
+        return
     current = set(pending_targets(obj))
-    current.update(normalize_targets(targets))
+    if add.issubset(current):
+        return
+    current.update(add)
     if current:
         obj[PROP_PENDING_TARGETS] = ",".join(
             target for target in LINE_TARGETS if target in current
@@ -93,4 +98,3 @@ def pending_label(obj: bpy.types.Object) -> str:
     if not targets:
         return ""
     return "未更新: " + " / ".join(_LABELS[target] for target in targets)
-

@@ -228,6 +228,21 @@ def _assert_pending(objects: list[bpy.types.Object], targets: set[str]) -> None:
         )
 
 
+def _target_modifier_present(obj: bpy.types.Object, target: str) -> bool:
+    if target == "outline":
+        return (
+            obj.modifiers.get(core.MODIFIER_NAME) is not None
+            or obj.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME) is not None
+        )
+    if target == "inner":
+        return obj.modifiers.get(core.GN_MODIFIER_NAME) is not None
+    if target == "intersection":
+        return any(core.iter_intersection_modifiers(obj))
+    if target == "selection":
+        return obj.modifiers.get(core.SELECTION_LINE_MODIFIER_NAME) is not None
+    raise AssertionError(target)
+
+
 def _values_equal(actual, expected) -> bool:
     if isinstance(expected, tuple):
         return all(
@@ -356,6 +371,40 @@ def _test_target_update_clears_only_target(objects, counts, reset) -> None:
         assert "intersection" not in set(update_state.pending_targets(obj)), obj.name
 
 
+def _test_off_updates_are_light(counts, reset) -> None:
+    targets = (
+        ("outline", "outline_enabled"),
+        ("inner", "inner_line_enabled"),
+        ("intersection", "intersection_enabled"),
+        ("selection", "selection_line_enabled"),
+    )
+    for target, prop_name in targets:
+        objects = _setup_scene()
+        assert any(_target_modifier_present(obj, target) for obj in objects), target
+        for obj in objects:
+            _set_without_update(obj.bmanga_line_settings, prop_name, False)
+            update_state.mark_pending(obj, (target,))
+        reset()
+        assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target=target) == {"FINISHED"}
+        assert counts["line_settings_apply"] == len(objects), (target, counts)
+        assert counts["outline_apply"] == 0, (target, counts)
+        assert counts["outline_fast_update"] == 0, (target, counts)
+        assert counts["inner_apply"] == 0, (target, counts)
+        assert counts["intersection_apply"] == 0, (target, counts)
+        assert counts["selection_apply"] == 0, (target, counts)
+        assert counts["intersection_refresh"] == 0, (target, counts)
+        assert counts["intersection_width_refs"] == 0, (target, counts)
+        assert counts["camera_objects"] == 0, (target, counts)
+        assert counts["camera"] == 0, (target, counts)
+        for obj in objects:
+            assert not _target_modifier_present(obj, target), (target, obj.name)
+            assert target not in set(update_state.pending_targets(obj)), (
+                target,
+                obj.name,
+                update_state.pending_targets(obj),
+            )
+
+
 def _test_full_apply_clears_pending(objects, counts, reset) -> None:
     for obj in objects:
         update_state.mark_pending(obj)
@@ -399,6 +448,8 @@ def main() -> None:
         objects = _setup_scene()
         _test_setting_edits_are_deferred(objects, counts, reset)
         _test_target_update_clears_only_target(objects, counts, reset)
+        _test_off_updates_are_light(counts, reset)
+        objects = _setup_scene()
         _test_full_apply_clears_pending(objects, counts, reset)
         _test_preset_apply_is_settings_only(objects, counts, reset)
         print("BMANGA_LINE_CONTROL_UPDATE_SCOPE_OK")

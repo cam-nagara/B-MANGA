@@ -95,6 +95,19 @@ _LINE_TARGET_ITEMS = (
     ("selection", "選択線", ""),
 )
 
+_TARGET_ENABLED_PROPS = {
+    "outline": "outline_enabled",
+    "inner": "inner_line_enabled",
+    "intersection": "intersection_enabled",
+    "selection": "selection_line_enabled",
+}
+
+
+def _target_enabled(obj: bpy.types.Object, target: str) -> bool:
+    settings = getattr(obj, "bmanga_line_settings", None)
+    prop_name = _TARGET_ENABLED_PROPS.get(target)
+    return bool(settings is not None and prop_name and getattr(settings, prop_name, False))
+
 
 class BMANGA_LINE_OT_update_target(bpy.types.Operator):
     """選択オブジェクトの指定ラインだけを明示更新"""
@@ -135,9 +148,16 @@ class BMANGA_LINE_OT_update_target(bpy.types.Operator):
                 applied_objects.append(obj)
 
         if target == "intersection":
-            intersection_targets = intersection_lines.refresh_scene_intersections(
-                context.scene,
-                sources=applied_objects,
+            refresh_sources = [
+                obj for obj in applied_objects if _target_enabled(obj, target)
+            ]
+            intersection_targets = (
+                intersection_lines.refresh_scene_intersections(
+                    context.scene,
+                    sources=refresh_sources,
+                )
+                if refresh_sources
+                else []
             )
             if intersection_targets:
                 camera_comp.refresh_objects(
@@ -147,15 +167,20 @@ class BMANGA_LINE_OT_update_target(bpy.types.Operator):
                     width_targets=line_targets,
                     visibility_targets=line_targets,
                 )
-            outline_setup.ensure_aov_passes(context.scene)
-        elif applied_objects:
-            camera_comp.refresh_objects(
-                context,
-                applied_objects,
-                update_visibility=True,
-                width_targets=line_targets,
-                visibility_targets=line_targets,
-            )
+            if refresh_sources or intersection_targets:
+                outline_setup.ensure_aov_passes(context.scene)
+        else:
+            refresh_objects = [
+                obj for obj in applied_objects if _target_enabled(obj, target)
+            ]
+            if refresh_objects:
+                camera_comp.refresh_objects(
+                    context,
+                    refresh_objects,
+                    update_visibility=True,
+                    width_targets=line_targets,
+                    visibility_targets=line_targets,
+                )
         update_state.clear_pending_many(applied_objects, line_targets)
 
         labels = {
