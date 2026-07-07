@@ -1,4 +1,4 @@
-"""B-MANGA Line: sheet outline visibility, sheet pair ownership, proxy follow."""
+"""B-MANGA Line: sheet outline visibility and saved intersection ownership."""
 
 from __future__ import annotations
 
@@ -13,7 +13,8 @@ sys.path.insert(0, str(ROOT / "addons"))
 import b_manga_line  # noqa: E402
 from b_manga_line import (  # noqa: E402
     core,
-    intersection_shell,
+    intersection_cache,
+    intersection_lines,
     outline_setup,
     plane_filter,
     presets,
@@ -217,12 +218,12 @@ def _test_sheet_never_owns_intersection_pair() -> None:
     _clear_scene()
     cube, plane = _setup_pair()
 
-    cube_shell = cube.modifiers.get(intersection_shell.SHELL_MODIFIER_NAME)
-    plane_shell = plane.modifiers.get(intersection_shell.SHELL_MODIFIER_NAME)
-    assert cube_shell is not None, "非シート側が交差線ペアを持つべき"
-    assert plane_shell is None, "シート側は交差線ペアを持たないべき"
+    cube_mod = cube.modifiers.get(core.INTERSECTION_MODIFIER_NAME)
+    plane_mod = plane.modifiers.get(core.INTERSECTION_MODIFIER_NAME)
+    assert cube_mod is not None, "非シート側が交差線ペアを持つべき"
+    assert plane_mod is None, "シート側は交差線ペアを持たないべき"
 
-    targets = intersection_shell.modifier_targets(cube_shell)
+    targets = intersection_lines.modifier_targets(cube_mod)
     assert plane in targets, [t.name for t in targets]
 
     # 交差ライン面が実際に生成されていること
@@ -260,29 +261,40 @@ def _test_remove_lines_cleans_sheet() -> None:
         assert not core.has_line(obj)
     strays = [
         o.name for o in bpy.data.objects
-        if o.name.startswith("BML_IntersectionProxy")
+        if o.name.startswith(intersection_cache.CACHE_OBJECT_PREFIX)
     ]
-    assert not strays, f"交差プロキシが残っています: {strays}"
-    stray_colls = [
-        c.name for c in bpy.data.collections
-        if c.name.startswith("BML_IntersectionTargets")
-    ]
-    assert not stray_colls, f"交差対象コレクションが残っています: {stray_colls}"
+    assert not strays, f"保存済み交差線オブジェクトが残っています: {strays}"
 
 
-def _test_outline_toggle_hides_sheet_tube() -> None:
-    """「アウトラインを追加」オフでシートのチューブも非表示になること."""
+def _test_outline_toggle_waits_for_update_then_hides_sheet_tube() -> None:
+    """「アウトラインを追加」変更は、更新実行後にシートのチューブへ反映されること."""
     _clear_scene()
     cube, plane = _setup_pair()
     tube = plane.modifiers[core.SHEET_OUTLINE_MODIFIER_NAME]
 
     _select(plane)
     plane.bmanga_line_settings.outline_enabled = False
-    assert not tube.show_viewport and not tube.show_render, (
-        "アウトラインオフでもチューブが表示されています"
+    assert tube.show_viewport and tube.show_render, (
+        "チェックボックス変更だけでシートのアウトラインが即時更新されています"
+    )
+    assert presets.apply_line_settings(
+        plane,
+        bpy.context,
+        refresh_scene=False,
+        line_targets=("outline",),
+    )
+    assert plane.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME) is None, (
+        "アウトラインオフでもシートのアウトラインが残っています"
     )
     plane.bmanga_line_settings.outline_enabled = True
-    assert tube.show_viewport and tube.show_render
+    assert presets.apply_line_settings(
+        plane,
+        bpy.context,
+        refresh_scene=False,
+        line_targets=("outline",),
+    )
+    tube = plane.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME)
+    assert tube is not None and tube.show_viewport and tube.show_render
 
 
 def _test_line_only_keeps_sheet_tube_only() -> None:
@@ -328,69 +340,34 @@ def _test_pair_ownership_is_deterministic() -> None:
     _select(owner_cube)
     assert presets.apply_line_settings(heavy, bpy.context)
 
-    owner_mod = owner_cube.modifiers.get(intersection_shell.SHELL_MODIFIER_NAME)
+    owner_mod = owner_cube.modifiers.get(core.INTERSECTION_MODIFIER_NAME)
     assert owner_mod is not None, "面数の少ない側がペアを持っていません"
-    heavy_mod = heavy.modifiers.get(intersection_shell.SHELL_MODIFIER_NAME)
-    assert heavy_mod is None or not intersection_shell.modifier_targets(heavy_mod), (
+    heavy_mod = heavy.modifiers.get(core.INTERSECTION_MODIFIER_NAME)
+    assert heavy_mod is None or not intersection_lines.modifier_targets(heavy_mod), (
         "両側が同じ交差ペアを持っています（二重線の原因）"
     )
 
-    # 過去の非決定的判定で残った相手側ペアの残骸が掃除されること
-    stale_coll = intersection_shell._get_or_create_target_collection(heavy)
-    stale_proxy = intersection_shell._get_or_create_proxy(heavy, owner_cube)
-    if stale_proxy.name not in stale_coll.objects:
-        stale_coll.objects.link(stale_proxy)
-    stale_proxy_name = stale_proxy.name
-    _select(owner_cube)
-    assert presets.apply_line_settings(owner_cube, bpy.context)
-    remaining = bpy.data.objects.get(stale_proxy_name)
-    assert remaining is None or not remaining.users_collection, (
-        "相手側に残った古いペア（ミラープロキシ）が掃除されていません"
-    )
+    owner_targets = intersection_lines.modifier_targets(owner_mod)
+    assert heavy in owner_targets, [target.name for target in owner_targets]
 
 
-def _test_proxy_follows_object_move() -> None:
+def _test_saved_intersection_rebuilds_after_object_move() -> None:
     _clear_scene()
     cube, plane = _setup_pair()
 
-    assert (
-        intersection_shell._on_depsgraph_update
-        in bpy.app.handlers.depsgraph_update_post
-    ), "移動追従ハンドラが未登録"
-
-    plane.location.x += 0.5
-    bpy.context.view_layer.update()
-    intersection_shell._sync_proxy_matrices(
-        bpy.context.scene, {plane.name_full}
-    )
-
-    collection_name = str(cube.get("bml_intersection_shell_target_collection"))
-    collection = bpy.data.collections[collection_name]
-    proxy = next(iter(collection.objects))
-    expected = cube.matrix_world.inverted() @ plane.matrix_world
-    for i in range(4):
-        for j in range(4):
-            assert abs(proxy.matrix_world[i][j] - expected[i][j]) <= 1.0e-4, (
-                "プロキシ行列が移動へ追従していません"
-            )
-
-    # 交差しない位置まで離すとペアが解消されること
+    assert cube.modifiers.get(core.INTERSECTION_MODIFIER_NAME) is not None
     plane.location.x += 100.0
     bpy.context.view_layer.update()
-    intersection_shell._do_pair_resync(
-        bpy.context.scene, {plane.name_full, cube.name_full}
-    )
-    assert cube.modifiers.get(intersection_shell.SHELL_MODIFIER_NAME) is None, (
+    intersection_lines.refresh_scene_intersections(bpy.context.scene)
+    assert cube.modifiers.get(core.INTERSECTION_MODIFIER_NAME) is None, (
         "交差が無くなってもペアが残っています"
     )
 
     # 戻すとペアが復活すること
     plane.location.x -= 100.0
     bpy.context.view_layer.update()
-    intersection_shell._do_pair_resync(
-        bpy.context.scene, {plane.name_full, cube.name_full}
-    )
-    assert cube.modifiers.get(intersection_shell.SHELL_MODIFIER_NAME) is not None, (
+    intersection_lines.refresh_scene_intersections(bpy.context.scene)
+    assert cube.modifiers.get(core.INTERSECTION_MODIFIER_NAME) is not None, (
         "交差が戻ってもペアが復活しません"
     )
 
@@ -403,11 +380,11 @@ def main() -> None:
     _test_sheet_midpoint_adjustment_keeps_tube_visible()
     _test_sheet_never_owns_intersection_pair()
     _test_pair_ownership_is_deterministic()
-    _test_proxy_follows_object_move()
+    _test_saved_intersection_rebuilds_after_object_move()
     _test_remove_lines_cleans_sheet()
-    _test_outline_toggle_hides_sheet_tube()
+    _test_outline_toggle_waits_for_update_then_hides_sheet_tube()
     _test_line_only_keeps_sheet_tube_only()
-    print("[PASS] B-MANGA Line sheet outline/ownership and proxy follow")
+    print("[PASS] B-MANGA Line sheet outline/ownership and saved intersection rebuild")
 
 
 if __name__ == "__main__":

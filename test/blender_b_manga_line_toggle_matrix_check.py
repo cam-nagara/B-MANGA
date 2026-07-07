@@ -19,6 +19,7 @@ from b_manga_line import (  # noqa: E402
     intersection_lines,
     outline_setup,
     presets,
+    update_state,
 )
 
 
@@ -169,77 +170,15 @@ def _assert_transition_counts(
     prop = PROPS[prop_index]
     turning_on = not start[prop_index]
     context = f"{_state_label(start)} -> {prop}={'ON' if turning_on else 'OFF'}"
-
-    assert counts["line_settings_apply"] == 0, (context, counts)
-    assert counts["camera"] == 0, (context, counts)
-
-    if prop == "outline_enabled":
-        if turning_on:
-            assert counts["outline_apply"] == 3, (context, counts)
-            assert counts["view_update"] == 1, (context, counts)
-            assert counts["camera_objects"] == 1, (context, counts)
-        else:
-            assert counts["outline_apply"] == 0, (context, counts)
-            assert counts["view_update"] == 0, (context, counts)
-            assert counts["camera_objects"] == 0, (context, counts)
-        assert counts["inner_apply"] == 0, (context, counts)
-        assert counts["intersection_apply"] == 0, (context, counts)
-        assert counts["intersection_refresh"] == 0, (context, counts)
-        return
-
-    if prop == "inner_line_enabled":
-        assert counts["outline_apply"] == 0, (context, counts)
-        assert counts["intersection_apply"] == 0, (context, counts)
-        assert counts["intersection_refresh"] == 0, (context, counts)
-        if turning_on:
-            assert counts["inner_apply"] == 3, (context, counts)
-            assert counts["view_update"] == 1, (context, counts)
-            assert counts["camera_objects"] == 1, (context, counts)
-        else:
-            assert counts["inner_apply"] == 0, (context, counts)
-            assert counts["view_update"] == 0, (context, counts)
-            assert counts["camera_objects"] == 0, (context, counts)
-        return
-
-    if prop == "intersection_enabled":
-        assert counts["outline_apply"] == 0, (context, counts)
-        assert counts["inner_apply"] == 0, (context, counts)
-        if turning_on:
-            assert counts["view_update"] == 1, (context, counts)
-            assert counts["intersection_refresh"] == 1, (context, counts)
-            expected_apply = 3 if start[0] else 0
-            expected_camera = 1 if start[0] else 0
-            assert counts["intersection_apply"] == expected_apply, (context, counts)
-            assert counts["camera_objects"] == expected_camera, (context, counts)
-        else:
-            assert counts["view_update"] == 0, (context, counts)
-            assert counts["intersection_refresh"] == 0, (context, counts)
-            assert counts["intersection_apply"] == 0, (context, counts)
-            assert counts["camera_objects"] == 0, (context, counts)
+    for key, value in counts.items():
+        assert value == 0, (context, key, counts)
 
 
 def _assert_state(objects: list[bpy.types.Object], expected: tuple[bool, bool, bool]) -> None:
-    intersection_count = 0
     for obj in objects:
         settings = obj.bmanga_line_settings
         actual = tuple(bool(getattr(settings, prop)) for prop in PROPS)
         assert actual == expected, (obj.name, actual, expected)
-        outline = obj.modifiers.get(core.MODIFIER_NAME) or obj.modifiers.get(
-            core.SHEET_OUTLINE_MODIFIER_NAME
-        )
-        if expected[0]:
-            assert outline is not None and outline.show_viewport, obj.name
-        elif outline is not None:
-            assert not outline.show_viewport, obj.name
-        inner = obj.modifiers.get(core.GN_MODIFIER_NAME)
-        if expected[1]:
-            assert inner is not None and inner.show_viewport, obj.name
-        elif inner is not None:
-            assert not inner.show_viewport, obj.name
-        intersections = list(core.iter_intersection_modifiers(obj))
-        intersection_count += len(intersections)
-        if not expected[2]:
-            assert not intersections, obj.name
 
 
 def main() -> None:
@@ -257,6 +196,13 @@ def main() -> None:
                     expected[prop_index] = not start[prop_index]
                     expected_state = tuple(expected)
                     _assert_state(objects, expected_state)
+                    pending_target = update_state.targets_for_property(prop)[0]
+                    for obj in objects:
+                        assert pending_target in update_state.pending_targets(obj), (
+                            obj.name,
+                            pending_target,
+                            update_state.pending_targets(obj),
+                        )
                     _assert_transition_counts(start, prop_index, counts)
                     checked.append((_state_label(start), LABELS[prop_index], counts.copy()))
                 finally:

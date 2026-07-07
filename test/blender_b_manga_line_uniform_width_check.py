@@ -121,19 +121,22 @@ def _socket_world_width(obj: bpy.types.Object, thickness: float) -> float:
 
 
 def _intersection_thickness(obj: bpy.types.Object) -> float:
-    mod = next(core.iter_intersection_modifiers(obj), None)
+    mod = _intersection_modifier(obj)
     assert mod is not None
     sid = intersection_lines._find_socket_id(mod.node_group, "線の太さ")
     assert sid is not None
     return float(mod[sid])
 
 
-def _intersection_target_thickness(obj: bpy.types.Object) -> float:
-    mod = next(core.iter_intersection_modifiers(obj), None)
-    assert mod is not None
-    sid = intersection_lines._find_socket_id(mod.node_group, "交差対象の線幅")
-    assert sid is not None
-    return float(mod[sid])
+def _intersection_modifier(obj: bpy.types.Object) -> bpy.types.Modifier | None:
+    return next(core.iter_intersection_modifiers(obj), None)
+
+
+def _intersection_owner(*objects: bpy.types.Object) -> bpy.types.Object:
+    for obj in objects:
+        if _intersection_modifier(obj) is not None:
+            return obj
+    raise AssertionError("No intersection line modifier was created.")
 
 
 def _selection_thickness(obj: bpy.types.Object) -> float:
@@ -220,6 +223,7 @@ def _test_uniform_width_depth_and_resolution() -> None:
     assert far_high_res < far * 0.51
 
     settings.outline_thickness_mm = 1.0
+    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
     far_thick = _expected_world_width(scene, 8.0, 1.0)
     assert math.isclose(mod.thickness, far_thick, rel_tol=0.001), (
         mod.thickness,
@@ -227,6 +231,8 @@ def _test_uniform_width_depth_and_resolution() -> None:
     )
 
     settings.use_uniform_line_width = False
+    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="inner") == {"FINISHED"}
     center_thick = _expected_world_width(scene, 2.0, 1.0)
     assert math.isclose(mod.thickness, center_thick, rel_tol=0.001), (
         mod.thickness,
@@ -254,6 +260,7 @@ def _test_uniform_width_saved_in_preset() -> None:
     scene.bmanga_line_preset_index = 0
     assert bpy.ops.bmanga_line.preset_apply_selected() == {"FINISHED"}
     assert target.bmanga_line_settings.use_uniform_line_width
+    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
     expected = _expected_world_width(scene, 8.0, 0.4)
     actual = target.modifiers[core.MODIFIER_NAME].thickness
     assert math.isclose(actual, expected, rel_tol=0.001), (actual, expected)
@@ -290,6 +297,7 @@ def _test_batch_apply_uses_reference_distance_not_object_distance() -> None:
     )
 
     near.bmanga_line_settings.line_width_reference_distance = 4.0
+    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
     near_width_4m = near.modifiers[core.MODIFIER_NAME].thickness
     far_width_4m = far.modifiers[core.MODIFIER_NAME].thickness
     expected_4m = _expected_world_width(scene, 4.0, 0.6)
@@ -322,6 +330,7 @@ def _test_multi_select_mm_change_updates_all_modifiers() -> None:
 
     _select_many(source, [source, target])
     source.bmanga_line_settings.outline_thickness_mm = 1.2
+    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
 
     assert math.isclose(target.bmanga_line_settings.outline_thickness_mm, 1.2, rel_tol=0.001)
     expected = _expected_world_width(scene, 2.0, 1.2)
@@ -329,6 +338,7 @@ def _test_multi_select_mm_change_updates_all_modifiers() -> None:
     assert math.isclose(actual, expected, rel_tol=0.001), (actual, expected)
 
     source.bmanga_line_settings.line_width_reference_distance = 3.5
+    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
     assert math.isclose(
         target.bmanga_line_settings.line_width_reference_distance,
         3.5,
@@ -343,6 +353,7 @@ def _test_multi_select_mm_change_updates_all_modifiers() -> None:
 
     source.bmanga_line_settings.use_uniform_line_width = True
     source.bmanga_line_settings.outline_thickness_mm = 0.8
+    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
     assert target.bmanga_line_settings.use_uniform_line_width
     assert math.isclose(target.bmanga_line_settings.outline_thickness_mm, 0.8, rel_tol=0.001)
     expected_uniform = _expected_world_width(scene, 4.5, 0.8)
@@ -417,23 +428,27 @@ def _test_object_scale_compensates_modifier_width() -> None:
     normal.bmanga_line_settings.intersection_enabled = True
     normal.bmanga_line_settings.intersection_method = "BOOLEAN"
     normal.bmanga_line_settings.intersection_thickness_mm = 0.2
-    _select(normal)
+    _select_many(normal, [normal, normal_target])
     assert presets.apply_line_settings(normal, bpy.context)
+    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
 
     scaled.bmanga_line_settings.intersection_enabled = True
     scaled.bmanga_line_settings.intersection_method = "BOOLEAN"
     scaled.bmanga_line_settings.intersection_thickness_mm = 0.2
-    _select(scaled)
+    _select_many(scaled, [scaled, scaled_target])
     assert presets.apply_line_settings(scaled, bpy.context)
+    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
 
     expected_intersection = _expected_world_width(scene, 2.0, 0.2)
+    normal_owner = _intersection_owner(normal, normal_target)
+    scaled_owner = _intersection_owner(scaled, scaled_target)
     assert math.isclose(
-        _socket_world_width(normal, _intersection_thickness(normal)),
+        _socket_world_width(normal_owner, _intersection_thickness(normal_owner)),
         expected_intersection,
         rel_tol=0.001,
     )
     assert math.isclose(
-        _socket_world_width(scaled, _intersection_thickness(scaled)),
+        _socket_world_width(scaled_owner, _intersection_thickness(scaled_owner)),
         expected_intersection,
         rel_tol=0.001,
     )
@@ -460,30 +475,32 @@ def _test_intersection_target_scale_conversion() -> None:
         assert presets.apply_line_settings(target, bpy.context)
 
         source = _make_scaled_cube("BML_mixed_source", source_scale)
+        source.location.x = max(source_scale, target_scale) * 0.5
         _select(source)
         source.bmanga_line_settings.outline_thickness_mm = 0.6
         source.bmanga_line_settings.intersection_enabled = True
         source.bmanga_line_settings.intersection_method = "BOOLEAN"
         source.bmanga_line_settings.intersection_thickness_mm = 0.2
         assert presets.apply_line_settings(source, bpy.context)
+        _select_many(source, [source, target])
+        assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
 
         expected_outline = _expected_world_width(scene, 2.0, 0.6)
         expected_intersection = _expected_world_width(scene, 2.0, 0.2)
 
+        owner = _intersection_owner(source, target)
         assert math.isclose(
-            _socket_world_width(source, _intersection_thickness(source)),
+            _socket_world_width(owner, _intersection_thickness(owner)),
             expected_intersection,
-            rel_tol=0.001,
-        )
-        assert math.isclose(
-            _socket_world_width(source, _intersection_target_thickness(source)),
-            expected_outline,
             rel_tol=0.001,
         )
         margin = intersection_lines._intersection_margin(
             source,
             target,
-            _intersection_thickness(source),
+            scale_utils.modifier_thickness_for_world_width(
+                source,
+                _socket_world_width(owner, _intersection_thickness(owner)),
+            ),
         )
         assert math.isclose(margin, expected_outline, rel_tol=0.001), (
             margin,
@@ -572,8 +589,10 @@ def _test_low_influence_keeps_configured_line_widths() -> None:
     settings.camera_compensation_influence = 0.0
     settings.line_width_reference_distance = 6.0
     assert presets.apply_line_settings(source, bpy.context)
+    _select_many(source, [source, target])
+    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
     assert source.modifiers.get(core.GN_MODIFIER_NAME) is not None
-    assert next(core.iter_intersection_modifiers(source), None) is not None
+    assert _intersection_modifier(source) is not None
     assert source.modifiers.get(core.SELECTION_LINE_MODIFIER_NAME) is not None
 
     expected_outline = _expected_world_width(scene, 1.2, 0.40)

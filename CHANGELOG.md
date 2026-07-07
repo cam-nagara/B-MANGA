@@ -3,6 +3,40 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-08 — B-MANGA Linerの保存済み交差線更新を補正 (B-MANGA Liner v0.3.151)
+
+### 症状
+
+- 保存済み交差線で「オフセット」を変更しても、作成済み線の表示だけを動かす経路に反映されず、再検出を避けるべき表示設定変更として扱い切れていなかった。
+- 交差対象のアウトライン幅で接触補完されるべき近接配置が、保存済み交差線化後の厳密な表面交差だけでは拾えないケースがあった。
+- 一部の実機テストが、プリセット適用やチェックボックス変更だけで全線種が即時更新される旧前提を残していた。
+
+### 原因
+
+- 保存済み交差線の表示ノードにオフセット入力がなく、設定更新経路も線幅・カラー中心になっていた。
+- 保存済み交差線の検出時に、対象側アウトライン幅を使った補完が旧交差線方式と同じ形では働いていなかった。
+- テストの一部が、現仕様である「線種ごとの更新ボタンを押すまで反映しない」挙動に揃っていなかった。
+
+### 修正
+
+- 保存済み交差線へ法線方向オフセットを持たせ、オフセット変更は交差検出を再実行せず表示だけを更新するようにした。
+- 厳密な表面交差が見つからない交差対象について、対象側アウトライン幅を考慮した補完検出を追加した。
+- 「ラインのみを表示」はマテリアル出力切替方式の前提で実機テストを更新し、オブジェクト単位の線表示を触らないことを確認するようにした。
+- アウトライン、稜谷線、交差線、選択線が各更新ボタンでのみ更新される前提に、B-MANGA Linerの実機テストを揃えた。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_intersection_cache_check.py`
+- `test/blender_b_manga_line_intersection_fill_check.py`
+- `test/blender_b_manga_line_sheet_and_proxy_follow_check.py`
+- `test/blender_b_manga_line_uniform_width_check.py`
+- `test/blender_b_manga_line_width_all_shapes_visual_check.py`
+- `test/blender_b_manga_line*_check.py` 全51本を、Traceback/AssertionError検出込みでPASS
+- `python -m py_compile` による B-MANGA Liner 本体と関連実機テスト確認
+- `git diff --check`
+
+---
+
 ## 2026-07-08 — B-MANGA Linerの作成済みアウトライン更新を軽量化 (B-MANGA Liner v0.3.150)
 
 ### 症状

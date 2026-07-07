@@ -109,6 +109,9 @@ def _run() -> None:
         settings.outline_offset = 0.25
         settings.inner_line_offset = 0.4
         settings.intersection_line_offset = -0.2
+        assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
+        assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="inner") == {"FINISHED"}
+        assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
 
         for obj in objects:
             obj_settings = obj.bmanga_line_settings
@@ -136,16 +139,16 @@ def _run() -> None:
         objects[0].select_set(True)
         bpy.context.view_layer.objects.active = objects[0]
         assert bpy.ops.bmanga_line.set_line_only("EXEC_DEFAULT", line_only=True) == {"FINISHED"}
+        assert core.is_scene_line_only_enabled(bpy.context)
         for obj in objects:
-            assert bool(obj.get(core.PROP_LINE_ONLY, False)), obj.name
             _assert_close(obj.modifiers[core.MODIFIER_NAME].offset, 0.25, obj.name)
         _assert_close(background.inputs["Color"].default_value[0], 1.0, "world color r")
         _assert_close(background.inputs["Color"].default_value[1], 1.0, "world color g")
         _assert_close(background.inputs["Color"].default_value[2], 1.0, "world color b")
         _assert_close(background.inputs["Strength"].default_value, 1.0, "world strength")
         assert bpy.ops.bmanga_line.set_line_only("EXEC_DEFAULT", line_only=False) == {"FINISHED"}
+        assert not core.is_scene_line_only_enabled(bpy.context)
         for obj in objects:
-            assert not bool(obj.get(core.PROP_LINE_ONLY, False)), obj.name
             _assert_close(obj.modifiers[core.MODIFIER_NAME].offset, 0.25, obj.name)
         _assert_close(background.inputs["Color"].default_value[0], 0.2, "restored world r")
         _assert_close(background.inputs["Color"].default_value[1], 0.3, "restored world g")

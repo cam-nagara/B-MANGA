@@ -114,6 +114,13 @@ def main() -> None:
 
         intersection_cache.build_cached_segments = fail_builder
         assert intersection_lines.update_parameters(source, thickness=0.003)
+        offset_sid = intersection_cache._find_socket_id(
+            mod.node_group,
+            intersection_cache._OFFSET_SOCKET,
+        )
+        assert offset_sid is not None, "保存済み交差線にオフセット入力がありません"
+        assert intersection_lines.update_parameters(source, offset=0.35)
+        assert abs(float(mod[offset_sid]) - 0.35) < 1.0e-7
         assert camera_comp.refresh_objects(
             bpy.context,
             [source],

@@ -17,6 +17,7 @@ from b_manga_line import (  # noqa: E402
     core,
     inner_lines,
     intersection_lines,
+    outline_fast_update,
     outline_setup,
     presets,
     selection_lines,
@@ -84,6 +85,7 @@ def _install_counters():
     counts = {
         "line_settings_apply": 0,
         "outline_apply": 0,
+        "outline_fast_update": 0,
         "inner_apply": 0,
         "intersection_apply": 0,
         "intersection_width_refs": 0,
@@ -98,6 +100,7 @@ def _install_counters():
     originals = {
         "line_settings_apply": presets.apply_line_settings,
         "outline_apply": outline_setup.apply_outline,
+        "outline_fast_update": outline_fast_update.update_existing_outline,
         "inner_apply": inner_lines.apply_inner_lines,
         "intersection_apply": intersection_lines.apply_intersection_lines,
         "intersection_width_refs": intersection_lines.update_target_width_references,
@@ -116,6 +119,10 @@ def _install_counters():
     def counted_outline_apply(*args, **kwargs):
         counts["outline_apply"] += 1
         return originals["outline_apply"](*args, **kwargs)
+
+    def counted_outline_fast_update(*args, **kwargs):
+        counts["outline_fast_update"] += 1
+        return originals["outline_fast_update"](*args, **kwargs)
 
     def counted_inner_apply(*args, **kwargs):
         counts["inner_apply"] += 1
@@ -157,6 +164,7 @@ def _install_counters():
 
     presets.apply_line_settings = counted_line_settings_apply
     outline_setup.apply_outline = counted_outline_apply
+    outline_fast_update.update_existing_outline = counted_outline_fast_update
     inner_lines.apply_inner_lines = counted_inner_apply
     intersection_lines.apply_intersection_lines = counted_intersection_apply
     intersection_lines.update_target_width_references = counted_intersection_width_refs
@@ -174,6 +182,7 @@ def _install_counters():
     def restore() -> None:
         presets.apply_line_settings = originals["line_settings_apply"]
         outline_setup.apply_outline = originals["outline_apply"]
+        outline_fast_update.update_existing_outline = originals["outline_fast_update"]
         inner_lines.apply_inner_lines = originals["inner_apply"]
         intersection_lines.apply_intersection_lines = originals["intersection_apply"]
         intersection_lines.update_target_width_references = originals["intersection_width_refs"]
@@ -191,6 +200,7 @@ def _assert_no_heavy_work(prop_name: str, counts: dict) -> None:
     heavy_keys = (
         "line_settings_apply",
         "outline_apply",
+        "outline_fast_update",
         "inner_apply",
         "intersection_apply",
         "intersection_width_refs",
@@ -292,7 +302,7 @@ def _test_target_update_clears_only_target(objects, counts, reset) -> None:
     reset()
     assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
     assert counts["line_settings_apply"] == len(objects), counts
-    assert counts["outline_apply"] > 0, counts
+    assert counts["outline_apply"] + counts["outline_fast_update"] > 0, counts
     assert counts["inner_apply"] == 0, counts
     assert counts["intersection_apply"] == 0, counts
     assert counts["selection_apply"] == 0, counts
@@ -316,6 +326,7 @@ def _test_target_update_clears_only_target(objects, counts, reset) -> None:
     assert counts["line_settings_apply"] == len(objects), counts
     assert counts["inner_apply"] > 0, counts
     assert counts["outline_apply"] == 0, counts
+    assert counts["outline_fast_update"] == 0, counts
     assert counts["intersection_refresh"] == 0, counts
     assert counts["intersection_width_refs"] == 0, counts
     assert ("inner",) in counts["camera_scopes"], counts

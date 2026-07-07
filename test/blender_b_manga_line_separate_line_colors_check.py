@@ -130,6 +130,8 @@ def _run() -> None:
 
         objects[0].bmanga_line_settings.inner_line_color = (0.2, 0.4, 0.0, 1.0)
         objects[0].bmanga_line_settings.intersection_color = (0.4, 0.0, 0.6, 1.0)
+        assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="inner") == {"FINISHED"}
+        assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
 
         _assert_color(_modifier_material(inner_mod), (0.2, 0.4, 0.0, 1.0), "inner update")
         _assert_color(
@@ -141,7 +143,16 @@ def _run() -> None:
         bpy.context.scene.bmanga_line_preset_name = "line color preset"
         assert bpy.ops.bmanga_line.preset_save("EXEC_DEFAULT") == {"FINISHED"}
         objects[0].bmanga_line_settings.inner_line_color = (0.0, 0.0, 0.0, 1.0)
+        assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="inner") == {"FINISHED"}
+        _assert_color(_modifier_material(inner_mod), (0.0, 0.0, 0.0, 1.0), "inner black")
         assert bpy.ops.bmanga_line.preset_apply_selected("EXEC_DEFAULT") == {"FINISHED"}
+        applied_color = tuple(float(item) for item in objects[0].bmanga_line_settings.inner_line_color)
+        assert all(
+            abs(got - want) < 1.0e-6
+            for got, want in zip(applied_color, (0.2, 0.4, 0.0, 1.0))
+        ), applied_color
+        _assert_color(_modifier_material(inner_mod), (0.0, 0.0, 0.0, 1.0), "preset settings only")
+        assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="inner") == {"FINISHED"}
         _assert_color(_modifier_material(inner_mod), (0.2, 0.4, 0.0, 1.0), "preset")
 
         print("BMANGA_LINE_SEPARATE_LINE_COLORS_OK")

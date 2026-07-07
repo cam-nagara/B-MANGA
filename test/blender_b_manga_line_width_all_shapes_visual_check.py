@@ -294,7 +294,7 @@ def _line_modifier_kind(obj: bpy.types.Object, mod: bpy.types.Modifier, core) ->
         return "inner"
     if mod.name == core.SELECTION_LINE_MODIFIER_NAME:
         return "selection"
-    if mod.name.startswith(core.INTERSECTION_MODIFIER_PREFIX):
+    if core.is_intersection_modifier_name(mod.name):
         return "intersection"
     return None
 

@@ -37,6 +37,7 @@ CACHE_TARGETS_PROP = "bml_intersection_cache_targets"
 
 _CACHE_OBJECT_SOCKET = "保存済み交差線"
 _THICKNESS_SOCKET = "線の太さ"
+_OFFSET_SOCKET = "オフセット"
 _MATERIAL_SOCKET = "マテリアル"
 _MIDPOINT_FACTOR_SOCKET = "中間頂点の線幅調整"
 _MIDPOINT_JITTER_SOCKET = "中間頂点の乱れ (%)"
@@ -45,6 +46,7 @@ _WIDTH_CURVE_25_SOCKET = "変化グラフ 25%"
 _WIDTH_CURVE_50_SOCKET = "変化グラフ 50%"
 _WIDTH_CURVE_75_SOCKET = "変化グラフ 75%"
 
+_NORMAL_ATTR = "BML_IntersectionCachedNormal"
 _SPLIT_ATTR = "BML_IntersectionCachedEndpoint"
 _SPLIT_LABEL = "BML_IntersectionCachedEndpoint"
 _SUBDIVIDE_LABEL = "BML_IntersectionCachedSubdivide"
@@ -60,6 +62,13 @@ class _MeshData:
     vertices: list[Vector]
     triangles: list[tuple[int, int, int]]
     normals: list[Vector]
+
+
+@dataclass(frozen=True)
+class _CachedSegment:
+    start: Vector
+    end: Vector
+    normal: Vector
 
 
 def _setup_interface(tree: bpy.types.NodeTree) -> None:
@@ -86,6 +95,14 @@ def _setup_interface(tree: bpy.types.NodeTree) -> None:
     radius_sock.default_value = 0.0005
     radius_sock.min_value = 0.00001
     radius_sock.max_value = 1.0
+    offset_sock = tree.interface.new_socket(
+        name=_OFFSET_SOCKET,
+        in_out="INPUT",
+        socket_type="NodeSocketFloat",
+    )
+    offset_sock.default_value = 0.0
+    offset_sock.min_value = -1.0
+    offset_sock.max_value = 1.0
     tree.interface.new_socket(
         name=_MATERIAL_SOCKET,
         in_out="INPUT",
@@ -132,6 +149,10 @@ def _setup_interface(tree: bpy.types.NodeTree) -> None:
         sock.max_value = 1.0
 
 
+def _vector_scale_input(node):
+    return node.inputs.get("Scale") or node.inputs[min(3, len(node.inputs) - 1)]
+
+
 def _create_display_tree() -> bpy.types.NodeTree:
     tree = bpy.data.node_groups.new(name=CACHE_TREE_NAME, type="GeometryNodeTree")
     _setup_interface(tree)
@@ -148,9 +169,31 @@ def _create_display_tree() -> bpy.types.NodeTree:
     obj_info.transform_space = "RELATIVE"
     links.new(gin.outputs[_CACHE_OBJECT_SOCKET], obj_info.inputs["Object"])
 
+    normal_attr = nodes.new("GeometryNodeInputNamedAttribute")
+    normal_attr.location = (-760, -560)
+    normal_attr.data_type = "FLOAT_VECTOR"
+    normal_attr.inputs["Name"].default_value = _NORMAL_ATTR
+
+    offset_amount = nodes.new("ShaderNodeMath")
+    offset_amount.location = (-560, -560)
+    offset_amount.operation = "MULTIPLY"
+    links.new(gin.outputs[_THICKNESS_SOCKET], offset_amount.inputs[0])
+    links.new(gin.outputs[_OFFSET_SOCKET], offset_amount.inputs[1])
+
+    offset_vector = nodes.new("ShaderNodeVectorMath")
+    offset_vector.location = (-360, -520)
+    offset_vector.operation = "SCALE"
+    links.new(normal_attr.outputs["Attribute"], offset_vector.inputs[0])
+    links.new(offset_amount.outputs[0], _vector_scale_input(offset_vector))
+
+    set_position = nodes.new("GeometryNodeSetPosition")
+    set_position.location = (-540, -260)
+    links.new(obj_info.outputs["Geometry"], set_position.inputs["Geometry"])
+    links.new(offset_vector.outputs[0], set_position.inputs["Offset"])
+
     m2c = nodes.new("GeometryNodeMeshToCurve")
     m2c.location = (-540, -260)
-    links.new(obj_info.outputs["Geometry"], m2c.inputs["Mesh"])
+    links.new(set_position.outputs["Geometry"], m2c.inputs["Mesh"])
 
     split_curve = intersection_shell_node_helpers.store_curve_midpoint_split_attribute(
         nodes,
@@ -244,6 +287,7 @@ def _tree_valid(tree: bpy.types.NodeTree | None) -> bool:
     return (
         _find_socket_id(tree, _CACHE_OBJECT_SOCKET) is not None
         and _find_socket_id(tree, _THICKNESS_SOCKET) is not None
+        and _find_socket_id(tree, _OFFSET_SOCKET) is not None
         and _find_socket_id(tree, _MATERIAL_SOCKET) is not None
         and any(getattr(node, "label", "") == _SUBDIVIDE_LABEL for node in tree.nodes)
     )
@@ -393,24 +437,34 @@ def modifier_targets(mod: bpy.types.Modifier) -> list[bpy.types.Object]:
     ]
 
 
-def _write_cache_mesh(cache: bpy.types.Object, segments: list[tuple[Vector, Vector]]) -> None:
+def _normal_key(normal: Vector) -> tuple[int, int, int]:
+    return (
+        int(round(normal.x * _KEY_SCALE)),
+        int(round(normal.y * _KEY_SCALE)),
+        int(round(normal.z * _KEY_SCALE)),
+    )
+
+
+def _write_cache_mesh(cache: bpy.types.Object, segments: list[_CachedSegment]) -> None:
     vertices: list[tuple[float, float, float]] = []
     edges: list[tuple[int, int]] = []
-    vertex_map: dict[tuple[int, int, int], int] = {}
+    normals: list[tuple[float, float, float]] = []
+    vertex_map: dict[tuple[tuple[int, int, int], tuple[int, int, int]], int] = {}
 
-    def index_for(point: Vector) -> int:
-        key = _point_key(point)
+    def index_for(point: Vector, normal: Vector) -> int:
+        key = (_point_key(point), _normal_key(normal))
         found = vertex_map.get(key)
         if found is not None:
             return found
         vertex_map[key] = len(vertices)
         vertices.append((point.x, point.y, point.z))
+        normals.append((normal.x, normal.y, normal.z))
         return vertex_map[key]
 
     edge_keys: set[tuple[int, int]] = set()
-    for start, end in segments:
-        a = index_for(start)
-        b = index_for(end)
+    for segment in segments:
+        a = index_for(segment.start, segment.normal)
+        b = index_for(segment.end, segment.normal)
         if a == b:
             continue
         key = (a, b) if a < b else (b, a)
@@ -423,6 +477,10 @@ def _write_cache_mesh(cache: bpy.types.Object, segments: list[tuple[Vector, Vect
     mesh = bpy.data.meshes.new(name=f"{cache.name}_Mesh")
     mesh.from_pydata(vertices, edges, [])
     mesh.update()
+    attr = mesh.attributes.new(_NORMAL_ATTR, "FLOAT_VECTOR", "POINT")
+    for index, normal in enumerate(normals):
+        if index < len(attr.data):
+            attr.data[index].vector = normal
     cache.data = mesh
     if old_mesh is not None and not old_mesh.users:
         bpy.data.meshes.remove(old_mesh)
@@ -433,6 +491,7 @@ def _apply_display_modifier(
     cache: bpy.types.Object,
     targets: list[bpy.types.Object],
     thickness: float,
+    offset: float,
     material: bpy.types.Material | None,
 ) -> None:
     tree = _get_or_create_display_tree()
@@ -449,6 +508,7 @@ def _apply_display_modifier(
     _ensure_material_slot(owner, material)
     _set_modifier_input_if_changed(mod, _find_socket_id(tree, _CACHE_OBJECT_SOCKET), cache)
     _set_modifier_input_if_changed(mod, _find_socket_id(tree, _THICKNESS_SOCKET), thickness)
+    _set_modifier_input_if_changed(mod, _find_socket_id(tree, _OFFSET_SOCKET), offset)
     _set_modifier_input_if_changed(mod, _find_socket_id(tree, _MATERIAL_SOCKET), material)
     _set_width_control_parameters(mod)
     _set_target_names(owner, targets)
@@ -496,6 +556,7 @@ def _set_width_control_parameters(mod: bpy.types.Modifier) -> None:
 def update_cached_parameters(
     owner: bpy.types.Object,
     thickness: float | None = None,
+    offset: float | None = None,
     material: bpy.types.Material | None = None,
 ) -> bool:
     mod = owner.modifiers.get(INTERSECTION_MODIFIER_NAME)
@@ -507,6 +568,8 @@ def update_cached_parameters(
         _set_modifier_input_if_changed(mod, _find_socket_id(tree, _MATERIAL_SOCKET), material)
     if thickness is not None:
         _set_modifier_input_if_changed(mod, _find_socket_id(tree, _THICKNESS_SOCKET), thickness)
+    if offset is not None:
+        _set_modifier_input_if_changed(mod, _find_socket_id(tree, _OFFSET_SOCKET), offset)
     _set_width_control_parameters(mod)
     return True
 
@@ -542,7 +605,7 @@ def apply_cached_intersection_lines(
     cache = _get_or_create_cache_object(owner, scene)
     cache.matrix_world = owner.matrix_world.copy()
     _write_cache_mesh(cache, segments)
-    _apply_display_modifier(owner, cache, targets, thickness, material)
+    _apply_display_modifier(owner, cache, targets, thickness, offset, material)
     return True
 
 
@@ -591,6 +654,30 @@ def _restore_modifier_states(states) -> None:
             continue
 
 
+def _set_target_outline_state(states, target: bpy.types.Object, enabled: bool) -> None:
+    for mod, show_viewport, show_render in states:
+        try:
+            if getattr(mod, "id_data", None) != target:
+                continue
+            keep_outline = mod.name in (MODIFIER_NAME, SHEET_OUTLINE_MODIFIER_NAME)
+            mod.show_viewport = bool(enabled and keep_outline and show_viewport)
+            mod.show_render = bool(enabled and keep_outline and show_render)
+        except ReferenceError:
+            continue
+
+
+def _target_outline_was_visible(states, target: bpy.types.Object) -> bool:
+    for mod, show_viewport, _show_render in states:
+        try:
+            if getattr(mod, "id_data", None) != target:
+                continue
+            if mod.name in (MODIFIER_NAME, SHEET_OUTLINE_MODIFIER_NAME):
+                return bool(show_viewport)
+        except ReferenceError:
+            continue
+    return False
+
+
 def _evaluated_mesh_data(
     obj: bpy.types.Object,
     depsgraph,
@@ -627,7 +714,8 @@ def build_cached_segments(
     *,
     thickness: float,
     offset: float,
-) -> list[tuple[Vector, Vector]]:
+) -> list[_CachedSegment]:
+    del thickness, offset
     if owner.type != "MESH" or owner.data is None:
         return []
     states = _disabled_line_modifiers([owner, *targets])
@@ -641,44 +729,87 @@ def build_cached_segments(
         if not source.triangles:
             return []
         source_bvh = BVHTree.FromPolygons(source.vertices, source.triangles)
-        segments: list[tuple[Vector, Vector]] = []
-        seen: set[tuple[tuple[int, int, int], tuple[int, int, int]]] = set()
+        segments: list[_CachedSegment] = []
+        seen: set[
+            tuple[
+                tuple[tuple[int, int, int], tuple[int, int, int]],
+                tuple[int, int, int],
+            ]
+        ] = set()
         for target in targets:
             if target == owner or target.type != "MESH" or target.data is None:
                 continue
             target_transform = owner_inv @ target.matrix_world
             target_data = _evaluated_mesh_data(target, depsgraph, target_transform)
-            if not target_data.triangles:
-                continue
-            target_bvh = BVHTree.FromPolygons(
-                target_data.vertices,
-                target_data.triangles,
-            )
-            for source_index, target_index in source_bvh.overlap(target_bvh):
-                segment = _triangle_intersection_segment(
-                    source,
-                    source_index,
-                    target_data,
-                    target_index,
+            added = 0
+            if target_data.triangles:
+                added = _append_target_segments(
+                    source=source,
+                    source_bvh=source_bvh,
+                    target_data=target_data,
+                    segments=segments,
+                    seen=seen,
                 )
-                if segment is None:
-                    continue
-                start, end = segment
-                if (start - end).length <= _EPS:
-                    continue
-                normal = source.normals[source_index]
-                if abs(float(offset)) > _EPS:
-                    shift = normal * (float(thickness) * float(offset))
-                    start = start + shift
-                    end = end + shift
-                key = _segment_key(start, end)
-                if key in seen:
-                    continue
-                seen.add(key)
-                segments.append((start, end))
+            if added == 0 and _target_outline_was_visible(states, target):
+                _set_target_outline_state(states, target, True)
+                bpy.context.view_layer.update()
+                fallback_depsgraph = bpy.context.evaluated_depsgraph_get()
+                fallback_data = _evaluated_mesh_data(
+                    target,
+                    fallback_depsgraph,
+                    target_transform,
+                )
+                if fallback_data.triangles:
+                    _append_target_segments(
+                        source=source,
+                        source_bvh=source_bvh,
+                        target_data=fallback_data,
+                        segments=segments,
+                        seen=seen,
+                    )
+                _set_target_outline_state(states, target, False)
+                bpy.context.view_layer.update()
         return segments
     finally:
         _restore_modifier_states(states)
+
+
+def _append_target_segments(
+    *,
+    source: _MeshData,
+    source_bvh: BVHTree,
+    target_data: _MeshData,
+    segments: list[_CachedSegment],
+    seen: set[
+        tuple[
+            tuple[tuple[int, int, int], tuple[int, int, int]],
+            tuple[int, int, int],
+        ]
+    ],
+) -> int:
+    added = 0
+    for source_index, target_index in source_bvh.overlap(
+        BVHTree.FromPolygons(target_data.vertices, target_data.triangles)
+    ):
+        segment = _triangle_intersection_segment(
+            source,
+            source_index,
+            target_data,
+            target_index,
+        )
+        if segment is None:
+            continue
+        start, end = segment
+        if (start - end).length <= _EPS:
+            continue
+        normal = source.normals[source_index]
+        key = (_segment_key(start, end), _normal_key(normal))
+        if key in seen:
+            continue
+        seen.add(key)
+        segments.append(_CachedSegment(start.copy(), end.copy(), normal.copy()))
+        added += 1
+    return added
 
 
 def _triangle_intersection_segment(

@@ -181,6 +181,14 @@ def main() -> None:
         plane.bmanga_line_settings.edge_smooth_factor = -0.75
         plane.bmanga_line_settings.edge_midpoint_jitter_percent = 12.0
         plane.bmanga_line_settings.edge_midpoint_angle = math.radians(55.0)
+        assert presets.apply_line_settings(
+            plane,
+            bpy.context,
+            refresh_scene=False,
+            line_targets=("outline",),
+        )
+        tube_mod = plane.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME)
+        assert tube_mod is not None
         assert abs(tube_mod[_socket_id(tube_mod.node_group, "中間頂点の線幅調整")] + 0.75) < 1e-7
         assert abs(tube_mod[_socket_id(tube_mod.node_group, "中間頂点の乱れ (%)")] - 12.0) < 1e-7
         assert abs(tube_mod[_socket_id(tube_mod.node_group, "検出角度")] - math.radians(55.0)) < 1e-7
@@ -199,9 +207,21 @@ def main() -> None:
         assert outline_setup.set_line_only(cube, True)
         assert cube_mod.offset == 0.0, "ラインのみ表示でオフセットが変わっています"
         cube.bmanga_line_settings.use_rim = True
+        assert presets.apply_line_settings(
+            cube,
+            bpy.context,
+            refresh_scene=False,
+            line_targets=("outline",),
+        )
         assert cube_mod.offset == 0.0, "ラインのみ表示中の設定変更でオフセットが変わっています"
         assert cube_mod.use_rim, "ラインのみ表示中のリム面設定が反映されていません"
         cube.bmanga_line_settings.use_rim = False
+        assert presets.apply_line_settings(
+            cube,
+            bpy.context,
+            refresh_scene=False,
+            line_targets=("outline",),
+        )
         assert cube_mod.offset == 0.0, "ラインのみ表示中の設定変更でオフセットが変わっています"
         assert not cube_mod.use_rim, "ラインのみ表示中のリム面設定オフが反映されていません"
         assert presets.apply_line_settings(cube, bpy.context)

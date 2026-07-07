@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import auto_smooth_guard, core  # noqa: E402
+from b_manga_line import auto_smooth_guard, core, intersection_cache  # noqa: E402
 
 
 ANGLE = math.radians(60.0)
@@ -110,8 +110,14 @@ def _assert_line_stack_survived(obj: bpy.types.Object) -> None:
     names = [mod.name for mod in obj.modifiers]
     if core.MODIFIER_NAME not in names:
         raise AssertionError("アウトラインが保存後に消えました")
-    if not any(name.startswith(core.INTERSECTION_MODIFIER_PREFIX) for name in names):
+    if core.INTERSECTION_MODIFIER_NAME not in names and not any(
+        name.startswith(core.INTERSECTION_MODIFIER_PREFIX) for name in names
+    ):
         raise AssertionError("交差線が保存後に消えました")
+    cache_name = str(obj.get(intersection_cache.CACHE_OBJECT_PROP, "") or "")
+    cache = bpy.data.objects.get(cache_name)
+    if cache is None or len(getattr(cache.data, "edges", ())) == 0:
+        raise AssertionError("保存済み交差線の中心線が保存後に消えました")
     if auto_smooth_guard.AUTO_SMOOTH_NAME not in names:
         raise AssertionError("自動スムーズが保存後に消えました")
 

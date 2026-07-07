@@ -1734,12 +1734,13 @@ def update_parameters(
     material: bpy.types.Material | None = None,
 ) -> bool:
     """保存済み交差線の表示パラメータだけを更新."""
-    del target, offset
+    del target
     if obj.type != "MESH":
         return False
     return _intersection_cache.update_cached_parameters(
         obj,
         thickness=thickness,
+        offset=offset,
         material=material,
     )
 

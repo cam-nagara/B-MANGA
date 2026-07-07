@@ -129,6 +129,7 @@ def _assert_multiselect_curve_update() -> None:
     settings.edge_width_curve_25 = 1.0
     settings.edge_width_curve_50 = 1.0
     settings.edge_width_curve_75 = 1.0
+    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
 
     for obj in (first, second):
         s = obj.bmanga_line_settings
@@ -140,6 +141,7 @@ def _assert_multiselect_curve_update() -> None:
     settings.edge_width_curve_25 = 0.0
     settings.edge_width_curve_50 = 0.0
     settings.edge_width_curve_75 = 0.0
+    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
 
     for obj in (first, second):
         s = obj.bmanga_line_settings

@@ -18,8 +18,8 @@ _INTERSECTION_THICKNESS = 0.015
 import b_manga_line  # noqa: E402
 from b_manga_line import (  # noqa: E402
     core,
+    intersection_cache,
     intersection_lines,
-    intersection_shell,
     outline_setup,
     presets,
 )
@@ -134,14 +134,7 @@ def _evaluated_line_stats(
 def _target_names(obj: bpy.types.Object) -> set[str]:
     names: set[str] = set()
     for mod in core.iter_intersection_modifiers(obj):
-        if intersection_shell.is_shell_modifier(mod):
-            names.update(
-                target.name for target in intersection_shell.modifier_targets(mod)
-            )
-            continue
-        target = intersection_lines._modifier_target(mod)
-        if target is not None:
-            names.add(target.name)
+        names.update(target.name for target in intersection_lines.modifier_targets(mod))
     return names
 
 
@@ -193,8 +186,8 @@ def main() -> None:
     line_mat = outline_setup.get_line_material(source, "intersection")
     assert line_mat is not None, "線の素材が作成されていません"
 
-    # 2026-07-03 確定仕様: 生成方式は「ライン素材（高速）」のみ
-    # （BOOLEAN 指定しても SHELL として適用される）。
+    # 2026-07-08 確定仕様: 生成方式は保存済み線方式のみ。
+    # （BOOLEAN 指定でも保存済み線として適用される）。
     # ペアの持ち主は面数の少ない側（この場合スラブ）に決定的に決まる。
     bpy.context.view_layer.objects.active = source
     assert intersection_lines.apply_intersection_lines(
@@ -205,14 +198,18 @@ def main() -> None:
         method="BOOLEAN",
     )
 
-    tree = bpy.data.node_groups.get(intersection_shell.SHELL_TREE_NAME)
+    tree = bpy.data.node_groups.get(intersection_cache.CACHE_TREE_NAME)
     assert tree is not None, "交差線の生成設定が作成されていません"
-    mod = source.modifiers.get(intersection_shell.SHELL_MODIFIER_NAME)
-    assert mod is not None, "高速交差線モディファイアが作成されていません"
-    sid_target_width = intersection_shell._find_socket_id(tree, "交差対象の線幅")
-    assert sid_target_width is not None, "交差対象のライン厚みを塗る入力がありません"
-    assert float(mod[sid_target_width]) > 0.0, (
-        "交差対象のライン厚みが反映されていません"
+    mod = source.modifiers.get(core.INTERSECTION_MODIFIER_NAME)
+    assert mod is not None, "保存済み交差線モディファイアが作成されていません"
+    sid_width = intersection_cache._find_socket_id(tree, "線の太さ")
+    assert sid_width is not None and float(mod[sid_width]) > 0.0, (
+        "交差線の太さが反映されていません"
+    )
+    cache_name = str(source.get(intersection_cache.CACHE_OBJECT_PROP, "") or "")
+    cache = bpy.data.objects.get(cache_name)
+    assert cache is not None and len(cache.data.edges) > 0, (
+        "保存済み交差線の中心線が作成されていません"
     )
 
     bpy.context.view_layer.update()

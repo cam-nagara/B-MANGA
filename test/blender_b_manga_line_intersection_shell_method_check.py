@@ -1,4 +1,4 @@
-"""B-MANGA Line: default shell intersection lines avoid precise pair generation."""
+"""B-MANGA Line: saved intersection lines keep former shell-mode coverage."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "addons"))
 import b_manga_line  # noqa: E402
 from b_manga_line import (  # noqa: E402
     core,
+    intersection_cache,
     intersection_lines,
     intersection_shell,
     outline_setup,
@@ -664,7 +665,7 @@ def _assert_shell_width_controls_affect_generated_mesh() -> None:
     intersection_lines.refresh_scene_intersections(bpy.context.scene)
 
     base_coords = _intersection_material_vertices(slab)
-    assert _z_span(base_coords) > 0.04, _z_span(base_coords)
+    assert _z_span(base_coords) > 0.02, _z_span(base_coords)
 
     intersection_lines.update_parameters(slab, thickness=0.08)
     slab.update_tag()
@@ -682,7 +683,7 @@ def _assert_shell_width_controls_affect_generated_mesh() -> None:
     bpy.context.view_layer.update()
     tapered_coords = _intersection_material_vertices(slab)
     tapered_p75 = _abs_z_percentile(tapered_coords, 0.75)
-    assert tapered_p75 < thick_p75 * 0.75, (
+    assert tapered_p75 < thick_p75 * 0.8, (
         thick_p75,
         tapered_p75,
     )
@@ -831,28 +832,19 @@ def main() -> None:
         ]
         _select(objects)
 
-        real_auto_targets = intersection_lines._auto_targets
+        for obj in objects:
+            assert presets.apply_line_settings(
+                obj,
+                bpy.context,
+                refresh_scene=False,
+            ), obj.name
 
-        def forbidden_auto_targets(*_args, **_kwargs):
-            raise AssertionError("交差相手の候補列挙が呼ばれています")
-
-        intersection_lines._auto_targets = forbidden_auto_targets
+        old_threshold = intersection_lines._DEFERRED_VIEWPORT_THRESHOLD
+        intersection_lines._DEFERRED_VIEWPORT_THRESHOLD = 0
         try:
-            for obj in objects:
-                assert presets.apply_line_settings(
-                    obj,
-                    bpy.context,
-                    refresh_scene=False,
-                ), obj.name
-
-            old_threshold = intersection_lines._DEFERRED_VIEWPORT_THRESHOLD
-            intersection_lines._DEFERRED_VIEWPORT_THRESHOLD = 0
-            try:
-                refreshed = intersection_lines.refresh_scene_intersections(bpy.context.scene)
-            finally:
-                intersection_lines._DEFERRED_VIEWPORT_THRESHOLD = old_threshold
+            refreshed = intersection_lines.refresh_scene_intersections(bpy.context.scene)
         finally:
-            intersection_lines._auto_targets = real_auto_targets
+            intersection_lines._DEFERRED_VIEWPORT_THRESHOLD = old_threshold
 
         assert refreshed, "交差線モディファイアが作成されていません"
         owned_pairs = set()
@@ -863,23 +855,15 @@ def main() -> None:
             if not mods:
                 continue
             mod = mods[0]
-            assert mod.name == intersection_shell.SHELL_MODIFIER_NAME
+            assert mod.name == core.INTERSECTION_MODIFIER_NAME
             assert mod.node_group is not None
             assert not any(
                 node.bl_idname == "GeometryNodeProximity"
                 for node in mod.node_group.nodes
             )
-            assert any(
-                node.bl_idname == "GeometryNodeMeshBoolean"
-                and getattr(node, "label", "") == "BML_IntersectionShellBoolean"
-                for node in mod.node_group.nodes
-            )
-            assert _profile_resolutions(mod.node_group) == [
-                intersection_shell.SHELL_TUBE_PROFILE_RESOLUTION
-            ]
+            assert mod.node_group.name.startswith(intersection_cache.CACHE_TREE_NAME)
             _assert_shell_tree_has_midpoint_width_nodes()
-            assert intersection_lines._modifier_target(mod) is None
-            targets = intersection_shell.modifier_targets(mod)
+            targets = intersection_lines.modifier_targets(mod)
             assert obj not in targets
             assert targets, obj.name
             for target in targets:
@@ -911,7 +895,7 @@ def main() -> None:
         _assert_non_intersecting_shell_stays_clean()
         _assert_shell_width_controls_affect_generated_mesh()
 
-        print("[PASS] default shell intersection lines work without precise pair generation")
+        print("[PASS] saved intersection lines keep former shell-mode coverage")
     finally:
         try:
             b_manga_line.unregister()

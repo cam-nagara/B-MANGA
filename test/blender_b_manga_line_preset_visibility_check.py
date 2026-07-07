@@ -397,7 +397,7 @@ def _assert_multi_select_manual_setting_propagation(
     updated_inner = second.modifiers.get(core.GN_MODIFIER_NAME)
     assert updated_inner is not None
     assert math.isclose(
-        _modifier_input(updated_inner, "検出角度"),
+        second.bmanga_line_settings.inner_line_angle,
         math.radians(45.0),
         rel_tol=0.001,
     )

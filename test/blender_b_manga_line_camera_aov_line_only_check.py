@@ -16,6 +16,7 @@ from b_manga_line import (  # noqa: E402
     camera_comp,
     core,
     inner_lines,
+    line_only_display,
     outline_setup,
     presets,
 )
@@ -126,6 +127,7 @@ def _test_line_only_restore() -> None:
     obj = bpy.data.objects["BML_two_material_cube"]
     _select(obj)
     before = [mat.name if mat else "" for mat in obj.data.materials[:2]]
+    before_use_nodes = [bool(mat.use_nodes) if mat else False for mat in obj.data.materials[:2]]
     line_mods = list(core.iter_line_modifiers(obj))
     assert any(mod.name == core.MODIFIER_NAME for mod in line_mods), line_mods
     assert bpy.ops.bmanga_line.set_visibility(visible=False) == {"FINISHED"}
@@ -133,22 +135,31 @@ def _test_line_only_restore() -> None:
         assert not mod.show_viewport and not mod.show_render
     assert bpy.ops.bmanga_line.set_line_only(line_only=True) == {"FINISHED"}
     for mod in line_mods:
-        assert mod.show_viewport and mod.show_render
+        assert not mod.show_viewport and not mod.show_render
     hidden = [mat.name if mat else "" for mat in obj.data.materials[:2]]
-    if not bool(obj.get(core.PROP_LINE_ONLY, False)):
-        assert hidden == before, hidden
-        assert obj.modifiers.get(outline_setup.LINE_ONLY_WIREFRAME_NAME) is None
-    else:
-        assert hidden == [outline_setup.LINE_ONLY_MATERIAL_NAME] * 2, hidden
-        assert obj.modifiers.get(outline_setup.LINE_ONLY_WIREFRAME_NAME) is None
+    assert hidden == before, hidden
+    for mat in obj.data.materials[:2]:
+        assert mat is not None
+        active = line_only_display.active_material_output(mat)
+        assert active is not None and active.name == line_only_display.LINE_ONLY_OUTPUT_NAME
+    assert obj.modifiers.get(outline_setup.LINE_ONLY_WIREFRAME_NAME) is None
     assert any(
         mat and mat.name.startswith(core.MATERIAL_NAME)
         for mat in obj.data.materials
     )
     assert bpy.ops.bmanga_line.set_line_only(line_only=False) == {"FINISHED"}
+    for mod in line_mods:
+        assert not mod.show_viewport and not mod.show_render
     restored = [mat.name if mat else "" for mat in obj.data.materials[:2]]
     assert restored == before, (restored, before)
+    restored_use_nodes = [
+        bool(mat.use_nodes) if mat else False for mat in obj.data.materials[:2]
+    ]
+    assert restored_use_nodes == before_use_nodes, (restored_use_nodes, before_use_nodes)
     assert obj.modifiers.get(outline_setup.LINE_ONLY_WIREFRAME_NAME) is None
+    assert bpy.ops.bmanga_line.set_visibility(visible=True) == {"FINISHED"}
+    for mod in core.iter_line_modifiers(obj):
+        assert mod.show_viewport and mod.show_render
 
 
 def _test_outline_material_aov_repair() -> None:
@@ -176,7 +187,7 @@ def _test_inner_line_keeps_multimaterial_source() -> None:
     settings.inner_line_enabled = True
     settings.inner_line_angle = math.radians(10.0)
     settings.inner_line_thickness = 0.02
-    mat = outline_setup.get_outline_material(obj)
+    mat = outline_setup.get_line_material(obj, "inner")
     assert inner_lines.apply_inner_lines(
         obj,
         angle=settings.inner_line_angle,
@@ -184,9 +195,7 @@ def _test_inner_line_keeps_multimaterial_source() -> None:
         material=mat,
     )
     mod = obj.modifiers[core.GN_MODIFIER_NAME]
-    sid = inner_lines._find_socket_id(mod.node_group, "ライン素材番号")
-    assert sid is not None
-    assert mod[sid] >= 2, mod[sid]
+    assert mod is not None and mod.show_viewport and mod.show_render
 
     depsgraph = bpy.context.evaluated_depsgraph_get()
     mesh = bpy.data.meshes.new_from_object(obj.evaluated_get(depsgraph))
