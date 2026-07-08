@@ -3,6 +3,34 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-09 — B-MANGA Linerの境界チューブがSolidify併用で消える問題を修正 (B-MANGA v0.6.447 / B-MANGA Liner v0.3.164)
+
+### 症状
+
+- tokyo0004で、壁面看板・消火栓看板・街灯・信号機など「開いたエッジ（境界辺）を多く含むゲームアセット」のアウトラインがほぼ描画されず、オブジェクト輪郭の画素照合カバレッジが75.5%に留まっていた。
+- 該当オブジェクトはアウトラインモディファイア・境界チューブとも正常に生成されており（Object25941でチューブ7,808面を確認）、単独レンダリングでも線が出ないため遮蔽ではなかった。
+
+### 原因
+
+- 混在メッシュ（境界辺≤512の通常メッシュ）ではSolidifyシェルと境界チューブを併用し、チューブはSolidifyより前段のGeometry Nodesでメッシュに合成される。後段のSolidifyの`use_flip_normals=True`（背面法の要）が**チューブの面まで裏返し**、アウトライン素材のバックフェースカリング＋背面透過ノードによってチューブが全方向から不可視になっていた。
+- Solidifyを持たない純粋な板ポリ（シート）は反転が起きないため無事で、「Solidify＋チューブ併用」の混在メッシュだけが全滅する構図だった。実機切り分け（Solidifyのみ無効化）で線が復活することを確認して特定。
+
+### 修正
+
+- シートアウトラインGNツリーに入力ソケット「Solidify反転補正」を追加し、Solidify併用時はチューブ面をツリー内で事前反転（Flip Faces）して後段の反転を打ち消すようにした（`outline_setup.py`）。
+- ソケット値は `_sync_sheet_outline_midpoint_inputs` で常時同期（Solidifyの有無に追従）。既存ファイルの旧ツリーはソケット検証により次回のライン適用/更新時に自動再構築される。
+
+### 検証 (Blender 5.1.2 実機)
+
+- tokyo0004 (`Japanese_Streetscape_Tokyo_0004.blend`) 初期状態読み込み→「レンダリング範囲内を選択」137メッシュ→ライン適用（54.8秒）→カメラレンダリングで、オブジェクトIDレンダリング由来の輪郭正解画像との画素照合カバレッジが **75.53% → 92.76%** へ改善。壁面看板・街灯アーム・信号機・消火栓看板の線が出現。
+- フル解像度（5330x8031）レンダリングで線品質を目視確認（検証成果物: `_verify/2026-07-09_tokyo0004_outline_coverage/`）。
+- `test/blender_b_manga_line_sheet_and_proxy_follow_check.py` PASS
+- `test/blender_b_manga_line_sheet_mesh_exclusion_check.py` PASS
+- `python -m py_compile addons\b_manga_line\outline_setup.py`
+- 残課題（AGENT_INBOX記録）: 遠距離の細い街灯ポール等でなお欠落が残る（全体の約7%）、元メッシュの法線反転による黒パッチ、`_sync_sheet_outline_midpoint_inputs` の恒偽条件 `boundary_only`。
+
+---
+
 ## 2026-07-09 — B-MANGA Linerのカメラ範囲圏外判定を境界基準へ修正 (B-MANGA v0.6.446 / B-MANGA Liner v0.3.163)
 
 ### 症状

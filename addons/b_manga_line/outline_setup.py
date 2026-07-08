@@ -62,6 +62,9 @@ _SHEET_TUBE_MIDPOINT_ANGLE_SOCKET = "検出角度"
 _SHEET_TUBE_WIDTH_CURVE_25_SOCKET = "変化グラフ 25%"
 _SHEET_TUBE_WIDTH_CURVE_50_SOCKET = "変化グラフ 50%"
 _SHEET_TUBE_WIDTH_CURVE_75_SOCKET = "変化グラフ 75%"
+# Solidify(use_flip_normals)が後段でチューブごと法線反転するため、
+# 併用時はチューブ面を事前反転して打ち消す（片面ライン素材の可視性維持）。
+_SHEET_TUBE_FLIP_SOCKET = "Solidify反転補正"
 _SHEET_TUBE_ANGLE_SPLIT_LABEL = "BML_SheetOutlinePathWidthV18"
 _SHEET_TUBE_SUBDIVIDE_LABEL = "BML_SheetOutlinePathWidthV18Midpoints"
 _SHEET_TUBE_SAFE_SCALE_LABEL = "BML_SheetOutlineSafeScaleV18"
@@ -891,6 +894,7 @@ def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
             and _find_socket_identifier(tree, _SHEET_TUBE_WIDTH_CURVE_25_SOCKET) is not None
             and _find_socket_identifier(tree, _SHEET_TUBE_WIDTH_CURVE_50_SOCKET) is not None
             and _find_socket_identifier(tree, _SHEET_TUBE_WIDTH_CURVE_75_SOCKET) is not None
+            and _find_socket_identifier(tree, _SHEET_TUBE_FLIP_SOCKET) is not None
             and any(
                 getattr(node, "label", "") == _SHEET_TUBE_SUBDIVIDE_LABEL
                 for node in tree.nodes
@@ -961,6 +965,12 @@ def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
         sock.default_value = default
         sock.min_value = 0.0
         sock.max_value = 1.0
+    flip_sock = tree.interface.new_socket(
+        name=_SHEET_TUBE_FLIP_SOCKET,
+        in_out="INPUT",
+        socket_type="NodeSocketBool",
+    )
+    flip_sock.default_value = False
 
     nodes = tree.nodes
     links = tree.links
@@ -1037,9 +1047,14 @@ def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
     smooth.location = (1540, 0)
     links.new(tube.outputs["Mesh"], smooth.inputs["Geometry"])
 
+    flip = nodes.new("GeometryNodeFlipFaces")
+    flip.location = (1620, 0)
+    links.new(smooth.outputs["Geometry"], flip.inputs["Mesh"])
+    links.new(group_in.outputs[_SHEET_TUBE_FLIP_SOCKET], flip.inputs["Selection"])
+
     set_mat = nodes.new("GeometryNodeSetMaterial")
     set_mat.location = (1700, 0)
-    links.new(smooth.outputs["Geometry"], set_mat.inputs["Geometry"])
+    links.new(flip.outputs["Mesh"], set_mat.inputs["Geometry"])
     links.new(
         group_in.outputs[_SHEET_TUBE_MATERIAL_SOCKET],
         set_mat.inputs["Material"],
@@ -1239,6 +1254,12 @@ def _sync_sheet_outline_midpoint_inputs(
     settings = getattr(obj, "bmanga_line_settings", None)
     if settings is None:
         return
+    # Solidify併用時はチューブ面を事前反転する（後段のuse_flip_normalsを打ち消す）
+    _set_node_input_if_changed(
+        mod,
+        _SHEET_TUBE_FLIP_SOCKET,
+        obj.modifiers.get(MODIFIER_NAME) is not None,
+    )
     boundary_only = _uses_boundary_tube_only(obj) and not plane_filter.is_sheet_mesh(obj)
     midpoint_factor = 0.0 if boundary_only else float(getattr(settings, "edge_smooth_factor", 0.0))
     midpoint_jitter = (
