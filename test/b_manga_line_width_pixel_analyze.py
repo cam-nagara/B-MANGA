@@ -37,10 +37,12 @@ def _mask_for_line_type(rgb: np.ndarray, line_type: str) -> np.ndarray:
     r = rgb[:, :, 0].astype(np.int16)
     g = rgb[:, :, 1].astype(np.int16)
     b = rgb[:, :, 2].astype(np.int16)
-    if line_type in {"outline", "intersection"}:
+    if line_type == "outline":
         return (r < 128) & (g < 128) & (b < 128)
     if line_type == "inner":
         return (b > 120) & ((b - r) > 45) & ((b - g) > 20)
+    if line_type == "intersection":
+        return (g > 80) & ((g - r) > 10) & ((g - b) > 10)
     if line_type == "selection":
         return (r > 120) & (b > 120) & (g < 170) & ((r - g) > 20) & ((b - g) > 20)
     raise ValueError(line_type)

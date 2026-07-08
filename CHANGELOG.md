@@ -3,6 +3,38 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-09 — B-MANGA Linerの交差線表示幅をpx基準へ補正 (B-MANGA v0.6.445 / B-MANGA Liner v0.3.162)
+
+### 症状
+
+- tokyo0004の実画像で、稜谷線・交差線のぶつ切り状態とピクセル幅を追加検証したところ、交差線の実表示幅が設定値より細く出る場合があった。
+- 0.5mm / 600DPI の期待値は約11.81pxだが、交差線だけは画像計測で8〜10px寄りに出やすかった。
+
+### 原因
+
+- 保存済み交差線と従来交差線の表示チューブ半径に、見た目用の0.8倍係数が残っていた。
+- 形状別の画像幅解析スクリプトも、現在の交差線色を拾わず黒線として判定する古い条件のままだった。
+
+### 修正
+
+- 交差線の表示チューブ半径を0.8倍せず、線幅設定どおりの直径になるようにした。
+- 画像幅解析で、現在の交差線色をアンチエイリアス込みで拾うようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- tokyo0004 (`Japanese_Streetscape_Tokyo_0004.blend`) を初期状態起動で読み込み、「レンダリング範囲内を選択」145メッシュに対してアウトライン、稜谷線、交差線を作成。Blenderがクラッシュせず終了することを確認。
+- 同検証で、アウトライン238件、稜谷線118件、交差線123件が作成されることを確認。
+- tokyo0004の線種別PNGを出力し、0.5mm / 600DPI の期待値11.81pxに対して、稜谷線は代表8箇所中7箇所が12.00〜12.81px、交差線は10.00〜12.17pxの範囲であることを確認。稜谷線の1箇所だけ14.00pxだったが、街灯の縦線密集・重なりによる計測上の太め判定と目視判断。
+- tokyo0004の通常表示・稜谷線のみ・交差線のみ・中間頂点補正ありの切り出し画像をAI目視し、Line2171、Object25668、街灯、建物外壁、電柱周辺で、大きなトゲ、やたら細かい凸凹、一本の線が不自然にぶつ切りになる状態が見られないことを確認。
+- 形状別の画像幅解析で、アウトライン、稜谷線、交差線、選択線の全84ケースが許容範囲内であることを確認。
+- `python -m py_compile addons\b_manga_line\intersection_cache.py addons\b_manga_line\intersection_shell.py test\b_manga_line_width_pixel_analyze.py`
+- `test/blender_b_manga_line_intersection_cache_check.py`
+- `test/blender_b_manga_line_uniform_width_check.py`
+- `test/blender_b_manga_line_width_all_shapes_visual_check.py`
+- `test/b_manga_line_width_pixel_analyze.py _verify\2026-07-06_bml_width_all_shapes_strict`
+
+---
+
 ## 2026-07-09 — B-MANGA Linerのtokyo0004作成クラッシュ回避とライン表示を補正 (B-MANGA v0.6.444 / B-MANGA Liner v0.3.161)
 
 ### 症状
