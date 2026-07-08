@@ -17,6 +17,7 @@ from b_manga_line import (  # noqa: E402
     core,
     inner_lines,
     intersection_lines,
+    line_visibility,
     outline_fast_update,
     outline_setup,
     presets,
@@ -243,6 +244,13 @@ def _target_modifier_present(obj: bpy.types.Object, target: str) -> bool:
     raise AssertionError(target)
 
 
+def _target_modifiers_visible(obj: bpy.types.Object, target: str) -> tuple[bool, ...]:
+    return tuple(
+        bool(mod.show_viewport) and bool(mod.show_render)
+        for mod in line_visibility.iter_target_line_modifiers(obj, (target,))
+    )
+
+
 def _values_equal(actual, expected) -> bool:
     if isinstance(expected, tuple):
         return all(
@@ -405,6 +413,90 @@ def _test_off_updates_are_light(counts, reset) -> None:
             )
 
 
+def _test_visual_updates_are_light(counts, reset) -> None:
+    cases = (
+        (
+            "outline",
+            {
+                "outline_thickness": 0.0021,
+                "outline_color": (0.20, 0.10, 0.05, 1.0),
+                "edge_smooth_factor": 0.25,
+                "use_outline_distance_limit": True,
+                "outline_max_distance": 0.1,
+            },
+        ),
+        (
+            "inner",
+            {
+                "inner_line_thickness": 0.0022,
+                "inner_line_color": (0.05, 0.20, 0.10, 1.0),
+                "inner_edge_smooth_factor": 0.25,
+                "use_inner_line_distance_limit": True,
+                "inner_line_max_distance": 0.1,
+            },
+        ),
+        (
+            "intersection",
+            {
+                "intersection_thickness": 0.0023,
+                "intersection_color": (0.10, 0.05, 0.20, 1.0),
+                "intersection_edge_smooth_factor": 0.25,
+                "intersection_edge_midpoint_angle": math.radians(80.0),
+                "use_intersection_distance_limit": True,
+                "intersection_max_distance": 0.1,
+            },
+        ),
+        (
+            "selection",
+            {
+                "selection_line_thickness": 0.0024,
+                "selection_line_color": (0.20, 0.05, 0.10, 1.0),
+                "selection_edge_smooth_factor": 0.25,
+                "selection_edge_midpoint_angle": math.radians(80.0),
+                "use_selection_line_distance_limit": True,
+                "selection_line_max_distance": 0.1,
+            },
+        ),
+    )
+    for target, values in cases:
+        objects = _setup_scene()
+        target_objects = [obj for obj in objects if _target_modifier_present(obj, target)]
+        assert target_objects, target
+        for obj in objects:
+            for prop_name, value in values.items():
+                _set_without_update(obj.bmanga_line_settings, prop_name, value)
+            update_state.mark_pending(obj, (target,), kind="visual")
+
+        reset()
+        assert (
+            bpy.ops.bmanga_line.update_visual_target("EXEC_DEFAULT", target=target)
+            == {"FINISHED"}
+        )
+        assert counts["line_settings_apply"] == 0, (target, counts)
+        assert counts["outline_apply"] == 0, (target, counts)
+        assert counts["outline_fast_update"] == 0, (target, counts)
+        assert counts["inner_apply"] == 0, (target, counts)
+        assert counts["intersection_apply"] == 0, (target, counts)
+        assert counts["selection_apply"] == 0, (target, counts)
+        assert counts["intersection_refresh"] == 0, (target, counts)
+        assert counts["intersection_width_refs"] == 0, (target, counts)
+        assert counts["view_update"] == 0, (target, counts)
+        assert (target,) in counts["camera_scopes"], (target, counts)
+        for obj in target_objects:
+            assert not any(_target_modifiers_visible(obj, target)), (target, obj.name)
+            assert target not in set(update_state.pending_visual_targets(obj)), (
+                target,
+                obj.name,
+                update_state.pending_visual_targets(obj),
+            )
+        for obj in [item for item in objects if item not in target_objects]:
+            assert target in set(update_state.pending_visual_targets(obj)), (
+                target,
+                obj.name,
+                update_state.pending_visual_targets(obj),
+            )
+
+
 def _test_full_apply_clears_pending(objects, counts, reset) -> None:
     for obj in objects:
         update_state.mark_pending(obj)
@@ -449,6 +541,7 @@ def main() -> None:
         _test_setting_edits_are_deferred(objects, counts, reset)
         _test_target_update_clears_only_target(objects, counts, reset)
         _test_off_updates_are_light(counts, reset)
+        _test_visual_updates_are_light(counts, reset)
         objects = _setup_scene()
         _test_full_apply_clears_pending(objects, counts, reset)
         _test_preset_apply_is_settings_only(objects, counts, reset)

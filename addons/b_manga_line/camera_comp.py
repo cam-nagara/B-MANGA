@@ -968,7 +968,7 @@ def refresh_objects(
         _updating = False
 
 
-def refresh_visibility_objects(context, objects) -> bool:
+def refresh_visibility_objects(context, objects, *, visibility_targets=None) -> bool:
     """指定オブジェクトだけ表示距離・カメラ範囲外の表示状態を更新."""
     global _updating
     if _updating:
@@ -984,7 +984,14 @@ def refresh_visibility_objects(context, objects) -> bool:
             return True
         cam_loc = camera.matrix_world.translation
         cam_fwd = camera.matrix_world.to_quaternion() @ Vector((0, 0, -1))
-        _update_visibility(scene, camera, cam_loc, cam_fwd, targets)
+        _update_visibility(
+            scene,
+            camera,
+            cam_loc,
+            cam_fwd,
+            targets,
+            line_targets=visibility_targets,
+        )
         return True
     finally:
         _updating = False

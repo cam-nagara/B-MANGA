@@ -208,7 +208,7 @@ def _assert_update_buttons_are_in_line_settings(active: bpy.types.Object) -> Non
     action_layout = _FakeUILayout()
     panels._draw_actions(action_layout, bpy.context, active)
     assert not any(
-        op.idname == "bmanga_line.update_target"
+        op.idname in {"bmanga_line.update_target", "bmanga_line.update_visual_target"}
         for op in action_layout.operators
     ), [op.idname for op in action_layout.operators]
 
@@ -218,17 +218,28 @@ def _assert_update_buttons_are_in_line_settings(active: bpy.types.Object) -> Non
         bpy.context,
         active.bmanga_line_settings,
     )
-    update_ops = [
+    create_ops = [
         op for op in settings_layout.operators
         if op.idname == "bmanga_line.update_target"
     ]
-    assert [op.target for op in update_ops] == [
+    visual_ops = [
+        op for op in settings_layout.operators
+        if op.idname == "bmanga_line.update_visual_target"
+    ]
+    assert [op.target for op in create_ops] == [
         "outline",
         "inner",
         "intersection",
         "selection",
-    ], [(op.idname, getattr(op, "target", None)) for op in update_ops]
-    assert all(op.text == "更新" for op in update_ops)
+    ], [(op.idname, getattr(op, "target", None)) for op in create_ops]
+    assert [op.target for op in visual_ops] == [
+        "outline",
+        "inner",
+        "intersection",
+        "selection",
+    ], [(op.idname, getattr(op, "target", None)) for op in visual_ops]
+    assert all(op.text == "作成" for op in create_ops)
+    assert all(op.text == "更新" for op in visual_ops)
     assert settings_layout.separator_count >= 4, settings_layout.separator_count
 
 

@@ -988,6 +988,99 @@ def _update_visibility_rules(objects: list[bpy.types.Object], context) -> None:
         camera_comp.refresh_visibility_objects(context, needs_refresh)
 
 
+def _target_distance_limit_enabled(settings, target: str) -> bool:
+    if target == "inner":
+        return bool(settings.use_inner_line_distance_limit)
+    if target == "intersection":
+        return bool(settings.use_intersection_distance_limit)
+    if target == "selection":
+        return bool(settings.use_selection_line_distance_limit)
+    return bool(settings.use_outline_distance_limit)
+
+
+def _update_target_visibility_rules(
+    objects: list[bpy.types.Object],
+    context,
+    target: str,
+) -> None:
+    needs_refresh = []
+    for obj in objects:
+        settings = obj.bmanga_line_settings
+        if settings.use_camera_culling or _target_distance_limit_enabled(settings, target):
+            needs_refresh.append(obj)
+        else:
+            visible = not bool(obj.get(core.PROP_LINES_HIDDEN, False))
+            core.set_line_targets_visibility(obj, visible, (target,))
+    if needs_refresh and not camera_comp.refresh_visibility_objects(
+        context,
+        needs_refresh,
+        visibility_targets=(target,),
+    ):
+        for obj in needs_refresh:
+            visible = not bool(obj.get(core.PROP_LINES_HIDDEN, False))
+            core.set_line_targets_visibility(obj, visible, (target,))
+
+
+def _update_generated_visual_parameters(
+    objects: list[bpy.types.Object],
+    target: str,
+) -> None:
+    for obj in objects:
+        settings = obj.bmanga_line_settings
+        if target == "inner":
+            inner_lines.update_parameters(
+                obj,
+                offset=settings.inner_line_offset,
+                material=outline_setup.get_line_material(obj, "inner"),
+                **_inner_midpoint_kwargs(settings),
+            )
+        elif target == "intersection":
+            intersection_lines.update_parameters(
+                obj,
+                offset=settings.intersection_line_offset,
+                material=outline_setup.get_line_material(obj, "intersection"),
+            )
+        elif target == "selection":
+            selection_lines.update_parameters(
+                obj,
+                offset=settings.selection_line_offset,
+                material=outline_setup.get_line_material(obj, "selection"),
+                **_selection_midpoint_kwargs(settings),
+            )
+
+
+def refresh_target_visuals(
+    target: str,
+    objects: list[bpy.types.Object],
+    context,
+) -> list[bpy.types.Object]:
+    """作成済みラインの見た目だけを線種別に更新する."""
+    target = str(target)
+    line_objects = _line_objects(objects)
+    targets = _generated_line_objects(line_objects, target)
+    if not targets:
+        return []
+
+    if target == "outline":
+        _update_outline_color(targets)
+        _update_outline_offset(targets)
+        _update_outline_flag(targets, "use_even_offset", "even_thickness")
+        _update_outline_flag(targets, "use_rim", "use_rim")
+        _update_transparent_protection(targets)
+        _update_width_target(targets, context, "outline")
+        _update_outline_thickness(targets, context)
+    else:
+        _update_auto_subdivision(targets, context)
+        _update_match_subsurf_viewport_to_render(targets)
+        _update_generated_color(targets, target)
+        _update_generated_visual_parameters(targets, target)
+        _update_width_target(targets, context, target)
+        _update_generated_thickness(targets, context, target)
+
+    _update_target_visibility_rules(targets, context, target)
+    return targets
+
+
 def refresh_propagated_property(
     prop_name: str,
     objects: list[bpy.types.Object],

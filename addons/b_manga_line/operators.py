@@ -110,10 +110,10 @@ def _target_enabled(obj: bpy.types.Object, target: str) -> bool:
 
 
 class BMANGA_LINE_OT_update_target(bpy.types.Operator):
-    """選択オブジェクトの指定ラインだけを明示更新"""
+    """選択オブジェクトの指定ラインだけを作成・再作成"""
 
     bl_idname = "bmanga_line.update_target"
-    bl_label = "ラインを更新"
+    bl_label = "ラインを作成"
     bl_options = {"REGISTER", "UNDO"}
 
     target: EnumProperty(items=_LINE_TARGET_ITEMS, default="outline")  # type: ignore[valid-type]
@@ -189,7 +189,47 @@ class BMANGA_LINE_OT_update_target(bpy.types.Operator):
             "intersection": "交差線",
             "selection": "選択線",
         }
-        self.report({"INFO"}, f"{count} オブジェクトの{labels.get(target, 'ライン')}を更新しました")
+        self.report({"INFO"}, f"{count} オブジェクトの{labels.get(target, 'ライン')}を作成しました")
+        return {"FINISHED"}
+
+
+class BMANGA_LINE_OT_update_visual_target(bpy.types.Operator):
+    """選択オブジェクトの作成済みラインの見た目だけを更新"""
+
+    bl_idname = "bmanga_line.update_visual_target"
+    bl_label = "ラインを更新"
+    bl_options = {"REGISTER", "UNDO"}
+
+    target: EnumProperty(items=_LINE_TARGET_ITEMS, default="outline")  # type: ignore[valid-type]
+
+    @classmethod
+    def poll(cls, context):
+        return any(has_line(obj) for obj in context.selected_objects)
+
+    def execute(self, context):
+        from . import batch_update, update_state
+
+        target = str(self.target)
+        updated_objects = batch_update.refresh_target_visuals(
+            target,
+            list(context.selected_objects),
+            context,
+        )
+        update_state.clear_pending_many(
+            updated_objects,
+            (target,),
+            kind="visual",
+        )
+        labels = {
+            "outline": "アウトライン",
+            "inner": "稜谷線",
+            "intersection": "交差線",
+            "selection": "選択線",
+        }
+        self.report(
+            {"INFO"},
+            f"{len(updated_objects)} オブジェクトの{labels.get(target, 'ライン')}を更新しました",
+        )
         return {"FINISHED"}
 
 
@@ -548,6 +588,7 @@ class BMANGA_LINE_OT_setup_aov_composite(bpy.types.Operator):
 _CLASSES = (
     BMANGA_LINE_OT_apply,
     BMANGA_LINE_OT_update_target,
+    BMANGA_LINE_OT_update_visual_target,
     BMANGA_LINE_OT_select_render_range_meshes,
     BMANGA_LINE_OT_remove,
     BMANGA_LINE_OT_set_visibility,

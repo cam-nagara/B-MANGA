@@ -200,7 +200,10 @@ def _draw_line_settings(layout, context, settings) -> None:
         section = layout.column(align=True)
         header = section.row(align=True)
         header.label(text=label)
-        op = header.operator("bmanga_line.update_target", text="更新", icon="FILE_REFRESH")
+        buttons = header.row(align=True)
+        op = buttons.operator("bmanga_line.update_target", text="作成", icon="ADD")
+        op.target = target
+        op = buttons.operator("bmanga_line.update_visual_target", text="更新", icon="FILE_REFRESH")
         op.target = target
         draw_func(section, context, settings)
 

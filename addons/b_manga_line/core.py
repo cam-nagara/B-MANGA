@@ -162,8 +162,9 @@ def _propagate(self, context, prop_name):
         _propagating = False
     if changed:
         from . import update_state
-        update_state.mark_pending_many(
+        update_state.mark_property_pending_many(
             changed,
+            prop_name,
             update_state.targets_for_property(prop_name),
         )
         return True
@@ -213,8 +214,9 @@ def _defer_line_setting(self, context, prop_name: str, targets=None) -> None:
     owner = self.id_data
     if owner.type == "MESH":
         from . import update_state
-        update_state.mark_pending_many(
+        update_state.mark_property_pending_many(
             _selected_mesh_targets(owner, context),
+            prop_name,
             targets or update_state.targets_for_property(prop_name),
         )
 
