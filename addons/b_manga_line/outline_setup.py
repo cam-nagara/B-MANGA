@@ -1260,13 +1260,11 @@ def _sync_sheet_outline_midpoint_inputs(
         _SHEET_TUBE_FLIP_SOCKET,
         obj.modifiers.get(MODIFIER_NAME) is not None,
     )
-    boundary_only = _uses_boundary_tube_only(obj) and not plane_filter.is_sheet_mesh(obj)
-    midpoint_factor = 0.0 if boundary_only else float(getattr(settings, "edge_smooth_factor", 0.0))
-    midpoint_jitter = (
-        0.0
-        if boundary_only
-        else float(getattr(settings, "edge_midpoint_jitter_percent", 0.0))
-    )
+    # かつての「境界辺512超の非板ポリはチューブのみ使用」経路向けに
+    # 中間頂点の乱れを止める分岐があったが、経路廃止で条件が恒偽化して
+    # いたため撤去（挙動変更なし。板ポリ・混在メッシュとも設定値を使う）。
+    midpoint_factor = float(getattr(settings, "edge_smooth_factor", 0.0))
+    midpoint_jitter = float(getattr(settings, "edge_midpoint_jitter_percent", 0.0))
     _set_node_input_if_changed(
         mod,
         _SHEET_TUBE_MIDPOINT_FACTOR_SOCKET,
