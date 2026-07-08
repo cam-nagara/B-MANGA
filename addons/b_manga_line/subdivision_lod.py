@@ -18,6 +18,7 @@ MAX_RENDER_LEVELS = 4
 DISTANCE_STEP_METERS = 5.0
 DEFAULT_LINE_RESAMPLE_COUNT = 4
 _MIN_LINE_RESAMPLE_COUNT = 1
+_MIDPOINT_DISPLAY_RESAMPLE_COUNT = 3
 _ROUND_LOOP_RESAMPLE_CAP = 96
 _MAX_LINE_SUBDIVIDE_CUTS = 8
 _SHARP_EDGE_ANGLE_EPSILON = 1.0e-7
@@ -276,6 +277,26 @@ def line_resample_count(obj: bpy.types.Object, *, for_render: bool = False) -> i
     return max(1, min(_MAX_LINE_SUBDIVIDE_CUTS, 2 ** level))
 
 
+def midpoint_display_resample_count(requested: int | None = None) -> int:
+    """中間頂点の見た目調整に使う表示分割数を返す.
+
+    保存済み線の中心線は評価済みメッシュから作るため、形状追従は作成段階で
+    完了している。ここでサブディビジョン段数をそのまま使うと、乱れが細かい
+    分割点すべてへ乗って凸凹になるため、線幅カーブに必要な25/50/75%点までに
+    抑える。
+    """
+    return _MIDPOINT_DISPLAY_RESAMPLE_COUNT
+
+
+def display_resample_count(
+    needs_midpoint_controls: bool,
+    requested: int | None = None,
+) -> int:
+    if not needs_midpoint_controls:
+        return _MIN_LINE_RESAMPLE_COUNT
+    return midpoint_display_resample_count(requested)
+
+
 def _closed_loop_min_resample_count(obj: bpy.types.Object) -> int:
     """Prevent round rim loops from being resampled into triangles at low LOD."""
     if obj.type != "MESH" or obj.data is None:
@@ -317,7 +338,7 @@ def sync_generated_line_subdivision(
     if obj.type != "MESH":
         return False
     try:
-        from . import core, inner_lines
+        from . import core, inner_line_cache, inner_lines
 
         mod = obj.modifiers.get(core.GN_MODIFIER_NAME)
         if mod is None or mod.node_group is None:
@@ -326,6 +347,18 @@ def sync_generated_line_subdivision(
         if sid is None:
             return False
         count = line_resample_count(obj, for_render=for_render)
+        if inner_line_cache.is_cached_modifier(mod):
+            settings = getattr(obj, "bmanga_line_settings", None)
+            needs_midpoint_controls = False
+            if settings is not None:
+                needs_midpoint_controls = (
+                    (
+                        bool(getattr(settings, "auto_subdivision_for_midpoint", False))
+                        and abs(float(getattr(settings, "inner_edge_smooth_factor", 0.0))) > 1.0e-7
+                    )
+                    or abs(float(getattr(settings, "inner_edge_midpoint_jitter_percent", 0.0))) > 1.0e-7
+                )
+            count = display_resample_count(needs_midpoint_controls, count)
         try:
             current = int(mod[sid])
         except (KeyError, TypeError, ValueError):

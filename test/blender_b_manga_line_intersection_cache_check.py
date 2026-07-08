@@ -16,6 +16,7 @@ from b_manga_line import (  # noqa: E402
     camera_comp,
     core,
     inner_line_cache,
+    inner_lines,
     intersection_cache,
     intersection_lines,
     presets,
@@ -106,6 +107,16 @@ def main() -> None:
         assert int(_socket_value(mod, "線の分割数")) == 1, (
             "中間頂点調整が無効な交差線に余分な分割が入っています"
         )
+        source.bmanga_line_settings.intersection_edge_smooth_factor = -1.0
+        source.bmanga_line_settings.intersection_edge_midpoint_jitter_percent = 50.0
+        assert intersection_lines.update_parameters(source)
+        assert int(_socket_value(mod, "線の分割数")) == 3, (
+            "中間頂点調整が有効な交差線の表示分割が過剰です"
+        )
+        source.bmanga_line_settings.intersection_edge_smooth_factor = 0.0
+        source.bmanga_line_settings.intersection_edge_midpoint_jitter_percent = 0.0
+        assert intersection_lines.update_parameters(source)
+        assert int(_socket_value(mod, "線の分割数")) == 1
 
         cache_name = str(source.get(intersection_cache.CACHE_OBJECT_PROP, "") or "")
         cache = bpy.data.objects.get(cache_name)
@@ -188,6 +199,16 @@ def main() -> None:
         assert inner_mod is not None, "稜谷線の表示モディファイアがありません"
         assert int(_socket_value(inner_mod, "線の分割数")) == 1, (
             "中間頂点調整が無効な稜谷線に余分な分割が入っています"
+        )
+        source.bmanga_line_settings.inner_edge_smooth_factor = -1.0
+        source.bmanga_line_settings.inner_edge_midpoint_jitter_percent = 50.0
+        assert inner_lines.update_parameters(
+            source,
+            midpoint_factor=-1.0,
+            midpoint_jitter_percent=50.0,
+        )
+        assert int(_socket_value(inner_mod, "線の分割数")) == 3, (
+            "中間頂点調整が有効な稜谷線の表示分割が過剰です"
         )
         inner_cache_name = str(source.get(inner_line_cache.CACHE_OBJECT_PROP, "") or "")
         inner_cache = bpy.data.objects.get(inner_cache_name)

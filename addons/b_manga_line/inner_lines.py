@@ -984,7 +984,7 @@ def apply_inner_lines(
             abs(float(midpoint_factor or 0.0)) > 1.0e-7
             or abs(float(midpoint_jitter_percent or 0.0)) > 1.0e-7
         ):
-            resample_count = subdivision_lod.line_resample_count(obj)
+            resample_count = subdivision_lod.midpoint_display_resample_count()
         return inner_line_cache.apply_cached_inner_lines(
             obj,
             angle=angle,

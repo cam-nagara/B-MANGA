@@ -559,10 +559,11 @@ def _set_width_control_parameters(mod: bpy.types.Modifier) -> None:
     midpoint_jitter_percent = float(
         getattr(settings, "intersection_edge_midpoint_jitter_percent", 0.0)
     )
-    resample_count = 1
-    if _needs_curve_subdivision(midpoint_factor, midpoint_jitter_percent):
-        from . import subdivision_lod
-        resample_count = subdivision_lod.line_resample_count(owner)
+    from . import subdivision_lod
+
+    resample_count = subdivision_lod.display_resample_count(
+        _needs_curve_subdivision(midpoint_factor, midpoint_jitter_percent)
+    )
     values = {
         _MIDPOINT_FACTOR_SOCKET: midpoint_factor,
         _MIDPOINT_JITTER_SOCKET: midpoint_jitter_percent,

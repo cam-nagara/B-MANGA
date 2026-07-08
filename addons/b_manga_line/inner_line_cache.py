@@ -700,13 +700,21 @@ def _set_width_control_parameters(
     if values[_RESAMPLE_COUNT_SOCKET] is None:
         from . import subdivision_lod
 
-        values[_RESAMPLE_COUNT_SOCKET] = (
-            subdivision_lod.line_resample_count(owner)
-            if _needs_curve_subdivision(
+        values[_RESAMPLE_COUNT_SOCKET] = subdivision_lod.display_resample_count(
+            _needs_curve_subdivision(
                 values[_MIDPOINT_FACTOR_SOCKET],
                 values[_MIDPOINT_JITTER_SOCKET],
             )
-            else 1
+        )
+    else:
+        from . import subdivision_lod
+
+        values[_RESAMPLE_COUNT_SOCKET] = subdivision_lod.display_resample_count(
+            _needs_curve_subdivision(
+                values[_MIDPOINT_FACTOR_SOCKET],
+                values[_MIDPOINT_JITTER_SOCKET],
+            ),
+            values[_RESAMPLE_COUNT_SOCKET],
         )
     for name, value in values.items():
         if value is None:

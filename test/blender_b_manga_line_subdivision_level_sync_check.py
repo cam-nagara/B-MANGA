@@ -98,13 +98,27 @@ def _assert_inner_levels_sync() -> None:
 
     mod.levels = 2
     subdivision_lod.sync_generated_line_subdivision(obj)
-    assert _inner_resample_count(obj) == 4
+    assert _inner_resample_count(obj) == 1
 
     subdivision_lod.sync_generated_line_subdivision(obj, for_render=True)
-    assert _inner_resample_count(obj) == 8
+    assert _inner_resample_count(obj) == 1
 
     subdivision_lod.sync_generated_line_subdivision(obj, for_render=False)
-    assert _inner_resample_count(obj) == 4
+    assert _inner_resample_count(obj) == 1
+
+    obj.bmanga_line_settings.inner_edge_smooth_factor = -1.0
+    obj.bmanga_line_settings.inner_edge_midpoint_jitter_percent = 50.0
+    assert inner_lines.update_parameters(
+        obj,
+        midpoint_factor=-1.0,
+        midpoint_jitter_percent=50.0,
+    )
+    assert _inner_resample_count(obj) == 3
+
+    mod.levels = 4
+    mod.render_levels = 4
+    subdivision_lod.sync_generated_line_subdivision(obj, for_render=True)
+    assert _inner_resample_count(obj) == 3
 
 
 def _assert_inner_lines_do_not_follow_subdivision_grid() -> None:
