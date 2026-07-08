@@ -96,7 +96,9 @@ def _assert_camera_culled_line(obj: bpy.types.Object) -> None:
 
 
 def _assert_distance_threshold_hides_at_exact_distance(target: bpy.types.Object) -> None:
-    obj = _make_cube("BML_距離境界", (0.5, 0.0, 0.0))
+    # 距離制限は「境界への最短距離」基準（作成時判定と同一）。
+    # カメラ（原点・-Z向き）の視野内で、手前面までがちょうど 0.5 になる配置。
+    obj = _make_cube("BML_距離境界", (0.0, 0.0, -1.0))
     settings = obj.bmanga_line_settings
     settings.inner_line_enabled = True
     settings.intersection_enabled = True

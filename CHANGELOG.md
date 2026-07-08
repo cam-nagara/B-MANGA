@@ -3,6 +3,36 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-09 — B-MANGA Linerのカメラ範囲圏外判定を境界基準へ修正 (B-MANGA v0.6.446 / B-MANGA Liner v0.3.163)
+
+### 症状
+
+- tokyo0004で「レンダリング範囲内を選択」→「ラインを適用」後、画面内に大きく写っているビル・道路・地下鉄入口のアウトラインが表示されず、オブジェクト選択ハイライト（オレンジ線）の輪郭にすら届かなかった。
+
+### 原因
+
+- 「カメラ範囲圏外を非表示」の判定が、オブジェクトの**原点**方向を基準にした円錐テストだったため、原点がメッシュ中心から大きく離れたインポート資産（tokyo0004では6オブジェクト、原点ズレ12〜57m）が画面内でも圏外と誤判定され、アウトラインのモディファイアが非表示化されていた。
+- 「レンダリング範囲内を選択」は正しい境界ボックス投影で判定するため、「選択はされるのにラインだけ消える」非対称が起きていた。
+- あわせて、アウトライン用Solidifyとシートアウトラインを両方持つオブジェクトでは、圏外判定がSolidify側しか表示切替していなかった。
+- 「遠距離ラインを非表示」の距離も原点基準だったため、道路のような巨大オブジェクトはカメラ直下にあっても原点距離だけで丸ごと消え得た。
+
+### 修正
+
+- 圏外判定をワールド境界球（境界ボックス中心＋半径）基準へ変更（パノラマカメラ判定と同じ `_object_world_sphere` を使用。`camera_comp.py` の `_update_visibility`）。
+- 「遠距離ラインを非表示」の距離を、作成時判定と同じ「境界への最短距離」（`object_distance_from_camera`）へ統一。
+- 圏外判定の表示切替対象にアウトライン系モディファイア両方（Solidify＋シートアウトライン）を含めた。
+- 距離制限の境界値テストを新基準の配置へ更新（`test/blender_b_manga_line_preset_visibility_check.py`）。未使用になった `_get_object_bound_radius` を削除。
+
+### 検証 (Blender 5.1.2 実機)
+
+- tokyo0004 (`Japanese_Streetscape_Tokyo_0004.blend`) ライブセッションで、誤って非表示だった6オブジェクト（Object26047/26048=左のビル、Object26055=右上のビル、Box078/Box293/S_SubwayA=道路一帯）のアウトライン表示が復帰し、「レンダリング範囲内を選択」137メッシュにアウトライン非表示が残らないことを確認。ビューポート目視で道路縁・左端ビルのラインが出現。
+- `test/blender_b_manga_line_preset_visibility_check.py`（圏外テスト・距離制限境界値を含む）PASS
+- `test/blender_b_manga_line_distance_visibility_preserves_check.py` PASS
+- `test/blender_b_manga_line_camera_view_creation_range_check.py` PASS
+- `python -m py_compile addons\b_manga_line\camera_comp.py`
+
+---
+
 ## 2026-07-09 — B-MANGA Linerの交差線表示幅をpx基準へ補正 (B-MANGA v0.6.445 / B-MANGA Liner v0.3.162)
 
 ### 症状

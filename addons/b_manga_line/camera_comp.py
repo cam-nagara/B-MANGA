@@ -264,17 +264,6 @@ def _get_camera_half_angle(cam_data, scene) -> float:
     return math.pi
 
 
-def _get_object_bound_radius(obj) -> float:
-    """ワールドスケール込みのバウンディング球半径."""
-    if not obj.bound_box:
-        return 0.0
-    bb = [Vector(corner) for corner in obj.bound_box]
-    center = sum(bb, Vector()) / 8
-    local_r = max((v - center).length for v in bb)
-    scale = obj.matrix_world.to_scale()
-    return local_r * max(abs(scale.x), abs(scale.y), abs(scale.z))
-
-
 # ------------------------------------------------------------------
 # FOV スケール
 # ------------------------------------------------------------------
@@ -804,18 +793,23 @@ def _update_visibility(scene, camera, cam_loc, cam_fwd, objects=None, line_targe
         ):
             continue
 
-        outline_mod = obj.modifiers.get(MODIFIER_NAME)
-        if outline_mod is None:
-            outline_mod = obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME)
+        outline_mods = [
+            mod
+            for mod in (
+                obj.modifiers.get(MODIFIER_NAME),
+                obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME),
+            )
+            if mod is not None
+        ]
         inner_mod = obj.modifiers.get(GN_MODIFIER_NAME)
         selection_mod = obj.modifiers.get(SELECTION_LINE_MODIFIER_NAME)
         intersection_mods = list(iter_intersection_modifiers(obj))
-        if outline_mod is None and inner_mod is None and selection_mod is None and not intersection_mods:
+        if not outline_mods and inner_mod is None and selection_mod is None and not intersection_mods:
             continue
 
         if bool(obj.get(PROP_LINES_HIDDEN, False)):
             if target_set is None or "outline" in target_set:
-                if outline_mod is not None:
+                for outline_mod in outline_mods:
                     _set_modifier_visibility(outline_mod, False)
             if target_set is None or "inner" in target_set:
                 if inner_mod is not None:
@@ -828,7 +822,10 @@ def _update_visibility(scene, camera, cam_loc, cam_fwd, objects=None, line_targe
                     _set_modifier_visibility(intersection_mod, False)
             continue
 
-        to_obj = obj.matrix_world.translation - cam_loc
+        # 原点はメッシュ中心から大きく離れていることがある（インポート資産等）ため、
+        # 原点ではなくワールド境界球を基準に判定する。
+        center, bound_r = _object_world_sphere(obj)
+        to_obj = center - cam_loc
         dist = to_obj.length
 
         # ビューカリング判定
@@ -838,9 +835,18 @@ def _update_visibility(scene, camera, cam_loc, cam_fwd, objects=None, line_targe
                 half_angle_cache = _get_camera_half_angle(camera.data, scene)
             margin = settings.culling_margin
             angle = cam_fwd.angle(to_obj)
-            bound_r = _get_object_bound_radius(obj)
             angular_r = math.atan2(bound_r, dist)
             in_view = (angle - angular_r) < (half_angle_cache + margin)
+
+        if (
+            do_outline_distance
+            or do_inner_distance
+            or do_intersection_distance
+            or do_selection_distance
+        ):
+            # 距離制限は作成時の判定と同じ「境界への最短距離」で測る。
+            # 巨大オブジェクト（道路等）が中心距離だけで丸ごと消えないように。
+            dist = object_distance_from_camera(obj, camera)
 
         outline_in_range = (
             not do_outline_distance or dist < settings.outline_max_distance
@@ -865,9 +871,10 @@ def _update_visibility(scene, camera, cam_loc, cam_fwd, objects=None, line_targe
             )
         )
 
-        if outline_mod is not None and (target_set is None or "outline" in target_set):
+        if outline_mods and (target_set is None or "outline" in target_set):
             visible = in_view and outline_in_range and outline_enabled
-            _set_modifier_visibility(outline_mod, visible)
+            for outline_mod in outline_mods:
+                _set_modifier_visibility(outline_mod, visible)
 
         if target_set is None or "intersection" in target_set:
             for intersection_mod in intersection_mods:
