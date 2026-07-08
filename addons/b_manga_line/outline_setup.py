@@ -65,9 +65,13 @@ _SHEET_TUBE_WIDTH_CURVE_75_SOCKET = "変化グラフ 75%"
 # Solidify(use_flip_normals)が後段でチューブごと法線反転するため、
 # 併用時はチューブ面を事前反転して打ち消す（片面ライン素材の可視性維持）。
 _SHEET_TUBE_FLIP_SOCKET = "Solidify反転補正"
-_SHEET_TUBE_ANGLE_SPLIT_LABEL = "BML_SheetOutlinePathWidthV18"
-_SHEET_TUBE_SUBDIVIDE_LABEL = "BML_SheetOutlinePathWidthV18Midpoints"
-_SHEET_TUBE_SAFE_SCALE_LABEL = "BML_SheetOutlineSafeScaleV18"
+# V18→V19: Join Geometryへの接続順を逆転しGN出力の素材スロット順を
+# オブジェクトのスロット順と一致させる修正（2026-07-09）。保存済み.blendの
+# 旧ツリーは接続順を保持したままなので、ラベル不一致で必ず再構築させる
+# （docs/tokyo0004_boundary_tube_material_order_plan_2026-07-09.md 参照）。
+_SHEET_TUBE_ANGLE_SPLIT_LABEL = "BML_SheetOutlinePathWidthV19"
+_SHEET_TUBE_SUBDIVIDE_LABEL = "BML_SheetOutlinePathWidthV19Midpoints"
+_SHEET_TUBE_SAFE_SCALE_LABEL = "BML_SheetOutlineSafeScaleV19"
 _MIN_CURVE_TO_MESH_SCALE = 0.10
 _MAX_MIXED_BOUNDARY_TUBE_EDGES = 512
 _BOUNDARY_ONLY_RATIO = 0.35
@@ -550,11 +554,43 @@ def _first_outline_slot(obj: bpy.types.Object) -> int | None:
     return None
 
 
+def _ensure_hidden_rim_material_slots(
+    obj: bpy.types.Object,
+    material_offset: int,
+) -> int:
+    """BML_SheetRimHidden を元素材数ぶんパディングし、加算オフセット値を返す.
+
+    Solidify の `material_offset_rim` は絶対スロット番号ではなく「元の面の
+    素材番号への加算オフセット」。元素材が n 個（インデックス 0..n-1）の
+    とき、アウトライン素材帯 [n, 2n) と同じ要領で非表示素材帯を
+    [2n, 3n) に置けば、元面番号 i + 2n は常にこの非表示帯に収まる
+    （クランプ挙動には依存しない設計。
+    docs/tokyo0004_boundary_tube_material_order_plan_2026-07-09.md 参照）。
+    """
+    source_count = max(1, material_offset)
+    hidden_start = material_offset + source_count
+    hidden_end = hidden_start + source_count
+    hidden = _get_or_create_hidden_rim_material()
+    while len(obj.data.materials) < hidden_end:
+        obj.data.materials.append(hidden)
+    for index in range(hidden_start, hidden_end):
+        if obj.data.materials[index] is not hidden:
+            obj.data.materials[index] = hidden
+    return material_offset * 2
+
+
 def _ensure_outline_material_slots(
     obj: bpy.types.Object,
     mat: bpy.types.Material,
 ) -> int:
-    """Solidify の素材ずらし先を、元素材数ぶんライン素材で埋める."""
+    """Solidify の素材ずらし先を、元素材数ぶんライン素材で埋める.
+
+    あわせて BML_SheetRimHidden も同じ n 個ぶんパディングする
+    （`_ensure_hidden_rim_material_slots` 参照）。複数素材オブジェクトで
+    境界チューブを併用した場合に、Solidifyのリム面が
+    `material_offset_rim` の絶対番号扱いでズレて可視ライン素材へ
+    化ける不具合の修正（2026-07-09）。
+    """
     first = _first_outline_slot(obj)
     if first is None:
         first = len(obj.data.materials)
@@ -565,6 +601,7 @@ def _ensure_outline_material_slots(
         obj.data.materials.append(mat)
     for index in range(first, needed):
         obj.data.materials[index] = mat
+    _ensure_hidden_rim_material_slots(obj, first)
     return first
 
 
@@ -1062,8 +1099,23 @@ def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
 
     join = nodes.new("GeometryNodeJoinGeometry")
     join.location = (1880, 0)
-    links.new(group_in.outputs["Geometry"], join.inputs["Geometry"])
+    # 【重要】Join Geometry のマルチ入力ソケットは「後から接続したリンクが
+    # 先頭（先に評価される）」という挙動を持つ（Blender公式APIで保証された
+    # 仕様ではないが、2026-07-09 実機検証で確認済み）。そのため見た目の
+    # 呼び出し順とは逆に、あえて set_mat（チューブ側）を先に、group_in
+    # （元メッシュ側）を後に接続し、実際の結合順を「元メッシュ→チューブ」に
+    # している。これによりGN出力の素材スロット表がオブジェクトの
+    # マテリアルスロット順と一致し、後段Solidifyの material_offset /
+    # material_offset_rim のインデックス加算が正しく効く（逆順のままだと
+    # 柱状オブジェクトのシェル面が非表示素材(BML_SheetRimHidden)に化けて
+    # 消える —
+    # docs/tokyo0004_boundary_tube_material_order_plan_2026-07-09.md 参照）。
+    # この挙動はAPI仕様として保証されていないため、回帰テスト
+    # （評価後メッシュのスロット順 == オブジェクトのスロット順のアサート、
+    # test/blender_b_manga_line_boundary_tube_material_order_check.py）で
+    # 恒久監視すること。
     links.new(set_mat.outputs["Geometry"], join.inputs["Geometry"])
+    links.new(group_in.outputs["Geometry"], join.inputs["Geometry"])
     links.new(join.outputs["Geometry"], group_out.inputs["Geometry"])
     return tree
 
@@ -1121,6 +1173,7 @@ def ensure_sheet_outline(
     line_mat: bpy.types.Material | None,
     *,
     thickness: float | None = None,
+    material_offset: int | None = None,
 ) -> None:
     """境界辺にチューブアウトラインを作る。境界がなければ撤去."""
     needs_tube = _needs_boundary_outline_tube(obj)
@@ -1154,16 +1207,20 @@ def ensure_sheet_outline(
 
     if solidify_mod is not None:
         # 境界辺はチューブで描くため、Solidifyのリム面は二重線にしない。
-        hidden = _get_or_create_hidden_rim_material()
-        hidden_index = None
-        for index, slot in enumerate(obj.material_slots):
-            if slot.material is hidden:
-                hidden_index = index
-                break
-        if hidden_index is None:
-            obj.data.materials.append(hidden)
-            hidden_index = len(obj.material_slots) - 1
-        solidify_mod.material_offset_rim = hidden_index
+        # material_offset_rim は絶対スロット番号ではなく「元の面の素材番号への
+        # 加算オフセット」（2026-07-09 に判明。以前はここで絶対番号を代入して
+        # いたため、複数素材オブジェクトでリムが可視ライン素材に化ける
+        # 不具合があった）。呼び出し元が material_offset(=n) を渡さない場合は
+        # 既存のアウトライン素材スロットから逆算する。
+        offset = (
+            material_offset
+            if material_offset is not None
+            else _first_outline_slot(obj)
+        )
+        if offset is not None and offset > 0:
+            solidify_mod.material_offset_rim = _ensure_hidden_rim_material_slots(
+                obj, offset,
+            )
 
     from . import modifier_stack
     modifier_stack.reorder_line_modifiers(obj)
@@ -1366,10 +1423,17 @@ def apply_outline(
         mod.use_even_offset = even_thickness
         _configure_solidify_shape(obj, mod, use_rim, offset)
         mod.material_offset = material_offset
+        # material_offset_rim は加算オフセット（絶対番号ではない）。
+        # 境界チューブを作らないオブジェクト（閉じたメッシュ、または境界辺が
+        # _MAX_MIXED_BOUNDARY_TUBE_EDGES 超の大型開きメッシュ）では、リム面
+        # そのものが境界のラインとして描かれるため、シェルと同じ n を加算して
+        # アウトライン素材帯へ乗せる。境界チューブを併用するオブジェクトだけ、
+        # 直後の ensure_sheet_outline が「リムは二重線にしない」規則で
+        # 非表示素材帯(2n)へ上書きする。
         mod.material_offset_rim = material_offset
 
         # 非シートでは旧シートチューブが残っていれば撤去する。
-        ensure_sheet_outline(obj, mod, mat)
+        ensure_sheet_outline(obj, mod, mat, material_offset=material_offset)
 
     # 頂点グループによる線幅制御
     need_vg = use_vertex_color or use_vertex_group

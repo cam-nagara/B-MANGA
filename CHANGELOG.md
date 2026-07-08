@@ -3,6 +3,33 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-09 — B-MANGA Linerの境界チューブ併用時に素材スロット順が崩れて線が消える問題を修正 (B-MANGA v0.6.449 / B-MANGA Liner v0.3.166)
+
+### 症状
+
+- tokyo0004で街灯・消火栓バナー・変圧器箱など「境界辺を持つ開いたメッシュ」のアウトラインが欠落し、輪郭カバレッジが92.76%で頭打ちだった。単一素材のオブジェクトは全滅、複数素材のオブジェクトは一部素材の面だけ欠落して見えた。
+- 複数素材オブジェクトではリム面が可視ライン素材（Inner等）に化け、バナー板の縁にマゼンタ色の縁取りが出ていた。
+
+### 原因（`docs/tokyo0004_boundary_tube_material_order_plan_2026-07-09.md` の実機調査で特定済み）
+
+- 原因1: シートアウトラインGNツリーの Join Geometry で、Blenderのマルチ入力ソケットが「後から接続したリンクを先に評価する」ため、結合順が「チューブ→元メッシュ」になりGN出力の素材スロット表の先頭が入れ替わっていた。後段Solidifyの `material_offset` はインデックス加算のため、表がずれるとシェル面が非表示素材(BML_SheetRimHidden)に塗られて消える。
+- 原因2: `ensure_sheet_outline()` が `material_offset_rim` に BML_SheetRimHidden の絶対スロット番号を代入していたが、このプロパティは「元の面の素材番号への加算オフセット」。元素材1個では偶然一致するが、複数素材では2番目以降のリムが可視ライン素材に化ける。
+
+### 修正 (`outline_setup.py` / `outline_fast_update.py`)
+
+- Join Geometry への2本の `links.new` の実行順を逆転（チューブ側を先に接続）し、結合順を「元メッシュ→チューブ」へ矯正。マルチ入力ソケットの逆転挙動はAPI保証がないためコメントで注記し、新設の回帰テストで恒久監視する。
+- `_ensure_outline_material_slots()` を拡張し、アウトライン素材n個パディングに加えて BML_SheetRimHidden もn個パディング（帯 [2n,3n)）。境界チューブ併用オブジェクトは `ensure_sheet_outline()` が `material_offset_rim = 2n`（加算オフセット）を設定し、元面のリムとチューブのSolidify袖面を素材数に依存せず非表示化。境界チューブを作らない境界辺512超の大型開きメッシュ（ビル外殻等）はリム面が境界ラインの実体のため、従来どおり `material_offset_rim = n`（アウトライン帯）を維持。
+- 高速更新パス（`outline_fast_update.py`）を同じ規則へ統一し、`_outline_material_slots_are_stable()` に非表示素材帯の検証を追加（旧スロット構成の保存済みファイルはフル適用へフォールバックして自動修復）。
+- シートチューブGNツリーの世代ラベルを V18→V19 へ更新し、保存済みファイルの旧接続順ツリーを次回のライン適用/更新時に必ず再構築させる。
+
+### 検証 (Blender 5.1.2 実機)
+
+- tokyo0004 (`Japanese_Streetscape_Tokyo_0004.blend`・読み取り専用) 輪郭カバレッジ **92.76% → 95.69%**（87691/91640画素、目標95%達成。`_verify/2026-07-09_tokyo0004_outline_coverage/run_coverage_check.py`）。計画書の対象オブジェクトの欠落画素: S_JPStreetLight_0_014 716→196、S_JPStreetLight_0_011/0_012 145/376→0、S_HydrantBillboard_0_002（マゼンタ縁）347→0、TransformerboxAB 167→0。ライン適用時間 54.3秒→57.7秒（悪化なし）。
+- 新設回帰テスト `test/blender_b_manga_line_boundary_tube_material_order_check.py` PASS（開いた単一素材シリンダー＋開いた2素材メッシュをテスト内で生成し、評価後スロット順・シェル面素材・リム/袖面素材をアサート）
+- `test/blender_b_manga_line_sheet_and_proxy_follow_check.py` PASS / `test/blender_b_manga_line_sheet_mesh_exclusion_check.py` PASS / `test/blender_b_manga_line_open_mesh_outline_check.py` PASS
+- `python -m py_compile` 全変更ファイル OK
+- **既知の制限（実機プローブで確認・`_verify/2026-07-09_boundary_tube_material_order/`）**: Blenderのマルチ入力 Join Geometry は同一マテリアルポインタの重複スロットを統合して素材表を再構築するため、境界チューブ併用かつ複数素材(n≥2)のオブジェクトでは2番目以降の元素材の面のシェルが非表示素材へ落ち、その部分のアウトラインは描かれない（マゼンタ縁は全ケースで解消済み。単一素材は完全動作）。恒久対策（例: チューブの別オブジェクト化）は要設計判断。
+
 ## 2026-07-09 — B-MANGA Linerにポリゴンスープ用メッシュ補正を追加（tokyo0004では効果限定的・要再調査） (B-MANGA v0.6.448 / B-MANGA Liner v0.3.165)
 
 ### 症状

@@ -31,16 +31,32 @@ def _outline_material_slots_are_stable(
     material_offset: int,
     mat: bpy.types.Material,
 ) -> bool:
+    """アウトライン素材帯 [n,2n) と非表示素材帯 [2n,3n) が両方健全か.
+
+    後者（BML_SheetRimHidden の n 個パディング）まで確認することで、
+    2026-07-09 以前の旧スロット構成（非表示素材が1個しか無い保存済み
+    ファイル）を高速更新パスがそのまま通してしまわないようにする。
+    不安定と判定された場合は呼び出し元が `apply_outline()` へフォール
+    バックし、`_ensure_outline_material_slots()` がスロット構成を修復する。
+    """
     if obj.type != "MESH" or obj.data is None:
         return False
     if material_offset <= 0:
         return False
     source_count = max(1, material_offset)
-    if len(obj.data.materials) < material_offset + source_count:
+    hidden = outline_setup._get_or_create_hidden_rim_material()
+    total_needed = material_offset + source_count * 2
+    if len(obj.data.materials) < total_needed:
         return False
     for index in range(material_offset, material_offset + source_count):
         try:
             if obj.data.materials[index] is not mat:
+                return False
+        except (IndexError, TypeError):
+            return False
+    for index in range(material_offset + source_count, total_needed):
+        try:
+            if obj.data.materials[index] is not hidden:
                 return False
         except (IndexError, TypeError):
             return False
@@ -241,8 +257,12 @@ def _update_existing_solid_outline(
     mod.use_even_offset = even_thickness
     outline_setup._configure_solidify_shape(obj, mod, use_rim, offset)
     mod.material_offset = material_offset
+    # material_offset_rim は加算オフセット。境界チューブを作らない
+    # オブジェクトではリム面が境界のラインとして描かれるため n を加算する
+    # （apply_outline() と同じ規則）。境界チューブ併用オブジェクトだけ、
+    # 直後の ensure_sheet_outline が非表示素材帯(2n)へ上書きする。
     mod.material_offset_rim = material_offset
-    outline_setup.ensure_sheet_outline(obj, mod, mat)
+    outline_setup.ensure_sheet_outline(obj, mod, mat, material_offset=material_offset)
     _sync_existing_outline_width_controls(
         obj,
         mod,
