@@ -738,20 +738,30 @@ def _ensure_color_attribute(obj: bpy.types.Object):
     return attr
 
 
-def _apply_solidify_algorithm_mode(mod: bpy.types.Modifier, is_sheet: bool) -> None:
-    """角の背面法ハルが隙間を作らないよう複数面法線を考慮するComplexモードへ切替.
+def _apply_solidify_algorithm_mode(
+    mod: bpy.types.Modifier,
+    *,
+    is_sheet: bool,
+    has_boundary_edges: bool,
+) -> None:
+    """閉じた立体だけ、角の背面法ハルが隙間を作りにくいComplexモードへ切替.
 
     「Simple」は各頂点を単純な平均法線方向へ押し出すため、角度差の大きい
     面が交差する鋭い角（立方体の角・円柱の縁など）で背面ハルが本体の輪郭まで
     届かず隙間が見えることがある（CEDEC2024のGGトゥーンライン資料で「線が
     浮いて見える問題」として説明されている現象と同一）。「Complex」は面同士の
     接続を解いて閉じたシェルを作るため、この隙間が実測で大幅に軽減される。
-    シートは境界チューブ側で輪郭を作り、Solidifyのリム出力は透過素材で
-    非表示にしているだけなので対象外（Simpleのまま維持）。
+    ただし境界辺のある開いたメッシュでは、Complexが大きな面の飛び出しを
+    作る場合がある。tokyo0004級の街路樹・看板・細い部品ではこちらが実害に
+    なるため、境界辺があるものはSimpleのまま維持する。
     """
     if not hasattr(mod, "solidify_mode"):
         return
-    mod.solidify_mode = "EXTRUDE" if is_sheet else "NON_MANIFOLD"
+    mod.solidify_mode = (
+        "NON_MANIFOLD"
+        if (not is_sheet and not has_boundary_edges)
+        else "EXTRUDE"
+    )
 
 
 def _mesh_boundary_edge_count(obj: bpy.types.Object) -> int:
@@ -806,7 +816,11 @@ def _configure_solidify_shape(
     if hasattr(mod, "use_rim_only"):
         mod.use_rim_only = is_sheet
     mod.use_rim = True if (is_sheet or needs_boundary_rim) else use_rim
-    _apply_solidify_algorithm_mode(mod, is_sheet)
+    _apply_solidify_algorithm_mode(
+        mod,
+        is_sheet=is_sheet,
+        has_boundary_edges=needs_boundary_rim,
+    )
 
 
 def _configure_line_only_solidify_shape(
@@ -828,7 +842,11 @@ def _configure_line_only_solidify_shape(
     if hasattr(mod, "use_rim_only"):
         mod.use_rim_only = is_sheet
     mod.use_rim = True if (is_sheet or needs_boundary_rim) else bool(use_rim)
-    _apply_solidify_algorithm_mode(mod, is_sheet)
+    _apply_solidify_algorithm_mode(
+        mod,
+        is_sheet=is_sheet,
+        has_boundary_edges=needs_boundary_rim,
+    )
 
 
 def _restore_solidify_shape(obj: bpy.types.Object) -> None:
