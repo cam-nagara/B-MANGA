@@ -3,6 +3,28 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-09 — B-MANGA Linerにポリゴンスープ用メッシュ補正を追加（tokyo0004では効果限定的・要再調査） (B-MANGA v0.6.448 / B-MANGA Liner v0.3.165)
+
+### 症状
+
+- v0.3.163/v0.3.164適用後もtokyo0004の輪郭カバレッジが92.76%で頭打ち。街灯・消火栓等の細い柱状ジオメトリの線欠落、法線混在面の黒パッチが残っていた。
+- 原因調査（`docs/bml_soup_mesh_line_preprocess_plan_2026-07-09.md`）で「頂点が面ごとに分割されたポリゴンスープでは背面法シェルが横方向へ膨らまない」と診断し、ライン適用前の距離ウェルド＋法線再計算を対策案として計画した。
+
+### 修正
+
+- 新規 `addons/b_manga_line/mesh_line_repair.py`: 境界エッジ比率（`outline_setup._mesh_boundary_edge_ratio`）が0.3を超える「バラバラ面」判定のメッシュに対し、ワールド0.1mm相当のしきい値でbmesh `remove_doubles` → `recalc_face_normals` を実行。共有メッシュは対象オブジェクト専用にコピーしてから処理し、処理済みはオブジェクトのカスタムプロパティで記録して再適用時にスキップする。カスタム分割法線（`mesh.has_custom_normals`）を持つメッシュはデータ消失を避けるため処理をスキップし、コンソールへ警告を出す。
+- `outline_setup.apply_outline` の冒頭（`ensure_surface_material_slot` の前）で、新設定がオンの場合のみ上記補正を呼び出す。
+- UI: ライン詳細設定（`panels.py` の「詳細設定」ポップアップ、アウトライン列）に「メッシュを線用に補正（ウェルド＋法線）」チェックボックスを追加（`core.py` の `BMangaLineSettings.weld_mesh_for_outline`、既定値オン）。`presets.py` の保存対象・`update_state.py` のアウトライン系プロパティ集合へも登録。
+
+### 検証 (Blender 5.1.2 実機・合成メッシュ)
+
+- 合成テスト（面ごとに頂点が独立した立方体）で実装自体は意図通り動作: 頂点24→8にウェルド、境界エッジ比率1.0→0.0、処理済みマーカーで2回目はスキップされることを確認。
+- **tokyo0004実機ではカバレッジ改善なし（92.76%→92.76%、画素数85015/91649で完全一致）。** 診断の結果、レンダリング範囲内137メッシュのうち136メッシュがカスタム分割法線を持ち、境界エッジ比率0.3超の「バラバラ面」53メッシュも全てカスタム分割法線を持つため、安全ガード（カスタム分割法線ありはスキップ）により実質1件も補正が実行されなかった。加えて、計画書が名指しした主要な欠落オブジェクト自体（S_JPStreetLight_0_014: 境界比率0.102、S_HydrantBillboard_0_002: 境界比率0.002等）は、カスタム分割法線を無視しても境界エッジ比率のしきい値（0.3）に達しておらず「バラバラ面」と判定されない。計画書の診断（これらのオブジェクトがポリゴンスープである）と、境界エッジ比率という検出手段が一致していなかった。
+- 回帰4本 PASS: `test/blender_b_manga_line_sheet_and_proxy_follow_check.py` / `test/blender_b_manga_line_sheet_mesh_exclusion_check.py` / `test/blender_b_manga_line_preset_visibility_check.py` / `test/blender_b_manga_line_distance_visibility_preserves_check.py`
+- `apply lines` 所要時間 54.3秒（旧54.8秒から悪化なし）。
+- `python -m py_compile` 全変更ファイル OK。
+- **未解決（要再調査・上位モデル推奨）**: (1) 対象アセットではカスタム分割法線の安全ガードと実際の欠落オブジェクトの両方が「境界エッジ比率」という単一指標と噛み合わず、本機能が実質無効化される。(2) S_JPStreetLight/S_HydrantBillboard等の実際の線欠落原因は境界エッジ比率で説明できる「ポリゴンスープ」ではない可能性が高く、別の幾何学的指標（例: bmesh連結成分の分割・シェルの自己交差）での再診断が必要。実装自体（ウェルド＋法線再計算＋安全ガード）は正しく動作しており、コードは維持（既定オンのまま）。
+
 ## 2026-07-09 — B-MANGA Linerの境界チューブがSolidify併用で消える問題を修正 (B-MANGA v0.6.447 / B-MANGA Liner v0.3.164)
 
 ### 症状

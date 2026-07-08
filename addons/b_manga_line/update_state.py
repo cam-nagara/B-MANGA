@@ -106,6 +106,7 @@ def targets_for_property(prop_name: str) -> tuple[str, ...]:
         "use_rim",
         "use_vertex_color",
         "hide_through_transparent",
+        "weld_mesh_for_outline",
     }:
         return ("outline",)
     return LINE_TARGETS

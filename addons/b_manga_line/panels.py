@@ -308,6 +308,7 @@ def _draw_line_detail_grid(layout, settings) -> None:
         ("use_rim", None, None, None),
         ("hide_through_transparent", None, None, None),
         ("use_vertex_color", None, None, None),
+        ("weld_mesh_for_outline", None, None, None),
     )
     for props in rows:
         row = box.row(align=True)

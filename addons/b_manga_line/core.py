@@ -555,6 +555,12 @@ def _on_transparent_protection_changed(self, context):
     _defer_line_setting(self, context, "hide_through_transparent", ("outline",))
 
 
+def _on_weld_mesh_changed(self, context):
+    if _propagating:
+        return
+    _defer_line_setting(self, context, "weld_mesh_for_outline", ("outline",))
+
+
 def _on_sheet_exclusion_changed(self, context):
     # 2026-07-03 ユーザー確定: 板ポリ除外オプションは廃止（UI 非公開・挙動なし）。
     # 旧ファイル互換のためプロパティと伝搬だけ残す。
@@ -1502,6 +1508,18 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         description="透明・半透明の面越しに見える裏面側のラインを透明にする",
         default=False,
         update=_on_transparent_protection_changed,
+    )  # type: ignore[valid-type]
+
+    weld_mesh_for_outline: BoolProperty(
+        name="メッシュを線用に補正（ウェルド＋法線）",
+        description=(
+            "頂点が面ごとに分割されたポリゴンスープ（購入アセット等）で、"
+            "アウトライン適用前に距離ウェルドと法線再計算を行い、"
+            "細い柱状部分の線欠落や法線混在面の黒塗りを防ぐ"
+            "（表面の陰影・UVが変わる場合あり）"
+        ),
+        default=True,
+        update=_on_weld_mesh_changed,
     )  # type: ignore[valid-type]
 
     exclude_sheet_meshes: BoolProperty(

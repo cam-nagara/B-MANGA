@@ -44,6 +44,7 @@ _SETTING_FIELDS = (
     "use_uniform_line_width",
     "use_rim",
     "hide_through_transparent",
+    "weld_mesh_for_outline",
     "inner_line_enabled",
     "inner_line_angle",
     "use_marked_inner_edges",
@@ -592,6 +593,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     use_uniform_line_width: BoolProperty(default=False)
     use_rim: BoolProperty(default=False)
     hide_through_transparent: BoolProperty(default=False)
+    weld_mesh_for_outline: BoolProperty(default=True)
 
     inner_line_enabled: BoolProperty(default=False)
     inner_line_angle: FloatProperty(default=1.0471975512, min=0.0174532925, max=3.1415926536)

@@ -1320,6 +1320,16 @@ def apply_outline(
     if not obj.data.polygons:
         return False
 
+    # ポリゴンスープ資産（頂点が面ごとに分割されたメッシュ）は背面法シェルが
+    # 横方向へ膨らまず、細い柱状ジオメトリの線が欠落する・法線混在面が黒く
+    # 塗り潰される。設定がオンの場合のみ、距離ウェルド＋法線再計算で補正する
+    # （詳細: docs/bml_soup_mesh_line_preprocess_plan_2026-07-09.md）。
+    settings = getattr(obj, "bmanga_line_settings", None)
+    if bool(getattr(settings, "weld_mesh_for_outline", True)):
+        from . import mesh_line_repair
+
+        mesh_line_repair.repair_soup_mesh_for_lines(obj)
+
     # 元メッシュ面用のマテリアルがなければ追加・並びが壊れていれば修復
     # （アウトライン専用マテリアルがスロット0に来ると元面もアウトライン化する）
     ensure_surface_material_slot(obj)
