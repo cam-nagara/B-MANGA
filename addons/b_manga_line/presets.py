@@ -338,6 +338,11 @@ def _refresh_after_line_settings(
 def _duplicate_name(presets, source_name: str) -> str:
     base = (source_name.strip() if source_name else "") or "ラインプリセット"
     stem = f"{base} コピー"
+    return _unique_preset_name(presets, stem)
+
+
+def _unique_preset_name(presets, base_name: str) -> str:
+    stem = (base_name.strip() if base_name else "") or "ラインプリセット"
     existing = {item.name for item in presets}
     if stem not in existing:
         return stem
@@ -727,6 +732,34 @@ class BMANGA_LINE_OT_preset_save(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class BMANGA_LINE_OT_preset_add(bpy.types.Operator):
+    """現在のライン設定を新しいプリセットとして追加"""
+
+    bl_idname = "bmanga_line.preset_add"
+    bl_label = "追加"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.type == "MESH"
+
+    def execute(self, context):
+        scene = context.scene
+        ensure_presets_loaded(scene)
+        obj = context.active_object
+        presets = scene.bmanga_line_presets
+        name = _unique_preset_name(presets, _preset_name(scene))
+        preset = presets.add()
+        preset.name = name
+        copy_settings_to_preset(obj.bmanga_line_settings, preset)
+        scene.bmanga_line_preset_index = len(presets) - 1
+        scene.bmanga_line_preset_name = name
+        _write_store(scene)
+        self.report({"INFO"}, f"ラインプリセット「{name}」を追加しました")
+        return {"FINISHED"}
+
+
 class BMANGA_LINE_OT_preset_apply_selected(bpy.types.Operator):
     """プリセットを選択中の全オブジェクトに適用"""
 
@@ -817,6 +850,7 @@ class BMANGA_LINE_OT_preset_delete(bpy.types.Operator):
 _CLASSES = (
     BMangaLinePreset,
     BMANGA_LINE_OT_preset_save,
+    BMANGA_LINE_OT_preset_add,
     BMANGA_LINE_OT_preset_apply_selected,
     BMANGA_LINE_OT_preset_duplicate,
     BMANGA_LINE_OT_preset_delete,

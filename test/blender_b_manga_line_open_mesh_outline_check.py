@@ -337,9 +337,17 @@ def main() -> None:
 
         many_boundary = _add_many_boundary_non_sheet_mesh()
         many_boundary_mod = _apply_line(many_boundary, use_rim=False)
-        assert many_boundary_mod is None, "大量境界メッシュに通常アウトラインが作成されています"
-        assert many_boundary.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME) is not None, (
-            "大量境界メッシュに境界チューブが作成されていません"
+        assert many_boundary_mod is not None, "大量境界の非シートメッシュに通常アウトラインがありません"
+        assert not outline_setup.plane_filter.is_sheet_mesh(many_boundary), (
+            "大量境界の非シートメッシュを板ポリ扱いしています"
+        )
+        assert many_boundary_mod.use_rim, "大量境界の非シートメッシュで境界アウトラインが消えています"
+        if hasattr(many_boundary_mod, "solidify_mode"):
+            assert many_boundary_mod.solidify_mode == "EXTRUDE", (
+                "境界を持つ大量メッシュで閉じた立体向けの太らせ方を使っています"
+            )
+        assert many_boundary.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME) is None, (
+            "大量境界の非シートメッシュに境界チューブが作成されています"
         )
 
         assert outline_setup.set_line_only(plane, True)

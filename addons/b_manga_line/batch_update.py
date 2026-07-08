@@ -1069,15 +1069,15 @@ def refresh_target_visuals(
         _update_outline_flag(targets, "use_even_offset", "even_thickness")
         _update_outline_flag(targets, "use_rim", "use_rim")
         _update_transparent_protection(targets)
-        _update_width_target(targets, context, "outline")
         _update_outline_thickness(targets, context)
+        _update_width_target(targets, context, "outline")
     else:
         _update_auto_subdivision(targets, context)
         _update_match_subsurf_viewport_to_render(targets)
         _update_generated_color(targets, target)
         _update_generated_visual_parameters(targets, target)
-        _update_width_target(targets, context, target)
         _update_generated_thickness(targets, context, target)
+        _update_width_target(targets, context, target)
 
     _update_target_visibility_rules(targets, context, target)
     return targets

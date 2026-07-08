@@ -786,22 +786,14 @@ def _mesh_boundary_edge_ratio(obj: bpy.types.Object) -> float:
 
 
 def _uses_boundary_tube_only(obj: bpy.types.Object) -> bool:
-    if plane_filter.is_sheet_mesh(obj):
-        return True
-    return (
-        _mesh_boundary_edge_count(obj) > _MAX_MIXED_BOUNDARY_TUBE_EDGES
-        and _mesh_boundary_edge_ratio(obj) >= _BOUNDARY_ONLY_RATIO
-    )
+    return plane_filter.is_sheet_mesh(obj)
 
 
 def _needs_boundary_outline_tube(obj: bpy.types.Object) -> bool:
     if plane_filter.is_sheet_mesh(obj):
         return True
     boundary_count = _mesh_boundary_edge_count(obj)
-    return (
-        0 < boundary_count <= _MAX_MIXED_BOUNDARY_TUBE_EDGES
-        or _uses_boundary_tube_only(obj)
-    )
+    return 0 < boundary_count <= _MAX_MIXED_BOUNDARY_TUBE_EDGES
 
 
 def _configure_solidify_shape(

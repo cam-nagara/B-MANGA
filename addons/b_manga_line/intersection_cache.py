@@ -55,6 +55,7 @@ _PROFILE_RESOLUTION = 12
 _VISUAL_RADIUS_FACTOR = 0.8
 _EPS = 1.0e-6
 _KEY_SCALE = 100000.0
+_OUTLINE_TARGET_EXTRA_MAX_TRIANGLES = 512
 
 
 def _needs_curve_subdivision(
@@ -699,15 +700,16 @@ def _set_target_outline_state(states, target: bpy.types.Object, enabled: bool) -
 
 
 def _target_outline_was_visible(states, target: bpy.types.Object) -> bool:
+    visible = False
     for mod, show_viewport, _show_render in states:
         try:
             if getattr(mod, "id_data", None) != target:
                 continue
             if mod.name in (MODIFIER_NAME, SHEET_OUTLINE_MODIFIER_NAME):
-                return bool(show_viewport)
+                visible = visible or bool(show_viewport)
         except ReferenceError:
             continue
-    return False
+    return visible
 
 
 def _evaluated_mesh_data(
@@ -737,6 +739,26 @@ def _triangle_normal(
         return Vector((0.0, 0.0, 1.0))
     normal.normalize()
     return normal
+
+
+def _outline_evaluated_mesh_data(
+    obj: bpy.types.Object,
+    states,
+    transform: Matrix,
+) -> _MeshData | None:
+    if not _target_outline_was_visible(states, obj):
+        return None
+    _set_target_outline_state(states, obj, True)
+    bpy.context.view_layer.update()
+    try:
+        return _evaluated_mesh_data(obj, bpy.context.evaluated_depsgraph_get(), transform)
+    finally:
+        _set_target_outline_state(states, obj, False)
+        bpy.context.view_layer.update()
+
+
+def _use_outline_target_for_extra_segments(target_data: _MeshData) -> bool:
+    return 0 < len(target_data.triangles) <= _OUTLINE_TARGET_EXTRA_MAX_TRIANGLES
 
 
 def build_cached_segments(
@@ -773,34 +795,31 @@ def build_cached_segments(
                 continue
             target_transform = owner_inv @ target.matrix_world
             target_data = _evaluated_mesh_data(target, depsgraph, target_transform)
-            added = 0
             if target_data.triangles:
-                added = _append_target_segments(
+                _append_target_segments(
                     source=source,
                     source_bvh=source_bvh,
                     target_data=target_data,
                     segments=segments,
                     seen=seen,
                 )
-            if added == 0 and _target_outline_was_visible(states, target):
-                _set_target_outline_state(states, target, True)
-                bpy.context.view_layer.update()
-                fallback_depsgraph = bpy.context.evaluated_depsgraph_get()
-                fallback_data = _evaluated_mesh_data(
+            if (
+                _target_outline_was_visible(states, target)
+                and _use_outline_target_for_extra_segments(target_data)
+            ):
+                outline_target = _outline_evaluated_mesh_data(
                     target,
-                    fallback_depsgraph,
+                    states,
                     target_transform,
                 )
-                if fallback_data.triangles:
+                if outline_target is not None and outline_target.triangles:
                     _append_target_segments(
                         source=source,
                         source_bvh=source_bvh,
-                        target_data=fallback_data,
+                        target_data=outline_target,
                         segments=segments,
                         seen=seen,
                     )
-                _set_target_outline_state(states, target, False)
-                bpy.context.view_layer.update()
         return segments
     finally:
         _restore_modifier_states(states)

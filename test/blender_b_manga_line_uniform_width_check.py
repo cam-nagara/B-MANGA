@@ -230,16 +230,28 @@ def _test_uniform_width_depth_and_resolution() -> None:
         far_thick,
     )
 
+    settings.outline_thickness_mm = 0.8
+    assert bpy.ops.bmanga_line.update_visual_target(
+        "EXEC_DEFAULT",
+        target="outline",
+    ) == {"FINISHED"}
+    far_visual = _expected_world_width(scene, 8.0, 0.8)
+    assert math.isclose(mod.thickness, far_visual, rel_tol=0.001), (
+        mod.thickness,
+        far_visual,
+    )
+
     settings.use_uniform_line_width = False
     assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
     assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="inner") == {"FINISHED"}
-    center_thick = _expected_world_width(scene, 2.0, 1.0)
+    center_thick = _expected_world_width(scene, 2.0, 0.8)
     assert math.isclose(mod.thickness, center_thick, rel_tol=0.001), (
         mod.thickness,
         center_thick,
     )
     assert mod.vertex_group == ""
-    assert math.isclose(_inner_thickness(obj), center_thick * 0.25, rel_tol=0.001)
+    center_inner = _expected_world_width(scene, 2.0, 0.25)
+    assert math.isclose(_inner_thickness(obj), center_inner, rel_tol=0.001)
 
 
 def _test_uniform_width_saved_in_preset() -> None:

@@ -563,15 +563,28 @@ def _run(store_path: Path) -> None:
         "太線テスト コピー",
         "太線テスト コピー 2",
     ]
+    scene.bmanga_line_preset_name = "太線テスト"
+    assert bpy.ops.bmanga_line.preset_add() == {"FINISHED"}
+    assert len(scene.bmanga_line_presets) == 4
+    assert scene.bmanga_line_presets[3].name == "太線テスト 2"
+    assert scene.bmanga_line_preset_index == 3
+    assert scene.bmanga_line_preset_name == "太線テスト 2"
+    assert _store_names(store_path)[:4] == [
+        "太線テスト",
+        "太線テスト コピー",
+        "太線テスト コピー 2",
+        "太線テスト 2",
+    ]
 
     presets._loaded_scene_pointers.clear()
     scene.bmanga_line_presets.clear()
     scene.bmanga_line_preset_index = -1
     presets.ensure_presets_loaded(scene)
-    assert [item.name for item in scene.bmanga_line_presets][:3] == [
+    assert [item.name for item in scene.bmanga_line_presets][:4] == [
         "太線テスト",
         "太線テスト コピー",
         "太線テスト コピー 2",
+        "太線テスト 2",
     ]
     scene.bmanga_line_preset_index = 0
 
