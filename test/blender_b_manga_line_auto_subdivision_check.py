@@ -190,6 +190,39 @@ def _make_open_folded_strip() -> bpy.types.Object:
     return obj
 
 
+def _make_triangulated_cube_mesh(name: str) -> bpy.types.Mesh:
+    mesh = bpy.data.meshes.new(name)
+    mesh.from_pydata(
+        [
+            (-0.5, -0.5, -0.5),
+            (0.5, -0.5, -0.5),
+            (0.5, 0.5, -0.5),
+            (-0.5, 0.5, -0.5),
+            (-0.5, -0.5, 0.5),
+            (0.5, -0.5, 0.5),
+            (0.5, 0.5, 0.5),
+            (-0.5, 0.5, 0.5),
+        ],
+        [],
+        [
+            (0, 1, 2), (0, 2, 3),
+            (4, 6, 5), (4, 7, 6),
+            (0, 4, 5), (0, 5, 1),
+            (1, 5, 6), (1, 6, 2),
+            (2, 6, 7), (2, 7, 3),
+            (3, 7, 4), (3, 4, 0),
+        ],
+    )
+    mesh.update()
+    return mesh
+
+
+def _make_triangulated_cube(name: str) -> bpy.types.Object:
+    obj = bpy.data.objects.new(name, _make_triangulated_cube_mesh(name + "_mesh"))
+    bpy.context.collection.objects.link(obj)
+    return obj
+
+
 def _assert_open_edges_are_creased() -> None:
     obj = _make_open_folded_strip()
     count = subdivision_lod.mark_sharp_edges_for_subsurf(obj)
@@ -232,6 +265,31 @@ def _assert_auto_subdivision_skips_boundary_mesh() -> None:
     assert obj.modifiers.get(core.OUTLINE_WIDTH_ATTR_MODIFIER_NAME) is None
 
 
+def _assert_auto_subdivision_quadrangulates_triangles() -> None:
+    obj = _make_triangulated_cube("BML_triangulated_cube_quadified")
+    assert all(len(poly.vertices) == 3 for poly in obj.data.polygons)
+    auto_mod = subdivision_lod.ensure_auto_subdivision(obj, bpy.context.scene)
+    assert auto_mod is not None
+    assert len(obj.data.polygons) == 6
+    assert all(len(poly.vertices) == 4 for poly in obj.data.polygons)
+    _assert_cube_edges_are_creased(obj)
+
+
+def _assert_shared_mesh_quadification_is_local() -> None:
+    mesh = _make_triangulated_cube_mesh("BML_shared_triangulated_cube_mesh")
+    source = bpy.data.objects.new("BML_shared_quadified_source", mesh)
+    sibling = bpy.data.objects.new("BML_shared_quadified_sibling", mesh)
+    bpy.context.collection.objects.link(source)
+    bpy.context.collection.objects.link(sibling)
+    assert source.data is sibling.data
+
+    auto_mod = subdivision_lod.ensure_auto_subdivision(source, bpy.context.scene)
+    assert auto_mod is not None
+    assert source.data is not sibling.data
+    assert all(len(poly.vertices) == 4 for poly in source.data.polygons)
+    assert all(len(poly.vertices) == 3 for poly in sibling.data.polygons)
+
+
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     b_manga_line.register()
@@ -243,6 +301,10 @@ def main() -> None:
         _assert_smooth_edges_are_uncreased()
         _clear_scene()
         _assert_auto_subdivision_skips_boundary_mesh()
+        _clear_scene()
+        _assert_auto_subdivision_quadrangulates_triangles()
+        _clear_scene()
+        _assert_shared_mesh_quadification_is_local()
         _clear_scene()
         bpy.ops.object.camera_add(location=(0.0, -3.0, 0.0))
         bpy.context.scene.camera = bpy.context.object

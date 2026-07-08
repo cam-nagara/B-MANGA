@@ -11,9 +11,12 @@ from bpy.app.handlers import persistent
 
 AUTO_SUBSURF_MODIFIER_NAME = "BML_MidpointSubsurf"
 AUTO_SUBSURF_CREASE_EDGES_PROP = "bml_auto_midpoint_subsurf_crease_edges"
+AUTO_QUADIFIED_FACES_PROP = "bml_auto_midpoint_quadified_faces"
 CREASE_EDGE_ATTR = "crease_edge"
 SHARP_EDGE_ANGLE = math.radians(60.0)
 AUTO_SUBSURF_SUBDIVISION_TYPE = "CATMULL_CLARK"
+QUADRANGULATE_FACE_THRESHOLD = math.radians(40.0)
+QUADRANGULATE_SHAPE_THRESHOLD = math.radians(40.0)
 MAX_RENDER_LEVELS = 4
 DISTANCE_STEP_METERS = 5.0
 DEFAULT_LINE_RESAMPLE_COUNT = 4
@@ -142,6 +145,73 @@ def auto_subdivision_supported(obj: bpy.types.Object) -> bool:
     )
 
 
+def _non_quad_face_count(faces) -> int:
+    return sum(1 for face in faces if len(face.verts) != 4)
+
+
+def _quad_face_count(faces) -> int:
+    return sum(1 for face in faces if len(face.verts) == 4)
+
+
+def quadrangulate_mesh_for_auto_subdivision(obj: bpy.types.Object) -> int:
+    """Join compatible triangles before the auto Catmull-Clark modifier.
+
+    This keeps the original vertex positions and only rewrites topology when the
+    operation actually reduces non-quad faces. If the mesh datablock is shared,
+    the selected object gets its own copy so other objects are not changed.
+    """
+    if obj.type != "MESH" or obj.data is None:
+        return 0
+    mesh = obj.data
+    if not any(len(poly.vertices) != 4 for poly in mesh.polygons):
+        return 0
+
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(mesh)
+        bm.faces.ensure_lookup_table()
+        before_non_quad = _non_quad_face_count(bm.faces)
+        before_quad = _quad_face_count(bm.faces)
+
+        ngons = [face for face in bm.faces if len(face.verts) > 4]
+        if ngons:
+            bmesh.ops.triangulate(bm, faces=ngons)
+            bm.faces.ensure_lookup_table()
+
+        triangles = [face for face in bm.faces if len(face.verts) == 3]
+        if triangles:
+            bmesh.ops.join_triangles(
+                bm,
+                faces=triangles,
+                cmp_seam=True,
+                cmp_sharp=True,
+                cmp_uvs=True,
+                cmp_vcols=True,
+                cmp_materials=True,
+                angle_face_threshold=QUADRANGULATE_FACE_THRESHOLD,
+                angle_shape_threshold=QUADRANGULATE_SHAPE_THRESHOLD,
+                topology_influence=1.0,
+            )
+            bm.faces.ensure_lookup_table()
+
+        after_non_quad = _non_quad_face_count(bm.faces)
+        after_quad = _quad_face_count(bm.faces)
+        if after_non_quad >= before_non_quad or after_quad <= before_quad:
+            return 0
+
+        target_mesh = mesh
+        if mesh.users > 1:
+            target_mesh = mesh.copy()
+            obj.data = target_mesh
+        bm.to_mesh(target_mesh)
+        target_mesh.update()
+        joined = before_non_quad - after_non_quad
+        obj[AUTO_QUADIFIED_FACES_PROP] = int(max(1, joined))
+        return int(max(1, joined))
+    finally:
+        bm.free()
+
+
 def _ensure_crease_attribute(mesh: bpy.types.Mesh):
     attr = mesh.attributes.get(CREASE_EDGE_ATTR)
     if attr is None:
@@ -199,6 +269,7 @@ def ensure_auto_subdivision(obj: bpy.types.Object, scene) -> bpy.types.Modifier 
         remove_auto_subdivision(obj)
         return None
 
+    quadrangulate_mesh_for_auto_subdivision(obj)
     mark_sharp_edges_for_subsurf(obj)
     mod = auto_subsurf_modifier(obj)
     if mod is None:
@@ -241,6 +312,8 @@ def repair_auto_subdivision_modifiers(scene: bpy.types.Scene | None = None) -> i
             if remove_auto_subdivision(obj):
                 changed += 1
             continue
+        if quadrangulate_mesh_for_auto_subdivision(obj):
+            changed += 1
         mark_sharp_edges_for_subsurf(obj)
         if hasattr(mod, "subdivision_type") and mod.subdivision_type != AUTO_SUBSURF_SUBDIVISION_TYPE:
             mod.subdivision_type = AUTO_SUBSURF_SUBDIVISION_TYPE
