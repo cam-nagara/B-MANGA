@@ -233,6 +233,37 @@ class BMANGA_LINE_OT_update_visual_target(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class BMANGA_LINE_OT_update_all_visual_targets(bpy.types.Operator):
+    """選択オブジェクトの作成済みライン全種と中間頂点用サブディビジョンを更新"""
+
+    bl_idname = "bmanga_line.update_all_visual_targets"
+    bl_label = "すべてのラインを更新"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return any(has_line(obj) for obj in context.selected_objects)
+
+    def execute(self, context):
+        from . import batch_update, update_state
+
+        results = batch_update.refresh_all_target_visuals(
+            list(context.selected_objects),
+            context,
+        )
+        updated: dict[str, bpy.types.Object] = {}
+        for objects in results.values():
+            for obj in objects:
+                updated[obj.name_full] = obj
+        # 全線種を更新済みのため、未作成線種も含め更新待ち表示を解消する
+        update_state.clear_pending_many(updated.values(), kind="visual")
+        self.report(
+            {"INFO"},
+            f"{len(updated)} オブジェクトのすべてのラインを更新しました",
+        )
+        return {"FINISHED"}
+
+
 class BMANGA_LINE_OT_select_render_range_meshes(bpy.types.Operator):
     """レンダリング範囲内のメッシュを選択"""
 
@@ -589,6 +620,7 @@ _CLASSES = (
     BMANGA_LINE_OT_apply,
     BMANGA_LINE_OT_update_target,
     BMANGA_LINE_OT_update_visual_target,
+    BMANGA_LINE_OT_update_all_visual_targets,
     BMANGA_LINE_OT_select_render_range_meshes,
     BMANGA_LINE_OT_remove,
     BMANGA_LINE_OT_set_visibility,

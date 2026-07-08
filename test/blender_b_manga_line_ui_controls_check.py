@@ -218,6 +218,11 @@ def _assert_update_buttons_are_in_line_settings(active: bpy.types.Object) -> Non
         bpy.context,
         active.bmanga_line_settings,
     )
+    assert settings_layout.operators, "ライン設定にボタンがありません"
+    assert (
+        settings_layout.operators[0].idname
+        == "bmanga_line.update_all_visual_targets"
+    ), [op.idname for op in settings_layout.operators]
     create_ops = [
         op for op in settings_layout.operators
         if op.idname == "bmanga_line.update_target"

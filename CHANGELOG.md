@@ -3,6 +3,22 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-09 — B-MANGA Linerのライン設定に「すべてのラインを更新」ボタンを追加 (B-MANGA v0.6.450 / B-MANGA Liner v0.3.167)
+
+### 追加
+
+- ライン設定パネルの最上部に「すべてのラインを更新」ボタンを追加。1回の操作で、アウトライン・稜谷線・交差線・選択線の4線種の更新（各線種の「更新」ボタン相当）と、「中間頂点用サブディビジョンを自動設定」が有効な場合の三角面の四角面化+サブディビジョンサーフェスモディファイアの設定（無効な場合は自動Subsurfの除去）を一括実行する。
+- 実装: `batch_update.refresh_all_target_visuals()` を新設し、サブディビジョン設定は線種ごとに繰り返さず対象オブジェクトへ1回だけ実行（`refresh_target_visuals()` に `sync_subdivision` 引数を追加。既定値Trueで既存経路は挙動不変）。オペレーターは `bmanga_line.update_all_visual_targets`（`operators.py`）。
+- 全線種を更新済みになるため、更新後は未作成線種も含め「更新待ち」表示を解消する（「作成待ち」表示は従来どおり残る）。
+
+### 検証 (Blender 5.1 実機)
+
+- 新設回帰テスト `test/blender_b_manga_line_update_all_targets_check.py` PASS（三角面キューブ+交差キューブで、チェックON+線幅変更が更新ボタンまで反映されないこと→ボタン1回で四角面化・自動Subsurf付与・アウトライン線幅反映・全オブジェクトの更新待ち解消、チェックOFF→ボタンで自動Subsurf除去、ライン未適用オブジェクトのみ選択時はボタン無効、をアサート）
+- `test/blender_b_manga_line_ui_controls_check.py` にライン設定パネル先頭へのボタン配置アサーションを追加して PASS
+- 既存回帰: `blender_b_manga_line_auto_subdivision_check` / `blender_b_manga_line_generated_update_scope_check` / `blender_b_manga_line_control_update_scope_check` / `blender_b_manga_line_batch_apply_refresh_check` すべて PASS
+- `python -m py_compile` 全変更ファイル OK
+- 徹底チェック済み: 新ボタン→`refresh_all_target_visuals`→自動Subsurf設定・4線種更新・表示規則の呼び出しチェーンを追跡し、個別「更新」ボタン・チェックボックス変更・ライン適用/削除の各経路が挙動不変であることを確認。チェック中に `addons/b_manga_line/blender_manifest.toml` のバージョン同期漏れ（0.3.166のまま）を発見し 0.3.167 へ修正。既知の残余（本変更由来ではなく個別更新ボタンと共通の挙動）: 幅属性モディファイアのみが残った縮退状態のオブジェクトは更新待ち表示が残る／リンク素材に自動サブディビジョンが有効な場合はモディファイア追加不可でエラーになり得る。
+
 ## 2026-07-09 — B-MANGA Linerの境界チューブ併用時に素材スロット順が崩れて線が消える問題を修正 (B-MANGA v0.6.449 / B-MANGA Liner v0.3.166)
 
 ### 症状

@@ -189,6 +189,9 @@ def _draw_line_settings(layout, context, settings) -> None:
     if settings is None:
         return
     row = layout.row(align=True)
+    row.scale_y = 1.2
+    row.operator("bmanga_line.update_all_visual_targets", icon="FILE_REFRESH")
+    row = layout.row(align=True)
     row.prop(settings, "auto_subdivision_for_midpoint")
     row.operator("bmanga_line.detail_settings", icon="PREFERENCES")
 

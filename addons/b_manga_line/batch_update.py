@@ -1053,6 +1053,8 @@ def refresh_target_visuals(
     target: str,
     objects: list[bpy.types.Object],
     context,
+    *,
+    sync_subdivision: bool = True,
 ) -> list[bpy.types.Object]:
     """作成済みラインの見た目だけを線種別に更新する."""
     target = str(target)
@@ -1061,9 +1063,10 @@ def refresh_target_visuals(
     if not targets:
         return []
 
-    if target == "outline":
+    if sync_subdivision:
         _update_auto_subdivision(targets, context)
         _update_match_subsurf_viewport_to_render(targets)
+    if target == "outline":
         _update_outline_color(targets)
         _update_outline_offset(targets)
         _update_outline_flag(targets, "use_even_offset", "even_thickness")
@@ -1072,8 +1075,6 @@ def refresh_target_visuals(
         _update_outline_thickness(targets, context)
         _update_width_target(targets, context, "outline")
     else:
-        _update_auto_subdivision(targets, context)
-        _update_match_subsurf_viewport_to_render(targets)
         _update_generated_color(targets, target)
         _update_generated_visual_parameters(targets, target)
         _update_generated_thickness(targets, context, target)
@@ -1081,6 +1082,31 @@ def refresh_target_visuals(
 
     _update_target_visibility_rules(targets, context, target)
     return targets
+
+
+def refresh_all_target_visuals(
+    objects: list[bpy.types.Object],
+    context,
+) -> dict[str, list[bpy.types.Object]]:
+    """作成済みライン全種と中間頂点用サブディビジョンを一括更新する."""
+    from . import update_state
+
+    line_objects = _line_objects(objects)
+    if not line_objects:
+        return {}
+    _update_auto_subdivision(line_objects, context)
+    _update_match_subsurf_viewport_to_render(line_objects)
+    results: dict[str, list[bpy.types.Object]] = {}
+    for target in update_state.LINE_TARGETS:
+        updated = refresh_target_visuals(
+            target,
+            line_objects,
+            context,
+            sync_subdivision=False,
+        )
+        if updated:
+            results[target] = updated
+    return results
 
 
 def refresh_propagated_property(
