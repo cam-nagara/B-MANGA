@@ -25,6 +25,7 @@ _SHARP_EDGE_ANGLE_SOCKET = "形状保持の検出角度"
 _CREASE_EDGE_ATTR = "crease_edge"
 _CURVE_WIDTH_LABEL = "BML_OutlineEvaluatedWidth"
 _RESAMPLE_COUNT = 48
+_AUTO_SUBSURF_MODIFIER_NAME = "BML_MidpointSubsurf"
 
 
 def _find_socket_id(tree: bpy.types.NodeTree, name: str) -> str | None:
@@ -318,11 +319,26 @@ def outline_width_attribute_needed(settings) -> bool:
     )
 
 
+def _has_auto_subsurf(obj: bpy.types.Object) -> bool:
+    for mod in obj.modifiers:
+        if (
+            mod.type == "SUBSURF"
+            and (
+                mod.name == _AUTO_SUBSURF_MODIFIER_NAME
+                or mod.name.startswith(_AUTO_SUBSURF_MODIFIER_NAME + ".")
+            )
+        ):
+            return True
+    return False
+
+
 def ensure_outline_width_attribute(obj: bpy.types.Object, settings=None) -> bool:
     if obj.type != "MESH":
         return False
     settings = settings or getattr(obj, "bmanga_line_settings", None)
     if settings is None or not outline_width_attribute_needed(settings):
+        return remove_outline_width_attribute(obj)
+    if not _has_auto_subsurf(obj):
         return remove_outline_width_attribute(obj)
     creased_edges = obj.get("bml_auto_midpoint_subsurf_crease_edges")
     if creased_edges is not None and len(creased_edges) == 0:

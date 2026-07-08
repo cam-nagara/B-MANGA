@@ -127,7 +127,7 @@ def _store_outline_reference_width(
 def _existing_sheet_outline_state(
     obj: bpy.types.Object,
 ) -> tuple[bpy.types.Modifier, bpy.types.Material, str] | None:
-    if not plane_filter.is_sheet_mesh(obj):
+    if not (plane_filter.is_sheet_mesh(obj) or outline_setup._uses_boundary_tube_only(obj)):
         return None
     if obj.modifiers.get(MODIFIER_NAME) is not None:
         return None
@@ -154,7 +154,7 @@ def _existing_solid_outline_state(
     obj: bpy.types.Object,
 ) -> tuple[bpy.types.Modifier, bpy.types.Material, int] | None:
     mod = obj.modifiers.get(MODIFIER_NAME)
-    if mod is None or obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME) is not None:
+    if mod is None:
         return None
     material_offset = outline_setup._first_outline_slot(obj)
     mat = _existing_outline_material(obj)
@@ -185,7 +185,7 @@ def _update_existing_sheet_outline(
         mat,
         color,
         hide_through_transparent=hide_through_transparent,
-        double_sided=True,
+        double_sided=outline_setup._outline_double_sided(obj),
     )
     outline_setup._ensure_sheet_line_material_slot(obj, mat)
     mod[sid_mat] = mat
@@ -242,6 +242,7 @@ def _update_existing_solid_outline(
     outline_setup._configure_solidify_shape(obj, mod, use_rim, offset)
     mod.material_offset = material_offset
     mod.material_offset_rim = material_offset
+    outline_setup.ensure_sheet_outline(obj, mod, mat)
     _sync_existing_outline_width_controls(
         obj,
         mod,
@@ -276,7 +277,7 @@ def update_existing_outline(
     """Update a valid existing outline without rebuilding its structure."""
     if obj.type != "MESH" or obj.data is None:
         return False
-    if plane_filter.is_sheet_mesh(obj):
+    if plane_filter.is_sheet_mesh(obj) or outline_setup._uses_boundary_tube_only(obj):
         return _update_existing_sheet_outline(
             obj,
             thickness=thickness,

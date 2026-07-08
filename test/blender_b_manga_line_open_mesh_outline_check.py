@@ -150,6 +150,34 @@ def _add_mixed_cube_plane_mesh() -> bpy.types.Object:
     return obj
 
 
+def _add_many_boundary_non_sheet_mesh() -> bpy.types.Object:
+    verts: list[tuple[float, float, float]] = []
+    faces: list[tuple[int, int, int]] = []
+    for index in range(220):
+        x = float(index % 22) * 0.2
+        y = float(index // 22) * 0.2
+        z = 0.08 if index % 2 else 0.0
+        base = len(verts)
+        verts.extend(
+            [
+                (x, y, z),
+                (x + 0.12, y, z + 0.03),
+                (x, y + 0.12, z),
+            ]
+        )
+        faces.append((base, base + 1, base + 2))
+
+    mesh = bpy.data.meshes.new("BML_many_boundary_non_sheet_mesh")
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    obj = bpy.data.objects.new("BML_many_boundary_non_sheet", mesh)
+    bpy.context.collection.objects.link(obj)
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    obj.data.materials.append(_surface_material("BML_many_boundary_non_sheet_surface"))
+    return obj
+
+
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     b_manga_line.register()
@@ -303,8 +331,15 @@ def main() -> None:
         assert mixed_mod.use_rim, (
             "立体と平面が混在したオブジェクト内の平面境界にアウトラインが作成されていません"
         )
-        assert mixed.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME) is None, (
-            "混在メッシュに板ポリ専用チューブが作成されています"
+        assert mixed.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME) is not None, (
+            "混在メッシュ内の平面境界に境界チューブが作成されていません"
+        )
+
+        many_boundary = _add_many_boundary_non_sheet_mesh()
+        many_boundary_mod = _apply_line(many_boundary, use_rim=False)
+        assert many_boundary_mod is None, "大量境界メッシュに通常アウトラインが作成されています"
+        assert many_boundary.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME) is not None, (
+            "大量境界メッシュに境界チューブが作成されていません"
         )
 
         assert outline_setup.set_line_only(plane, True)

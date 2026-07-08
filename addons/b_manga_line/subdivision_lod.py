@@ -121,6 +121,27 @@ def has_subsurf_modifier(obj: bpy.types.Object) -> bool:
     return any(mod.type == "SUBSURF" for mod in obj.modifiers)
 
 
+def _mesh_has_boundary_edges(obj: bpy.types.Object) -> bool:
+    if obj.type != "MESH" or obj.data is None:
+        return False
+    edge_use_count: dict[tuple[int, int], int] = {}
+    for poly in obj.data.polygons:
+        for edge_key in poly.edge_keys:
+            key = tuple(sorted(edge_key))
+            edge_use_count[key] = edge_use_count.get(key, 0) + 1
+    return any(count == 1 for count in edge_use_count.values())
+
+
+def auto_subdivision_supported(obj: bpy.types.Object) -> bool:
+    """Return True when auto Catmull-Clark can be applied without open-edge blowups."""
+    return (
+        obj.type == "MESH"
+        and obj.data is not None
+        and bool(obj.data.polygons)
+        and not _mesh_has_boundary_edges(obj)
+    )
+
+
 def _ensure_crease_attribute(mesh: bpy.types.Mesh):
     attr = mesh.attributes.get(CREASE_EDGE_ATTR)
     if attr is None:
@@ -174,6 +195,9 @@ def ensure_auto_subdivision(obj: bpy.types.Object, scene) -> bpy.types.Modifier 
     """Create/update the auto Subdivision Surface modifier used by midpoint widths."""
     if obj.type != "MESH" or obj.data is None:
         return None
+    if not auto_subdivision_supported(obj):
+        remove_auto_subdivision(obj)
+        return None
 
     mark_sharp_edges_for_subsurf(obj)
     mod = auto_subsurf_modifier(obj)
@@ -212,6 +236,10 @@ def repair_auto_subdivision_modifiers(scene: bpy.types.Scene | None = None) -> i
             continue
         mod = auto_subsurf_modifier(obj)
         if mod is None:
+            continue
+        if not auto_subdivision_supported(obj):
+            if remove_auto_subdivision(obj):
+                changed += 1
             continue
         mark_sharp_edges_for_subsurf(obj)
         if hasattr(mod, "subdivision_type") and mod.subdivision_type != AUTO_SUBSURF_SUBDIVISION_TYPE:

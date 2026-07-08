@@ -66,6 +66,8 @@ _SHEET_TUBE_ANGLE_SPLIT_LABEL = "BML_SheetOutlinePathWidthV18"
 _SHEET_TUBE_SUBDIVIDE_LABEL = "BML_SheetOutlinePathWidthV18Midpoints"
 _SHEET_TUBE_SAFE_SCALE_LABEL = "BML_SheetOutlineSafeScaleV18"
 _MIN_CURVE_TO_MESH_SCALE = 0.10
+_MAX_MIXED_BOUNDARY_TUBE_EDGES = 512
+_BOUNDARY_ONLY_RATIO = 0.35
 _LINE_MATERIAL_NAMES = {
     "outline": MATERIAL_NAME,
     "inner": f"{MATERIAL_NAME}_Inner",
@@ -140,8 +142,8 @@ def _line_hide_transparent(obj: bpy.types.Object) -> bool:
 
 
 def _outline_double_sided(obj: bpy.types.Object) -> bool:
-    """シートはリムのみのアウトラインになるため両面表示が必要."""
-    return plane_filter.is_sheet_mesh(obj)
+    """境界チューブだけで描くアウトラインでは両面表示が必要."""
+    return _uses_boundary_tube_only(obj)
 
 
 def _line_material_double_sided(obj: bpy.types.Object, target: str) -> bool:
@@ -752,15 +754,44 @@ def _apply_solidify_algorithm_mode(mod: bpy.types.Modifier, is_sheet: bool) -> N
     mod.solidify_mode = "EXTRUDE" if is_sheet else "NON_MANIFOLD"
 
 
-def _mesh_has_boundary_edges(obj: bpy.types.Object) -> bool:
+def _mesh_boundary_edge_count(obj: bpy.types.Object) -> int:
     if obj.type != "MESH" or obj.data is None:
-        return False
+        return 0
     edge_use_count: dict[tuple[int, int], int] = {}
     for poly in obj.data.polygons:
         for edge_key in poly.edge_keys:
             key = tuple(sorted(edge_key))
             edge_use_count[key] = edge_use_count.get(key, 0) + 1
-    return any(count == 1 for count in edge_use_count.values())
+    return sum(1 for count in edge_use_count.values() if count == 1)
+
+
+def _mesh_has_boundary_edges(obj: bpy.types.Object) -> bool:
+    return _mesh_boundary_edge_count(obj) > 0
+
+
+def _mesh_boundary_edge_ratio(obj: bpy.types.Object) -> float:
+    if obj.type != "MESH" or obj.data is None or not obj.data.edges:
+        return 0.0
+    return _mesh_boundary_edge_count(obj) / max(1, len(obj.data.edges))
+
+
+def _uses_boundary_tube_only(obj: bpy.types.Object) -> bool:
+    if plane_filter.is_sheet_mesh(obj):
+        return True
+    return (
+        _mesh_boundary_edge_count(obj) > _MAX_MIXED_BOUNDARY_TUBE_EDGES
+        and _mesh_boundary_edge_ratio(obj) >= _BOUNDARY_ONLY_RATIO
+    )
+
+
+def _needs_boundary_outline_tube(obj: bpy.types.Object) -> bool:
+    if plane_filter.is_sheet_mesh(obj):
+        return True
+    boundary_count = _mesh_boundary_edge_count(obj)
+    return (
+        0 < boundary_count <= _MAX_MIXED_BOUNDARY_TUBE_EDGES
+        or _uses_boundary_tube_only(obj)
+    )
 
 
 def _configure_solidify_shape(
@@ -1066,10 +1097,10 @@ def ensure_sheet_outline(
     *,
     thickness: float | None = None,
 ) -> None:
-    """シートなら境界チューブを作る。非シートなら撤去."""
-    is_sheet = plane_filter.is_sheet_mesh(obj)
+    """境界辺にチューブアウトラインを作る。境界がなければ撤去."""
+    needs_tube = _needs_boundary_outline_tube(obj)
     mod = obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME)
-    if not is_sheet:
+    if not needs_tube:
         if mod is not None:
             obj.modifiers.remove(mod)
         return
@@ -1097,8 +1128,7 @@ def ensure_sheet_outline(
     _sync_sheet_outline_midpoint_inputs(obj, mod)
 
     if solidify_mod is not None:
-        # 旧ファイル互換: 通常アウトラインがまだ残っているシートでは、
-        # 既存リムがチューブと二重にならないよう非表示素材へ逃がす。
+        # 境界辺はチューブで描くため、Solidifyのリム面は二重線にしない。
         hidden = _get_or_create_hidden_rim_material()
         hidden_index = None
         for index, slot in enumerate(obj.material_slots):
@@ -1199,15 +1229,22 @@ def _sync_sheet_outline_midpoint_inputs(
     settings = getattr(obj, "bmanga_line_settings", None)
     if settings is None:
         return
+    boundary_only = _uses_boundary_tube_only(obj) and not plane_filter.is_sheet_mesh(obj)
+    midpoint_factor = 0.0 if boundary_only else float(getattr(settings, "edge_smooth_factor", 0.0))
+    midpoint_jitter = (
+        0.0
+        if boundary_only
+        else float(getattr(settings, "edge_midpoint_jitter_percent", 0.0))
+    )
     _set_node_input_if_changed(
         mod,
         _SHEET_TUBE_MIDPOINT_FACTOR_SOCKET,
-        float(getattr(settings, "edge_smooth_factor", 0.0)),
+        midpoint_factor,
     )
     _set_node_input_if_changed(
         mod,
         _SHEET_TUBE_MIDPOINT_JITTER_SOCKET,
-        float(getattr(settings, "edge_midpoint_jitter_percent", 0.0)),
+        midpoint_jitter,
     )
     _set_node_input_if_changed(
         mod,
@@ -1264,16 +1301,18 @@ def apply_outline(
         hide_through_transparent=hide_through_transparent,
     )
     is_sheet = plane_filter.is_sheet_mesh(obj)
+    boundary_tube_only = _uses_boundary_tube_only(obj)
 
-    if is_sheet:
+    if is_sheet or boundary_tube_only:
         _ensure_sheet_line_material_slot(obj, mat)
     else:
         material_offset = _ensure_outline_material_slots(obj, mat)
     _ensure_surface_mask_aovs(obj)
 
     local_thickness = modifier_thickness_for_world_width(obj, thickness)
-    if is_sheet:
-        # 板ポリは通常の背面法アウトラインを作らず、境界チューブだけを使う。
+    if is_sheet or boundary_tube_only:
+        # 板ポリや境界辺比率が高い平面群は、背面法の面がトゲ状に
+        # 重なりやすいため境界チューブだけを使う。
         old_mod = obj.modifiers.get(MODIFIER_NAME)
         if old_mod is not None:
             obj.modifiers.remove(old_mod)

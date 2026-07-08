@@ -218,6 +218,20 @@ def _assert_smooth_edges_are_uncreased() -> None:
     assert abs(float(attr.data[shared_edge.index].value)) < 1.0e-6
 
 
+def _assert_auto_subdivision_skips_boundary_mesh() -> None:
+    obj = _make_open_folded_strip()
+    assert not subdivision_lod.auto_subdivision_supported(obj)
+    assert subdivision_lod.ensure_auto_subdivision(obj, bpy.context.scene) is None
+    assert _auto_subsurf(obj) is None
+
+    stale = obj.modifiers.new(subdivision_lod.AUTO_SUBSURF_MODIFIER_NAME, "SUBSURF")
+    stale.levels = 2
+    changed = subdivision_lod.repair_auto_subdivision_modifiers(bpy.context.scene)
+    assert changed >= 1
+    assert _auto_subsurf(obj) is None
+    assert obj.modifiers.get(core.OUTLINE_WIDTH_ATTR_MODIFIER_NAME) is None
+
+
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     b_manga_line.register()
@@ -227,6 +241,8 @@ def main() -> None:
         _assert_open_edges_are_creased()
         _clear_scene()
         _assert_smooth_edges_are_uncreased()
+        _clear_scene()
+        _assert_auto_subdivision_skips_boundary_mesh()
         _clear_scene()
         bpy.ops.object.camera_add(location=(0.0, -3.0, 0.0))
         bpy.context.scene.camera = bpy.context.object
