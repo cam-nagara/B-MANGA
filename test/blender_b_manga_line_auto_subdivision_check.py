@@ -15,6 +15,7 @@ from b_manga_line import (  # noqa: E402
     core,
     outline_setup,
     outline_width_attribute,
+    presets,
     subdivision_lod,
     vertex_analysis,
 )
@@ -290,6 +291,31 @@ def _assert_shared_mesh_quadification_is_local() -> None:
     assert all(len(poly.vertices) == 3 for poly in sibling.data.polygons)
 
 
+def _assert_outline_only_creation_sets_auto_subdivision() -> None:
+    bpy.ops.object.camera_add(location=(0.0, -3.0, 0.0))
+    bpy.context.scene.camera = bpy.context.object
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0.0, 0.0, 0.0))
+    obj = bpy.context.object
+    obj.data.materials.append(bpy.data.materials.new("BML_outline_only_surface"))
+    settings = obj.bmanga_line_settings
+    settings.auto_subdivision_for_midpoint = True
+    settings.match_subsurf_viewport_to_render = True
+    settings.edge_smooth_factor = -0.5
+
+    assert presets.apply_line_settings(
+        obj,
+        bpy.context,
+        refresh_scene=False,
+        line_targets=("outline",),
+    )
+    auto_mod = _auto_subsurf(obj)
+    assert auto_mod is not None, "アウトラインのみ作成で自動サブディビジョンがありません"
+    assert auto_mod.levels == auto_mod.render_levels
+    assert obj.modifiers.get(core.OUTLINE_WIDTH_ATTR_MODIFIER_NAME) is not None
+    assert obj.modifiers.get(core.MODIFIER_NAME) is not None
+    assert obj.modifiers.get(core.GN_MODIFIER_NAME) is None
+
+
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     b_manga_line.register()
@@ -305,6 +331,8 @@ def main() -> None:
         _assert_auto_subdivision_quadrangulates_triangles()
         _clear_scene()
         _assert_shared_mesh_quadification_is_local()
+        _clear_scene()
+        _assert_outline_only_creation_sets_auto_subdivision()
         _clear_scene()
         bpy.ops.object.camera_add(location=(0.0, -3.0, 0.0))
         bpy.context.scene.camera = bpy.context.object

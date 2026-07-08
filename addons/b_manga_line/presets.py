@@ -415,14 +415,14 @@ def apply_line_settings(
     if target_set and target_set - {"outline", "inner", "intersection", "selection"}:
         target_set = {"outline", "inner", "intersection", "selection"}
 
-    generated_targets = target_set & {"inner", "intersection", "selection"}
-    if generated_targets and settings.auto_subdivision_for_midpoint:
+    midpoint_targets = target_set & {"outline", "inner", "intersection", "selection"}
+    if midpoint_targets and settings.auto_subdivision_for_midpoint:
         subdivision_lod.ensure_auto_subdivision(obj, context.scene)
-    elif generated_targets:
+    elif midpoint_targets:
         subdivision_lod.remove_auto_subdivision(obj)
-    if generated_targets and settings.match_subsurf_viewport_to_render:
+    if midpoint_targets and settings.match_subsurf_viewport_to_render:
         subdivision_lod.sync_viewport_levels_to_render(obj)
-    elif generated_targets:
+    elif midpoint_targets:
         subdivision_lod.reset_viewport_levels_to_zero(obj)
 
     if "outline" in target_set:

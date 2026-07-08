@@ -1062,6 +1062,8 @@ def refresh_target_visuals(
         return []
 
     if target == "outline":
+        _update_auto_subdivision(targets, context)
+        _update_match_subsurf_viewport_to_render(targets)
         _update_outline_color(targets)
         _update_outline_offset(targets)
         _update_outline_flag(targets, "use_even_offset", "even_thickness")
