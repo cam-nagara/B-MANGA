@@ -29,7 +29,6 @@ _saving_scene_snapshots: dict[int, tuple[object, list[dict], int, str]] = {}
 
 _SETTING_FIELDS = (
     "lines_visible",
-    "line_only_visible",
     "match_subsurf_viewport_to_render",
     "outline_enabled",
     "outline_thickness",
@@ -386,8 +385,6 @@ def _reflect_applied_display_settings(
             core.set_line_visibility(obj, False)
     if visibility_refresh_targets:
         camera_comp.refresh_visibility_objects(context, visibility_refresh_targets)
-    if core.is_scene_line_only_enabled(context):
-        core.set_scene_line_only(context, True)
 
 
 def apply_line_settings(
@@ -570,6 +567,8 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     """Saved B-MANGA Line settings."""
 
     lines_visible: BoolProperty(default=True)
+    # 2026-07-09 表示モードはプリセット保存対象から除外（_SETTING_FIELDS 参照）。
+    # 旧プリセットJSON互換のためプロパティ自体は残す。
     line_only_visible: BoolProperty(default=False)
     match_subsurf_viewport_to_render: BoolProperty(default=False)
 

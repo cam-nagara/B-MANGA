@@ -3,6 +3,33 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-09 — B-MANGA Linerの「ラインのみを表示」解除漏れとライン適用時の勝手な表示切替を修正 (B-MANGA v0.6.451 / B-MANGA Liner v0.3.168)
+
+### 症状
+
+- ラインのみ表示の解除漏れでテクスチャが白いままになる問題。「ラインのみを表示」をOFFにしても、一部の素材でテクスチャが白いフラット面のまま戻らないことがあった。
+- ライン適用時に表示状態が勝手に切り替わる問題。「ラインを適用」を実行するたびに、シーンの「ラインのみを表示」フラグが立っていると全通常マテリアルへ白色化が再アサートされ、ユーザーが操作していないのに表示が切り替わっていた。
+
+### 原因（計画書 `swift-dreaming-wigderson.md` の実機調査で特定）
+
+- `line_only_display._restore_material_line_only()` が復元用カスタムプロパティ（`bml_line_only_original_use_nodes`）の有無だけを復元条件にしており、このプロパティが失われた素材は復元ループから除外され白出力ノードが残留していた。
+- `presets._reflect_applied_display_settings()` の末尾が毎回 `core.is_scene_line_only_enabled()` を見て `set_scene_line_only(True)` を呼び直しており、ライン適用のたびに白色化を再実行していた。
+- `batch_update._update_line_only_visible()` と `refresh_propagated_property()` の `"line_only_visible"` 分岐が、`core.py` のUIコールバック（`_on_line_only_visible_changed` / `_on_scene_line_only_visible_changed`）と同じ処理を二重に実行し得る経路だった。
+
+### 修正 (`line_only_display.py` / `presets.py` / `batch_update.py`)
+
+- `_enable_material_line_only()`: 白出力ノードが既にアクティブかつ白Emissionへ接続済みなら何もせず終了する冪等化を追加。
+- `_restore_material_line_only()`: 復元用カスタムプロパティが無くても `BML_LineOnly_WhiteOutput` ノードが残っていれば復元対象にする自己修復に対応。復元の最後に白出力・白Emissionノードを削除して残骸を残さない（`use_nodes` をFalseへ戻すパスでも削除を先に行う）。
+- `set_materials_line_only()`: 素材単位の例外捕捉を `Exception` 全般へ拡張し、1素材の失敗で全体を止めず続行。失敗した素材名と失敗件数をコンソールへ出力。
+- `presets._reflect_applied_display_settings()` 末尾の白色化再アサートを削除（ライン適用で作られるのはBML素材のみで通常素材は触らないため不要）。
+- `_SETTING_FIELDS` から `line_only_visible` を除去し、表示モードをプリセット保存対象から外した（PropertyGroup定義自体は旧プリセットJSON互換のため維持。読み込み側はキー存在チェック済みで、古いJSONに残っていても落ちない）。
+- `batch_update._update_line_only_visible()` と `refresh_propagated_property()` の `"line_only_visible"` 分岐を削除。表示切替は `core.py` のUIコールバック経路に一本化。
+
+### 検証
+
+- `python -m py_compile` を変更対象の3ファイル（`line_only_display.py` / `presets.py` / `batch_update.py`）へ実行しOK。
+- 本エントリはコード修正セッション（Sonnet 5級サブエージェントへ委任）の記録であり、実機での復旧確認・目視確認・再発防止確認・トグル往復・プリセット互換確認（計画書の「検証」節）は未実施。次回セッションで実施すること。
+
 ## 2026-07-09 — B-MANGA Linerのライン設定に「すべてのラインを更新」ボタンを追加 (B-MANGA v0.6.450 / B-MANGA Liner v0.3.167)
 
 ### 追加

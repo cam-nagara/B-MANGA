@@ -83,9 +83,50 @@ def _ensure_line_only_output(mat: bpy.types.Material) -> bpy.types.Node | None:
     return output
 
 
+def _is_line_only_output_active(mat: bpy.types.Material) -> bool:
+    """白出力ノードが既にアクティブかつ白Emissionへ接続済みかを判定（冪等化用）."""
+    if not mat.use_nodes or mat.node_tree is None:
+        return False
+    output = mat.node_tree.nodes.get(LINE_ONLY_OUTPUT_NAME)
+    if output is None or not bool(getattr(output, "is_active_output", False)):
+        return False
+    emission = mat.node_tree.nodes.get(LINE_ONLY_EMISSION_NAME)
+    if emission is None:
+        return False
+    for link in mat.node_tree.links:
+        if (
+            link.to_node == output
+            and link.to_socket == output.inputs["Surface"]
+            and link.from_node == emission
+        ):
+            return True
+    return False
+
+
+def _has_line_only_output_node(mat: bpy.types.Material) -> bool:
+    node_tree = getattr(mat, "node_tree", None)
+    if node_tree is None:
+        return False
+    return node_tree.nodes.get(LINE_ONLY_OUTPUT_NAME) is not None
+
+
+def _remove_line_only_nodes(mat: bpy.types.Material) -> None:
+    """白出力・白Emissionノードを削除し残骸を残さない."""
+    node_tree = getattr(mat, "node_tree", None)
+    if node_tree is None:
+        return
+    nodes = node_tree.nodes
+    for name in (LINE_ONLY_OUTPUT_NAME, LINE_ONLY_EMISSION_NAME):
+        node = nodes.get(name)
+        if node is not None:
+            nodes.remove(node)
+
+
 def _enable_material_line_only(mat: bpy.types.Material) -> bool:
     if not is_line_only_surface_material(mat):
         return False
+    if _is_line_only_output_active(mat):
+        return True
     if PROP_LINE_ONLY_ORIGINAL_USE_NODES not in mat:
         mat[PROP_LINE_ONLY_ORIGINAL_USE_NODES] = bool(mat.use_nodes)
         active = active_material_output(mat)
@@ -98,10 +139,18 @@ def _enable_material_line_only(mat: bpy.types.Material) -> bool:
 
 
 def _restore_material_line_only(mat: bpy.types.Material) -> bool:
-    if PROP_LINE_ONLY_ORIGINAL_USE_NODES not in mat:
+    has_prop = PROP_LINE_ONLY_ORIGINAL_USE_NODES in mat
+    if not has_prop and not _has_line_only_output_node(mat):
         return False
-    original_use_nodes = bool(mat.get(PROP_LINE_ONLY_ORIGINAL_USE_NODES, True))
-    original_output = str(mat.get(PROP_LINE_ONLY_ORIGINAL_OUTPUT, "") or "")
+    if has_prop:
+        original_use_nodes = bool(mat.get(PROP_LINE_ONLY_ORIGINAL_USE_NODES, True))
+        original_output = str(mat.get(PROP_LINE_ONLY_ORIGINAL_OUTPUT, "") or "")
+    else:
+        # 自己修復ケース: 復元用カスタムプロパティが失われているが白出力ノードは
+        # 残存している。元の出力名は分からないため、白出力以外の Material Output
+        # ノードへフォールバックする（既存のフォールバックと同じ選び方）。
+        original_use_nodes = True
+        original_output = ""
     if original_use_nodes:
         try:
             mat.use_nodes = True
@@ -118,20 +167,24 @@ def _restore_material_line_only(mat: bpy.types.Material) -> bool:
             )
         if target is not None:
             set_active_material_output(mat, target)
+        _remove_line_only_nodes(mat)
     else:
+        _remove_line_only_nodes(mat)
         try:
             mat.use_nodes = False
         except RuntimeError:
             return False
-    del mat[PROP_LINE_ONLY_ORIGINAL_USE_NODES]
-    if PROP_LINE_ONLY_ORIGINAL_OUTPUT in mat:
-        del mat[PROP_LINE_ONLY_ORIGINAL_OUTPUT]
+    if has_prop:
+        del mat[PROP_LINE_ONLY_ORIGINAL_USE_NODES]
+        if PROP_LINE_ONLY_ORIGINAL_OUTPUT in mat:
+            del mat[PROP_LINE_ONLY_ORIGINAL_OUTPUT]
     return True
 
 
 def set_materials_line_only(enabled: bool) -> int:
     """通常マテリアルの出力だけを白い放射出力へ切り替える."""
     changed = 0
+    failed = 0
     for mat in bpy.data.materials:
         try:
             ok = (
@@ -139,8 +192,12 @@ def set_materials_line_only(enabled: bool) -> int:
                 if enabled
                 else _restore_material_line_only(mat)
             )
-        except ReferenceError:
+        except Exception as e:  # noqa: BLE001 - 1素材の失敗で全体の切替を止めない
+            print("[B-MANGA Liner] ラインのみ表示の切替に失敗:", mat.name, repr(e))
+            failed += 1
             ok = False
         if ok:
             changed += 1
+    if failed:
+        print(f"[B-MANGA Liner] ラインのみ表示の切替に失敗した素材: {failed} 件")
     return changed
