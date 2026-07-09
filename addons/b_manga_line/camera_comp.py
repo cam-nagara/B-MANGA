@@ -214,6 +214,31 @@ def selection_line_creation_in_range(obj: bpy.types.Object, scene, settings=None
 # カメラ画角ユーティリティ
 # ------------------------------------------------------------------
 
+_FISHEYE_PANORAMA_TYPES = (
+    "FISHEYE_EQUISOLID",
+    "FISHEYE_EQUIDISTANT",
+    "FISHEYE_POLYNOMIAL",
+)
+
+
+def _panorama_type(cam_data) -> str | None:
+    ptype = getattr(cam_data, "panorama_type", None)
+    if ptype is None:
+        cycles = getattr(cam_data, "cycles", None)
+        if cycles is not None:
+            ptype = getattr(cycles, "panorama_type", None)
+    return ptype
+
+
+def _fisheye_fov(cam_data) -> float | None:
+    fov = getattr(cam_data, "fisheye_fov", None)
+    if fov is None:
+        cycles = getattr(cam_data, "cycles", None)
+        if cycles is not None:
+            fov = getattr(cycles, "fisheye_fov", None)
+    return fov
+
+
 def _get_camera_half_angle(cam_data, scene) -> float:
     """カメラの有効な半画角（対角線ベース, ラジアン）を取得."""
     if cam_data.type == "PERSP":
@@ -234,22 +259,10 @@ def _get_camera_half_angle(cam_data, scene) -> float:
         return math.pi
 
     if cam_data.type == "PANO":
-        ptype = getattr(cam_data, "panorama_type", None)
-        if ptype is None:
-            cycles = getattr(cam_data, "cycles", None)
-            if cycles is not None:
-                ptype = getattr(cycles, "panorama_type", None)
+        ptype = _panorama_type(cam_data)
 
-        if ptype in (
-            "FISHEYE_EQUISOLID",
-            "FISHEYE_EQUIDISTANT",
-            "FISHEYE_POLYNOMIAL",
-        ):
-            fov = getattr(cam_data, "fisheye_fov", None)
-            if fov is None:
-                cycles = getattr(cam_data, "cycles", None)
-                if cycles is not None:
-                    fov = getattr(cycles, "fisheye_fov", None)
+        if ptype in _FISHEYE_PANORAMA_TYPES:
+            fov = _fisheye_fov(cam_data)
             return (fov / 2) if fov is not None else math.pi
 
         if ptype == "EQUIRECTANGULAR":
@@ -277,7 +290,8 @@ def _get_fov_factor(cam_data, scene) -> float:
     if cam_data.type == "ORTHO":
         return cam_data.ortho_scale
     half = _get_camera_half_angle(cam_data, scene)
-    t = math.tan(half)
+    # 魚眼など半画角が90°以上になるカメラでは tan が発散するためクランプする
+    t = math.tan(min(half, math.radians(89.5)))
     return t if t > 1e-6 else 1.0
 
 
@@ -317,6 +331,32 @@ def target_pixels_for_mm(scene, width_mm: float) -> float:
     return _target_pixels(scene, max(0.0, float(width_mm)) / 1000.0)
 
 
+def _panorama_radians_per_pixel(cam_data, scene, width: float, height: float) -> float:
+    """パノラマカメラの1ピクセルあたりの視角（ラジアン）を返す.
+
+    魚眼は視野角が180°を超え tan(半画角) が発散するため、透視投影の
+    ような tan ベースの換算は使えない。角度がピクセルへほぼ線形に
+    対応する性質（等距離射影）を使って角度密度で換算する。
+    """
+    ptype = _panorama_type(cam_data)
+    if ptype in _FISHEYE_PANORAMA_TYPES:
+        # Cycles の魚眼は横・縦を独立にフレームへ正規化するため、
+        # 非正方形レンダーでは横=視野角/横px・縦=視野角/縦px の
+        # アナモルフィック射影になる（縦横比・sensor_fit に依存しない
+        # ことを実測確認済み: _verify/2026-07-09_bml_fisheye_width/）。
+        # 線の向きで画素幅が変わるため、両密度の幾何平均で換算する。
+        fov = _fisheye_fov(cam_data)
+        fov = float(fov) if fov else math.pi
+        return max(1.0e-6, fov) / max(1.0, math.sqrt(width * height))
+    if ptype == "EQUIRECTANGULAR":
+        # 縦方向（緯度）は画面全域で角度密度が一定なため縦を基準にする
+        lat_min = float(getattr(cam_data, "latitude_min", -math.pi / 2))
+        lat_max = float(getattr(cam_data, "latitude_max", math.pi / 2))
+        return max(1.0e-6, lat_max - lat_min) / max(1.0, height)
+    half = min(_get_camera_half_angle(cam_data, scene), math.pi)
+    return max(1.0e-6, 2.0 * half) / max(1.0, math.hypot(width, height))
+
+
 def _world_per_pixel(scene, camera, world_co: Vector) -> float:
     width, height = _effective_render_size(scene)
     cam_data = camera.data
@@ -327,17 +367,19 @@ def _world_per_pixel(scene, camera, world_co: Vector) -> float:
         return max(1.0e-9, float(cam_data.ortho_scale) / width)
 
     local = camera.matrix_world.inverted() @ world_co
-    depth = max(0.001, -float(local.z))
     if cam_data.type == "PERSP":
+        depth = max(0.001, -float(local.z))
         angle_y = float(getattr(cam_data, "angle_y", cam_data.angle))
         view_height = 2.0 * depth * math.tan(angle_y * 0.5)
         return max(1.0e-9, view_height / height)
 
-    width, _ = _effective_render_size(scene)
-    half = _get_camera_half_angle(cam_data, scene)
-    view_diag = 2.0 * depth * math.tan(half)
-    pixel_diag = math.hypot(width, height)
-    return max(1.0e-9, view_diag / pixel_diag)
+    # PANO: 魚眼はカメラの真横・後方も写るため、深度はカメラ前方（-Z）
+    # 成分ではなくカメラ位置からの距離で測る
+    dist = max(0.001, float(local.length))
+    return max(
+        1.0e-9,
+        dist * _panorama_radians_per_pixel(cam_data, scene, width, height),
+    )
 
 
 def _uniform_widths_for_mesh(scene, camera, obj, width_m: float) -> list[float]:
