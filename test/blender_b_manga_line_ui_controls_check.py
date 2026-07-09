@@ -223,6 +223,14 @@ def _assert_update_buttons_are_in_line_settings(active: bpy.types.Object) -> Non
         settings_layout.operators[0].idname
         == "bmanga_line.update_all_visual_targets"
     ), [op.idname for op in settings_layout.operators]
+    auto_ops = [
+        op for op in settings_layout.operators
+        if op.idname == "bmanga_line.update_auto_subdivision"
+    ]
+    assert [(op.text, op.action) for op in auto_ops] == [
+        ("作成", "CREATE"),
+        ("更新", "UPDATE"),
+    ], [(op.idname, op.text, getattr(op, "action", None)) for op in auto_ops]
     create_ops = [
         op for op in settings_layout.operators
         if op.idname == "bmanga_line.update_target"

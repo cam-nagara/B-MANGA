@@ -199,6 +199,10 @@ def _draw_line_settings(layout, context, settings) -> None:
 
     row = body.row(align=True)
     row.prop(settings, "auto_subdivision_for_midpoint")
+    op = row.operator("bmanga_line.update_auto_subdivision", text="作成", icon="ADD")
+    op.action = "CREATE"
+    op = row.operator("bmanga_line.update_auto_subdivision", text="更新", icon="FILE_REFRESH")
+    op.action = "UPDATE"
     row.operator("bmanga_line.detail_settings", icon="PREFERENCES")
 
     for index, (target, label, draw_func, show_create) in enumerate((

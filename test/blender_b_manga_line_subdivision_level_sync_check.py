@@ -217,6 +217,9 @@ def _assert_match_viewport_checkbox_restores_zero() -> None:
     mod = _auto_mod(obj)
     mod.levels = 0
     mod.render_levels = 2
+    manual = obj.modifiers.new("ユーザーSubsurf", "SUBSURF")
+    manual.levels = 0
+    manual.render_levels = 3
     bpy.ops.object.select_all(action="DESELECT")
     obj.select_set(True)
     bpy.context.view_layer.objects.active = obj
@@ -225,12 +228,14 @@ def _assert_match_viewport_checkbox_restores_zero() -> None:
     settings.match_subsurf_viewport_to_render = True
     batch_update._update_match_subsurf_viewport_to_render([obj])
     bpy.context.view_layer.update()
-    assert int(mod.levels) == 2
+    assert int(mod.levels) == 0
+    assert int(manual.levels) == 3
 
     settings.match_subsurf_viewport_to_render = False
     batch_update._update_match_subsurf_viewport_to_render([obj])
     bpy.context.view_layer.update()
     assert int(mod.levels) == 0
+    assert int(manual.levels) == 0
 
 
 def main() -> None:

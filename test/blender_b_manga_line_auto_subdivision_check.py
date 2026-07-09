@@ -44,6 +44,7 @@ def _assert_render_level_ladder() -> None:
         (15.0, 1),
         (19.99, 1),
         (20.0, 0),
+        (24.99, 0),
         (25.0, 0),
     )
     for distance, expected in cases:
@@ -252,18 +253,32 @@ def _assert_smooth_edges_are_uncreased() -> None:
     assert abs(float(attr.data[shared_edge.index].value)) < 1.0e-6
 
 
-def _assert_auto_subdivision_skips_boundary_mesh() -> None:
+def _assert_auto_subdivision_supports_boundary_mesh() -> None:
     obj = _make_open_folded_strip()
-    assert not subdivision_lod.auto_subdivision_supported(obj)
-    assert subdivision_lod.ensure_auto_subdivision(obj, bpy.context.scene) is None
-    assert _auto_subsurf(obj) is None
+    assert subdivision_lod.auto_subdivision_supported(obj)
+    auto_mod = subdivision_lod.ensure_auto_subdivision(obj, bpy.context.scene)
+    assert auto_mod is not None
+    assert auto_mod.levels == 0
+    assert auto_mod.subdivision_type == subdivision_lod.AUTO_SUBSURF_SUBDIVISION_TYPE
+    assert _auto_subsurf(obj) is not None
+    attr = obj.data.attributes.get(subdivision_lod.CREASE_EDGE_ATTR)
+    assert attr is not None, "クリース属性がありません"
+    creased = [
+        index for index, item in enumerate(attr.data)
+        if abs(float(item.value) - 1.0) < 1.0e-6
+    ]
+    assert len(creased) == 7, creased
 
-    stale = obj.modifiers.new(subdivision_lod.AUTO_SUBSURF_MODIFIER_NAME, "SUBSURF")
+    stale = auto_mod
     stale.levels = 2
+    stale.render_levels = 1
+    if hasattr(stale, "subdivision_type"):
+        stale.subdivision_type = "SIMPLE"
     changed = subdivision_lod.repair_auto_subdivision_modifiers(bpy.context.scene)
     assert changed >= 1
-    assert _auto_subsurf(obj) is None
-    assert obj.modifiers.get(core.OUTLINE_WIDTH_ATTR_MODIFIER_NAME) is None
+    assert _auto_subsurf(obj) is not None
+    assert _auto_subsurf(obj).levels == 0
+    assert _auto_subsurf(obj).subdivision_type == subdivision_lod.AUTO_SUBSURF_SUBDIVISION_TYPE
 
 
 def _assert_auto_subdivision_quadrangulates_triangles() -> None:
@@ -310,10 +325,52 @@ def _assert_outline_only_creation_sets_auto_subdivision() -> None:
     )
     auto_mod = _auto_subsurf(obj)
     assert auto_mod is not None, "アウトラインのみ作成で自動サブディビジョンがありません"
-    assert auto_mod.levels == auto_mod.render_levels
+    assert auto_mod.levels == 0
+    assert auto_mod.render_levels >= 0
     assert obj.modifiers.get(core.OUTLINE_WIDTH_ATTR_MODIFIER_NAME) is not None
     assert obj.modifiers.get(core.MODIFIER_NAME) is not None
     assert obj.modifiers.get(core.GN_MODIFIER_NAME) is None
+
+
+def _assert_auto_subdivision_buttons_work() -> None:
+    bpy.ops.object.camera_add(location=(0.0, -12.0, 0.0))
+    bpy.context.scene.camera = bpy.context.object
+    obj = _make_triangulated_cube("BML_auto_subdivision_button")
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+
+    settings = obj.bmanga_line_settings
+    settings.auto_subdivision_for_midpoint = False
+    assert _auto_subsurf(obj) is None
+    assert bpy.ops.bmanga_line.update_auto_subdivision(
+        "EXEC_DEFAULT",
+        action="CREATE",
+    ) == {"FINISHED"}
+    auto_mod = _auto_subsurf(obj)
+    assert bool(settings.auto_subdivision_for_midpoint)
+    assert auto_mod is not None
+    assert auto_mod.levels == 0
+    assert auto_mod.render_levels == 2
+    assert auto_mod.subdivision_type == subdivision_lod.AUTO_SUBSURF_SUBDIVISION_TYPE
+    assert all(len(poly.vertices) == 4 for poly in obj.data.polygons)
+    _assert_cube_edges_are_creased(obj)
+
+    obj.location.y = 6.0
+    bpy.context.view_layer.update()
+    assert bpy.ops.bmanga_line.update_auto_subdivision(
+        "EXEC_DEFAULT",
+        action="UPDATE",
+    ) == {"FINISHED"}
+    assert _auto_subsurf(obj).levels == 0
+    assert _auto_subsurf(obj).render_levels == 1
+
+    settings.auto_subdivision_for_midpoint = False
+    assert bpy.ops.bmanga_line.update_auto_subdivision(
+        "EXEC_DEFAULT",
+        action="UPDATE",
+    ) == {"FINISHED"}
+    assert _auto_subsurf(obj) is None
 
 
 def main() -> None:
@@ -326,13 +383,15 @@ def main() -> None:
         _clear_scene()
         _assert_smooth_edges_are_uncreased()
         _clear_scene()
-        _assert_auto_subdivision_skips_boundary_mesh()
+        _assert_auto_subdivision_supports_boundary_mesh()
         _clear_scene()
         _assert_auto_subdivision_quadrangulates_triangles()
         _clear_scene()
         _assert_shared_mesh_quadification_is_local()
         _clear_scene()
         _assert_outline_only_creation_sets_auto_subdivision()
+        _clear_scene()
+        _assert_auto_subdivision_buttons_work()
         _clear_scene()
         bpy.ops.object.camera_add(location=(0.0, -3.0, 0.0))
         bpy.context.scene.camera = bpy.context.object

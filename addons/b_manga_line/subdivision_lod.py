@@ -13,7 +13,7 @@ AUTO_SUBSURF_MODIFIER_NAME = "BML_MidpointSubsurf"
 AUTO_SUBSURF_CREASE_EDGES_PROP = "bml_auto_midpoint_subsurf_crease_edges"
 AUTO_QUADIFIED_FACES_PROP = "bml_auto_midpoint_quadified_faces"
 CREASE_EDGE_ATTR = "crease_edge"
-SHARP_EDGE_ANGLE = math.radians(60.0)
+SHARP_EDGE_ANGLE = math.radians(45.0)
 AUTO_SUBSURF_SUBDIVISION_TYPE = "CATMULL_CLARK"
 QUADRANGULATE_FACE_THRESHOLD = math.radians(40.0)
 QUADRANGULATE_SHAPE_THRESHOLD = math.radians(40.0)
@@ -55,6 +55,11 @@ def sync_viewport_levels_to_render(obj: bpy.types.Object) -> int:
     changed = 0
     for mod in obj.modifiers:
         if mod.type != "SUBSURF":
+            continue
+        if is_auto_subsurf_modifier(mod):
+            if int(getattr(mod, "levels", 0)) != 0:
+                mod.levels = 0
+                changed += 1
             continue
         render_levels = max(0, int(getattr(mod, "render_levels", 0)))
         if int(getattr(mod, "levels", 0)) == render_levels:
@@ -124,24 +129,12 @@ def has_subsurf_modifier(obj: bpy.types.Object) -> bool:
     return any(mod.type == "SUBSURF" for mod in obj.modifiers)
 
 
-def _mesh_has_boundary_edges(obj: bpy.types.Object) -> bool:
-    if obj.type != "MESH" or obj.data is None:
-        return False
-    edge_use_count: dict[tuple[int, int], int] = {}
-    for poly in obj.data.polygons:
-        for edge_key in poly.edge_keys:
-            key = tuple(sorted(edge_key))
-            edge_use_count[key] = edge_use_count.get(key, 0) + 1
-    return any(count == 1 for count in edge_use_count.values())
-
-
 def auto_subdivision_supported(obj: bpy.types.Object) -> bool:
-    """Return True when auto Catmull-Clark can be applied without open-edge blowups."""
+    """Return True when auto Catmull-Clark can be applied to the mesh."""
     return (
         obj.type == "MESH"
         and obj.data is not None
         and bool(obj.data.polygons)
-        and not _mesh_has_boundary_edges(obj)
     )
 
 
@@ -317,6 +310,19 @@ def repair_auto_subdivision_modifiers(scene: bpy.types.Scene | None = None) -> i
         mark_sharp_edges_for_subsurf(obj)
         if hasattr(mod, "subdivision_type") and mod.subdivision_type != AUTO_SUBSURF_SUBDIVISION_TYPE:
             mod.subdivision_type = AUTO_SUBSURF_SUBDIVISION_TYPE
+            changed += 1
+        if int(getattr(mod, "levels", 0)) != 0:
+            mod.levels = 0
+            changed += 1
+        desired_render_levels = render_levels_for_distance(_distance_to_camera(obj, scene))
+        if int(getattr(mod, "render_levels", 0)) != desired_render_levels:
+            mod.render_levels = desired_render_levels
+            changed += 1
+        if not bool(getattr(mod, "show_viewport", True)):
+            mod.show_viewport = True
+            changed += 1
+        if not bool(getattr(mod, "show_render", True)):
+            mod.show_render = True
             changed += 1
         if sync_generated_line_subdivision(obj):
             changed += 1

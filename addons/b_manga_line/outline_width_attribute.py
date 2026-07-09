@@ -124,7 +124,7 @@ def _setup_interface(tree: bpy.types.NodeTree) -> None:
         in_out="INPUT",
         socket_type="NodeSocketFloat",
     )
-    sharp_angle.default_value = math.radians(60.0)
+    sharp_angle.default_value = math.radians(45.0)
     sharp_angle.min_value = 0.0
     sharp_angle.max_value = math.pi
     if hasattr(sharp_angle, "subtype"):
@@ -360,7 +360,7 @@ def ensure_outline_width_attribute(obj: bpy.types.Object, settings=None) -> bool
             getattr(settings, "edge_midpoint_jitter_percent", 0.0)
         ),
         _MIDPOINT_ANGLE_SOCKET: float(getattr(settings, "edge_midpoint_angle", 1.7453292520)),
-        _SHARP_EDGE_ANGLE_SOCKET: math.radians(60.0),
+        _SHARP_EDGE_ANGLE_SOCKET: math.radians(45.0),
         _WIDTH_CURVE_25_SOCKET: float(getattr(settings, "edge_width_curve_25", 0.25)),
         _WIDTH_CURVE_50_SOCKET: float(getattr(settings, "edge_width_curve_50", 0.50)),
         _WIDTH_CURVE_75_SOCKET: float(getattr(settings, "edge_width_curve_75", 0.75)),

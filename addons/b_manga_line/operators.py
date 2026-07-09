@@ -321,6 +321,102 @@ class BMANGA_LINE_OT_update_all_visual_targets(bpy.types.Operator):
         return {"FINISHED"}
 
 
+def _enable_auto_subdivision_setting(objects: list[bpy.types.Object]) -> None:
+    from . import core
+
+    old = core._propagating
+    core._propagating = True
+    try:
+        for obj in objects:
+            settings = getattr(obj, "bmanga_line_settings", None)
+            if settings is None:
+                continue
+            if bool(getattr(settings, "auto_subdivision_for_midpoint", False)):
+                continue
+            settings.auto_subdivision_for_midpoint = True
+            record_override_edits(obj)
+    finally:
+        core._propagating = old
+
+
+def _refresh_plain_auto_subdivision(
+    objects: list[bpy.types.Object],
+    context,
+) -> dict[str, bpy.types.Object]:
+    from . import modifier_stack, subdivision_lod
+
+    updated: dict[str, bpy.types.Object] = {}
+    for obj in objects:
+        if has_line(obj):
+            continue
+        settings = getattr(obj, "bmanga_line_settings", None)
+        if settings is None:
+            continue
+        if bool(getattr(settings, "auto_subdivision_for_midpoint", False)):
+            mod = subdivision_lod.ensure_auto_subdivision(obj, context.scene)
+            modifier_stack.reorder_line_modifiers(obj)
+            if mod is not None:
+                updated[obj.name_full] = obj
+        elif subdivision_lod.remove_auto_subdivision(obj):
+            updated[obj.name_full] = obj
+    return updated
+
+
+class BMANGA_LINE_OT_update_auto_subdivision(bpy.types.Operator):
+    """選択オブジェクトの中間頂点用サブディビジョンを作成・更新"""
+
+    bl_idname = "bmanga_line.update_auto_subdivision"
+    bl_label = "中間頂点用サブディビジョンを更新"
+    bl_options = {"REGISTER", "UNDO"}
+
+    action: EnumProperty(
+        items=(
+            ("CREATE", "作成", ""),
+            ("UPDATE", "更新", ""),
+        ),
+        default="UPDATE",
+    )  # type: ignore[valid-type]
+
+    @classmethod
+    def poll(cls, context):
+        return any(obj.type == "MESH" for obj in context.selected_objects)
+
+    def execute(self, context):
+        from . import batch_update, selection, update_state
+
+        targets_to_process = selection.updatable_mesh_objects(context)
+        skipped = _locked_skip_count(context, len(targets_to_process))
+        action = str(self.action)
+
+        if action == "CREATE":
+            _enable_auto_subdivision_setting(targets_to_process)
+
+        line_results = batch_update.refresh_all_target_visuals(
+            targets_to_process,
+            context,
+        )
+        updated: dict[str, bpy.types.Object] = {}
+        for objects in line_results.values():
+            for obj in objects:
+                updated[obj.name_full] = obj
+
+        updated.update(_refresh_plain_auto_subdivision(targets_to_process, context))
+
+        # ここではサブディビジョンに影響される全ラインの見た目更新も走らせて
+        # いるため、対象の更新待ち表示をまとめて解消してよい。
+        update_state.clear_pending_many(targets_to_process, kind="visual")
+
+        label = "作成" if action == "CREATE" else "更新"
+        self.report(
+            {"INFO"},
+            _with_lock_skip_note(
+                f"{len(updated)} オブジェクトの中間頂点用サブディビジョンを{label}しました",
+                skipped,
+            ),
+        )
+        return {"FINISHED"}
+
+
 class BMANGA_LINE_OT_select_render_range_meshes(bpy.types.Operator):
     """レンダリング範囲内のメッシュを選択"""
 
@@ -721,6 +817,7 @@ _CLASSES = (
     BMANGA_LINE_OT_update_target,
     BMANGA_LINE_OT_update_visual_target,
     BMANGA_LINE_OT_update_all_visual_targets,
+    BMANGA_LINE_OT_update_auto_subdivision,
     BMANGA_LINE_OT_select_render_range_meshes,
     BMANGA_LINE_OT_remove,
     BMANGA_LINE_OT_set_settings_lock,
