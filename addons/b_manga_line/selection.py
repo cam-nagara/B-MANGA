@@ -49,11 +49,15 @@ def updatable_mesh_objects(context) -> list[bpy.types.Object]:
     from . import core
 
     items: list[bpy.types.Object] = []
+    seen: set[int] = set()
     for obj in getattr(context, "selected_objects", ()) or ():
         if obj is None or getattr(obj, "type", None) != "MESH":
             continue
         if core.is_settings_locked(obj):
             continue
-        if obj not in items:
-            items.append(obj)
+        pointer = obj.as_pointer()
+        if pointer in seen:
+            continue
+        seen.add(pointer)
+        items.append(obj)
     return items

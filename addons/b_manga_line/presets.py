@@ -291,6 +291,13 @@ def copy_preset_to_settings(preset, settings) -> None:
         core._propagating = old
 
 
+def preset_matches_settings(preset, settings) -> bool:
+    for name in _SETTING_FIELDS:
+        if not core._setting_values_equal(getattr(preset, name), getattr(settings, name)):
+            return False
+    return True
+
+
 def copy_preset_to_preset(source, target) -> None:
     for name in _SETTING_FIELDS:
         value = getattr(source, name)
@@ -817,11 +824,17 @@ class BMANGA_LINE_OT_preset_apply_selected(bpy.types.Operator):
         targets = selection.updatable_mesh_objects(context)
         skipped = len(_selected_meshes(context)) - len(targets)
         count = 0
+        unchanged = 0
         for obj in targets:
+            if preset_matches_settings(preset, obj.bmanga_line_settings):
+                unchanged += 1
+                continue
             copy_preset_to_settings(preset, obj.bmanga_line_settings)
             update_state.mark_pending(obj)
             count += 1
         message = f"{count} オブジェクトにプリセット設定を適用しました"
+        if unchanged > 0:
+            message += f"（変更なし{unchanged}件）"
         if skipped > 0:
             message += f"（ロック中のため{skipped}件を除外）"
         self.report({"INFO"}, message)

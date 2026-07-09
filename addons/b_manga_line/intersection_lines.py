@@ -1310,6 +1310,8 @@ def apply_intersection_lines(
     material: bpy.types.Material | None = None,
     method: str = "BOOLEAN",
     scene: bpy.types.Scene | None = None,
+    *,
+    signature_cache: dict[int, str] | None = None,
 ) -> bool:
     """交差線 GN モディファイアを適用. 成功時 True."""
     # 2026-07-03 ユーザー確定: 交差線は「ライン素材（高速）」のみ。旧ファイルへ
@@ -1679,6 +1681,8 @@ def apply_intersection_lines(
     material: bpy.types.Material | None = None,
     method: str = "BOOLEAN",
     scene: bpy.types.Scene | None = None,
+    *,
+    signature_cache: dict[int, str] | None = None,
 ) -> bool:
     """交差線を検出し、保存済み線として適用."""
     del method
@@ -1696,6 +1700,18 @@ def apply_intersection_lines(
         if existing_names and any(iter_intersection_modifiers(obj)):
             update_parameters(obj, thickness=thickness, material=material)
         return True
+
+    if target is None:
+        reused = _intersection_cache.try_reuse_cached_intersection_lines(
+            obj,
+            thickness=thickness,
+            offset=offset,
+            material=material,
+            scene=scene,
+            signature_cache=signature_cache,
+        )
+        if reused is not None:
+            return reused
 
     target_candidates = [target] if target is not None else _auto_targets(obj, scene)
     targets: list[bpy.types.Object] = []
@@ -1731,6 +1747,7 @@ def apply_intersection_lines(
         offset=offset,
         material=material,
         scene=scene,
+        signature_cache=signature_cache,
     )
 
 
@@ -1847,6 +1864,7 @@ def _refresh_source_intersections(
     scene: bpy.types.Scene,
     outline_setup,
     plane_filter,
+    signature_cache: dict[int, str] | None = None,
 ) -> bool:
     try:
         obj_type = obj.type
@@ -1885,6 +1903,7 @@ def _refresh_source_intersections(
         offset=settings.intersection_line_offset,
         material=material,
         scene=scene,
+        signature_cache=signature_cache,
     )
     return any(iter_intersection_modifiers(obj))
 
@@ -1897,6 +1916,7 @@ def refresh_scene_intersections(
     from . import outline_setup, plane_filter
 
     refreshed: list[bpy.types.Object] = []
+    signature_cache: dict[int, str] = {}
     for obj in _intersection_refresh_sources(scene, sources):
         try:
             obj_type = obj.type
@@ -1904,7 +1924,13 @@ def refresh_scene_intersections(
             continue
         if obj_type != "MESH":
             continue
-        if _refresh_source_intersections(obj, scene, outline_setup, plane_filter):
+        if _refresh_source_intersections(
+            obj,
+            scene,
+            outline_setup,
+            plane_filter,
+            signature_cache,
+        ):
             refreshed.append(obj)
     _intersection_cache.cleanup_orphan_cache_objects()
     return refreshed

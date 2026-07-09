@@ -3,6 +3,38 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-10 — B-MANGA Linerの全体反映をフェーズ3高速化 (B-MANGA v0.6.462 / B-MANGA Liner v0.3.180)
+
+### 症状
+
+- 交差線は保存済み線を使っていても、無変更の「すべてのラインを反映」や交差線更新で、対象候補探索と交差検出が毎回走っていた。
+- 同じラインプリセットを再適用しただけでも、全オブジェクトへ反映待ちが付き、次の反映操作に余分な処理が残っていた。
+
+### 修正
+
+- 計画書 `docs/bml_speedup_phase3_plan_2026-07-10.md` の計測ゲートに従い、効果が確認できたステップ1a/1cとステップ2cを実装した。
+- 交差線の保存済み線に、交差線を持つ側・交差対象・シーン候補構成の署名を保存し、位置・メッシュ・対象構成・作成範囲が変わっていなければ、交差検出と対象候補探索をスキップして表示設定だけ更新するようにした。
+- 交差対象の移動、交差対象メッシュ編集、交差線を持つ側の移動、交差対象追加では再検出する回帰テストを追加した。
+- ラインプリセット適用時、既に同じ設定のオブジェクトは書き込みと反映待ち付与を行わないようにした。
+- 選択中オブジェクトの重複除去をポインタ集合へ変更し、多数選択時の余分なリスト検索を避けた。
+- ステップ5a（フレーム更新の対象列挙統合）は標準ベンチで中央値0.1388秒→0.1375秒と誤差範囲だったため、計画書どおり差し戻した。
+
+### 検証 (Blender 5.1 実機)
+
+- フェーズ3標準ベンチ（72交差対象）: 交差線無変更更新 0.225秒 → 0.023秒、交差線パラメータのみ更新 0.211秒 → 0.025秒。
+- S1 無風反映（48オブジェクト）: 0.0099秒。
+- S3 初回一括反映（80オブジェクト）: 6.376秒（初回交差検出が支配的）。
+- S5 同一プリセット再適用（72オブジェクト）: プリセット適用 0.0049秒、反映 0.0237秒、反映待ち0件。
+- S4 フレーム更新（60オブジェクト/30フレーム）: 0.1388秒。ステップ5aは改善なしとして差し戻し。
+- `test/blender_b_manga_line_intersection_cache_check.py` PASS
+- `test/blender_b_manga_line_preset_diff_gate_check.py` PASS
+- `test/blender_b_manga_line_intersection_fill_check.py` PASS
+- `test/blender_b_manga_line_intersection_creation_range_check.py` PASS
+- `test/blender_b_manga_line_intersection_refresh_efficiency_check.py` PASS
+- `test/blender_b_manga_line_intersection_shell_method_check.py` PASS
+- `test/blender_b_manga_line_width_falloff_check.py` PASS
+- `python -m py_compile` PASS（B-MANGA Liner変更ファイル）
+
 ## 2026-07-10 — B-MANGA Linerの生成線幅反映を高速化 (B-MANGA v0.6.461 / B-MANGA Liner v0.3.179)
 
 ### 症状

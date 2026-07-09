@@ -34,6 +34,7 @@ CACHE_COLLECTION_NAME = "BML_IntersectionCacheObjects"
 CACHE_OBJECT_PROP = "bml_intersection_cache_object"
 CACHE_OWNER_PROP = "bml_intersection_cache_owner"
 CACHE_TARGETS_PROP = "bml_intersection_cache_targets"
+CACHE_SIGNATURE_PROP = "bml_intersection_cache_signature"
 
 _CACHE_OBJECT_SOCKET = "保存済み交差線"
 _THICKNESS_SOCKET = "線の太さ"
@@ -433,7 +434,7 @@ def _remove_cache_object(owner: bpy.types.Object) -> bool:
         removed = True
         if mesh is not None and not mesh.users:
             bpy.data.meshes.remove(mesh)
-    for prop in (CACHE_OBJECT_PROP, CACHE_TARGETS_PROP):
+    for prop in (CACHE_OBJECT_PROP, CACHE_TARGETS_PROP, CACHE_SIGNATURE_PROP):
         try:
             del owner[prop]
         except (KeyError, TypeError):
@@ -459,6 +460,160 @@ def target_names(owner: bpy.types.Object) -> set[str]:
     if not isinstance(parsed, list):
         return set()
     return {str(item) for item in parsed if str(item)}
+
+
+def _outline_modifier_signature(obj: bpy.types.Object) -> tuple:
+    values = []
+    for name in (MODIFIER_NAME, SHEET_OUTLINE_MODIFIER_NAME):
+        mod = obj.modifiers.get(name)
+        if mod is None:
+            values.append((name, False))
+            continue
+        values.append(
+            (
+                name,
+                True,
+                bool(getattr(mod, "show_viewport", False)),
+                bool(getattr(mod, "show_render", False)),
+                round(float(getattr(mod, "thickness", 0.0)), 8),
+            )
+        )
+    return tuple(values)
+
+
+def _object_signature(
+    obj: bpy.types.Object,
+    scene: bpy.types.Scene | None,
+    signature_cache: dict[int, str] | None,
+) -> str:
+    pointer = obj.as_pointer()
+    if signature_cache is not None:
+        cached = signature_cache.get(pointer)
+        if cached is not None:
+            return cached
+    from . import mesh_fingerprint
+
+    signature = "|".join(
+        (
+            mesh_fingerprint.compute(obj, "intersection", scene=scene),
+            repr(_outline_modifier_signature(obj)),
+        )
+    )
+    if signature_cache is not None:
+        signature_cache[pointer] = signature
+    return signature
+
+
+def _scene_candidate_signature(
+    scene: bpy.types.Scene | None,
+    signature_cache: dict[int, str] | None,
+) -> str:
+    if scene is None:
+        return ""
+    key = -int(scene.as_pointer())
+    if signature_cache is not None:
+        cached = signature_cache.get(key)
+        if cached is not None:
+            return cached
+    from . import plane_filter
+
+    items = []
+    for obj in scene.objects:
+        try:
+            if obj.type != "MESH" or obj.data is None:
+                continue
+        except ReferenceError:
+            continue
+        if not getattr(obj.data, "polygons", None):
+            continue
+        if (
+            obj.modifiers.get(MODIFIER_NAME) is None
+            and obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME) is None
+        ):
+            continue
+        settings = getattr(obj, "bmanga_line_settings", None)
+        items.append(
+            (
+                obj.name_full,
+                plane_filter.should_exclude_generated_lines(obj, settings),
+                bool(getattr(settings, "settings_locked", False)),
+                _object_signature(obj, scene, signature_cache),
+            )
+        )
+    signature = json.dumps(items, sort_keys=True, ensure_ascii=False)
+    if signature_cache is not None:
+        signature_cache[key] = signature
+    return signature
+
+
+def _cache_signature(
+    owner: bpy.types.Object,
+    targets: list[bpy.types.Object],
+    scene: bpy.types.Scene | None,
+    signature_cache: dict[int, str] | None,
+) -> str:
+    payload = {
+        "owner": owner.name_full,
+        "owner_signature": _object_signature(owner, scene, signature_cache),
+        "scene_candidates": _scene_candidate_signature(scene, signature_cache),
+        "targets": [
+            {
+                "name": target.name_full,
+                "signature": _object_signature(target, scene, signature_cache),
+            }
+            for target in targets
+        ],
+    }
+    return json.dumps(payload, sort_keys=True, ensure_ascii=False)
+
+
+def _stored_signature_matches(owner: bpy.types.Object, signature: str) -> bool:
+    try:
+        return str(owner.get(CACHE_SIGNATURE_PROP, "") or "") == signature
+    except ReferenceError:
+        return False
+
+
+def _can_reuse_cache(
+    owner: bpy.types.Object,
+    targets: list[bpy.types.Object],
+    signature: str,
+) -> bpy.types.Object | None:
+    if not _stored_signature_matches(owner, signature):
+        return None
+    if target_names(owner) != {target.name_full for target in targets}:
+        return None
+    cache = _get_cache_object(owner)
+    if cache is None or cache.data is None or len(cache.data.edges) == 0:
+        return None
+    mod = owner.modifiers.get(INTERSECTION_MODIFIER_NAME)
+    if mod is None or not _tree_valid(getattr(mod, "node_group", None)):
+        return None
+    return cache
+
+
+def try_reuse_cached_intersection_lines(
+    owner: bpy.types.Object,
+    *,
+    thickness: float,
+    offset: float,
+    material: bpy.types.Material | None,
+    scene: bpy.types.Scene | None,
+    signature_cache: dict[int, str] | None = None,
+) -> bool | None:
+    target_objs = [
+        obj for obj in (bpy.data.objects.get(name) for name in sorted(target_names(owner)))
+        if getattr(obj, "type", None) == "MESH"
+    ]
+    if not target_objs:
+        return None
+    signature = _cache_signature(owner, target_objs, scene, signature_cache)
+    reusable = _can_reuse_cache(owner, target_objs, signature)
+    if reusable is None:
+        return None
+    reusable.matrix_world = owner.matrix_world.copy()
+    _apply_display_modifier(owner, reusable, target_objs, thickness, offset, material)
+    return True
 
 
 def modifier_targets(mod: bpy.types.Modifier) -> list[bpy.types.Object]:
@@ -635,10 +790,17 @@ def apply_cached_intersection_lines(
     offset: float,
     material: bpy.types.Material | None,
     scene: bpy.types.Scene | None,
+    signature_cache: dict[int, str] | None = None,
 ) -> bool:
     targets = [target for target in targets if getattr(target, "type", None) == "MESH"]
     if not targets:
         remove_cached_intersection_lines(owner)
+        return True
+    signature = _cache_signature(owner, targets, scene, signature_cache)
+    reusable = _can_reuse_cache(owner, targets, signature)
+    if reusable is not None:
+        reusable.matrix_world = owner.matrix_world.copy()
+        _apply_display_modifier(owner, reusable, targets, thickness, offset, material)
         return True
     segments = build_cached_segments(owner, targets, scene, thickness=thickness, offset=offset)
     if not segments:
@@ -648,6 +810,7 @@ def apply_cached_intersection_lines(
     cache.matrix_world = owner.matrix_world.copy()
     _write_cache_mesh(cache, segments)
     _apply_display_modifier(owner, cache, targets, thickness, offset, material)
+    owner[CACHE_SIGNATURE_PROP] = signature
     return True
 
 

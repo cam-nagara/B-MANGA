@@ -130,6 +130,46 @@ def main() -> None:
             "保存済み交差線が元オブジェクトの表示結果に合成されていません"
         )
 
+        build_calls = 0
+
+        def count_builder(*args, **kwargs):
+            nonlocal build_calls
+            build_calls += 1
+            return real_builder(*args, **kwargs)
+
+        intersection_cache.build_cached_segments = count_builder
+        assert intersection_lines.refresh_scene_intersections(bpy.context.scene)
+        assert build_calls == 0, (
+            "変更なしのシーン再反映で交差検出が再実行されています"
+        )
+
+        target.location.x += 0.04
+        bpy.context.view_layer.update()
+        build_calls = 0
+        assert intersection_lines.refresh_scene_intersections(bpy.context.scene)
+        assert build_calls > 0, "交差対象の移動後に交差線が再検出されていません"
+
+        target.data.vertices[0].co.x += 0.04
+        target.data.update()
+        build_calls = 0
+        assert intersection_lines.refresh_scene_intersections(bpy.context.scene)
+        assert build_calls > 0, "交差対象のメッシュ編集後に交差線が再検出されていません"
+
+        source.location.y += 0.04
+        bpy.context.view_layer.update()
+        build_calls = 0
+        assert intersection_lines.refresh_scene_intersections(bpy.context.scene)
+        assert build_calls > 0, "交差線を持つ側の移動後に交差線が再検出されていません"
+
+        extra_target = _make_cube("BML_cache_C_extra_target", (0.15, 0.15, 0.0))
+        extra_mod = extra_target.modifiers.new(core.MODIFIER_NAME, "SOLIDIFY")
+        extra_mod.thickness = 0.001
+        bpy.context.view_layer.update()
+        build_calls = 0
+        assert intersection_lines.refresh_scene_intersections(bpy.context.scene)
+        assert build_calls > 0, "交差対象の追加後に交差線が再検出されていません"
+        assert extra_target.name in intersection_cache.target_names(source)
+
         def fail_builder(*_args, **_kwargs):
             raise AssertionError("設定更新で交差検出が再実行されています")
 
