@@ -286,6 +286,10 @@ def _assert_update_buttons_are_in_line_settings(active: bpy.types.Object) -> Non
     assert all(op.text == "反映" for op in reflect_ops)
     assert settings_layout.separator_count >= 5, settings_layout.separator_count
 
+    camera_layout = _FakeUILayout()
+    panels._draw_camera(camera_layout, bpy.context, active.bmanga_line_settings)
+    assert "line_width_distance_falloff" in camera_layout.props
+
 
 def _assert_subsurf_checkbox(active: bpy.types.Object, other: bpy.types.Object) -> None:
     for index, obj in enumerate((active, other), start=2):

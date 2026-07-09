@@ -1315,6 +1315,12 @@ def _on_line_width_reference_distance_changed(self, context):
     _defer_line_setting(self, context, "line_width_reference_distance")
 
 
+def _on_line_width_distance_falloff_changed(self, context):
+    if _propagating:
+        return
+    _defer_line_setting(self, context, "line_width_distance_falloff")
+
+
 def _on_uniform_line_width_changed(self, context):
     if _propagating:
         return
@@ -1864,6 +1870,21 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         precision=2,
         subtype="DISTANCE",
         update=_on_line_width_reference_distance_changed,
+    )  # type: ignore[valid-type]
+
+    line_width_distance_falloff: FloatProperty(
+        name="遠近減衰の強さ",
+        description=(
+            "0: どの距離でも画面上の線幅を均一にする / "
+            "1: カメラから遠いほど距離に比例して細くする / "
+            "2: 遠近を誇張する"
+        ),
+        default=0.0,
+        min=0.0,
+        max=2.0,
+        precision=2,
+        step=10,
+        update=_on_line_width_distance_falloff_changed,
     )  # type: ignore[valid-type]
 
     # --- エッジ角度による線幅調整 ---

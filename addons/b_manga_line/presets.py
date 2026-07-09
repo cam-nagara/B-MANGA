@@ -69,6 +69,7 @@ _SETTING_FIELDS = (
     "use_camera_compensation",
     "camera_compensation_influence",
     "line_width_reference_distance",
+    "line_width_distance_falloff",
     "edge_smooth_factor",
     "edge_midpoint_jitter_percent",
     "edge_midpoint_angle",
@@ -672,6 +673,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
         min=0.001,
         max=1000.0,
     )
+    line_width_distance_falloff: FloatProperty(default=0.0, min=0.0, max=2.0)
 
     edge_smooth_factor: FloatProperty(default=0.0, min=-1.0, max=1.0)
     edge_midpoint_jitter_percent: FloatProperty(default=0.0, min=0.0, max=50.0)

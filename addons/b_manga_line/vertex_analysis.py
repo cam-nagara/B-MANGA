@@ -506,31 +506,6 @@ def clear_width_weights(
     return True
 
 
-def multiply_width_weights(
-    obj: bpy.types.Object,
-    multipliers: list[float],
-    group_name: str = VG_LINE_WIDTH,
-) -> int:
-    """既存の線幅ウェイトへ追加倍率を掛けて書き戻す."""
-    if obj.type != "MESH" or obj.data is None:
-        return 0
-    count = len(obj.data.vertices)
-    if count == 0:
-        return 0
-    vg = obj.vertex_groups.get(group_name)
-    weights = []
-    for i in range(count):
-        base = 1.0
-        if vg is not None:
-            try:
-                base = vg.weight(i)
-            except RuntimeError:
-                base = 1.0
-        mult = multipliers[i] if i < len(multipliers) else 1.0
-        weights.append(base * mult)
-    return _write_vertex_group_weights(obj, weights, group_name)
-
-
 def _curve_points_from_settings(settings, target: str = "outline") -> tuple[float, float, float]:
     target = _normalize_target(target)
     if target == "inner":
@@ -686,20 +661,20 @@ def _base_weights(obj, settings, n: int, *, use_color: bool) -> list[float]:
     return weights
 
 
-def compute_and_apply_weights(obj, settings, target: str = "outline") -> int:
-    """全ソースから最終頂点ウェイトを計算して頂点グループに書き込み.
+def compute_weights(obj, settings, target: str = "outline") -> list[float] | None:
+    """全ソースから最終頂点ウェイトを計算する.
 
     合成順序:
     1. 手動頂点カラー（BML_LineWidth）の明度 → ベースウェイト
     2. 検出角度未満で分割した線ごとの両端と中心 → 中間頂点の線幅差
     """
     if obj.type != "MESH":
-        return 0
+        return None
 
     mesh = obj.data
     n = len(mesh.vertices)
     if n == 0:
-        return 0
+        return None
 
     target = _normalize_target(target)
     use_color = target == "outline" and settings.use_vertex_color
@@ -738,5 +713,12 @@ def compute_and_apply_weights(obj, settings, target: str = "outline") -> int:
                 edge_mult = 1.0 - m * abs(factor)
             weights[i] = max(0.0, min(1.0, weights[i] * edge_mult))
 
-    # 頂点グループに書き込み
+    return weights
+
+
+def compute_and_apply_weights(obj, settings, target: str = "outline") -> int:
+    """全ソースから最終頂点ウェイトを計算して頂点グループに書き込み."""
+    weights = compute_weights(obj, settings, target)
+    if not weights:
+        return 0
     return _write_vertex_group_weights(obj, weights, width_group_name(target))

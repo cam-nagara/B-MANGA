@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 
 import bpy
+import numpy as np
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 
@@ -383,12 +384,10 @@ def _world_per_pixel(scene, camera, world_co: Vector) -> float:
 
 
 def _uniform_widths_for_mesh(scene, camera, obj, width_m: float) -> list[float]:
-    target_px = _target_pixels(scene, width_m)
-    matrix = obj.matrix_world
-    return [
-        target_px * _world_per_pixel(scene, camera, matrix @ vertex.co)
-        for vertex in obj.data.vertices
-    ]
+    from . import width_math
+
+    widths, _depths = width_math.vertex_widths_and_depths(scene, camera, obj, width_m)
+    return widths.tolist()
 
 
 def _reference_point_for_mesh(obj) -> Vector:
@@ -406,6 +405,11 @@ def _line_width_reference_distance(settings) -> float:
         DEFAULT_LINE_WIDTH_REFERENCE_DISTANCE,
     )
     return max(0.001, float(raw or DEFAULT_LINE_WIDTH_REFERENCE_DISTANCE))
+
+
+def _line_width_distance_falloff(settings) -> float:
+    raw = getattr(settings, "line_width_distance_falloff", 0.0)
+    return max(0.0, min(2.0, float(raw or 0.0)))
 
 
 def _reference_point_for_distance(camera, distance: float) -> Vector:
@@ -476,6 +480,21 @@ def _prepare_style_weights(obj, settings, target: str) -> bool:
     if target == "outline":
         outline_width_attribute.remove_outline_width_attribute(obj)
     return False
+
+
+def _style_weights_for_uniform(obj, settings, target: str) -> list[float] | None:
+    from . import outline_width_attribute, vertex_analysis
+
+    group_name = vertex_analysis.width_group_name(target)
+    if vertex_analysis.has_width_controls(settings, target):
+        weights = vertex_analysis.compute_weights(obj, settings, target)
+        if target == "outline":
+            outline_width_attribute.ensure_outline_width_attribute(obj, settings)
+        return weights
+    vertex_analysis.clear_width_weights(obj, group_name=group_name)
+    if target == "outline":
+        outline_width_attribute.remove_outline_width_attribute(obj)
+    return None
 
 
 def _apply_uniform_line_width(scene, camera, obj, settings, mod) -> None:
@@ -688,7 +707,7 @@ def _apply_target_style_weights(obj, settings, target: str) -> None:
 
 
 def _apply_uniform_target_line_width(scene, camera, obj, settings, target: str) -> None:
-    from . import vertex_analysis
+    from . import vertex_analysis, width_math
 
     if target == "inner" and not _has_inner_modifier(obj):
         vertex_analysis.clear_width_weights(obj, group_name=VG_INNER_LINE_WIDTH)
@@ -700,16 +719,31 @@ def _apply_uniform_target_line_width(scene, camera, obj, settings, target: str) 
         vertex_analysis.clear_width_weights(obj, group_name=VG_SELECTION_LINE_WIDTH)
         return
 
-    width_m = _target_width_setting(settings, target)
-    widths = _uniform_widths_for_mesh(scene, camera, obj, width_m)
-    max_width = max(max(widths), 1.0e-9)
-    _apply_target_style_weights(obj, settings, target)
-    group_name = vertex_analysis.width_group_name(target)
-    vertex_analysis.multiply_width_weights(
+    style_weights = _style_weights_for_uniform(obj, settings, target)
+    widths, _depths = width_math.vertex_widths_and_depths(
+        scene,
+        camera,
         obj,
-        [width / max_width for width in widths],
-        group_name=group_name,
+        _target_width_setting(settings, target),
+        distance_falloff=_line_width_distance_falloff(settings),
+        reference_distance=_line_width_reference_distance(settings),
     )
+    if widths.size == 0:
+        return
+    max_width = max(float(widths.max()), 1.0e-9)
+    normalized = widths / max_width
+    if style_weights is not None:
+        style = np.asarray(style_weights, dtype=np.float64)
+        combined = normalized.copy()
+        count = min(combined.size, style.size)
+        if count:
+            combined[:count] *= style[:count]
+        if count < combined.size:
+            combined[count:] *= 1.0
+    else:
+        combined = normalized
+    group_name = vertex_analysis.width_group_name(target)
+    vertex_analysis._write_vertex_group_weights(obj, combined.tolist(), group_name=group_name)
     if target == "outline":
         mod = obj.modifiers.get(MODIFIER_NAME)
         if mod is not None:

@@ -44,6 +44,7 @@ _VISUAL_PROPS = {
     "use_camera_compensation",
     "camera_compensation_influence",
     "line_width_reference_distance",
+    "line_width_distance_falloff",
     "use_uniform_line_width",
     "use_vertex_color",
     "auto_subdivision_for_midpoint",
