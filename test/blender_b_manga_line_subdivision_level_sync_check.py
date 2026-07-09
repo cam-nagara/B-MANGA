@@ -33,6 +33,9 @@ def _clear_scene() -> None:
         for item in list(datablocks):
             if item.users == 0:
                 datablocks.remove(item)
+    scene = bpy.context.scene
+    if hasattr(scene, "bmanga_line_match_subsurf_viewport_to_render"):
+        scene.bmanga_line_match_subsurf_viewport_to_render = False
 
 
 def _surface_material(name: str):
@@ -228,13 +231,42 @@ def _assert_match_viewport_checkbox_restores_zero() -> None:
     settings.match_subsurf_viewport_to_render = True
     batch_update._update_match_subsurf_viewport_to_render([obj])
     bpy.context.view_layer.update()
-    assert int(mod.levels) == 0
+    assert int(mod.levels) == 2
     assert int(manual.levels) == 3
 
     settings.match_subsurf_viewport_to_render = False
     batch_update._update_match_subsurf_viewport_to_render([obj])
     bpy.context.view_layer.update()
     assert int(mod.levels) == 0
+    assert int(manual.levels) == 0
+
+
+def _assert_scene_match_viewport_targets_all_objects() -> None:
+    first = _make_cube("ビューポート段数_全体A", (0.0, 0.0, 0.0))
+    second = _make_cube("ビューポート段数_全体B", (2.0, 0.0, 0.0))
+    first_auto = _auto_mod(first)
+    second_auto = _auto_mod(second)
+    first_auto.levels = 0
+    first_auto.render_levels = 1
+    second_auto.levels = 0
+    second_auto.render_levels = 3
+    manual = second.modifiers.new("ユーザーSubsurf_全体", "SUBSURF")
+    manual.levels = 0
+    manual.render_levels = 2
+
+    bpy.ops.object.select_all(action="DESELECT")
+    bpy.context.scene.bmanga_line_match_subsurf_viewport_to_render = True
+    assert bool(first.bmanga_line_settings.match_subsurf_viewport_to_render)
+    assert bool(second.bmanga_line_settings.match_subsurf_viewport_to_render)
+    assert int(first_auto.levels) == 1
+    assert int(second_auto.levels) == 3
+    assert int(manual.levels) == 2
+
+    bpy.context.scene.bmanga_line_match_subsurf_viewport_to_render = False
+    assert not bool(first.bmanga_line_settings.match_subsurf_viewport_to_render)
+    assert not bool(second.bmanga_line_settings.match_subsurf_viewport_to_render)
+    assert int(first_auto.levels) == 0
+    assert int(second_auto.levels) == 0
     assert int(manual.levels) == 0
 
 
@@ -252,6 +284,8 @@ def main() -> None:
         _assert_manual_subsurf_proxy_levels_sync()
         _clear_scene()
         _assert_match_viewport_checkbox_restores_zero()
+        _clear_scene()
+        _assert_scene_match_viewport_targets_all_objects()
         print("[PASS] subdivision levels sync to inner/intersection lines", flush=True)
     finally:
         try:

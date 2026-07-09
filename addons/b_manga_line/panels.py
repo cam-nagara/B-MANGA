@@ -5,7 +5,7 @@ from __future__ import annotations
 import bpy
 
 from . import registration
-from .core import has_line, has_outline, is_scene_line_only_enabled, is_settings_locked
+from .core import has_line, has_outline, is_settings_locked
 
 
 def _get_paper_dpi(scene) -> int:
@@ -49,6 +49,7 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
         layout = self.layout
         obj = context.active_object
         _draw_render_range_selection(layout, context)
+        _draw_global_display_controls(layout, context)
         if obj is None or obj.type != "MESH":
             layout.separator()
             layout.label(text="メッシュオブジェクトを選択してください", icon="INFO")
@@ -191,6 +192,8 @@ def _draw_line_settings(layout, context, settings) -> None:
     row = layout.row(align=True)
     row.scale_y = 1.2
     row.operator("bmanga_line.update_all_visual_targets", icon="FILE_REFRESH")
+    row = layout.row(align=True)
+    row.operator("bmanga_line.detail_settings", text="詳細設定", icon="PREFERENCES")
 
     # ロック中は「すべてのラインを更新」以外をグレーアウトする
     # （ロック外の選択オブジェクトには効くため、このボタンだけは押下可のまま）。
@@ -205,7 +208,6 @@ def _draw_line_settings(layout, context, settings) -> None:
     op.action = "UPDATE"
     op = row.operator("bmanga_line.update_auto_subdivision", text="削除", icon="TRASH")
     op.action = "DELETE"
-    row.operator("bmanga_line.detail_settings", icon="PREFERENCES")
 
     for index, (target, label, draw_func, show_create) in enumerate((
         ("outline", "アウトライン", _draw_outline, True),
@@ -397,18 +399,27 @@ class BMANGA_LINE_OT_detail_settings(bpy.types.Operator):
             _draw_line_detail_grid(self.layout, settings)
 
 
+def _draw_global_display_controls(layout, context) -> None:
+    scene = context.scene
+    from . import aov_compositor
+
+    col = layout.column(align=True)
+    col.prop(scene, "bmanga_line_lines_visible")
+    col.prop(scene, "bmanga_line_line_only_visible")
+    col.prop(scene, "bmanga_line_match_subsurf_viewport_to_render")
+
+    row = col.row(align=True)
+    row.enabled = not aov_compositor.line_aov_compositor_exists(scene)
+    row.operator("bmanga_line.setup_aov_composite", icon="NODETREE")
+
+
 def _draw_actions(layout, context, obj) -> None:
-    from . import update_state, viewport_aov
+    from . import update_state
 
     has_line_any = any(has_line(o) for o in context.selected_objects)
-    line_only_any = (
-        is_scene_line_only_enabled(context)
-        or viewport_aov.is_line_aov_active(context)
-    )
     row = layout.row(align=True)
     row.scale_y = 1.4
     row.operator("bmanga_line.apply", icon="ADD")
-    settings = getattr(obj, "bmanga_line_settings", None)
 
     mesh_count = sum(1 for selected in context.selected_objects if selected.type == "MESH")
     locked_count = sum(
@@ -444,22 +455,6 @@ def _draw_actions(layout, context, obj) -> None:
         text="リンク素材へ選択設定を上書き",
         icon="LINKED",
     )
-
-    if settings is not None:
-        row = layout.row(align=True)
-        row.enabled = has_line_any
-        row.prop(settings, "lines_visible")
-
-        row = layout.row(align=True)
-        row.enabled = has_line_any or line_only_any
-        row.prop(context.scene, "bmanga_line_line_only_visible")
-
-        row = layout.row(align=True)
-        row.prop(settings, "match_subsurf_viewport_to_render")
-
-    row = layout.row(align=True)
-    row.enabled = has_line_any
-    row.operator("bmanga_line.setup_aov_composite", icon="NODETREE")
 
     row = layout.row(align=True)
     row.enabled = has_line_any

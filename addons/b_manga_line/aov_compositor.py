@@ -101,6 +101,18 @@ def _owned(node: bpy.types.Node) -> bool:
     return _owned_by(node, NODE_PREFIX)
 
 
+def line_aov_compositor_exists(scene: bpy.types.Scene | None) -> bool:
+    if scene is None:
+        return False
+    tree = getattr(scene, "compositing_node_group", None)
+    if tree is None:
+        return False
+    return any(
+        _owned(node) or getattr(node, "label", "") == AOV_COMPOSITE_NAME
+        for node in tree.nodes
+    )
+
+
 def _clear_owned_nodes(tree: bpy.types.NodeTree) -> None:
     _clear_nodes_by_prefix(tree, NODE_PREFIX)
 

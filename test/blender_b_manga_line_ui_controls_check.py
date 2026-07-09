@@ -23,6 +23,13 @@ def _clear_scene() -> None:
         for item in list(datablocks):
             if item.users == 0:
                 datablocks.remove(item)
+    scene = bpy.context.scene
+    if hasattr(scene, "bmanga_line_lines_visible"):
+        scene.bmanga_line_lines_visible = True
+    if hasattr(scene, "bmanga_line_line_only_visible"):
+        scene.bmanga_line_line_only_visible = False
+    if hasattr(scene, "bmanga_line_match_subsurf_viewport_to_render"):
+        scene.bmanga_line_match_subsurf_viewport_to_render = False
 
 
 def _make_cube(name: str, location: tuple[float, float, float]) -> bpy.types.Object:
@@ -70,22 +77,28 @@ def _assert_distance_button(active: bpy.types.Object, other: bpy.types.Object) -
 def _assert_visibility_checkboxes(active: bpy.types.Object, other: bpy.types.Object) -> None:
     _select(active, [active, other])
     assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+    third = _make_cube("BML_UI_unselected_visibility", (4.0, 0.0, 0.0))
+    _select(third, [third])
+    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+    _select(active, [active])
     _select(active, [active, other])
-    for obj in (active, other):
+    for obj in (active, other, third):
         _assert_line_visibility(obj, True)
 
-    active.bmanga_line_settings.lines_visible = False
-    for obj in (active, other):
+    bpy.ops.object.select_all(action="DESELECT")
+    bpy.context.scene.bmanga_line_lines_visible = False
+    for obj in (active, other, third):
         _assert_line_visibility(obj, False)
 
-    active.bmanga_line_settings.lines_visible = True
-    for obj in (active, other):
+    bpy.context.scene.bmanga_line_lines_visible = True
+    for obj in (active, other, third):
         _assert_line_visibility(obj, True)
 
+    _select(active, [active, other])
     assert bpy.ops.bmanga_line.set_visibility("EXEC_DEFAULT", visible=False) == {"FINISHED"}
     for obj in (active, other):
         _assert_line_visibility(obj, False)
-    active.bmanga_line_settings.lines_visible = True
+    bpy.context.scene.bmanga_line_lines_visible = True
 
 
 def _assert_line_only_checkbox(active: bpy.types.Object, other: bpy.types.Object) -> None:
@@ -185,23 +198,31 @@ class _FakeOperatorProps:
         self.icon = icon
 
 
-def _assert_panel_draw_uses_scene_line_only(active: bpy.types.Object, other: bpy.types.Object) -> None:
-    from b_manga_line import viewport_aov
-
+def _assert_panel_draw_uses_scene_global_controls(active: bpy.types.Object, other: bpy.types.Object) -> None:
     _select(active, [active, other])
     assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
 
-    old_is_line_aov_active = viewport_aov.is_line_aov_active
-    viewport_aov.is_line_aov_active = lambda _context: True
-    try:
-        layout = _FakeUILayout()
-        panels._draw_actions(layout, bpy.context, active)
-    finally:
-        viewport_aov.is_line_aov_active = old_is_line_aov_active
+    layout = _FakeUILayout()
+    panels._draw_global_display_controls(layout, bpy.context)
 
+    assert "bmanga_line_lines_visible" in layout.props
     assert "bmanga_line_line_only_visible" in layout.props
+    assert "bmanga_line_match_subsurf_viewport_to_render" in layout.props
+    assert any(op.idname == "bmanga_line.setup_aov_composite" for op in layout.operators)
+    assert "lines_visible" not in layout.props
     assert "line_only_visible" not in layout.props
+    assert "match_subsurf_viewport_to_render" not in layout.props
     assert not bool(active.get(core.PROP_LINE_ONLY, False))
+
+    bpy.ops.object.select_all(action="DESELECT")
+    empty_layout = _FakeUILayout()
+    panels._draw_global_display_controls(empty_layout, bpy.context)
+    assert "bmanga_line_lines_visible" in empty_layout.props
+    assert "bmanga_line_line_only_visible" in empty_layout.props
+    assert "bmanga_line_match_subsurf_viewport_to_render" in empty_layout.props
+    assert bpy.ops.bmanga_line.setup_aov_composite.poll()
+    assert bpy.ops.bmanga_line.setup_aov_composite("EXEC_DEFAULT") == {"FINISHED"}
+    assert not bpy.ops.bmanga_line.setup_aov_composite.poll()
 
 
 def _assert_update_buttons_are_in_line_settings(active: bpy.types.Object) -> None:
@@ -222,6 +243,10 @@ def _assert_update_buttons_are_in_line_settings(active: bpy.types.Object) -> Non
     assert (
         settings_layout.operators[0].idname
         == "bmanga_line.update_all_visual_targets"
+    ), [op.idname for op in settings_layout.operators]
+    assert (
+        settings_layout.operators[1].idname
+        == "bmanga_line.detail_settings"
     ), [op.idname for op in settings_layout.operators]
     auto_ops = [
         op for op in settings_layout.operators
@@ -260,15 +285,6 @@ def _assert_update_buttons_are_in_line_settings(active: bpy.types.Object) -> Non
     assert settings_layout.separator_count >= 5, settings_layout.separator_count
 
 
-def _set_setting_without_update(settings, name: str, value) -> None:
-    old = core._propagating
-    core._propagating = True
-    try:
-        setattr(settings, name, value)
-    finally:
-        core._propagating = old
-
-
 def _assert_subsurf_checkbox(active: bpy.types.Object, other: bpy.types.Object) -> None:
     for index, obj in enumerate((active, other), start=2):
         mod = obj.modifiers.new(f"ユーザーSubsurf_{index}", "SUBSURF")
@@ -276,11 +292,11 @@ def _assert_subsurf_checkbox(active: bpy.types.Object, other: bpy.types.Object) 
         mod.render_levels = index
 
     _select(active, [active, other])
-    active.bmanga_line_settings.match_subsurf_viewport_to_render = True
+    bpy.context.scene.bmanga_line_match_subsurf_viewport_to_render = True
     for obj in (active, other):
         for mod in obj.modifiers:
             if mod.type == "SUBSURF":
-                assert int(mod.levels) == 0, (obj.name, mod.name)
+                assert int(mod.levels) == int(mod.render_levels), (obj.name, mod.name)
     assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
     for obj in (active, other):
         for mod in obj.modifiers:
@@ -288,14 +304,15 @@ def _assert_subsurf_checkbox(active: bpy.types.Object, other: bpy.types.Object) 
                 assert int(mod.levels) == int(mod.render_levels), (obj.name, mod.name)
 
     for obj in (active, other):
-        _set_setting_without_update(
-            obj.bmanga_line_settings,
-            "match_subsurf_viewport_to_render",
-            False,
-        )
         for mod in obj.modifiers:
             if mod.type == "SUBSURF":
                 mod.levels = int(mod.render_levels)
+    bpy.context.scene.bmanga_line_match_subsurf_viewport_to_render = False
+    for obj in (active, other):
+        assert not bool(obj.bmanga_line_settings.match_subsurf_viewport_to_render)
+        for mod in obj.modifiers:
+            if mod.type == "SUBSURF":
+                assert int(mod.levels) == 0, (obj.name, mod.name, mod.levels)
     assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
     for obj in (active, other):
         for mod in obj.modifiers:
@@ -303,14 +320,10 @@ def _assert_subsurf_checkbox(active: bpy.types.Object, other: bpy.types.Object) 
                 assert int(mod.levels) == 0, (obj.name, mod.name, mod.levels)
 
     for obj in (active, other):
-        _set_setting_without_update(
-            obj.bmanga_line_settings,
-            "match_subsurf_viewport_to_render",
-            True,
-        )
         for mod in obj.modifiers:
             if mod.type == "SUBSURF":
                 mod.levels = 0
+    bpy.context.scene.bmanga_line_match_subsurf_viewport_to_render = True
     assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
     for obj in (active, other):
         for mod in obj.modifiers:
@@ -331,7 +344,7 @@ def main() -> None:
         _assert_distance_button(active, other)
         _assert_visibility_checkboxes(active, other)
         _assert_line_only_checkbox(active, other)
-        _assert_panel_draw_uses_scene_line_only(active, other)
+        _assert_panel_draw_uses_scene_global_controls(active, other)
         _assert_update_buttons_are_in_line_settings(active)
         _assert_subsurf_checkbox(active, other)
         print("BMANGA_LINE_UI_CONTROLS_OK")

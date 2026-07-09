@@ -56,11 +56,6 @@ def sync_viewport_levels_to_render(obj: bpy.types.Object) -> int:
     for mod in obj.modifiers:
         if mod.type != "SUBSURF":
             continue
-        if is_auto_subsurf_modifier(mod):
-            if int(getattr(mod, "levels", 0)) != 0:
-                mod.levels = 0
-                changed += 1
-            continue
         render_levels = max(0, int(getattr(mod, "render_levels", 0)))
         if int(getattr(mod, "levels", 0)) == render_levels:
             continue
@@ -152,6 +147,15 @@ def auto_subdivision_supported(obj: bpy.types.Object) -> bool:
         and obj.data is not None
         and bool(obj.data.polygons)
     )
+
+
+def _auto_subsurf_viewport_levels(obj: bpy.types.Object, render_levels: int) -> int:
+    settings = getattr(obj, "bmanga_line_settings", None)
+    if settings is not None and bool(
+        getattr(settings, "match_subsurf_viewport_to_render", False)
+    ):
+        return max(0, int(render_levels))
+    return 0
 
 
 def _non_quad_face_count(faces) -> int:
@@ -286,8 +290,9 @@ def ensure_auto_subdivision(obj: bpy.types.Object, scene) -> bpy.types.Modifier 
 
     if hasattr(mod, "subdivision_type"):
         mod.subdivision_type = AUTO_SUBSURF_SUBDIVISION_TYPE
-    mod.levels = 0
-    mod.render_levels = render_levels_for_distance(_distance_to_camera(obj, scene))
+    render_levels = render_levels_for_distance(_distance_to_camera(obj, scene))
+    mod.render_levels = render_levels
+    mod.levels = _auto_subsurf_viewport_levels(obj, render_levels)
     mod.show_viewport = True
     mod.show_render = True
     try:
@@ -332,10 +337,11 @@ def repair_auto_subdivision_modifiers(scene: bpy.types.Scene | None = None) -> i
         if hasattr(mod, "subdivision_type") and mod.subdivision_type != AUTO_SUBSURF_SUBDIVISION_TYPE:
             mod.subdivision_type = AUTO_SUBSURF_SUBDIVISION_TYPE
             changed += 1
-        if int(getattr(mod, "levels", 0)) != 0:
-            mod.levels = 0
-            changed += 1
         desired_render_levels = render_levels_for_distance(_distance_to_camera(obj, scene))
+        desired_levels = _auto_subsurf_viewport_levels(obj, desired_render_levels)
+        if int(getattr(mod, "levels", 0)) != desired_levels:
+            mod.levels = desired_levels
+            changed += 1
         if int(getattr(mod, "render_levels", 0)) != desired_render_levels:
             mod.render_levels = desired_render_levels
             changed += 1

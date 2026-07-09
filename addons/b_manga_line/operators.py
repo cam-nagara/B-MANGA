@@ -811,6 +811,14 @@ class BMANGA_LINE_OT_setup_aov_composite(bpy.types.Operator):
     bl_label = "線画合成ノードを作成"
     bl_options = {"REGISTER", "UNDO"}
 
+    @classmethod
+    def poll(cls, context):
+        from . import aov_compositor
+
+        return not aov_compositor.line_aov_compositor_exists(
+            getattr(context, "scene", None),
+        )
+
     def execute(self, context):
         from . import aov_compositor, outline_setup
 

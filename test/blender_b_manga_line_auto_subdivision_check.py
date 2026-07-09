@@ -24,6 +24,11 @@ from b_manga_line import (  # noqa: E402
 def _clear_scene() -> None:
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete()
+    scene = bpy.context.scene
+    if hasattr(scene, "bmanga_line_lines_visible"):
+        scene.bmanga_line_lines_visible = True
+    if hasattr(scene, "bmanga_line_match_subsurf_viewport_to_render"):
+        scene.bmanga_line_match_subsurf_viewport_to_render = False
 
 
 def _auto_subsurfs(obj: bpy.types.Object) -> list[bpy.types.Modifier]:
@@ -148,6 +153,7 @@ def _assert_existing_simple_subsurf_is_repaired() -> None:
     changed = subdivision_lod.repair_auto_subdivision_modifiers(bpy.context.scene)
     assert changed >= 1
     assert mod.subdivision_type == subdivision_lod.AUTO_SUBSURF_SUBDIVISION_TYPE
+    assert mod.levels == 0
     _assert_cube_edges_are_creased(obj)
 
 
@@ -334,7 +340,7 @@ def _assert_outline_only_creation_sets_auto_subdivision() -> None:
     )
     auto_mod = _auto_subsurf(obj)
     assert auto_mod is not None, "アウトラインのみ作成で自動サブディビジョンがありません"
-    assert auto_mod.levels == 0
+    assert auto_mod.levels == auto_mod.render_levels
     assert auto_mod.render_levels >= 0
     assert obj.modifiers.get(core.OUTLINE_WIDTH_ATTR_MODIFIER_NAME) is not None
     assert obj.modifiers.get(core.MODIFIER_NAME) is not None

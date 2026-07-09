@@ -14,7 +14,7 @@ from bpy.props import (
     PointerProperty,
 )
 
-from . import registration
+from . import registration, scene_controls
 from .scale_utils import modifier_thickness_for_world_width
 from .selection import selected_mesh_objects as _selected_mesh_objects
 
@@ -800,16 +800,7 @@ def is_scene_line_only_enabled(context) -> bool:
 
 
 def _on_lines_visible_changed(self, context):
-    if _propagating:
-        return
-    owner = self.id_data
-    visible = bool(self.lines_visible)
-    targets = _set_prop_on_selected_targets(owner, context, "lines_visible", visible)
-    for obj in targets:
-        if obj.type == "MESH" and has_line(obj):
-            set_line_visibility(obj, visible)
-    if visible:
-        _refresh_print_widths(context)
+    scene_controls.on_object_lines_visible_changed(self, context)
 
 
 def _on_line_only_visible_changed(self, context):
@@ -825,9 +816,7 @@ def _on_scene_line_only_visible_changed(self, context):
 
 
 def _on_match_subsurf_viewport_to_render_changed(self, context):
-    if _propagating:
-        return
-    _defer_line_setting(self, context, "match_subsurf_viewport_to_render")
+    scene_controls.on_object_match_subsurf_viewport_to_render_changed(self, context)
 
 
 def _sync_inner_line_creation(
@@ -1532,7 +1521,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
 
     lines_visible: BoolProperty(
         name="ラインを表示",
-        description="選択中のオブジェクトのライン表示を切り替える",
+        description="シーン内すべてのB-MANGA Linerライン表示を切り替える",
         default=True,
         update=_on_lines_visible_changed,
     )  # type: ignore[valid-type]
@@ -1547,7 +1536,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     match_subsurf_viewport_to_render: BoolProperty(
         name="ビューポートのレベル数をレンダーに合わせる",
         description=(
-            "選択中のメッシュのサブディビジョンサーフェスで、"
+            "シーン内すべてのメッシュのサブディビジョンサーフェスで、"
             "ビューポートのレベル数をレンダーと同じ数値にする"
         ),
         default=False,
@@ -2200,6 +2189,7 @@ def _make_settings_overridable() -> None:
 
 
 def register() -> None:
+    scene_controls.unregister_scene_properties()
     if hasattr(bpy.types.Scene, "bmanga_line_line_only_visible"):
         del bpy.types.Scene.bmanga_line_line_only_visible
     if hasattr(bpy.types.Scene, "bmanga_line_camera"):
@@ -2225,9 +2215,11 @@ def register() -> None:
         default=False,
         update=_on_scene_line_only_visible_changed,
     )
+    scene_controls.register_scene_properties()
 
 
 def unregister() -> None:
+    scene_controls.unregister_scene_properties()
     if hasattr(bpy.types.Scene, "bmanga_line_line_only_visible"):
         del bpy.types.Scene.bmanga_line_line_only_visible
     if hasattr(bpy.types.Scene, "bmanga_line_camera"):
