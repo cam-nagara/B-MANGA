@@ -497,6 +497,23 @@ def _style_weights_for_uniform(obj, settings, target: str) -> list[float] | None
     return None
 
 
+def _uniform_width_basis(scene, camera, obj, settings) -> tuple[np.ndarray, float]:
+    from . import width_math
+
+    widths, _depths = width_math.vertex_widths_and_depths(
+        scene,
+        camera,
+        obj,
+        1.0,
+        distance_falloff=_line_width_distance_falloff(settings),
+        reference_distance=_line_width_reference_distance(settings),
+    )
+    if widths.size == 0:
+        return widths, 0.0
+    max_width = max(float(widths.max()), 1.0e-9)
+    return widths / max_width, max_width
+
+
 def _apply_uniform_line_width(scene, camera, obj, settings, mod) -> None:
     from . import outline_width_attribute, vertex_analysis
 
@@ -504,20 +521,23 @@ def _apply_uniform_line_width(scene, camera, obj, settings, mod) -> None:
     if not obj.data.vertices:
         return
 
-    _apply_uniform_target_line_width(scene, camera, obj, settings, "outline")
+    basis = _uniform_width_basis(scene, camera, obj, settings)
+    _apply_uniform_target_line_width(scene, camera, obj, settings, "outline", basis)
     outline_width_attribute.ensure_outline_width_attribute(obj, settings)
 
     if _has_inner_modifier(obj):
-        _apply_uniform_target_line_width(scene, camera, obj, settings, "inner")
+        _apply_uniform_target_line_width(scene, camera, obj, settings, "inner", basis)
     else:
         vertex_analysis.clear_width_weights(obj, group_name=VG_INNER_LINE_WIDTH)
 
     if _has_intersection_modifier(obj):
-        _apply_uniform_target_line_width(scene, camera, obj, settings, "intersection")
+        _apply_uniform_target_line_width(
+            scene, camera, obj, settings, "intersection", basis,
+        )
     else:
         vertex_analysis.clear_width_weights(obj, group_name=VG_INTERSECTION_LINE_WIDTH)
     if _has_selection_modifier(obj):
-        _apply_uniform_target_line_width(scene, camera, obj, settings, "selection")
+        _apply_uniform_target_line_width(scene, camera, obj, settings, "selection", basis)
     else:
         vertex_analysis.clear_width_weights(obj, group_name=VG_SELECTION_LINE_WIDTH)
 
@@ -706,7 +726,14 @@ def _apply_target_style_weights(obj, settings, target: str) -> None:
     _prepare_style_weights(obj, settings, target)
 
 
-def _apply_uniform_target_line_width(scene, camera, obj, settings, target: str) -> None:
+def _apply_uniform_target_line_width(
+    scene,
+    camera,
+    obj,
+    settings,
+    target: str,
+    basis: tuple[np.ndarray, float] | None = None,
+) -> None:
     from . import vertex_analysis, width_math
 
     if target == "inner" and not _has_inner_modifier(obj):
@@ -720,18 +747,26 @@ def _apply_uniform_target_line_width(scene, camera, obj, settings, target: str) 
         return
 
     style_weights = _style_weights_for_uniform(obj, settings, target)
-    widths, _depths = width_math.vertex_widths_and_depths(
-        scene,
-        camera,
-        obj,
-        _target_width_setting(settings, target),
-        distance_falloff=_line_width_distance_falloff(settings),
-        reference_distance=_line_width_reference_distance(settings),
-    )
-    if widths.size == 0:
-        return
-    max_width = max(float(widths.max()), 1.0e-9)
-    normalized = widths / max_width
+    if basis is None:
+        widths, _depths = width_math.vertex_widths_and_depths(
+            scene,
+            camera,
+            obj,
+            _target_width_setting(settings, target),
+            distance_falloff=_line_width_distance_falloff(settings),
+            reference_distance=_line_width_reference_distance(settings),
+        )
+        if widths.size == 0:
+            return
+        max_width = max(float(widths.max()), 1.0e-9)
+        normalized = widths / max_width
+    else:
+        normalized, unit_max_width = basis
+        if normalized.size == 0:
+            return
+        unit_pixels = max(_target_pixels(scene, 1.0), 1.0e-12)
+        target_pixels = _target_pixels(scene, _target_width_setting(settings, target))
+        max_width = max(unit_max_width * (target_pixels / unit_pixels), 1.0e-9)
     if style_weights is not None:
         style = np.asarray(style_weights, dtype=np.float64)
         combined = normalized.copy()
@@ -775,10 +810,28 @@ def _apply_compensated_target_line_width(scene, camera, obj, settings, target: s
     _apply_target_width(obj, target, adjusted)
 
 
+def _has_uniform_width_target(obj, target: str) -> bool:
+    if target == "inner":
+        return _has_inner_modifier(obj)
+    if target == "intersection":
+        return _has_intersection_modifier(obj)
+    if target == "selection":
+        return _has_selection_modifier(obj)
+    return (
+        obj.modifiers.get(MODIFIER_NAME) is not None
+        or obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME) is not None
+    )
+
+
 def _apply_targeted_line_widths(scene, camera, obj, settings, targets: tuple[str, ...]) -> None:
+    uniform_basis = None
     for target in targets:
         if settings.use_uniform_line_width:
-            _apply_uniform_target_line_width(scene, camera, obj, settings, target)
+            if uniform_basis is None and _has_uniform_width_target(obj, target):
+                uniform_basis = _uniform_width_basis(scene, camera, obj, settings)
+            _apply_uniform_target_line_width(
+                scene, camera, obj, settings, target, uniform_basis,
+            )
         elif settings.use_camera_compensation:
             _apply_compensated_target_line_width(scene, camera, obj, settings, target)
         else:

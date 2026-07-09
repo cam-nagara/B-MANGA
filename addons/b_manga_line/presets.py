@@ -329,22 +329,25 @@ def _update_view_layer(context) -> None:
 def _refresh_after_line_settings(
     context,
     sources: list[bpy.types.Object] | tuple[bpy.types.Object, ...] | None = None,
+    *,
+    refresh_intersections: bool = True,
 ) -> None:
     from . import camera_comp, intersection_lines, outline_setup
 
     camera_comp.refresh(context)
     _update_view_layer(context)
-    intersection_targets = intersection_lines.refresh_scene_intersections(
-        context.scene,
-        sources=sources,
-    )
-    if intersection_targets:
-        camera_comp.refresh_objects(
-            context,
-            intersection_targets,
-            update_visibility=True,
-            width_targets=("intersection",),
+    if refresh_intersections:
+        intersection_targets = intersection_lines.refresh_scene_intersections(
+            context.scene,
+            sources=sources,
         )
+        if intersection_targets:
+            camera_comp.refresh_objects(
+                context,
+                intersection_targets,
+                update_visibility=True,
+                width_targets=("intersection",),
+            )
     outline_setup.ensure_aov_passes(context.scene)
 
 

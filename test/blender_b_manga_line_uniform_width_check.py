@@ -29,6 +29,7 @@ from b_manga_line import (  # noqa: E402
     intersection_lines,
     presets,
     scale_utils,
+    width_math,
 )
 
 
@@ -679,6 +680,100 @@ def _test_low_influence_keeps_configured_line_widths() -> None:
     )
 
 
+def _test_uniform_width_reuses_camera_depths_across_targets() -> None:
+    scene = bpy.context.scene
+    _clear_scene()
+    _configure_scene(scene)
+
+    bpy.ops.mesh.primitive_cube_add(size=0.8, location=(0.25, 0.0, -1.2))
+    target = bpy.context.object
+    target.name = "BML_uniform_reuse_target"
+    _select(target)
+    target.bmanga_line_settings.outline_thickness_mm = 0.35
+    assert presets.apply_line_settings(target, bpy.context)
+
+    bpy.ops.mesh.primitive_cube_add(size=0.8, location=(0.0, 0.0, -1.2))
+    source = bpy.context.object
+    source.name = "BML_uniform_reuse_source"
+    _mark_all_freestyle_edges(source)
+    _select(source)
+    settings = source.bmanga_line_settings
+    settings.outline_thickness_mm = 0.40
+    settings.inner_line_enabled = True
+    settings.inner_line_thickness_mm = 0.20
+    settings.intersection_enabled = True
+    settings.intersection_method = "BOOLEAN"
+    settings.intersection_thickness_mm = 0.15
+    settings.selection_line_enabled = True
+    settings.selection_line_thickness_mm = 0.10
+    settings.use_uniform_line_width = True
+    assert presets.apply_line_settings(source, bpy.context)
+    _select_many(source, [source, target])
+    assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
+    assert source.modifiers.get(core.GN_MODIFIER_NAME) is not None
+    assert _intersection_modifier(source) is not None
+    assert source.modifiers.get(core.SELECTION_LINE_MODIFIER_NAME) is not None
+
+    original = width_math.vertex_widths_and_depths
+    calls = {"count": 0}
+
+    def _counted(*args, **kwargs):
+        calls["count"] += 1
+        return original(*args, **kwargs)
+
+    width_math.vertex_widths_and_depths = _counted
+    try:
+        camera_comp.refresh_objects(
+            bpy.context,
+            [source],
+            width_targets=("outline", "inner", "intersection", "selection"),
+        )
+    finally:
+        width_math.vertex_widths_and_depths = original
+
+    assert calls["count"] == 1, (
+        "頂点単位の線幅計算が線種ごとに重複しています",
+        calls["count"],
+    )
+
+    expected_outline_uniform = max(
+        camera_comp._uniform_widths_for_mesh(
+            scene, scene.camera, source, settings.outline_thickness,
+        )
+    )
+    expected_inner_uniform = max(
+        camera_comp._uniform_widths_for_mesh(
+            scene, scene.camera, source, settings.inner_line_thickness,
+        )
+    )
+    expected_intersection_uniform = max(
+        camera_comp._uniform_widths_for_mesh(
+            scene, scene.camera, source, settings.intersection_thickness,
+        )
+    )
+    expected_selection_uniform = max(
+        camera_comp._uniform_widths_for_mesh(
+            scene, scene.camera, source, settings.selection_line_thickness,
+        )
+    )
+    assert math.isclose(_line_world_width(source), expected_outline_uniform, rel_tol=0.001)
+    assert math.isclose(
+        _socket_world_width(source, _inner_thickness(source)),
+        expected_inner_uniform,
+        rel_tol=0.001,
+    )
+    assert math.isclose(
+        _socket_world_width(source, _intersection_thickness(source)),
+        expected_intersection_uniform,
+        rel_tol=0.001,
+    )
+    assert math.isclose(
+        _socket_world_width(source, _selection_thickness(source)),
+        expected_selection_uniform,
+        rel_tol=0.001,
+    )
+
+
 def _test_camera_compensation_influence_blends_far_width() -> None:
     scene = bpy.context.scene
     _clear_scene()
@@ -843,6 +938,7 @@ def _run() -> None:
     _test_intersection_target_scale_conversion()
     _test_camera_compensation_uses_mesh_position_not_origin()
     _test_low_influence_keeps_configured_line_widths()
+    _test_uniform_width_reuses_camera_depths_across_targets()
     _test_camera_compensation_influence_blends_far_width()
     _test_resolution_percentage_does_not_change_width()
     _test_evaluated_orthographic_width()

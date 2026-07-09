@@ -78,6 +78,13 @@ def _filter_updatable(objects) -> list:
     ]
 
 
+def _normalize_line_targets(line_targets) -> tuple[str, ...]:
+    if line_targets is None:
+        return LINE_TARGETS
+    requested = {str(target) for target in line_targets}
+    return tuple(target for target in LINE_TARGETS if target in requested)
+
+
 def _classify(
     obj: bpy.types.Object,
     target: str,
@@ -318,11 +325,13 @@ def reflect_all(
     context,
     *,
     force_rebuild: bool = False,
+    line_targets=None,
 ) -> ReflectAllResult:
     """選択オブジェクト全部×全線種を反映し、付帯処理まで行う（計画書§5）."""
     from . import batch_update, presets
 
     objects = _filter_updatable(objects)
+    active_targets = _normalize_line_targets(line_targets)
 
     if objects:
         # depsgraph更新は線種ごとに繰り返さず、ここで1回だけ行う
@@ -340,7 +349,7 @@ def reflect_all(
     results: dict = {}
     all_heavy: list = []
     seen_heavy: set = set()
-    for target in LINE_TARGETS:
+    for target in active_targets:
         result = dispatch_target(
             target,
             objects,
@@ -361,7 +370,11 @@ def reflect_all(
         # カメラ基準の全体リフレッシュ・交差線シーン反映・ensure_aov_passes は
         # _refresh_after_line_settings が1回で行う（orchestrated=True の
         # dispatch_target 側で二重実行しないようスキップ済み — 性能意図の維持）。
-        presets._refresh_after_line_settings(context, sources=all_heavy)
+        presets._refresh_after_line_settings(
+            context,
+            sources=all_heavy,
+            refresh_intersections="intersection" in active_targets,
+        )
         presets._reflect_applied_display_settings(all_heavy, context)
 
     return ReflectAllResult(

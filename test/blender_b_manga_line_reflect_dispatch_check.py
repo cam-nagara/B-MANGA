@@ -336,6 +336,35 @@ def _case_7_intersection_refresh_only_on_heavy_path() -> None:
         print("[PASS] case7b: 待ち無しの reflect_all は0回")
 
 
+def _case_8_reflect_all_can_defer_initial_intersections() -> None:
+    _clear_scene()
+    _make_camera()
+    a = _make_cube("BML_Reflect_Defer_Isect_A", (0.0, 0.0, -4.0))
+    b = _make_cube("BML_Reflect_Defer_Isect_B", (0.4, 0.0, -4.0))
+    for target in (a, b):
+        settings = target.bmanga_line_settings
+        settings.intersection_enabled = True
+        settings.use_intersection_creation_limit = False
+
+    _select(a, [a, b])
+    with _CallCounter(intersection_lines, "refresh_scene_intersections") as refresh_counter:
+        assert bpy.ops.bmanga_line.reflect_all(
+            "EXEC_DEFAULT",
+            reflect_scope="SKIP_INTERSECTION",
+        ) == {"FINISHED"}
+        assert refresh_counter.count == 0, (
+            "ケース8: 交差線以外の反映で交差線の自動検出が呼ばれました",
+            refresh_counter.calls,
+        )
+
+    assert a.modifiers.get(core.MODIFIER_NAME) is not None
+    assert b.modifiers.get(core.MODIFIER_NAME) is not None
+    assert not any(any(core.iter_intersection_modifiers(o)) for o in (a, b)), (
+        "ケース8: 交差線以外の反映で交差線が作成されています"
+    )
+    print("[PASS] case8: 交差線以外の reflect_all は初回交差線を後回しにする")
+
+
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     b_manga_line.register()
@@ -343,6 +372,7 @@ def main() -> None:
         _case_1_to_5_inner_line_lifecycle()
         _case_6_line_only_white_output_on_reflect_all()
         _case_7_intersection_refresh_only_on_heavy_path()
+        _case_8_reflect_all_can_defer_initial_intersections()
         print("BMANGA_LINE_REFLECT_DISPATCH_OK")
     finally:
         try:
