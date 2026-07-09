@@ -320,7 +320,6 @@ def _draw_midpoint_width_controls(
     draw_curve = getattr(col, "template_curve_mapping", None)
     if node is not None and callable(draw_curve):
         draw_curve(node, "mapping", type="NONE")
-    edge_width_curve.schedule_node_sync(settings, target)
 
 
 def _draw_line_detail_grid(layout, settings) -> None:
@@ -387,11 +386,25 @@ class BMANGA_LINE_OT_detail_settings(bpy.types.Operator):
         settings = _active_settings(context)
         if settings is not None:
             for target in ("outline", "inner", "intersection", "selection"):
-                edge_width_curve.sync_settings_and_node(settings, target)
+                edge_width_curve.reset_node_from_settings(settings, target)
         return context.window_manager.invoke_props_dialog(self, width=980)
 
-    def execute(self, _context):
+    def execute(self, context):
+        from . import edge_width_curve
+
+        settings = _active_settings(context)
+        if settings is not None:
+            for target in ("outline", "inner", "intersection", "selection"):
+                edge_width_curve.sync_settings_and_node(settings, target)
         return {"FINISHED"}
+
+    def cancel(self, context):
+        from . import edge_width_curve
+
+        settings = _active_settings(context)
+        if settings is not None:
+            for target in ("outline", "inner", "intersection", "selection"):
+                edge_width_curve.reset_node_from_settings(settings, target)
 
     def draw(self, context):
         settings = _active_settings(context)

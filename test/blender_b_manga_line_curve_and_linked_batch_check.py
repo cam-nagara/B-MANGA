@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import core, edge_width_curve, panels, presets  # noqa: E402
+from b_manga_line import core, edge_width_curve, panels, presets, update_state  # noqa: E402
 
 
 class _DummyLayout:
@@ -125,13 +125,66 @@ def _test_edge_width_curve_sync() -> None:
         assert abs(getattr(settings, props[2]) - 0.60) < 1.0e-4
 
 
+def _test_detail_curve_commits_only_on_ok() -> None:
+    _clear_scene()
+    obj = _make_cube("BML_curve_manual_commit")
+    _select(obj)
+    settings = obj.bmanga_line_settings
+    node = edge_width_curve.reset_node_from_settings(settings, "outline")
+    assert node is not None
+    before = (
+        settings.edge_width_curve_25,
+        settings.edge_width_curve_50,
+        settings.edge_width_curve_75,
+    )
+    edge_width_curve._apply_points_to_node(
+        node,
+        ((0.0, 0.0), (0.25, 0.9), (0.5, 0.1), (0.75, 0.7), (1.0, 1.0)),
+    )
+    assert (
+        settings.edge_width_curve_25,
+        settings.edge_width_curve_50,
+        settings.edge_width_curve_75,
+    ) == before, "グラフ編集中に設定値へリアルタイム反映されています"
+    assert not update_state.pending_targets(obj)
+
+    operator_type = panels.BMANGA_LINE_OT_detail_settings
+    assert operator_type.execute(None, bpy.context) == {"FINISHED"}
+    assert abs(settings.edge_width_curve_25 - 0.9) < 1.0e-4
+    assert abs(settings.edge_width_curve_50 - 0.1) < 1.0e-4
+    assert abs(settings.edge_width_curve_75 - 0.7) < 1.0e-4
+    assert "outline" in update_state.pending_targets(obj)
+
+    update_state.clear_pending(obj)
+    committed = (
+        settings.edge_width_curve_25,
+        settings.edge_width_curve_50,
+        settings.edge_width_curve_75,
+    )
+    node = edge_width_curve.reset_node_from_settings(settings, "outline")
+    edge_width_curve._apply_points_to_node(
+        node,
+        ((0.0, 0.0), (0.25, 0.2), (0.5, 0.8), (0.75, 0.3), (1.0, 1.0)),
+    )
+    operator_type.cancel(None, bpy.context)
+    assert (
+        settings.edge_width_curve_25,
+        settings.edge_width_curve_50,
+        settings.edge_width_curve_75,
+    ) == committed
+    points = edge_width_curve._read_node_points(edge_width_curve.get_node("outline"))
+    assert abs(edge_width_curve._evaluate(points, 0.25) - committed[0]) < 1.0e-4
+    assert abs(edge_width_curve._evaluate(points, 0.50) - committed[1]) < 1.0e-4
+    assert abs(edge_width_curve._evaluate(points, 0.75) - committed[2]) < 1.0e-4
+
+
 def _remove_curve_ui_material() -> None:
     mat = bpy.data.materials.get(edge_width_curve.MATERIAL_NAME)
     if mat is not None:
         bpy.data.materials.remove(mat)
 
 
-def _test_panel_draw_defers_edge_width_curve_writes() -> None:
+def _test_panel_draw_has_no_live_edge_width_curve_sync() -> None:
     _clear_scene()
     _remove_curve_ui_material()
     obj = _make_cube("BML_curve_panel_draw")
@@ -140,10 +193,8 @@ def _test_panel_draw_defers_edge_width_curve_writes() -> None:
     assert edge_width_curve.get_node("outline") is None
     assert bpy.data.materials.get(edge_width_curve.MATERIAL_NAME) is None
 
-    calls = {"schedule": 0}
     original_ensure = edge_width_curve.ensure_node
     original_sync = edge_width_curve.sync_node_to_settings
-    original_schedule = edge_width_curve.schedule_node_sync
 
     def _forbidden_ensure(*_args, **_kwargs):
         raise AssertionError("パネル描画中に線幅グラフ用素材を作成しています")
@@ -151,13 +202,8 @@ def _test_panel_draw_defers_edge_width_curve_writes() -> None:
     def _forbidden_sync(*_args, **_kwargs):
         raise AssertionError("パネル描画中に線幅グラフ設定を同期しています")
 
-    def _record_schedule(*_args, **_kwargs):
-        calls["schedule"] += 1
-        return True
-
     edge_width_curve.ensure_node = _forbidden_ensure
     edge_width_curve.sync_node_to_settings = _forbidden_sync
-    edge_width_curve.schedule_node_sync = _record_schedule
     try:
         panels._draw_midpoint_width_controls(  # noqa: SLF001
             _DummyLayout(),
@@ -171,16 +217,14 @@ def _test_panel_draw_defers_edge_width_curve_writes() -> None:
     finally:
         edge_width_curve.ensure_node = original_ensure
         edge_width_curve.sync_node_to_settings = original_sync
-        edge_width_curve.schedule_node_sync = original_schedule
 
-    assert calls["schedule"] == 1, calls
     assert bpy.data.materials.get(edge_width_curve.MATERIAL_NAME) is None
 
-    edge_width_curve.sync_settings_and_node(settings, "outline")
+    edge_width_curve.reset_node_from_settings(settings, "outline")
     assert edge_width_curve.get_node("outline") is not None
 
     for target in ("inner", "intersection", "selection"):
-        edge_width_curve.sync_settings_and_node(settings, target)
+        edge_width_curve.reset_node_from_settings(settings, target)
     layout = _DummyLayout()
     panels._draw_line_detail_grid(layout, settings)  # noqa: SLF001
     assert layout.curves == 4, f"中間頂点への変化グラフが4列ぶん表示されていません: {layout.curves}"
@@ -288,8 +332,9 @@ def _test_linked_batch_apply() -> None:
 
 def main() -> None:
     b_manga_line.register()
-    _test_panel_draw_defers_edge_width_curve_writes()
+    _test_panel_draw_has_no_live_edge_width_curve_sync()
     _test_edge_width_curve_sync()
+    _test_detail_curve_commits_only_on_ok()
     _test_linked_batch_apply()
     print("[PASS] B-MANGA Line curve graph and linked batch operations work")
 

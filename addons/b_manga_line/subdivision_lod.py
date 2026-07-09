@@ -568,6 +568,25 @@ def _queue_repair() -> None:
     bpy.app.timers.register(_run_repair_timer, first_interval=0.0)
 
 
+def _is_deferred_line_setting_update(
+    obj: bpy.types.Object,
+    update,
+) -> bool:
+    """反映待ち設定のRNA通知を、実形状の更新から区別する."""
+    if not (
+        bool(getattr(update, "is_updated_transform", False))
+        and bool(getattr(update, "is_updated_geometry", False))
+        and bool(getattr(update, "is_updated_shading", False))
+    ):
+        return False
+    try:
+        from . import update_state
+
+        return bool(update_state.pending_targets(obj))
+    except Exception:  # noqa: BLE001 - 更新監視は通常操作を止めない
+        return False
+
+
 @persistent
 def _on_depsgraph_update(_scene, depsgraph=None):
     if depsgraph is None:
@@ -575,7 +594,10 @@ def _on_depsgraph_update(_scene, depsgraph=None):
     for update in getattr(depsgraph, "updates", ()):
         item = getattr(update, "id", None)
         if isinstance(item, bpy.types.Object) and item.type == "MESH":
-            if has_subsurf_modifier(item):
+            if (
+                has_subsurf_modifier(item)
+                and not _is_deferred_line_setting_update(item, update)
+            ):
                 _queue_sync(item)
 
 

@@ -169,9 +169,9 @@ def _assert_panels_draw_items() -> None:
         "use_outline_creation_limit",
         "outline_creation_max_distance",
         "auto_subdivision_for_midpoint",
-        "lines_visible",
+        "bmanga_line_lines_visible",
         "bmanga_line_line_only_visible",
-        "match_subsurf_viewport_to_render",
+        "bmanga_line_match_subsurf_viewport_to_render",
         "use_camera_compensation",
         "line_width_reference_distance",
         "use_uniform_line_width",
@@ -210,9 +210,11 @@ def _assert_panels_draw_items() -> None:
     initially_on_props = {
         "outline_enabled",
         "lines_visible",
+        "use_uniform_line_width",
         "use_camera_culling",
         "use_inner_line_creation_limit",
         "use_intersection_creation_limit",
+        "weld_mesh_for_outline",
         # 2026-07-03 ユーザー確定: 板ポリ除外だけは初期値オン
         "exclude_sheet_meshes",
     }

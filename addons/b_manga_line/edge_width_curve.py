@@ -9,7 +9,6 @@ import bpy
 MATERIAL_NAME = "BML_EdgeWidthCurve_UI"
 NODE_NAME = "BML_EdgeWidthCurve"
 SOURCE_PROP = "bml_edge_width_curve_source"
-SYNC_INTERVAL = 0.12
 _TARGET_PROPS = {
     "outline": (
         "edge_width_curve_25",
@@ -39,8 +38,9 @@ DEFAULT_POINTS = (
     (0.75, 0.75),
     (1.0, 1.0),
 )
-_PENDING_SYNC: set[tuple[int, str]] = set()
-_shutdown = False
+# 旧版の常駐同期タイマーがモジュール再読込後も残った場合に停止させる。
+# importlib.reload は旧モジュール辞書を再利用するため、この名前を維持する。
+_shutdown = True
 
 
 def _normalize_target(target: str) -> str:
@@ -111,52 +111,18 @@ def sync_settings_and_node(settings, target: str = "outline") -> None:
     ensure_node(settings, target)
 
 
-def schedule_node_sync(settings, target: str = "outline") -> bool:
+def reset_node_from_settings(settings, target: str = "outline"):
+    """設定値を正としてグラフを戻し、未確定のグラフ編集を破棄する."""
     target = _normalize_target(target)
-    try:
-        owner = settings.id_data
-        owner_key = owner.as_pointer()
-        owner_name = owner.name_full
-    except (AttributeError, ReferenceError, RuntimeError):
-        return False
-    key = (owner_key, target)
-    if key in _PENDING_SYNC:
-        return False
-    _PENDING_SYNC.add(key)
-
-    # 注意: settings / owner のラッパーを閉包へ捕まえない。
-    # Undo・再読み込み・アドオンリロード後に解放済みメモリへ触れて
-    # クラッシュするため（2026-07-03 test_line.crash.txt）、
-    # 毎回アクティブオブジェクトから引き直す。
-    def _run():
-        if _shutdown:
-            _PENDING_SYNC.discard(key)
-            return None
-        try:
-            active = getattr(bpy.context, "active_object", None)
-            if (
-                active is None
-                or active.name_full != owner_name
-                or active.as_pointer() != owner_key
-            ):
-                _PENDING_SYNC.discard(key)
-                return None
-            live_settings = getattr(active, "bmanga_line_settings", None)
-            if live_settings is None:
-                _PENDING_SYNC.discard(key)
-                return None
-            sync_settings_and_node(live_settings, target)
-        except (ReferenceError, RuntimeError):
-            _PENDING_SYNC.discard(key)
-            return None
-        return SYNC_INTERVAL
-
-    try:
-        bpy.app.timers.register(_run, first_interval=0.0)
-    except ValueError:
-        _PENDING_SYNC.discard(key)
-        return False
-    return True
+    node = ensure_node(settings, target)
+    if node is None:
+        return None
+    points = points_from_settings(settings, target)
+    _apply_points_to_node(node, points)
+    mat = bpy.data.materials.get(MATERIAL_NAME)
+    if mat is not None:
+        mat[_source_prop(target)] = _points_text(points)
+    return node
 
 
 def sync_node_to_settings(settings, target: str = "outline") -> bool:
@@ -265,11 +231,15 @@ def _clamp01(value: float) -> float:
 
 def register() -> None:
     global _shutdown
-    _shutdown = False
+    _shutdown = True
+    pending = globals().get("_PENDING_SYNC")
+    if isinstance(pending, set):
+        pending.clear()
 
 
 def unregister() -> None:
-    """リロード後の旧タイマーを確実に止める（旧モジュール側で実行される）."""
     global _shutdown
     _shutdown = True
-    _PENDING_SYNC.clear()
+    pending = globals().get("_PENDING_SYNC")
+    if isinstance(pending, set):
+        pending.clear()
