@@ -5,7 +5,7 @@ from __future__ import annotations
 import bpy
 
 from . import registration
-from .core import has_line, has_outline, is_scene_line_only_enabled
+from .core import has_line, has_outline, is_scene_line_only_enabled, is_settings_locked
 
 
 def _get_paper_dpi(scene) -> int:
@@ -191,7 +191,13 @@ def _draw_line_settings(layout, context, settings) -> None:
     row = layout.row(align=True)
     row.scale_y = 1.2
     row.operator("bmanga_line.update_all_visual_targets", icon="FILE_REFRESH")
-    row = layout.row(align=True)
+
+    # ロック中は「すべてのラインを更新」以外をグレーアウトする
+    # （ロック外の選択オブジェクトには効くため、このボタンだけは押下可のまま）。
+    body = layout.column()
+    body.enabled = not bool(getattr(settings, "settings_locked", False))
+
+    row = body.row(align=True)
     row.prop(settings, "auto_subdivision_for_midpoint")
     row.operator("bmanga_line.detail_settings", icon="PREFERENCES")
 
@@ -201,8 +207,8 @@ def _draw_line_settings(layout, context, settings) -> None:
         ("intersection", "交差線", _draw_intersection),
         ("selection", "選択線", _draw_selection_line),
     )):
-        layout.separator()
-        section = layout.column(align=True)
+        body.separator()
+        section = body.column(align=True)
         header = section.row(align=True)
         header.label(text=label)
         buttons = header.row(align=True)
@@ -360,6 +366,7 @@ class BMANGA_LINE_OT_detail_settings(bpy.types.Operator):
     def draw(self, context):
         settings = _active_settings(context)
         if settings is not None:
+            self.layout.enabled = not bool(getattr(settings, "settings_locked", False))
             _draw_line_detail_grid(self.layout, settings)
 
 
@@ -375,6 +382,25 @@ def _draw_actions(layout, context, obj) -> None:
     row.scale_y = 1.4
     row.operator("bmanga_line.apply", icon="ADD")
     settings = getattr(obj, "bmanga_line_settings", None)
+
+    mesh_count = sum(1 for selected in context.selected_objects if selected.type == "MESH")
+    locked_count = sum(
+        1 for selected in context.selected_objects
+        if selected.type == "MESH" and is_settings_locked(selected)
+    )
+    lock_row = layout.row(align=True)
+    lock_cell = lock_row.row(align=True)
+    lock_cell.enabled = locked_count < mesh_count
+    lock_op = lock_cell.operator("bmanga_line.set_settings_lock", text="選択をロック", icon="LOCKED")
+    lock_op.lock = True
+    unlock_cell = lock_row.row(align=True)
+    unlock_cell.enabled = locked_count > 0
+    unlock_op = unlock_cell.operator("bmanga_line.set_settings_lock", text="ロック解除", icon="UNLOCKED")
+    unlock_op.lock = False
+    if locked_count > 0:
+        status = layout.row(align=True)
+        status.scale_y = 0.8
+        status.label(text=f"ロック中: {locked_count}/{mesh_count}", icon="INFO")
 
     linked_line_count = sum(
         1 for linked_obj in context.scene.objects
@@ -412,7 +438,6 @@ def _draw_actions(layout, context, obj) -> None:
     row.enabled = has_line_any
     row.operator("bmanga_line.remove", icon="REMOVE")
 
-    mesh_count = sum(1 for selected in context.selected_objects if selected.type == "MESH")
     outline_count = sum(1 for selected in context.selected_objects if has_outline(selected))
     if mesh_count > 0:
         layout.separator()
@@ -422,6 +447,9 @@ def _draw_actions(layout, context, obj) -> None:
             text=f"選択メッシュ: {mesh_count}  ライン適用済み: {outline_count}",
             icon="INFO",
         )
+        if is_settings_locked(obj):
+            info.label(text="ロック中（設定・更新は変更されません）", icon="LOCKED")
+            return
         pending = update_state.pending_label(obj)
         if pending:
             info.label(text=pending, icon="ERROR")
@@ -451,7 +479,9 @@ class BMANGA_LINE_PT_camera(_BMangaLineMeshPanel, bpy.types.Panel):
     bl_order = 3
 
     def draw(self, context):
-        _draw_camera(self.layout, context, _active_settings(context))
+        settings = _active_settings(context)
+        self.layout.enabled = not bool(getattr(settings, "settings_locked", False))
+        _draw_camera(self.layout, context, settings)
 
 
 _CLASSES = (

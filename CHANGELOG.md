@@ -3,6 +3,33 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-09 — B-MANGA Linerにオブジェクト単位のライン設定ロックを追加 (B-MANGA v0.6.452 / B-MANGA Liner v0.3.169)
+
+### 追加
+
+- オブジェクトごとに「ラインをロック」できる機能を追加。ロック中のオブジェクトは、選択に含まれていても (1) 他オブジェクトの編集に巻き込まれた設定伝搬 (2) パネルからの直接編集 (3) 各種「更新」ボタン・「すべてのラインを更新」・ウェイト更新 (4) プリセットの「選択中に適用」 (5) 「ラインを削除」 の対象から除外される。交差線はペアの少なくとも一方がロック中なら現状維持（新規作成・削除・再構築・所有者変更のいずれもしない）。
+- ロック中もカメラ距離補正（カメラフレーム変更時の線幅追従）は従来どおり動作を継続する（2026-07-09 ユーザー承認済みの確定仕様）。表示/非表示トグル（`lines_visible` 等）は伝搬経路が設定伝搬と共通のため、ロック中は他プロパティと同様に伝搬対象から除外される（表示だけ変えたい場合は解除してから行う）。
+- UI: ライン設定パネルの「ラインを適用」ボタン近くに「選択をロック」/「ロック解除」ボタンと「ロック中: n/m」表示を追加。アクティブオブジェクトがロック中の場合、ライン設定パネル（「すべてのラインを更新」ボタンを除く）・カメラ設定パネル・詳細設定ダイアログをグレーアウトし、パネル下部に「ロック中（設定・更新は変更されません）」を表示する。
+
+### 実装
+
+- `core.py`: `BMangaLineSettings.settings_locked`（`update=` コールバックなし・プリセット非対象）を追加。判定ヘルパー `core.is_settings_locked(obj)` を新設。`_propagate` / `_set_prop_on_selected_targets` の伝搬先ループへロック除外を追加（`settings_locked` プロパティ自身の書き込みは除外しない）。
+- `selection.py`: 共通列挙ヘルパー `updatable_mesh_objects(context)`（選択中メッシュのうちロックされていないもの）を新設。
+- `update_state.py`: `mark_pending()` の冒頭でロック中オブジェクトを no-op にし、`mark_pending_many` / `mark_property_pending` / `mark_property_pending_many` も一括して対象外になるようにした。
+- `operators.py`: `bmanga_line.apply` / `update_target` / `update_visual_target` / `update_all_visual_targets` / `sync_weights` / `remove` の対象列挙を `selection.updatable_mesh_objects()` へ置換し、ロック中のため除外した件数をレポートに追記。新規オペレーター `bmanga_line.set_settings_lock`（`lock: BoolProperty`）を追加。
+- `presets.py`: `bmanga_line.preset_apply_selected` の適用対象からロック中オブジェクトを除外。
+- `batch_update.py`: `refresh_target_visuals` / `refresh_all_target_visuals` の入口に防御的なロック除外（`_unlocked_line_objects`）を追加（オペレーター経由以外の呼び出しへの保険）。
+- `intersection_lines.py`（**「保存済み線方式」の生きている実装のみ**を修正。ファイル前半の BOOLEAN/SDF/SHELL 同名関数群は到達不能なデッドコードのため対象外）: `_refresh_source_intersections` の冒頭でロック中オブジェクトを現状維持で return するガードを追加。`_auto_targets` でロック中候補との新規ペア形成を除外（既存ペアは `existing_targets` に含まれる限り維持）。
+- `panels.py`: 上記UIの追加とグレーアウト制御。
+- `camera_comp.py` は変更なし（確定仕様どおりロック中も動作継続）。
+
+### 検証 (Blender 5.1 実機)
+
+- 新設回帰テスト `test/blender_b_manga_line_settings_lock_check.py` PASS: (a) アクティブ側の設定変更がロック側へ伝搬しないこと・ロック側に更新待ち印が付かないこと (b) ロック中に「すべてのラインを更新」を実行してもロック側のモディファイア値が変化しないこと（アクティブ側は変化すること） (d) 交差ペアの片側ロックで `refresh_scene_intersections` を実行してもロック側所有のキャッシュが削除・再構築されないこと (e) ロック解除後は保留していた変更が通常どおり反映されること、をアサート。
+- `test/blender_b_manga_line_ui_controls_check.py` / `test/blender_b_manga_line_update_all_targets_check.py` 既存回帰も PASS（ロック関連の追加ボタンは `_draw_actions` の既存アサーション対象外のイディネームのため無影響）。
+- `python -m py_compile` 全変更ファイル OK。
+- 未実施: Part A（バンプ/ノーマル線）は本エントリの対象外（別途実施）。マニュアル未更新の旨は AGENT_INBOX.md の既存P1（マニュアル陳腐化）項へ追記予定。
+
 ## 2026-07-09 — B-MANGA Linerの「ラインのみを表示」解除漏れとライン適用時の勝手な表示切替を修正 (B-MANGA v0.6.451 / B-MANGA Liner v0.3.168)
 
 ### 症状

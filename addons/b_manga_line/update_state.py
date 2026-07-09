@@ -145,6 +145,11 @@ def _pending_prop_for_kind(kind: str) -> str:
 def mark_pending(obj: bpy.types.Object, targets=None, *, kind: str = "create") -> None:
     if obj is None or obj.type != "MESH":
         return
+    from . import core
+
+    if core.is_settings_locked(obj):
+        # ロック中は新たな作成待ち/更新待ち印を付けない（既存の印は保持し、解除後に再評価される）。
+        return
     add = set(normalize_targets(targets))
     if not add:
         return

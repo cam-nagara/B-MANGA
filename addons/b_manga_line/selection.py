@@ -42,3 +42,18 @@ def selected_mesh_objects(context, owner: bpy.types.Object) -> list[bpy.types.Ob
             if selected:
                 _add_unique_mesh_object(items, obj)
     return items
+
+
+def updatable_mesh_objects(context) -> list[bpy.types.Object]:
+    """選択中メッシュのうち、ライン設定がロックされていないものを列挙する（オペレーター向け）."""
+    from . import core
+
+    items: list[bpy.types.Object] = []
+    for obj in getattr(context, "selected_objects", ()) or ():
+        if obj is None or getattr(obj, "type", None) != "MESH":
+            continue
+        if core.is_settings_locked(obj):
+            continue
+        if obj not in items:
+            items.append(obj)
+    return items

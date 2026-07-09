@@ -43,6 +43,18 @@ def _linked_line_objects(scene) -> list[bpy.types.Object]:
     return [o for o in objs if o not in refs]
 
 
+def _locked_skip_count(context, updatable_count: int) -> int:
+    """選択中メッシュのうち、ロックのため対象から除外された件数."""
+    total = sum(1 for obj in context.selected_objects if obj.type == "MESH")
+    return max(0, total - updatable_count)
+
+
+def _with_lock_skip_note(message: str, skipped: int) -> str:
+    if skipped:
+        return f"{message}（ロック中のため{skipped}件を除外）"
+    return message
+
+
 class BMANGA_LINE_OT_apply(bpy.types.Operator):
     """選択オブジェクトにアウトラインを適用"""
 
@@ -61,16 +73,17 @@ class BMANGA_LINE_OT_apply(bpy.types.Operator):
             _refresh_after_line_settings,
             _update_view_layer,
         )
-        from . import outline_setup
+        from . import outline_setup, selection
 
         outline_setup.ensure_aov_passes(context.scene)
+
+        targets = selection.updatable_mesh_objects(context)
+        skipped = _locked_skip_count(context, len(targets))
 
         count = 0
         applied_objects: list[bpy.types.Object] = []
         _update_view_layer(context)
-        for obj in context.selected_objects:
-            if obj.type != "MESH":
-                continue
+        for obj in targets:
             if apply_line_settings(
                 obj,
                 context,
@@ -84,7 +97,10 @@ class BMANGA_LINE_OT_apply(bpy.types.Operator):
         from . import update_state
         update_state.clear_pending_many(applied_objects)
 
-        self.report({"INFO"}, f"{count} オブジェクトにラインを適用しました")
+        self.report(
+            {"INFO"},
+            _with_lock_skip_note(f"{count} オブジェクトにラインを適用しました", skipped),
+        )
         return {"FINISHED"}
 
 
@@ -123,7 +139,7 @@ class BMANGA_LINE_OT_update_target(bpy.types.Operator):
         return any(obj.type == "MESH" for obj in context.selected_objects)
 
     def execute(self, context):
-        from . import camera_comp, intersection_lines, outline_setup, update_state
+        from . import camera_comp, intersection_lines, outline_setup, selection, update_state
         from .presets import (
             apply_line_settings,
             _update_view_layer,
@@ -131,12 +147,12 @@ class BMANGA_LINE_OT_update_target(bpy.types.Operator):
 
         target = str(self.target)
         line_targets = (target,)
+        targets_to_process = selection.updatable_mesh_objects(context)
+        skipped = _locked_skip_count(context, len(targets_to_process))
         count = 0
         applied_objects: list[bpy.types.Object] = []
         _update_view_layer(context)
-        for obj in context.selected_objects:
-            if obj.type != "MESH":
-                continue
+        for obj in targets_to_process:
             if apply_line_settings(
                 obj,
                 context,
@@ -189,7 +205,13 @@ class BMANGA_LINE_OT_update_target(bpy.types.Operator):
             "intersection": "交差線",
             "selection": "選択線",
         }
-        self.report({"INFO"}, f"{count} オブジェクトの{labels.get(target, 'ライン')}を作成しました")
+        self.report(
+            {"INFO"},
+            _with_lock_skip_note(
+                f"{count} オブジェクトの{labels.get(target, 'ライン')}を作成しました",
+                skipped,
+            ),
+        )
         return {"FINISHED"}
 
 
@@ -207,12 +229,14 @@ class BMANGA_LINE_OT_update_visual_target(bpy.types.Operator):
         return any(has_line(obj) for obj in context.selected_objects)
 
     def execute(self, context):
-        from . import batch_update, update_state
+        from . import batch_update, selection, update_state
 
         target = str(self.target)
+        targets_to_process = selection.updatable_mesh_objects(context)
+        skipped = _locked_skip_count(context, len(targets_to_process))
         updated_objects = batch_update.refresh_target_visuals(
             target,
-            list(context.selected_objects),
+            targets_to_process,
             context,
         )
         update_state.clear_pending_many(
@@ -228,7 +252,10 @@ class BMANGA_LINE_OT_update_visual_target(bpy.types.Operator):
         }
         self.report(
             {"INFO"},
-            f"{len(updated_objects)} オブジェクトの{labels.get(target, 'ライン')}を更新しました",
+            _with_lock_skip_note(
+                f"{len(updated_objects)} オブジェクトの{labels.get(target, 'ライン')}を更新しました",
+                skipped,
+            ),
         )
         return {"FINISHED"}
 
@@ -245,10 +272,12 @@ class BMANGA_LINE_OT_update_all_visual_targets(bpy.types.Operator):
         return any(has_line(obj) for obj in context.selected_objects)
 
     def execute(self, context):
-        from . import batch_update, update_state
+        from . import batch_update, selection, update_state
 
+        targets_to_process = selection.updatable_mesh_objects(context)
+        skipped = _locked_skip_count(context, len(targets_to_process))
         results = batch_update.refresh_all_target_visuals(
-            list(context.selected_objects),
+            targets_to_process,
             context,
         )
         updated: dict[str, bpy.types.Object] = {}
@@ -259,7 +288,10 @@ class BMANGA_LINE_OT_update_all_visual_targets(bpy.types.Operator):
         update_state.clear_pending_many(updated.values(), kind="visual")
         self.report(
             {"INFO"},
-            f"{len(updated)} オブジェクトのすべてのラインを更新しました",
+            _with_lock_skip_note(
+                f"{len(updated)} オブジェクトのすべてのラインを更新しました",
+                skipped,
+            ),
         )
         return {"FINISHED"}
 
@@ -330,6 +362,7 @@ class BMANGA_LINE_OT_remove(bpy.types.Operator):
             outline_setup,
             inner_lines,
             plane_filter,
+            selection,
             selection_lines,
             subdivision_lod,
         )
@@ -340,10 +373,12 @@ class BMANGA_LINE_OT_remove(bpy.types.Operator):
             PROP_REF_MODE,
         )
 
+        # ロック中は解除してから削除する運用（誤爆防止を優先）。
+        targets_to_process = selection.updatable_mesh_objects(context)
+        skipped = _locked_skip_count(context, len(targets_to_process))
+
         count = 0
-        for obj in context.selected_objects:
-            if obj.type != "MESH":
-                continue
+        for obj in targets_to_process:
             removed_any = False
             removed_any |= outline_setup.remove_outline(obj)
             removed_any |= inner_lines.remove_inner_lines(obj)
@@ -365,7 +400,43 @@ class BMANGA_LINE_OT_remove(bpy.types.Operator):
             plane_filter.clear_cache(obj)
 
         intersection_lines.refresh_scene_intersections(context.scene)
-        self.report({"INFO"}, f"{count} オブジェクトからラインを削除しました")
+        self.report(
+            {"INFO"},
+            _with_lock_skip_note(f"{count} オブジェクトからラインを削除しました", skipped),
+        )
+        return {"FINISHED"}
+
+
+class BMANGA_LINE_OT_set_settings_lock(bpy.types.Operator):
+    """選択オブジェクトのライン設定ロックを切り替え"""
+
+    bl_idname = "bmanga_line.set_settings_lock"
+    bl_label = "ライン設定ロックを切り替え"
+    bl_options = {"REGISTER", "UNDO"}
+
+    lock: BoolProperty(default=True)  # type: ignore[valid-type]
+
+    @classmethod
+    def poll(cls, context):
+        return any(obj.type == "MESH" for obj in context.selected_objects)
+
+    def execute(self, context):
+        target_lock = bool(self.lock)
+        count = 0
+        for obj in context.selected_objects:
+            if obj.type != "MESH":
+                continue
+            settings = getattr(obj, "bmanga_line_settings", None)
+            if settings is None:
+                continue
+            if bool(settings.settings_locked) == target_lock:
+                continue
+            settings.settings_locked = target_lock
+            record_override_edits(obj)
+            count += 1
+
+        action = "ロック" if target_lock else "ロック解除"
+        self.report({"INFO"}, f"{count} オブジェクトを{action}しました")
         return {"FINISHED"}
 
 
@@ -495,17 +566,21 @@ class BMANGA_LINE_OT_sync_weights(bpy.types.Operator):
         return any(has_outline(obj) for obj in context.selected_objects)
 
     def execute(self, context):
-        from . import vertex_analysis
+        from . import selection, vertex_analysis
+
+        targets_to_process = selection.updatable_mesh_objects(context)
+        skipped = _locked_skip_count(context, len(targets_to_process))
 
         total = 0
-        for obj in context.selected_objects:
-            if obj.type != "MESH":
-                continue
+        for obj in targets_to_process:
             settings = obj.bmanga_line_settings
             for target in ("outline", "inner", "intersection", "selection"):
                 total += vertex_analysis.compute_and_apply_weights(obj, settings, target)
 
-        self.report({"INFO"}, f"{total} 頂点のウェイトを更新しました")
+        self.report(
+            {"INFO"},
+            _with_lock_skip_note(f"{total} 頂点のウェイトを更新しました", skipped),
+        )
         return {"FINISHED"}
 
 
@@ -623,6 +698,7 @@ _CLASSES = (
     BMANGA_LINE_OT_update_all_visual_targets,
     BMANGA_LINE_OT_select_render_range_meshes,
     BMANGA_LINE_OT_remove,
+    BMANGA_LINE_OT_set_settings_lock,
     BMANGA_LINE_OT_set_visibility,
     BMANGA_LINE_OT_set_line_only,
     BMANGA_LINE_OT_refresh_linked,

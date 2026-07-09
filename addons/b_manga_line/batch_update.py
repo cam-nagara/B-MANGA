@@ -47,6 +47,16 @@ def _line_objects(objects: list[bpy.types.Object]) -> list[bpy.types.Object]:
     ]
 
 
+def _unlocked_line_objects(objects: list[bpy.types.Object]) -> list[bpy.types.Object]:
+    """ライン適用済みかつロックされていないオブジェクトだけを残す（防御的フィルタ）.
+
+    オペレーター側（operators.py）で既にロック除外した対象を渡すのが基本だが、
+    オペレーター経由以外の呼び出し（他モジュールからの直接呼び出し等）への
+    保険として、ここでも同じ除外を行う。
+    """
+    return [obj for obj in _line_objects(objects) if not core.is_settings_locked(obj)]
+
+
 def _outline_modifier(obj: bpy.types.Object):
     return obj.modifiers.get(core.MODIFIER_NAME)
 
@@ -1052,7 +1062,7 @@ def refresh_target_visuals(
 ) -> list[bpy.types.Object]:
     """作成済みラインの見た目だけを線種別に更新する."""
     target = str(target)
-    line_objects = _line_objects(objects)
+    line_objects = _unlocked_line_objects(objects)
     targets = _generated_line_objects(line_objects, target)
     if not targets:
         return []
@@ -1085,7 +1095,7 @@ def refresh_all_target_visuals(
     """作成済みライン全種と中間頂点用サブディビジョンを一括更新する."""
     from . import update_state
 
-    line_objects = _line_objects(objects)
+    line_objects = _unlocked_line_objects(objects)
     if not line_objects:
         return {}
     _update_auto_subdivision(line_objects, context)

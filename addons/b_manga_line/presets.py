@@ -778,13 +778,19 @@ class BMANGA_LINE_OT_preset_apply_selected(bpy.types.Operator):
         if preset is None:
             self.report({"WARNING"}, "プリセットが選択されていません")
             return {"CANCELLED"}
+        from . import selection, update_state
+
+        targets = selection.updatable_mesh_objects(context)
+        skipped = len(_selected_meshes(context)) - len(targets)
         count = 0
-        from . import update_state
-        for obj in _selected_meshes(context):
+        for obj in targets:
             copy_preset_to_settings(preset, obj.bmanga_line_settings)
             update_state.mark_pending(obj)
             count += 1
-        self.report({"INFO"}, f"{count} オブジェクトにプリセット設定を適用しました")
+        message = f"{count} オブジェクトにプリセット設定を適用しました"
+        if skipped > 0:
+            message += f"（ロック中のため{skipped}件を除外）"
+        self.report({"INFO"}, message)
         return {"FINISHED"}
 
 

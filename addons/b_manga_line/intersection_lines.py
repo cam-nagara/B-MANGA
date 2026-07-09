@@ -40,6 +40,7 @@ from .core import (
     PROP_LINES_HIDDEN,
     SHEET_OUTLINE_MODIFIER_NAME,
     VG_INTERSECTION_LINE_WIDTH,
+    is_settings_locked,
     iter_intersection_modifiers,
 )
 
@@ -893,6 +894,10 @@ def _auto_targets(
             ):
                 continue
             if plane_filter.should_exclude_generated_lines(candidate, candidate_settings):
+                continue
+            if is_settings_locked(candidate) and candidate.name_full not in existing_targets:
+                # ロック中オブジェクトとの新規ペア形成はしない
+                # （既存ペアは現状維持のため existing_targets にあれば許容する）。
                 continue
             candidate_enabled = bool(
                 getattr(candidate_settings, "intersection_enabled", False)
@@ -1837,6 +1842,10 @@ def _refresh_source_intersections(
     except ReferenceError:
         return False
     if obj_type != "MESH":
+        return False
+    if is_settings_locked(obj):
+        # ロック中は現状維持（新規作成・削除・再構築のいずれもしない）。
+        # 解除後の次回更新で決定的な所有権ルールにより自然に正常化される。
         return False
     if not _has_outline_source(obj):
         return False

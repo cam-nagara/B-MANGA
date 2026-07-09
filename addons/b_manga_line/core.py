@@ -90,6 +90,18 @@ _LINE_CREATION_PROPS = {
 }
 
 
+# ------------------------------------------------------------------
+# オブジェクト単位ロック判定
+# ------------------------------------------------------------------
+
+def is_settings_locked(obj: bpy.types.Object | None) -> bool:
+    """ライン設定がロックされているか判定する（settings未初期化・None安全）."""
+    settings = getattr(obj, "bmanga_line_settings", None)
+    if settings is None:
+        return False
+    return bool(getattr(settings, "settings_locked", False))
+
+
 def _normalized_setting_value(value):
     if hasattr(value, "__iter__") and not isinstance(value, str):
         return tuple(value)
@@ -148,6 +160,8 @@ def _propagate(self, context, prop_name):
         for obj in _selected_mesh_objects(context, owner):
             if obj == owner or obj.type != "MESH":
                 continue
+            if prop_name != "settings_locked" and is_settings_locked(obj):
+                continue
             s = getattr(obj, "bmanga_line_settings", None)
             if s is not None:
                 if _setting_values_equal(getattr(s, prop_name), value):
@@ -193,6 +207,8 @@ def _set_prop_on_selected_targets(
     try:
         for obj in targets:
             if obj == owner or obj.type != "MESH":
+                continue
+            if prop_name != "settings_locked" and is_settings_locked(obj):
                 continue
             settings = getattr(obj, "bmanga_line_settings", None)
             if settings is None:
@@ -1378,6 +1394,17 @@ def _set_selection_mm(self, value):
 
 class BMangaLineSettings(bpy.types.PropertyGroup):
     """オブジェクトごとの B-MANGA Line 設定."""
+
+    # ロック中は選択に含まれていても設定伝搬・更新・削除の対象から除外される。
+    # 意図的に update= コールバックを付けない（伝搬させない。プリセット配布対象にもしない）。
+    settings_locked: BoolProperty(
+        name="ラインをロック",
+        description=(
+            "選択に含まれていても、このオブジェクトのライン設定・"
+            "更新・削除を行わないようにする"
+        ),
+        default=False,
+    )  # type: ignore[valid-type]
 
     outline_enabled: BoolProperty(
         name="アウトライン",
