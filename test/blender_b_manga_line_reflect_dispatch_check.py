@@ -12,14 +12,14 @@
   5. 更新待ち(visual)印のみ            → 軽い経路（見た目だけ更新）
   6. 印なし                            → 何もしない
 
-本ファイルは計画書§10の新規テスト7ケースをこの順序で検証する。ケース1〜5は
+本ファイルは計画書§10の新規テストに初回安全化の回帰を加えた9ケースを検証する。ケース1〜5は
 同一オブジェクト・同一線種（稜谷線=inner。GNモディファイアを持つため
 「node_group参照が同じ=作り直されていない」を軽い経路の証拠にできる）を
 連続して使い回し、ライフサイクル全体（作成→軽い更新→無変化→メッシュ編集での
 作り直し→チェックOFFでの削除）を1本の流れとして検証する。ケース6は
 「ラインのみを表示」ON中の reflect_all 付帯処理引き継ぎ、ケース7は交差線の
 シーン再検出（refresh_scene_intersections）が軽い経路では走らないことを、
-それぞれ独立したセットアップで検証する。
+ケース8は交差線の後回し、ケース9は中規模初回反映の確認境界を検証する。
 """
 
 from __future__ import annotations
@@ -38,6 +38,7 @@ from b_manga_line import (  # noqa: E402
     intersection_lines,
     line_only_display,
     mesh_fingerprint,
+    operators,
     presets,
     update_state,
 )
@@ -365,6 +366,36 @@ def _case_8_reflect_all_can_defer_initial_intersections() -> None:
     print("[PASS] case8: 交差線以外の reflect_all は初回交差線を後回しにする")
 
 
+def _case_9_initial_confirmation_threshold() -> None:
+    _clear_scene()
+    base = _make_cube("BML_Reflect_Confirm_000", (0.0, 0.0, 0.0))
+    objects = [base]
+    for index in range(1, operators._REFLECT_ALL_CONFIRM_COUNT):
+        obj = base.copy()
+        obj.data = base.data
+        obj.name = f"BML_Reflect_Confirm_{index:03d}"
+        bpy.context.collection.objects.link(obj)
+        objects.append(obj)
+
+    objects[0].bmanga_line_settings.use_uniform_line_width = True
+
+    class _GateProbe:
+        reflect_scope = "ALL"
+
+        def _initial_reflect_summary(self, targets):
+            return operators.BMANGA_LINE_OT_reflect_all._initial_reflect_summary(
+                self, targets,
+            )
+
+    probe = _GateProbe()
+    gate = operators.BMANGA_LINE_OT_reflect_all._needs_initial_confirm
+    assert not gate(probe, objects[:-1]), "119件で初回確認が出る境界ずれです"
+    assert gate(probe, objects), "120件の頂点単位線幅初回反映で確認が出ません"
+    probe.reflect_scope = "SKIP_INTERSECTION"
+    assert not gate(probe, objects), "交差線以外を選んだ後も初回確認が再表示されます"
+    print("[PASS] case9: 初回確認は120件以上かつ全反映時だけ表示される")
+
+
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     b_manga_line.register()
@@ -373,6 +404,7 @@ def main() -> None:
         _case_6_line_only_white_output_on_reflect_all()
         _case_7_intersection_refresh_only_on_heavy_path()
         _case_8_reflect_all_can_defer_initial_intersections()
+        _case_9_initial_confirmation_threshold()
         print("BMANGA_LINE_REFLECT_DISPATCH_OK")
     finally:
         try:

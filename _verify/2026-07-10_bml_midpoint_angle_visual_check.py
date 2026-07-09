@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import intersection_cache, outline_setup, presets  # noqa: E402
+from b_manga_line import camera_comp, intersection_cache, outline_setup, presets  # noqa: E402
 
 
 OUT_DIR = ROOT / "_verify" / "2026-07-10_bml_midpoint_angle_visual"
@@ -91,9 +91,9 @@ def configure_lines(obj: bpy.types.Object) -> None:
     settings.use_camera_culling = False
     settings.use_camera_compensation = False
     settings.auto_subdivision_for_midpoint = True
-    settings.outline_thickness = 0.006
-    settings.inner_line_thickness = 0.004
-    settings.intersection_thickness = 0.005
+    settings.outline_thickness_mm = 0.50
+    settings.inner_line_thickness_mm = 0.30
+    settings.intersection_thickness_mm = 0.50
     settings.outline_color = (0.0, 0.18, 1.0, 1.0)
     settings.inner_line_color = (1.0, 0.0, 1.0, 1.0)
     settings.intersection_color = (0.0, 1.0, 0.0, 1.0)
@@ -183,6 +183,7 @@ def main() -> None:
     clear_scene()
     obj = make_textured_folded_strip()
     configure_lines(obj)
+    setup_camera()
     assert presets.apply_line_settings(
         obj,
         bpy.context,
@@ -191,7 +192,12 @@ def main() -> None:
     )
     bpy.context.view_layer.update()
     add_cached_intersection_curve(obj)
-    setup_camera()
+    camera_comp.refresh_objects(
+        bpy.context,
+        [obj],
+        update_visibility=True,
+        width_targets=("outline", "inner", "intersection"),
+    )
     render_image()
     print(f"[PASS] midpoint angle visual: {OUT_PATH}")
 
