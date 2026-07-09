@@ -90,6 +90,7 @@ def _test_camera_selection_and_aov() -> None:
     _select(obj)
     settings = obj.bmanga_line_settings
     settings.outline_thickness = 0.01
+    settings.use_uniform_line_width = False
     settings.use_camera_compensation = True
     settings.camera_compensation_influence = 1.0
 
