@@ -48,7 +48,7 @@ def _apply_line(*objects: bpy.types.Object) -> None:
     for obj in objects:
         obj.select_set(True)
     bpy.context.view_layer.objects.active = objects[0]
-    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
 
 
 def _has_intersection(obj: bpy.types.Object) -> bool:

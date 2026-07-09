@@ -191,42 +191,41 @@ def _draw_line_settings(layout, context, settings) -> None:
         return
     row = layout.row(align=True)
     row.scale_y = 1.2
-    row.operator("bmanga_line.update_all_visual_targets", icon="FILE_REFRESH")
+    row.operator("bmanga_line.reflect_all", icon="FILE_REFRESH")
+    row = layout.row(align=True)
+    row.enabled = any(has_line(o) for o in context.selected_objects)
+    row.operator("bmanga_line.remove_all", icon="TRASH")
     row = layout.row(align=True)
     row.operator("bmanga_line.detail_settings", text="詳細設定", icon="PREFERENCES")
 
-    # ロック中は「すべてのラインを更新」以外をグレーアウトする
+    # ロック中は「すべてのラインを反映」以外をグレーアウトする
     # （ロック外の選択オブジェクトには効くため、このボタンだけは押下可のまま）。
     body = layout.column()
     body.enabled = not bool(getattr(settings, "settings_locked", False))
 
     row = body.row(align=True)
     row.prop(settings, "auto_subdivision_for_midpoint")
-    op = row.operator("bmanga_line.update_auto_subdivision", text="作成", icon="ADD")
-    op.action = "CREATE"
-    op = row.operator("bmanga_line.update_auto_subdivision", text="更新", icon="FILE_REFRESH")
-    op.action = "UPDATE"
+    op = row.operator("bmanga_line.update_auto_subdivision", text="反映", icon="FILE_REFRESH")
+    op.action = "REFLECT"
     op = row.operator("bmanga_line.update_auto_subdivision", text="削除", icon="TRASH")
     op.action = "DELETE"
 
-    for index, (target, label, draw_func, show_create) in enumerate((
-        ("outline", "アウトライン", _draw_outline, True),
-        ("inner", "稜谷線", _draw_inner_line, True),
-        ("intersection", "交差線", _draw_intersection, True),
-        ("selection", "選択線", _draw_selection_line, True),
-        # バンプ線はモディファイア/マテリアルを生成しない画像空間処理のため
-        # 「作成」概念が無く、「更新」ボタンのみ表示する（計画書A-4手順7）。
-        ("bump", "バンプ線", _draw_bump_line, False),
+    # 各線種のボタンは「反映」1つに統合済み（無ければ作成、有れば更新、
+    # メッシュ編集後なら作り直す）。バンプ線もモディファイア/マテリアルを
+    # 生成しない画像空間処理だが、同じ「反映」ボタンで見た目を同期する。
+    for index, (target, label, draw_func) in enumerate((
+        ("outline", "アウトライン", _draw_outline),
+        ("inner", "稜谷線", _draw_inner_line),
+        ("intersection", "交差線", _draw_intersection),
+        ("selection", "選択線", _draw_selection_line),
+        ("bump", "バンプ線", _draw_bump_line),
     )):
         body.separator()
         section = body.column(align=True)
         header = section.row(align=True)
         header.label(text=label)
         buttons = header.row(align=True)
-        if show_create:
-            op = buttons.operator("bmanga_line.update_target", text="作成", icon="ADD")
-            op.target = target
-        op = buttons.operator("bmanga_line.update_visual_target", text="更新", icon="FILE_REFRESH")
+        op = buttons.operator("bmanga_line.reflect_target", text="反映", icon="FILE_REFRESH")
         op.target = target
         draw_func(section, context, settings)
 
@@ -416,11 +415,6 @@ def _draw_global_display_controls(layout, context) -> None:
 def _draw_actions(layout, context, obj) -> None:
     from . import update_state
 
-    has_line_any = any(has_line(o) for o in context.selected_objects)
-    row = layout.row(align=True)
-    row.scale_y = 1.4
-    row.operator("bmanga_line.apply", icon="ADD")
-
     mesh_count = sum(1 for selected in context.selected_objects if selected.type == "MESH")
     locked_count = sum(
         1 for selected in context.selected_objects
@@ -455,10 +449,6 @@ def _draw_actions(layout, context, obj) -> None:
         text="リンク素材へ選択設定を上書き",
         icon="LINKED",
     )
-
-    row = layout.row(align=True)
-    row.enabled = has_line_any
-    row.operator("bmanga_line.remove", icon="REMOVE")
 
     outline_count = sum(1 for selected in context.selected_objects if has_outline(selected))
     if mesh_count > 0:

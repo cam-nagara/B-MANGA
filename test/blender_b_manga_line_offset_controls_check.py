@@ -94,7 +94,7 @@ def _run() -> None:
                 obj.name,
             )
         _select_all(objects)
-        assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+        assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
 
         for obj in objects:
             assert obj.modifiers.get(core.MODIFIER_NAME) is not None
@@ -109,9 +109,9 @@ def _run() -> None:
         settings.outline_offset = 0.25
         settings.inner_line_offset = 0.4
         settings.intersection_line_offset = -0.2
-        assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
-        assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="inner") == {"FINISHED"}
-        assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
+        assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
+        assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="inner") == {"FINISHED"}
+        assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
 
         for obj in objects:
             obj_settings = obj.bmanga_line_settings

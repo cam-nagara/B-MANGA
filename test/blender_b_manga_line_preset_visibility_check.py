@@ -145,7 +145,7 @@ def _assert_pending(obj: bpy.types.Object, *targets: str) -> None:
 
 def _apply_selected_lines(active: bpy.types.Object, objects: list[bpy.types.Object]) -> None:
     _select(active, objects)
-    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
     for obj in objects:
         assert update_state.pending_targets(obj) == (), f"{obj.name}: 未更新が残っています"
 
@@ -709,7 +709,7 @@ def _run(store_path: Path) -> None:
     for obj in (first, second):
         _assert_camera_culled_line(obj)
 
-    assert bpy.ops.bmanga_line.remove() == {"FINISHED"}
+    assert bpy.ops.bmanga_line.remove_all() == {"FINISHED"}
     for obj in (first, second):
         assert not core.has_line(obj), f"{obj.name}: ラインが残っています"
         assert core.PROP_LINES_HIDDEN not in obj

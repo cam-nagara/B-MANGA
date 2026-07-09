@@ -1,4 +1,11 @@
-"""B-MANGA Line: uniform line width follows camera, DPI, and resolution."""
+"""B-MANGA Line: uniform line width follows camera, DPI, and resolution.
+
+ボタン再編（docs/bml_reflect_button_reorg_plan_2026-07-09.md）により、旧
+bmanga_line.apply / update_target / update_visual_target は
+reflect_all / reflect_target(target=...) へ統合された。本ファイルの各呼び出しは
+すべて実プロパティ代入（update ハンドラ経由）の直後に置かれており、その代入が
+反映の待ち印を自動的に付けるため、置換後も同じ反映結果になる。
+"""
 
 from __future__ import annotations
 
@@ -223,7 +230,7 @@ def _test_uniform_width_depth_and_resolution() -> None:
     assert far_high_res < far * 0.51
 
     settings.outline_thickness_mm = 1.0
-    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
     far_thick = _expected_world_width(scene, 8.0, 1.0)
     assert math.isclose(mod.thickness, far_thick, rel_tol=0.001), (
         mod.thickness,
@@ -231,7 +238,7 @@ def _test_uniform_width_depth_and_resolution() -> None:
     )
 
     settings.outline_thickness_mm = 0.8
-    assert bpy.ops.bmanga_line.update_visual_target(
+    assert bpy.ops.bmanga_line.reflect_target(
         "EXEC_DEFAULT",
         target="outline",
     ) == {"FINISHED"}
@@ -242,8 +249,8 @@ def _test_uniform_width_depth_and_resolution() -> None:
     )
 
     settings.use_uniform_line_width = False
-    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
-    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="inner") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="inner") == {"FINISHED"}
     center_thick = _expected_world_width(scene, 2.0, 0.8)
     assert math.isclose(mod.thickness, center_thick, rel_tol=0.001), (
         mod.thickness,
@@ -272,7 +279,7 @@ def _test_uniform_width_saved_in_preset() -> None:
     scene.bmanga_line_preset_index = 0
     assert bpy.ops.bmanga_line.preset_apply_selected() == {"FINISHED"}
     assert target.bmanga_line_settings.use_uniform_line_width
-    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
     expected = _expected_world_width(scene, 8.0, 0.4)
     actual = target.modifiers[core.MODIFIER_NAME].thickness
     assert math.isclose(actual, expected, rel_tol=0.001), (actual, expected)
@@ -292,7 +299,7 @@ def _test_batch_apply_uses_reference_distance_not_object_distance() -> None:
 
     _select_many(near, [near, far])
     near.bmanga_line_settings.outline_thickness_mm = 0.6
-    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
 
     near_width = near.modifiers[core.MODIFIER_NAME].thickness
     far_width = far.modifiers[core.MODIFIER_NAME].thickness
@@ -309,7 +316,7 @@ def _test_batch_apply_uses_reference_distance_not_object_distance() -> None:
     )
 
     near.bmanga_line_settings.line_width_reference_distance = 4.0
-    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
     near_width_4m = near.modifiers[core.MODIFIER_NAME].thickness
     far_width_4m = far.modifiers[core.MODIFIER_NAME].thickness
     expected_4m = _expected_world_width(scene, 4.0, 0.6)
@@ -342,7 +349,7 @@ def _test_multi_select_mm_change_updates_all_modifiers() -> None:
 
     _select_many(source, [source, target])
     source.bmanga_line_settings.outline_thickness_mm = 1.2
-    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
 
     assert math.isclose(target.bmanga_line_settings.outline_thickness_mm, 1.2, rel_tol=0.001)
     expected = _expected_world_width(scene, 2.0, 1.2)
@@ -350,7 +357,7 @@ def _test_multi_select_mm_change_updates_all_modifiers() -> None:
     assert math.isclose(actual, expected, rel_tol=0.001), (actual, expected)
 
     source.bmanga_line_settings.line_width_reference_distance = 3.5
-    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
     assert math.isclose(
         target.bmanga_line_settings.line_width_reference_distance,
         3.5,
@@ -365,7 +372,7 @@ def _test_multi_select_mm_change_updates_all_modifiers() -> None:
 
     source.bmanga_line_settings.use_uniform_line_width = True
     source.bmanga_line_settings.outline_thickness_mm = 0.8
-    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
     assert target.bmanga_line_settings.use_uniform_line_width
     assert math.isclose(target.bmanga_line_settings.outline_thickness_mm, 0.8, rel_tol=0.001)
     expected_uniform = _expected_world_width(scene, 4.5, 0.8)
@@ -442,14 +449,14 @@ def _test_object_scale_compensates_modifier_width() -> None:
     normal.bmanga_line_settings.intersection_thickness_mm = 0.2
     _select_many(normal, [normal, normal_target])
     assert presets.apply_line_settings(normal, bpy.context)
-    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
 
     scaled.bmanga_line_settings.intersection_enabled = True
     scaled.bmanga_line_settings.intersection_method = "BOOLEAN"
     scaled.bmanga_line_settings.intersection_thickness_mm = 0.2
     _select_many(scaled, [scaled, scaled_target])
     assert presets.apply_line_settings(scaled, bpy.context)
-    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
 
     expected_intersection = _expected_world_width(scene, 2.0, 0.2)
     normal_owner = _intersection_owner(normal, normal_target)
@@ -495,7 +502,7 @@ def _test_intersection_target_scale_conversion() -> None:
         source.bmanga_line_settings.intersection_thickness_mm = 0.2
         assert presets.apply_line_settings(source, bpy.context)
         _select_many(source, [source, target])
-        assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
+        assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
 
         expected_outline = _expected_world_width(scene, 2.0, 0.6)
         expected_intersection = _expected_world_width(scene, 2.0, 0.2)
@@ -602,7 +609,7 @@ def _test_low_influence_keeps_configured_line_widths() -> None:
     settings.line_width_reference_distance = 6.0
     assert presets.apply_line_settings(source, bpy.context)
     _select_many(source, [source, target])
-    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
     assert source.modifiers.get(core.GN_MODIFIER_NAME) is not None
     assert _intersection_modifier(source) is not None
     assert source.modifiers.get(core.SELECTION_LINE_MODIFIER_NAME) is not None

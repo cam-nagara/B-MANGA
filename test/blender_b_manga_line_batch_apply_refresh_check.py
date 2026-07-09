@@ -71,7 +71,7 @@ def main() -> None:
         camera_comp.refresh = counted_camera
         presets._update_view_layer = counted_view_update
         try:
-            assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+            assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
         finally:
             intersection_lines.refresh_scene_intersections = real_intersection
             camera_comp.refresh = real_camera

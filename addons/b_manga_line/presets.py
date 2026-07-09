@@ -867,6 +867,18 @@ class BMANGA_LINE_OT_preset_delete(bpy.types.Operator):
     def poll(cls, context):
         return _active_preset(context.scene) is not None
 
+    def invoke(self, context, event):
+        preset = _active_preset(context.scene)
+        name = str(getattr(preset, "name", "") or "") if preset is not None else ""
+        return context.window_manager.invoke_confirm(
+            self,
+            event,
+            title="確認",
+            message=f"プリセット『{name}』を削除します。",
+            confirm_text="削除",
+            icon="WARNING",
+        )
+
     def execute(self, context):
         scene = context.scene
         ensure_presets_loaded(scene)

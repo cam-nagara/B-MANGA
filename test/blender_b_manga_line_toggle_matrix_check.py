@@ -84,7 +84,7 @@ def _setup_state(state: tuple[bool, ...]) -> list[bpy.types.Object]:
     objects = [_make_cube(i) for i in range(3)]
     _set_state(objects, state)
     _select(objects)
-    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
     _select(objects)
     return objects
 

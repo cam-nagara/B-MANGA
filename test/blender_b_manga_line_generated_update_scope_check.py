@@ -116,7 +116,7 @@ def main() -> None:
         for obj in objects:
             assert "inner" in set(update_state.pending_targets(obj)), obj.name
 
-        assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="inner") == {"FINISHED"}
+        assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="inner") == {"FINISHED"}
         assert _generated_inner_names(objects) == initial_inner_names
         for obj in objects:
             assert "inner" not in set(update_state.pending_targets(obj)), obj.name
@@ -126,7 +126,7 @@ def main() -> None:
         for obj in objects:
             assert "intersection" in set(update_state.pending_targets(obj)), obj.name
 
-        assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
+        assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
         assert _generated_intersection_names(objects) == initial_intersection_names
         for obj in objects:
             assert "intersection" not in set(update_state.pending_targets(obj)), obj.name

@@ -248,8 +248,8 @@ def run_case(engine_key: str) -> None:
         pending = update_state.pending_visual_targets(plane_a)
         assert "bump" in pending, (engine_used, pending)
 
-        assert bpy.ops.bmanga_line.update_visual_target.poll()
-        result = bpy.ops.bmanga_line.update_visual_target("EXEC_DEFAULT", target="bump")
+        assert bpy.ops.bmanga_line.reflect_target.poll()
+        result = bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="bump")
         assert result == {"FINISHED"}, (engine_used, result)
         assert "bump" not in update_state.pending_visual_targets(plane_a)
 
@@ -263,7 +263,7 @@ def run_case(engine_key: str) -> None:
         # （RenderLayers→GroupOutputの2ノードのみ）は意図的に残る
         # （aov_compositor.sync_bump_line_render_composite のdocstring参照）。
         settings_a.bump_line_enabled = False
-        result = bpy.ops.bmanga_line.update_visual_target("EXEC_DEFAULT", target="bump")
+        result = bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="bump")
         assert result == {"FINISHED"}, result
         tree = scene.compositing_node_group
         leftover = [

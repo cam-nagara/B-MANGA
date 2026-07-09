@@ -75,7 +75,7 @@ def _make_line_target() -> bpy.types.Object:
     for item in (obj, other):
         item.select_set(True)
     bpy.context.view_layer.objects.active = obj
-    result = bpy.ops.bmanga_line.apply()
+    result = bpy.ops.bmanga_line.reflect_all()
     if "FINISHED" not in result:
         raise AssertionError(f"ライン適用に失敗しました: {result}")
 

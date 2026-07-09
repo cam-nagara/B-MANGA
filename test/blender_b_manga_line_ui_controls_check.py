@@ -76,10 +76,10 @@ def _assert_distance_button(active: bpy.types.Object, other: bpy.types.Object) -
 
 def _assert_visibility_checkboxes(active: bpy.types.Object, other: bpy.types.Object) -> None:
     _select(active, [active, other])
-    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
     third = _make_cube("BML_UI_unselected_visibility", (4.0, 0.0, 0.0))
     _select(third, [third])
-    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
     _select(active, [active])
     _select(active, [active, other])
     for obj in (active, other, third):
@@ -104,7 +104,7 @@ def _assert_visibility_checkboxes(active: bpy.types.Object, other: bpy.types.Obj
 def _assert_line_only_checkbox(active: bpy.types.Object, other: bpy.types.Object) -> None:
     scene = bpy.context.scene
     _select(active, [active, other])
-    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
 
     old_object_line_only = outline_setup.set_line_only
     old_set_line_visibility = core.set_line_visibility
@@ -200,7 +200,7 @@ class _FakeOperatorProps:
 
 def _assert_panel_draw_uses_scene_global_controls(active: bpy.types.Object, other: bpy.types.Object) -> None:
     _select(active, [active, other])
-    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
 
     layout = _FakeUILayout()
     panels._draw_global_display_controls(layout, bpy.context)
@@ -226,10 +226,22 @@ def _assert_panel_draw_uses_scene_global_controls(active: bpy.types.Object, othe
 
 
 def _assert_update_buttons_are_in_line_settings(active: bpy.types.Object) -> None:
+    # ボタン再編（docs/bml_reflect_button_reorg_plan_2026-07-09.md）で、線種別の
+    # 「作成」「更新」ボタンは「反映」(reflect_target) 1個へ統合され、メインパネルの
+    # 「ラインを適用」「ラインを削除」は廃止（ライン設定パネルの
+    # reflect_all / remove_all へ統合・改名）された。
     action_layout = _FakeUILayout()
     panels._draw_actions(action_layout, bpy.context, active)
     assert not any(
-        op.idname in {"bmanga_line.update_target", "bmanga_line.update_visual_target"}
+        op.idname in {
+            "bmanga_line.apply",
+            "bmanga_line.remove",
+            "bmanga_line.remove_all",
+            "bmanga_line.reflect_all",
+            "bmanga_line.reflect_target",
+            "bmanga_line.update_target",
+            "bmanga_line.update_visual_target",
+        }
         for op in action_layout.operators
     ), [op.idname for op in action_layout.operators]
 
@@ -241,47 +253,37 @@ def _assert_update_buttons_are_in_line_settings(active: bpy.types.Object) -> Non
     )
     assert settings_layout.operators, "ライン設定にボタンがありません"
     assert (
-        settings_layout.operators[0].idname
-        == "bmanga_line.update_all_visual_targets"
+        settings_layout.operators[0].idname == "bmanga_line.reflect_all"
     ), [op.idname for op in settings_layout.operators]
     assert (
-        settings_layout.operators[1].idname
-        == "bmanga_line.detail_settings"
+        settings_layout.operators[1].idname == "bmanga_line.remove_all"
+    ), [op.idname for op in settings_layout.operators]
+    assert (
+        settings_layout.operators[2].idname == "bmanga_line.detail_settings"
     ), [op.idname for op in settings_layout.operators]
     auto_ops = [
         op for op in settings_layout.operators
         if op.idname == "bmanga_line.update_auto_subdivision"
     ]
+    # 作成(CREATE)は廃止。作成相当は auto_subdivision_for_midpoint をONにしてから
+    # 「反映」を押すことと等価になったため、ボタンは反映(REFLECT)/削除(DELETE)の2つ。
     assert [(op.text, op.action) for op in auto_ops] == [
-        ("作成", "CREATE"),
-        ("更新", "UPDATE"),
+        ("反映", "REFLECT"),
         ("削除", "DELETE"),
     ], [(op.idname, op.text, getattr(op, "action", None)) for op in auto_ops]
-    create_ops = [
+    reflect_ops = [
         op for op in settings_layout.operators
-        if op.idname == "bmanga_line.update_target"
+        if op.idname == "bmanga_line.reflect_target"
     ]
-    visual_ops = [
-        op for op in settings_layout.operators
-        if op.idname == "bmanga_line.update_visual_target"
-    ]
-    # バンプ線はモディファイア/マテリアルを生成しないため「作成」ボタンは
-    # 出さない（create_ops は既存4種のまま）。「更新」ボタンのみ末尾に追加。
-    assert [op.target for op in create_ops] == [
-        "outline",
-        "inner",
-        "intersection",
-        "selection",
-    ], [(op.idname, getattr(op, "target", None)) for op in create_ops]
-    assert [op.target for op in visual_ops] == [
+    # 各線種セクション（アウトライン/稜谷線/交差線/選択線/バンプ線）に「反映」1個ずつ。
+    assert [op.target for op in reflect_ops] == [
         "outline",
         "inner",
         "intersection",
         "selection",
         "bump",
-    ], [(op.idname, getattr(op, "target", None)) for op in visual_ops]
-    assert all(op.text == "作成" for op in create_ops)
-    assert all(op.text == "更新" for op in visual_ops)
+    ], [(op.idname, getattr(op, "target", None)) for op in reflect_ops]
+    assert all(op.text == "反映" for op in reflect_ops)
     assert settings_layout.separator_count >= 5, settings_layout.separator_count
 
 
@@ -297,7 +299,7 @@ def _assert_subsurf_checkbox(active: bpy.types.Object, other: bpy.types.Object) 
         for mod in obj.modifiers:
             if mod.type == "SUBSURF":
                 assert int(mod.levels) == int(mod.render_levels), (obj.name, mod.name)
-    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
     for obj in (active, other):
         for mod in obj.modifiers:
             if mod.type == "SUBSURF":
@@ -313,7 +315,7 @@ def _assert_subsurf_checkbox(active: bpy.types.Object, other: bpy.types.Object) 
         for mod in obj.modifiers:
             if mod.type == "SUBSURF":
                 assert int(mod.levels) == 0, (obj.name, mod.name, mod.levels)
-    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
     for obj in (active, other):
         for mod in obj.modifiers:
             if mod.type == "SUBSURF":
@@ -324,7 +326,7 @@ def _assert_subsurf_checkbox(active: bpy.types.Object, other: bpy.types.Object) 
             if mod.type == "SUBSURF":
                 mod.levels = 0
     bpy.context.scene.bmanga_line_match_subsurf_viewport_to_render = True
-    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
     for obj in (active, other):
         for mod in obj.modifiers:
             if mod.type == "SUBSURF":

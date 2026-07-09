@@ -55,53 +55,16 @@ def _with_lock_skip_note(message: str, skipped: int) -> str:
     return message
 
 
-class BMANGA_LINE_OT_apply(bpy.types.Operator):
-    """選択オブジェクトにアウトラインを適用"""
-
-    bl_idname = "bmanga_line.apply"
-    bl_label = "ラインを適用"
-    bl_options = {"REGISTER", "UNDO"}
-
-    @classmethod
-    def poll(cls, context):
-        return any(obj.type == "MESH" for obj in context.selected_objects)
-
-    def execute(self, context):
-        from .presets import (
-            apply_line_settings,
-            _reflect_applied_display_settings,
-            _refresh_after_line_settings,
-            _update_view_layer,
-        )
-        from . import outline_setup, selection
-
-        outline_setup.ensure_aov_passes(context.scene)
-
-        targets = selection.updatable_mesh_objects(context)
-        skipped = _locked_skip_count(context, len(targets))
-
-        count = 0
-        applied_objects: list[bpy.types.Object] = []
-        _update_view_layer(context)
-        for obj in targets:
-            if apply_line_settings(
-                obj,
-                context,
-                refresh_scene=False,
-                transforms_fresh=True,
-            ):
-                count += 1
-                applied_objects.append(obj)
-        _refresh_after_line_settings(context, sources=applied_objects)
-        _reflect_applied_display_settings(applied_objects, context)
-        from . import update_state
-        update_state.clear_pending_many(applied_objects)
-
-        self.report(
-            {"INFO"},
-            _with_lock_skip_note(f"{count} オブジェクトにラインを適用しました", skipped),
-        )
-        return {"FINISHED"}
+def _invoke_delete_confirm(operator, context, event, message: str):
+    """削除系オペレーター共通の確認ダイアログ（計画書§7）."""
+    return context.window_manager.invoke_confirm(
+        operator,
+        event,
+        title="確認",
+        message=message,
+        confirm_text="削除",
+        icon="WARNING",
+    )
 
 
 _LINE_TARGET_ITEMS = (
@@ -109,212 +72,88 @@ _LINE_TARGET_ITEMS = (
     ("inner", "稜谷線", ""),
     ("intersection", "交差線", ""),
     ("selection", "選択線", ""),
-    # バンプ線はモディファイア/マテリアルを生成しないため「作成」ボタンは
-    # 出さない（panels.py側で作成ボタンを描画しない）。更新オペレーター
-    # (bmanga_line.update_visual_target) の対象としてのみ使う。
     ("bump", "バンプ線", ""),
 )
 
-_TARGET_ENABLED_PROPS = {
-    "outline": "outline_enabled",
-    "inner": "inner_line_enabled",
-    "intersection": "intersection_enabled",
-    "selection": "selection_line_enabled",
-    "bump": "bump_line_enabled",
+_LINE_TARGET_LABELS = {
+    "outline": "アウトライン",
+    "inner": "稜谷線",
+    "intersection": "交差線",
+    "selection": "選択線",
+    "bump": "バンプ線",
 }
 
 
-def _target_enabled(obj: bpy.types.Object, target: str) -> bool:
-    settings = getattr(obj, "bmanga_line_settings", None)
-    prop_name = _TARGET_ENABLED_PROPS.get(target)
-    return bool(settings is not None and prop_name and getattr(settings, prop_name, False))
+class BMANGA_LINE_OT_reflect_target(bpy.types.Operator):
+    """選択オブジェクトの指定ラインを反映（無ければ作成・編集後なら作り直す）"""
 
-
-def _has_any_updatable_line_target(context) -> bool:
-    """更新系オペレーターのpoll向け: 他線種のhas_line()に加え、
-    バンプ線はモディファイアを持たないため bump_line_enabled も見る。
-    直前に無効化しただけ（bump_line_enabled=False だが更新待ち印は残っている）
-    のオブジェクトも対象にし、無効化を反映する「更新」を必ず押せるようにする。
-    """
-    from . import update_state
-
-    for obj in context.selected_objects:
-        if has_line(obj):
-            return True
-        settings = getattr(obj, "bmanga_line_settings", None)
-        if settings is not None and bool(getattr(settings, "bump_line_enabled", False)):
-            return True
-        if "bump" in update_state.pending_visual_targets(obj):
-            return True
-    return False
-
-
-class BMANGA_LINE_OT_update_target(bpy.types.Operator):
-    """選択オブジェクトの指定ラインだけを作成・再作成"""
-
-    bl_idname = "bmanga_line.update_target"
-    bl_label = "ラインを作成"
+    bl_idname = "bmanga_line.reflect_target"
+    bl_label = "ラインを反映"
     bl_options = {"REGISTER", "UNDO"}
 
     target: EnumProperty(items=_LINE_TARGET_ITEMS, default="outline")  # type: ignore[valid-type]
+    # テスト用の逃げ道。待ち状態・指紋に関係なく重い経路を強制する（UI非公開）。
+    force_rebuild: BoolProperty(default=False, options={"SKIP_SAVE"})  # type: ignore[valid-type]
 
     @classmethod
     def poll(cls, context):
         return any(obj.type == "MESH" for obj in context.selected_objects)
 
     def execute(self, context):
-        from . import camera_comp, intersection_lines, outline_setup, selection, update_state
-        from .presets import (
-            apply_line_settings,
-            _update_view_layer,
-        )
-
-        target = str(self.target)
-        line_targets = (target,)
-        targets_to_process = selection.updatable_mesh_objects(context)
-        skipped = _locked_skip_count(context, len(targets_to_process))
-        count = 0
-        applied_objects: list[bpy.types.Object] = []
-        _update_view_layer(context)
-        for obj in targets_to_process:
-            if apply_line_settings(
-                obj,
-                context,
-                refresh_scene=False,
-                transforms_fresh=True,
-                line_targets=line_targets,
-            ):
-                count += 1
-                applied_objects.append(obj)
-
-        if target == "intersection":
-            refresh_sources = [
-                obj for obj in applied_objects if _target_enabled(obj, target)
-            ]
-            intersection_targets = (
-                intersection_lines.refresh_scene_intersections(
-                    context.scene,
-                    sources=refresh_sources,
-                )
-                if refresh_sources
-                else []
-            )
-            if intersection_targets:
-                camera_comp.refresh_objects(
-                    context,
-                    intersection_targets,
-                    update_visibility=True,
-                    width_targets=line_targets,
-                    visibility_targets=line_targets,
-                )
-            if refresh_sources or intersection_targets:
-                outline_setup.ensure_aov_passes(context.scene)
-        else:
-            refresh_objects = [
-                obj for obj in applied_objects if _target_enabled(obj, target)
-            ]
-            if refresh_objects:
-                camera_comp.refresh_objects(
-                    context,
-                    refresh_objects,
-                    update_visibility=True,
-                    width_targets=line_targets,
-                    visibility_targets=line_targets,
-                )
-        update_state.clear_pending_many(applied_objects, line_targets)
-
-        labels = {
-            "outline": "アウトライン",
-            "inner": "稜谷線",
-            "intersection": "交差線",
-            "selection": "選択線",
-        }
-        self.report(
-            {"INFO"},
-            _with_lock_skip_note(
-                f"{count} オブジェクトの{labels.get(target, 'ライン')}を作成しました",
-                skipped,
-            ),
-        )
-        return {"FINISHED"}
-
-
-class BMANGA_LINE_OT_update_visual_target(bpy.types.Operator):
-    """選択オブジェクトの作成済みラインの見た目だけを更新"""
-
-    bl_idname = "bmanga_line.update_visual_target"
-    bl_label = "ラインを更新"
-    bl_options = {"REGISTER", "UNDO"}
-
-    target: EnumProperty(items=_LINE_TARGET_ITEMS, default="outline")  # type: ignore[valid-type]
-
-    @classmethod
-    def poll(cls, context):
-        return _has_any_updatable_line_target(context)
-
-    def execute(self, context):
-        from . import batch_update, selection, update_state
+        from . import reflect, selection
 
         target = str(self.target)
         targets_to_process = selection.updatable_mesh_objects(context)
         skipped = _locked_skip_count(context, len(targets_to_process))
-        updated_objects = batch_update.refresh_target_visuals(
+        result = reflect.dispatch_target(
             target,
             targets_to_process,
             context,
+            force_rebuild=bool(self.force_rebuild),
         )
-        update_state.clear_pending_many(
-            updated_objects,
-            (target,),
-            kind="visual",
+        label = _LINE_TARGET_LABELS.get(target, "ライン")
+        message = (
+            f"{label}: 作成/再作成 {result.heavy_count}件・"
+            f"見た目更新 {result.light_count}件・変更なし {result.unchanged_count}件"
         )
-        labels = {
-            "outline": "アウトライン",
-            "inner": "稜谷線",
-            "intersection": "交差線",
-            "selection": "選択線",
-            "bump": "バンプ線",
-        }
-        self.report(
-            {"INFO"},
-            _with_lock_skip_note(
-                f"{len(updated_objects)} オブジェクトの{labels.get(target, 'ライン')}を更新しました",
-                skipped,
-            ),
-        )
+        self.report({"INFO"}, _with_lock_skip_note(message, skipped))
         return {"FINISHED"}
 
 
-class BMANGA_LINE_OT_update_all_visual_targets(bpy.types.Operator):
-    """選択オブジェクトの作成済みライン全種と中間頂点用サブディビジョンを更新"""
+class BMANGA_LINE_OT_reflect_all(bpy.types.Operator):
+    """選択オブジェクトのすべてのラインと中間頂点用サブディビジョンを反映"""
 
-    bl_idname = "bmanga_line.update_all_visual_targets"
-    bl_label = "すべてのラインを更新"
+    bl_idname = "bmanga_line.reflect_all"
+    bl_label = "すべてのラインを反映"
     bl_options = {"REGISTER", "UNDO"}
+
+    force_rebuild: BoolProperty(default=False, options={"SKIP_SAVE"})  # type: ignore[valid-type]
 
     @classmethod
     def poll(cls, context):
-        return _has_any_updatable_line_target(context)
+        return any(obj.type == "MESH" for obj in context.selected_objects)
 
     def execute(self, context):
-        from . import batch_update, selection, update_state
+        from . import reflect, selection
 
         targets_to_process = selection.updatable_mesh_objects(context)
         skipped = _locked_skip_count(context, len(targets_to_process))
-        results = batch_update.refresh_all_target_visuals(
+        result = reflect.reflect_all(
             targets_to_process,
             context,
+            force_rebuild=bool(self.force_rebuild),
         )
-        updated: dict[str, bpy.types.Object] = {}
-        for objects in results.values():
-            for obj in objects:
-                updated[obj.name_full] = obj
-        # 全線種を更新済みのため、未作成線種も含め更新待ち表示を解消する
-        update_state.clear_pending_many(updated.values(), kind="visual")
+        affected: set[str] = set()
+        for target_result in result.targets.values():
+            for obj in target_result.heavy_objects:
+                affected.add(obj.name_full)
+            for obj in target_result.light_objects:
+                affected.add(obj.name_full)
+        affected.update(result.subdivision_updated.keys())
         self.report(
             {"INFO"},
             _with_lock_skip_note(
-                f"{len(updated)} オブジェクトのすべてのラインを更新しました",
+                f"{len(affected)} オブジェクトのすべてのラインを反映しました",
                 skipped,
             ),
         )
@@ -342,59 +181,48 @@ def _set_auto_subdivision_setting(
         core._propagating = old
 
 
-def _refresh_plain_auto_subdivision(
-    objects: list[bpy.types.Object],
-    context,
-) -> dict[str, bpy.types.Object]:
-    from . import modifier_stack, subdivision_lod
-
-    updated: dict[str, bpy.types.Object] = {}
-    for obj in objects:
-        if has_line(obj):
-            continue
-        settings = getattr(obj, "bmanga_line_settings", None)
-        if settings is None:
-            continue
-        if bool(getattr(settings, "auto_subdivision_for_midpoint", False)):
-            mod = subdivision_lod.ensure_auto_subdivision(obj, context.scene)
-            modifier_stack.reorder_line_modifiers(obj)
-            if mod is not None:
-                updated[obj.name_full] = obj
-        elif subdivision_lod.remove_auto_subdivision(obj):
-            updated[obj.name_full] = obj
-    return updated
-
-
 class BMANGA_LINE_OT_update_auto_subdivision(bpy.types.Operator):
-    """選択オブジェクトの中間頂点用サブディビジョンを作成・更新・削除"""
+    """選択オブジェクトの中間頂点用サブディビジョンを反映・削除"""
 
     bl_idname = "bmanga_line.update_auto_subdivision"
-    bl_label = "中間頂点用サブディビジョンを更新"
+    bl_label = "中間頂点用サブディビジョンを反映"
     bl_options = {"REGISTER", "UNDO"}
 
     action: EnumProperty(
         items=(
-            ("CREATE", "作成", ""),
-            ("UPDATE", "更新", ""),
+            ("REFLECT", "反映", ""),
             ("DELETE", "削除", ""),
         ),
-        default="UPDATE",
+        default="REFLECT",
     )  # type: ignore[valid-type]
 
     @classmethod
     def poll(cls, context):
         return any(obj.type == "MESH" for obj in context.selected_objects)
 
+    def invoke(self, context, event):
+        if str(self.action) != "DELETE":
+            return self.execute(context)
+        from . import selection
+
+        targets_to_process = selection.updatable_mesh_objects(context)
+        skipped = _locked_skip_count(context, len(targets_to_process))
+        message = (
+            f"選択中の {len(targets_to_process)} オブジェクトから"
+            "中間頂点用サブディビジョンを削除します。"
+        )
+        if skipped:
+            message += f"（ロック中の{skipped}件は対象外）"
+        return _invoke_delete_confirm(self, context, event, message)
+
     def execute(self, context):
-        from . import batch_update, selection, update_state
+        from . import batch_update, reflect, selection, update_state
 
         targets_to_process = selection.updatable_mesh_objects(context)
         skipped = _locked_skip_count(context, len(targets_to_process))
         action = str(self.action)
 
-        if action == "CREATE":
-            _set_auto_subdivision_setting(targets_to_process, True)
-        elif action == "DELETE":
+        if action == "DELETE":
             _set_auto_subdivision_setting(targets_to_process, False)
 
         line_results = batch_update.refresh_all_target_visuals(
@@ -406,16 +234,13 @@ class BMANGA_LINE_OT_update_auto_subdivision(bpy.types.Operator):
             for obj in objects:
                 updated[obj.name_full] = obj
 
-        updated.update(_refresh_plain_auto_subdivision(targets_to_process, context))
+        updated.update(reflect.refresh_plain_auto_subdivision(targets_to_process, context))
 
         # ここではサブディビジョンに影響される全ラインの見た目更新も走らせて
         # いるため、対象の更新待ち表示をまとめて解消してよい。
         update_state.clear_pending_many(targets_to_process, kind="visual")
 
-        label = {
-            "CREATE": "作成",
-            "DELETE": "削除",
-        }.get(action, "更新")
+        label = "削除" if action == "DELETE" else "反映"
         self.report(
             {"INFO"},
             _with_lock_skip_note(
@@ -475,22 +300,36 @@ class BMANGA_LINE_OT_select_render_range_meshes(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class BMANGA_LINE_OT_remove(bpy.types.Operator):
-    """選択オブジェクトからラインを削除"""
+class BMANGA_LINE_OT_remove_all(bpy.types.Operator):
+    """選択オブジェクトからすべてのラインを削除"""
 
-    bl_idname = "bmanga_line.remove"
-    bl_label = "ラインを削除"
+    bl_idname = "bmanga_line.remove_all"
+    bl_label = "すべてのラインを削除"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, context):
         return any(has_line(obj) for obj in context.selected_objects)
 
+    def invoke(self, context, event):
+        from . import selection
+
+        targets_to_process = selection.updatable_mesh_objects(context)
+        skipped = _locked_skip_count(context, len(targets_to_process))
+        message = (
+            f"選択中の {len(targets_to_process)} オブジェクトからすべてのライン"
+            "（アウトライン・稜谷線・交差線・選択線・自動サブディビジョン）を削除します。"
+        )
+        if skipped:
+            message += f"（ロック中の{skipped}件は対象外）"
+        return _invoke_delete_confirm(self, context, event, message)
+
     def execute(self, context):
         from . import (
             intersection_lines,
             outline_setup,
             inner_lines,
+            mesh_fingerprint,
             plane_filter,
             selection,
             selection_lines,
@@ -528,11 +367,12 @@ class BMANGA_LINE_OT_remove(bpy.types.Operator):
             if PROP_LINES_HIDDEN in obj:
                 del obj[PROP_LINES_HIDDEN]
             plane_filter.clear_cache(obj)
+            mesh_fingerprint.clear(obj)
 
         intersection_lines.refresh_scene_intersections(context.scene)
         self.report(
             {"INFO"},
-            _with_lock_skip_note(f"{count} オブジェクトからラインを削除しました", skipped),
+            _with_lock_skip_note(f"{count} オブジェクトからすべてのラインを削除しました", skipped),
         )
         return {"FINISHED"}
 
@@ -830,13 +670,11 @@ class BMANGA_LINE_OT_setup_aov_composite(bpy.types.Operator):
 
 
 _CLASSES = (
-    BMANGA_LINE_OT_apply,
-    BMANGA_LINE_OT_update_target,
-    BMANGA_LINE_OT_update_visual_target,
-    BMANGA_LINE_OT_update_all_visual_targets,
+    BMANGA_LINE_OT_reflect_target,
+    BMANGA_LINE_OT_reflect_all,
     BMANGA_LINE_OT_update_auto_subdivision,
     BMANGA_LINE_OT_select_render_range_meshes,
-    BMANGA_LINE_OT_remove,
+    BMANGA_LINE_OT_remove_all,
     BMANGA_LINE_OT_set_settings_lock,
     BMANGA_LINE_OT_set_visibility,
     BMANGA_LINE_OT_set_line_only,

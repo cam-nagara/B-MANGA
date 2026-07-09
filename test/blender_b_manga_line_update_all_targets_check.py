@@ -158,7 +158,7 @@ def main() -> None:
         assert pending == {"outline", "inner", "intersection", "selection"}, pending
 
         # すべてのラインを更新
-        assert bpy.ops.bmanga_line.update_all_visual_targets("EXEC_DEFAULT") == {
+        assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {
             "FINISHED"
         }
 
@@ -185,16 +185,22 @@ def main() -> None:
         # チェックOFF→更新ボタンで自動Subsurfが除去される
         settings.auto_subdivision_for_midpoint = False
         assert _auto_subsurf(tri_cube) is not None
-        assert bpy.ops.bmanga_line.update_all_visual_targets("EXEC_DEFAULT") == {
+        assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {
             "FINISHED"
         }
         for obj in objects:
             assert _auto_subsurf(obj) is None, obj.name
 
-        # ライン未適用オブジェクトのみ選択中はボタン無効
+        # reflect_all はメッシュ選択さえあれば有効（未適用オブジェクトへの
+        # 新規作成もこのボタン1つで行うため）。旧 update_all_visual_targets は
+        # 既存ラインが無いと無効だったが、ボタン再編でその制約は撤廃された。
         plain = _make_cube("BML_update_all_plain", (3.0, 3.0, -5.0))
         _select_all(plain, [plain])
-        assert not bpy.ops.bmanga_line.update_all_visual_targets.poll()
+        assert bpy.ops.bmanga_line.reflect_all.poll()
+
+        # 何も選択していなければ引き続き無効。
+        bpy.ops.object.select_all(action="DESELECT")
+        assert not bpy.ops.bmanga_line.reflect_all.poll()
 
         print("BMANGA_LINE_UPDATE_ALL_TARGETS_OK")
     finally:

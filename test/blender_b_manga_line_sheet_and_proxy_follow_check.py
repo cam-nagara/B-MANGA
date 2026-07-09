@@ -241,7 +241,7 @@ def _test_remove_lines_cleans_sheet() -> None:
     cube.select_set(True)
     plane.select_set(True)
     bpy.context.view_layer.objects.active = plane
-    assert bpy.ops.bmanga_line.remove() == {"FINISHED"}
+    assert bpy.ops.bmanga_line.remove_all() == {"FINISHED"}
 
     for obj in (cube, plane):
         leftover = [m.name for m in obj.modifiers if m.name.startswith("BML_")]

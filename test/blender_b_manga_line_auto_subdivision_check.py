@@ -362,9 +362,13 @@ def _assert_auto_subdivision_buttons_work() -> None:
         settings = target.bmanga_line_settings
         settings.auto_subdivision_for_midpoint = False
         assert _auto_subsurf(target) is None
+    # 作成(CREATE)は廃止。作成相当は auto_subdivision_for_midpoint を
+    # ONにしてから「反映」(REFLECT)を押すことと等価（ボタン再編）。
+    for target in (obj, other):
+        target.bmanga_line_settings.auto_subdivision_for_midpoint = True
     assert bpy.ops.bmanga_line.update_auto_subdivision(
         "EXEC_DEFAULT",
-        action="CREATE",
+        action="REFLECT",
     ) == {"FINISHED"}
     for target in (obj, other):
         auto_mod = _auto_subsurf(target)
@@ -384,7 +388,7 @@ def _assert_auto_subdivision_buttons_work() -> None:
     bpy.context.view_layer.update()
     assert bpy.ops.bmanga_line.update_auto_subdivision(
         "EXEC_DEFAULT",
-        action="UPDATE",
+        action="REFLECT",
     ) == {"FINISHED"}
     for target in (obj, other):
         assert len(_auto_subsurfs(target)) == 1
@@ -428,7 +432,7 @@ def main() -> None:
         obj.bmanga_line_settings.auto_subdivision_for_midpoint = True
         obj.bmanga_line_settings.edge_smooth_factor = -0.5
 
-        assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+        assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
         auto_mod = _auto_subsurf(obj)
         assert auto_mod is not None
         assert auto_mod.subdivision_type == subdivision_lod.AUTO_SUBSURF_SUBDIVISION_TYPE
@@ -443,16 +447,16 @@ def main() -> None:
         assert _auto_subsurf(obj).render_levels == 2
 
         obj.bmanga_line_settings.auto_subdivision_for_midpoint = False
-        assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+        assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
         assert _auto_subsurf(obj) is None
 
         obj.bmanga_line_settings.auto_subdivision_for_midpoint = True
-        assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+        assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
         assert _auto_subsurf(obj) is not None
         bpy.ops.object.select_all(action="DESELECT")
         obj.select_set(True)
         bpy.context.view_layer.objects.active = obj
-        assert bpy.ops.bmanga_line.remove("EXEC_DEFAULT") == {"FINISHED"}
+        assert bpy.ops.bmanga_line.remove_all("EXEC_DEFAULT") == {"FINISHED"}
         assert _auto_subsurf(obj) is None
         assert obj.modifiers.get(core.MODIFIER_NAME) is None
         assert obj.modifiers.get(core.OUTLINE_WIDTH_ATTR_MODIFIER_NAME) is None

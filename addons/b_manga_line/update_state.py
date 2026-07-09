@@ -11,6 +11,8 @@ LINE_TARGETS = ("outline", "inner", "intersection", "selection", "bump")
 # （camera_comp の厚み補正系も対象外）なため、targets_for_property() の
 # 汎用フォールバックには含めない（計画書A-4手順2の非対称の一部）。
 _GEOMETRY_LINE_TARGETS = ("outline", "inner", "intersection", "selection")
+# 旧プロパティ（後方互換不要のため読み取りは廃止済み — 計画書§8）。
+# 既存の.blendに残っていても壊れないよう、clear_pending() の掃除対象にだけ残す。
 PROP_PENDING_TARGETS = "bml_pending_line_update_targets"
 PROP_PENDING_CREATE_TARGETS = "bml_pending_line_create_targets"
 PROP_PENDING_VISUAL_TARGETS = "bml_pending_line_visual_targets"
@@ -134,10 +136,7 @@ def _pending_targets_for_prop(obj: bpy.types.Object, prop_name: str) -> tuple[st
 
 
 def pending_create_targets(obj: bpy.types.Object) -> tuple[str, ...]:
-    legacy = _pending_targets_for_prop(obj, PROP_PENDING_TARGETS)
-    current = _pending_targets_for_prop(obj, PROP_PENDING_CREATE_TARGETS)
-    targets = set(legacy) | set(current)
-    return tuple(item for item in LINE_TARGETS if item in targets)
+    return _pending_targets_for_prop(obj, PROP_PENDING_CREATE_TARGETS)
 
 
 def pending_visual_targets(obj: bpy.types.Object) -> tuple[str, ...]:
@@ -221,13 +220,9 @@ def clear_pending_many(objects, targets=None, *, kind: str | None = None) -> Non
 
 
 def pending_label(obj: bpy.types.Object) -> str:
-    create_targets = pending_create_targets(obj)
-    visual_targets = pending_visual_targets(obj)
-    if not create_targets and not visual_targets:
+    """反映待ちの線種を表示する（作成待ち/更新待ちの内部区別はディスパッチ用に
+    保持しつつ、表示上は「反映待ち」1本に統合する — 計画書§8）."""
+    targets = pending_targets(obj)
+    if not targets:
         return ""
-    parts = []
-    if create_targets:
-        parts.append("作成待ち: " + " / ".join(_LABELS[target] for target in create_targets))
-    if visual_targets:
-        parts.append("更新待ち: " + " / ".join(_LABELS[target] for target in visual_targets))
-    return "  ".join(parts)
+    return "反映待ち: " + " / ".join(_LABELS[target] for target in targets)

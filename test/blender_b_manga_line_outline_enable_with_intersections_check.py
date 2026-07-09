@@ -48,7 +48,7 @@ def main() -> None:
         bpy.context.scene.camera = bpy.context.object
         objects = [_make_cube(index) for index in range(5)]
         _select(objects)
-        assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+        assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
 
         owners = []
         for obj in objects:
@@ -59,7 +59,7 @@ def main() -> None:
         _select(owners)
         for obj in owners:
             obj.bmanga_line_settings.outline_enabled = False
-        assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
+        assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
         for obj in owners:
             outline = obj.modifiers.get(core.MODIFIER_NAME)
             assert outline is None or not outline.show_viewport, obj.name
@@ -68,7 +68,7 @@ def main() -> None:
 
         for obj in owners:
             obj.bmanga_line_settings.outline_enabled = True
-        assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
+        assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
         for obj in owners:
             outline = obj.modifiers.get(core.MODIFIER_NAME)
             assert outline is not None and outline.show_viewport, obj.name

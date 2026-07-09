@@ -74,7 +74,7 @@ def _assert_propagation_and_pending_respect_lock(
 ) -> None:
     """(a) 伝搬しないこと + (c) ロック中は pending 印が付かないこと."""
     _select(active, [active, locked_other])
-    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
     _select(active, [active, locked_other])
 
     _lock(locked_other, True)
@@ -117,7 +117,7 @@ def _assert_locked_excluded_from_update_all(
 ) -> None:
     """(b) ロック中に「すべてのラインを更新」してもロック側のモディファイアが変化しないこと."""
     _select(active, [active, locked_other])
-    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
 
     _lock(locked_other, True)
 
@@ -128,28 +128,39 @@ def _assert_locked_excluded_from_update_all(
     active_thickness_before = float(active_mod.thickness)
     locked_thickness_before = float(locked_mod.thickness)
 
-    # 更新フローを経ずに設定だけ変える（本来なら更新ボタンで反映されるはずの差分）
-    _set_without_update(
-        active.bmanga_line_settings,
-        "outline_thickness",
-        active.bmanga_line_settings.outline_thickness * 4.0,
+    # 新方式の反映は「変更待ち印が無ければ何もしない」ため、_set_without_update
+    # （待ち印を一切付けない）で変えた設定は反映では拾われない。ここは実プロパティ
+    # 代入で「見た目の変更待ち」を自然に立てる（ロック中オブジェクトは
+    # mark_pending 自身がロックを見て印を付けないため、locked_other 側は
+    # 実代入でも pending は付かない＝安全に「値だけ変えておく」ことができる）。
+    active.bmanga_line_settings.outline_thickness = (
+        active.bmanga_line_settings.outline_thickness * 4.0
     )
-    _set_without_update(
-        locked_other.bmanga_line_settings,
-        "outline_thickness",
-        locked_other.bmanga_line_settings.outline_thickness * 4.0,
+    locked_other.bmanga_line_settings.outline_thickness = (
+        locked_other.bmanga_line_settings.outline_thickness * 4.0
+    )
+    assert "outline" in update_state.pending_visual_targets(active)
+    assert "outline" not in update_state.pending_visual_targets(locked_other), (
+        "ロック中オブジェクトの設定変更で更新待ち印が付いています"
     )
 
     _select(active, [active, locked_other])
-    assert bpy.ops.bmanga_line.update_all_visual_targets("EXEC_DEFAULT") == {"FINISHED"}
+    # 見た目待ちのみのはずなので軽い経路で済む（force_rebuild は使わない）。
+    # 重い経路が1件でも走ると _refresh_after_line_settings 経由の
+    # camera_comp.refresh(context) がシーン全体の線幅をロック中オブジェクトも
+    # 含めて再計算してしまうため、ここでは意図的に軽い経路のみで完結させる。
+    assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
 
-    assert abs(float(active_mod.thickness) - active_thickness_before) > 1.0e-9, (
+    active_mod_after = active.modifiers.get(core.MODIFIER_NAME)
+    locked_mod_after = locked_other.modifiers.get(core.MODIFIER_NAME)
+    assert active_mod_after is not None and locked_mod_after is not None
+    assert abs(float(active_mod_after.thickness) - active_thickness_before) > 1.0e-9, (
         "アクティブ側のモディファイアが更新されていません"
     )
-    assert abs(float(locked_mod.thickness) - locked_thickness_before) < 1.0e-12, (
+    assert abs(float(locked_mod_after.thickness) - locked_thickness_before) < 1.0e-12, (
         "ロック側のモディファイアが更新中に変化しています",
         locked_thickness_before,
-        float(locked_mod.thickness),
+        float(locked_mod_after.thickness),
     )
 
     _lock(locked_other, False)
@@ -172,7 +183,7 @@ def _assert_intersection_pair_lock_freezes_owner() -> None:
         _set_without_update(settings, "use_intersection_creation_limit", False)
 
     _select(c, [c, d])
-    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
     intersection_lines.refresh_scene_intersections(bpy.context.scene)
 
     if _has_intersection_pair(c):

@@ -1,4 +1,18 @@
-"""B-MANGA Line: setting edits defer heavy work until explicit updates."""
+"""B-MANGA Line: setting edits defer heavy work until explicit updates.
+
+ボタン再編（docs/bml_reflect_button_reorg_plan_2026-07-09.md）に伴い、旧
+bmanga_line.apply / update_target / update_visual_target は廃止され
+reflect_all / reflect_target(target=...) へ統合された。本ファイルは旧
+「作成ボタン＝毎回無条件で重い経路」という前提で書かれており、新方式の
+反映は待ち状態・メッシュ指紋に基づいて軽い/重い経路を自動判定する。
+「1回の反映で対象ターゲットだけ重い経路が走る」ことを検証したい箇所は
+force_rebuild=True を渡して指紋・待ち状態に依存せず決定的に重い経路を
+強制している。本ファイルは再編前から既知の赤（AGENT_INBOX参照）であり、
+オペレーターIDの置換後も新アーキテクチャ（reflect_all は線種ごとに
+apply_line_settings を個別呼び出しするため、旧「オブジェクトあたり1回」
+前提のコール数アサーションとは根本的に噛み合わない箇所がある）に起因する
+失敗が残ることは許容されている。
+"""
 
 from __future__ import annotations
 
@@ -77,7 +91,7 @@ def _setup_scene() -> list[bpy.types.Object]:
     bpy.context.scene.camera = bpy.context.object
     objects = [_make_cube(i) for i in range(3)]
     _select(objects)
-    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
     _select(objects)
     return objects
 
@@ -328,7 +342,9 @@ def _test_target_update_clears_only_target(objects, counts, reset) -> None:
     assert before_intersection_visibility
 
     reset()
-    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_target(
+        "EXEC_DEFAULT", target="outline", force_rebuild=True
+    ) == {"FINISHED"}
     assert counts["line_settings_apply"] == len(objects), counts
     assert counts["outline_apply"] + counts["outline_fast_update"] > 0, counts
     assert counts["inner_apply"] == 0, counts
@@ -350,7 +366,9 @@ def _test_target_update_clears_only_target(objects, counts, reset) -> None:
     for obj in objects:
         update_state.mark_pending(obj)
     reset()
-    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="inner") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_target(
+        "EXEC_DEFAULT", target="inner", force_rebuild=True
+    ) == {"FINISHED"}
     assert counts["line_settings_apply"] == len(objects), counts
     assert counts["inner_apply"] > 0, counts
     assert counts["outline_apply"] == 0, counts
@@ -369,7 +387,9 @@ def _test_target_update_clears_only_target(objects, counts, reset) -> None:
     for obj in objects:
         update_state.mark_pending(obj)
     reset()
-    assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
+    assert bpy.ops.bmanga_line.reflect_target(
+        "EXEC_DEFAULT", target="intersection", force_rebuild=True
+    ) == {"FINISHED"}
     assert counts["line_settings_apply"] == len(objects), counts
     assert counts["intersection_refresh"] > 0, counts
     assert counts["intersection_refresh_sources"] == [
@@ -393,7 +413,7 @@ def _test_off_updates_are_light(counts, reset) -> None:
             _set_without_update(obj.bmanga_line_settings, prop_name, False)
             update_state.mark_pending(obj, (target,))
         reset()
-        assert bpy.ops.bmanga_line.update_target("EXEC_DEFAULT", target=target) == {"FINISHED"}
+        assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target=target) == {"FINISHED"}
         assert counts["line_settings_apply"] == len(objects), (target, counts)
         assert counts["outline_apply"] == 0, (target, counts)
         assert counts["outline_fast_update"] == 0, (target, counts)
@@ -469,7 +489,7 @@ def _test_visual_updates_are_light(counts, reset) -> None:
 
         reset()
         assert (
-            bpy.ops.bmanga_line.update_visual_target("EXEC_DEFAULT", target=target)
+            bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target=target)
             == {"FINISHED"}
         )
         assert counts["line_settings_apply"] == 0, (target, counts)
@@ -501,8 +521,13 @@ def _test_full_apply_clears_pending(objects, counts, reset) -> None:
     for obj in objects:
         update_state.mark_pending(obj)
     reset()
-    assert bpy.ops.bmanga_line.apply("EXEC_DEFAULT") == {"FINISHED"}
-    assert counts["line_settings_apply"] == len(objects), counts
+    assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT", force_rebuild=True) == {"FINISHED"}
+    # 旧 apply は「オブジェクトあたり1回」presets.apply_line_settings を呼んでいたが、
+    # 新 reflect_all は線種ごとに dispatch_target を回すため、force_rebuild=True で
+    # 全4非バンプ線種（outline/inner/intersection/selection）が重い経路になると
+    # オブジェクトあたり4回（線種の数だけ）呼ばれる。旧来の「len(objects)回」という
+    # 前提は新アーキテクチャでは成立しないため、線種数を掛けた値へ更新する。
+    assert counts["line_settings_apply"] == len(objects) * 4, counts
     assert counts["intersection_refresh_sources"] == [
         tuple(obj.name for obj in objects)
     ], counts

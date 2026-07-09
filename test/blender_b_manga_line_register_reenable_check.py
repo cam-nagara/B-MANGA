@@ -290,11 +290,11 @@ def _assert_panels_draw_items() -> None:
     assert camera_indices == sorted(camera_indices), "カメラ設定の線幅項目の順序が違います"
     assert "intersection_target" not in records["props"], "交差対象欄が残っています"
     for operator_id in (
-        "bmanga_line.apply",
+        "bmanga_line.reflect_all",
         "bmanga_line.select_render_range_meshes",
         "bmanga_line.preset_duplicate",
         "bmanga_line.reset_camera_ref",
-        "bmanga_line.remove",
+        "bmanga_line.remove_all",
     ):
         assert operator_id in records["operators"], f"{operator_id} がパネルにありません"
 

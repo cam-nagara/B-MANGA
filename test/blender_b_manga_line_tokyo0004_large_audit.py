@@ -395,7 +395,7 @@ def apply_selected(audit: Audit, objects: list[bpy.types.Object], limit_key: str
             active_object=objects[0],
             object=objects[0],
         ):
-            result = bpy.ops.bmanga_line.apply("EXEC_DEFAULT")
+            result = bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT")
         if result != {"FINISHED"}:
             raise RuntimeError(f"apply failed: {result}")
 
