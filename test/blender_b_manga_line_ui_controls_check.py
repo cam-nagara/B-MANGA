@@ -230,6 +230,7 @@ def _assert_update_buttons_are_in_line_settings(active: bpy.types.Object) -> Non
     assert [(op.text, op.action) for op in auto_ops] == [
         ("作成", "CREATE"),
         ("更新", "UPDATE"),
+        ("削除", "DELETE"),
     ], [(op.idname, op.text, getattr(op, "action", None)) for op in auto_ops]
     create_ops = [
         op for op in settings_layout.operators

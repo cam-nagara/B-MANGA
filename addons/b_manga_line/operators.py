@@ -321,7 +321,10 @@ class BMANGA_LINE_OT_update_all_visual_targets(bpy.types.Operator):
         return {"FINISHED"}
 
 
-def _enable_auto_subdivision_setting(objects: list[bpy.types.Object]) -> None:
+def _set_auto_subdivision_setting(
+    objects: list[bpy.types.Object],
+    enabled: bool,
+) -> None:
     from . import core
 
     old = core._propagating
@@ -331,9 +334,9 @@ def _enable_auto_subdivision_setting(objects: list[bpy.types.Object]) -> None:
             settings = getattr(obj, "bmanga_line_settings", None)
             if settings is None:
                 continue
-            if bool(getattr(settings, "auto_subdivision_for_midpoint", False)):
+            if bool(getattr(settings, "auto_subdivision_for_midpoint", False)) == enabled:
                 continue
-            settings.auto_subdivision_for_midpoint = True
+            settings.auto_subdivision_for_midpoint = enabled
             record_override_edits(obj)
     finally:
         core._propagating = old
@@ -363,7 +366,7 @@ def _refresh_plain_auto_subdivision(
 
 
 class BMANGA_LINE_OT_update_auto_subdivision(bpy.types.Operator):
-    """選択オブジェクトの中間頂点用サブディビジョンを作成・更新"""
+    """選択オブジェクトの中間頂点用サブディビジョンを作成・更新・削除"""
 
     bl_idname = "bmanga_line.update_auto_subdivision"
     bl_label = "中間頂点用サブディビジョンを更新"
@@ -373,6 +376,7 @@ class BMANGA_LINE_OT_update_auto_subdivision(bpy.types.Operator):
         items=(
             ("CREATE", "作成", ""),
             ("UPDATE", "更新", ""),
+            ("DELETE", "削除", ""),
         ),
         default="UPDATE",
     )  # type: ignore[valid-type]
@@ -389,7 +393,9 @@ class BMANGA_LINE_OT_update_auto_subdivision(bpy.types.Operator):
         action = str(self.action)
 
         if action == "CREATE":
-            _enable_auto_subdivision_setting(targets_to_process)
+            _set_auto_subdivision_setting(targets_to_process, True)
+        elif action == "DELETE":
+            _set_auto_subdivision_setting(targets_to_process, False)
 
         line_results = batch_update.refresh_all_target_visuals(
             targets_to_process,
@@ -406,7 +412,10 @@ class BMANGA_LINE_OT_update_auto_subdivision(bpy.types.Operator):
         # いるため、対象の更新待ち表示をまとめて解消してよい。
         update_state.clear_pending_many(targets_to_process, kind="visual")
 
-        label = "作成" if action == "CREATE" else "更新"
+        label = {
+            "CREATE": "作成",
+            "DELETE": "削除",
+        }.get(action, "更新")
         self.report(
             {"INFO"},
             _with_lock_skip_note(

@@ -26,11 +26,16 @@ def _clear_scene() -> None:
     bpy.ops.object.delete()
 
 
+def _auto_subsurfs(obj: bpy.types.Object) -> list[bpy.types.Modifier]:
+    return [
+        mod for mod in obj.modifiers
+        if subdivision_lod.is_auto_subsurf_modifier(mod)
+    ]
+
+
 def _auto_subsurf(obj: bpy.types.Object) -> bpy.types.Modifier | None:
-    for mod in obj.modifiers:
-        if subdivision_lod.is_auto_subsurf_modifier(mod):
-            return mod
-    return None
+    mods = _auto_subsurfs(obj)
+    return mods[0] if mods else None
 
 
 def _assert_render_level_ladder() -> None:
@@ -274,8 +279,12 @@ def _assert_auto_subdivision_supports_boundary_mesh() -> None:
     stale.render_levels = 1
     if hasattr(stale, "subdivision_type"):
         stale.subdivision_type = "SIMPLE"
+    duplicate = obj.modifiers.new(subdivision_lod.AUTO_SUBSURF_MODIFIER_NAME, "SUBSURF")
+    duplicate.levels = 3
+    assert len(_auto_subsurfs(obj)) == 2
     changed = subdivision_lod.repair_auto_subdivision_modifiers(bpy.context.scene)
     assert changed >= 1
+    assert len(_auto_subsurfs(obj)) == 1
     assert _auto_subsurf(obj) is not None
     assert _auto_subsurf(obj).levels == 0
     assert _auto_subsurf(obj).subdivision_type == subdivision_lod.AUTO_SUBSURF_SUBDIVISION_TYPE
@@ -336,41 +345,53 @@ def _assert_auto_subdivision_buttons_work() -> None:
     bpy.ops.object.camera_add(location=(0.0, -12.0, 0.0))
     bpy.context.scene.camera = bpy.context.object
     obj = _make_triangulated_cube("BML_auto_subdivision_button")
+    other = _make_triangulated_cube("BML_auto_subdivision_button_other")
+    other.location.x = 2.0
     bpy.ops.object.select_all(action="DESELECT")
     obj.select_set(True)
+    other.select_set(True)
     bpy.context.view_layer.objects.active = obj
 
-    settings = obj.bmanga_line_settings
-    settings.auto_subdivision_for_midpoint = False
-    assert _auto_subsurf(obj) is None
+    for target in (obj, other):
+        settings = target.bmanga_line_settings
+        settings.auto_subdivision_for_midpoint = False
+        assert _auto_subsurf(target) is None
     assert bpy.ops.bmanga_line.update_auto_subdivision(
         "EXEC_DEFAULT",
         action="CREATE",
     ) == {"FINISHED"}
-    auto_mod = _auto_subsurf(obj)
-    assert bool(settings.auto_subdivision_for_midpoint)
-    assert auto_mod is not None
-    assert auto_mod.levels == 0
-    assert auto_mod.render_levels == 2
-    assert auto_mod.subdivision_type == subdivision_lod.AUTO_SUBSURF_SUBDIVISION_TYPE
-    assert all(len(poly.vertices) == 4 for poly in obj.data.polygons)
-    _assert_cube_edges_are_creased(obj)
+    for target in (obj, other):
+        auto_mod = _auto_subsurf(target)
+        assert bool(target.bmanga_line_settings.auto_subdivision_for_midpoint)
+        assert auto_mod is not None
+        assert auto_mod.levels == 0
+        assert auto_mod.render_levels == 2
+        assert auto_mod.subdivision_type == subdivision_lod.AUTO_SUBSURF_SUBDIVISION_TYPE
+        assert all(len(poly.vertices) == 4 for poly in target.data.polygons)
+        _assert_cube_edges_are_creased(target)
+        for _index in range(2):
+            target.modifiers.new(subdivision_lod.AUTO_SUBSURF_MODIFIER_NAME, "SUBSURF")
+        assert len(_auto_subsurfs(target)) == 3
 
-    obj.location.y = 6.0
+    for target in (obj, other):
+        target.location.y = 6.0
     bpy.context.view_layer.update()
     assert bpy.ops.bmanga_line.update_auto_subdivision(
         "EXEC_DEFAULT",
         action="UPDATE",
     ) == {"FINISHED"}
-    assert _auto_subsurf(obj).levels == 0
-    assert _auto_subsurf(obj).render_levels == 1
+    for target in (obj, other):
+        assert len(_auto_subsurfs(target)) == 1
+        assert _auto_subsurf(target).levels == 0
+        assert _auto_subsurf(target).render_levels == 1
 
-    settings.auto_subdivision_for_midpoint = False
     assert bpy.ops.bmanga_line.update_auto_subdivision(
         "EXEC_DEFAULT",
-        action="UPDATE",
+        action="DELETE",
     ) == {"FINISHED"}
-    assert _auto_subsurf(obj) is None
+    for target in (obj, other):
+        assert not bool(target.bmanga_line_settings.auto_subdivision_for_midpoint)
+        assert _auto_subsurf(target) is None
 
 
 def main() -> None:

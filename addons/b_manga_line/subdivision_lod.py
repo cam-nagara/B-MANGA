@@ -119,10 +119,26 @@ def _distance_to_camera(obj: bpy.types.Object, scene) -> float:
 
 
 def auto_subsurf_modifier(obj: bpy.types.Object) -> bpy.types.Modifier | None:
-    for mod in obj.modifiers:
-        if is_auto_subsurf_modifier(mod):
-            return mod
-    return None
+    mods = auto_subsurf_modifiers(obj)
+    return mods[0] if mods else None
+
+
+def auto_subsurf_modifiers(obj: bpy.types.Object) -> list[bpy.types.Modifier]:
+    return [mod for mod in obj.modifiers if is_auto_subsurf_modifier(mod)]
+
+
+def _deduplicate_auto_subsurf_modifiers(
+    obj: bpy.types.Object,
+) -> tuple[bpy.types.Modifier | None, int]:
+    mods = auto_subsurf_modifiers(obj)
+    if not mods:
+        return None, 0
+    keep = mods[0]
+    removed = 0
+    for mod in mods[1:]:
+        obj.modifiers.remove(mod)
+        removed += 1
+    return keep, removed
 
 
 def has_subsurf_modifier(obj: bpy.types.Object) -> bool:
@@ -264,7 +280,7 @@ def ensure_auto_subdivision(obj: bpy.types.Object, scene) -> bpy.types.Modifier 
 
     quadrangulate_mesh_for_auto_subdivision(obj)
     mark_sharp_edges_for_subsurf(obj)
-    mod = auto_subsurf_modifier(obj)
+    mod, _removed = _deduplicate_auto_subsurf_modifiers(obj)
     if mod is None:
         mod = obj.modifiers.new(AUTO_SUBSURF_MODIFIER_NAME, "SUBSURF")
 
@@ -308,6 +324,11 @@ def repair_auto_subdivision_modifiers(scene: bpy.types.Scene | None = None) -> i
         if quadrangulate_mesh_for_auto_subdivision(obj):
             changed += 1
         mark_sharp_edges_for_subsurf(obj)
+        mod, removed = _deduplicate_auto_subsurf_modifiers(obj)
+        if removed:
+            changed += removed
+        if mod is None:
+            continue
         if hasattr(mod, "subdivision_type") and mod.subdivision_type != AUTO_SUBSURF_SUBDIVISION_TYPE:
             mod.subdivision_type = AUTO_SUBSURF_SUBDIVISION_TYPE
             changed += 1
@@ -355,6 +376,8 @@ def remove_auto_subdivision(obj: bpy.types.Object) -> bool:
             removed = True
     if AUTO_SUBSURF_CREASE_EDGES_PROP in obj:
         del obj[AUTO_SUBSURF_CREASE_EDGES_PROP]
+    if AUTO_QUADIFIED_FACES_PROP in obj:
+        del obj[AUTO_QUADIFIED_FACES_PROP]
     sync_generated_line_subdivision(obj)
     try:
         from . import intersection_shell

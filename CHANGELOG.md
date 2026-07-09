@@ -3,6 +3,27 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-09 — 中間頂点用サブディビジョンの削除と重複防止を追加 (B-MANGA v0.6.457 / B-MANGA Liner v0.3.174)
+
+### 症状
+
+- 「中間頂点用サブディビジョンを自動設定」をオン・オフしながら作成や更新を繰り返したとき、既存ファイル内の重複したサブディビジョンサーフェスを整理する経路がなかった。
+- B-MANGA Linerのパネルから、中間頂点用サブディビジョンだけを選択オブジェクトへ一括削除できなかった。
+
+### 修正
+
+- 自動作成・更新時に、対象オブジェクト上の中間頂点用サブディビジョンサーフェスを必ず1つへ整理するようにした。
+- B-MANGA Linerのライン設定パネルに「削除」ボタンを追加し、選択オブジェクトすべてから中間頂点用サブディビジョンを一括削除できるようにした。
+- 「作成」「更新」「削除」は、いずれも選択中のロックされていないメッシュオブジェクトすべてにまとめて適用する。
+
+### 検証 (Blender 5.1 実機)
+
+- `test/blender_b_manga_line_auto_subdivision_check.py` PASS
+- `test/blender_b_manga_line_ui_controls_check.py` PASS
+- `test/blender_b_manga_line_update_all_targets_check.py` PASS
+- `test/blender_b_manga_line_settings_lock_check.py` PASS
+- `test/blender_b_manga_line_subdivision_level_sync_check.py` PASS
+
 ## 2026-07-09 — 中間頂点用サブディビジョンの自動設定を修正 (B-MANGA v0.6.456 / B-MANGA Liner v0.3.173)
 
 ### 症状
