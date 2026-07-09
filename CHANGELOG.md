@@ -3,6 +3,34 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-10 — B-MANGA Linerのプリセット更新先と線幅初期値を修正 (B-MANGA v0.6.466 / B-MANGA Liner v0.3.184)
+
+### 症状
+
+- ラインプリセット一覧で任意のプリセットを選んでも、名前欄が「ラインプリセット」のままになり、「保存/更新」で選択中のプリセットを上書きできなかった。
+- 「線幅の均一化（頂点単位）」と「遠近減衰の強さ」の初期値が、希望する設定と異なっていた。
+
+### 原因
+
+- プリセット一覧の選択変更を名前欄へ反映する処理がなく、「保存/更新」は名前欄の文字列を更新先として検索していた。
+- 新規メッシュと新規プリセットの初期値が、それぞれオフと0.00に定義されていた。
+
+### 修正
+
+- プリセット一覧で選んだ名前を名前欄へ即時反映し、読み込み直後も選択中のプリセット名と名前欄を一致させた。
+- 「保存/更新」が選択中の任意のプリセットを正しく上書きし、「ラインプリセット」という別項目を誤作成・誤更新しない回帰テストを追加した。
+- 新規メッシュと新規プリセットの「線幅の均一化（頂点単位）」をオン、「遠近減衰の強さ」を1.00へ変更した。保存済みプリセットに記録済みの値は変更しない。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_preset_visibility_check.py` PASS（任意名の選択追従・選択項目だけの上書き・古い名前欄を含む再読込・追加・複製・削除）
+- `test/blender_b_manga_line_preset_global_store_check.py` / `test/blender_b_manga_line_settings_contract_check.py` / `test/blender_b_manga_line_preset_diff_gate_check.py` PASS（共通保存先・全設定往復・保存済みの明示値保持・変更なし判定）
+- `test/blender_b_manga_line_batch_apply_refresh_check.py` / `test/blender_b_manga_line_uniform_width_check.py` / `test/blender_b_manga_line_width_falloff_check.py` PASS（初期値・一括反映回数・頂点単位線幅・遠近減衰0.00/1.00/1.50）
+- 100,000頂点の遠近減衰計算は0.013398秒、反映全体は0.073520秒。初期値変更による計算経路の退行なし。
+- 反映・ロック・全線種更新・設定画面・64通りの線種切替を含む関連6テスト PASS。
+- 全線種同時と4線種単独の計5枚をAI目視し、線色の混線、異常な太り、面の白化・隠れ、線種間の干渉がないことを確認した。
+- `python -m py_compile` / `git diff --check` PASS。
+
 ## 2026-07-10 — B-MANGA Linerの交差線反映済み誤判定を修正 (B-MANGA v0.6.465 / B-MANGA Liner v0.3.183)
 
 ### 症状

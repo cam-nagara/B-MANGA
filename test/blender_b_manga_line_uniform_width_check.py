@@ -210,6 +210,7 @@ def _test_uniform_width_depth_and_resolution() -> None:
     settings.inner_line_enabled = True
     settings.inner_line_thickness_mm = 0.25
     settings.use_uniform_line_width = True
+    settings.line_width_distance_falloff = 0.0
     assert presets.apply_line_settings(obj, bpy.context)
     mod = obj.modifiers[core.MODIFIER_NAME]
     near = _expected_world_width(scene, 2.0, 0.5)
@@ -271,6 +272,7 @@ def _test_uniform_width_saved_in_preset() -> None:
     _select(source)
     source.bmanga_line_settings.outline_thickness_mm = 0.4
     source.bmanga_line_settings.use_uniform_line_width = True
+    source.bmanga_line_settings.line_width_distance_falloff = 0.0
     scene.bmanga_line_preset_name = "均一化テスト"
     assert bpy.ops.bmanga_line.preset_save() == {"FINISHED"}
 
@@ -299,6 +301,7 @@ def _test_batch_apply_uses_reference_distance_not_object_distance() -> None:
     far.name = "BML_reference_far"
 
     _select_many(near, [near, far])
+    near.bmanga_line_settings.use_uniform_line_width = False
     near.bmanga_line_settings.outline_thickness_mm = 0.6
     assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
 
@@ -345,6 +348,7 @@ def _test_multi_select_mm_change_updates_all_modifiers() -> None:
 
     for obj in (source, target):
         _select(obj)
+        obj.bmanga_line_settings.use_uniform_line_width = False
         obj.bmanga_line_settings.outline_thickness_mm = 0.5
         assert presets.apply_line_settings(obj, bpy.context)
 
@@ -372,6 +376,7 @@ def _test_multi_select_mm_change_updates_all_modifiers() -> None:
     )
 
     source.bmanga_line_settings.use_uniform_line_width = True
+    source.bmanga_line_settings.line_width_distance_falloff = 0.0
     source.bmanga_line_settings.outline_thickness_mm = 0.8
     assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
     assert target.bmanga_line_settings.use_uniform_line_width
@@ -399,6 +404,7 @@ def _test_object_scale_compensates_modifier_width() -> None:
 
     for obj in (normal, scaled):
         _select(obj)
+        obj.bmanga_line_settings.use_uniform_line_width = False
         obj.bmanga_line_settings.outline_thickness_mm = 0.6
         obj.bmanga_line_settings.inner_line_enabled = True
         obj.bmanga_line_settings.inner_line_thickness_mm = 0.3
@@ -442,6 +448,7 @@ def _test_object_scale_compensates_modifier_width() -> None:
 
     for obj in (normal_target, scaled_target):
         _select(obj)
+        obj.bmanga_line_settings.use_uniform_line_width = False
         obj.bmanga_line_settings.outline_thickness_mm = 0.6
         assert presets.apply_line_settings(obj, bpy.context)
 
@@ -491,12 +498,14 @@ def _test_intersection_target_scale_conversion() -> None:
 
         target = _make_scaled_cube("BML_mixed_target", target_scale)
         _select(target)
+        target.bmanga_line_settings.use_uniform_line_width = False
         target.bmanga_line_settings.outline_thickness_mm = 0.6
         assert presets.apply_line_settings(target, bpy.context)
 
         source = _make_scaled_cube("BML_mixed_source", source_scale)
         source.location.x = max(source_scale, target_scale) * 0.5
         _select(source)
+        source.bmanga_line_settings.use_uniform_line_width = False
         source.bmanga_line_settings.outline_thickness_mm = 0.6
         source.bmanga_line_settings.intersection_enabled = True
         source.bmanga_line_settings.intersection_method = "BOOLEAN"
@@ -569,6 +578,7 @@ def _test_camera_compensation_uses_mesh_position_not_origin() -> None:
     obj = _make_offset_origin_quad("BML_origin_offset_visible_mesh")
     _select(obj)
     settings = obj.bmanga_line_settings
+    settings.use_uniform_line_width = False
     settings.outline_thickness_mm = 0.6
     settings.use_camera_compensation = True
     settings.camera_compensation_influence = 1.0
@@ -588,6 +598,7 @@ def _test_low_influence_keeps_configured_line_widths() -> None:
     target = bpy.context.object
     target.name = "BML_low_influence_target"
     _select(target)
+    target.bmanga_line_settings.use_uniform_line_width = False
     target.bmanga_line_settings.outline_thickness_mm = 0.35
     assert presets.apply_line_settings(target, bpy.context)
 
@@ -597,6 +608,7 @@ def _test_low_influence_keeps_configured_line_widths() -> None:
     _mark_all_freestyle_edges(source)
     _select(source)
     settings = source.bmanga_line_settings
+    settings.use_uniform_line_width = False
     settings.outline_thickness_mm = 0.40
     settings.inner_line_enabled = True
     settings.inner_line_thickness_mm = 0.20
@@ -641,6 +653,7 @@ def _test_low_influence_keeps_configured_line_widths() -> None:
     )
 
     settings.use_uniform_line_width = True
+    settings.line_width_distance_falloff = 0.0
     camera_comp.refresh_objects(bpy.context, [source])
     expected_outline_uniform = max(
         camera_comp._uniform_widths_for_mesh(
@@ -689,6 +702,7 @@ def _test_uniform_width_reuses_camera_depths_across_targets() -> None:
     target = bpy.context.object
     target.name = "BML_uniform_reuse_target"
     _select(target)
+    target.bmanga_line_settings.use_uniform_line_width = False
     target.bmanga_line_settings.outline_thickness_mm = 0.35
     assert presets.apply_line_settings(target, bpy.context)
 
@@ -707,6 +721,7 @@ def _test_uniform_width_reuses_camera_depths_across_targets() -> None:
     settings.selection_line_enabled = True
     settings.selection_line_thickness_mm = 0.10
     settings.use_uniform_line_width = True
+    settings.line_width_distance_falloff = 0.0
     assert presets.apply_line_settings(source, bpy.context)
     _select_many(source, [source, target])
     assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
@@ -784,6 +799,7 @@ def _test_camera_compensation_influence_blends_far_width() -> None:
     obj.name = "BML_influence_far_source"
     _select(obj)
     settings = obj.bmanga_line_settings
+    settings.use_uniform_line_width = False
     settings.outline_thickness_mm = 0.40
     settings.use_camera_compensation = True
     settings.line_width_reference_distance = 1.2
@@ -813,6 +829,7 @@ def _test_resolution_percentage_does_not_change_width() -> None:
     obj.name = "BML_resolution_percentage_cube"
     _select(obj)
     settings = obj.bmanga_line_settings
+    settings.use_uniform_line_width = False
     settings.outline_thickness_mm = 0.5
     settings.use_camera_compensation = True
     settings.line_width_reference_distance = 5.0
@@ -866,6 +883,7 @@ def _test_evaluated_orthographic_width() -> None:
     settings.even_thickness = True
     settings.use_rim = True
     settings.use_uniform_line_width = True
+    settings.line_width_distance_falloff = 0.0
     _select(obj)
     assert presets.apply_line_settings(obj, bpy.context)
 
@@ -888,6 +906,7 @@ def _test_evaluated_orthographic_width() -> None:
     scaled_settings.even_thickness = True
     scaled_settings.use_rim = True
     scaled_settings.use_uniform_line_width = True
+    scaled_settings.line_width_distance_falloff = 0.0
     _select(scaled)
     assert presets.apply_line_settings(scaled, bpy.context)
     scaled_measured = (
@@ -905,6 +924,7 @@ def _test_linked_uniform_width_refresh_does_not_crash() -> None:
     _select(source_obj)
     source_obj.bmanga_line_settings.outline_thickness_mm = 0.5
     source_obj.bmanga_line_settings.use_uniform_line_width = True
+    source_obj.bmanga_line_settings.line_width_distance_falloff = 0.0
     assert presets.apply_line_settings(source_obj, bpy.context)
 
     source_path = Path(tempfile.gettempdir()) / "bml_uniform_link_source.blend"

@@ -24,6 +24,8 @@ DISPLAY_ALIAS_FIELDS = {
     "intersection_thickness_mm",
     "selection_line_thickness_mm",
 }
+PRESET_COMPAT_FIELDS = {"line_only_visible"}
+RUNTIME_ONLY_FIELDS = {"settings_locked"}
 
 
 def _clear_scene() -> None:
@@ -45,18 +47,24 @@ def _annotation_names(cls) -> tuple[str, ...]:
 def _assert_field_contract() -> None:
     settings_fields = set(_annotation_names(core.BMangaLineSettings))
     preset_fields = tuple(_annotation_names(presets.BMangaLinePreset))
+    saved_preset_fields = tuple(
+        name for name in preset_fields if name not in PRESET_COMPAT_FIELDS
+    )
     stored_fields = tuple(presets._SETTING_FIELDS)
 
-    assert stored_fields == preset_fields, (
+    assert stored_fields == saved_preset_fields, (
         "プリセットPropertyGroupと保存対象の順序が一致していません",
         stored_fields,
-        preset_fields,
+        saved_preset_fields,
     )
-    missing = settings_fields - set(stored_fields) - DISPLAY_ALIAS_FIELDS
+    expected_not_stored = (
+        DISPLAY_ALIAS_FIELDS | PRESET_COMPAT_FIELDS | RUNTIME_ONLY_FIELDS
+    )
+    missing = settings_fields - set(stored_fields) - expected_not_stored
     extra = set(stored_fields) - settings_fields
     assert not missing, f"保存対象から漏れた設定: {sorted(missing)}"
     assert not extra, f"存在しない設定が保存対象です: {sorted(extra)}"
-    assert settings_fields - set(stored_fields) == DISPLAY_ALIAS_FIELDS
+    assert settings_fields - set(stored_fields) == expected_not_stored
 
 
 def _set_without_updates(settings, values: dict[str, object]) -> None:
@@ -89,6 +97,8 @@ def _sample_value(settings, name: str):
         return 0.31
     if "offset" in name:
         return 0.37
+    if name == "bump_line_thickness":
+        return 0.2
     if "thickness" in name:
         return 0.002
     if "influence" in name:
@@ -126,6 +136,13 @@ def _assert_preset_roundtrip() -> None:
     _set_without_updates(source.bmanga_line_settings, sample_values)
 
     preset = bpy.context.scene.bmanga_line_presets.add()
+    assert preset.use_uniform_line_width is True
+    assert math.isclose(
+        preset.line_width_distance_falloff,
+        1.0,
+        rel_tol=0.0,
+        abs_tol=1.0e-7,
+    )
     preset.name = "契約テスト"
     presets.copy_settings_to_preset(source.bmanga_line_settings, preset)
     presets.copy_preset_to_settings(preset, target.bmanga_line_settings)

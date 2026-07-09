@@ -1559,7 +1559,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     use_uniform_line_width: BoolProperty(
         name="線幅の均一化（頂点単位）",
         description="同じメッシュ内の奥行き差も見て、頂点ごとに画面上の線幅を揃える",
-        default=False,
+        default=True,
         update=_on_uniform_line_width_changed,
     )  # type: ignore[valid-type]
 
@@ -1879,7 +1879,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
             "1: カメラから遠いほど距離に比例して細くする / "
             "2: 遠近を誇張する"
         ),
-        default=0.0,
+        default=1.0,
         min=0.0,
         max=2.0,
         precision=2,

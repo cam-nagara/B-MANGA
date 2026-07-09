@@ -203,6 +203,19 @@ def _safe_int(value, fallback: int) -> int:
         return fallback
 
 
+def _sync_preset_name_from_index(scene) -> None:
+    presets = getattr(scene, "bmanga_line_presets", None)
+    index = _safe_int(getattr(scene, "bmanga_line_preset_index", -1), -1)
+    if presets is not None and 0 <= index < len(presets):
+        scene.bmanga_line_preset_name = str(
+            presets[index].name or "ラインプリセット"
+        )
+
+
+def _on_preset_index_changed(scene, _context) -> None:
+    _sync_preset_name_from_index(scene)
+
+
 def _populate_scene_presets(scene, preset_dicts: list[dict], *, index: int, name: str) -> None:
     collection = scene.bmanga_line_presets
     collection.clear()
@@ -210,10 +223,14 @@ def _populate_scene_presets(scene, preset_dicts: list[dict], *, index: int, name
         item = collection.add()
         _apply_dict_to_preset(data, item)
     if collection:
-        scene.bmanga_line_preset_index = max(0, min(index, len(collection) - 1))
+        active_index = max(0, min(index, len(collection) - 1))
+        scene.bmanga_line_preset_index = active_index
+        scene.bmanga_line_preset_name = str(
+            collection[active_index].name or "ラインプリセット"
+        )
     else:
         scene.bmanga_line_preset_index = -1
-    scene.bmanga_line_preset_name = str(name or "ラインプリセット")
+        scene.bmanga_line_preset_name = str(name or "ラインプリセット")
 
 
 def _write_store(scene) -> Path:
@@ -621,7 +638,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     even_thickness: BoolProperty(default=False)
     # 2026-07-03 ユーザー確定: 板ポリ除外だけは「初期値全オフ」の対象外でオン
     exclude_sheet_meshes: BoolProperty(default=True)
-    use_uniform_line_width: BoolProperty(default=False)
+    use_uniform_line_width: BoolProperty(default=True)
     use_rim: BoolProperty(default=False)
     hide_through_transparent: BoolProperty(default=False)
     weld_mesh_for_outline: BoolProperty(default=True)
@@ -683,7 +700,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
         min=0.001,
         max=1000.0,
     )
-    line_width_distance_falloff: FloatProperty(default=0.0, min=0.0, max=2.0)
+    line_width_distance_falloff: FloatProperty(default=1.0, min=0.0, max=2.0)
 
     edge_smooth_factor: FloatProperty(default=0.0, min=-1.0, max=1.0)
     edge_midpoint_jitter_percent: FloatProperty(default=0.0, min=0.0, max=50.0)
@@ -1000,6 +1017,7 @@ def register() -> None:
     bpy.types.Scene.bmanga_line_preset_index = IntProperty(
         default=-1,
         options={"SKIP_SAVE"},
+        update=_on_preset_index_changed,
     )
     bpy.types.Scene.bmanga_line_preset_name = StringProperty(
         name="プリセット名",

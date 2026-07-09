@@ -504,6 +504,8 @@ def _run(store_path: Path) -> None:
     target = _make_cube("BML_交差対象", (0.0, 0.0, 0.0))
     assert presets.apply_line_settings(target, bpy.context)
     settings = source.bmanga_line_settings
+    assert settings.use_uniform_line_width is True
+    assert abs(settings.line_width_distance_falloff - 1.0) < 1.0e-7
     settings.outline_thickness = 0.012
     settings.outline_color = (0.1, 0.2, 0.3, 1.0)
     settings.use_rim = False
@@ -578,6 +580,22 @@ def _run(store_path: Path) -> None:
         "太線テスト 2",
     ]
 
+    settings.outline_thickness = 0.019
+    scene.bmanga_line_preset_name = "ラインプリセット"
+    scene.bmanga_line_preset_index = 1
+    assert scene.bmanga_line_preset_name == "太線テスト コピー"
+    assert bpy.ops.bmanga_line.preset_save() == {"FINISHED"}
+    assert len(scene.bmanga_line_presets) == 4
+    assert abs(scene.bmanga_line_presets[0].outline_thickness - 0.018) < 1.0e-7
+    assert abs(scene.bmanga_line_presets[1].outline_thickness - 0.019) < 1.0e-7
+    assert "ラインプリセット" not in _store_names(store_path)
+
+    stored = json.loads(store_path.read_text(encoding="utf-8"))
+    stored["preset_name"] = "ラインプリセット"
+    store_path.write_text(
+        json.dumps(stored, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
     presets._loaded_scene_pointers.clear()
     scene.bmanga_line_presets.clear()
     scene.bmanga_line_preset_index = -1
@@ -588,6 +606,8 @@ def _run(store_path: Path) -> None:
         "太線テスト コピー 2",
         "太線テスト 2",
     ]
+    assert scene.bmanga_line_preset_index == 1
+    assert scene.bmanga_line_preset_name == "太線テスト コピー"
     scene.bmanga_line_preset_index = 0
 
     first = _make_cube("BML_適用先A", (2.0, 0.0, 0.0))
