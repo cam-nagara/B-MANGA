@@ -23,6 +23,7 @@ Blender 5.1.1 を対象としています。
 - `test/blender_b_manga_line_update_all_targets_check.py` PASS
 - `test/blender_b_manga_line_settings_lock_check.py` PASS
 - `test/blender_b_manga_line_subdivision_level_sync_check.py` PASS
+- 徹底チェック: 作成・更新・削除ボタン、チェックボックス変更後の明示更新、ライン作成済み対象、ライン未作成メッシュ、選択オブジェクト一括処理、ロック中オブジェクト除外、既存ファイル修復時の重複整理、カメラ距離によるレベル同期の経路を確認して PASS
 
 ## 2026-07-09 — 中間頂点用サブディビジョンの自動設定を修正 (B-MANGA v0.6.456 / B-MANGA Liner v0.3.173)
 
