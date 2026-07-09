@@ -24,7 +24,8 @@ DISPLAY_ALIAS_FIELDS = {
     "intersection_thickness_mm",
     "selection_line_thickness_mm",
 }
-PRESET_COMPAT_FIELDS = {"line_only_visible"}
+PRESET_NON_SETTING_FIELDS = {"name", "line_only_visible"}
+UNSAVED_SETTING_FIELDS = {"line_only_visible"}
 RUNTIME_ONLY_FIELDS = {"settings_locked"}
 
 
@@ -48,7 +49,7 @@ def _assert_field_contract() -> None:
     settings_fields = set(_annotation_names(core.BMangaLineSettings))
     preset_fields = tuple(_annotation_names(presets.BMangaLinePreset))
     saved_preset_fields = tuple(
-        name for name in preset_fields if name not in PRESET_COMPAT_FIELDS
+        name for name in preset_fields if name not in PRESET_NON_SETTING_FIELDS
     )
     stored_fields = tuple(presets._SETTING_FIELDS)
 
@@ -58,7 +59,7 @@ def _assert_field_contract() -> None:
         saved_preset_fields,
     )
     expected_not_stored = (
-        DISPLAY_ALIAS_FIELDS | PRESET_COMPAT_FIELDS | RUNTIME_ONLY_FIELDS
+        DISPLAY_ALIAS_FIELDS | UNSAVED_SETTING_FIELDS | RUNTIME_ONLY_FIELDS
     )
     missing = settings_fields - set(stored_fields) - expected_not_stored
     extra = set(stored_fields) - settings_fields

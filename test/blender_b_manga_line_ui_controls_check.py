@@ -190,6 +190,9 @@ class _FakeUILayout:
     def separator(self) -> None:
         self.separator_count += 1
 
+    def template_list(self, *_args, **_kwargs) -> None:
+        return None
+
 
 class _FakeOperatorProps:
     def __init__(self, idname: str, *, text: str, icon: str) -> None:
@@ -223,6 +226,14 @@ def _assert_panel_draw_uses_scene_global_controls(active: bpy.types.Object, othe
     assert bpy.ops.bmanga_line.setup_aov_composite.poll()
     assert bpy.ops.bmanga_line.setup_aov_composite("EXEC_DEFAULT") == {"FINISHED"}
     assert not bpy.ops.bmanga_line.setup_aov_composite.poll()
+
+
+def _assert_preset_name_field_is_hidden() -> None:
+    layout = _FakeUILayout()
+    panels._draw_presets(layout, bpy.context)
+    assert "bmanga_line_preset_name" not in layout.props
+    assert any(op.idname == "bmanga_line.preset_add" for op in layout.operators)
+    assert any(op.idname == "bmanga_line.preset_save" for op in layout.operators)
 
 
 def _assert_update_buttons_are_in_line_settings(active: bpy.types.Object) -> None:
@@ -351,6 +362,7 @@ def main() -> None:
         _assert_visibility_checkboxes(active, other)
         _assert_line_only_checkbox(active, other)
         _assert_panel_draw_uses_scene_global_controls(active, other)
+        _assert_preset_name_field_is_hidden()
         _assert_update_buttons_are_in_line_settings(active)
         _assert_subsurf_checkbox(active, other)
         print("BMANGA_LINE_UI_CONTROLS_OK")

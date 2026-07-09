@@ -62,7 +62,12 @@ def main() -> None:
             bpy.ops.wm.read_factory_settings(use_empty=True)
             b_manga_line.register()
             _make_source_cube()
-            bpy.context.scene.bmanga_line_preset_name = "共有保存テスト"
+            assert bpy.ops.bmanga_line.preset_add("EXEC_DEFAULT") == {"FINISHED"}
+            scene = bpy.context.scene
+            assert scene.bmanga_line_presets[0].name == "ラインプリセット"
+            assert _store_names(store_a) == ["ラインプリセット"]
+            scene.bmanga_line_presets[0].name = "共有保存テスト"
+            assert _store_names(store_a) == ["共有保存テスト"]
             assert bpy.ops.bmanga_line.preset_save("EXEC_DEFAULT") == {"FINISHED"}
             assert _store_names(store_a) == ["共有保存テスト"]
             bpy.ops.wm.save_as_mainfile(filepath=str(blend_path))

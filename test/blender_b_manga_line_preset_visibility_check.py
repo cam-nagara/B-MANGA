@@ -425,9 +425,8 @@ def _assert_preset_display_settings_apply(
     source_settings.match_subsurf_viewport_to_render = False
     source_settings.auto_subdivision_for_midpoint = False
     source_settings.inner_edge_midpoint_angle = math.radians(77.0)
-    scene.bmanga_line_preset_name = "表示設定テスト"
     _select(source, [source])
-    assert bpy.ops.bmanga_line.preset_save() == {"FINISHED"}
+    _add_named_preset(scene, "表示設定テスト")
 
     _select(first, [first, second])
     assert bpy.ops.bmanga_line.preset_apply_selected() == {"FINISHED"}
@@ -496,6 +495,14 @@ def _store_names(path: Path) -> list[str]:
     return [item["name"] for item in data.get("presets", [])]
 
 
+def _add_named_preset(scene: bpy.types.Scene, name: str) -> None:
+    assert bpy.ops.bmanga_line.preset_add() == {"FINISHED"}
+    index = scene.bmanga_line_preset_index
+    assert 0 <= index < len(scene.bmanga_line_presets)
+    scene.bmanga_line_presets[index].name = name
+    assert scene.bmanga_line_preset_name == name
+
+
 def _run(store_path: Path) -> None:
     b_manga_line.register()
     _clear_scene()
@@ -528,11 +535,12 @@ def _run(store_path: Path) -> None:
     settings.line_width_reference_distance = 3.5
 
     scene = bpy.context.scene
-    scene.bmanga_line_preset_name = "太線テスト"
     _select(source, [source])
-    assert bpy.ops.bmanga_line.preset_save() == {"FINISHED"}
+    assert bpy.ops.bmanga_line.preset_add() == {"FINISHED"}
     assert len(scene.bmanga_line_presets) == 1
     assert store_path.is_file()
+    assert _store_names(store_path) == ["ラインプリセット"]
+    scene.bmanga_line_presets[0].name = "太線テスト"
     assert _store_names(store_path) == ["太線テスト"]
 
     settings.outline_thickness = 0.018
@@ -567,11 +575,11 @@ def _run(store_path: Path) -> None:
         "太線テスト コピー",
         "太線テスト コピー 2",
     ]
-    scene.bmanga_line_preset_name = "太線テスト"
     assert bpy.ops.bmanga_line.preset_add() == {"FINISHED"}
     assert len(scene.bmanga_line_presets) == 4
-    assert scene.bmanga_line_presets[3].name == "太線テスト 2"
+    assert scene.bmanga_line_presets[3].name == "ラインプリセット"
     assert scene.bmanga_line_preset_index == 3
+    scene.bmanga_line_presets[3].name = "太線テスト 2"
     assert scene.bmanga_line_preset_name == "太線テスト 2"
     assert _store_names(store_path)[:4] == [
         "太線テスト",
@@ -580,10 +588,12 @@ def _run(store_path: Path) -> None:
         "太線テスト 2",
     ]
 
-    settings.outline_thickness = 0.019
-    scene.bmanga_line_preset_name = "ラインプリセット"
     scene.bmanga_line_preset_index = 1
     assert scene.bmanga_line_preset_name == "太線テスト コピー"
+    scene.bmanga_line_presets[1].name = "太線テスト コピー改名"
+    assert _store_names(store_path)[1] == "太線テスト コピー改名"
+    settings.outline_thickness = 0.019
+    scene.bmanga_line_preset_name = "ラインプリセット"
     assert bpy.ops.bmanga_line.preset_save() == {"FINISHED"}
     assert len(scene.bmanga_line_presets) == 4
     assert abs(scene.bmanga_line_presets[0].outline_thickness - 0.018) < 1.0e-7
@@ -602,12 +612,12 @@ def _run(store_path: Path) -> None:
     presets.ensure_presets_loaded(scene)
     assert [item.name for item in scene.bmanga_line_presets][:4] == [
         "太線テスト",
-        "太線テスト コピー",
+        "太線テスト コピー改名",
         "太線テスト コピー 2",
         "太線テスト 2",
     ]
     assert scene.bmanga_line_preset_index == 1
-    assert scene.bmanga_line_preset_name == "太線テスト コピー"
+    assert scene.bmanga_line_preset_name == "太線テスト コピー改名"
     scene.bmanga_line_preset_index = 0
 
     first = _make_cube("BML_適用先A", (2.0, 0.0, 0.0))
@@ -668,8 +678,7 @@ def _run(store_path: Path) -> None:
     settings.use_camera_culling = False
     settings.use_inner_line_distance_limit = True
     settings.inner_line_max_distance = 0.5
-    scene.bmanga_line_preset_name = "距離制限テスト"
-    assert bpy.ops.bmanga_line.preset_save() == {"FINISHED"}
+    _add_named_preset(scene, "距離制限テスト")
 
     _select(first, [first, second])
     assert bpy.ops.bmanga_line.preset_apply_selected() == {"FINISHED"}
@@ -690,8 +699,7 @@ def _run(store_path: Path) -> None:
     settings.outline_max_distance = 0.5
     settings.use_intersection_distance_limit = True
     settings.intersection_max_distance = 0.5
-    scene.bmanga_line_preset_name = "線種別距離制限テスト"
-    assert bpy.ops.bmanga_line.preset_save() == {"FINISHED"}
+    _add_named_preset(scene, "線種別距離制限テスト")
 
     _select(first, [first, second])
     assert bpy.ops.bmanga_line.preset_apply_selected() == {"FINISHED"}
@@ -717,8 +725,7 @@ def _run(store_path: Path) -> None:
     settings.use_intersection_distance_limit = False
     settings.use_camera_culling = True
     settings.culling_margin = 0.0
-    scene.bmanga_line_preset_name = "範囲外テスト"
-    assert bpy.ops.bmanga_line.preset_save() == {"FINISHED"}
+    _add_named_preset(scene, "範囲外テスト")
 
     _select(first, [first, second])
     assert bpy.ops.bmanga_line.preset_apply_selected() == {"FINISHED"}

@@ -25,6 +25,7 @@ _STORE_FILE_NAME = "b_manga_line_presets.json"
 _STORE_VERSION = 1
 _loaded_scene_pointers: set[int] = set()
 _saving_scene_snapshots: dict[int, tuple[object, list[dict], int, str]] = {}
+_preset_name_updates_suspended = 0
 
 
 _SETTING_FIELDS = (
@@ -217,20 +218,26 @@ def _on_preset_index_changed(scene, _context) -> None:
 
 
 def _populate_scene_presets(scene, preset_dicts: list[dict], *, index: int, name: str) -> None:
-    collection = scene.bmanga_line_presets
-    collection.clear()
-    for data in preset_dicts:
-        item = collection.add()
-        _apply_dict_to_preset(data, item)
-    if collection:
-        active_index = max(0, min(index, len(collection) - 1))
-        scene.bmanga_line_preset_index = active_index
-        scene.bmanga_line_preset_name = str(
-            collection[active_index].name or "ラインプリセット"
-        )
-    else:
-        scene.bmanga_line_preset_index = -1
-        scene.bmanga_line_preset_name = str(name or "ラインプリセット")
+    global _preset_name_updates_suspended
+
+    _preset_name_updates_suspended += 1
+    try:
+        collection = scene.bmanga_line_presets
+        collection.clear()
+        for data in preset_dicts:
+            item = collection.add()
+            _apply_dict_to_preset(data, item)
+        if collection:
+            active_index = max(0, min(index, len(collection) - 1))
+            scene.bmanga_line_preset_index = active_index
+            scene.bmanga_line_preset_name = str(
+                collection[active_index].name or "ラインプリセット"
+            )
+        else:
+            scene.bmanga_line_preset_index = -1
+            scene.bmanga_line_preset_name = str(name or "ラインプリセット")
+    finally:
+        _preset_name_updates_suspended -= 1
 
 
 def _write_store(scene) -> Path:
@@ -288,6 +295,21 @@ def _active_preset(scene):
     if 0 <= index < len(presets):
         return presets[index]
     return None
+
+
+def _on_preset_name_changed(preset, _context) -> None:
+    if _preset_name_updates_suspended:
+        return
+    scene = getattr(preset, "id_data", None)
+    if scene is None or not hasattr(scene, "bmanga_line_presets"):
+        return
+    name = str(getattr(preset, "name", "") or "").strip()
+    if not name:
+        return
+    active = _active_preset(scene)
+    if active is not None and active.as_pointer() == preset.as_pointer():
+        scene.bmanga_line_preset_name = name
+    _write_store(scene)
 
 
 def copy_settings_to_preset(settings, preset) -> None:
@@ -615,6 +637,11 @@ def apply_line_settings(
 class BMangaLinePreset(bpy.types.PropertyGroup):
     """Saved B-MANGA Line settings."""
 
+    name: StringProperty(
+        name="プリセット名",
+        default="ラインプリセット",
+        update=_on_preset_name_changed,
+    )
     lines_visible: BoolProperty(default=True)
     # 2026-07-09 表示モードはプリセット保存対象から除外（_SETTING_FIELDS 参照）。
     # 旧プリセットJSON互換のためプロパティ自体は残す。
@@ -773,20 +800,21 @@ class BMANGA_LINE_OT_preset_save(bpy.types.Operator):
         scene = context.scene
         ensure_presets_loaded(scene)
         obj = context.active_object
-        name = _preset_name(scene)
         presets = scene.bmanga_line_presets
-        preset = None
-        index = -1
-        for i, item in enumerate(presets):
-            if item.name == name:
-                preset = item
-                index = i
-                break
+        preset = _active_preset(scene)
         if preset is None:
+            name = _unique_preset_name(presets, _preset_name(scene))
             preset = presets.add()
+            copy_settings_to_preset(obj.bmanga_line_settings, preset)
             preset.name = name
             index = len(presets) - 1
-        copy_settings_to_preset(obj.bmanga_line_settings, preset)
+        else:
+            index = scene.bmanga_line_preset_index
+            name = str(preset.name or "").strip()
+            if not name:
+                name = _unique_preset_name(presets, "ラインプリセット")
+                preset.name = name
+            copy_settings_to_preset(obj.bmanga_line_settings, preset)
         scene.bmanga_line_preset_index = index
         scene.bmanga_line_preset_name = name
         _write_store(scene)
@@ -811,10 +839,10 @@ class BMANGA_LINE_OT_preset_add(bpy.types.Operator):
         ensure_presets_loaded(scene)
         obj = context.active_object
         presets = scene.bmanga_line_presets
-        name = _unique_preset_name(presets, _preset_name(scene))
+        name = _unique_preset_name(presets, "ラインプリセット")
         preset = presets.add()
-        preset.name = name
         copy_settings_to_preset(obj.bmanga_line_settings, preset)
+        preset.name = name
         scene.bmanga_line_preset_index = len(presets) - 1
         scene.bmanga_line_preset_name = name
         _write_store(scene)
@@ -882,8 +910,8 @@ class BMANGA_LINE_OT_preset_duplicate(bpy.types.Operator):
             return {"CANCELLED"}
         name = _duplicate_name(presets, source.name)
         duplicate = presets.add()
-        duplicate.name = name
         copy_preset_to_preset(source, duplicate)
+        duplicate.name = name
         scene.bmanga_line_preset_index = len(presets) - 1
         scene.bmanga_line_preset_name = name
         _write_store(scene)
