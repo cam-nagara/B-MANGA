@@ -51,10 +51,13 @@ _WIDTH_CURVE_75_SOCKET = "変化グラフ 75%"
 _NORMAL_ATTR = "BML_IntersectionCachedNormal"
 _SPLIT_ATTR = "BML_IntersectionCachedEndpoint"
 _SPLIT_LABEL = "BML_IntersectionCachedEndpoint"
+# V3: キャッシュ線の頂点統合修正（2026-07-10、中間頂点線幅の端点過多）
+# に伴いラベルを世代更新。保存済み.blendの旧ツリーと旧キャッシュを
+# ラベル不一致で必ず再構築させる。
 # V2: Join Geometry の結合順修正（2026-07-09、素材スロット順バグ）に伴い
 # ラベルを世代更新。保存済み.blendの旧ツリーをラベル不一致で必ず再構築させる
 # （_tree_valid 参照。outline_setup.py の _SHEET_TUBE_ANGLE_SPLIT_LABEL と同方式）。
-_SUBDIVIDE_LABEL = "BML_IntersectionCachedSubdivideV2"
+_SUBDIVIDE_LABEL = "BML_IntersectionCachedSubdivideV3"
 _PROFILE_RESOLUTION = 12
 _VISUAL_RADIUS_FACTOR = 1.0
 _EPS = 1.0e-6
@@ -637,26 +640,45 @@ def _normal_key(normal: Vector) -> tuple[int, int, int]:
 def _write_cache_mesh(cache: bpy.types.Object, segments: list[_CachedSegment]) -> None:
     vertices: list[tuple[float, float, float]] = []
     edges: list[tuple[int, int]] = []
-    normals: list[tuple[float, float, float]] = []
-    vertex_map: dict[tuple[tuple[int, int, int], tuple[int, int, int]], int] = {}
+    normal_sums: list[Vector] = []
+    normal_fallbacks: list[Vector] = []
+    vertex_map: dict[tuple[int, int, int], int] = {}
 
-    def index_for(point: Vector, normal: Vector) -> int:
-        key = (_point_key(point), _normal_key(normal))
+    def index_for(point: Vector, key: tuple[int, int, int]) -> int:
         found = vertex_map.get(key)
         if found is not None:
             return found
         vertex_map[key] = len(vertices)
         vertices.append((point.x, point.y, point.z))
-        normals.append((normal.x, normal.y, normal.z))
+        normal_sums.append(Vector((0.0, 0.0, 0.0)))
+        normal_fallbacks.append(Vector((0.0, 0.0, 0.0)))
         return vertex_map[key]
 
+    def normalized_or_fallback(normal: Vector) -> Vector:
+        result = Vector((normal.x, normal.y, normal.z))
+        if result.length_squared <= _EPS * _EPS:
+            return Vector((0.0, 0.0, 1.0))
+        result.normalize()
+        return result
+
+    # Mesh to Curve は共有頂点を持たない辺を別スプラインにする。
+    # 法線違いで頂点を分けると各短辺の両端が線幅調整の端点になってしまう。
     edge_keys: set[tuple[int, int]] = set()
     for segment in segments:
-        a = index_for(segment.start, segment.normal)
-        b = index_for(segment.end, segment.normal)
+        start_key = _point_key(segment.start)
+        end_key = _point_key(segment.end)
+        if start_key == end_key:
+            continue
+        a = index_for(segment.start, start_key)
+        b = index_for(segment.end, end_key)
         if a == b:
             continue
         key = (a, b) if a < b else (b, a)
+        normal = normalized_or_fallback(segment.normal)
+        for index in (a, b):
+            if normal_fallbacks[index].length_squared <= _EPS * _EPS:
+                normal_fallbacks[index] = normal.copy()
+            normal_sums[index] += normal
         if key in edge_keys:
             continue
         edge_keys.add(key)
@@ -667,8 +689,14 @@ def _write_cache_mesh(cache: bpy.types.Object, segments: list[_CachedSegment]) -
     mesh.from_pydata(vertices, edges, [])
     mesh.update()
     attr = mesh.attributes.new(_NORMAL_ATTR, "FLOAT_VECTOR", "POINT")
-    for index, normal in enumerate(normals):
+    for index, normal_sum in enumerate(normal_sums):
         if index < len(attr.data):
+            if normal_sum.length_squared <= _EPS * _EPS:
+                normal = normal_fallbacks[index]
+                if normal.length_squared <= _EPS * _EPS:
+                    normal = Vector((0.0, 0.0, 1.0))
+            else:
+                normal = normal_sum.normalized()
             attr.data[index].vector = normal
     cache.data = mesh
     if old_mesh is not None and not old_mesh.users:

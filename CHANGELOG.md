@@ -3,6 +3,37 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-10 — B-MANGA Linerの中間頂点検出角度を交差線で正常化 (B-MANGA v0.6.464 / B-MANGA Liner v0.3.182)
+
+### 症状
+
+- 「中間頂点の線幅調整」で「検出角度」を広めにしても、交差線が滑らかな線としてつながらず、短い断片ごとに端点扱いされることがあった。
+- その結果、緑の交差線などで細かい入り抜きが連続し、検出角度を変えても線幅変化が意図どおりまとまらなかった。
+
+### 原因
+
+- 保存済み交差線の中心線を作るとき、同じ位置の線端でもオフセット方向が少し違うと別頂点として保存していた。
+- 表示側では別頂点の辺が別々の短い線として扱われるため、角度判定の前に各短辺の両端が端点になっていた。
+
+### 修正
+
+- 保存済み交差線は、同じ位置の線端を1つの頂点として接続するようにした。
+- オフセット方向は接続した頂点の周囲から平均して保持し、線の浮かせ方向は維持した。
+- 旧形式の保存済み線がそのまま再利用されないよう、表示用の内部世代を更新し、次回反映時に再構築されるようにした。
+- 回帰テストに、滑らかな保存済み交差線の中間点が端点化せず、連続した線として扱われるケースを追加した。
+
+### 検証 (Blender 5.1 実機)
+
+- `test/blender_b_manga_line_midpoint_targets_check.py` PASS
+- `test/blender_b_manga_line_intersection_cache_check.py` PASS
+- `test/blender_b_manga_line_boundary_tube_material_order_check.py` PASS
+- `test/blender_b_manga_line_width_all_shapes_visual_check.py` PASS（全線種同時表示・AI目視確認）
+- `test/blender_b_manga_line_generated_material_color_check.py` PASS
+- `test/blender_b_manga_line_transparent_surface_check.py` PASS
+- `test/blender_b_manga_line_uniform_width_check.py` PASS
+- `_verify/2026-07-10_bml_midpoint_angle_visual_check.py` PASS（縞面上でアウトライン・稜谷線・交差線の同時表示をAI目視確認）
+- `python -m py_compile` PASS（B-MANGA Liner変更ファイル）
+
 ## 2026-07-10 — B-MANGA Linerの中規模初回反映を安全化 (B-MANGA v0.6.463 / B-MANGA Liner v0.3.181)
 
 ### 症状

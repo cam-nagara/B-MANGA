@@ -8,12 +8,20 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import bpy
+from mathutils import Vector
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import core, inner_line_chains, inner_lines, panels, vertex_analysis  # noqa: E402
+from b_manga_line import (  # noqa: E402
+    core,
+    inner_line_chains,
+    inner_lines,
+    intersection_cache,
+    panels,
+    vertex_analysis,
+)
 
 
 LEVELS = 9
@@ -556,6 +564,44 @@ def _assert_inner_jitter_uses_chain_id() -> None:
     assert source.inputs["Name"].default_value == inner_line_chains.CHAIN_ID_ATTR
 
 
+def _assert_intersection_cache_keeps_smooth_paths_connected() -> None:
+    cache = bpy.data.objects.new(
+        "BML_intersection_cache_midpoint_path",
+        bpy.data.meshes.new("BML_intersection_cache_midpoint_path_mesh"),
+    )
+    bpy.context.collection.objects.link(cache)
+    points = [
+        Vector((index * 0.2, math.sin(index * 0.18) * 0.05, 0.0))
+        for index in range(12)
+    ]
+    segments = [
+        intersection_cache._CachedSegment(
+            points[index],
+            points[index + 1],
+            Vector((0.0, 0.04 * index, 1.0)).normalized(),
+        )
+        for index in range(len(points) - 1)
+    ]
+
+    intersection_cache._write_cache_mesh(cache, segments)
+    mesh = cache.data
+    assert len(mesh.vertices) == len(points), (
+        "保存済み交差線の同一点が法線違いで分断されています"
+    )
+    degrees = [0 for _ in mesh.vertices]
+    for edge in mesh.edges:
+        degrees[edge.vertices[0]] += 1
+        degrees[edge.vertices[1]] += 1
+
+    assert degrees[0] == 1 and degrees[-1] == 1, degrees
+    assert all(degree == 2 for degree in degrees[1:-1]), degrees
+
+    attr = mesh.attributes.get(intersection_cache._NORMAL_ATTR)
+    assert attr is not None, "保存済み交差線のオフセット方向属性がありません"
+    for item in attr.data:
+        assert abs(item.vector.length - 1.0) < 0.0001
+
+
 def main() -> None:
     b_manga_line.register()
     _clear_scene()
@@ -650,6 +696,7 @@ def main() -> None:
     )
     _assert_inner_chain_ids_split_at_branch_and_acute_points()
     _assert_inner_jitter_uses_chain_id()
+    _assert_intersection_cache_keeps_smooth_paths_connected()
 
     print("[PASS] midpoint width settings are independent per line type")
 
