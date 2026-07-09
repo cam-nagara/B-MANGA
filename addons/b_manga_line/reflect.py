@@ -153,10 +153,27 @@ def _run_heavy_path(objects: list, target: str, context) -> list:
             continue
         applied.append(obj)
         if _target_enabled(obj, target):
-            mesh_fingerprint.store(obj, target, scene=scene)
+            if target == "intersection":
+                # 交差線は各オブジェクトの設定反映後にシーン全体を検出する。
+                # 検出前の記録が残ると、実体0件でも次回が「変更なし」になる。
+                mesh_fingerprint.clear(obj, target)
+            else:
+                mesh_fingerprint.store(obj, target, scene=scene)
         else:
             mesh_fingerprint.clear(obj, target)
     return applied
+
+
+def _finalize_intersection_fingerprints(objects: list, context) -> None:
+    """シーン検出完了後に、処理を完了できた交差線だけ指紋を保存する."""
+    from . import intersection_lines, mesh_fingerprint
+
+    scene = getattr(context, "scene", None)
+    for obj in objects:
+        if intersection_lines.intersection_reflection_completed(obj, scene):
+            mesh_fingerprint.store(obj, "intersection", scene=scene)
+        else:
+            mesh_fingerprint.clear(obj, "intersection")
 
 
 def _refresh_heavy_camera(target: str, applied: list, context) -> None:
@@ -177,6 +194,7 @@ def _refresh_heavy_camera(target: str, applied: list, context) -> None:
                 width_targets=(target,),
                 visibility_targets=(target,),
             )
+        _finalize_intersection_fingerprints(applied, context)
         return
     if enabled_objs:
         camera_comp.refresh_objects(
@@ -376,6 +394,12 @@ def reflect_all(
             refresh_intersections="intersection" in active_targets,
         )
         presets._reflect_applied_display_settings(all_heavy, context)
+        intersection_result = results.get("intersection")
+        if intersection_result is not None:
+            _finalize_intersection_fingerprints(
+                intersection_result.heavy_objects,
+                context,
+            )
 
     return ReflectAllResult(
         targets=results,

@@ -18,6 +18,7 @@ import bpy
 
 _PROP_PREFIX = "bml_reflected_fp_"
 _MATRIX_ROUND_DIGITS = 4
+_INTERSECTION_SCHEMA = "intersection-post-refresh-v2"
 
 # 指紋を保持する線種（バンプ線は常に軽い経路のため対象外 — 計画書§4/§6）。
 FINGERPRINT_TARGETS = ("outline", "inner", "intersection", "selection")
@@ -95,6 +96,19 @@ def _intersection_creation_in_range(obj: bpy.types.Object, scene) -> bool:
     )
 
 
+def _intersection_has_outline_source(obj: bpy.types.Object) -> bool:
+    """交差線検出の前提となるライン形状が作成済みか返す."""
+    from . import core
+
+    try:
+        return (
+            obj.modifiers.get(core.MODIFIER_NAME) is not None
+            or obj.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME) is not None
+        )
+    except ReferenceError:
+        return False
+
+
 def compute(obj: bpy.types.Object, target: str, *, scene=None) -> str:
     """対象オブジェクト×線種の指紋文字列を計算する."""
     mesh = obj.data
@@ -110,7 +124,15 @@ def compute(obj: bpy.types.Object, target: str, *, scene=None) -> str:
         repr(_non_bml_modifier_signature(obj)),
     ]
     if target == "intersection":
+        # v2 は交差線のシーン検出完了後にだけ保存する世代。旧版は検出前に
+        # 保存していたため、実体が0件でも「変更なし」になった記録を無効化する。
+        parts.append(_INTERSECTION_SCHEMA)
         parts.append(repr(_rounded_world_matrix(obj)))
+        # アウトラインを後から反映した場合も交差線を再検出する。BML管理
+        # モディファイアは通常の指紋から除外されるため、この前提だけ明示する。
+        parts.append(
+            f"outline-source:{int(_intersection_has_outline_source(obj))}"
+        )
         if scene is not None:
             # 作成範囲フラグ。「作成する距離」制限で範囲外のまま反映（重い経路→
             # 作成スキップ→指紋保存）した後にカメラが近づいて範囲内へ入っても、

@@ -3,6 +3,46 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-10 — B-MANGA Linerの交差線反映済み誤判定を修正 (B-MANGA v0.6.465 / B-MANGA Liner v0.3.183)
+
+### 症状
+
+- 交差するメッシュが多数ある状態で「交差線」の「反映」を押しても、交差線が1本も作成されないことがあった。
+- 一度この状態になると、同じボタンを再度押しても「変更なし」と判定され、交差線の作成を再試行しなかった。
+
+### 原因
+
+- 交差線は、選択メッシュごとの設定反映後にシーン全体の交差検出を行うが、反映済み記録を交差検出より前に保存していた。
+- アウトラインなどの前提ラインが未作成で交差検出を開始できなかった場合も反映済み記録だけが残り、B-MANGA Liner管理のライン追加は通常のメッシュ変更判定から除外されるため、後からアウトラインを反映しても誤記録が一致し続けていた。
+- 不具合発生中の実画面を保存・変更せず読み取った時点で、交差線オン643件・反映済み記録644件に対し、交差線実体0件・保存済み交差対象0件という不整合を確認した。
+
+### 修正
+
+- 交差線だけは反映済み記録をシーン全体の交差検出完了後に保存し、前提ラインが無く検出を開始できなかった対象には保存しないようにした。
+- 交差線の指紋へ前提ラインの有無を含め、後からアウトラインを反映した場合は必ず交差線を再検出するようにした。
+- 0.3.182以前の交差線指紋を新世代と一致しない形式にし、既に残っている誤った反映済み記録も、更新後の最初の「反映」で自動的に無効化して再検出するようにした。
+- 回帰テストへ「交差線を先に反映して作成できない→アウトラインを反映→旧形式の誤記録が残る→交差線を再反映して作成できる」実操作順を追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `test/blender_b_manga_line_reflect_dispatch_check.py` PASS（前提不足後の再試行、旧0.3.182記録の無効化を含む10ケース）
+- `test/blender_b_manga_line_intersection_cache_check.py` PASS
+- `test/blender_b_manga_line_intersection_refresh_efficiency_check.py` PASS（交差検出1回、重複なし）
+- `test/blender_b_manga_line_update_all_targets_check.py` PASS
+- `test/blender_b_manga_line_outline_enable_with_intersections_check.py` PASS
+- `test/blender_b_manga_line_separate_line_colors_check.py` PASS
+- `test/blender_b_manga_line_inner_intersection_material_order_check.py` PASS
+- `test/blender_b_manga_line_intersection_fill_check.py` PASS
+- `test/blender_b_manga_line_intersection_creation_range_check.py` PASS
+- `test/blender_b_manga_line_intersection_shell_method_check.py` PASS
+- `test/blender_b_manga_line_midpoint_targets_check.py` PASS
+- `test/blender_b_manga_line_generated_material_color_check.py` PASS
+- `test/blender_b_manga_line_transparent_surface_check.py` PASS
+- `test/blender_b_manga_line_width_all_shapes_visual_check.py` PASS（全線種同時・交差線単独をAI目視）
+- `_verify/2026-07-10_bml_midpoint_angle_visual_check.py` PASS（テクスチャ保持と連続線をAI目視）
+- フェーズ3標準ベンチ: 80メッシュ初回全反映5.534秒、48メッシュ無変更再反映0.019秒、72メッシュ交差線無変更更新0.031秒。性能退行なし。
+- `python -m py_compile` PASS（変更ファイル）
+
 ## 2026-07-10 — B-MANGA Liner修正群の実機追検証と回帰強化（バージョン変更なし）
 
 ### 症状

@@ -12,14 +12,15 @@
   5. 更新待ち(visual)印のみ            → 軽い経路（見た目だけ更新）
   6. 印なし                            → 何もしない
 
-本ファイルは計画書§10の新規テストに初回安全化の回帰を加えた9ケースを検証する。ケース1〜5は
+本ファイルは計画書§10の新規テストに初回安全化の回帰を加えた10ケースを検証する。ケース1〜5は
 同一オブジェクト・同一線種（稜谷線=inner。GNモディファイアを持つため
 「node_group参照が同じ=作り直されていない」を軽い経路の証拠にできる）を
 連続して使い回し、ライフサイクル全体（作成→軽い更新→無変化→メッシュ編集での
 作り直し→チェックOFFでの削除）を1本の流れとして検証する。ケース6は
 「ラインのみを表示」ON中の reflect_all 付帯処理引き継ぎ、ケース7は交差線の
 シーン再検出（refresh_scene_intersections）が軽い経路では走らないことを、
-ケース8は交差線の後回し、ケース9は中規模初回反映の確認境界を検証する。
+ケース8は交差線の後回し、ケース9は中規模初回反映の確認境界、ケース10は
+前提ライン未作成時の交差線反映が次回作成を妨げないことを検証する。
 """
 
 from __future__ import annotations
@@ -363,7 +364,13 @@ def _case_8_reflect_all_can_defer_initial_intersections() -> None:
     assert not any(any(core.iter_intersection_modifiers(o)) for o in (a, b)), (
         "ケース8: 交差線以外の反映で交差線が作成されています"
     )
-    print("[PASS] case8: 交差線以外の reflect_all は初回交差線を後回しにする")
+    assert bpy.ops.bmanga_line.reflect_target(
+        "EXEC_DEFAULT", target="intersection",
+    ) == {"FINISHED"}
+    assert any(any(core.iter_intersection_modifiers(o)) for o in (a, b)), (
+        "ケース8: 後回しにした交差線を交差線の反映ボタンで作成できません"
+    )
+    print("[PASS] case8: 後回しにした交差線は交差線の反映ボタンで作成できる")
 
 
 def _case_9_initial_confirmation_threshold() -> None:
@@ -396,6 +403,50 @@ def _case_9_initial_confirmation_threshold() -> None:
     print("[PASS] case9: 初回確認は120件以上かつ全反映時だけ表示される")
 
 
+def _case_10_failed_intersection_prerequisite_does_not_poison_retry() -> None:
+    _clear_scene()
+    _make_camera()
+    a = _make_cube("BML_Reflect_Retry_Isect_A", (0.0, 0.0, -4.0))
+    b = _make_cube("BML_Reflect_Retry_Isect_B", (0.4, 0.0, -4.0))
+    for target in (a, b):
+        settings = target.bmanga_line_settings
+        settings.intersection_enabled = True
+        settings.use_intersection_creation_limit = False
+
+    _select(a, [a, b])
+    assert bpy.ops.bmanga_line.reflect_target(
+        "EXEC_DEFAULT", target="intersection",
+    ) == {"FINISHED"}
+    assert not any(any(core.iter_intersection_modifiers(o)) for o in (a, b)), (
+        "ケース10前提: アウトライン未作成なのに交差線が作成されています"
+    )
+    assert not any(mesh_fingerprint.has_stored(o, "intersection") for o in (a, b)), (
+        "ケース10: 交差線を検出できなかった対象が反映済みとして記録されています"
+    )
+
+    assert bpy.ops.bmanga_line.reflect_target(
+        "EXEC_DEFAULT", target="outline",
+    ) == {"FINISHED"}
+    for target in (a, b):
+        current = mesh_fingerprint.compute(
+            target, "intersection", scene=bpy.context.scene,
+        )
+        legacy = current.replace(
+            f"|{mesh_fingerprint._INTERSECTION_SCHEMA}", "", 1,
+        ).replace("|outline-source:1", "", 1)
+        target[mesh_fingerprint._prop_name("intersection")] = legacy
+        assert not mesh_fingerprint.matches(
+            target, "intersection", scene=bpy.context.scene,
+        ), "ケース10: 0.3.182以前の誤った反映済み記録を無効化できません"
+    assert bpy.ops.bmanga_line.reflect_target(
+        "EXEC_DEFAULT", target="intersection",
+    ) == {"FINISHED"}
+    assert any(any(core.iter_intersection_modifiers(o)) for o in (a, b)), (
+        "ケース10: 前提ライン作成後も交差線を再反映できません"
+    )
+    print("[PASS] case10: 前提不足の交差線反映後も再試行で作成できる")
+
+
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     b_manga_line.register()
@@ -405,6 +456,7 @@ def main() -> None:
         _case_7_intersection_refresh_only_on_heavy_path()
         _case_8_reflect_all_can_defer_initial_intersections()
         _case_9_initial_confirmation_threshold()
+        _case_10_failed_intersection_prerequisite_does_not_poison_retry()
         print("BMANGA_LINE_REFLECT_DISPATCH_OK")
     finally:
         try:

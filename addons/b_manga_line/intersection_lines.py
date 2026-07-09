@@ -1859,6 +1859,28 @@ def prune_excluded_intersections(scene: bpy.types.Scene | None) -> int:
     return changed
 
 
+def intersection_reflection_completed(
+    obj: bpy.types.Object,
+    scene: bpy.types.Scene | None,
+) -> bool:
+    """交差線の反映済み指紋を保存してよい状態か返す."""
+    from . import plane_filter
+
+    try:
+        if obj.type != "MESH":
+            return False
+    except ReferenceError:
+        return False
+    settings = getattr(obj, "bmanga_line_settings", None)
+    if settings is None or not bool(getattr(settings, "intersection_enabled", False)):
+        return False
+    if plane_filter.should_exclude_generated_lines(obj, settings):
+        return True
+    if not _creation_in_range(obj, scene):
+        return True
+    return _has_outline_source(obj) or any(iter_intersection_modifiers(obj))
+
+
 def _refresh_source_intersections(
     obj: bpy.types.Object,
     scene: bpy.types.Scene,
