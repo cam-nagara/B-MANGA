@@ -54,7 +54,11 @@ _SHELL_SPLIT_ATTR = "BML_IntersectionShellCurveEndpointV26"
 _SHELL_GRAPH_SPLIT_NODE_LABEL = "BML_IntersectionShellGraphEndpointV26"
 _SHELL_GRAPH_SPLIT_ATTR = "BML_IntersectionShellGraphEndpointV26"
 _SHELL_SUBDIVIDE_CUTS = 3
-_SHELL_SAFE_SCALE_NODE_LABEL = "BML_IntersectionShellSafeScale"
+# V2: Join Geometry の結合順修正（2026-07-09、素材スロット順バグ）に伴い
+# ラベルを世代更新。保存済み.blendの旧ツリーをラベル不一致で必ず再構築させる
+# （_get_or_create_tree 参照。outline_setup.py の _SHEET_TUBE_ANGLE_SPLIT_LABEL
+# と同方式）。
+_SHELL_SAFE_SCALE_NODE_LABEL = "BML_IntersectionShellSafeScaleV2"
 _SHELL_CONTACT_OFFSET_NODE_LABEL = "BML_IntersectionShellFixedContactOffsetV20"
 _SHELL_CONTACT_EPSILON = 0.0005
 _SHELL_WELD_DISTANCE = 0.01
@@ -547,8 +551,12 @@ def _add_shell_tube_nodes(nodes, links, curve_output, gin, radius_output, scale,
 
     join = nodes.new("GeometryNodeJoinGeometry")
     join.location = (x_offset + 800, 0)
-    links.new(gin.outputs["Geometry"], join.inputs["Geometry"])
+    # Join Geometry のマルチ入力は「後から接続したリンクが先頭（先に評価）」
+    # という挙動を持つため、見た目の呼び出し順とは逆にsetmatを先・ginを後に
+    # 接続し、結合順を「元メッシュ→ライン」にする（詳細は outline_setup.py の
+    # Join 接続コメント参照）。
     links.new(setmat.outputs["Geometry"], join.inputs["Geometry"])
+    links.new(gin.outputs["Geometry"], join.inputs["Geometry"])
     return join
 
 
@@ -736,7 +744,11 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
         )
         if ok:
             return tree
-        bpy.data.node_groups.remove(tree)
+        # 選択外オブジェクトの線が無音で消える問題(2026-07-09)への対策。
+        # 詳細は modifier_stack.replace_shared_node_tree のdocstring参照。
+        return modifier_stack.replace_shared_node_tree(
+            SHELL_TREE_NAME, tree, _create_node_tree
+        )
     return _create_node_tree()
 
 

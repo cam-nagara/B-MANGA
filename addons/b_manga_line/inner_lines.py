@@ -23,7 +23,11 @@ from .core import (
 )
 
 
-_GENERATED_LINE_NODE_LABEL = "BML_GeneratedLineMark"
+# V2: Join Geometry の結合順修正（2026-07-09、素材スロット順バグ）に伴い
+# ラベルを世代更新。保存済み.blendの旧ツリー（稜谷線・選択線とも）をラベル
+# 不一致で必ず再構築させる（_get_or_create_tree 参照。outline_setup.py の
+# _SHEET_TUBE_ANGLE_SPLIT_LABEL と同方式）。
+_GENERATED_LINE_NODE_LABEL = "BML_GeneratedLineMarkV2"
 _RADIUS_HALF_NODE_LABEL = "BML_InnerLineRadiusHalf"
 _PROFILE_NODE_LABEL = "BML_InnerLineProfileV2"
 _SMOOTH_NODE_LABEL = "BML_InnerLineSmoothV2"
@@ -643,8 +647,12 @@ def _create_node_tree(
     # Join Geometry: 元メッシュ + 内部線ジオメトリ
     join = nodes.new("GeometryNodeJoinGeometry")
     join.location = (1100, 0)
-    links.new(gin.outputs[0], join.inputs[0])  # 元ジオメトリ
+    # Join Geometry のマルチ入力は「後から接続したリンクが先頭（先に評価）」
+    # という挙動を持つため、見た目の呼び出し順とは逆に内部線側を先・元ジオ
+    # メトリを後に接続し、結合順を「元メッシュ→内部線」にする（詳細は
+    # outline_setup.py の Join 接続コメント参照）。
     links.new(setmat.outputs[0], join.inputs[0])  # 内部線ジオメトリ
+    links.new(gin.outputs[0], join.inputs[0])  # 元ジオメトリ
 
     links.new(join.outputs[0], gout.inputs[0])
 
@@ -665,122 +673,90 @@ def _get_or_create_tree(
             marked_attr_name,
         )
 
+    # 以下の各検証で不合格になった旧ツリーは modifier_stack.replace_shared_node_tree
+    # 経由で再構築する。旧ツリーを参照する他オブジェクトのモディファイアが
+    # 無音でNone化される問題(2026-07-09)への対策。詳細は同関数のdocstring参照。
     tree = bpy.data.node_groups.get(tree_name)
     if tree is not None:
         if _find_socket_id(tree, "マテリアル") is None:
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if _find_socket_id(tree, "ライン素材番号") is None:
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if _find_socket_id(tree, _MARKED_ONLY_SOCKET_NAME) is None:
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if _find_socket_id(tree, _OFFSET_SOCKET_NAME) is None:
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if _find_socket_id(tree, _MIDPOINT_FACTOR_SOCKET_NAME) is None:
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if _find_socket_id(tree, _MIDPOINT_JITTER_SOCKET_NAME) is None:
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if _find_socket_id(tree, _RESAMPLE_COUNT_SOCKET_NAME) is None:
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if _find_socket_id(tree, _WIDTH_CURVE_25_SOCKET_NAME) is None:
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if _find_socket_id(tree, _WIDTH_CURVE_50_SOCKET_NAME) is None:
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if _find_socket_id(tree, _WIDTH_CURVE_75_SOCKET_NAME) is None:
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if not any(n.bl_idname == "GeometryNodeDeleteGeometry" for n in tree.nodes):
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if not any(n.bl_idname == "GeometryNodeInputNamedAttribute" for n in tree.nodes):
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if not _uses_named_attribute(tree, width_attr_name):
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if not _uses_named_attribute(tree, marked_attr_name):
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if not any(getattr(n, "label", "") == _GENERATED_LINE_NODE_LABEL for n in tree.nodes):
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if not any(getattr(n, "label", "") == _RADIUS_HALF_NODE_LABEL for n in tree.nodes):
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if not any(getattr(n, "label", "") == _PROFILE_NODE_LABEL for n in tree.nodes):
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if not any(getattr(n, "label", "") == _SMOOTH_NODE_LABEL for n in tree.nodes):
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if not any(getattr(n, "label", "") == _MARKED_SELECTION_SWITCH_LABEL for n in tree.nodes):
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if not any(getattr(n, "label", "") == _CURVE_WIDTH_SCALE_LABEL for n in tree.nodes):
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if not any(getattr(n, "label", "") == _SUBDIVIDE_CURVE_LABEL for n in tree.nodes):
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if any(n.bl_idname == "GeometryNodeResampleCurve" for n in tree.nodes):
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if not any(getattr(n, "label", "") == _SELECTED_EDGE_MESH_LABEL for n in tree.nodes):
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if not any(getattr(n, "label", "") == _CHAIN_INSTANCE_SPLIT_LABEL for n in tree.nodes):
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if not any(getattr(n, "label", "") == _CHAIN_ANGLE_FILTER_LABEL for n in tree.nodes):
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if not any(getattr(n, "label", "") == _AUTO_EDGE_ALLOWED_LABEL for n in tree.nodes):
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if not any(getattr(n, "label", "") == _AUTO_ANGLE_FILTER_LABEL for n in tree.nodes):
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         compare_node = next(
             (n for n in tree.nodes if getattr(n, "label", "") == _EDGE_ANGLE_COMPARE_LABEL),
             None,
         )
         if compare_node is None or getattr(compare_node, "operation", "") != "GREATER_EQUAL":
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         chain_compare = next(
             (n for n in tree.nodes if getattr(n, "label", "") == _CHAIN_SELECTION_COMPARE_LABEL),
             None,
         )
         if chain_compare is None or getattr(chain_compare, "operation", "") != "GREATER_THAN":
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if not any(getattr(n, "label", "") == _CURVE_JITTER_CENTER_LABEL for n in tree.nodes):
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if not any(getattr(n, "label", "") == _CURVE_JITTER_CHAIN_ID_LABEL for n in tree.nodes):
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if not any(getattr(n, "label", "") == _SAFE_CURVE_SCALE_LABEL for n in tree.nodes):
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if not _uses_named_attribute(tree, chain_id_attr_name):
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         if any(n.bl_idname == "GeometryNodeSetCurveRadius" for n in tree.nodes):
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         radius_socket = _find_interface_socket(tree, "線の太さ")
         if radius_socket is not None and getattr(radius_socket, "max_value", 0.0) < 1.0:
-            bpy.data.node_groups.remove(tree)
-            return _rebuild()
+            return modifier_stack.replace_shared_node_tree(tree_name, tree, _rebuild)
         return tree
     return _rebuild()
 

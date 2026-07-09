@@ -46,7 +46,11 @@ from .core import (
 
 
 _FILL_NODE_LABEL = "BML_TargetLineFill"
-_GENERATED_LINE_NODE_LABEL = "BML_GeneratedLineMark"
+# V2: Join Geometry の結合順修正（2026-07-09、素材スロット順バグ）に伴い
+# ラベルを世代更新。保存済み.blendの旧ツリー（単一対象・複数対象とも）を
+# ラベル不一致で必ず再構築させる（_get_or_create_tree / _get_or_create_multi_tree
+# 参照。outline_setup.py の _SHEET_TUBE_ANGLE_SPLIT_LABEL と同方式）。
+_GENERATED_LINE_NODE_LABEL = "BML_GeneratedLineMarkV2"
 _TARGET_SOCKET = "交差対象"
 _THICKNESS_SOCKET = "線の太さ"
 _OFFSET_SOCKET = "オフセット"
@@ -318,8 +322,12 @@ def _add_tube_nodes(nodes, links, curve_output, gin, radius_output, x_offset=0):
 
     join = nodes.new("GeometryNodeJoinGeometry")
     join.location = (x_offset + 800, 0)
-    links.new(gin.outputs[0], join.inputs[0])
+    # Join Geometry のマルチ入力は「後から接続したリンクが先頭（先に評価）」
+    # という挙動を持つため、見た目の呼び出し順とは逆にsetmatを先・ginを後に
+    # 接続し、結合順を「元メッシュ→ライン」にする（詳細は outline_setup.py の
+    # Join 接続コメント参照）。
     links.new(setmat.outputs[0], join.inputs[0])
+    links.new(gin.outputs[0], join.inputs[0])
 
     return join
 
@@ -581,9 +589,13 @@ def _create_boolean_multi_tree(count: int) -> bpy.types.NodeTree:
 
     join = nodes.new("GeometryNodeJoinGeometry")
     join.location = (1500, 0)
-    links.new(gin.outputs[0], join.inputs[0])
-    for output in line_outputs:
+    # Join Geometry のマルチ入力は「後から接続したリンクが先頭（先に評価）」
+    # という挙動を持つため、結合順を「元メッシュ→ライン1→ライン2→...」に
+    # するには line_outputs を逆順で先に接続し、gin（元メッシュ）を最後に
+    # 接続する必要がある（詳細は outline_setup.py の Join 接続コメント参照）。
+    for output in reversed(line_outputs):
         links.new(output, join.inputs[0])
+    links.new(gin.outputs[0], join.inputs[0])
     links.new(join.outputs[0], gout.inputs[0])
 
     return tree

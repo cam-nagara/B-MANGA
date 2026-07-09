@@ -50,7 +50,10 @@ _WIDTH_CURVE_75_SOCKET = "変化グラフ 75%"
 _NORMAL_ATTR = "BML_IntersectionCachedNormal"
 _SPLIT_ATTR = "BML_IntersectionCachedEndpoint"
 _SPLIT_LABEL = "BML_IntersectionCachedEndpoint"
-_SUBDIVIDE_LABEL = "BML_IntersectionCachedSubdivide"
+# V2: Join Geometry の結合順修正（2026-07-09、素材スロット順バグ）に伴い
+# ラベルを世代更新。保存済み.blendの旧ツリーをラベル不一致で必ず再構築させる
+# （_tree_valid 参照。outline_setup.py の _SHEET_TUBE_ANGLE_SPLIT_LABEL と同方式）。
+_SUBDIVIDE_LABEL = "BML_IntersectionCachedSubdivideV2"
 _PROFILE_RESOLUTION = 12
 _VISUAL_RADIUS_FACTOR = 1.0
 _EPS = 1.0e-6
@@ -292,8 +295,12 @@ def _create_display_tree() -> bpy.types.NodeTree:
 
     join = nodes.new("GeometryNodeJoinGeometry")
     join.location = (820, 0)
-    links.new(gin.outputs["Geometry"], join.inputs["Geometry"])
+    # Join Geometry のマルチ入力は「後から接続したリンクが先頭（先に評価）」
+    # という挙動を持つため、見た目の呼び出し順とは逆にsetmatを先・ginを後に
+    # 接続し、結合順を「元メッシュ→ライン」にする（詳細は outline_setup.py の
+    # Join 接続コメント参照）。
     links.new(setmat.outputs["Geometry"], join.inputs["Geometry"])
+    links.new(gin.outputs["Geometry"], join.inputs["Geometry"])
     links.new(join.outputs["Geometry"], gout.inputs["Geometry"])
     return tree
 
@@ -323,9 +330,11 @@ def _get_or_create_display_tree() -> bpy.types.NodeTree:
     if _tree_valid(tree):
         assert tree is not None
         return tree
-    if tree is not None:
-        bpy.data.node_groups.remove(tree)
-    return _create_display_tree()
+    # 選択外オブジェクトの線が無音で消える問題(2026-07-09)への対策。
+    # 詳細は modifier_stack.replace_shared_node_tree のdocstring参照。
+    return modifier_stack.replace_shared_node_tree(
+        CACHE_TREE_NAME, tree, _create_display_tree
+    )
 
 
 def _set_modifier_input_if_changed(mod, socket_id: str | None, value) -> None:

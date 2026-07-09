@@ -391,6 +391,22 @@ def _reflect_applied_display_settings(
     if visibility_refresh_targets:
         camera_comp.refresh_visibility_objects(context, visibility_refresh_targets)
 
+    if core.is_scene_line_only_enabled(context):
+        # 「ラインのみを表示」ON中に新規追加したオブジェクトの素材は、
+        # シーン全体の再白色化(set_materials_line_only)を経由しないと
+        # 白化されないままになる(2026-07-09 徹底チェックで実機確認)。
+        # 全素材走査は過去の重い固着バグの原因だったため復活させず、
+        # 今回の適用対象オブジェクトの非BML素材だけを個別に白化する。
+        from . import line_only_display
+
+        for obj in objects:
+            if getattr(obj, "type", None) != "MESH" or obj.data is None:
+                continue
+            for slot in obj.material_slots:
+                mat = slot.material
+                if line_only_display.is_line_only_surface_material(mat):
+                    line_only_display._enable_material_line_only(mat)
+
 
 def apply_line_settings(
     obj: bpy.types.Object,

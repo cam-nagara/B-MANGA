@@ -3,6 +3,29 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-09 — 共有ライン用ツリー再構築時の線消失と「ラインのみを表示」中の新規素材白化漏れを修正 (B-MANGA v0.6.455 / B-MANGA Liner v0.3.172)
+
+### 修正
+
+- 旧ファイルでライン更新時に選択していないオブジェクトの線が消えることがある問題を修正。
+  - 原因: 稜谷線・選択線・交差線のGNツリーは単一の共有データブロック（例 `BML_InnerLines_Cached`）を全オブジェクトのモディファイアが参照する。ツリーの世代ラベル不一致を検出すると `bpy.data.node_groups.remove(旧ツリー)` を実行していたが、Blenderの既定挙動（do_unlink=True）により旧ツリーを参照していた**全オブジェクト**のモディファイアの `node_group` が None化される。一方、更新系オペレーターは選択中オブジェクトしか処理しないため、選択していなかった他オブジェクトの線が理由表示なく消えていた。
+  - 対策: `modifier_stack.replace_shared_node_tree` を新設し、旧ツリー削除前に参照する全モディファイアを収集、新ツリー構築後に一括で張り替えてから旧ツリーを削除するようにした。`inner_line_cache.py`・`inner_lines.py`（選択線含む）・`intersection_cache.py`・`intersection_shell.py` の該当箇所を修正。
+  - 回帰テスト `test/blender_b_manga_line_shared_tree_regeneration_check.py` を新設。
+- 「ラインのみを表示」ON中に新規追加した素材が白化されない問題を修正。
+  - 原因: 前版（v0.3.168）でテクスチャ固着・全素材再走査による重さを解消するために `presets._reflect_applied_display_settings` から全素材再白色化の呼び出しを削除したが、これによりシーンフラグON中に新規追加された素材を白化する経路が失われていた。
+  - 対策: `_reflect_applied_display_settings` の末尾で、「ラインのみを表示」ON中であれば適用対象オブジェクトの非BML素材だけを個別に白化するようにした（全素材走査は復活させていない）。
+  - `_verify/2026-07-09_line_only_restore/test_line_only_restore.py` にケース7を追加。
+
+## 2026-07-09 — 稜谷線・交差線を作成するとオブジェクトの見た目が壊れる問題を修正 (B-MANGA v0.6.454 / B-MANGA Liner v0.3.171)
+
+### 修正
+
+- 稜谷線・交差線を作成するとオブジェクトの見た目が壊れる（テクスチャが消えて単色になる・別の色の縁が出る）不具合を修正。
+- 原因: Geometry Nodes の Join Geometry マルチ入力ソケットは「後から接続したリンクが先頭（先に評価）」という挙動を持つ（Blender公式API保証外・Blender 5.1.2実機検証済み）。稜谷線・交差線・選択線のGNツリーが「元メッシュ→ライン」の見た目の順で接続していたため、実際の結合順が逆転し、評価後メッシュの素材スロット表がオブジェクトのスロット順と食い違っていた。CyclesのレンダーはオブジェクトのスロットIDで面材質を解決するため、この食い違いが元面の誤表示・誤色縁として現れていた。境界チューブ（v0.3.169で先行修正済み）と同根の不具合。
+- `inner_line_cache.py`・`inner_lines.py`・`intersection_lines.py`（単一対象・複数対象の2箇所）・`intersection_shell.py`・`intersection_cache.py` の計6箇所のJoin Geometry接続順を修正。保存済み.blend内の旧ツリーも次回のライン適用/更新時に必ず再構築されるよう、各ツリーの世代判定ラベルを更新。
+- 詳細な実機調査の経緯: `_verify/2026-07-09_tokyo0004_line_texture_visual/`
+- 回帰テスト `test/blender_b_manga_line_inner_intersection_material_order_check.py` を新設。
+
 ## 2026-07-09 — B-MANGA Linerに新線種「バンプ線」（ノーマルマップ/バンプからのライン抽出）を追加 (B-MANGA v0.6.453 / B-MANGA Liner v0.3.170)
 
 ### 追加
