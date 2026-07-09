@@ -5,7 +5,12 @@ from __future__ import annotations
 import bpy
 
 
-LINE_TARGETS = ("outline", "inner", "intersection", "selection")
+LINE_TARGETS = ("outline", "inner", "intersection", "selection", "bump")
+# ジオメトリ/モディファイア前提の設定（自動サブディビジョン・カメラ距離補正等）の
+# フォールバック用。バンプ線はモディファイアを持たず、これらの設定と無関係
+# （camera_comp の厚み補正系も対象外）なため、targets_for_property() の
+# 汎用フォールバックには含めない（計画書A-4手順2の非対称の一部）。
+_GEOMETRY_LINE_TARGETS = ("outline", "inner", "intersection", "selection")
 PROP_PENDING_TARGETS = "bml_pending_line_update_targets"
 PROP_PENDING_CREATE_TARGETS = "bml_pending_line_create_targets"
 PROP_PENDING_VISUAL_TARGETS = "bml_pending_line_visual_targets"
@@ -15,6 +20,7 @@ _LABELS = {
     "inner": "稜谷線",
     "intersection": "交差線",
     "selection": "選択線",
+    "bump": "バンプ線",
 }
 
 _VISUAL_PROPS = {
@@ -74,6 +80,9 @@ _VISUAL_PROPS = {
     "selection_edge_width_curve_25",
     "selection_edge_width_curve_50",
     "selection_edge_width_curve_75",
+    "bump_line_color",
+    "bump_line_thickness",
+    "bump_line_threshold",
 }
 
 
@@ -90,6 +99,8 @@ def normalize_targets(targets=None) -> tuple[str, ...]:
 
 
 def targets_for_property(prop_name: str) -> tuple[str, ...]:
+    if prop_name.startswith("bump_"):
+        return ("bump",)
     if prop_name.startswith("inner_") or prop_name.startswith("use_inner_"):
         return ("inner",)
     if prop_name.startswith("intersection_") or prop_name.startswith("use_intersection_"):
@@ -109,7 +120,7 @@ def targets_for_property(prop_name: str) -> tuple[str, ...]:
         "weld_mesh_for_outline",
     }:
         return ("outline",)
-    return LINE_TARGETS
+    return _GEOMETRY_LINE_TARGETS
 
 
 def kind_for_property(prop_name: str) -> str:

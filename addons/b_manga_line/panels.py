@@ -201,19 +201,23 @@ def _draw_line_settings(layout, context, settings) -> None:
     row.prop(settings, "auto_subdivision_for_midpoint")
     row.operator("bmanga_line.detail_settings", icon="PREFERENCES")
 
-    for index, (target, label, draw_func) in enumerate((
-        ("outline", "アウトライン", _draw_outline),
-        ("inner", "稜谷線", _draw_inner_line),
-        ("intersection", "交差線", _draw_intersection),
-        ("selection", "選択線", _draw_selection_line),
+    for index, (target, label, draw_func, show_create) in enumerate((
+        ("outline", "アウトライン", _draw_outline, True),
+        ("inner", "稜谷線", _draw_inner_line, True),
+        ("intersection", "交差線", _draw_intersection, True),
+        ("selection", "選択線", _draw_selection_line, True),
+        # バンプ線はモディファイア/マテリアルを生成しない画像空間処理のため
+        # 「作成」概念が無く、「更新」ボタンのみ表示する（計画書A-4手順7）。
+        ("bump", "バンプ線", _draw_bump_line, False),
     )):
         body.separator()
         section = body.column(align=True)
         header = section.row(align=True)
         header.label(text=label)
         buttons = header.row(align=True)
-        op = buttons.operator("bmanga_line.update_target", text="作成", icon="ADD")
-        op.target = target
+        if show_create:
+            op = buttons.operator("bmanga_line.update_target", text="作成", icon="ADD")
+            op.target = target
         op = buttons.operator("bmanga_line.update_visual_target", text="更新", icon="FILE_REFRESH")
         op.target = target
         draw_func(section, context, settings)
@@ -259,6 +263,23 @@ def _draw_selection_line(layout, context, settings) -> None:
         "selection_line_creation_max_distance",
         dpi,
     )
+
+
+def _draw_bump_line(layout, context, settings) -> None:
+    dpi = _get_paper_dpi(context.scene)
+    col = layout.column(align=True)
+    head = col.row(align=True)
+    head.prop(settings, "bump_line_enabled")
+    head.prop(settings, "bump_line_color", text="")
+    sub = col.column(align=True)
+    sub.enabled = bool(settings.bump_line_enabled)
+    row = sub.row(align=True)
+    row.prop(settings, "bump_line_thickness")
+    sub_label = row.row(align=True)
+    sub_label.alignment = "RIGHT"
+    sub_label.label(text=_mm_to_px_label(settings.bump_line_thickness, dpi))
+    sub.prop(settings, "bump_line_threshold")
+    sub.label(text="レンダリング結果にのみ反映されます（ビューポート非対応）", icon="INFO")
 
 
 def _draw_detail_cell(row, settings, prop_name: str | None) -> None:

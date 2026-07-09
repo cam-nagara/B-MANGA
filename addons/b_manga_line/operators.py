@@ -109,6 +109,10 @@ _LINE_TARGET_ITEMS = (
     ("inner", "稜谷線", ""),
     ("intersection", "交差線", ""),
     ("selection", "選択線", ""),
+    # バンプ線はモディファイア/マテリアルを生成しないため「作成」ボタンは
+    # 出さない（panels.py側で作成ボタンを描画しない）。更新オペレーター
+    # (bmanga_line.update_visual_target) の対象としてのみ使う。
+    ("bump", "バンプ線", ""),
 )
 
 _TARGET_ENABLED_PROPS = {
@@ -116,6 +120,7 @@ _TARGET_ENABLED_PROPS = {
     "inner": "inner_line_enabled",
     "intersection": "intersection_enabled",
     "selection": "selection_line_enabled",
+    "bump": "bump_line_enabled",
 }
 
 
@@ -123,6 +128,25 @@ def _target_enabled(obj: bpy.types.Object, target: str) -> bool:
     settings = getattr(obj, "bmanga_line_settings", None)
     prop_name = _TARGET_ENABLED_PROPS.get(target)
     return bool(settings is not None and prop_name and getattr(settings, prop_name, False))
+
+
+def _has_any_updatable_line_target(context) -> bool:
+    """更新系オペレーターのpoll向け: 他線種のhas_line()に加え、
+    バンプ線はモディファイアを持たないため bump_line_enabled も見る。
+    直前に無効化しただけ（bump_line_enabled=False だが更新待ち印は残っている）
+    のオブジェクトも対象にし、無効化を反映する「更新」を必ず押せるようにする。
+    """
+    from . import update_state
+
+    for obj in context.selected_objects:
+        if has_line(obj):
+            return True
+        settings = getattr(obj, "bmanga_line_settings", None)
+        if settings is not None and bool(getattr(settings, "bump_line_enabled", False)):
+            return True
+        if "bump" in update_state.pending_visual_targets(obj):
+            return True
+    return False
 
 
 class BMANGA_LINE_OT_update_target(bpy.types.Operator):
@@ -226,7 +250,7 @@ class BMANGA_LINE_OT_update_visual_target(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return any(has_line(obj) for obj in context.selected_objects)
+        return _has_any_updatable_line_target(context)
 
     def execute(self, context):
         from . import batch_update, selection, update_state
@@ -249,6 +273,7 @@ class BMANGA_LINE_OT_update_visual_target(bpy.types.Operator):
             "inner": "稜谷線",
             "intersection": "交差線",
             "selection": "選択線",
+            "bump": "バンプ線",
         }
         self.report(
             {"INFO"},
@@ -269,7 +294,7 @@ class BMANGA_LINE_OT_update_all_visual_targets(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return any(has_line(obj) for obj in context.selected_objects)
+        return _has_any_updatable_line_target(context)
 
     def execute(self, context):
         from . import batch_update, selection, update_state

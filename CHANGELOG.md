@@ -3,6 +3,57 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-09 — B-MANGA Linerに新線種「バンプ線」（ノーマルマップ/バンプからのライン抽出）を追加 (B-MANGA v0.6.453 / B-MANGA Liner v0.3.170)
+
+### 追加
+
+- 新線種「バンプ線」を追加。マテリアルのノーマルマップ/バンプに描かれたディテール（ジオメトリに存在しない凹凸）から、**レンダリング時にのみ**コンポジターでラインを抽出して合成する（方式A・レンダー時合成、計画書 `docs/bml_bump_normal_line_and_lock_plan_2026-07-09.md` Part A で確定）。既存の稜谷線（辺角度ベース）では拾えない、テクスチャのみのディテールに対応する。
+- ライン設定パネルに「バンプ線」セクションを追加（有効チェック・色・太さ(mm)・感度、ヘッダーに「更新」ボタンのみ）。バンプ線はモディファイア/マテリアルを一切生成しない画像空間処理のため、他4線種と異なり「作成」ボタンは出さない。
+- **既知の制限**（v1、ユーザーへ提示済みの前提）:
+  - ビューポート（マテリアルプレビュー等）には表示されない。レンダリング結果でのみ確認できる。
+  - 「ラインのみを表示」中は面が白Emissionに差し替わりノーマルマップ由来の摂動が消えるため、バンプ線は出ない。
+  - 通常のレンダー（F12・コンポジター経由の書き出し）には反映されるが、B-MANGAのページ出力（`io/export_*` 経由のPNG/PSD書き出し）と `b_manga_render` の魚眼/eeVR経路には現時点で反映されない（`io/export_*.py`・`addons/b_manga_render/` は本変更の対象外。ページ出力への反映は別タスク）。
+  - バンプ線は画像空間の単一チェーンで処理するため、色・太さ・感度はシーン内で1系統のみ（複数オブジェクトで異なる値を設定した場合、更新時点でオブジェクト名順に最初の1件の設定値が使われる）。
+  - 対象材質にノーマルマップの起伏が十分に無いと線が出にくい（tokyo0004実機確認: マンホール材質など起伏の弱い素材では既定感度でも検出できないことがある）。
+
+### 実装
+
+- `core.py`: `bump_line_enabled` / `bump_line_color` / `bump_line_thickness`(mm、太さは他線種と異なりモディファイアが無いためBlenderユニット経由変換をせずmm直接保持) / `bump_line_threshold`(感度0-1、既定0.65) を追加。専用コールバック `_on_bump_line_enabled_changed` 等（設定伝搬＋pending印のみの明示更新方針）。
+- `update_state.py`: `LINE_TARGETS` へ `"bump"` 追加、`_LABELS`「バンプ線」、`_VISUAL_PROPS` へ新3プロパティ、`targets_for_property()` に `bump_` プレフィックス対応を追加。自動サブディビジョン等ジオメトリ前提設定の汎用フォールバックは `_GEOMETRY_LINE_TARGETS`（従来4種のみ）に分離し、バンプ線を巻き込まないようにした。
+- `presets.py`: `_SETTING_FIELDS` とプリセット `PropertyGroup` へ新4項目を追加（旧JSON互換：項目が無くても既定値で読み込める既存挙動を維持）。
+- `camera_comp.py`: `target_pixels_for_mm()` を公開ヘルパーとして追加（既存の非公開 `_target_pixels` と同一のDPI換算式を再利用。世界座標を経由できないバンプ線向け）。
+- `aov_compositor.py`: バンプ線の合成チェーンを新設。
+  - 法線ソースは標準Normalパス（`view_layer.use_pass_normal`）。Phase A0実機検証（`_verify/2026-07-09_bml_bump_line_probe/`）でノーマルマップ由来の摂動をEevee/Cycles両方で反映することを確認済みのため、材質へのAOV注入は行わない。
+  - オブジェクト単位マスクは Cryptomatte(Object)（`CompositorNodeCryptomatteV2`、`matte_id` にバンプ線有効・非ロックのオブジェクト名をカンマ区切りで設定）。Eevee で Object Index パスが公開されない制約により pass_index+IDMask は不採用。
+  - エッジ検出チェーン: Sobel → ベクトル長 → しきい値（感度から算出）→ オブジェクトマスク乗算（シルエット誤検出をErodeで除外）→ Dilate（mm→pxキャリブレーション済み）→ AntiAliasing → 線色乗算。
+  - mm→px太らせ幅は実測較正済み（下記「mm→pxキャリブレーション」参照）。
+  - レンダー画像への合成: `sync_bump_line_render_composite()` が、バンプ線有効オブジェクトが存在する時だけ、所有ノード（`NODE_PREFIX="BML_BumpLineComposite"`）によるアルファオーバーで最終コンポジット出力へ反映する。**Blender 5.1では `CompositorNodeComposite` ノード型が廃止されており**、シーン最終出力は `scene.compositing_node_group` の最初のOUTPUTインターフェースソケットへ `NodeGroupOutput` 経由で繋いだ画像になる（実機検証・`RenderSettings.use_compositing` ドキュメントで確認）。既存の他ノード・他機能の出力（最初のOUTPUTソケットを既に占有している場合）には一切触れず自動合成をスキップする。無効化時は重い処理ノード（Cryptomatte・Sobel等）のみ撤去し、最小限のパススルー（RenderLayers→GroupOutput直結）だけ残す（撤去後に空/壊れた出力ソケットを残すと `bpy.ops.render.render(write_still=True)` がエラー無くファイル保存自体をスキップする実機不具合を回避するための必須逸脱）。
+  - 「線画合成ノードを作成」機能（`_create_line_composite_group`）にもバンプ線を既存4線種と同じアルファオーバー方式で合流。既存の「シーンツリーにはRenderLayers/Group/Result/FileOutput以外の処理ノードを直接置かない」というノード所有権規約（`test/blender_b_manga_line_aov_composite_check.py` が検証）を保つため、バンプ線用のCryptomatte/Normal取得・エッジ検出チェーンは（グループ入力ソケット経由ではなく）グループ内部に自己完結のRenderLayers/Cryptomatteを持たせて完結させた。
+- `batch_update.py`: `bump` 用更新処理 `_update_bump_lines()` を新設（Cryptomatte対象リスト再生成＋コンポジターノード再構築）。`refresh_all_target_visuals` へ組み込み。
+- `operators.py`: `_LINE_TARGET_ITEMS` へ `"bump"` を追加（「更新」ボタン用、「作成」ボタンは対象外）。バンプ線はモディファイアを持たないため、更新系オペレーターのpollを `_has_any_updatable_line_target()` に統一（`has_line()` に加え `bump_line_enabled` および無効化直後の更新待ち印も見る。無効化を反映する「更新」を必ず押せるようにするため）。
+- `panels.py`: 「バンプ線」セクションを追加（有効チェック・色・太さ・感度、更新ボタンのみ）。
+- **追加しない**箇所（計画書A-4手順2の非対称、実装コメントで明示）: `line_visibility.py`（モディファイア前提のため無関係）・`camera_comp.py` の厚み補正系（画像空間処理のため対象外）・`presets.apply_line_settings` の線種分岐（ジオメトリ生成が無いため）。
+
+### mm→pxキャリブレーション
+
+- 単純に `dpi/25.4×mm` の目標px値をそのまま Dilate の Size に使うと、Sobel+しきい値検出が既に持つ「生のエッジ幅」の分だけ太りすぎる（Phase A0実測で目標の2.5〜3.4倍）。
+- 単一フランク（法線が1回だけ変化する段差）の実測較正（`_verify/2026-07-09_bml_bump_line_calibration/`）で、Dilate=0時の生エッジ幅が **Eevee=2px・Cycles=4px**（エンジンによるサンプリング特性差）と判明。`Size = round((目標px - 生エッジ幅) / 2)` の式で逆算し、最終幅が目標pxの±1px程度に収まることを実測確認（0.2/0.3/0.5mm @600dpi いずれも誤差1px未満）。新規回帰テストでも0.3mm @600dpiフォールバックで誤差0.91px(Eevee)/0.09px(Cycles)を確認。
+- オブジェクトマスクのErode量は `Dilateサイズ + 2px` の安全マージンを持たせ、太らせた線がシルエット側へ滲み出さないようにした。
+
+### 実装中に発見・修正した問題
+
+- **`CompositorNodeAlphaOver` のソケット順**が、このBlender 5.1ビルドでは `(Background, Foreground, Factor)` であり、旧来想定していた `(Fac, Image, Image)` ではないことが実装中の実機テストで判明（配線を誤ると背景と前景が入れ替わり、バンプ線色がFactorとして誤用されて灰色に薄まる不具合が発生した）。名前指定（`"Background"`/`"Foreground"`）で修正。
+- バンプ線無効化直後は `bump_line_enabled=False` でも「更新待ち」印が残る一方、更新系オペレーターのpollが `has_line()` のみを見ていたため「更新」ボタンが押せず、無効化が永久に反映されない不具合を実装中に発見し修正（`_has_any_updatable_line_target()` に統合）。
+- 既存の `test/blender_b_manga_line_aov_composite_check.py`（線画合成ノードのグループ化を検証する回帰テスト）を実行して初めて判明: バンプ線のエッジ検出チェーンを当初シーンツリー側に直接構築していたため、「シーンツリーに処理ノードを直接置かない」という既存の所有権規約に違反していた。グループ内部で完結させる設計に修正（上記「実装」節参照）。
+
+### 検証 (Blender 5.1 実機)
+
+- 新設回帰テスト `test/blender_b_manga_line_bump_line_check.py` PASS（Eevee/Cycles両方）: テスト内生成のノーマルマップ（外部.blend非依存）で (i) バンプ線有効オブジェクトの溝位置にレンダー画像上で線ピクセルが出る (ii) 同一ノーマルマップを持つが無効なオブジェクトには出ない (iii) 線幅がmm指定どおり(±1px程度)、をピクセル検査。
+- `test/blender_b_manga_line_ui_controls_check.py`: バンプ線セクション追加分（`create_ops`は既存4種のまま・`visual_ops`に`"bump"`追加・セパレータ数）を反映してPASS。
+- `test/blender_b_manga_line_update_all_targets_check.py` / `test/blender_b_manga_line_settings_lock_check.py`（Part B回帰）/ `test/blender_b_manga_line_aov_composite_check.py`（線画合成ノードのグループ化規約回帰）既存テストともにPASS。
+- `python -m py_compile` 全変更ファイルOK。
+- tokyo0004実機確認: 詳細は `_verify/2026-07-09_bml_bump_line_impl/` を参照。
+
 ## 2026-07-09 — B-MANGA Linerにオブジェクト単位のライン設定ロックを追加 (B-MANGA v0.6.452 / B-MANGA Liner v0.3.169)
 
 ### 追加

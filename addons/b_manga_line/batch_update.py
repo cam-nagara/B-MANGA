@@ -1053,6 +1053,58 @@ def _update_generated_visual_parameters(
             )
 
 
+def _bump_line_objects(objects: list[bpy.types.Object]) -> list[bpy.types.Object]:
+    """バンプ線が有効・非ロックのメッシュを列挙する.
+
+    バンプ線はモディファイア/マテリアルを持たない画像空間処理のため、
+    他線種のような core.has_line()（何らかのモディファイアの存在）は
+    前提にしない。
+    """
+    return [
+        obj for obj in objects
+        if obj.type == "MESH" and obj.data is not None
+        and not core.is_settings_locked(obj)
+        and bool(getattr(obj.bmanga_line_settings, "bump_line_enabled", False))
+    ]
+
+
+def _unlocked_mesh_objects(objects: list[bpy.types.Object]) -> list[bpy.types.Object]:
+    return [
+        obj for obj in objects
+        if obj.type == "MESH" and obj.data is not None
+        and not core.is_settings_locked(obj)
+    ]
+
+
+def _update_bump_lines(
+    objects: list[bpy.types.Object],
+    context,
+) -> list[bpy.types.Object]:
+    """バンプ線コンポジターチェーン（マスク対象リスト含む）を再構築する.
+
+    設定値は「バンプ線を更新」実行時にここで初めてノードへ焼き込む
+    （明示更新方針。チェックボックス変更時点では何もしない）。
+
+    戻り値は「バンプ線が現在有効」または「(直前に無効化されて)更新待ち印が
+    残っている」オブジェクトに限定する。無効化直後は bump_line_enabled が
+    False になっても "bump" の更新待ち印は残るため、ここに含めないと
+    印が消えないまま残ってしまう（sync 自体はシーン全体を走査するため
+    無効化の反映自体は毎回済んでいる。ここは戻り値＝報告件数・pending解除
+    対象の絞り込みのみ）。
+    """
+    from . import aov_compositor, update_state
+
+    considered = _unlocked_mesh_objects(objects)
+    scene = getattr(context, "scene", None)
+    if scene is not None:
+        aov_compositor.sync_bump_line_render_composite(scene)
+    return [
+        obj for obj in considered
+        if bool(getattr(obj.bmanga_line_settings, "bump_line_enabled", False))
+        or "bump" in update_state.pending_visual_targets(obj)
+    ]
+
+
 def refresh_target_visuals(
     target: str,
     objects: list[bpy.types.Object],
@@ -1062,6 +1114,8 @@ def refresh_target_visuals(
 ) -> list[bpy.types.Object]:
     """作成済みラインの見た目だけを線種別に更新する."""
     target = str(target)
+    if target == "bump":
+        return _update_bump_lines(objects, context)
     line_objects = _unlocked_line_objects(objects)
     targets = _generated_line_objects(line_objects, target)
     if not targets:
@@ -1096,15 +1150,18 @@ def refresh_all_target_visuals(
     from . import update_state
 
     line_objects = _unlocked_line_objects(objects)
-    if not line_objects:
+    unlocked_mesh_objects = _unlocked_mesh_objects(objects)
+    if not line_objects and not unlocked_mesh_objects:
         return {}
-    _update_auto_subdivision(line_objects, context)
-    _update_match_subsurf_viewport_to_render(line_objects)
+    if line_objects:
+        _update_auto_subdivision(line_objects, context)
+        _update_match_subsurf_viewport_to_render(line_objects)
     results: dict[str, list[bpy.types.Object]] = {}
     for target in update_state.LINE_TARGETS:
+        source_objects = unlocked_mesh_objects if target == "bump" else line_objects
         updated = refresh_target_visuals(
             target,
-            line_objects,
+            source_objects,
             context,
             sync_subdivision=False,
         )

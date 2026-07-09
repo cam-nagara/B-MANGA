@@ -231,6 +231,8 @@ def _assert_update_buttons_are_in_line_settings(active: bpy.types.Object) -> Non
         op for op in settings_layout.operators
         if op.idname == "bmanga_line.update_visual_target"
     ]
+    # バンプ線はモディファイア/マテリアルを生成しないため「作成」ボタンは
+    # 出さない（create_ops は既存4種のまま）。「更新」ボタンのみ末尾に追加。
     assert [op.target for op in create_ops] == [
         "outline",
         "inner",
@@ -242,10 +244,11 @@ def _assert_update_buttons_are_in_line_settings(active: bpy.types.Object) -> Non
         "inner",
         "intersection",
         "selection",
+        "bump",
     ], [(op.idname, getattr(op, "target", None)) for op in visual_ops]
     assert all(op.text == "作成" for op in create_ops)
     assert all(op.text == "更新" for op in visual_ops)
-    assert settings_layout.separator_count >= 4, settings_layout.separator_count
+    assert settings_layout.separator_count >= 5, settings_layout.separator_count
 
 
 def _set_setting_without_update(settings, name: str, value) -> None:

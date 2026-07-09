@@ -56,6 +56,9 @@ AOV_NAMES = (
     AOV_INTERSECTION_LINES_NAME,
     AOV_SELECTION_LINES_NAME,
 )
+# バンプ線は Phase A0 実機検証（2026-07-09、_verify/2026-07-09_bml_bump_line_probe/results.md）
+# の結論により、標準Normalパス(view_layer.use_pass_normal)を使うため材質へのAOV注入は
+# 行わない（AOV_NAMES に相当するバンプ線専用AOVは存在しない）。
 PROP_LINES_HIDDEN = "bml_lines_hidden"
 PROP_LINE_ONLY = "bml_line_only"
 PROP_LINE_ONLY_MATERIALS = "bml_line_only_materials"
@@ -1098,6 +1101,48 @@ def _on_selection_creation_distance_changed(self, context):
     _on_selection_creation_range_changed(self, context, "selection_line_creation_max_distance")
 
 
+# ------------------------------------------------------------------
+# バンプ線（ノーマルマップ/バンプからのライン抽出・レンダー時コンポジター合成）
+# ------------------------------------------------------------------
+# 他4線種と異なりモディファイア・マテリアルを一切生成しない（画像空間の
+# コンポジター処理のみ）。そのため以下は意図的に対応しない
+# （計画書 docs/bml_bump_normal_line_and_lock_plan_2026-07-09.md A-4 手順2参照）:
+#   - line_visibility.py（モディファイアの表示/非表示切り替え前提のため無関係）
+#   - camera_comp.py の厚み補正系（カメラ距離に応じたモディファイア厚み変更。
+#     バンプ線は画像空間で完結するモディファイアが無いため対象外）
+#   - presets.apply_line_settings の線種分岐（ジオメトリ生成が無いため）
+# 「作成/更新」の区別も不要なため、mark_pending は kind="visual" のみ使う。
+
+
+def _on_bump_line_enabled_changed(self, context):
+    if _propagating:
+        return
+    owner = self.id_data
+    targets = _set_prop_on_selected_targets(
+        owner, context, "bump_line_enabled", bool(self.bump_line_enabled),
+    )
+    from . import update_state
+    update_state.mark_pending_many(targets, ("bump",), kind="visual")
+
+
+def _on_bump_color_changed(self, context):
+    if _propagating:
+        return
+    _defer_line_setting(self, context, "bump_line_color", ("bump",))
+
+
+def _on_bump_thickness_changed(self, context):
+    if _propagating:
+        return
+    _defer_line_setting(self, context, "bump_line_thickness", ("bump",))
+
+
+def _on_bump_threshold_changed(self, context):
+    if _propagating:
+        return
+    _defer_line_setting(self, context, "bump_line_threshold", ("bump",))
+
+
 def _sync_intersection_creation(owner: bpy.types.Object, settings, context) -> None:
     from . import intersection_lines, outline_setup, plane_filter
     if owner.type != "MESH":
@@ -2054,6 +2099,51 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         max=1000.0,
         subtype="DISTANCE",
         update=_make_visibility_value_propagator("selection_line_max_distance"),
+    )  # type: ignore[valid-type]
+
+    # --- バンプ線（ノーマルマップ/バンプからのライン抽出） ---
+
+    bump_line_enabled: BoolProperty(
+        name="バンプ線",
+        description=(
+            "マテリアルのノーマルマップ/バンプに描かれたディテールから"
+            "レンダリング時にラインを抽出する（ビューポートには表示されません）"
+        ),
+        default=False,
+        update=_on_bump_line_enabled_changed,
+    )  # type: ignore[valid-type]
+
+    bump_line_color: _line_color_property(
+        "バンプ線の色",
+        _on_bump_color_changed,
+    )  # type: ignore[valid-type]
+
+    # 他線種の *_thickness と異なり、モディファイアが存在しないため
+    # 内部値をBlenderユニット(m)にする理由が無い。UIに表示するmm値を
+    # そのまま保持する（コンポジターのpx換算は camera_comp.target_pixels_for_mm
+    # が都度計算する）。
+    bump_line_thickness: FloatProperty(
+        name="バンプ線の太さ (mm)",
+        description="印刷時のバンプ線の太さ (mm)",
+        default=0.3,
+        min=0.01,
+        max=50.0,
+        precision=2,
+        step=5,
+        update=_on_bump_thickness_changed,
+    )  # type: ignore[valid-type]
+
+    bump_line_threshold: FloatProperty(
+        name="感度",
+        description=(
+            "ノーマルマップの変化を検出する感度。高いほど弱い凹凸も線として拾う"
+            "（tokyo0004実機検証: 起伏の弱いノーマルマップは既定値でも線が出にくいことがある）"
+        ),
+        default=0.65,
+        min=0.0,
+        max=1.0,
+        subtype="FACTOR",
+        update=_on_bump_threshold_changed,
     )  # type: ignore[valid-type]
 
 

@@ -103,12 +103,17 @@ _SETTING_FIELDS = (
     "intersection_max_distance",
     "use_selection_line_distance_limit",
     "selection_line_max_distance",
+    "bump_line_enabled",
+    "bump_line_color",
+    "bump_line_thickness",
+    "bump_line_threshold",
 )
 _COLOR_FIELDS = {
     "outline_color",
     "inner_line_color",
     "intersection_color",
     "selection_line_color",
+    "bump_line_color",
 }
 
 
@@ -694,6 +699,17 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
 
     use_selection_line_distance_limit: BoolProperty(default=False)
     selection_line_max_distance: FloatProperty(default=20.0, min=0.1, max=1000.0)
+
+    bump_line_enabled: BoolProperty(default=False)
+    bump_line_color: FloatVectorProperty(
+        subtype="COLOR",
+        size=4,
+        default=(0.0, 0.0, 0.0, 1.0),
+        min=0.0,
+        max=1.0,
+    )
+    bump_line_thickness: FloatProperty(default=0.3, min=0.01, max=50.0)
+    bump_line_threshold: FloatProperty(default=0.65, min=0.0, max=1.0)
 
 
 class BMANGA_LINE_OT_preset_save(bpy.types.Operator):

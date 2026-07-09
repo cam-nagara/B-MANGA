@@ -306,6 +306,17 @@ def _target_pixels(scene, width_m: float) -> float:
     return max(0.001, width_mm * _get_scene_dpi(scene) / 25.4)
 
 
+def target_pixels_for_mm(scene, width_mm: float) -> float:
+    """mm指定の太さを紙面DPI基準のpxへ変換する公開ヘルパー.
+
+    バンプ線（画像空間のコンポジター処理で、ジオメトリの世界座標を
+    経由しない）など、_target_pixels のように world幅(m)からの換算を
+    経由できない呼び出し元向け。DPI取得・換算式は _target_pixels と
+    完全に同一（唯一の変換元）。
+    """
+    return _target_pixels(scene, max(0.0, float(width_mm)) / 1000.0)
+
+
 def _world_per_pixel(scene, camera, world_co: Vector) -> float:
     width, height = _effective_render_size(scene)
     cam_data = camera.data
