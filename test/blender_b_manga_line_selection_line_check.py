@@ -140,7 +140,8 @@ def main() -> None:
         assert len(set(_chain_ids(obj))) == 3, _chain_ids(obj)
 
         vertex_analysis.compute_and_apply_weights(obj, settings, target="selection")
-        assert obj.vertex_groups.get(core.VG_SELECTION_LINE_WIDTH) is not None
+        assert obj.data.attributes.get(core.VG_SELECTION_LINE_WIDTH) is not None
+        assert obj.vertex_groups.get(core.VG_SELECTION_LINE_WIDTH) is None
         _assert_selection_material_aov(mat)
         _assert_compositor_accepts_selection_aov(bpy.context.scene)
 

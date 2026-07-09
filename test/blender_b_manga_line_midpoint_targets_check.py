@@ -203,6 +203,14 @@ def _center_box_corner_vertex() -> int:
 
 
 def _weight(obj: bpy.types.Object, group_name: str, vertex_index: int) -> float:
+    if group_name in {
+        core.VG_INNER_LINE_WIDTH,
+        core.VG_INTERSECTION_LINE_WIDTH,
+        core.VG_SELECTION_LINE_WIDTH,
+    }:
+        attr = obj.data.attributes.get(group_name)
+        assert attr is not None, f"{group_name} 属性がありません"
+        return vertex_analysis.stored_width_weight(obj, group_name, vertex_index)
     vg = obj.vertex_groups.get(group_name)
     assert vg is not None, f"{group_name} がありません"
     return vg.weight(vertex_index)

@@ -1552,11 +1552,17 @@ def remove_outline(obj: bpy.types.Object) -> bool:
                 bpy.data.materials.remove(mat)
             removed = True
 
-    # 頂点グループ
-    for name in (VG_LINE_WIDTH, VG_INNER_LINE_WIDTH, VG_INTERSECTION_LINE_WIDTH):
-        vg = obj.vertex_groups.get(name)
-        if vg is not None:
-            obj.vertex_groups.remove(vg)
+    # 線幅保存先
+    from . import vertex_analysis
+
+    for name in (
+        VG_LINE_WIDTH,
+        VG_INNER_LINE_WIDTH,
+        VG_INTERSECTION_LINE_WIDTH,
+        VG_SELECTION_LINE_WIDTH,
+    ):
+        if vertex_analysis.clear_width_weights(obj, group_name=name):
+            removed = True
 
     return removed
 

@@ -226,14 +226,14 @@ def main() -> None:
     max_x = max(co.x for co in coords)
     min_y = min(co.y for co in coords)
     max_y = max(co.y for co in coords)
-    # 交差線の中心（曲線位置）は「元の面」との実際の交差位置（半径0.5の
-    # 円柱表面）。アウトライン幅を表示半径へ混ぜると、アウトラインを
-    # 太くした時に面同士の交差ラインから外側へ広がって見えるため、
-    # チューブの半径は交差線幅だけで決まる。
-    covered_width = _INTERSECTION_THICKNESS
-    inner = _CYLINDER_RADIUS - covered_width
-    outer = _CYLINDER_RADIUS + covered_width
-    margin = 0.08
+    # 保存済み交差線方式は、交差対象のアウトラインで生じる隙間を
+    # 埋めるため、中心線を対象のアウトライン半幅ぶん外側へ寄せ、
+    # その上に交差線チューブ半径を足す。
+    center_radius = _CYLINDER_RADIUS + _OUTLINE_THICKNESS * 0.5
+    tube_radius = _INTERSECTION_THICKNESS * 0.5
+    inner = center_radius - tube_radius
+    outer = center_radius + tube_radius
+    margin = 0.05
     for label, low, high in (
         ("min_x", -outer - margin, -inner + margin),
         ("max_x", inner - margin, outer + margin),
@@ -244,8 +244,8 @@ def main() -> None:
         assert low < value < high, (label, value)
 
     outward = max_x - _CYLINDER_RADIUS
-    assert _INTERSECTION_THICKNESS * 0.25 < outward < _OUTLINE_THICKNESS * 0.25, (
-        "交差線の実効太さがアウトライン幅に引っ張られています",
+    assert _OUTLINE_THICKNESS * 0.45 < outward < _OUTLINE_THICKNESS * 0.65, (
+        "交差線が交差対象アウトラインの半幅に追従していません",
         outward,
     )
 

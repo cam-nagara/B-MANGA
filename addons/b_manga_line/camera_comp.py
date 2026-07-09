@@ -742,8 +742,7 @@ def _apply_uniform_target_line_width(scene, camera, obj, settings, target: str) 
             combined[count:] *= 1.0
     else:
         combined = normalized
-    group_name = vertex_analysis.width_group_name(target)
-    vertex_analysis._write_vertex_group_weights(obj, combined.tolist(), group_name=group_name)
+    vertex_analysis.write_width_weights(obj, combined, target)
     if target == "outline":
         mod = obj.modifiers.get(MODIFIER_NAME)
         if mod is not None:

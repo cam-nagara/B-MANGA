@@ -11,6 +11,7 @@ import math
 
 import bmesh
 import bpy
+import numpy as np
 
 from .core import (
     COLOR_ATTR_NAME,
@@ -396,6 +397,151 @@ def width_group_name(target: str = "outline") -> str:
     return VG_LINE_WIDTH
 
 
+def _is_generated_width_name(group_name: str) -> bool:
+    return group_name in {
+        VG_INNER_LINE_WIDTH,
+        VG_INTERSECTION_LINE_WIDTH,
+        VG_SELECTION_LINE_WIDTH,
+    }
+
+
+def _remove_vertex_group(obj: bpy.types.Object, group_name: str) -> bool:
+    vg = obj.vertex_groups.get(group_name)
+    if vg is None:
+        return False
+    obj.vertex_groups.remove(vg)
+    return True
+
+
+def _ensure_float_point_attribute(
+    obj: bpy.types.Object,
+    name: str,
+) -> bpy.types.Attribute | None:
+    if obj.type != "MESH" or obj.data is None:
+        return None
+    mesh = obj.data
+    attr = mesh.attributes.get(name)
+    if (
+        attr is not None
+        and getattr(attr, "domain", None) == "POINT"
+        and getattr(attr, "data_type", None) == "FLOAT"
+    ):
+        return attr
+    if attr is not None:
+        mesh.attributes.remove(attr)
+    return mesh.attributes.new(name, "FLOAT", "POINT")
+
+
+def _write_float_point_attribute(
+    obj: bpy.types.Object,
+    weights,
+    name: str,
+) -> int:
+    attr = _ensure_float_point_attribute(obj, name)
+    if attr is None:
+        return 0
+    count = min(len(obj.data.vertices), len(weights))
+    if count <= 0:
+        _remove_vertex_group(obj, name)
+        return 0
+    values = np.asarray(weights, dtype=np.float32)
+    if values.size < len(obj.data.vertices):
+        filled = np.ones(len(obj.data.vertices), dtype=np.float32)
+        if values.size:
+            filled[:values.size] = values
+        values = filled
+    values = np.clip(values[:len(obj.data.vertices)], 0.0, 1.0)
+    attr.data.foreach_set("value", values)
+    obj.data.update()
+    _remove_vertex_group(obj, name)
+    return len(obj.data.vertices)
+
+
+def _vertex_group_weights(
+    obj: bpy.types.Object,
+    group_name: str,
+    default: float = 1.0,
+) -> list[float]:
+    count = len(obj.data.vertices)
+    vg = obj.vertex_groups.get(group_name)
+    if vg is None:
+        return [_clamp01(default)] * count
+    values = []
+    fallback = _clamp01(default)
+    for i in range(count):
+        try:
+            values.append(_clamp01(vg.weight(i)))
+        except RuntimeError:
+            values.append(fallback)
+    return values
+
+
+def migrate_width_storage(obj: bpy.types.Object, group_name: str) -> bool:
+    """生成線幅の旧頂点グループを同名FLOAT属性へ移す."""
+    if obj.type != "MESH" or obj.data is None or not _is_generated_width_name(group_name):
+        return False
+    vg = obj.vertex_groups.get(group_name)
+    if vg is None:
+        return False
+    attr = obj.data.attributes.get(group_name)
+    if (
+        attr is None
+        or getattr(attr, "domain", None) != "POINT"
+        or getattr(attr, "data_type", None) != "FLOAT"
+    ):
+        _write_float_point_attribute(obj, _vertex_group_weights(obj, group_name), group_name)
+        return True
+    _remove_vertex_group(obj, group_name)
+    return True
+
+
+def ensure_generated_width_storage(obj: bpy.types.Object, group_name: str) -> None:
+    """生成線の線幅保存先を属性へ寄せ、旧頂点グループを残さない."""
+    if obj.type != "MESH" or obj.data is None or not _is_generated_width_name(group_name):
+        return
+    migrate_width_storage(obj, group_name)
+
+
+def stored_width_weight(
+    obj: bpy.types.Object,
+    group_name: str,
+    vertex_index: int,
+    default: float = 1.0,
+) -> float:
+    if obj.type != "MESH" or obj.data is None:
+        return _clamp01(default)
+    if _is_generated_width_name(group_name):
+        attr = obj.data.attributes.get(group_name)
+        if (
+            attr is not None
+            and getattr(attr, "domain", None) == "POINT"
+            and getattr(attr, "data_type", None) == "FLOAT"
+            and 0 <= vertex_index < len(attr.data)
+        ):
+            return _clamp01(attr.data[vertex_index].value)
+    vg = obj.vertex_groups.get(group_name)
+    if vg is None:
+        return _clamp01(default)
+    try:
+        return _clamp01(vg.weight(vertex_index))
+    except RuntimeError:
+        return _clamp01(default)
+
+
+def stored_width_weights(
+    obj: bpy.types.Object,
+    target: str = "outline",
+    default: float = 1.0,
+) -> list[float]:
+    group_name = width_group_name(target)
+    if obj.type != "MESH" or obj.data is None:
+        return []
+    return [
+        stored_width_weight(obj, group_name, i, default)
+        for i in range(len(obj.data.vertices))
+    ]
+
+
 def has_width_controls(settings, target: str = "outline") -> bool:
     """線種別の中間頂点・色による線幅制御が有効か返す."""
     target = _normalize_target(target)
@@ -478,6 +624,18 @@ def _write_vertex_group_weights(
     return len(weights)
 
 
+def write_width_weights(
+    obj: bpy.types.Object,
+    weights,
+    target: str = "outline",
+) -> int:
+    """線幅ウェイトを線種に応じた保存先へ書き込む."""
+    group_name = width_group_name(target)
+    if _is_generated_width_name(group_name):
+        return _write_float_point_attribute(obj, weights, group_name)
+    return _write_vertex_group_weights(obj, list(weights), group_name)
+
+
 def reset_width_weights(
     obj: bpy.types.Object,
     value: float = 1.0,
@@ -489,6 +647,8 @@ def reset_width_weights(
     count = len(obj.data.vertices)
     if count == 0:
         return 0
+    if _is_generated_width_name(group_name):
+        return _write_float_point_attribute(obj, [_clamp01(value)] * count, group_name)
     return _write_vertex_group_weights(obj, [_clamp01(value)] * count, group_name)
 
 
@@ -499,6 +659,13 @@ def clear_width_weights(
     """線幅用頂点グループを使わない状態に戻す."""
     if obj.type != "MESH":
         return False
+    if _is_generated_width_name(group_name):
+        removed = _remove_vertex_group(obj, group_name)
+        attr = obj.data.attributes.get(group_name) if obj.data is not None else None
+        if attr is not None:
+            obj.data.attributes.remove(attr)
+            removed = True
+        return removed
     vg = obj.vertex_groups.get(group_name)
     if vg is None:
         return False
@@ -721,4 +888,4 @@ def compute_and_apply_weights(obj, settings, target: str = "outline") -> int:
     weights = compute_weights(obj, settings, target)
     if not weights:
         return 0
-    return _write_vertex_group_weights(obj, weights, width_group_name(target))
+    return write_width_weights(obj, weights, target)

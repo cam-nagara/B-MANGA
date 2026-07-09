@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import inner_line_cache, inner_lines  # noqa: E402
+from b_manga_line import inner_line_cache, inner_lines, vertex_analysis  # noqa: E402
 from b_manga_line.core import VG_INNER_LINE_WIDTH  # noqa: E402
 
 
@@ -59,14 +59,16 @@ def _make_folded_strip() -> bpy.types.Object:
     )
     assert ok, "内部線を追加できませんでした"
 
-    vg = obj.vertex_groups.get(VG_INNER_LINE_WIDTH)
-    assert vg is not None
+    weights = [1.0] * len(obj.data.vertices)
     for i in range(levels):
         t = i / (levels - 1)
         midpoint = 1.0 - abs(t - 0.5) * 2.0
         weight = 1.0 - midpoint
         for offset in range(3):
-            vg.add([i * 3 + offset], weight, "REPLACE")
+            weights[i * 3 + offset] = weight
+    vertex_analysis.write_width_weights(obj, weights, "inner")
+    assert obj.data.attributes.get(VG_INNER_LINE_WIDTH) is not None
+    assert obj.vertex_groups.get(VG_INNER_LINE_WIDTH) is None
     obj.data.update()
     obj.update_tag(refresh={"DATA"})
     assert inner_lines.update_parameters(obj), "保存済み稜谷線の線幅属性を更新できませんでした"

@@ -1166,10 +1166,9 @@ def _set_multi_modifier_parameters(
 
 
 def _ensure_intersection_width_group(obj: bpy.types.Object) -> None:
-    vg = obj.vertex_groups.get(VG_INTERSECTION_LINE_WIDTH)
-    if vg is None:
-        vg = obj.vertex_groups.new(name=VG_INTERSECTION_LINE_WIDTH)
-        vg.add(list(range(len(obj.data.vertices))), 1.0, "REPLACE")
+    from . import vertex_analysis
+
+    vertex_analysis.ensure_generated_width_storage(obj, VG_INTERSECTION_LINE_WIDTH)
 
 
 def _position_intersection_modifiers(obj: bpy.types.Object) -> None:

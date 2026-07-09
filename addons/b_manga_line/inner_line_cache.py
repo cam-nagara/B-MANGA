@@ -9,7 +9,12 @@ import bmesh
 import bpy
 from mathutils import Vector
 
-from . import inner_line_chains, intersection_shell_node_helpers, modifier_stack
+from . import (
+    inner_line_chains,
+    intersection_shell_node_helpers,
+    modifier_stack,
+    vertex_analysis,
+)
 from .core import (
     GENERATED_LINE_ATTR,
     GN_MODIFIER_NAME,
@@ -559,13 +564,9 @@ def _safe_normal(vector: Vector) -> Vector:
 
 
 def _source_width(owner: bpy.types.Object, vertex_index: int) -> float:
-    group = owner.vertex_groups.get(VG_INNER_LINE_WIDTH)
-    if group is None or vertex_index >= len(owner.data.vertices):
+    if vertex_index >= len(owner.data.vertices):
         return 1.0
-    try:
-        return max(0.0, min(1.0, float(group.weight(vertex_index))))
-    except RuntimeError:
-        return 1.0
+    return vertex_analysis.stored_width_weight(owner, VG_INNER_LINE_WIDTH, vertex_index)
 
 
 def _build_cache_mesh_data(
@@ -731,14 +732,10 @@ def _set_width_control_parameters(
         _set_modifier_input_if_changed(mod, _find_socket_id(tree, name), value)
 
 
-def _ensure_width_group(owner: bpy.types.Object) -> None:
+def _ensure_width_storage(owner: bpy.types.Object) -> None:
     if owner.type != "MESH" or owner.data is None:
         return
-    group = owner.vertex_groups.get(VG_INNER_LINE_WIDTH)
-    if group is not None:
-        return
-    group = owner.vertex_groups.new(name=VG_INNER_LINE_WIDTH)
-    group.add(list(range(len(owner.data.vertices))), 1.0, "REPLACE")
+    vertex_analysis.ensure_generated_width_storage(owner, VG_INNER_LINE_WIDTH)
 
 
 def _sync_cache_widths_from_owner(owner: bpy.types.Object) -> None:
@@ -868,7 +865,7 @@ def apply_cached_inner_lines(
 ) -> bool:
     if owner.type != "MESH" or owner.data is None:
         return False
-    _ensure_width_group(owner)
+    _ensure_width_storage(owner)
     inner_line_chains.update_chain_id_attribute(
         owner,
         float(angle),

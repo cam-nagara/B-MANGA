@@ -3,6 +3,39 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-07-10 — B-MANGA Linerの生成線幅反映を高速化 (B-MANGA v0.6.461 / B-MANGA Liner v0.3.179)
+
+### 症状
+
+- 「線幅の均一化（頂点単位）」と生成線（稜谷線・交差線・選択線）を併用した場合、線幅計算後の保存先書き込みが反映時間の大半を占める可能性があった。
+- 旧形式では生成線幅も頂点グループへ保存していたため、大量頂点メッシュでは1頂点ずつの書き込みコストが残っていた。
+
+### 修正
+
+- 計画書 `docs/bml_width_speedup_phase2_plan_2026-07-10.md` のステップA/Bに従い、実測ゲートで書き込みが支配的なことを確認してからステップBを実装した。
+- アウトラインはBlenderのSolidifyが頂点グループを必要とするため従来どおり維持し、稜谷線・交差線・選択線だけを同名のFLOAT/POINT属性へ保存するようにした。
+- 旧ファイル互換として、反映時に残っている生成線幅の旧頂点グループを同名属性へ移し、旧頂点グループは残さないようにした。
+- 保存済み稜谷線キャッシュ、線種別反映、全ライン反映、プリセット適用、ライン削除の経路を新しい保存先へ追従させた。
+- ステップC（ジオメトリノード側の動的線幅計算）は、ステップB後の100万頂点反映が約0.10秒で「数十秒級」ではなかったため、ゲート未達として実装しなかった。
+
+### 検証 (Blender 5.1 実機)
+
+- ステップA実測: アウトライン10万頂点 0.062095秒、書き込み 0.045979秒（約74%）のためステップBへ進行。旧生成線幅書き込みは10万頂点 0.053259秒、100万頂点 0.668637秒。
+- ステップB後実測: 稜谷線10万頂点反映 0.007563秒（書き込み 0.000120秒）、100万頂点反映 0.100855秒（書き込み 0.001223秒）。生成線幅属性書き込み単体は10万頂点 0.000031秒、100万頂点 0.000600秒。
+- `test/blender_b_manga_line_width_falloff_check.py` PASS
+- `test/blender_b_manga_line_uniform_width_check.py` PASS
+- `test/blender_b_manga_line_fisheye_width_check.py` PASS
+- `test/blender_b_manga_line_ui_controls_check.py` PASS
+- `test/blender_b_manga_line_inner_width_check.py` PASS
+- `test/blender_b_manga_line_midpoint_targets_check.py` PASS
+- `test/blender_b_manga_line_midpoint_jitter_check.py` PASS
+- `test/blender_b_manga_line_selection_line_check.py` PASS
+- `test/blender_b_manga_line_intersection_fill_check.py` PASS
+- `test/blender_b_manga_line_intersection_cache_check.py` PASS
+- `test/blender_b_manga_line_intersection_creation_range_check.py` PASS
+- `test/blender_b_manga_line_intersection_refresh_efficiency_check.py` PASS
+- `test/blender_b_manga_line_intersection_shell_method_check.py` PASS
+
 ## 2026-07-10 — B-MANGA Linerの頂点単位線幅に遠近減衰を追加 (B-MANGA v0.6.460 / B-MANGA Liner v0.3.178)
 
 ### 症状

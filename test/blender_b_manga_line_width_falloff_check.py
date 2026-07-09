@@ -133,8 +133,7 @@ def _inner_world_width(obj: bpy.types.Object) -> float:
 
 
 def _weights(obj: bpy.types.Object, target: str = "outline") -> list[float]:
-    group = obj.vertex_groups[vertex_analysis.width_group_name(target)]
-    return [group.weight(i) for i in range(len(obj.data.vertices))]
+    return vertex_analysis.stored_width_weights(obj, target)
 
 
 def _actual_widths(obj: bpy.types.Object, target: str = "outline") -> list[float]:
@@ -303,6 +302,32 @@ def _test_inner_line_and_style_weights() -> None:
         reference_distance=2.0,
     )
     assert math.isclose(max(inner_actual), max(inner_expected), rel_tol=1.0e-3)
+    assert obj.data.attributes.get(vertex_analysis.width_group_name("inner")) is not None
+    assert obj.vertex_groups.get(vertex_analysis.width_group_name("inner")) is None
+
+
+def _test_generated_width_group_migrates_to_attribute() -> None:
+    _clear_scene()
+    _make_camera("PERSP")
+    obj = _make_depth_box("BML_width_migration_box")
+    _select(obj)
+    settings = obj.bmanga_line_settings
+    settings.inner_line_enabled = True
+    settings.exclude_sheet_meshes = False
+    settings.use_uniform_line_width = True
+    settings.line_width_reference_distance = 2.0
+    settings.line_width_distance_falloff = 1.0
+    settings.inner_edge_smooth_factor = 0.0
+    assert presets.apply_line_settings(obj, bpy.context)
+    group_name = vertex_analysis.width_group_name("inner")
+    old_group = obj.vertex_groups.new(name=group_name)
+    old_group.add([0], 0.25, "REPLACE")
+    old_group.add(list(range(1, len(obj.data.vertices))), 1.0, "REPLACE")
+
+    assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="inner") == {"FINISHED"}
+    attr = obj.data.attributes.get(group_name)
+    assert attr is not None, "生成線幅属性へ移行されていません"
+    assert obj.vertex_groups.get(group_name) is None, "旧頂点グループが残っています"
 
 
 def _test_preset_round_trip() -> None:
@@ -389,6 +414,7 @@ def main() -> None:
         _test_p0_and_p1_width_shape()
         _test_p2_ratio()
         _test_inner_line_and_style_weights()
+        _test_generated_width_group_migrates_to_attribute()
         _test_preset_round_trip()
         _test_performance_smoke()
     finally:

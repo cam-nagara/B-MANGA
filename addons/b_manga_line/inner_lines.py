@@ -1056,11 +1056,9 @@ def apply_inner_lines(
     if sid_line_material is not None:
         mod[sid_line_material] = line_material_index
 
-    # 頂点グループ: 元メッシュ頂点 = weight 1.0
-    vg = obj.vertex_groups.get(width_group_name)
-    if vg is None:
-        vg = obj.vertex_groups.new(name=width_group_name)
-        vg.add(list(range(len(obj.data.vertices))), 1.0, "REPLACE")
+    from . import vertex_analysis
+
+    vertex_analysis.ensure_generated_width_storage(obj, width_group_name)
 
     # 既存のメッシュ調整を先に通し、ライン生成は最後にまとめる。
     modifier_stack.reorder_line_modifiers(obj)
