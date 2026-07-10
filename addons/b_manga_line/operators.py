@@ -212,7 +212,7 @@ class BMANGA_LINE_OT_reflect_all(bpy.types.Operator):
         if summary["intersection"]:
             layout.label(
                 text=f"交差線 {summary['intersection']}件は初回作成に時間がかかります",
-                icon="WARNING",
+                icon="ERROR",
             )
         if summary["uniform"]:
             layout.label(
