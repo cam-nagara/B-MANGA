@@ -1723,7 +1723,7 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
         offset_value = float(sp.get("cloudOffset", 0.5))
         entry.shape_params.cloud_offset_percent = offset_value * 100.0 if offset_value <= 1.0 else offset_value
     entry.shape_params.cloud_sub_width_ratio = float(
-        sp.get("cloudSubWidthRatio", sp.get("cloudSubBumpRatio", 0.0))
+        sp.get("cloudSubWidthRatio", sp.get("cloudSubBumpRatio", 30.0))
     )
     entry.shape_params.cloud_sub_height_ratio = float(
         sp.get("cloudSubHeightRatio", sp.get("cloudSubBumpRatio", 50.0))

@@ -237,19 +237,6 @@ def _check_effect(context) -> None:
         _assert_ratio(stroke.radii[-1], stroke.radius, 0.4, "効果線 黒線抜き")
         assert max(stroke.radii) >= stroke.radius * 0.999
 
-    params.white_outline_black_in_percent = 0.0
-    params.white_outline_black_out_percent = 0.0
-    params.white_outline_black_inout_range_mode = "length"
-    params.white_outline_black_in_range_mm = 5.0
-    params.white_outline_black_out_range_mm = 7.0
-    length_stroke = _black_strokes(
-        effect_line_gen.generate_white_outline_strokes(params, (0.0, 0.0), 40.0, 30.0, seed=3)
-    )[0]
-    points = list(length_stroke.points_xyz)
-    cumulative = effect_line_gen._polyline_cumulative(points)
-    total = cumulative[-1]
-    assert any(math.isclose(value, 0.005, abs_tol=1.0e-6) for value in cumulative)
-    assert any(math.isclose(value, total - 0.007, abs_tol=1.0e-6) for value in cumulative)
     _assert_coma_frame_bundles_reach_end_shape(params, effect_line_gen)
 
 

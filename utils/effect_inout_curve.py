@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 import time
 
 try:
@@ -19,10 +19,43 @@ PROFILE_NODE_NAME = "BManga_EffectLine_ProfileCurve"
 IN_SOURCE_PROP = "bmanga_effect_in_curve_source"
 OUT_SOURCE_PROP = "bmanga_effect_out_curve_source"
 PROFILE_SOURCE_PROP = "bmanga_effect_profile_curve_source"
+WHITE_PROFILE_NODE_NAME = "BManga_EffectLine_WhiteProfileCurve"
+BLACK_PROFILE_NODE_NAME = "BManga_EffectLine_BlackProfileCurve"
+WHITE_PROFILE_SOURCE_PROP = "bmanga_effect_white_profile_curve_source"
+BLACK_PROFILE_SOURCE_PROP = "bmanga_effect_black_profile_curve_source"
+WHITE_PROFILE_FIELDS = {
+    "in_percent": "white_outline_white_in_percent",
+    "out_percent": "white_outline_white_out_percent",
+    "range_mode": "white_outline_white_inout_range_mode",
+    "in_range_percent": "white_outline_white_in_range_percent",
+    "out_range_percent": "white_outline_white_out_range_percent",
+    "in_range_mm": "white_outline_white_in_range_mm",
+    "out_range_mm": "white_outline_white_out_range_mm",
+    "in_curve": "white_outline_white_in_easing_curve",
+    "out_curve": "white_outline_white_out_easing_curve",
+}
+BLACK_PROFILE_FIELDS = {
+    "in_percent": "white_outline_black_in_percent",
+    "out_percent": "white_outline_black_out_percent",
+    "range_mode": "white_outline_black_inout_range_mode",
+    "in_range_percent": "white_outline_black_in_range_percent",
+    "out_range_percent": "white_outline_black_out_range_percent",
+    "in_range_mm": "white_outline_black_in_range_mm",
+    "out_range_mm": "white_outline_black_out_range_mm",
+    "in_curve": "white_outline_black_in_easing_curve",
+    "out_curve": "white_outline_black_out_easing_curve",
+}
 _EPSILON = 1.0e-6
-_LIVE_PROFILE_PARAMS = None
+_DEFAULT_PROFILE_FIELDS = {
+    "in_percent": "in_percent",
+    "out_percent": "out_percent",
+    "in_start": "in_start_percent",
+    "out_start": "out_start_percent",
+    "in_curve": "in_easing_curve",
+    "out_curve": "out_easing_curve",
+}
+_LIVE_PROFILE_REQUESTS: dict[str, tuple[object, dict[str, str], str, float]] = {}
 _LIVE_PROFILE_RUNNING = False
-_LIVE_PROFILE_LAST_REQUEST = 0.0
 _LIVE_PROFILE_TIMEOUT_SEC = 300.0
 
 
@@ -93,13 +126,17 @@ def evaluate(points: Sequence[tuple[float, float]], t: float) -> float:
     return _clamp01(pts[-1][1])
 
 
-def profile_points_from_params(params) -> tuple[tuple[float, float], ...]:
+def profile_points_from_params(
+    params,
+    fields: Mapping[str, str] | None = None,
+) -> tuple[tuple[float, float], ...]:
     """始点から終点までの線幅プロファイルをグラフ点列へ変換する."""
-    in_frac = _percent_attr(params, "in_percent", 100.0)
-    out_frac = _percent_attr(params, "out_percent", 0.0)
-    d_in, d_out = _start_factors(params)
-    in_curve = parse_points(getattr(params, "in_easing_curve", DEFAULT_CURVE_TEXT))
-    out_curve = parse_points(getattr(params, "out_easing_curve", DEFAULT_CURVE_TEXT))
+    attrs = _profile_fields(fields)
+    in_frac = _percent_attr(params, attrs["in_percent"], 100.0)
+    out_frac = _percent_attr(params, attrs["out_percent"], 0.0)
+    d_in, d_out = _start_factors(params, attrs)
+    in_curve = parse_points(getattr(params, attrs["in_curve"], DEFAULT_CURVE_TEXT))
+    out_curve = parse_points(getattr(params, attrs["out_curve"], DEFAULT_CURVE_TEXT))
 
     points: list[tuple[float, float]] = [(0.0, _profile_value(in_frac, out_frac, d_in, d_out, in_curve, out_curve, 0.0))]
     if d_in > _EPSILON:
@@ -120,10 +157,15 @@ def profile_points_from_params(params) -> tuple[tuple[float, float], ...]:
     return _limit_points(points)
 
 
-def profile_points_to_params(params, points: Sequence[tuple[float, float]]) -> bool:
+def profile_points_to_params(
+    params,
+    points: Sequence[tuple[float, float]],
+    fields: Mapping[str, str] | None = None,
+) -> bool:
     """線幅グラフ点列から入り抜き数値と左右カーブを更新する."""
     if params is None:
         return False
+    attrs = _profile_fields(fields)
     profile = normalize_points(points)
     if len(profile) < 2:
         return False
@@ -131,12 +173,12 @@ def profile_points_to_params(params, points: Sequence[tuple[float, float]]) -> b
     out_frac = _clamp01(profile[-1][1])
     in_start, out_start = _profile_start_factors(profile)
     changed = False
-    changed |= _set_percent_attr(params, "in_percent", in_frac * 100.0)
-    changed |= _set_percent_attr(params, "out_percent", out_frac * 100.0)
-    changed |= _set_percent_attr(params, "in_start_percent", in_start * 100.0)
-    changed |= _set_percent_attr(params, "out_start_percent", out_start * 100.0)
-    changed |= _set_text_attr(params, "in_easing_curve", _in_curve_from_profile(profile, in_frac, in_start))
-    changed |= _set_text_attr(params, "out_easing_curve", _out_curve_from_profile(profile, out_frac, out_start))
+    changed |= _set_percent_attr(params, attrs["in_percent"], in_frac * 100.0)
+    changed |= _set_percent_attr(params, attrs["out_percent"], out_frac * 100.0)
+    changed |= _set_range_attr(params, attrs, "in", in_start)
+    changed |= _set_range_attr(params, attrs, "out", out_start)
+    changed |= _set_text_attr(params, attrs["in_curve"], _in_curve_from_profile(profile, in_frac, in_start))
+    changed |= _set_text_attr(params, attrs["out_curve"], _out_curve_from_profile(profile, out_frac, out_start))
     return changed
 
 
@@ -153,7 +195,14 @@ def ensure_ui_nodes(params):
     return in_node, out_node
 
 
-def ensure_profile_node(params):
+def ensure_profile_node(
+    params,
+    *,
+    fields: Mapping[str, str] | None = None,
+    node_name: str = PROFILE_NODE_NAME,
+    source_prop: str = PROFILE_SOURCE_PROP,
+    label: str = "線幅グラフ",
+):
     if bpy is None:
         return None
     mat = bpy.data.materials.get(MATERIAL_NAME) or bpy.data.materials.new(MATERIAL_NAME)
@@ -161,7 +210,8 @@ def ensure_profile_node(params):
     nt = mat.node_tree
     if nt is None:
         return None
-    return _ensure_node(nt, PROFILE_NODE_NAME, "線幅グラフ", profile_points_from_params(params), mat, PROFILE_SOURCE_PROP)
+    display_points = flip_horizontal(profile_points_from_params(params, fields))
+    return _ensure_node(nt, node_name, label, display_points, mat, source_prop)
 
 
 def get_ui_nodes():
@@ -174,30 +224,91 @@ def get_ui_nodes():
     return _get_curve_node(nt, IN_NODE_NAME), _get_curve_node(nt, OUT_NODE_NAME)
 
 
-def get_profile_node():
+def get_profile_node(node_name: str = PROFILE_NODE_NAME):
     if bpy is None:
         return None
     mat = bpy.data.materials.get(MATERIAL_NAME)
     nt = getattr(mat, "node_tree", None) if mat is not None else None
     if nt is None:
         return None
-    return _get_curve_node(nt, PROFILE_NODE_NAME)
+    return _get_curve_node(nt, node_name)
 
 
-def sync_profile_node_bidirectional(params) -> bool:
+def sync_profile_node_bidirectional(
+    params,
+    *,
+    fields: Mapping[str, str] | None = None,
+    node_name: str = PROFILE_NODE_NAME,
+    source_prop: str = PROFILE_SOURCE_PROP,
+    label: str = "線幅グラフ",
+) -> bool:
     """線幅グラフと数値を現在の差分方向に合わせて同期する."""
-    changed = sync_profile_node_to_params(params)
-    ensure_profile_node(params)
+    changed = sync_profile_node_to_params(
+        params, fields=fields, node_name=node_name, source_prop=source_prop
+    )
+    ensure_profile_node(
+        params, fields=fields, node_name=node_name, source_prop=source_prop, label=label
+    )
     return changed
 
 
-def request_live_profile_sync(params) -> None:
+def sync_all_profile_nodes_to_params(params) -> bool:
+    """全体・白線・黒線の表示中グラフを対応プロパティへ確定する。"""
+    changed = sync_profile_node_to_params(params)
+    for fields, node_name, source_prop in (
+        (WHITE_PROFILE_FIELDS, WHITE_PROFILE_NODE_NAME, WHITE_PROFILE_SOURCE_PROP),
+        (BLACK_PROFILE_FIELDS, BLACK_PROFILE_NODE_NAME, BLACK_PROFILE_SOURCE_PROP),
+    ):
+        if all(hasattr(params, attr) for attr in fields.values()):
+            changed |= sync_profile_node_to_params(
+                params,
+                fields=fields,
+                node_name=node_name,
+                source_prop=source_prop,
+            )
+    return changed
+
+
+def sync_active_profile_nodes_to_params(params) -> bool:
+    """現在の線種で画面に表示されるグラフだけを確定する。"""
+    effect_type = str(getattr(params, "effect_type", "") or "")
+    line_style = str(getattr(params, "line_style", "") or "")
+    is_white_outline = effect_type == "white_outline" or line_style == "white_outline"
+    changed = False
+    if not is_white_outline or hasattr(params, "line_style"):
+        changed |= sync_profile_node_to_params(params)
+    if is_white_outline:
+        for fields, node_name, source_prop in (
+            (WHITE_PROFILE_FIELDS, WHITE_PROFILE_NODE_NAME, WHITE_PROFILE_SOURCE_PROP),
+            (BLACK_PROFILE_FIELDS, BLACK_PROFILE_NODE_NAME, BLACK_PROFILE_SOURCE_PROP),
+        ):
+            if all(hasattr(params, attr) for attr in fields.values()):
+                changed |= sync_profile_node_to_params(
+                    params,
+                    fields=fields,
+                    node_name=node_name,
+                    source_prop=source_prop,
+                )
+    return changed
+
+
+def request_live_profile_sync(
+    params,
+    *,
+    fields: Mapping[str, str] | None = None,
+    node_name: str = PROFILE_NODE_NAME,
+    source_prop: str = PROFILE_SOURCE_PROP,
+) -> None:
     """CurveMapping の操作をプロパティへ反映する短周期同期を開始する."""
     if bpy is None or params is None:
         return
-    global _LIVE_PROFILE_PARAMS, _LIVE_PROFILE_RUNNING, _LIVE_PROFILE_LAST_REQUEST
-    _LIVE_PROFILE_PARAMS = params
-    _LIVE_PROFILE_LAST_REQUEST = time.monotonic()
+    global _LIVE_PROFILE_RUNNING
+    _LIVE_PROFILE_REQUESTS[node_name] = (
+        params,
+        _profile_fields(fields),
+        source_prop,
+        time.monotonic(),
+    )
     if _LIVE_PROFILE_RUNNING:
         return
     _LIVE_PROFILE_RUNNING = True
@@ -231,55 +342,80 @@ def sync_ui_nodes_to_params(params) -> bool:
 
 
 def _live_profile_sync_tick():
-    global _LIVE_PROFILE_PARAMS, _LIVE_PROFILE_RUNNING
+    global _LIVE_PROFILE_RUNNING
     if bpy is None:
         _LIVE_PROFILE_RUNNING = False
         return None
-    if time.monotonic() - _LIVE_PROFILE_LAST_REQUEST > _LIVE_PROFILE_TIMEOUT_SEC:
-        _LIVE_PROFILE_PARAMS = None
+    now = time.monotonic()
+    expired = [
+        name for name, request in _LIVE_PROFILE_REQUESTS.items()
+        if now - request[3] > _LIVE_PROFILE_TIMEOUT_SEC
+    ]
+    for name in expired:
+        _LIVE_PROFILE_REQUESTS.pop(name, None)
+    if not _LIVE_PROFILE_REQUESTS:
         _LIVE_PROFILE_RUNNING = False
         return None
-    params = _LIVE_PROFILE_PARAMS
-    if params is None:
-        _LIVE_PROFILE_RUNNING = False
-        return None
+    changed = False
     try:
-        changed = sync_profile_node_bidirectional(params)
+        for node_name, request in tuple(_LIVE_PROFILE_REQUESTS.items()):
+            params, fields, source_prop, _last_request = request
+            changed |= sync_profile_node_bidirectional(
+                params,
+                fields=fields,
+                node_name=node_name,
+                source_prop=source_prop,
+            )
         if changed:
             screen = getattr(bpy.context, "screen", None)
             for area in getattr(screen, "areas", ()) or ():
                 if area.type in {"VIEW_3D", "PROPERTIES", "OUTLINER"}:
                     area.tag_redraw()
     except ReferenceError:
-        _LIVE_PROFILE_PARAMS = None
-        _LIVE_PROFILE_RUNNING = False
-        return None
+        # 削除済み RNA だけを次回の描画要求で置き換えられるよう全同期先を破棄する。
+        _LIVE_PROFILE_REQUESTS.clear()
     except Exception:  # noqa: BLE001
         pass
     return 0.15
 
 
-def sync_profile_node_to_params(params) -> bool:
+def sync_profile_node_to_params(
+    params,
+    *,
+    fields: Mapping[str, str] | None = None,
+    node_name: str = PROFILE_NODE_NAME,
+    source_prop: str = PROFILE_SOURCE_PROP,
+) -> bool:
     if bpy is None or params is None:
         return False
     mat = bpy.data.materials.get(MATERIAL_NAME)
     nt = getattr(mat, "node_tree", None) if mat is not None else None
     if nt is None:
         return False
-    node = nt.nodes.get(PROFILE_NODE_NAME)
+    node = nt.nodes.get(node_name)
     if node is None or node.bl_idname != "ShaderNodeFloatCurve":
         return False
-    stored_text = points_to_text(profile_points_from_params(params))
-    last_source = str(mat.get(PROFILE_SOURCE_PROP, "") or "")
+    stored_points = flip_horizontal(profile_points_from_params(params, fields))
+    stored_text = points_to_text(stored_points)
+    last_source = str(mat.get(source_prop, "") or "")
     if last_source != stored_text:
         return False
     node_points = read_node_points(node)
     node_text = points_to_text(node_points)
     if node_text == last_source:
         return False
-    changed = profile_points_to_params(params, node_points)
-    mat[PROFILE_SOURCE_PROP] = points_to_text(profile_points_from_params(params))
+    changed = profile_points_to_params(params, flip_horizontal(node_points), fields)
+    mat[source_prop] = points_to_text(
+        flip_horizontal(profile_points_from_params(params, fields))
+    )
     return changed
+
+
+def flip_horizontal(
+    points: Sequence[tuple[float, float]],
+) -> tuple[tuple[float, float], ...]:
+    """外端→内端の内部点列と、内端→外端の画面点列を相互変換する。"""
+    return normalize_points([(1.0 - x, y) for x, y in points])
 
 
 def _get_curve_node(nt, node_name: str):
@@ -337,6 +473,13 @@ def _clamp01(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
 
 
+def _profile_fields(fields: Mapping[str, str] | None) -> dict[str, str]:
+    attrs = dict(_DEFAULT_PROFILE_FIELDS)
+    if fields:
+        attrs.update({str(key): str(value) for key, value in fields.items() if value})
+    return attrs
+
+
 def _percent_attr(params, attr: str, default: float) -> float:
     try:
         return _clamp01(float(getattr(params, attr, default)) / 100.0)
@@ -344,10 +487,41 @@ def _percent_attr(params, attr: str, default: float) -> float:
         return _clamp01(float(default) / 100.0)
 
 
-def _start_factors(params) -> tuple[float, float]:
-    d_in = _percent_attr(params, "in_start_percent", 0.0)
-    d_out = _percent_attr(params, "out_start_percent", 0.0)
-    if d_in + d_out > 1.0:
+def _range_factor(params, fields: Mapping[str, str], side: str) -> float:
+    range_attr = fields.get(f"{side}_range_percent")
+    if range_attr:
+        return _percent_attr(params, range_attr, 0.0)
+    return _percent_attr(params, fields[f"{side}_start"], 0.0)
+
+
+def _set_range_attr(
+    params,
+    fields: Mapping[str, str],
+    side: str,
+    factor: float,
+) -> bool:
+    mode_attr = fields.get("range_mode")
+    changed = False
+    if mode_attr and hasattr(params, mode_attr):
+        if str(getattr(params, mode_attr, "percent") or "percent") != "percent":
+            setattr(params, mode_attr, "percent")
+            changed = True
+    if fields.get(f"{side}_range_percent"):
+        return _set_percent_attr(
+            params, fields[f"{side}_range_percent"], factor * 100.0
+        ) or changed
+    return _set_percent_attr(
+        params, fields[f"{side}_start"], factor * 100.0
+    ) or changed
+
+
+def _start_factors(params, fields: Mapping[str, str]) -> tuple[float, float]:
+    d_in = _range_factor(params, fields, "in")
+    d_out = _range_factor(params, fields, "out")
+    has_explicit_ranges = bool(
+        fields.get("in_range_percent") or fields.get("in_range_mm")
+    )
+    if not has_explicit_ranges and d_in + d_out > 1.0:
         excess = d_in + d_out - 1.0
         if d_in >= d_out:
             d_in = max(0.0, d_in - excess)

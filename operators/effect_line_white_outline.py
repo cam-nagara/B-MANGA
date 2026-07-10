@@ -6,6 +6,7 @@ import math
 import random
 from collections.abc import Sequence
 
+from ..utils import effect_inout_curve
 from ..utils.geom import mm_to_m
 
 
@@ -72,20 +73,33 @@ def _edge_distances(
     *,
     auto_count: bool,
     count: int,
+    spacing_scale_percent: float = 100.0,
 ) -> list[tuple[float, float]]:
+    scale = max(0.0, float(spacing_scale_percent) / 100.0)
     if not auto_count:
         total = max(1, min(256, int(count)))
-        step = max(0.01, float(brush_mm) + max(0.0, float(gap_mm)))
+        base_gap = max(0.0, float(gap_mm))
+        distance = 0.0
         denom = max(1, total - 1)
-        return [(step * index, index / denom) for index in range(total)]
+        out = []
+        for index in range(total):
+            norm = index / denom
+            out.append((distance, norm))
+            distance += max(0.01, float(brush_mm) + base_gap * (1.0 + (scale - 1.0) * norm))
+        return out
     width = max(0.0, float(width))
     if width <= 1.0e-6:
         return []
-    step = max(float(brush_mm), float(brush_mm) + max(0.0, float(gap_mm)))
-    total = max(1, min(256, int(math.floor(width / max(0.01, step))) + 1))
-    if total <= 1:
-        return [(width * 0.5, 0.0)]
-    return [(width * (index / (total - 1)), index / (total - 1)) for index in range(total)]
+    base_gap = max(0.0, float(gap_mm))
+    out = [(0.0, 0.0)]
+    distance = 0.0
+    while len(out) < 256:
+        norm = _clamp01(distance / max(width, 1.0e-6))
+        distance += max(0.01, float(brush_mm) + base_gap * (1.0 + (scale - 1.0) * norm))
+        if distance > width + 1.0e-6:
+            break
+        out.append((distance, _clamp01(distance / max(width, 1.0e-6))))
+    return out
 
 
 def _line_offsets(
@@ -95,23 +109,38 @@ def _line_offsets(
     *,
     auto_count: bool,
     count: int,
+    spacing_scale_percent: float = 100.0,
 ) -> list[float]:
+    scale = max(0.0, float(spacing_scale_percent) / 100.0)
+    base_gap = max(0.0, float(gap_mm))
     if not auto_count:
         total = max(1, min(512, int(count)))
         if total <= 1:
             return [0.0]
-        step = max(0.01, float(brush_mm) + max(0.0, float(gap_mm)))
-        start = -step * (total - 1) * 0.5
-        return [start + step * index for index in range(total)]
+        intervals = []
+        center = (total - 2) * 0.5
+        denom = max(1.0, center)
+        for index in range(total - 1):
+            edge_norm = min(1.0, abs(index - center) / denom)
+            intervals.append(max(0.01, float(brush_mm) + base_gap * (1.0 + (scale - 1.0) * edge_norm)))
+        span = sum(intervals)
+        offsets = [-span * 0.5]
+        for interval in intervals:
+            offsets.append(offsets[-1] + interval)
+        return offsets
     width = max(0.0, float(width))
     if width <= 1.0e-6:
         return [0.0]
-    step = max(0.01, float(brush_mm) + max(0.0, float(gap_mm)))
-    count = max(1, min(256, int(math.floor(width / step)) + 1))
-    if count <= 1:
-        return [0.0]
-    start = -width * 0.5
-    return [start + width * (index / (count - 1)) for index in range(count)]
+    half = width * 0.5
+    positive = [0.0]
+    distance = 0.0
+    while len(positive) < 256:
+        norm = _clamp01(distance / max(half, 1.0e-6))
+        distance += max(0.01, float(brush_mm) + base_gap * (1.0 + (scale - 1.0) * norm))
+        if distance > half + 1.0e-6:
+            break
+        positive.append(distance)
+    return [-value for value in reversed(positive[1:])] + positive
 
 
 def _black_offset_specs(
@@ -123,6 +152,7 @@ def _black_offset_specs(
     gap_mm: float,
     auto_count: bool,
     count: int,
+    spacing_scale_percent: float = 100.0,
 ) -> list[tuple[float, float]]:
     width = max(0.0, float(band_half) - float(white_half))
     distances = _edge_distances(
@@ -131,6 +161,7 @@ def _black_offset_specs(
         gap_mm,
         auto_count=auto_count,
         count=count,
+        spacing_scale_percent=spacing_scale_percent,
     )
     out: list[tuple[float, float]] = []
     seen: set[tuple[int, int]] = set()
@@ -208,14 +239,16 @@ def _profile_factor(
     out_frac: float,
     in_range_mm: float,
     out_range_mm: float,
+    in_curve,
+    out_curve,
 ) -> float:
     start_value = 1.0
     if in_range_mm > 1.0e-6 and s_mm < in_range_mm:
-        start_value = in_frac + (1.0 - in_frac) * _clamp01(s_mm / in_range_mm)
+        start_value = in_frac + (1.0 - in_frac) * effect_inout_curve.evaluate(in_curve, s_mm / in_range_mm)
     end_value = 1.0
     end_start = max(0.0, length_mm - out_range_mm)
     if out_range_mm > 1.0e-6 and s_mm > end_start:
-        end_value = out_frac + (1.0 - out_frac) * _clamp01((length_mm - s_mm) / out_range_mm)
+        end_value = out_frac + (1.0 - out_frac) * effect_inout_curve.evaluate(out_curve, (length_mm - s_mm) / out_range_mm)
     return _clamp01(min(start_value, end_value))
 
 
@@ -262,6 +295,8 @@ def _profiled_line_points(
     out_range_percent: float,
     in_range_mm: float,
     out_range_mm: float,
+    in_easing_curve: str,
+    out_easing_curve: str,
 ) -> tuple[list[tuple[float, float, float]], list[float]]:
     length = _distance(start_xy, end_xy)
     if length <= 1.0e-6:
@@ -272,6 +307,8 @@ def _profiled_line_points(
     out_frac = _clamp01(float(out_percent) / 100.0)
     d_in = _range_distance(length, range_mode, in_range_percent, in_range_mm)
     d_out = _range_distance(length, range_mode, out_range_percent, out_range_mm)
+    in_curve = effect_inout_curve.parse_points(in_easing_curve)
+    out_curve = effect_inout_curve.parse_points(out_easing_curve)
     breakpoints = _profile_breakpoints(
         length,
         in_frac=in_frac,
@@ -279,6 +316,9 @@ def _profiled_line_points(
         in_range_mm=d_in,
         out_range_mm=d_out,
     )
+    breakpoints.extend(d_in * x for x, _y in in_curve if 0.0 < x < 1.0)
+    breakpoints.extend(length - d_out * x for x, _y in out_curve if 0.0 < x < 1.0)
+    breakpoints = sorted({max(0.0, min(length, value)) for value in breakpoints})
     base_radius = mm_to_m(max(0.01, float(brush_mm)) / 2.0)
     points: list[tuple[float, float, float]] = []
     radii: list[float] = []
@@ -296,6 +336,8 @@ def _profiled_line_points(
                 out_frac=out_frac,
                 in_range_mm=d_in,
                 out_range_mm=d_out,
+                in_curve=in_curve,
+                out_curve=out_curve,
             )
         )
     return points, radii
@@ -321,6 +363,8 @@ def _append_line(
     out_range_percent: float = 100.0,
     in_range_mm: float = 10.0,
     out_range_mm: float = 10.0,
+    in_easing_curve: str = effect_inout_curve.DEFAULT_CURVE_TEXT,
+    out_easing_curve: str = effect_inout_curve.DEFAULT_CURVE_TEXT,
 ) -> None:
     effective = _attenuated_length(min(float(band_length), _distance(start_xy, end_xy)), offset_from_center, band_half, attenuation)
     if effective <= 1.0e-6:
@@ -339,6 +383,8 @@ def _append_line(
             out_range_percent=out_range_percent,
             in_range_mm=in_range_mm,
             out_range_mm=out_range_mm,
+            in_easing_curve=in_easing_curve,
+            out_easing_curve=out_easing_curve,
         )
     else:
         end_radius = mm_to_m(max(0.0, float(end_brush_mm)) / 2.0)
@@ -385,6 +431,7 @@ def _append_band(
         white_gap,
         auto_count=bool(getattr(params, "white_outline_white_line_count_auto", True)),
         count=int(getattr(params, "white_outline_white_line_count", 24)),
+        spacing_scale_percent=float(getattr(params, "white_outline_white_spacing_scale_percent", 100.0)),
     )
     white_half = max(white_width * 0.5, _offset_extent(white_offsets, white_brush))
     band_half = max(white_half + 0.005, float(band_width) * 0.5)
@@ -414,11 +461,13 @@ def _append_band(
             role="white_outline_white",
             in_percent=float(getattr(params, "white_outline_white_in_percent", 100.0)),
             out_percent=float(getattr(params, "white_outline_white_out_percent", 0.0)),
-            range_mode=str(getattr(params, "white_outline_white_inout_range_mode", "percent") or "percent"),
+            range_mode="percent",
             in_range_percent=float(getattr(params, "white_outline_white_in_range_percent", 100.0)),
             out_range_percent=float(getattr(params, "white_outline_white_out_range_percent", 100.0)),
             in_range_mm=float(getattr(params, "white_outline_white_in_range_mm", 10.0)),
             out_range_mm=float(getattr(params, "white_outline_white_out_range_mm", 10.0)),
+            in_easing_curve=str(getattr(params, "white_outline_white_in_easing_curve", effect_inout_curve.DEFAULT_CURVE_TEXT)),
+            out_easing_curve=str(getattr(params, "white_outline_white_out_easing_curve", effect_inout_curve.DEFAULT_CURVE_TEXT)),
         )
     black_specs = _black_offset_specs(
         direction=str(getattr(params, "white_outline_black_direction", "outside") or "outside"),
@@ -428,6 +477,7 @@ def _append_band(
         gap_mm=black_gap,
         auto_count=bool(getattr(params, "white_outline_black_line_count_auto", True)),
         count=int(getattr(params, "white_outline_black_line_count", 3)),
+        spacing_scale_percent=float(getattr(params, "white_outline_black_spacing_scale_percent", 100.0)),
     )
     band_half = max(band_half, _offset_extent([offset for offset, _norm in black_specs], black_brush))
     black_width_far = max(0.0, float(getattr(params, "white_outline_black_width_scale_percent", 100.0)) / 100.0)
@@ -462,11 +512,13 @@ def _append_band(
             role="white_outline_black",
             in_percent=float(getattr(params, "white_outline_black_in_percent", 100.0)),
             out_percent=float(getattr(params, "white_outline_black_out_percent", 100.0)),
-            range_mode=str(getattr(params, "white_outline_black_inout_range_mode", "percent") or "percent"),
+            range_mode="percent",
             in_range_percent=float(getattr(params, "white_outline_black_in_range_percent", 100.0)),
             out_range_percent=float(getattr(params, "white_outline_black_out_range_percent", 100.0)),
             in_range_mm=float(getattr(params, "white_outline_black_in_range_mm", 10.0)),
             out_range_mm=float(getattr(params, "white_outline_black_out_range_mm", 10.0)),
+            in_easing_curve=str(getattr(params, "white_outline_black_in_easing_curve", effect_inout_curve.DEFAULT_CURVE_TEXT)),
+            out_easing_curve=str(getattr(params, "white_outline_black_out_easing_curve", effect_inout_curve.DEFAULT_CURVE_TEXT)),
         )
 
 
@@ -503,8 +555,14 @@ def generate_white_outline_strokes(
     out = []
 
     base_angle = math.radians(float(getattr(params, "white_outline_angle_deg", 0.0)))
+    configured_spacing = math.radians(max(0.0, float(getattr(params, "white_outline_bundle_spacing_deg", 0.0))))
+    bundle_step = configured_spacing if configured_spacing > 1.0e-9 else (2.0 * math.pi) / max(1, count)
+    spacing_jitter = _clamp01(float(getattr(params, "white_outline_bundle_spacing_jitter", 0.0)))
+    spacing_rng = random.Random(int(seed) ^ 0x5A17)
+    angle = base_angle
     for index, (band_width, band_length_scale) in enumerate(bands):
-        angle = base_angle + (2.0 * math.pi * index) / max(1, count)
+        if index > 0:
+            angle += bundle_step * (1.0 + spacing_jitter * (spacing_rng.random() * 2.0 - 1.0))
         _append_band(
             out,
             effect_line_gen.EffectLineStroke,

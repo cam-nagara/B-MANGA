@@ -211,27 +211,21 @@ def _assert_detail_layout(layer_detail_op, effect_line_op, context, scene, obj) 
     for prop_name in (
         "white_outline_black_in_percent",
         "white_outline_black_out_percent",
-        "white_outline_black_inout_range_mode",
-        "white_outline_black_in_range_percent",
-        "white_outline_black_out_range_percent",
     ):
         assert prop_name in layout.props_by_column.get("col2", ()), (
             f"黒線入り抜き設定が黒線列にありません: {prop_name}"
         )
-    _set_params_silently(
-        scene,
-        effect_line_op,
-        lambda params: setattr(params, "white_outline_black_inout_range_mode", "length"),
-    )
-    layout = _Layout()
-    layer_detail_op._draw_effect_detail(layout, context, obj, load_from_layer=False)
     for prop_name in (
+        "white_outline_black_inout_range_mode",
+        "white_outline_black_in_range_percent",
+        "white_outline_black_out_range_percent",
         "white_outline_black_in_range_mm",
         "white_outline_black_out_range_mm",
     ):
-        assert prop_name in layout.props_by_column.get("col2", ()), (
-            f"黒線入り抜きの長さ設定が黒線列にありません: {prop_name}"
+        assert prop_name not in layout.props, (
+            f"線幅グラフに統合した範囲設定が表示されています: {prop_name}"
         )
+    assert layout.labels.count("線幅グラフ") >= 3, "主線・黒線・白線の線幅グラフが揃っていません"
     assert "line_image_source" in layout.props_by_column.get("col4", ()), (
         "パス線設定が独立列に分割されていません"
     )
@@ -287,10 +281,10 @@ def _assert_graph_numeric_to_curve(layer_detail_op, effect_line_op, effect_inout
     node = effect_inout_curve.get_profile_node()
     assert node is not None, "効果線詳細設定に線幅グラフが作成されていません"
     points = effect_inout_curve.read_node_points(node)
-    _assert_point(points, 0.0, 0.30, "入り(%)が線幅グラフの左端へ反映されていません")
-    _assert_point(points, 0.40, 1.0, "入り始点(%)が線幅グラフへ反映されていません")
-    _assert_point(points, 0.75, 1.0, "抜き始点(%)が線幅グラフへ反映されていません")
-    _assert_point(points, 1.0, 0.20, "抜き(%)が線幅グラフの右端へ反映されていません")
+    _assert_point(points, 0.0, 0.20, "抜き(%)が線幅グラフの内端へ反映されていません")
+    _assert_point(points, 0.25, 1.0, "内端側の変化位置が線幅グラフへ反映されていません")
+    _assert_point(points, 0.60, 1.0, "外端側の変化位置が線幅グラフへ反映されていません")
+    _assert_point(points, 1.0, 0.30, "入り(%)が線幅グラフの外端へ反映されていません")
     return node
 
 
@@ -300,8 +294,8 @@ def _assert_graph_curve_to_numeric(layer_detail_op, effect_inout_curve, context,
         ((0.0, 0.2), (0.2, 0.65), (0.35, 1.0), (0.65, 1.0), (0.85, 0.7), (1.0, 0.4)),
     )
     assert layer_detail_op._sync_detail_profile_curve(context, "effect", obj.get("bmanga_id", ""))
-    _assert_close(params.in_percent, 20.0, "線幅グラフの左端が入り(%)へ反映されていません")
-    _assert_close(params.out_percent, 40.0, "線幅グラフの右端が抜き(%)へ反映されていません")
+    _assert_close(params.in_percent, 40.0, "線幅グラフの外端が入り(%)へ反映されていません")
+    _assert_close(params.out_percent, 20.0, "線幅グラフの内端が抜き(%)へ反映されていません")
     _assert_close(params.in_start_percent, 35.0, "線幅グラフの山位置が入り始点(%)へ反映されていません")
     _assert_close(params.out_start_percent, 35.0, "線幅グラフの山位置が抜き始点(%)へ反映されていません")
 
@@ -313,13 +307,59 @@ def _assert_graph_live_sync(effect_inout_curve, effect_line_op, params, obj, lay
         ((0.0, 0.15), (0.25, 0.7), (0.45, 1.0), (0.75, 1.0), (1.0, 0.35)),
     )
     effect_inout_curve._live_profile_sync_tick()
-    _assert_close(params.in_percent, 15.0, "線幅グラフの追加ポイントが入り(%)へ即時反映されていません")
-    _assert_close(params.out_percent, 35.0, "線幅グラフの追加ポイントが抜き(%)へ即時反映されていません")
-    _assert_close(params.in_start_percent, 45.0, "線幅グラフの追加ポイントが入り始点(%)へ即時反映されていません")
-    _assert_close(params.out_start_percent, 25.0, "線幅グラフの追加ポイントが抜き始点(%)へ即時反映されていません")
+    _assert_close(params.in_percent, 35.0, "線幅グラフの外端が入り(%)へ即時反映されていません")
+    _assert_close(params.out_percent, 15.0, "線幅グラフの内端が抜き(%)へ即時反映されていません")
+    _assert_close(params.in_start_percent, 25.0, "線幅グラフの外端側変化が即時反映されていません")
+    _assert_close(params.out_start_percent, 45.0, "線幅グラフの内端側変化が即時反映されていません")
     saved = effect_line_op._layer_params_data(obj, layer)
-    _assert_close(saved["in_percent"], 15.0, "同期タイマー後の入り(%)が効果線へ保存されていません")
-    _assert_close(saved["out_percent"], 35.0, "同期タイマー後の抜き(%)が効果線へ保存されていません")
+    _assert_close(saved["in_percent"], 35.0, "同期タイマー後の入り(%)が効果線へ保存されていません")
+    _assert_close(saved["out_percent"], 15.0, "同期タイマー後の抜き(%)が効果線へ保存されていません")
+
+
+def _assert_white_black_graphs(layer_detail_op, effect_inout_curve, context, obj, params) -> None:
+    params.effect_type = "white_outline"
+    params.white_outline_white_in_percent = 30.0
+    params.white_outline_white_out_percent = 20.0
+    params.white_outline_white_inout_range_mode = "percent"
+    params.white_outline_white_in_range_percent = 40.0
+    params.white_outline_white_out_range_percent = 25.0
+    params.white_outline_black_in_percent = 50.0
+    params.white_outline_black_out_percent = 10.0
+    params.white_outline_black_inout_range_mode = "percent"
+    params.white_outline_black_in_range_percent = 30.0
+    params.white_outline_black_out_range_percent = 20.0
+    layout = _Layout()
+    layer_detail_op._draw_effect_detail(layout, context, obj, load_from_layer=False)
+    assert "in_start_percent" not in layout.props
+    assert "out_start_percent" not in layout.props
+    white = effect_inout_curve.get_profile_node(effect_inout_curve.WHITE_PROFILE_NODE_NAME)
+    black = effect_inout_curve.get_profile_node(effect_inout_curve.BLACK_PROFILE_NODE_NAME)
+    assert white is not None and black is not None and white != black
+    white_points = effect_inout_curve.read_node_points(white)
+    _assert_point(white_points, 0.0, 0.20, "白線グラフの内端")
+    _assert_point(white_points, 0.25, 1.0, "白線グラフの内端側変化")
+    _assert_point(white_points, 0.60, 1.0, "白線グラフの外端側変化")
+    _assert_point(white_points, 1.0, 0.30, "白線グラフの外端")
+    black_points = effect_inout_curve.read_node_points(black)
+    _assert_point(black_points, 0.0, 0.10, "黒線グラフの内端")
+    _assert_point(black_points, 0.20, 1.0, "黒線グラフの内端側変化")
+    _assert_point(black_points, 0.70, 1.0, "黒線グラフの外端側変化")
+    _assert_point(black_points, 1.0, 0.50, "黒線グラフの外端")
+    effect_inout_curve._apply_points_to_node(
+        white, ((0.0, 0.15), (0.35, 1.0), (0.80, 1.0), (1.0, 0.45))
+    )
+    effect_inout_curve._apply_points_to_node(
+        black, ((0.0, 0.25), (0.10, 1.0), (0.65, 1.0), (1.0, 0.55))
+    )
+    assert effect_inout_curve.sync_all_profile_nodes_to_params(params)
+    _assert_close(params.white_outline_white_in_percent, 45.0, "白線グラフ外端")
+    _assert_close(params.white_outline_white_out_percent, 15.0, "白線グラフ内端")
+    _assert_close(params.white_outline_white_in_range_percent, 20.0, "白線グラフ外端側範囲")
+    _assert_close(params.white_outline_white_out_range_percent, 35.0, "白線グラフ内端側範囲")
+    _assert_close(params.white_outline_black_in_percent, 55.0, "黒線グラフ外端")
+    _assert_close(params.white_outline_black_out_percent, 25.0, "黒線グラフ内端")
+    _assert_close(params.white_outline_black_in_range_percent, 35.0, "黒線グラフ外端側範囲")
+    _assert_close(params.white_outline_black_out_range_percent, 10.0, "黒線グラフ内端側範囲")
 
 
 def _assert_graph_saved_and_generated(
@@ -335,10 +375,10 @@ def _assert_graph_saved_and_generated(
     layer_detail_op._sync_detail_profile_curve(context, "effect", bmanga_id)
     assert layer_detail_op._apply_effect_detail_params_to_layer(context, obj, layer)
     saved = effect_line_op._layer_params_data(obj, layer)
-    _assert_close(saved["in_percent"], 20.0, "入り(%)が効果線レイヤーへ保存されていません")
-    _assert_close(saved["out_percent"], 40.0, "抜き(%)が効果線レイヤーへ保存されていません")
-    _assert_close(saved["in_start_percent"], 35.0, "入り始点(%)が効果線レイヤーへ保存されていません")
-    _assert_close(saved["out_start_percent"], 35.0, "抜き始点(%)が効果線レイヤーへ保存されていません")
+    _assert_close(saved["in_percent"], 40.0, "入り(%)が効果線レイヤーへ保存されていません")
+    _assert_close(saved["out_percent"], 20.0, "抜き(%)が効果線レイヤーへ保存されていません")
+    _assert_close(saved["in_start_percent"], 35.0, "外端側の変化位置が効果線レイヤーへ保存されていません")
+    _assert_close(saved["out_start_percent"], 35.0, "内端側の変化位置が効果線レイヤーへ保存されていません")
 
     strokes = effect_line_gen.generate_strokes(
         params,
@@ -416,6 +456,7 @@ def main() -> None:
             bmanga_id,
         )
         _assert_graph_live_sync(effect_inout_curve, effect_line_op, params, obj, layer, node)
+        _assert_white_black_graphs(layer_detail_op, effect_inout_curve, context, obj, params)
     finally:
         if mod is not None:
             try:

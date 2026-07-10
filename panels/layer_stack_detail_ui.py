@@ -179,9 +179,6 @@ def _draw_image_path_selected_settings(box, context, entry) -> None:
     row = inout_box.row(align=True)
     row.prop(entry, "in_percent")
     row.prop(entry, "out_percent")
-    row = inout_box.row(align=True)
-    row.prop(entry, "in_start_percent")
-    row.prop(entry, "out_start_percent")
     color_row = inout_box.row(align=True)
     color_row.enabled = bool(getattr(entry, "inout_color_enabled", False))
     color_row.prop(entry, "inout_start_color", text="入り色")
@@ -629,12 +626,12 @@ def _draw_effect_line_settings(box, params) -> None:
     sub.enabled = params.brush_jitter_enabled
     sub.prop(params, "brush_jitter_amount", text="")
     row = line_box.row(align=True)
-    row.prop(params, "length_jitter_enabled", text="始点乱れ")
+    row.prop(params, "length_jitter_enabled", text="外端乱れ")
     sub = row.row()
     sub.enabled = params.length_jitter_enabled
     sub.prop(params, "length_jitter_amount", text="")
     row = line_box.row(align=True)
-    row.prop(params, "end_length_jitter_enabled", text="終点乱れ")
+    row.prop(params, "end_length_jitter_enabled", text="内端乱れ")
     sub = row.row()
     sub.enabled = params.end_length_jitter_enabled
     sub.prop(params, "end_length_jitter_amount", text="")
@@ -683,9 +680,6 @@ def _draw_effect_tail_settings(box, params) -> None:
     row = inout_box.row(align=True)
     row.prop(params, "in_percent")
     row.prop(params, "out_percent")
-    row = inout_box.row(align=True)
-    row.prop(params, "in_start_percent")
-    row.prop(params, "out_start_percent")
     effect_line_panel.draw_inout_curve_mapping(inout_box, params)
 
     color_box = box.box()
@@ -742,15 +736,15 @@ def _draw_effect_selected_settings(box, context, obj, active_layer, *, wide: boo
         effect_line_panel.draw_effect_line_preset_management(box, context)
         _draw_effect_type_settings(box, params)
         if params.effect_type == "white_outline":
-            _draw_effect_shape_settings(box, params, "start", "始点形状", frame_toggle=True)
-            _draw_effect_shape_settings(box, params, "end", "終点形状")
+            _draw_effect_shape_settings(box, params, "start", "外端形状", frame_toggle=True)
+            _draw_effect_shape_settings(box, params, "end", "内端形状")
             _draw_effect_white_outline_settings(box, params)
             effect_line_panel.draw_effect_path_settings(box, params)
             box.operator("bmanga.effect_line_generate", text="効果線を追加", icon="STROKE")
             return
         if params.effect_type != "speed":
-            _draw_effect_shape_settings(box, params, "start", "始点形状", frame_toggle=True)
-            _draw_effect_shape_settings(box, params, "end", "終点形状")
+            _draw_effect_shape_settings(box, params, "start", "外端形状", frame_toggle=True)
+            _draw_effect_shape_settings(box, params, "end", "内端形状")
         _draw_effect_line_settings(box, params)
         if params.effect_type != "beta_flash":
             _draw_effect_interval_settings(box, params)

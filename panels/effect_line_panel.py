@@ -15,7 +15,7 @@ def _draw_shape_settings(layout, params, prefix: str, label: str, *, frame_toggl
     box = layout.box()
     box.label(text=label)
     if frame_toggle:
-        box.prop(params, "start_to_coma_frame")
+        box.prop(params, "start_to_coma_frame", text="外端形状をコマ枠に設定")
     content = box.column(align=True)
     if frame_toggle:
         content.enabled = not bool(params.start_to_coma_frame)
@@ -50,25 +50,59 @@ def _draw_white_outline_settings(layout, params, *, show_opacity: bool = True, c
         params,
         show_opacity=show_opacity,
         columns=columns,
+        draw_inout_curve=draw_inout_curve_mapping,
     )
 
 
-def _inout_profile_node_for_draw(params):
+def _profile_identifiers(profile_key: str) -> tuple[str, str]:
+    if profile_key == "white":
+        return (
+            effect_inout_curve.WHITE_PROFILE_NODE_NAME,
+            effect_inout_curve.WHITE_PROFILE_SOURCE_PROP,
+        )
+    if profile_key == "black":
+        return (
+            effect_inout_curve.BLACK_PROFILE_NODE_NAME,
+            effect_inout_curve.BLACK_PROFILE_SOURCE_PROP,
+        )
+    return effect_inout_curve.PROFILE_NODE_NAME, effect_inout_curve.PROFILE_SOURCE_PROP
+
+
+def _inout_profile_node_for_draw(params, *, fields=None, profile_key: str = "main"):
+    node_name, source_prop = _profile_identifiers(profile_key)
     try:
-        effect_inout_curve.sync_profile_node_bidirectional(params)
-        effect_inout_curve.request_live_profile_sync(params)
+        effect_inout_curve.sync_profile_node_bidirectional(
+            params, fields=fields, node_name=node_name, source_prop=source_prop
+        )
+        effect_inout_curve.request_live_profile_sync(
+            params, fields=fields, node_name=node_name, source_prop=source_prop
+        )
     except Exception:  # noqa: BLE001
         pass
     try:
-        return effect_inout_curve.ensure_profile_node(params)
+        return effect_inout_curve.ensure_profile_node(
+            params, fields=fields, node_name=node_name, source_prop=source_prop
+        )
     except Exception:  # noqa: BLE001
-        return effect_inout_curve.get_profile_node()
+        return effect_inout_curve.get_profile_node(node_name)
 
 
-def draw_inout_curve_mapping(layout, params) -> None:
-    node = _inout_profile_node_for_draw(params)
+def draw_inout_curve_mapping(
+    layout,
+    params,
+    *,
+    fields=None,
+    profile_key: str = "main",
+) -> None:
+    node = _inout_profile_node_for_draw(
+        params, fields=fields, profile_key=profile_key
+    )
     if node is not None:
         layout.label(text="線幅グラフ")
+        axis = layout.row(align=True)
+        axis.label(text="内端")
+        axis.label(text="線幅 0〜100%")
+        axis.label(text="外端")
         layout.template_curve_mapping(node, "mapping", type="NONE")
 
 
@@ -173,8 +207,8 @@ def draw_effect_params(
         box.prop(params, "rotation_deg")
 
     if effect_type == "white_outline":
-        _draw_shape_settings(_col(0), params, "start", "始点形状", frame_toggle=True)
-        _draw_shape_settings(_col(0), params, "end", "終点形状")
+        _draw_shape_settings(_col(0), params, "start", "外端形状", frame_toggle=True)
+        _draw_shape_settings(_col(0), params, "end", "内端形状")
         white_cols = (
             (_col(line_col), _col(inout_col), _col(side_col))
             if len(cols) > 2
@@ -193,8 +227,8 @@ def draw_effect_params(
         return
 
     if effect_type != "speed":
-        _draw_shape_settings(_col(0), params, "start", "始点形状", frame_toggle=True)
-        _draw_shape_settings(_col(0), params, "end", "終点形状")
+        _draw_shape_settings(_col(0), params, "start", "外端形状", frame_toggle=True)
+        _draw_shape_settings(_col(0), params, "end", "内端形状")
 
     box = _col(line_col).box()
     box.label(text="線")
@@ -205,12 +239,12 @@ def draw_effect_params(
     sub.enabled = params.brush_jitter_enabled
     sub.prop(params, "brush_jitter_amount", text="")
     row = box.row(align=True)
-    row.prop(params, "length_jitter_enabled", text="始点乱れ")
+    row.prop(params, "length_jitter_enabled", text="外端乱れ")
     sub = row.row()
     sub.enabled = params.length_jitter_enabled
     sub.prop(params, "length_jitter_amount", text="")
     row = box.row(align=True)
-    row.prop(params, "end_length_jitter_enabled", text="終点乱れ")
+    row.prop(params, "end_length_jitter_enabled", text="内端乱れ")
     sub = row.row()
     sub.enabled = params.end_length_jitter_enabled
     sub.prop(params, "end_length_jitter_amount", text="")
@@ -252,9 +286,6 @@ def draw_effect_params(
     row = box.row(align=True)
     row.prop(params, "in_percent")
     row.prop(params, "out_percent")
-    row = box.row(align=True)
-    row.prop(params, "in_start_percent")
-    row.prop(params, "out_start_percent")
     draw_inout_curve_mapping(box, params)
     if show_path_settings:
         draw_effect_path_settings(_col(path_col), params)

@@ -827,9 +827,10 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
     # ジオメトリ署名: 一致すれば各帯メッシュの再構築 (shapely/earcut) を丸ごと
     # スキップし、親子付け・可視性・マスクの反映だけ行う (色変更などが高速になる)
     band_sig = _band_geometry_signature(entry, obj)
-    # ウニフラ/白抜き線では本体の塗りを描かない (下地は「終点形状を下地として
-    # 塗る」で別途描かれる。塗りメッシュが残ると設定オフでも塗り色で塗られる)
-    if fill_mat is not None and not is_flash_line_style:
+    # ウニフラはフキダシ本体の塗りを維持し、その上へ放射線を重ねる。
+    # 白抜き線だけは線群そのものが本体なので従来どおり塗りを持たない。
+    keep_body_fill = not is_flash_line_style or line_style == "uni_flash"
+    if fill_mat is not None and keep_body_fill:
         balloon_fill_mesh.ensure_balloon_fill_mesh(
             scene=scene,
             work=work,
@@ -1489,7 +1490,7 @@ def _geometry_key_for_entry(entry) -> str:
         "cloud_bump_height_mm": float(getattr(sp, "cloud_bump_height_mm", 4.0) or 4.0),
         "cloud_bump_height_jitter": float(getattr(sp, "cloud_bump_height_jitter", 0.0) or 0.0),
         "cloud_offset_percent": float(getattr(sp, "cloud_offset_percent", 50.0) or 50.0),
-        "cloud_sub_width_ratio": float(getattr(sp, "cloud_sub_width_ratio", 0.0) or 0.0),
+        "cloud_sub_width_ratio": float(getattr(sp, "cloud_sub_width_ratio", 30.0)),
         "cloud_sub_width_jitter": float(getattr(sp, "cloud_sub_width_jitter", 0.0) or 0.0),
         "cloud_sub_height_ratio": float(getattr(sp, "cloud_sub_height_ratio", 0.0) or 0.0),
         "cloud_sub_height_jitter": float(getattr(sp, "cloud_sub_height_jitter", 0.0) or 0.0),

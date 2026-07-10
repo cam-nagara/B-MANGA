@@ -58,11 +58,16 @@ def _effect_params_signature(entry, line_style: str) -> dict:
                 getattr(entry, "flash_white_line_peak_width_pct", 100.0) or 100.0
             ),
             "flash_white_outline_count": int(getattr(entry, "flash_white_outline_count", 5) or 5),
+            "white_outline_bundle_spacing_deg": float(getattr(entry, "white_outline_bundle_spacing_deg", 0.0) or 0.0),
+            "white_outline_bundle_spacing_jitter": float(getattr(entry, "white_outline_bundle_spacing_jitter", 0.0) or 0.0),
             "flash_white_outline_width_mm": float(
                 getattr(entry, "flash_white_outline_width_mm", 10.0) or 10.0
             ),
             "flash_white_outline_spacing_mm": float(
                 getattr(entry, "flash_white_outline_spacing_mm", 0.25) or 0.25
+            ),
+            "white_outline_white_spacing_scale_percent": float(
+                getattr(entry, "white_outline_white_spacing_scale_percent", 100.0) or 0.0
             ),
             "flash_white_outline_white_line_count": int(
                 getattr(entry, "flash_white_outline_white_line_count", 24) or 24
@@ -72,6 +77,9 @@ def _effect_params_signature(entry, line_style: str) -> dict:
             ),
             "flash_white_outline_black_spacing_mm": float(
                 getattr(entry, "flash_white_outline_black_spacing_mm", 0.25) or 0.25
+            ),
+            "white_outline_black_spacing_scale_percent": float(
+                getattr(entry, "white_outline_black_spacing_scale_percent", 100.0) or 0.0
             ),
             # 白抜き線の詳細 (v0.6.290): 変更で再構築されるよう署名に含める
             "white_outline_angle_deg": float(getattr(entry, "white_outline_angle_deg", 0.0) or 0.0),
@@ -83,6 +91,15 @@ def _effect_params_signature(entry, line_style: str) -> dict:
             "white_outline_black_line_count_auto": bool(getattr(entry, "white_outline_black_line_count_auto", False)),
             "white_outline_white_ratio_percent": float(getattr(entry, "white_outline_white_ratio_percent", 70.0) or 0.0),
             "white_outline_white_attenuation": float(getattr(entry, "white_outline_white_attenuation", 0.0) or 0.0),
+            "white_outline_white_in_percent": float(getattr(entry, "white_outline_white_in_percent", 100.0) or 0.0),
+            "white_outline_white_out_percent": float(getattr(entry, "white_outline_white_out_percent", 100.0) or 0.0),
+            "white_outline_white_inout_range_mode": str(getattr(entry, "white_outline_white_inout_range_mode", "percent") or "percent"),
+            "white_outline_white_in_range_percent": float(getattr(entry, "white_outline_white_in_range_percent", 100.0) or 0.0),
+            "white_outline_white_out_range_percent": float(getattr(entry, "white_outline_white_out_range_percent", 100.0) or 0.0),
+            "white_outline_white_in_range_mm": float(getattr(entry, "white_outline_white_in_range_mm", 10.0) or 0.0),
+            "white_outline_white_out_range_mm": float(getattr(entry, "white_outline_white_out_range_mm", 10.0) or 0.0),
+            "white_outline_white_in_easing_curve": str(getattr(entry, "white_outline_white_in_easing_curve", "") or ""),
+            "white_outline_white_out_easing_curve": str(getattr(entry, "white_outline_white_out_easing_curve", "") or ""),
             "white_outline_black_direction": str(getattr(entry, "white_outline_black_direction", "outside") or "outside"),
             "white_outline_black_width_scale_percent": float(getattr(entry, "white_outline_black_width_scale_percent", 100.0) or 0.0),
             "white_outline_black_length_scale_near_percent": float(getattr(entry, "white_outline_black_length_scale_near_percent", 100.0) or 0.0),
@@ -95,6 +112,8 @@ def _effect_params_signature(entry, line_style: str) -> dict:
             "white_outline_black_out_range_percent": float(getattr(entry, "white_outline_black_out_range_percent", 100.0) or 0.0),
             "white_outline_black_in_range_mm": float(getattr(entry, "white_outline_black_in_range_mm", 10.0) or 0.0),
             "white_outline_black_out_range_mm": float(getattr(entry, "white_outline_black_out_range_mm", 10.0) or 0.0),
+            "white_outline_black_in_easing_curve": str(getattr(entry, "white_outline_black_in_easing_curve", "") or ""),
+            "white_outline_black_out_easing_curve": str(getattr(entry, "white_outline_black_out_easing_curve", "") or ""),
             # 入り抜き (ウニフラと同じ機構を白抜き線にも適用)
             "inout_apply": str(getattr(entry, "inout_apply", "brush_size") or "brush_size"),
             "inout_apply_brush_size": bool(getattr(entry, "inout_apply_brush_size", True)),
@@ -282,7 +301,10 @@ def _white_outline_params(entry, *, black_brush_mm: float) -> SimpleNamespace:
         start_rounded_corner_enabled=False,
         end_rounded_corner_enabled=False,
         white_outline_count=max(1, int(getattr(entry, "flash_white_outline_count", 5) or 5)),
+        white_outline_bundle_spacing_deg=float(getattr(entry, "white_outline_bundle_spacing_deg", 0.0) or 0.0),
+        white_outline_bundle_spacing_jitter=float(getattr(entry, "white_outline_bundle_spacing_jitter", 0.0) or 0.0),
         white_outline_spacing_mm=spacing,
+        white_outline_white_spacing_scale_percent=float(getattr(entry, "white_outline_white_spacing_scale_percent", 100.0) or 0.0),
         white_outline_white_line_count_auto=bool(getattr(entry, "white_outline_white_line_count_auto", False)),
         white_outline_white_line_count=max(1, int(getattr(entry, "flash_white_outline_white_line_count", 24) or 24)),
         white_outline_width_mm=max(0.01, float(getattr(entry, "flash_white_outline_width_mm", 10.0) or 10.0)),
@@ -293,18 +315,21 @@ def _white_outline_params(entry, *, black_brush_mm: float) -> SimpleNamespace:
         white_outline_white_ratio_percent=float(getattr(entry, "white_outline_white_ratio_percent", 70.0) or 0.0),
         white_outline_white_brush_mm=white_brush,
         white_outline_white_attenuation=float(getattr(entry, "white_outline_white_attenuation", 0.0) or 0.0),
-        white_outline_white_in_percent=white_endpoint,
-        white_outline_white_out_percent=white_endpoint,
-        white_outline_white_inout_range_mode="percent",
-        white_outline_white_in_range_percent=50.0,
-        white_outline_white_out_range_percent=50.0,
-        white_outline_white_in_range_mm=10.0,
-        white_outline_white_out_range_mm=10.0,
+        white_outline_white_in_percent=white_endpoint * float(getattr(entry, "white_outline_white_in_percent", 100.0) or 0.0) / 100.0,
+        white_outline_white_out_percent=white_endpoint * float(getattr(entry, "white_outline_white_out_percent", 100.0) or 0.0) / 100.0,
+        white_outline_white_inout_range_mode=str(getattr(entry, "white_outline_white_inout_range_mode", "percent") or "percent"),
+        white_outline_white_in_range_percent=float(getattr(entry, "white_outline_white_in_range_percent", 100.0) or 0.0),
+        white_outline_white_out_range_percent=float(getattr(entry, "white_outline_white_out_range_percent", 100.0) or 0.0),
+        white_outline_white_in_range_mm=float(getattr(entry, "white_outline_white_in_range_mm", 10.0) or 0.0),
+        white_outline_white_out_range_mm=float(getattr(entry, "white_outline_white_out_range_mm", 10.0) or 0.0),
+        white_outline_white_in_easing_curve=str(getattr(entry, "white_outline_white_in_easing_curve", _default_easing_curve()) or _default_easing_curve()),
+        white_outline_white_out_easing_curve=str(getattr(entry, "white_outline_white_out_easing_curve", _default_easing_curve()) or _default_easing_curve()),
         white_outline_black_line_count_auto=bool(getattr(entry, "white_outline_black_line_count_auto", False)),
         white_outline_black_line_count=max(1, int(getattr(entry, "flash_white_outline_black_line_count", 3) or 3)),
         white_outline_black_direction=str(getattr(entry, "white_outline_black_direction", "outside") or "outside"),
         white_outline_black_brush_mm=max(0.01, black_brush_mm),
         white_outline_black_spacing_mm=max(0.0, float(getattr(entry, "flash_white_outline_black_spacing_mm", spacing) or spacing)),
+        white_outline_black_spacing_scale_percent=float(getattr(entry, "white_outline_black_spacing_scale_percent", 100.0) or 0.0),
         white_outline_black_width_scale_percent=float(getattr(entry, "white_outline_black_width_scale_percent", 100.0) or 0.0),
         white_outline_black_length_scale_near_percent=float(getattr(entry, "white_outline_black_length_scale_near_percent", 100.0) or 0.0),
         white_outline_black_length_scale_far_percent=float(getattr(entry, "white_outline_black_length_scale_far_percent", 100.0) or 0.0),
@@ -316,6 +341,8 @@ def _white_outline_params(entry, *, black_brush_mm: float) -> SimpleNamespace:
         white_outline_black_out_range_percent=float(getattr(entry, "white_outline_black_out_range_percent", 100.0) or 0.0),
         white_outline_black_in_range_mm=float(getattr(entry, "white_outline_black_in_range_mm", 10.0) or 0.0),
         white_outline_black_out_range_mm=float(getattr(entry, "white_outline_black_out_range_mm", 10.0) or 0.0),
+        white_outline_black_in_easing_curve=str(getattr(entry, "white_outline_black_in_easing_curve", _default_easing_curve()) or _default_easing_curve()),
+        white_outline_black_out_easing_curve=str(getattr(entry, "white_outline_black_out_easing_curve", _default_easing_curve()) or _default_easing_curve()),
         white_outline_angle_deg=float(getattr(entry, "white_outline_angle_deg", 0.0) or 0.0),
     )
 

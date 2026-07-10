@@ -592,13 +592,9 @@ def _params_for_write(context, obj, layer, params_override=None):
     scene_params = getattr(context.scene, "bmanga_effect_line_params", None)
     if scene_params is None:
         return None
-    try:
-        from ..utils import effect_inout_curve
-
-        effect_inout_curve.sync_ui_nodes_to_params(scene_params)
-        effect_inout_curve.sync_profile_node_to_params(scene_params)
-    except Exception:  # noqa: BLE001
-        pass
+    # 線幅グラフは表示中の短周期同期と詳細設定の確定処理で書き戻す。
+    # 生成中にここで同期すると更新コールバックが対象実体を再生成し、
+    # 呼び出し元が保持する参照を無効化するため、読み取りだけに限定する。
     data = _layer_params_data(obj, layer)
     if data:
         if "opacity" not in data and hasattr(layer, "opacity"):
@@ -1350,6 +1346,24 @@ def _rect_from_points(x0: float, y0: float, x1: float, y1: float) -> tuple[float
     return left, bottom, max(_EFFECT_MIN_SIZE_MM, right - left), max(_EFFECT_MIN_SIZE_MM, top - bottom)
 
 
+def _sync_scene_graphs_for_creation(context) -> None:
+    """新規作成前に、タイマー待ちの線幅グラフ編集を安全に確定する。"""
+    scene = getattr(context, "scene", None)
+    params = getattr(scene, "bmanga_effect_line_params", None) if scene is not None else None
+    if params is None:
+        return
+    try:
+        from ..utils import effect_inout_curve
+
+        _set_scene_params_syncing(scene, True)
+        try:
+            effect_inout_curve.sync_active_profile_nodes_to_params(params)
+        finally:
+            _set_scene_params_syncing(scene, False)
+    except Exception:  # noqa: BLE001
+        _logger.exception("effect_line: creation profile sync failed")
+
+
 class BMANGA_OT_effect_line_generate(Operator):
     bl_idname = "bmanga.effect_line_generate"
     bl_label = "効果線を追加"
@@ -1361,6 +1375,7 @@ class BMANGA_OT_effect_line_generate(Operator):
 
     def execute(self, context):
         try:
+            _sync_scene_graphs_for_creation(context)
             _create_effect_layer(context)
         except Exception as exc:  # noqa: BLE001
             _logger.exception("effect_line_generate failed")
@@ -1520,6 +1535,7 @@ class BMANGA_OT_effect_line_tool(Operator):
                     params.start_to_coma_frame = True
                 finally:
                     _set_scene_params_syncing(context.scene, False)
+        _sync_scene_graphs_for_creation(context)
         self._start_create_preview(
             local_x,
             local_y,

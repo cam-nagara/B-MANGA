@@ -227,9 +227,6 @@ def _draw_image_path_detail(layout, context, entry=None) -> None:
     row = inout_box.row(align=True)
     row.prop(entry, "in_percent")
     row.prop(entry, "out_percent")
-    row = inout_box.row(align=True)
-    row.prop(entry, "in_start_percent")
-    row.prop(entry, "out_start_percent")
     color_row = inout_box.row(align=True)
     color_row.enabled = bool(getattr(entry, "inout_color_enabled", False))
     color_row.prop(entry, "inout_start_color", text="入り色")
@@ -748,7 +745,7 @@ def _sync_detail_profile_curve(context, kind: str, bmanga_id: str) -> bool:
 
                 _elo._set_scene_params_syncing(context.scene, True)
                 try:
-                    return bool(effect_inout_curve.sync_profile_node_bidirectional(params))
+                    return bool(effect_inout_curve.sync_active_profile_nodes_to_params(params))
                 finally:
                     _elo._set_scene_params_syncing(context.scene, False)
         elif kind == "balloon":
@@ -760,7 +757,7 @@ def _sync_detail_profile_curve(context, kind: str, bmanga_id: str) -> bool:
         else:
             params = None
         if params is not None:
-            return bool(effect_inout_curve.sync_profile_node_bidirectional(params))
+            return bool(effect_inout_curve.sync_active_profile_nodes_to_params(params))
     except Exception:  # noqa: BLE001
         _logger.exception("detail profile curve sync failed")
     return False

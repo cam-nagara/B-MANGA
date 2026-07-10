@@ -429,7 +429,7 @@ def _shape_params_signature(sp) -> tuple:
         _round_float(getattr(sp, "cloud_bump_height_jitter", 0.0)),
         _round_float(getattr(sp, "cloud_offset_percent", 0.0)),
         int(getattr(sp, "shape_seed", 0) or 0),
-        _round_float(getattr(sp, "cloud_sub_width_ratio", 0.0)),
+        _round_float(getattr(sp, "cloud_sub_width_ratio", 30.0)),
         _round_float(getattr(sp, "cloud_sub_width_jitter", 0.0)),
         _round_float(getattr(sp, "cloud_sub_height_ratio", 0.0)),
         _round_float(getattr(sp, "cloud_sub_height_jitter", 0.0)),

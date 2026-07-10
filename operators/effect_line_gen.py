@@ -177,7 +177,7 @@ def _shape_outline(
         cloud_bump_height_mm=float(getattr(params, f"{prefix}_cloud_bump_height_mm", 4.0)),
         cloud_bump_height_jitter=float(getattr(params, f"{prefix}_cloud_bump_height_jitter", 0.0)),
         cloud_offset=float(getattr(params, f"{prefix}_cloud_offset_percent", 50.0)) / 100.0,
-        cloud_sub_width_ratio=float(getattr(params, f"{prefix}_cloud_sub_width_ratio", 0.0)),
+        cloud_sub_width_ratio=float(getattr(params, f"{prefix}_cloud_sub_width_ratio", 30.0)),
         cloud_sub_width_jitter=float(getattr(params, f"{prefix}_cloud_sub_width_jitter", 0.0)),
         cloud_sub_height_ratio=float(getattr(params, f"{prefix}_cloud_sub_height_ratio", 0.0)),
         cloud_sub_height_jitter=float(getattr(params, f"{prefix}_cloud_sub_height_jitter", 0.0)),
@@ -1045,6 +1045,27 @@ def apply_uni_flash_offset(
     return _apply_uni_flash_jag(strokes, center_xy_mm, offset_percent)
 
 
+def _clear_initial_inout_profile(strokes: list[EffectLineStroke]) -> list[EffectLineStroke]:
+    """直接生成API用の端点プロファイルを、共通グラフ適用前だけ取り除く。"""
+    out = []
+    for stroke in strokes:
+        out.append(
+            EffectLineStroke(
+                points_xyz=list(stroke.points_xyz),
+                radius=stroke.radius,
+                cyclic=stroke.cyclic,
+                radii=None,
+                opacities=None,
+                role=stroke.role,
+                curve_type=stroke.curve_type,
+                bezier_smooth=stroke.bezier_smooth,
+                density_end=stroke.density_end,
+                side=stroke.side,
+            )
+        )
+    return out
+
+
 def generate_strokes(
     params,
     center_xy_mm=(110.0, 160.0),
@@ -1059,14 +1080,14 @@ def generate_strokes(
     shape_center_xy_mm = end_center_xy_mm if end_center_xy_mm is not None else center_xy_mm
     if etype == "speed":
         return _apply_inout_profile(
-            generate_speed_strokes(
+            _clear_initial_inout_profile(generate_speed_strokes(
                 params,
                 origin_xy_mm=shape_center_xy_mm,
                 region_width_mm=rx * 2.0,
                 region_height_mm=ry * 2.0,
                 fixed_span_mm=rx * 2.0,
                 seed=seed,
-            ),
+            )),
             params,
         )
     if etype == "beta_flash":
@@ -1098,6 +1119,7 @@ def generate_strokes(
             center_xy_mm,
             float(getattr(params, "uni_flash_offset_percent", 50.0) or 0.0),
         )
+    focus_strokes = _clear_initial_inout_profile(focus_strokes)
     focus_strokes = _apply_bundle_jagged_start_fixed(focus_strokes, params)
     focus_strokes = _apply_inout_profile(focus_strokes, params)
     return _apply_white_underlay_strokes(focus_strokes, params)

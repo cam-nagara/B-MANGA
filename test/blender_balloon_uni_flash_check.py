@@ -154,8 +154,8 @@ def _assert_detail_profile_graph_sync(context, page, entry, layer_detail_op, eff
         ((0.0, 0.2), (0.35, 1.0), (0.65, 1.0), (1.0, 0.4)),
     )
     layer_detail_op._sync_detail_profile_curve(context, "balloon", entry.id)
-    assert abs(float(entry.in_percent) - 20.0) < 1.0e-4, "線幅グラフの入りが数値に反映されていません"
-    assert abs(float(entry.out_percent) - 40.0) < 1.0e-4, "線幅グラフの抜きが数値に反映されていません"
+    assert abs(float(entry.in_percent) - 40.0) < 1.0e-4, "線幅グラフの外端が入りへ反映されていません"
+    assert abs(float(entry.out_percent) - 20.0) < 1.0e-4, "線幅グラフの内端が抜きへ反映されていません"
     assert abs(float(entry.in_start_percent) - 35.0) < 1.0e-4, "線幅グラフの入り始点が数値に反映されていません"
     assert abs(float(entry.out_start_percent) - 35.0) < 1.0e-4, "線幅グラフの抜き始点が数値に反映されていません"
 
@@ -168,17 +168,17 @@ def _assert_detail_profile_graph_sync(context, page, entry, layer_detail_op, eff
     node = effect_inout_curve.get_profile_node()
     assert node is not None, "フキダシ詳細設定の線幅グラフが再作成されていません"
     points = effect_inout_curve.read_node_points(node)
-    assert any(abs(x - 0.0) < 1.0e-4 and abs(y - 0.30) < 1.0e-4 for x, y in points), (
-        "フキダシの入り(%)が線幅グラフの左端へ反映されていません"
+    assert any(abs(x - 0.0) < 1.0e-4 and abs(y - 0.20) < 1.0e-4 for x, y in points), (
+        "フキダシの抜き(%)が線幅グラフの内端へ反映されていません"
     )
-    assert any(abs(x - 0.40) < 1.0e-4 and abs(y - 1.0) < 1.0e-4 for x, y in points), (
-        "フキダシの入り始点(%)が線幅グラフへ反映されていません"
+    assert any(abs(x - 0.25) < 1.0e-4 and abs(y - 1.0) < 1.0e-4 for x, y in points), (
+        "フキダシの内端側変化が線幅グラフへ反映されていません"
     )
-    assert any(abs(x - 0.75) < 1.0e-4 and abs(y - 1.0) < 1.0e-4 for x, y in points), (
-        "フキダシの抜き始点(%)が線幅グラフへ反映されていません"
+    assert any(abs(x - 0.60) < 1.0e-4 and abs(y - 1.0) < 1.0e-4 for x, y in points), (
+        "フキダシの外端側変化が線幅グラフへ反映されていません"
     )
-    assert any(abs(x - 1.0) < 1.0e-4 and abs(y - 0.20) < 1.0e-4 for x, y in points), (
-        "フキダシの抜き(%)が線幅グラフの右端へ反映されていません"
+    assert any(abs(x - 1.0) < 1.0e-4 and abs(y - 0.30) < 1.0e-4 for x, y in points), (
+        "フキダシの入り(%)が線幅グラフの外端へ反映されていません"
     )
 
 
@@ -211,6 +211,7 @@ def main() -> None:
         from bmanga_dev_balloon_uni_flash.panels import layer_stack_detail_ui
         from bmanga_dev_balloon_uni_flash.utils import (
             balloon_curve_object,
+            balloon_fill_mesh,
             balloon_flash_effect_line_mesh,
             balloon_line_mesh,
             balloon_shapes,
@@ -389,18 +390,24 @@ def main() -> None:
                     "white_outline_black_length_scale_far_percent",
                     "white_outline_black_in_percent",
                     "white_outline_black_out_percent",
-                    "white_outline_black_inout_range_mode",
-                    "white_outline_black_in_range_percent",
-                    "white_outline_black_out_range_percent",
                     "inout_apply_brush_size",
                     "inout_apply_opacity",
                     "in_percent",
                     "out_percent",
-                    "in_start_percent",
-                    "out_start_percent",
+                    "white_outline_bundle_spacing_deg",
+                    "white_outline_bundle_spacing_jitter",
+                    "white_outline_white_spacing_scale_percent",
+                    "white_outline_black_spacing_scale_percent",
+                    "white_outline_white_in_percent",
+                    "white_outline_white_out_percent",
                 }
                 forbidden_white_outline_props = set(effect_line_core.line_effect_schema.EFFECT_PATH_IMAGE_FIELDS) | {
                     "white_outline_white_brush_mm",
+                    "white_outline_black_inout_range_mode",
+                    "white_outline_black_in_range_percent",
+                    "white_outline_black_out_range_percent",
+                    "white_outline_black_in_range_mm",
+                    "white_outline_black_out_range_mm",
                     "white_outline_white_inout_range_mode",
                     "white_outline_white_in_range_percent",
                     "white_outline_white_out_range_percent",
@@ -541,9 +548,26 @@ def main() -> None:
             assert len(body_spline.bezier_points) == 4, "下地が楕円カーブになっていません"
             assert _evaluated_polygon_count(obj) == 0, "本体カーブ側に表示面が残っています"
             flash_obj = bpy.data.objects.get(balloon_flash_effect_line_mesh._flash_effect_line_mesh_object_name(entry.id))
+            fill_obj = bpy.data.objects.get(balloon_fill_mesh._fill_mesh_object_name(entry.id))
             white_obj = bpy.data.objects.get(balloon_line_mesh._flash_white_line_mesh_object_name(entry.id))
             line_obj = bpy.data.objects.get(balloon_line_mesh._line_mesh_object_name(entry.id))
             assert flash_obj is not None and _evaluated_polygon_count(flash_obj) > 0, "放射状の線実体が作成されていません"
+            if line_style == "uni_flash":
+                strokes = balloon_flash_effect_line_mesh.generate_flash_strokes_rect_local(entry)
+                line_strokes = [
+                    stroke for stroke in strokes
+                    if str(getattr(stroke, "role", "") or "line") == "line"
+                ]
+                assert line_strokes, "ウニフラ切替直後の線ストロークが作成されていません"
+                assert any(
+                    any(float(radius) > 1.0e-9 for radius in (getattr(stroke, "radii", None) or (stroke.radius,)))
+                    for stroke in line_strokes
+                ), "ウニフラ切替直後の線幅がすべて0です"
+                assert fill_obj is not None and _evaluated_polygon_count(fill_obj) > 0, (
+                    "ウニフラ切替後にフキダシ本体の塗りが残っていません"
+                )
+            else:
+                assert fill_obj is None, "白抜き線で通常のフキダシ塗りが残っています"
             assert white_obj is None, "古い閉じた白線実体が残っています"
             assert line_obj is None, "古い閉じた黒線実体が残っています"
             body_samples = balloon_line_mesh._sample_body_bezier(body_spline, balloon_line_mesh.SAMPLES_PER_SEGMENT)

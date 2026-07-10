@@ -70,7 +70,7 @@ _LEGACY_BASE_SHAPE_TO_EFFECT_SHAPE = {
     "polygon": "octagon",
 }
 
-EFFECT_PARAM_SCHEMA_VERSION = 17
+EFFECT_PARAM_SCHEMA_VERSION = 18
 _LEGACY_DEFAULT_MAX_LINE_COUNT = 300
 _DEFAULT_MAX_LINE_COUNT = 1000
 _LEGACY_DEFAULT_SPEED_LINE_COUNT = 20
@@ -241,6 +241,15 @@ def effect_params_from_dict(params, data: dict) -> None:
             data.setdefault("white_outline_black_out_range_percent", 100.0)
             data.setdefault("white_outline_black_in_range_mm", 10.0)
             data.setdefault("white_outline_black_out_range_mm", 10.0)
+        if schema_version < 18:
+            data.setdefault("white_outline_bundle_spacing_deg", 0.0)
+            data.setdefault("white_outline_bundle_spacing_jitter", 0.0)
+            data.setdefault("white_outline_white_spacing_scale_percent", 100.0)
+            data.setdefault("white_outline_black_spacing_scale_percent", 100.0)
+            data.setdefault("white_outline_white_in_easing_curve", "0.0000,0.0000;1.0000,1.0000")
+            data.setdefault("white_outline_white_out_easing_curve", "0.0000,0.0000;1.0000,1.0000")
+            data.setdefault("white_outline_black_in_easing_curve", "0.0000,0.0000;1.0000,1.0000")
+            data.setdefault("white_outline_black_out_easing_curve", "0.0000,0.0000;1.0000,1.0000")
         if schema_version < 8:
             if "in_start_percent" not in data and "in_range_percent" in data:
                 data["in_start_percent"] = data["in_range_percent"]
@@ -288,8 +297,8 @@ class BMangaEffectLineParams(bpy.types.PropertyGroup):
     effect_type: EnumProperty(name="種類", items=_EFFECT_TYPE_ITEMS, default="focus", update=_on_params_changed)  # type: ignore[valid-type]
     rotation_deg: FloatProperty(name="全体回転", default=0.0, update=_on_params_changed)  # type: ignore[valid-type]
 
-    start_shape: EnumProperty(name="始点形状", items=_EFFECT_SHAPE_ITEMS, default="rect", update=_on_params_changed)  # type: ignore[valid-type]
-    start_to_coma_frame: BoolProperty(name="始点をコマ枠に設定", default=False, update=_on_params_changed)  # type: ignore[valid-type]
+    start_shape: EnumProperty(name="外端形状", items=_EFFECT_SHAPE_ITEMS, default="rect", update=_on_params_changed)  # type: ignore[valid-type]
+    start_to_coma_frame: BoolProperty(name="外端形状をコマ枠に設定", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     start_rounded_corner_enabled: BoolProperty(name="角丸", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     start_rounded_corner_radius_mm: FloatProperty(name="角半径 (mm)", default=3.0, min=0.0, soft_max=30.0, update=_on_params_changed)  # type: ignore[valid-type]
     start_rounded_corner_radius_unit: EnumProperty(name="単位", items=corner_radius.RADIUS_UNIT_ITEMS, default="mm", update=_on_params_changed)  # type: ignore[valid-type]
@@ -299,12 +308,12 @@ class BMangaEffectLineParams(bpy.types.PropertyGroup):
     start_cloud_bump_height_mm: FloatProperty(name="山の高さ (mm)", default=4.0, min=0.5, soft_max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     start_cloud_bump_height_jitter: FloatProperty(name="山の高さ 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
     start_cloud_offset_percent: FloatProperty(name="ズラし量 (%)", default=50.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
-    start_cloud_sub_width_ratio: FloatProperty(name="小山幅 (%)", default=0.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    start_cloud_sub_width_ratio: FloatProperty(name="小山幅 (%)", default=30.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     start_cloud_sub_width_jitter: FloatProperty(name="小山幅 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
     start_cloud_sub_height_ratio: FloatProperty(name="小山高 (%)", default=0.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     start_cloud_sub_height_jitter: FloatProperty(name="小山高 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
 
-    end_shape: EnumProperty(name="終点形状", items=_EFFECT_SHAPE_ITEMS, default="ellipse", update=_on_params_changed)  # type: ignore[valid-type]
+    end_shape: EnumProperty(name="内端形状", items=_EFFECT_SHAPE_ITEMS, default="ellipse", update=_on_params_changed)  # type: ignore[valid-type]
     end_rounded_corner_enabled: BoolProperty(name="角丸", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     end_rounded_corner_radius_mm: FloatProperty(name="角半径 (mm)", default=3.0, min=0.0, soft_max=30.0, update=_on_params_changed)  # type: ignore[valid-type]
     end_rounded_corner_radius_unit: EnumProperty(name="単位", items=corner_radius.RADIUS_UNIT_ITEMS, default="mm", update=_on_params_changed)  # type: ignore[valid-type]
@@ -314,7 +323,7 @@ class BMangaEffectLineParams(bpy.types.PropertyGroup):
     end_cloud_bump_height_mm: FloatProperty(name="山の高さ (mm)", default=4.0, min=0.5, soft_max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     end_cloud_bump_height_jitter: FloatProperty(name="山の高さ 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
     end_cloud_offset_percent: FloatProperty(name="ズラし量 (%)", default=50.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
-    end_cloud_sub_width_ratio: FloatProperty(name="小山幅 (%)", default=0.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    end_cloud_sub_width_ratio: FloatProperty(name="小山幅 (%)", default=30.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     end_cloud_sub_width_jitter: FloatProperty(name="小山幅 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
     end_cloud_sub_height_ratio: FloatProperty(name="小山高 (%)", default=0.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     end_cloud_sub_height_jitter: FloatProperty(name="小山高 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
@@ -342,10 +351,10 @@ class BMangaEffectLineParams(bpy.types.PropertyGroup):
     line_image_inout_end_color: FloatVectorProperty(name="抜き色", subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
     brush_jitter_enabled: BoolProperty(name="乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     brush_jitter_amount: FloatProperty(name="乱れ量", default=0.2, min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
-    length_jitter_enabled: BoolProperty(name="始点乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]
-    length_jitter_amount: FloatProperty(name="始点乱れ (%)", default=20.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
-    end_length_jitter_enabled: BoolProperty(name="終点乱れ", default=True, update=_on_params_changed)  # type: ignore[valid-type]
-    end_length_jitter_amount: FloatProperty(name="終点乱れ (%)", default=20.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
+    length_jitter_enabled: BoolProperty(name="外端乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]
+    length_jitter_amount: FloatProperty(name="外端乱れ (%)", default=20.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
+    end_length_jitter_enabled: BoolProperty(name="内端乱れ", default=True, update=_on_params_changed)  # type: ignore[valid-type]
+    end_length_jitter_amount: FloatProperty(name="内端乱れ (%)", default=20.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
 
     spacing_mode: EnumProperty(name="線の間隔", items=_SPACING_MODE_ITEMS, default="distance", update=_on_params_changed)  # type: ignore[valid-type]
     spacing_angle_deg: FloatProperty(name="線の間隔 (角度)", default=5.0, min=0.1, soft_max=90.0, update=_on_params_changed)  # type: ignore[valid-type]
@@ -368,26 +377,26 @@ class BMangaEffectLineParams(bpy.types.PropertyGroup):
     inout_apply_opacity: BoolProperty(name="不透明度", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     in_percent: FloatProperty(name="入り (%)", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     out_percent: FloatProperty(name="抜き (%)", default=0.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
-    in_start_percent: FloatProperty(name="入り始点 (%)", description="線の始点側から、線幅が一定になる位置を指定します", default=_DEFAULT_IN_START_PERCENT, min=0.0, max=100.0, update=_on_in_start_changed)  # type: ignore[valid-type]
-    out_start_percent: FloatProperty(name="抜き始点 (%)", description="線の終点側から、抜きが始まる長さを指定します", default=_DEFAULT_OUT_START_PERCENT, min=0.0, max=100.0, update=_on_out_start_changed)  # type: ignore[valid-type]
+    in_start_percent: FloatProperty(name="外端側グラフ位置", default=_DEFAULT_IN_START_PERCENT, min=0.0, max=100.0, options={"HIDDEN"}, update=_on_in_start_changed)  # type: ignore[valid-type]
+    out_start_percent: FloatProperty(name="内端側グラフ位置", default=_DEFAULT_OUT_START_PERCENT, min=0.0, max=100.0, options={"HIDDEN"}, update=_on_out_start_changed)  # type: ignore[valid-type]
     in_easing_curve: bpy.props.StringProperty(name="入りカーブ", default="0.0000,0.0000;1.0000,1.0000", update=_on_params_changed)  # type: ignore[valid-type]
     out_easing_curve: bpy.props.StringProperty(name="抜きカーブ", default="0.0000,0.0000;1.0000,1.0000", update=_on_params_changed)  # type: ignore[valid-type]
     inout_range_mode: EnumProperty(name="範囲", items=_INOUT_RANGE_MODE_ITEMS, default="percent", update=_on_params_changed)  # type: ignore[valid-type]
-    in_range_percent: FloatProperty(name="入りの範囲 (%)", description="始点からこの割合の長さを入りの変化区間にする", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
-    out_range_percent: FloatProperty(name="抜きの範囲 (%)", description="終点からこの割合の長さを抜きの変化区間にする", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
-    in_range_mm: FloatProperty(name="入りの範囲 (mm)", description="始点からこの長さを入りの変化区間にする", default=10.0, min=0.0, soft_max=200.0, update=_on_params_changed)  # type: ignore[valid-type]
-    out_range_mm: FloatProperty(name="抜きの範囲 (mm)", description="終点からこの長さを抜きの変化区間にする", default=10.0, min=0.0, soft_max=200.0, update=_on_params_changed)  # type: ignore[valid-type]
+    in_range_percent: FloatProperty(name="入りの範囲 (%)", description="外端からこの割合の長さを入りの変化区間にする", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    out_range_percent: FloatProperty(name="抜きの範囲 (%)", description="内端からこの割合の長さを抜きの変化区間にする", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    in_range_mm: FloatProperty(name="入りの範囲 (mm)", description="外端からこの長さを入りの変化区間にする", default=10.0, min=0.0, soft_max=200.0, update=_on_params_changed)  # type: ignore[valid-type]
+    out_range_mm: FloatProperty(name="抜きの範囲 (mm)", description="内端からこの長さを抜きの変化区間にする", default=10.0, min=0.0, soft_max=200.0, update=_on_params_changed)  # type: ignore[valid-type]
 
     opacity: FloatProperty(name="不透明度", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
     line_color: FloatVectorProperty(name="線色", subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
     fill_color: FloatVectorProperty(name="塗り色", subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
     fill_opacity: FloatProperty(name="塗り不透明度", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
-    fill_base_shape: BoolProperty(name="終点形状を下地として塗る", default=False, update=_on_params_changed)  # type: ignore[valid-type]
+    fill_base_shape: BoolProperty(name="内端形状を下地として塗る", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     white_underlay_enabled: BoolProperty(name="白抜き", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     white_underlay_width_percent: FloatProperty(name="白抜き幅 (%)", default=150.0, min=-300.0, max=300.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
     white_underlay_color: FloatVectorProperty(name="白抜き色", subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
     # ウニフラ固有: 線の終点を交互に出し入れする量 (50% = 従来の固定量)
-    uni_flash_offset_percent: FloatProperty(name="ズラし量 (%)", description="線の終点を交互に出し入れして、長さをずらします", default=50.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
+    uni_flash_offset_percent: FloatProperty(name="ズラし量 (%)", description="線の内端を交互に出し入れして、長さをずらします", default=50.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
 
     # 流線固有
     speed_angle_deg: FloatProperty(name="流線の角度", default=0.0, update=_on_params_changed)  # type: ignore[valid-type]
@@ -395,7 +404,10 @@ class BMangaEffectLineParams(bpy.types.PropertyGroup):
 
     # 白抜き線固有
     white_outline_count: IntProperty(name="束の数", default=5, min=1, soft_max=100, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_bundle_spacing_deg: FloatProperty(name="束の間隔 (角度)", description="0 の場合は全周へ等間隔に配置します", default=0.0, min=0.0, max=360.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_bundle_spacing_jitter: FloatProperty(name="間隔乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_spacing_mm: FloatProperty(name="白線間隔 (mm)", default=0.2, min=0.0, soft_max=20.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_white_spacing_scale_percent: FloatProperty(name="白線の間隔変化 (%)", default=100.0, min=0.0, max=300.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_white_line_count_auto: BoolProperty(name="白線本数を自動計算", default=True, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_white_line_count: IntProperty(name="白線本数", default=24, min=1, soft_max=200, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_width_mm: FloatProperty(name="束の幅 (mm)", default=10.0, min=0.01, soft_max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
@@ -413,11 +425,14 @@ class BMangaEffectLineParams(bpy.types.PropertyGroup):
     white_outline_white_out_range_percent: FloatProperty(name="白線抜き範囲 (%)", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_white_in_range_mm: FloatProperty(name="白線入り範囲 (mm)", default=10.0, min=0.0, soft_max=200.0, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_white_out_range_mm: FloatProperty(name="白線抜き範囲 (mm)", default=10.0, min=0.0, soft_max=200.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_white_in_easing_curve: StringProperty(name="白線入りカーブ", default="0.0000,0.0000;1.0000,1.0000", options={"HIDDEN"}, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_white_out_easing_curve: StringProperty(name="白線抜きカーブ", default="0.0000,0.0000;1.0000,1.0000", options={"HIDDEN"}, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_line_count_auto: BoolProperty(name="黒線本数を自動計算", default=True, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_line_count: IntProperty(name="黒線本数", default=3, min=1, soft_max=50, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_direction: EnumProperty(name="黒線方向", items=_WHITE_OUTLINE_BLACK_DIRECTION_ITEMS, default="outside", update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_brush_mm: FloatProperty(name="黒線太さ (mm)", default=0.3, min=0.01, soft_max=5.0, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_spacing_mm: FloatProperty(name="黒線間隔 (mm)", default=0.2, min=0.0, soft_max=20.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_black_spacing_scale_percent: FloatProperty(name="黒線の間隔変化 (%)", default=100.0, min=0.0, max=300.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_width_scale_percent: FloatProperty(name="黒線幅変化 (%)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_length_scale_near_percent: FloatProperty(name="黒線長さ変化 (内側)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_length_scale_far_percent: FloatProperty(name="黒線長さ変化 (外側)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
@@ -429,6 +444,8 @@ class BMangaEffectLineParams(bpy.types.PropertyGroup):
     white_outline_black_out_range_percent: FloatProperty(name="黒線抜き範囲 (%)", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_in_range_mm: FloatProperty(name="黒線入り範囲 (mm)", default=10.0, min=0.0, soft_max=200.0, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_out_range_mm: FloatProperty(name="黒線抜き範囲 (mm)", default=10.0, min=0.0, soft_max=200.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_black_in_easing_curve: StringProperty(name="黒線入りカーブ", default="0.0000,0.0000;1.0000,1.0000", options={"HIDDEN"}, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_black_out_easing_curve: StringProperty(name="黒線抜きカーブ", default="0.0000,0.0000;1.0000,1.0000", options={"HIDDEN"}, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_angle_deg: FloatProperty(name="角度", default=0.0, update=_on_params_changed)  # type: ignore[valid-type]
 
 

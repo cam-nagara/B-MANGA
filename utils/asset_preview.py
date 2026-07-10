@@ -800,7 +800,7 @@ def _draw_preview_balloon(
             cloud_bump_height_mm=float(params.get("cloud_bump_height_mm", 4.0) or 4.0),
             cloud_bump_height_jitter=float(params.get("cloud_bump_height_jitter", 0.0) or 0.0),
             cloud_offset=float(params.get("cloud_offset_percent", 50.0) or 50.0) / 100.0,
-            cloud_sub_width_ratio=float(params.get("cloud_sub_width_ratio", 0.0) or 0.0),
+            cloud_sub_width_ratio=float(params.get("cloud_sub_width_ratio", 30.0)),
             cloud_sub_width_jitter=float(params.get("cloud_sub_width_jitter", 0.0) or 0.0),
             cloud_sub_height_ratio=float(params.get("cloud_sub_height_ratio", 0.0) or 0.0),
             cloud_sub_height_jitter=float(params.get("cloud_sub_height_jitter", 0.0) or 0.0),

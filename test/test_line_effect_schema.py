@@ -116,7 +116,17 @@ def test_white_outline_ui_maps_stay_in_shared_field_contract():
     assert effect_ui_fields <= set(schema.EFFECT_WHITE_OUTLINE_FIELDS)
     assert not (balloon_ui_fields & set(schema.EFFECT_PATH_IMAGE_FIELDS))
     assert "white_outline_white_brush_mm" not in balloon_ui_fields
-    assert "white_outline_white_inout_range_mode" not in balloon_ui_fields
+    white_inout_fields = {
+        "white_outline_white_in_percent",
+        "white_outline_white_out_percent",
+        "white_outline_white_inout_range_mode",
+        "white_outline_white_in_range_percent",
+        "white_outline_white_out_range_percent",
+        "white_outline_white_in_range_mm",
+        "white_outline_white_out_range_mm",
+        "white_outline_white_in_easing_curve",
+        "white_outline_white_out_easing_curve",
+    }
     black_inout_fields = {
         "white_outline_black_in_percent",
         "white_outline_black_out_percent",
@@ -125,7 +135,13 @@ def test_white_outline_ui_maps_stay_in_shared_field_contract():
         "white_outline_black_out_range_percent",
         "white_outline_black_in_range_mm",
         "white_outline_black_out_range_mm",
+        "white_outline_black_in_easing_curve",
+        "white_outline_black_out_easing_curve",
     }
+    assert white_inout_fields <= effect_ui_fields
+    assert white_inout_fields <= balloon_ui_fields
+    assert white_inout_fields <= set(schema.EFFECT_WHITE_OUTLINE_FIELDS)
+    assert white_inout_fields <= set(schema.BALLOON_UNI_FLASH_PARAM_FIELDS)
     assert black_inout_fields <= effect_ui_fields
     assert black_inout_fields <= balloon_ui_fields
     assert black_inout_fields <= set(schema.EFFECT_WHITE_OUTLINE_FIELDS)
