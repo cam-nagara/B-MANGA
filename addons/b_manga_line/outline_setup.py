@@ -571,11 +571,19 @@ def _ensure_hidden_rim_material_slots(
     hidden_start = material_offset + source_count
     hidden_end = hidden_start + source_count
     hidden = _get_or_create_hidden_rim_material()
-    while len(obj.data.materials) < hidden_end:
-        obj.data.materials.append(hidden)
-    for index in range(hidden_start, hidden_end):
-        if obj.data.materials[index] is not hidden:
-            obj.data.materials[index] = hidden
+    from . import material_slots
+
+    material_slots.ensure_unique_band(
+        obj,
+        hidden_start,
+        hidden_end,
+        hidden,
+        key="hidden-rim",
+        matches=lambda material: bool(
+            material
+            and _material_name_matches(material, SHEET_RIM_HIDDEN_MATERIAL_NAME)
+        ),
+    )
     return material_offset * 2
 
 
@@ -597,10 +605,38 @@ def _ensure_outline_material_slots(
 
     source_count = max(1, first)
     needed = first + source_count
-    while len(obj.data.materials) < needed:
-        obj.data.materials.append(mat)
-    for index in range(first, needed):
-        obj.data.materials[index] = mat
+    from . import material_slots
+
+    color_node = next(
+        (node for node in mat.node_tree.nodes if getattr(node, "label", "") == "BML_Color"),
+        None,
+    ) if mat.use_nodes else None
+    color = (
+        tuple(color_node.outputs[0].default_value)
+        if color_node is not None
+        else tuple(getattr(mat, "diffuse_color", (0.0, 0.0, 0.0, 1.0)))
+    )
+
+    def sync_padding(candidate: bpy.types.Material) -> None:
+        _repair_line_material(
+            candidate,
+            color,
+            target="outline",
+            hide_through_transparent=bool(
+                mat.get(PROP_HIDE_THROUGH_TRANSPARENT, False)
+            ),
+            double_sided=bool(mat.get(PROP_DOUBLE_SIDED, False)),
+        )
+
+    material_slots.ensure_unique_band(
+        obj,
+        first,
+        needed,
+        mat,
+        key="outline",
+        matches=_is_outline_material,
+        sync=sync_padding,
+    )
     _ensure_hidden_rim_material_slots(obj, first)
     return first
 

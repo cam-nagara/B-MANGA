@@ -121,6 +121,9 @@ def main() -> None:
     _select(obj)
 
     settings = obj.bmanga_line_settings
+    # 奥側アウトラインの透過面保護だけを分離して検証するため、前後頂点で
+    # 厚みが変わる遠近減衰は無効化する（遠近減衰は専用テストで検証）。
+    settings.line_width_distance_falloff = 0.0
     settings.outline_thickness = 0.18
     settings.outline_color = (0.0, 0.0, 0.0, 1.0)
     settings.hide_through_transparent = False
@@ -146,6 +149,20 @@ def main() -> None:
     dark_count = _dark_pixels(width, height, pixels)
     assert dark_count < dark_without, (dark_count, dark_without)
     assert core.has_outline(obj)
+
+    # 初期設定の組み合わせでも、実用線幅が透明面の中央を覆わず、
+    # 外周線だけが残ることを確認する。
+    settings.outline_thickness_mm = 0.5
+    settings.use_uniform_line_width = True
+    settings.line_width_distance_falloff = 1.0
+    assert presets.apply_line_settings(obj, bpy.context)
+    width, height, pixels = _render_pixels()
+    center_default = _pixel_rgb(width, pixels, width // 2, height // 2)
+    background_default = _pixel_rgb(width, pixels, 2, 2)
+    assert max(
+        abs(center_default[index] - background_default[index])
+        for index in range(3)
+    ) < 0.02, (center_default, background_default)
 
     print("[PASS] transparent surfaces hide far-side B-MANGA Line fill")
 

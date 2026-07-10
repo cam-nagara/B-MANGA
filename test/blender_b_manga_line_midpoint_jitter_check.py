@@ -95,6 +95,7 @@ def _apply_weights(
     settings.edge_width_curve_50 = curve_points[1]
     settings.edge_width_curve_75 = curve_points[2]
     settings.use_vertex_color = False
+    settings.use_uniform_line_width = False
     vertex_analysis.compute_and_apply_weights(obj, settings)
 
 
@@ -124,6 +125,7 @@ def _assert_multiselect_curve_update() -> None:
     _select_objects(first, [second])
 
     settings = first.bmanga_line_settings
+    settings.use_uniform_line_width = False
     settings.edge_smooth_factor = -1.0
     settings.edge_midpoint_jitter_percent = 0.0
     settings.edge_width_curve_25 = 1.0
@@ -136,7 +138,8 @@ def _assert_multiselect_curve_update() -> None:
         assert s.edge_width_curve_25 == 1.0
         assert s.edge_width_curve_50 == 1.0
         assert s.edge_width_curve_75 == 1.0
-        assert _weight_at_t(obj, 3, 0.25) < 1e-6
+        weight = _weight_at_t(obj, 3, 0.25)
+        assert weight < 1e-6, (obj.name, weight, _zero_t_values(obj, 3))
 
     settings.edge_width_curve_25 = 0.0
     settings.edge_width_curve_50 = 0.0

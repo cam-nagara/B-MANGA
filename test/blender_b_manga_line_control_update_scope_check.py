@@ -303,6 +303,7 @@ def _test_setting_edits_are_deferred(objects, counts, reset) -> None:
     for obj in objects:
         update_state.clear_pending(obj)
 
+    geometry_targets = set(update_state.LINE_TARGETS) - {"bump"}
     cases = (
         ("outline_thickness", 0.0011, {"outline"}),
         ("outline_color", (0.15, 0.25, 0.35, 1.0), {"outline"}),
@@ -318,9 +319,9 @@ def _test_setting_edits_are_deferred(objects, counts, reset) -> None:
         ("selection_line_enabled", False, {"selection"}),
         ("selection_line_enabled", True, {"selection"}),
         ("selection_line_thickness", 0.0014, {"selection"}),
-        ("use_camera_compensation", True, set(update_state.LINE_TARGETS)),
-        ("match_subsurf_viewport_to_render", True, set(update_state.LINE_TARGETS)),
-        ("use_camera_culling", False, set(update_state.LINE_TARGETS)),
+        ("use_camera_compensation", True, geometry_targets),
+        ("match_subsurf_viewport_to_render", True, geometry_targets),
+        ("use_camera_culling", False, geometry_targets),
     )
     for prop_name, value, targets in cases:
         _change_setting(objects, prop_name, value, targets, counts, reset)
@@ -353,7 +354,11 @@ def _test_target_update_clears_only_target(objects, counts, reset) -> None:
     assert counts["intersection_refresh"] == 0, counts
     assert counts["intersection_width_refs"] == 0, counts
     assert ("outline",) in counts["camera_scopes"], counts
-    assert _intersection_visibility_state() == before_intersection_visibility
+    after_intersection_visibility = _intersection_visibility_state()
+    assert after_intersection_visibility == before_intersection_visibility, (
+        before_intersection_visibility,
+        after_intersection_visibility,
+    )
     for obj in objects:
         pending = set(update_state.pending_targets(obj))
         assert "outline" not in pending, (obj.name, pending)
@@ -500,7 +505,9 @@ def _test_visual_updates_are_light(counts, reset) -> None:
         assert counts["selection_apply"] == 0, (target, counts)
         assert counts["intersection_refresh"] == 0, (target, counts)
         assert counts["intersection_width_refs"] == 0, (target, counts)
-        assert counts["view_update"] == 0, (target, counts)
+        # 個別反映は指紋と現在のモディファイア状態を確定するため、入口で
+        # depsgraphを1回だけ更新する。線種ごとの重複更新には戻さない。
+        assert counts["view_update"] == 1, (target, counts)
         assert (target,) in counts["camera_scopes"], (target, counts)
         for obj in target_objects:
             assert not any(_target_modifiers_visible(obj, target)), (target, obj.name)
@@ -510,7 +517,9 @@ def _test_visual_updates_are_light(counts, reset) -> None:
                 update_state.pending_visual_targets(obj),
             )
         for obj in [item for item in objects if item not in target_objects]:
-            assert target in set(update_state.pending_visual_targets(obj)), (
+            # 対象実体が無いオブジェクトも処理済み。更新すべき表示が無いので
+            # 「反映待ち」を残さない。
+            assert target not in set(update_state.pending_visual_targets(obj)), (
                 target,
                 obj.name,
                 update_state.pending_visual_targets(obj),

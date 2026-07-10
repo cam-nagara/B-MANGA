@@ -1683,6 +1683,8 @@ def apply_intersection_lines(
     scene: bpy.types.Scene | None = None,
     *,
     signature_cache: dict[int, str] | None = None,
+    candidate_index=None,
+    geometry_cache=None,
 ) -> bool:
     """交差線を検出し、保存済み線として適用."""
     del method
@@ -1713,28 +1715,36 @@ def apply_intersection_lines(
         if reused is not None:
             return reused
 
-    target_candidates = [target] if target is not None else _auto_targets(obj, scene)
-    targets: list[bpy.types.Object] = []
-    seen_targets: set[int] = set()
-    for item in target_candidates:
-        try:
-            item_type = getattr(item, "type", None)
-        except ReferenceError:
-            continue
-        if (
-            item is None
-            or item == obj
-            or item_type != "MESH"
-            or item.as_pointer() in seen_targets
-        ):
-            continue
-        already_cached = item.name_full in existing_names
-        if not already_cached and not _creation_in_range(item, scene):
-            continue
-        if not _bounds_overlap(obj, item, _intersection_margin(obj, item, thickness)):
-            continue
-        seen_targets.add(item.as_pointer())
-        targets.append(item)
+    if target is None and candidate_index is not None:
+        targets = candidate_index.targets_for(
+            obj,
+            scene,
+            thickness,
+            existing_names,
+        )
+    else:
+        target_candidates = [target] if target is not None else _auto_targets(obj, scene)
+        targets = []
+        seen_targets: set[int] = set()
+        for item in target_candidates:
+            try:
+                item_type = getattr(item, "type", None)
+            except ReferenceError:
+                continue
+            if (
+                item is None
+                or item == obj
+                or item_type != "MESH"
+                or item.as_pointer() in seen_targets
+            ):
+                continue
+            already_cached = item.name_full in existing_names
+            if not already_cached and not _creation_in_range(item, scene):
+                continue
+            if not _bounds_overlap(obj, item, _intersection_margin(obj, item, thickness)):
+                continue
+            seen_targets.add(item.as_pointer())
+            targets.append(item)
 
     if not targets:
         remove_intersection_lines(obj)
@@ -1748,6 +1758,7 @@ def apply_intersection_lines(
         material=material,
         scene=scene,
         signature_cache=signature_cache,
+        geometry_cache=geometry_cache,
     )
 
 
@@ -1887,6 +1898,8 @@ def _refresh_source_intersections(
     outline_setup,
     plane_filter,
     signature_cache: dict[int, str] | None = None,
+    candidate_index=None,
+    geometry_cache=None,
 ) -> bool:
     try:
         obj_type = obj.type
@@ -1926,6 +1939,8 @@ def _refresh_source_intersections(
         material=material,
         scene=scene,
         signature_cache=signature_cache,
+        candidate_index=candidate_index,
+        geometry_cache=geometry_cache,
     )
     return any(iter_intersection_modifiers(obj))
 
@@ -1935,24 +1950,43 @@ def refresh_scene_intersections(
     sources: list[bpy.types.Object] | tuple[bpy.types.Object, ...] | None = None,
 ) -> list[bpy.types.Object]:
     """シーン内の交差線を、保存済み線として更新する."""
-    from . import outline_setup, plane_filter
+    from . import (
+        intersection_candidates,
+        intersection_geometry,
+        outline_setup,
+        plane_filter,
+    )
 
     refreshed: list[bpy.types.Object] = []
     signature_cache: dict[int, str] = {}
-    for obj in _intersection_refresh_sources(scene, sources):
-        try:
-            obj_type = obj.type
-        except ReferenceError:
-            continue
-        if obj_type != "MESH":
-            continue
-        if _refresh_source_intersections(
-            obj,
-            scene,
-            outline_setup,
-            plane_filter,
-            signature_cache,
-        ):
-            refreshed.append(obj)
+    candidate_index = intersection_candidates.SceneCandidateIndex(scene)
+    refresh_sources = _intersection_refresh_sources(scene, sources)
+    geometry_objects = list(scene.objects)
+    origin = (
+        scene.camera.matrix_world.translation
+        if scene.camera is not None
+        else None
+    )
+    with intersection_geometry.BatchGeometryCache(
+        geometry_objects,
+        origin=origin,
+    ) as geometry_cache:
+        for obj in refresh_sources:
+            try:
+                obj_type = obj.type
+            except ReferenceError:
+                continue
+            if obj_type != "MESH":
+                continue
+            if _refresh_source_intersections(
+                obj,
+                scene,
+                outline_setup,
+                plane_filter,
+                signature_cache,
+                candidate_index,
+                geometry_cache,
+            ):
+                refreshed.append(obj)
     _intersection_cache.cleanup_orphan_cache_objects()
     return refreshed

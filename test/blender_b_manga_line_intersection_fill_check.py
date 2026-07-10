@@ -155,6 +155,9 @@ def _assert_near_contact_uses_camera_width_before_generation() -> None:
     target = _make_gap_cube("交差確認_B_近接対象", (1.02, 0.0, 0.0), white_mat)
     bpy.context.view_layer.objects.active = source
     for obj in (source, target):
+        # このケースはカメラ基準の線幅を交差候補判定より先に反映する順序を
+        # 検証する。距離減衰そのものは専用テストで扱うため、ここでは無効化する。
+        obj.bmanga_line_settings.line_width_distance_falloff = 0.0
         assert presets.apply_line_settings(
             obj,
             bpy.context,

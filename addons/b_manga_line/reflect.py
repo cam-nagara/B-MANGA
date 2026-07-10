@@ -304,7 +304,11 @@ def dispatch_target(
         from . import outline_setup, presets
 
         outline_setup.ensure_aov_passes(context.scene)
-        presets._reflect_applied_display_settings(applied_heavy, context)
+        presets._reflect_applied_display_settings(
+            applied_heavy,
+            context,
+            line_targets=(target,),
+        )
 
     return TargetReflectResult(
         heavy_objects=applied_heavy,

@@ -540,6 +540,7 @@ def _scene_candidate_signature(
                 obj.name_full,
                 plane_filter.should_exclude_generated_lines(obj, settings),
                 bool(getattr(settings, "settings_locked", False)),
+                bool(getattr(settings, "intersection_enabled", False)),
                 _object_signature(obj, scene, signature_cache),
             )
         )
@@ -819,6 +820,7 @@ def apply_cached_intersection_lines(
     material: bpy.types.Material | None,
     scene: bpy.types.Scene | None,
     signature_cache: dict[int, str] | None = None,
+    geometry_cache=None,
 ) -> bool:
     targets = [target for target in targets if getattr(target, "type", None) == "MESH"]
     if not targets:
@@ -830,7 +832,14 @@ def apply_cached_intersection_lines(
         reusable.matrix_world = owner.matrix_world.copy()
         _apply_display_modifier(owner, reusable, targets, thickness, offset, material)
         return True
-    segments = build_cached_segments(owner, targets, scene, thickness=thickness, offset=offset)
+    segments = build_cached_segments(
+        owner,
+        targets,
+        scene,
+        thickness=thickness,
+        offset=offset,
+        geometry_cache=geometry_cache,
+    )
     if not segments:
         remove_cached_intersection_lines(owner)
         return True
@@ -838,6 +847,8 @@ def apply_cached_intersection_lines(
     cache.matrix_world = owner.matrix_world.copy()
     _write_cache_mesh(cache, segments)
     _apply_display_modifier(owner, cache, targets, thickness, offset, material)
+    if geometry_cache is not None:
+        geometry_cache.suspend_new_line_modifiers(owner)
     owner[CACHE_SIGNATURE_PROP] = signature
     return True
 
@@ -961,6 +972,70 @@ def _use_outline_target_for_extra_segments(target_data: _MeshData) -> bool:
     return 0 < len(target_data.triangles) <= _OUTLINE_TARGET_EXTRA_MAX_TRIANGLES
 
 
+def _segments_to_owner_space(
+    owner: bpy.types.Object,
+    segments: list[_CachedSegment],
+    origin: Vector | None = None,
+) -> list[_CachedSegment]:
+    origin = Vector(origin) if origin is not None else Vector()
+    owner_relative = owner.matrix_world.copy()
+    owner_relative.translation = owner_relative.translation - origin
+    inverse = owner_relative.inverted()
+    normal_transform = owner.matrix_world.to_3x3().transposed()
+    converted = []
+    for segment in segments:
+        normal = normal_transform @ segment.normal
+        if normal.length_squared <= _EPS * _EPS:
+            normal = Vector((0.0, 0.0, 1.0))
+        else:
+            normal.normalize()
+        converted.append(
+            _CachedSegment(
+                inverse @ segment.start,
+                inverse @ segment.end,
+                normal,
+            )
+        )
+    return converted
+
+
+def _build_cached_segments_from_geometry_cache(
+    owner: bpy.types.Object,
+    targets: list[bpy.types.Object],
+    geometry_cache,
+) -> list[_CachedSegment]:
+    source, source_bvh = geometry_cache.base(owner)
+    if source_bvh is None:
+        return []
+    segments = []
+    seen = set()
+    for target in targets:
+        if target == owner or target.type != "MESH" or target.data is None:
+            continue
+        target_data, target_bvh = geometry_cache.base(target)
+        if target_bvh is not None:
+            _append_target_segments(
+                source=source,
+                source_bvh=source_bvh,
+                target_data=target_data,
+                target_bvh=target_bvh,
+                segments=segments,
+                seen=seen,
+            )
+        if _use_outline_target_for_extra_segments(target_data):
+            outline_target, outline_bvh = geometry_cache.outline(target)
+            if outline_target is not None and outline_bvh is not None:
+                _append_target_segments(
+                    source=source,
+                    source_bvh=source_bvh,
+                    target_data=outline_target,
+                    target_bvh=outline_bvh,
+                    segments=segments,
+                    seen=seen,
+                )
+    return _segments_to_owner_space(owner, segments, geometry_cache.origin)
+
+
 def build_cached_segments(
     owner: bpy.types.Object,
     targets: list[bpy.types.Object],
@@ -968,10 +1043,17 @@ def build_cached_segments(
     *,
     thickness: float,
     offset: float,
+    geometry_cache=None,
 ) -> list[_CachedSegment]:
     del thickness, offset
     if owner.type != "MESH" or owner.data is None:
         return []
+    if geometry_cache is not None:
+        return _build_cached_segments_from_geometry_cache(
+            owner,
+            targets,
+            geometry_cache,
+        )
     states = _disabled_line_modifiers([owner, *targets])
     scene = scene or getattr(bpy.context, "scene", None)
     if scene is not None:
@@ -1030,6 +1112,7 @@ def _append_target_segments(
     source: _MeshData,
     source_bvh: BVHTree,
     target_data: _MeshData,
+    target_bvh: BVHTree | None = None,
     segments: list[_CachedSegment],
     seen: set[
         tuple[
@@ -1039,9 +1122,11 @@ def _append_target_segments(
     ],
 ) -> int:
     added = 0
-    for source_index, target_index in source_bvh.overlap(
-        BVHTree.FromPolygons(target_data.vertices, target_data.triangles)
-    ):
+    target_bvh = target_bvh or BVHTree.FromPolygons(
+        target_data.vertices,
+        target_data.triangles,
+    )
+    for source_index, target_index in source_bvh.overlap(target_bvh):
         segment = _triangle_intersection_segment(
             source,
             source_index,

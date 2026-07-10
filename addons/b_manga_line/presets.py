@@ -412,34 +412,39 @@ def _unique_preset_name(presets, base_name: str) -> str:
 def _reflect_applied_display_settings(
     objects: list[bpy.types.Object],
     context,
+    *,
+    line_targets=None,
 ) -> None:
     """プリセット適用時に抑制した表示系コールバックを明示反映する."""
     if not objects:
         return
     from . import camera_comp
 
-    visibility_refresh_targets = []
-    for obj in objects:
-        settings = obj.bmanga_line_settings
-        if bool(getattr(settings, "lines_visible", True)):
-            was_hidden = bool(obj.get(core.PROP_LINES_HIDDEN, False))
-            obj[core.PROP_LINES_HIDDEN] = False
-            core.sync_line_visibility_setting(obj)
-            if (
-                bool(getattr(settings, "use_camera_culling", False))
-                or bool(getattr(settings, "use_outline_distance_limit", False))
-                or bool(getattr(settings, "use_inner_line_distance_limit", False))
-                or bool(getattr(settings, "use_intersection_distance_limit", False))
-                or bool(getattr(settings, "use_selection_line_distance_limit", False))
-            ):
-                if was_hidden:
-                    visibility_refresh_targets.append(obj)
+    # 個別の「反映」では、未反映の他線種の有効/無効を表示へ波及させない。
+    # 全線種をまとめて反映する経路だけがグローバル表示設定を同期する。
+    if line_targets is None:
+        visibility_refresh_targets = []
+        for obj in objects:
+            settings = obj.bmanga_line_settings
+            if bool(getattr(settings, "lines_visible", True)):
+                was_hidden = bool(obj.get(core.PROP_LINES_HIDDEN, False))
+                obj[core.PROP_LINES_HIDDEN] = False
+                core.sync_line_visibility_setting(obj)
+                if (
+                    bool(getattr(settings, "use_camera_culling", False))
+                    or bool(getattr(settings, "use_outline_distance_limit", False))
+                    or bool(getattr(settings, "use_inner_line_distance_limit", False))
+                    or bool(getattr(settings, "use_intersection_distance_limit", False))
+                    or bool(getattr(settings, "use_selection_line_distance_limit", False))
+                ):
+                    if was_hidden:
+                        visibility_refresh_targets.append(obj)
+                else:
+                    core.set_line_visibility(obj, True)
             else:
-                core.set_line_visibility(obj, True)
-        else:
-            core.set_line_visibility(obj, False)
-    if visibility_refresh_targets:
-        camera_comp.refresh_visibility_objects(context, visibility_refresh_targets)
+                core.set_line_visibility(obj, False)
+        if visibility_refresh_targets:
+            camera_comp.refresh_visibility_objects(context, visibility_refresh_targets)
 
     if core.is_scene_line_only_enabled(context):
         # 「ラインのみを表示」ON中に新規追加したオブジェクトの素材は、

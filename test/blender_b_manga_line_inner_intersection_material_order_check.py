@@ -57,6 +57,7 @@ from b_manga_line import (  # noqa: E402
     intersection_cache,
     intersection_lines,
     intersection_shell,
+    outline_setup,
     presets,
     selection_lines,
 )
@@ -245,6 +246,64 @@ def _test_intersection_cache_material_order() -> None:
     _assert_slot_order_preserved(source)
 
 
+def _test_combined_inner_intersection_material_order() -> None:
+    """稜谷線の後ろへ交差線を積んでも、既存面の素材番号を維持する."""
+    _clear_scene()
+    _make_camera()
+    source = _make_intersection_ready_cube(
+        "BML_mo_combined_source", (0.0, 0.0, 0.0)
+    )
+    target = _make_intersection_ready_cube(
+        "BML_mo_combined_target", (0.35, 0.0, 0.0)
+    )
+    for obj in (source, target):
+        second = bpy.data.materials.new(f"{obj.name}_surface_second")
+        obj.data.materials.append(second)
+        for polygon in list(obj.data.polygons)[::2]:
+            polygon.material_index = 1
+        settings = obj.bmanga_line_settings
+        settings.inner_line_enabled = True
+        settings.auto_subdivision_for_midpoint = False
+        assert presets.apply_line_settings(
+            obj,
+            bpy.context,
+            refresh_scene=False,
+        ), obj.name
+    presets._refresh_after_line_settings(bpy.context)
+    bpy.context.view_layer.update()
+
+    assert source.modifiers.get(core.GN_MODIFIER_NAME) is not None
+    assert source.modifiers.get(core.INTERSECTION_MODIFIER_NAME) is not None
+    _assert_slot_order_preserved(source)
+
+    slot_pointers = tuple(
+        slot.material.as_pointer() if slot.material else 0
+        for slot in source.material_slots
+    )
+    material_count = len(bpy.data.materials)
+    assert presets.apply_line_settings(
+        source,
+        bpy.context,
+        refresh_scene=False,
+        line_targets=("outline",),
+    )
+    assert tuple(
+        slot.material.as_pointer() if slot.material else 0
+        for slot in source.material_slots
+    ) == slot_pointers, "再反映でパディング素材が作り直されています"
+    assert len(bpy.data.materials) == material_count, "再反映で素材が増殖しています"
+
+    material_names = tuple(
+        slot.material.name if slot.material else "" for slot in source.material_slots
+    )
+    assert outline_setup.set_line_only(source, True)
+    assert outline_setup.set_line_only(source, False)
+    assert tuple(
+        slot.material.name if slot.material else "" for slot in source.material_slots
+    ) == material_names, "ラインのみ表示の往復で素材スロットが変わりました"
+    _assert_slot_order_preserved(source)
+
+
 # ------------------------------------------------------------------
 # 4. 交差線「ライン素材」方式（intersection_shell.py, 現状UI未到達）
 # ------------------------------------------------------------------
@@ -334,6 +393,7 @@ def main() -> None:
     _test_inner_line_material_order()
     _test_selection_line_material_order()
     _test_intersection_cache_material_order()
+    _test_combined_inner_intersection_material_order()
     _test_intersection_shell_material_order()
     _test_intersection_lines_boolean_single_target_material_order()
     _test_intersection_lines_boolean_multi_target_material_order()

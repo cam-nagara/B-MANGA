@@ -33,15 +33,29 @@ def _target_names(obj: bpy.types.Object) -> set[str]:
     return {target.name for target in intersection_lines.modifier_targets(mod)}
 
 
+def _set_intersection_enabled(obj: bpy.types.Object, enabled: bool) -> None:
+    old = core._propagating
+    core._propagating = True
+    try:
+        obj.bmanga_line_settings.intersection_enabled = enabled
+    finally:
+        core._propagating = old
+
+
 def _apply_all(objects: list[bpy.types.Object]) -> None:
     enabled_states = []
     for obj in objects:
         settings = obj.bmanga_line_settings
         enabled_states.append((settings, bool(settings.intersection_enabled)))
-        settings.intersection_enabled = False
+        _set_intersection_enabled(obj, False)
         assert presets.apply_line_settings(obj, bpy.context)
     for settings, enabled in enabled_states:
-        settings.intersection_enabled = enabled
+        old = core._propagating
+        core._propagating = True
+        try:
+            settings.intersection_enabled = enabled
+        finally:
+            core._propagating = old
     for obj in objects:
         assert presets.apply_line_settings(obj, bpy.context)
 
@@ -54,7 +68,11 @@ def _expected_targets(obj: bpy.types.Object, objects: list[bpy.types.Object]) ->
         if not intersection_lines._bounds_overlap(obj, item, 0.01):
             continue
         item_enabled = item.bmanga_line_settings.intersection_enabled
-        if item_enabled and obj.name >= item.name:
+        if item_enabled and not intersection_lines._source_owns_intersection_pair(
+            obj,
+            item,
+            bpy.context.scene,
+        ):
             continue
         expected.add(item.name)
     return expected
@@ -71,7 +89,7 @@ def _test_name_fallback_without_camera() -> None:
 
     for obj in objects:
         settings = obj.bmanga_line_settings
-        settings.intersection_enabled = True
+        _set_intersection_enabled(obj, True)
         settings.intersection_method = "BOOLEAN"
 
     _apply_all(objects)
@@ -88,38 +106,53 @@ def _test_name_fallback_without_camera() -> None:
     bpy.ops.object.select_all(action="DESELECT")
     first.select_set(True)
     bpy.context.view_layer.objects.active = first
-    first.bmanga_line_settings.intersection_enabled = False
+    _set_intersection_enabled(first, False)
     assert presets.apply_line_settings(second, bpy.context)
     assert presets.apply_line_settings(third, bpy.context)
     assert first.name in _target_names(second)
     assert first.name in _target_names(third)
 
 
-def _test_active_object_owns_pair() -> None:
+def _test_active_object_does_not_change_pair_owner() -> None:
     _clear_scene()
 
     active_side = _make_cube("Z_active_should_own", (0.0, 0.0, 0.0))
     name_side = _make_cube("A_name_would_own", (0.35, 0.0, 0.0))
     for obj in (active_side, name_side):
         settings = obj.bmanga_line_settings
-        settings.intersection_enabled = True
+        _set_intersection_enabled(obj, True)
         settings.intersection_method = "BOOLEAN"
 
     bpy.context.view_layer.objects.active = active_side
     _apply_all([active_side, name_side])
 
-    assert name_side.name in _target_names(active_side), (
-        "アクティブなオブジェクトに交差線が作られていません"
+    active_targets = _target_names(active_side)
+    name_targets = _target_names(name_side)
+    assert active_side.name in name_targets, (
+        "決定的な所有側に交差線が作られていません",
+        active_targets,
+        name_targets,
+        intersection_lines._source_owns_intersection_pair(
+            name_side,
+            active_side,
+            bpy.context.scene,
+        ),
     )
-    assert active_side.name not in _target_names(name_side), (
-        "名前順で非アクティブ側に交差線が作られています"
+    assert name_side.name not in active_targets, (
+        "アクティブ側にも交差線が重複作成されています"
     )
+
+    bpy.context.view_layer.objects.active = name_side
+    assert presets.apply_line_settings(active_side, bpy.context)
+    assert presets.apply_line_settings(name_side, bpy.context)
+    assert active_side.name in _target_names(name_side)
+    assert name_side.name not in _target_names(active_side)
 
 
 def main() -> None:
     b_manga_line.register()
     _test_name_fallback_without_camera()
-    _test_active_object_owns_pair()
+    _test_active_object_does_not_change_pair_owner()
 
     print("[PASS] intersection targets are detected automatically")
 
