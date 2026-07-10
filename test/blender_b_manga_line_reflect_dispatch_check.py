@@ -19,7 +19,7 @@
 作り直し→チェックOFFでの削除）を1本の流れとして検証する。ケース6は
 「ラインのみを表示」ON中の reflect_all 付帯処理引き継ぎ、ケース7は交差線の
 シーン再検出（refresh_scene_intersections）が軽い経路では走らないことを、
-ケース8は交差線の後回し、ケース9は中規模初回反映の確認境界、ケース10は
+ケース8は全反映で全線種と交差線が処理されること、ケース9は中規模初回反映の確認境界、ケース10は
 前提ライン未作成時の交差線反映が次回作成を妨げないことを検証する。
 """
 
@@ -41,6 +41,7 @@ from b_manga_line import (  # noqa: E402
     mesh_fingerprint,
     operators,
     presets,
+    reflect,
     update_state,
 )
 
@@ -338,7 +339,7 @@ def _case_7_intersection_refresh_only_on_heavy_path() -> None:
         print("[PASS] case7b: 待ち無しの reflect_all は0回")
 
 
-def _case_8_reflect_all_can_defer_initial_intersections() -> None:
+def _case_8_reflect_all_always_includes_intersections() -> None:
     _clear_scene()
     _make_camera()
     a = _make_cube("BML_Reflect_Defer_Isect_A", (0.0, 0.0, -4.0))
@@ -349,28 +350,27 @@ def _case_8_reflect_all_can_defer_initial_intersections() -> None:
         settings.use_intersection_creation_limit = False
 
     _select(a, [a, b])
-    with _CallCounter(intersection_lines, "refresh_scene_intersections") as refresh_counter:
-        assert bpy.ops.bmanga_line.reflect_all(
-            "EXEC_DEFAULT",
-            reflect_scope="SKIP_INTERSECTION",
-        ) == {"FINISHED"}
-        assert refresh_counter.count == 0, (
-            "ケース8: 交差線以外の反映で交差線の自動検出が呼ばれました",
+    with (
+        _CallCounter(reflect, "dispatch_target") as dispatch_counter,
+        _CallCounter(intersection_lines, "refresh_scene_intersections") as refresh_counter,
+    ):
+        assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
+        assert refresh_counter.count > 0, (
+            "ケース8: すべてのラインを反映しても交差線の自動検出が呼ばれません",
             refresh_counter.calls,
         )
+    dispatched = [args[0] for args, _kwargs in dispatch_counter.calls]
+    assert dispatched == list(reflect.LINE_TARGETS), (
+        "ケース8: すべてのラインを反映が全線種を処理していません",
+        dispatched,
+    )
 
     assert a.modifiers.get(core.MODIFIER_NAME) is not None
     assert b.modifiers.get(core.MODIFIER_NAME) is not None
-    assert not any(any(core.iter_intersection_modifiers(o)) for o in (a, b)), (
-        "ケース8: 交差線以外の反映で交差線が作成されています"
-    )
-    assert bpy.ops.bmanga_line.reflect_target(
-        "EXEC_DEFAULT", target="intersection",
-    ) == {"FINISHED"}
     assert any(any(core.iter_intersection_modifiers(o)) for o in (a, b)), (
-        "ケース8: 後回しにした交差線を交差線の反映ボタンで作成できません"
+        "ケース8: すべてのラインを反映しても交差線が作成されません"
     )
-    print("[PASS] case8: 後回しにした交差線は交差線の反映ボタンで作成できる")
+    print("[PASS] case8: すべてのラインを反映すると交差線まで作成される")
 
 
 def _case_9_initial_confirmation_threshold() -> None:
@@ -387,8 +387,6 @@ def _case_9_initial_confirmation_threshold() -> None:
     objects[0].bmanga_line_settings.use_uniform_line_width = True
 
     class _GateProbe:
-        reflect_scope = "ALL"
-
         def _initial_reflect_summary(self, targets):
             return operators.BMANGA_LINE_OT_reflect_all._initial_reflect_summary(
                 self, targets,
@@ -398,9 +396,7 @@ def _case_9_initial_confirmation_threshold() -> None:
     gate = operators.BMANGA_LINE_OT_reflect_all._needs_initial_confirm
     assert not gate(probe, objects[:-1]), "119件で初回確認が出る境界ずれです"
     assert gate(probe, objects), "120件の頂点単位線幅初回反映で確認が出ません"
-    probe.reflect_scope = "SKIP_INTERSECTION"
-    assert not gate(probe, objects), "交差線以外を選んだ後も初回確認が再表示されます"
-    print("[PASS] case9: 初回確認は120件以上かつ全反映時だけ表示される")
+    print("[PASS] case9: 初回確認は120件以上の全反映時に表示される")
 
 
 def _case_10_failed_intersection_prerequisite_does_not_poison_retry() -> None:
@@ -454,7 +450,7 @@ def main() -> None:
         _case_1_to_5_inner_line_lifecycle()
         _case_6_line_only_white_output_on_reflect_all()
         _case_7_intersection_refresh_only_on_heavy_path()
-        _case_8_reflect_all_can_defer_initial_intersections()
+        _case_8_reflect_all_always_includes_intersections()
         _case_9_initial_confirmation_threshold()
         _case_10_failed_intersection_prerequisite_does_not_poison_retry()
         print("BMANGA_LINE_REFLECT_DISPATCH_OK")

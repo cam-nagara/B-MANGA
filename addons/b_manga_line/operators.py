@@ -83,24 +83,6 @@ _LINE_TARGET_LABELS = {
     "bump": "バンプ線",
 }
 
-_REFLECT_ALL_SCOPE_ITEMS = (
-    ("ALL", "すべて", "有効なラインをすべて反映します"),
-    ("SKIP_INTERSECTION", "交差線以外", "初回に重い交差線を後回しにします"),
-    ("OUTLINE_ONLY", "アウトラインだけ", "まずアウトラインだけ反映します"),
-)
-
-_REFLECT_ALL_SCOPE_TARGETS = {
-    "ALL": None,
-    "SKIP_INTERSECTION": ("outline", "inner", "selection", "bump"),
-    "OUTLINE_ONLY": ("outline",),
-}
-
-_REFLECT_ALL_SCOPE_LABELS = {
-    "ALL": "すべてのライン",
-    "SKIP_INTERSECTION": "交差線以外",
-    "OUTLINE_ONLY": "アウトライン",
-}
-
 _REFLECT_ALL_CONFIRM_COUNT = 120
 
 
@@ -149,12 +131,6 @@ class BMANGA_LINE_OT_reflect_all(bpy.types.Operator):
     bl_options = {"REGISTER", "UNDO"}
 
     force_rebuild: BoolProperty(default=False, options={"SKIP_SAVE"})  # type: ignore[valid-type]
-    reflect_scope: EnumProperty(
-        name="反映範囲",
-        items=_REFLECT_ALL_SCOPE_ITEMS,
-        default="ALL",
-        options={"SKIP_SAVE"},
-    )  # type: ignore[valid-type]
 
     @classmethod
     def poll(cls, context):
@@ -185,7 +161,6 @@ class BMANGA_LINE_OT_reflect_all(bpy.types.Operator):
             summary["objects"] >= _REFLECT_ALL_CONFIRM_COUNT
             and summary["applied"] < summary["objects"]
             and (summary["intersection"] > 0 or summary["uniform"] > 0)
-            and str(self.reflect_scope) == "ALL"
         )
 
     def invoke(self, context, event):
@@ -194,7 +169,6 @@ class BMANGA_LINE_OT_reflect_all(bpy.types.Operator):
         settings_draft.flush(context)
         targets_to_process = selection.updatable_mesh_objects(context)
         if self._needs_initial_confirm(targets_to_process):
-            self.reflect_scope = "SKIP_INTERSECTION"
             return context.window_manager.invoke_props_dialog(self, width=520)
         return self.execute(context)
 
@@ -221,7 +195,6 @@ class BMANGA_LINE_OT_reflect_all(bpy.types.Operator):
                 text=f"線幅の均一化（頂点単位） {summary['uniform']}件",
                 icon="INFO",
             )
-        layout.prop(self, "reflect_scope")
 
     def execute(self, context):
         from . import reflect, selection, settings_draft
@@ -229,13 +202,10 @@ class BMANGA_LINE_OT_reflect_all(bpy.types.Operator):
         settings_draft.flush(context)
         targets_to_process = selection.updatable_mesh_objects(context)
         skipped = _locked_skip_count(context, len(targets_to_process))
-        scope = str(self.reflect_scope)
-        line_targets = _REFLECT_ALL_SCOPE_TARGETS.get(scope)
         result = reflect.reflect_all(
             targets_to_process,
             context,
             force_rebuild=bool(self.force_rebuild),
-            line_targets=line_targets,
         )
         affected: set[str] = set()
         for target_result in result.targets.values():
@@ -247,10 +217,7 @@ class BMANGA_LINE_OT_reflect_all(bpy.types.Operator):
         self.report(
             {"INFO"},
             _with_lock_skip_note(
-                (
-                    f"{len(affected)} オブジェクトの"
-                    f"{_REFLECT_ALL_SCOPE_LABELS.get(scope, 'ライン')}を反映しました"
-                ),
+                f"{len(affected)} オブジェクトのすべてのラインを反映しました",
                 skipped,
             ),
         )

@@ -78,13 +78,6 @@ def _filter_updatable(objects) -> list:
     ]
 
 
-def _normalize_line_targets(line_targets) -> tuple[str, ...]:
-    if line_targets is None:
-        return LINE_TARGETS
-    requested = {str(target) for target in line_targets}
-    return tuple(target for target in LINE_TARGETS if target in requested)
-
-
 def _classify(
     obj: bpy.types.Object,
     target: str,
@@ -347,13 +340,12 @@ def reflect_all(
     context,
     *,
     force_rebuild: bool = False,
-    line_targets=None,
 ) -> ReflectAllResult:
     """選択オブジェクト全部×全線種を反映し、付帯処理まで行う（計画書§5）."""
     from . import batch_update, presets
 
     objects = _filter_updatable(objects)
-    active_targets = _normalize_line_targets(line_targets)
+    active_targets = LINE_TARGETS
 
     if objects:
         # depsgraph更新は線種ごとに繰り返さず、ここで1回だけ行う

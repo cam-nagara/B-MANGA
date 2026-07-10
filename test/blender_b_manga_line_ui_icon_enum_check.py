@@ -79,13 +79,12 @@ class _StrictLayout:
         self.labels.append((text, icon))
 
     def prop(self, *_args, **_kwargs):
-        return None
+        raise AssertionError("すべてのラインを反映ダイアログに入力欄が残っています")
 
 
 class _ReflectDialogProbe:
     def __init__(self):
         self.layout = _StrictLayout()
-        self.reflect_scope = "ALL"
 
     @staticmethod
     def _initial_reflect_summary(_objects):
@@ -103,6 +102,7 @@ def _check_initial_reflect_dialog_draw() -> None:
     probe = _ReflectDialogProbe()
     operators.BMANGA_LINE_OT_reflect_all.draw(probe, bpy.context)
     assert len(probe.layout.labels) == 3, probe.layout.labels
+    assert "reflect_scope" not in operators.BMANGA_LINE_OT_reflect_all.bl_rna.properties
 
 
 def main() -> None:
