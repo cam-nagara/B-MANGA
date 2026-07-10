@@ -91,17 +91,17 @@ def replace_shared_node_tree(tree_name: str, old_tree, build_new_tree):
 
     new_tree = build_new_tree()
 
-    if old_tree is not None and old_tree != new_tree:
-        bpy.data.node_groups.remove(old_tree)
-        if new_tree.name != tree_name:
-            new_tree.name = tree_name
-
     for mod in referencing_mods:
         try:
             if mod.node_group != new_tree:
                 mod.node_group = new_tree
         except ReferenceError:
             continue
+
+    if old_tree is not None and old_tree != new_tree:
+        bpy.data.node_groups.remove(old_tree)
+        if new_tree.name != tree_name:
+            new_tree.name = tree_name
 
     return new_tree
 

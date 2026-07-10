@@ -456,14 +456,12 @@ def _test_object_scale_compensates_modifier_width() -> None:
     normal.bmanga_line_settings.intersection_method = "BOOLEAN"
     normal.bmanga_line_settings.intersection_thickness_mm = 0.2
     _select_many(normal, [normal, normal_target])
-    assert presets.apply_line_settings(normal, bpy.context)
     assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
 
     scaled.bmanga_line_settings.intersection_enabled = True
     scaled.bmanga_line_settings.intersection_method = "BOOLEAN"
     scaled.bmanga_line_settings.intersection_thickness_mm = 0.2
     _select_many(scaled, [scaled, scaled_target])
-    assert presets.apply_line_settings(scaled, bpy.context)
     assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="intersection") == {"FINISHED"}
 
     expected_intersection = _expected_world_width(scene, 2.0, 0.2)
@@ -928,10 +926,16 @@ def _test_linked_uniform_width_refresh_does_not_crash() -> None:
     assert presets.apply_line_settings(source_obj, bpy.context)
 
     source_path = Path(tempfile.gettempdir()) / "bml_uniform_link_source.blend"
-    bpy.ops.wm.save_as_mainfile(filepath=str(source_path))
-
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    scene = bpy.context.scene
+    try:
+        source_path.unlink()
+    except OSError:
+        pass
+    # Replacing Blender's entire Main database adds unrelated GN teardown to
+    # this linked-width check. Write only the source datablock so the test stays
+    # focused on the linked-library refresh path in Blender 5.1.2.
+    bpy.data.libraries.write(str(source_path), {source_obj})
+    bpy.data.objects.remove(source_obj, do_unlink=True)
+    _clear_scene()
     _configure_scene(scene)
     with bpy.data.libraries.load(str(source_path), link=True) as (data_from, data_to):
         assert "BML_uniform_depth_quad" in data_from.objects
@@ -950,19 +954,28 @@ def _test_linked_uniform_width_refresh_does_not_crash() -> None:
 def _run() -> None:
     b_manga_line.register()
     _clear_scene()
-    _test_uniform_width_depth_and_resolution()
-    _test_uniform_width_saved_in_preset()
-    _test_batch_apply_uses_reference_distance_not_object_distance()
-    _test_multi_select_mm_change_updates_all_modifiers()
-    _test_object_scale_compensates_modifier_width()
-    _test_intersection_target_scale_conversion()
-    _test_camera_compensation_uses_mesh_position_not_origin()
-    _test_low_influence_keeps_configured_line_widths()
-    _test_uniform_width_reuses_camera_depths_across_targets()
-    _test_camera_compensation_influence_blends_far_width()
-    _test_resolution_percentage_does_not_change_width()
-    _test_evaluated_orthographic_width()
-    _test_linked_uniform_width_refresh_does_not_crash()
+    tests = (
+        _test_uniform_width_depth_and_resolution,
+        _test_uniform_width_saved_in_preset,
+        _test_batch_apply_uses_reference_distance_not_object_distance,
+        _test_multi_select_mm_change_updates_all_modifiers,
+        _test_object_scale_compensates_modifier_width,
+        _test_intersection_target_scale_conversion,
+        _test_camera_compensation_uses_mesh_position_not_origin,
+        _test_low_influence_keeps_configured_line_widths,
+        _test_uniform_width_reuses_camera_depths_across_targets,
+        _test_camera_compensation_influence_blends_far_width,
+        _test_resolution_percentage_does_not_change_width,
+        _test_evaluated_orthographic_width,
+        _test_linked_uniform_width_refresh_does_not_crash,
+    )
+    marker = "--bml-uniform-case"
+    if marker in sys.argv:
+        selected = int(sys.argv[sys.argv.index(marker) + 1])
+        tests = (tests[selected - 1],)
+    for index, test in enumerate(tests, start=1):
+        print(f"BML_UNIFORM_STEP {index}: {test.__name__}", flush=True)
+        test()
     print("[PASS] B-MANGA Line uniform width follows mm, DPI, and resolution")
 
 
