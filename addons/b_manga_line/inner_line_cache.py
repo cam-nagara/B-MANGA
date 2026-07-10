@@ -10,6 +10,7 @@ import bpy
 from mathutils import Vector
 
 from . import (
+    curve_smoothing_nodes,
     inner_line_chains,
     intersection_shell_node_helpers,
     modifier_stack,
@@ -50,7 +51,7 @@ _WIDTH_CURVE_75_SOCKET = "線幅カーブ75%"
 _NORMAL_ATTR = "BML_InnerCachedNormal"
 _WIDTH_ATTR = "BML_InnerCachedWidth"
 _SOURCE_INDEX_ATTR = "BML_InnerCachedSourceIndex"
-_SUBDIVIDE_LABEL = "BML_InnerCachedSubdivide"
+_SUBDIVIDE_LABEL = "BML_InnerCachedSubdivideV2"
 _PROFILE_LABEL = "BML_InnerCachedProfile"
 # V2: Join Geometry の結合順修正（2026-07-09、素材スロット順バグ）に伴い
 # ラベルを世代更新。保存済み.blendの旧ツリーをラベル不一致で必ず再構築させる
@@ -207,10 +208,25 @@ def _create_display_tree() -> bpy.types.NodeTree:
     m2c.location = (-320, -260)
     links.new(set_position.outputs["Geometry"], m2c.inputs["Mesh"])
 
+    smoothing_enabled = nodes.new("FunctionNodeCompare")
+    smoothing_enabled.data_type = "INT"
+    smoothing_enabled.operation = "GREATER_THAN"
+    smoothing_enabled.location = (-300, -420)
+    smoothing_enabled.inputs[3].default_value = 0
+    links.new(gin.outputs[_RESAMPLE_COUNT_SOCKET], smoothing_enabled.inputs[2])
+    smooth_curve = curve_smoothing_nodes.add_corner_preserving_bezier(
+        nodes,
+        links,
+        m2c.outputs["Curve"],
+        smoothing_enabled.outputs["Result"],
+        (-120, -80),
+        label="BML Inner Cached Shape",
+    )
+
     subdivide = nodes.new("GeometryNodeSubdivideCurve")
     subdivide.label = _SUBDIVIDE_LABEL
     subdivide.location = (-80, -260)
-    links.new(m2c.outputs["Curve"], subdivide.inputs["Curve"])
+    links.new(smooth_curve, subdivide.inputs["Curve"])
     links.new(gin.outputs[_RESAMPLE_COUNT_SOCKET], subdivide.inputs["Cuts"])
 
     midpoint_scale = intersection_shell_node_helpers.add_curve_width_scale(
@@ -320,6 +336,7 @@ def _tree_valid(tree: bpy.types.NodeTree | None) -> bool:
     return (
         _find_socket_id(tree, _CACHE_OBJECT_SOCKET) is not None
         and _find_socket_id(tree, _OFFSET_SOCKET) is not None
+        and any(getattr(node, "label", "") == _SUBDIVIDE_LABEL for node in tree.nodes)
         and any(getattr(node, "label", "") == _GENERATED_MARK_LABEL for node in tree.nodes)
     )
 
@@ -720,8 +737,12 @@ def _set_width_control_parameters(
     if values[_RESAMPLE_COUNT_SOCKET] is None:
         from . import subdivision_lod
 
+        smooth_requested = bool(
+            settings is not None
+            and getattr(settings, "auto_subdivision_for_midpoint", False)
+        )
         values[_RESAMPLE_COUNT_SOCKET] = subdivision_lod.display_resample_count(
-            _needs_curve_subdivision(
+            smooth_requested or _needs_curve_subdivision(
                 values[_MIDPOINT_FACTOR_SOCKET],
                 values[_MIDPOINT_JITTER_SOCKET],
             )
@@ -729,8 +750,12 @@ def _set_width_control_parameters(
     else:
         from . import subdivision_lod
 
+        smooth_requested = bool(
+            settings is not None
+            and getattr(settings, "auto_subdivision_for_midpoint", False)
+        )
         values[_RESAMPLE_COUNT_SOCKET] = subdivision_lod.display_resample_count(
-            _needs_curve_subdivision(
+            smooth_requested or _needs_curve_subdivision(
                 values[_MIDPOINT_FACTOR_SOCKET],
                 values[_MIDPOINT_JITTER_SOCKET],
             ),

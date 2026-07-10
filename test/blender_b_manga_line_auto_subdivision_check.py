@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 import bpy
+from mathutils import Vector
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +14,7 @@ sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
 from b_manga_line import (  # noqa: E402
+    camera_comp,
     core,
     outline_local_subdivision,
     presets,
@@ -23,6 +25,12 @@ from b_manga_line import (  # noqa: E402
 def _clear_scene() -> None:
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete()
+    bpy.ops.object.camera_add(location=(4.0, -6.0, 4.0))
+    camera = bpy.context.object
+    camera.rotation_euler = (
+        Vector((0.0, 0.0, 0.0)) - camera.location
+    ).to_track_quat("-Z", "Y").to_euler()
+    bpy.context.scene.camera = camera
 
 
 def _make_cube(name: str, location=(0.0, 0.0, 0.0)) -> bpy.types.Object:
@@ -53,12 +61,55 @@ def _evaluated_generated_counts(obj: bpy.types.Object) -> tuple[int, int]:
     mesh = evaluated.to_mesh()
     try:
         generated = mesh.attributes.get(core.GENERATED_LINE_ATTR)
-        assert generated is not None
-        surface = sum(not bool(item.value) for item in generated.data)
-        line = sum(bool(item.value) for item in generated.data)
-        return surface, line
+        assert generated is None, "生成ラインが元メッシュ成分へ混入しています"
+        return len(mesh.polygons), 0
     finally:
         evaluated.to_mesh_clear()
+
+
+def _assert_camera_fallback_switches_safely() -> None:
+    scene = bpy.context.scene
+    camera = scene.camera
+    scene.camera = None
+    if camera is not None:
+        bpy.data.objects.remove(camera, do_unlink=True)
+
+    obj = _make_cube("カメラ未設定フォールバック")
+    assert presets.apply_line_settings(
+        obj,
+        bpy.context,
+        refresh_scene=False,
+        line_targets=("outline",),
+    )
+    state = obj.modifiers.get(core.MODIFIER_NAME)
+    assert state is not None and state.show_viewport and state.show_render
+    assert outline_local_subdivision.get_modifier(obj) is None
+
+    bpy.ops.object.camera_add(location=(4.0, -6.0, 4.0))
+    camera = bpy.context.object
+    camera.rotation_euler = (
+        Vector((0.0, 0.0, 0.0)) - camera.location
+    ).to_track_quat("-Z", "Y").to_euler()
+    scene.camera = camera
+    assert presets.apply_line_settings(
+        obj,
+        bpy.context,
+        refresh_scene=False,
+        line_targets=("outline",),
+    )
+    assert outline_local_subdivision.get_modifier(obj) is not None
+    assert not state.show_viewport and not state.show_render
+
+    scene.camera = None
+    bpy.data.objects.remove(camera, do_unlink=True)
+    assert presets.apply_line_settings(
+        obj,
+        bpy.context,
+        refresh_scene=False,
+        line_targets=("outline",),
+    )
+    assert outline_local_subdivision.get_modifier(obj) is None
+    assert state.show_viewport and state.show_render
 
 
 def _assert_source_mesh_unchanged_and_shell_local() -> None:
@@ -77,7 +128,50 @@ def _assert_source_mesh_unchanged_and_shell_local() -> None:
     assert state is not None and state.type == "SOLIDIFY"
     assert not state.show_viewport and not state.show_render
     assert local is not None and outline_local_subdivision.is_modifier(local)
-    assert _evaluated_generated_counts(obj) == (6, 96)
+    assert _evaluated_generated_counts(obj) == (6, 0)
+    assert any(
+        node.bl_idname == "GeometryNodeGeometryToInstance"
+        for node in local.node_group.nodes
+    )
+
+    old_tree = local.node_group
+    old_tree_pointer = old_tree.as_pointer()
+    for node in old_tree.nodes:
+        if "2026-07-10 V5" in node.label:
+            node.label = node.label.replace("2026-07-10 V5", "2026-07-10 V4")
+    assert not outline_local_subdivision._tree_is_current(old_tree)
+    outline_local_subdivision.sync(obj, settings=obj.bmanga_line_settings)
+    local = outline_local_subdivision.get_modifier(obj)
+    assert local is not None and local.node_group.as_pointer() != old_tree_pointer
+    assert outline_local_subdivision._tree_is_current(local.node_group)
+
+
+def _assert_render_camera_switch_syncs_immediately() -> None:
+    scene = bpy.context.scene
+    obj = bpy.data.objects.get("ライン局所細分化")
+    assert obj is not None
+    local = outline_local_subdivision.get_modifier(obj)
+    assert local is not None
+    camera_a = scene.camera
+    assert camera_a is not None
+    camera_socket = outline_local_subdivision._socket_id(
+        local.node_group,
+        outline_local_subdivision._CAMERA_SOCKET,
+    )
+    assert camera_socket is not None and local.get(camera_socket) == camera_a
+
+    bpy.ops.object.camera_add(location=(-4.0, -6.0, 3.0))
+    camera_b = bpy.context.object
+    scene.camera = camera_b
+    scene.bmanga_line_camera = None
+    camera_comp._on_render_pre(scene)
+    assert local.get(camera_socket) == camera_b
+
+    scene.bmanga_line_camera = camera_a
+    camera_comp._on_render_pre(scene)
+    assert local.get(camera_socket) == camera_a
+    scene.bmanga_line_camera = None
+    scene.camera = camera_a
 
 
 def _assert_user_subsurf_is_read_only() -> None:
@@ -134,6 +228,13 @@ def _assert_user_subsurf_is_read_only() -> None:
         list(restored.modifiers).index(restored_mod),
     )
     assert restored_state == before, (before, restored_state)
+    restored_local = outline_local_subdivision.get_modifier(restored)
+    assert restored_local is not None
+    assert any(
+        node.bl_idname == "GeometryNodeGeometryToInstance"
+        for node in restored_local.node_group.nodes
+    )
+    assert _evaluated_generated_counts(restored) == (6, 0)
 
 
 def _assert_legacy_cleanup_is_ownership_safe() -> None:
@@ -171,8 +272,12 @@ def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     b_manga_line.register()
     try:
+        assert camera_comp._on_render_pre in bpy.app.handlers.render_pre
+        _clear_scene()
+        _assert_camera_fallback_switches_safely()
         _clear_scene()
         _assert_source_mesh_unchanged_and_shell_local()
+        _assert_render_camera_switch_syncs_immediately()
         _assert_user_subsurf_is_read_only()
         _assert_legacy_cleanup_is_ownership_safe()
         _assert_delete_switches_back_without_source_subdivision()

@@ -12,8 +12,8 @@ import json
 
 import bpy
 
-from . import intersection_shell_node_helpers
-from . import plane_filter
+from . import curve_smoothing_nodes, intersection_shell_node_helpers
+from . import modifier_stack, plane_filter
 from .core import (
     AOV_NAME,
     AOV_INNER_LINES_NAME,
@@ -62,6 +62,7 @@ _SHEET_TUBE_MIDPOINT_ANGLE_SOCKET = "検出角度"
 _SHEET_TUBE_WIDTH_CURVE_25_SOCKET = "変化グラフ 25%"
 _SHEET_TUBE_WIDTH_CURVE_50_SOCKET = "変化グラフ 50%"
 _SHEET_TUBE_WIDTH_CURVE_75_SOCKET = "変化グラフ 75%"
+_SHEET_TUBE_SMOOTH_SOCKET = "ライン形状を滑らかに"
 # Solidify(use_flip_normals)が後段でチューブごと法線反転するため、
 # 併用時はチューブ面を事前反転して打ち消す（片面ライン素材の可視性維持）。
 _SHEET_TUBE_FLIP_SOCKET = "Solidify反転補正"
@@ -69,9 +70,9 @@ _SHEET_TUBE_FLIP_SOCKET = "Solidify反転補正"
 # オブジェクトのスロット順と一致させる修正（2026-07-09）。保存済み.blendの
 # 旧ツリーは接続順を保持したままなので、ラベル不一致で必ず再構築させる
 # （docs/tokyo0004_boundary_tube_material_order_plan_2026-07-09.md 参照）。
-_SHEET_TUBE_ANGLE_SPLIT_LABEL = "BML_SheetOutlinePathWidthV20"
-_SHEET_TUBE_SUBDIVIDE_LABEL = "BML_SheetOutlinePathWidthV20Midpoints"
-_SHEET_TUBE_SAFE_SCALE_LABEL = "BML_SheetOutlineSafeScaleV20"
+_SHEET_TUBE_ANGLE_SPLIT_LABEL = "BML_SheetOutlinePathWidthV21"
+_SHEET_TUBE_SUBDIVIDE_LABEL = "BML_SheetOutlinePathWidthV21Midpoints"
+_SHEET_TUBE_SAFE_SCALE_LABEL = "BML_SheetOutlineSafeScaleV21"
 _MIN_CURVE_TO_MESH_SCALE = 0.10
 _MAX_MIXED_BOUNDARY_TUBE_EDGES = 512
 _BOUNDARY_ONLY_RATIO = 0.35
@@ -149,8 +150,15 @@ def _line_hide_transparent(obj: bpy.types.Object) -> bool:
 
 
 def _outline_double_sided(obj: bpy.types.Object) -> bool:
-    """境界チューブだけで描くアウトラインでは両面表示が必要."""
-    return _uses_boundary_tube_only(obj)
+    """カーブチューブで描くアウトラインでは両面表示が必要."""
+    settings = getattr(obj, "bmanga_line_settings", None)
+    if _uses_boundary_tube_only(obj):
+        return True
+    if not bool(getattr(settings, "auto_subdivision_for_midpoint", False)):
+        return False
+    from . import outline_local_subdivision
+
+    return outline_local_subdivision.resolve_camera(obj) is not None
 
 
 def _line_material_double_sided(obj: bpy.types.Object, target: str) -> bool:
@@ -956,10 +964,10 @@ def _find_socket_identifier(tree: bpy.types.NodeTree, name: str) -> str | None:
     return None
 
 
-def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
-    tree = bpy.data.node_groups.get(SHEET_OUTLINE_TREE_NAME)
-    if tree is not None:
-        if (
+def _sheet_outline_tree_is_current(tree: bpy.types.NodeTree | None) -> bool:
+    return bool(
+        tree is not None
+        and (
             _find_socket_identifier(tree, _SHEET_TUBE_THICKNESS_SOCKET) is not None
             and _find_socket_identifier(tree, _SHEET_TUBE_MIDPOINT_FACTOR_SOCKET) is not None
             and _find_socket_identifier(tree, _SHEET_TUBE_MIDPOINT_JITTER_SOCKET) is not None
@@ -967,6 +975,7 @@ def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
             and _find_socket_identifier(tree, _SHEET_TUBE_WIDTH_CURVE_25_SOCKET) is not None
             and _find_socket_identifier(tree, _SHEET_TUBE_WIDTH_CURVE_50_SOCKET) is not None
             and _find_socket_identifier(tree, _SHEET_TUBE_WIDTH_CURVE_75_SOCKET) is not None
+            and _find_socket_identifier(tree, _SHEET_TUBE_SMOOTH_SOCKET) is not None
             and _find_socket_identifier(tree, _SHEET_TUBE_FLIP_SOCKET) is not None
             and any(
                 getattr(node, "label", "") == _SHEET_TUBE_SUBDIVIDE_LABEL
@@ -976,9 +985,11 @@ def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
                 getattr(node, "label", "") == _SHEET_TUBE_SAFE_SCALE_LABEL
                 for node in tree.nodes
             )
-        ):
-            return tree
-        bpy.data.node_groups.remove(tree)
+        )
+    )
+
+
+def _create_sheet_outline_tree() -> bpy.types.NodeTree:
     tree = bpy.data.node_groups.new(SHEET_OUTLINE_TREE_NAME, "GeometryNodeTree")
     tree.interface.new_socket(
         name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry",
@@ -1038,6 +1049,12 @@ def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
         sock.default_value = default
         sock.min_value = 0.0
         sock.max_value = 1.0
+    smooth_sock = tree.interface.new_socket(
+        name=_SHEET_TUBE_SMOOTH_SOCKET,
+        in_out="INPUT",
+        socket_type="NodeSocketBool",
+    )
+    smooth_sock.default_value = True
     flip_sock = tree.interface.new_socket(
         name=_SHEET_TUBE_FLIP_SOCKET,
         in_out="INPUT",
@@ -1066,11 +1083,20 @@ def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
     links.new(group_in.outputs["Geometry"], to_curve.inputs["Mesh"])
     links.new(boundary.outputs["Result"], to_curve.inputs["Selection"])
 
+    smooth_curve = curve_smoothing_nodes.add_corner_preserving_bezier(
+        nodes,
+        links,
+        to_curve.outputs["Curve"],
+        group_in.outputs[_SHEET_TUBE_SMOOTH_SOCKET],
+        (1160, 260),
+        label=_SHEET_TUBE_ANGLE_SPLIT_LABEL + " Shape",
+    )
+
     subdivide_curve = nodes.new("GeometryNodeSubdivideCurve")
     subdivide_curve.label = _SHEET_TUBE_SUBDIVIDE_LABEL
     subdivide_curve.location = (1160, 0)
     subdivide_curve.inputs["Cuts"].default_value = 3
-    links.new(to_curve.outputs["Curve"], subdivide_curve.inputs["Curve"])
+    links.new(smooth_curve, subdivide_curve.inputs["Curve"])
 
     half_width = nodes.new("ShaderNodeMath")
     half_width.location = (-400, -240)
@@ -1154,6 +1180,18 @@ def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
     links.new(group_in.outputs["Geometry"], join.inputs["Geometry"])
     links.new(join.outputs["Geometry"], group_out.inputs["Geometry"])
     return tree
+
+
+def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
+    tree = bpy.data.node_groups.get(SHEET_OUTLINE_TREE_NAME)
+    if _sheet_outline_tree_is_current(tree):
+        assert tree is not None
+        return tree
+    return modifier_stack.replace_shared_node_tree(
+        SHEET_OUTLINE_TREE_NAME,
+        tree,
+        _create_sheet_outline_tree,
+    )
 
 
 def _get_or_create_hidden_rim_material() -> bpy.types.Material:
@@ -1353,6 +1391,11 @@ def _sync_sheet_outline_midpoint_inputs(
         _SHEET_TUBE_FLIP_SOCKET,
         obj.modifiers.get(MODIFIER_NAME) is not None,
     )
+    _set_node_input_if_changed(
+        mod,
+        _SHEET_TUBE_SMOOTH_SOCKET,
+        bool(getattr(settings, "auto_subdivision_for_midpoint", False)),
+    )
     # かつての「境界辺512超の非板ポリはチューブのみ使用」経路向けに
     # 中間頂点の乱れを止める分岐があったが、経路廃止で条件が恒偽化して
     # いたため撤去（挙動変更なし。板ポリ・混在メッシュとも設定値を使う）。
@@ -1442,8 +1485,14 @@ def apply_outline(
     _ensure_surface_mask_aovs(obj)
 
     local_thickness = modifier_thickness_for_world_width(obj, thickness)
-    local_subdivision_enabled = bool(
+    local_subdivision_requested = bool(
         getattr(settings, "auto_subdivision_for_midpoint", False)
+    )
+    from . import outline_local_subdivision
+
+    local_camera = outline_local_subdivision.resolve_camera(obj, scene)
+    local_subdivision_enabled = local_subdivision_requested and (
+        is_sheet or boundary_tube_only or local_camera is not None
     )
     if is_sheet or boundary_tube_only:
         # 板ポリや境界辺比率が高い平面群は、背面法の面がトゲ状に
@@ -1451,8 +1500,6 @@ def apply_outline(
         old_mod = obj.modifiers.get(MODIFIER_NAME)
         if old_mod is not None:
             obj.modifiers.remove(old_mod)
-        from . import outline_local_subdivision
-
         outline_local_subdivision.remove(obj)
         ensure_sheet_outline(obj, None, mat, thickness=local_thickness)
     else:
@@ -1474,18 +1521,18 @@ def apply_outline(
         # 非表示素材帯(2n)へ上書きする。
         mod.material_offset_rim = material_offset
 
-        from . import outline_local_subdivision
-
         if local_subdivision_enabled:
             outline_local_subdivision.ensure(
                 obj,
                 local_thickness=local_thickness,
                 offset=offset,
                 material=mat,
+                camera=local_camera,
+                scene=scene,
                 settings=settings,
             )
             # Solidifyは既存コードの線幅・頂点グループ設定を保持するだけにし、
-            # 表示実体は元面を変更しないライン専用殻へ一本化する。
+            # 表示実体は元面を変更しないカメラ輪郭カーブへ一本化する。
             mod.show_viewport = False
             mod.show_render = False
             stale_sheet = obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME)
@@ -1662,8 +1709,11 @@ def update_modifier_offset(obj: bpy.types.Object, offset: float) -> None:
         sync_local_outline_from_state(obj)
 
 
-def sync_local_outline_from_state(obj: bpy.types.Object) -> bool:
-    """表示用ライン殻を既存アウトライン設定へ同期する."""
+def sync_local_outline_from_state(
+    obj: bpy.types.Object,
+    scene: bpy.types.Scene | None = None,
+) -> bool:
+    """表示用カメラ輪郭カーブを既存アウトライン設定へ同期する."""
     if obj.type != "MESH":
         return False
     from . import outline_local_subdivision
@@ -1674,6 +1724,7 @@ def sync_local_outline_from_state(obj: bpy.types.Object) -> bool:
         local_thickness=(abs(float(state.thickness)) if state is not None else None),
         offset=(float(state.offset) if state is not None else None),
         material=get_outline_material(obj),
+        scene=scene,
         settings=getattr(obj, "bmanga_line_settings", None),
     )
     return local is not None

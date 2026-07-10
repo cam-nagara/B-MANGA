@@ -479,6 +479,7 @@ def set_outline_visibility_from_settings(obj: bpy.types.Object) -> bool:
             mod.name == MODIFIER_NAME
             and local_mod is not None
             and bool(getattr(settings, "auto_subdivision_for_midpoint", False))
+            and outline_local_subdivision.resolve_camera(obj) is not None
         ):
             mod_visible = False
         if mod.show_viewport != mod_visible:
@@ -1432,10 +1433,10 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     auto_subdivision_for_midpoint: BoolProperty(
         name="中間頂点用ライン細分化",
         description=(
-            "元メッシュは変更せず、アウトライン・稜谷線・交差線・選択線の"
-            "生成ラインだけへ中間頂点を追加する"
+            "元メッシュは変更せず生成ラインだけを細分化し、"
+            "輪郭の浅い曲がりを滑らかにする"
         ),
-        default=False,
+        default=True,
         update=_on_auto_subdivision_changed,
     )  # type: ignore[valid-type]
 

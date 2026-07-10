@@ -15,6 +15,7 @@ from b_manga_line import (  # noqa: E402
     core,
     intersection_cache,
     intersection_lines,
+    outline_local_subdivision,
     outline_setup,
     plane_filter,
     presets,
@@ -116,10 +117,11 @@ def _test_sheet_outline_is_double_sided() -> None:
     assert bool(plane_mat.get(outline_setup.PROP_DOUBLE_SIDED, False))
 
     cube_mat = _outline_material(cube)
-    assert cube_mat.use_backface_culling is True, (
-        "立体のアウトラインは背面法のままであるべき"
+    assert outline_local_subdivision.get_modifier(cube) is not None
+    assert cube_mat.use_backface_culling is False, (
+        "カメラ輪郭カーブは両面表示であるべき"
     )
-    assert not bool(cube_mat.get(outline_setup.PROP_DOUBLE_SIDED, False))
+    assert bool(cube_mat.get(outline_setup.PROP_DOUBLE_SIDED, False))
 
     assert plane.modifiers.get(core.MODIFIER_NAME) is None, (
         "板ポリに通常アウトラインが作成されています"

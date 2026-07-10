@@ -44,6 +44,7 @@ from b_manga_line import (  # noqa: E402
     core,
     inner_line_cache,
     intersection_cache,
+    outline_setup,
     presets,
 )
 
@@ -150,8 +151,8 @@ def _test_inner_line_shared_tree_regeneration() -> None:
     # の旧ツリー」の状態を模する)。
     _relabel_node(
         shared_tree,
-        inner_line_cache._GENERATED_MARK_LABEL,
-        "BML_InnerCachedGeneratedMark",  # V1相当の旧ラベル
+        inner_line_cache._SUBDIVIDE_LABEL,
+        "BML_InnerCachedSubdivide",  # 平滑化導入前の旧ラベル
     )
     assert not inner_line_cache._tree_valid(shared_tree), (
         "テスト前提が崩れています: ラベル改変後も_tree_validがTrueのままです"
@@ -186,7 +187,54 @@ def _test_inner_line_shared_tree_regeneration() -> None:
 
 
 # ------------------------------------------------------------------
-# 2. 交差線（intersection_cache.py の既定適用経路）
+# 2. 板ポリアウトライン
+# ------------------------------------------------------------------
+
+def _test_sheet_outline_shared_tree_regeneration() -> None:
+    _clear_scene()
+    _make_camera()
+    planes: list[bpy.types.Object] = []
+    for index, x in enumerate((-1.5, 1.5)):
+        bpy.ops.mesh.primitive_plane_add(size=1.5, location=(x, 0.0, 0.0))
+        obj = bpy.context.object
+        obj.name = f"BML_str_sheet_{index}"
+        settings = obj.bmanga_line_settings
+        settings.outline_enabled = True
+        settings.inner_line_enabled = False
+        settings.intersection_enabled = False
+        _disable_all_limits(settings)
+        _select(obj)
+        assert presets.apply_line_settings(obj, bpy.context)
+        planes.append(obj)
+
+    mod_a = planes[0].modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME)
+    mod_b = planes[1].modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME)
+    assert mod_a is not None and mod_b is not None
+    assert mod_a.node_group is not None and mod_a.node_group == mod_b.node_group
+    shared_tree = mod_a.node_group
+    _relabel_node(
+        shared_tree,
+        outline_setup._SHEET_TUBE_SUBDIVIDE_LABEL,
+        "BML_SheetOutlinePathWidthV20Midpoints",
+    )
+    assert not outline_setup._sheet_outline_tree_is_current(shared_tree)
+
+    _select(planes[0])
+    assert presets.apply_line_settings(planes[0], bpy.context)
+    mod_a_after = planes[0].modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME)
+    mod_b_after = planes[1].modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME)
+    assert mod_a_after is not None and mod_b_after is not None
+    assert mod_a_after.node_group is not None
+    assert mod_b_after.node_group is not None, (
+        "退行: 選択外の板ポリアウトライン構成が失われました"
+    )
+    assert mod_a_after.node_group == mod_b_after.node_group
+    assert outline_setup._sheet_outline_tree_is_current(mod_b_after.node_group)
+    assert _count_trees_named(outline_setup.SHEET_OUTLINE_TREE_NAME) == 1
+
+
+# ------------------------------------------------------------------
+# 3. 交差線（intersection_cache.py の既定適用経路）
 # ------------------------------------------------------------------
 
 def _make_intersection_pair(
@@ -276,6 +324,10 @@ def main() -> None:
         _test_inner_line_shared_tree_regeneration()
         print(
             "[PASS] shared inner-line GN tree regeneration preserves unselected modifiers"
+        )
+        _test_sheet_outline_shared_tree_regeneration()
+        print(
+            "[PASS] shared sheet-outline GN tree regeneration preserves unselected modifiers"
         )
         _test_intersection_shared_tree_regeneration()
         print(

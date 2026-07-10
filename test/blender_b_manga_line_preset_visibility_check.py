@@ -451,6 +451,10 @@ def _assert_preset_display_settings_apply(
     source_settings.lines_visible = True
     source_settings.line_only_visible = True
     source_settings.auto_subdivision_for_midpoint = True
+    source_settings.use_camera_culling = False
+    if scene.camera is None:
+        _make_camera()
+        _select(source, [source])
     assert bpy.ops.bmanga_line.preset_save() == {"FINISHED"}
 
     _select(first, [first, second])
@@ -509,6 +513,7 @@ def _run(store_path: Path) -> None:
     target = _make_cube("BML_交差対象", (0.0, 0.0, 0.0))
     assert presets.apply_line_settings(target, bpy.context)
     settings = source.bmanga_line_settings
+    assert settings.auto_subdivision_for_midpoint is True
     assert settings.use_uniform_line_width is True
     assert abs(settings.line_width_distance_falloff - 1.0) < 1.0e-7
     settings.outline_thickness = 0.012
@@ -536,6 +541,7 @@ def _run(store_path: Path) -> None:
     _select(source, [source])
     assert bpy.ops.bmanga_line.preset_add() == {"FINISHED"}
     assert len(scene.bmanga_line_presets) == 1
+    assert scene.bmanga_line_presets[0].auto_subdivision_for_midpoint is True
     assert store_path.is_file()
     assert _store_names(store_path) == ["ラインプリセット"]
     scene.bmanga_line_presets[0].name = "太線テスト"

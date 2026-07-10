@@ -1096,6 +1096,13 @@ def _on_frame_change(scene, depsgraph=None):
         _updating = False
 
 
+@bpy.app.handlers.persistent
+def _on_render_pre(scene, _depsgraph=None):
+    from . import outline_local_subdivision
+
+    outline_local_subdivision.sync_scene_cameras(scene)
+
+
 # ------------------------------------------------------------------
 # 公開 API
 # ------------------------------------------------------------------
@@ -1233,8 +1240,12 @@ def store_unit_reference(obj, scene):
 def register() -> None:
     if _on_frame_change not in bpy.app.handlers.frame_change_post:
         bpy.app.handlers.frame_change_post.append(_on_frame_change)
+    if _on_render_pre not in bpy.app.handlers.render_pre:
+        bpy.app.handlers.render_pre.append(_on_render_pre)
 
 
 def unregister() -> None:
     if _on_frame_change in bpy.app.handlers.frame_change_post:
         bpy.app.handlers.frame_change_post.remove(_on_frame_change)
+    if _on_render_pre in bpy.app.handlers.render_pre:
+        bpy.app.handlers.render_pre.remove(_on_render_pre)

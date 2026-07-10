@@ -392,12 +392,80 @@ def _scene_transparent_protection() -> Path:
     return path
 
 
+def _scene_low_poly_smooth_outline() -> Path:
+    _clear_scene()
+    path = OUT_DIR / "04_low_poly_smooth_outline.png"
+    _setup_world(path, resolution=(1000, 700))
+    _setup_light()
+
+    bpy.ops.object.camera_add(location=(0.0, -5.2, 3.2))
+    camera = bpy.context.object
+    camera.data.lens = 58.0
+    _look_at(camera, Vector((0.0, 0.0, 0.0)))
+    bpy.context.scene.camera = camera
+
+    surface = _material("BML_visual_curve_surface", (0.72, 0.78, 0.84, 1.0))
+    bpy.ops.mesh.primitive_cylinder_add(
+        vertices=12,
+        radius=1.0,
+        depth=0.22,
+        location=(-1.2, 0.0, 0.0),
+    )
+    cylinder = bpy.context.object
+    cylinder.name = "BML_visual_low_poly_curve"
+    cylinder.data.materials.append(surface)
+    for polygon in cylinder.data.polygons:
+        polygon.use_smooth = True
+    cylinder_source = (
+        len(cylinder.data.vertices),
+        len(cylinder.data.edges),
+        len(cylinder.data.polygons),
+    )
+    settings = cylinder.bmanga_line_settings
+    settings.auto_subdivision_for_midpoint = True
+    settings.weld_mesh_for_outline = False
+    settings.outline_thickness_mm = 1.0
+    settings.edge_smooth_factor = -0.35
+    assert presets.apply_line_settings(
+        cylinder,
+        bpy.context,
+        refresh_scene=False,
+        line_targets=("outline",),
+    )
+    assert cylinder_source == (
+        len(cylinder.data.vertices),
+        len(cylinder.data.edges),
+        len(cylinder.data.polygons),
+    )
+
+    bpy.ops.mesh.primitive_cube_add(size=1.4, location=(1.45, 0.0, 0.0))
+    cube = bpy.context.object
+    cube.name = "BML_visual_sharp_corner"
+    cube.data.materials.append(surface)
+    cube_settings = cube.bmanga_line_settings
+    cube_settings.auto_subdivision_for_midpoint = True
+    cube_settings.weld_mesh_for_outline = False
+    cube_settings.outline_thickness_mm = 1.0
+    assert presets.apply_line_settings(
+        cube,
+        bpy.context,
+        refresh_scene=False,
+        line_targets=("outline",),
+    )
+
+    _render(path)
+    assert _dark_pixel_count(path) > 1000
+    assert _bright_pixel_count_region(path, 120, 850, 100, 630) > 80000
+    return path
+
+
 def main() -> None:
     b_manga_line.register()
     outputs = [
         _scene_all_line_types(),
         _scene_uniform_line_only_distance(),
         _scene_transparent_protection(),
+        _scene_low_poly_smooth_outline(),
     ]
     for output in outputs:
         print(f"[OUT] {output}")

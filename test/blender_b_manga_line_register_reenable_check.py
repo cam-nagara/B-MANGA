@@ -212,11 +212,12 @@ def _assert_panels_draw_items() -> None:
         "outline_enabled",
         "lines_visible",
         "use_uniform_line_width",
+        "auto_subdivision_for_midpoint",
         "use_camera_culling",
         "use_inner_line_creation_limit",
         "use_intersection_creation_limit",
         "weld_mesh_for_outline",
-        # 2026-07-03 ユーザー確定: 板ポリ除外だけは初期値オン
+        # 2026-07-10 ユーザー確定: ライン細分化と板ポリ除外は初期値オン
         "exclude_sheet_meshes",
     }
     for prop_name in bool_props:

@@ -165,7 +165,29 @@ def _mark_all_freestyle_edges(obj: bpy.types.Object) -> None:
     mesh.update()
 
 
+def _realize_instances_tree() -> bpy.types.NodeTree:
+    name = "BML_TestUniformWidthRealizeInstances"
+    tree = bpy.data.node_groups.get(name)
+    if tree is not None:
+        return tree
+    tree = bpy.data.node_groups.new(name, "GeometryNodeTree")
+    tree.interface.new_socket(
+        name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry"
+    )
+    tree.interface.new_socket(
+        name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry"
+    )
+    group_in = tree.nodes.new("NodeGroupInput")
+    realize = tree.nodes.new("GeometryNodeRealizeInstances")
+    group_out = tree.nodes.new("NodeGroupOutput")
+    tree.links.new(group_in.outputs["Geometry"], realize.inputs["Geometry"])
+    tree.links.new(realize.outputs["Geometry"], group_out.inputs["Geometry"])
+    return tree
+
+
 def _evaluated_outline_world_width(obj: bpy.types.Object) -> float:
+    realize_mod = obj.modifiers.new("BML_TestUniformWidthRealize", "NODES")
+    realize_mod.node_group = _realize_instances_tree()
     depsgraph = bpy.context.evaluated_depsgraph_get()
     mesh = bpy.data.meshes.new_from_object(obj.evaluated_get(depsgraph))
     try:
@@ -188,6 +210,7 @@ def _evaluated_outline_world_width(obj: bpy.types.Object) -> float:
         return abs(original_left - shell_left)
     finally:
         bpy.data.meshes.remove(mesh)
+        obj.modifiers.remove(realize_mod)
 
 
 def _configure_scene(scene: bpy.types.Scene) -> None:

@@ -14,7 +14,12 @@ OUT_DIR = ROOT / "_verify" / "2026-07-07_bml_display_modes"
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import core, intersection_lines, presets  # noqa: E402
+from b_manga_line import (  # noqa: E402
+    core,
+    intersection_lines,
+    outline_local_subdivision,
+    presets,
+)
 
 
 def _clear_scene() -> None:
@@ -166,9 +171,13 @@ def _assert_all_line_modifiers_visible(objects: list[bpy.types.Object], expected
     for obj in objects:
         mods = list(core.iter_line_modifiers(obj))
         assert mods, obj.name
+        local = outline_local_subdivision.get_modifier(obj)
         for mod in mods:
-            assert bool(mod.show_viewport) is expected, (obj.name, mod.name, mod.show_viewport)
-            assert bool(mod.show_render) is expected, (obj.name, mod.name, mod.show_render)
+            mod_expected = expected and not (
+                mod.name == core.MODIFIER_NAME and local is not None
+            )
+            assert bool(mod.show_viewport) is mod_expected, (obj.name, mod.name, mod.show_viewport)
+            assert bool(mod.show_render) is mod_expected, (obj.name, mod.name, mod.show_render)
 
 
 def _render(path: Path) -> None:

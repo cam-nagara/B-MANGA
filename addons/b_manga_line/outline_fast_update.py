@@ -113,6 +113,7 @@ def _sync_existing_outline_width_controls(
     *,
     use_vertex_color: bool,
     use_vertex_group: bool,
+    local_subdivision: bool = False,
 ) -> None:
     need_vg = use_vertex_color or use_vertex_group
     if mod is not None and need_vg:
@@ -124,10 +125,13 @@ def _sync_existing_outline_width_controls(
     elif mod is not None:
         mod.vertex_group = ""
 
-    outline_width_attribute.ensure_outline_width_attribute(
-        obj,
-        getattr(obj, "bmanga_line_settings", None),
-    )
+    if local_subdivision:
+        outline_width_attribute.remove_outline_width_attribute(obj)
+    else:
+        outline_width_attribute.ensure_outline_width_attribute(
+            obj,
+            getattr(obj, "bmanga_line_settings", None),
+        )
 
 
 def _store_outline_reference_width(
@@ -181,6 +185,136 @@ def _existing_solid_outline_state(
     ):
         return None
     return mod, mat, material_offset
+
+
+def _local_outline_fast_context(obj: bpy.types.Object, scene):
+    settings = getattr(obj, "bmanga_line_settings", None)
+    requested = bool(getattr(settings, "auto_subdivision_for_midpoint", False))
+    from . import outline_local_subdivision
+
+    camera = outline_local_subdivision.resolve_camera(obj, scene)
+    enabled = requested and camera is not None
+    if enabled and outline_local_subdivision.get_modifier(obj) is None:
+        return None
+    return outline_local_subdivision, settings, camera, enabled
+
+
+def _sync_solid_outline_display(
+    obj,
+    mod,
+    mat,
+    material_offset,
+    local_context,
+    scene,
+) -> bool:
+    local_module, settings, camera, enabled = local_context
+    if enabled:
+        local_module.sync(
+            obj,
+            local_thickness=mod.thickness,
+            offset=mod.offset,
+            material=mat,
+            camera=camera,
+            scene=scene,
+            settings=settings,
+        )
+        mod.show_viewport = False
+        mod.show_render = False
+        stale_sheet = obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME)
+        if stale_sheet is not None:
+            obj.modifiers.remove(stale_sheet)
+        return True
+
+    local_module.remove(obj)
+    visible = outline_setup._sheet_outline_visible(obj)
+    mod.show_viewport = visible
+    mod.show_render = visible
+    outline_setup.ensure_sheet_outline(
+        obj,
+        mod,
+        mat,
+        material_offset=material_offset,
+    )
+    return False
+
+
+def _finish_solid_outline_update(
+    obj,
+    mod,
+    *,
+    thickness,
+    use_vertex_color,
+    use_vertex_group,
+    use_rim,
+    offset,
+    local_enabled,
+    scene,
+) -> None:
+    _sync_existing_outline_width_controls(
+        obj,
+        mod,
+        use_vertex_color=use_vertex_color,
+        use_vertex_group=use_vertex_group,
+        local_subdivision=local_enabled,
+    )
+    _store_outline_reference_width(obj, thickness, scene)
+    if bool(obj.get(PROP_LINE_ONLY, False)):
+        outline_setup._restore_outline_materials(
+            obj,
+            obj.data,
+            hide_through_transparent_override=True,
+        )
+        outline_setup._configure_line_only_solidify_shape(obj, use_rim, offset)
+
+
+def _configure_existing_solid_modifier(
+    obj,
+    mod,
+    *,
+    thickness,
+    even_thickness,
+    use_rim,
+    offset,
+    material_offset,
+) -> None:
+    mod.thickness = modifier_thickness_for_world_width(obj, thickness)
+    mod.use_flip_normals = True
+    mod.use_even_offset = even_thickness
+    outline_setup._configure_solidify_shape(obj, mod, use_rim, offset)
+    mod.material_offset = material_offset
+    # Solidifyのリム用値も絶対番号ではなく素材帯幅の加算値。
+    mod.material_offset_rim = material_offset
+
+
+def _prepare_existing_solid_outline(
+    obj,
+    mod,
+    mat,
+    material_offset,
+    *,
+    thickness,
+    color,
+    even_thickness,
+    use_rim,
+    offset,
+    hide_through_transparent,
+    local_enabled,
+) -> None:
+    _sync_existing_outline_material(
+        mat,
+        color,
+        hide_through_transparent=hide_through_transparent,
+        double_sided=local_enabled,
+    )
+    _configure_existing_solid_modifier(
+        obj,
+        mod,
+        thickness=thickness,
+        even_thickness=even_thickness,
+        use_rim=use_rim,
+        offset=offset,
+        material_offset=material_offset,
+    )
 
 
 def _update_existing_sheet_outline(
@@ -244,40 +378,43 @@ def _update_existing_solid_outline(
     if state is None:
         return False
     mod, mat, material_offset = state
+    local_context = _local_outline_fast_context(obj, scene)
+    if local_context is None:
+        return False
+    local_enabled = bool(local_context[3])
 
-    _sync_existing_outline_material(
-        mat,
-        color,
-        hide_through_transparent=hide_through_transparent,
-        double_sided=False,
-    )
-
-    mod.thickness = modifier_thickness_for_world_width(obj, thickness)
-    mod.use_flip_normals = True
-    mod.use_even_offset = even_thickness
-    outline_setup._configure_solidify_shape(obj, mod, use_rim, offset)
-    mod.material_offset = material_offset
-    # material_offset_rim は加算オフセット。境界チューブを作らない
-    # オブジェクトではリム面が境界のラインとして描かれるため n を加算する
-    # （apply_outline() と同じ規則）。境界チューブ併用オブジェクトだけ、
-    # 直後の ensure_sheet_outline が非表示素材帯(2n)へ上書きする。
-    mod.material_offset_rim = material_offset
-    outline_setup.ensure_sheet_outline(obj, mod, mat, material_offset=material_offset)
-    _sync_existing_outline_width_controls(
+    _prepare_existing_solid_outline(
         obj,
         mod,
+        mat,
+        material_offset,
+        thickness=thickness,
+        color=color,
+        even_thickness=even_thickness,
+        use_rim=use_rim,
+        offset=offset,
+        hide_through_transparent=hide_through_transparent,
+        local_enabled=local_enabled,
+    )
+    _sync_solid_outline_display(
+        obj,
+        mod,
+        mat,
+        material_offset,
+        local_context,
+        scene,
+    )
+    _finish_solid_outline_update(
+        obj,
+        mod,
+        thickness=thickness,
         use_vertex_color=use_vertex_color,
         use_vertex_group=use_vertex_group,
+        use_rim=use_rim,
+        offset=offset,
+        local_enabled=local_enabled,
+        scene=scene,
     )
-    _store_outline_reference_width(obj, thickness, scene)
-
-    if bool(obj.get(PROP_LINE_ONLY, False)):
-        outline_setup._restore_outline_materials(
-            obj,
-            obj.data,
-            hide_through_transparent_override=True,
-        )
-        outline_setup._configure_line_only_solidify_shape(obj, use_rim, offset)
     return True
 
 
@@ -296,11 +433,6 @@ def update_existing_outline(
 ) -> bool:
     """Update a valid existing outline without rebuilding its structure."""
     if obj.type != "MESH" or obj.data is None:
-        return False
-    settings = getattr(obj, "bmanga_line_settings", None)
-    if bool(getattr(settings, "auto_subdivision_for_midpoint", False)):
-        # ライン専用殻は構造と入力をまとめて同期するため、従来Solidifyだけを
-        # 更新する高速経路へ入れず、apply_outline側で一貫して更新する。
         return False
     if plane_filter.is_sheet_mesh(obj) or outline_setup._uses_boundary_tube_only(obj):
         return _update_existing_sheet_outline(

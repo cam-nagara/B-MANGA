@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / "test"))
 
 import b_manga_line  # noqa: E402
 from b_manga_line_test_utils import temporary_line_preset_store  # noqa: E402
-from b_manga_line import core  # noqa: E402
+from b_manga_line import core, line_only_world  # noqa: E402
 
 
 OFFSET_SOCKET = "オフセット"
@@ -142,10 +142,12 @@ def _run() -> None:
         assert core.is_scene_line_only_enabled(bpy.context)
         for obj in objects:
             _assert_close(obj.modifiers[core.MODIFIER_NAME].offset, 0.25, obj.name)
-        _assert_close(background.inputs["Color"].default_value[0], 1.0, "world color r")
-        _assert_close(background.inputs["Color"].default_value[1], 1.0, "world color g")
-        _assert_close(background.inputs["Color"].default_value[2], 1.0, "world color b")
-        _assert_close(background.inputs["Strength"].default_value, 1.0, "world strength")
+        white = world.node_tree.nodes.get(line_only_world.BACKGROUND_NODE_NAME)
+        assert white is not None
+        _assert_close(white.inputs["Color"].default_value[0], 1.0, "world color r")
+        _assert_close(white.inputs["Color"].default_value[1], 1.0, "world color g")
+        _assert_close(white.inputs["Color"].default_value[2], 1.0, "world color b")
+        _assert_close(white.inputs["Strength"].default_value, 1.0, "world strength")
         assert bpy.ops.bmanga_line.set_line_only("EXEC_DEFAULT", line_only=False) == {"FINISHED"}
         assert not core.is_scene_line_only_enabled(bpy.context)
         for obj in objects:

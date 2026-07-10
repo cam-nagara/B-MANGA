@@ -87,14 +87,24 @@ def restore_modifier_states(states) -> None:
 def set_target_outline_state(states, target: bpy.types.Object, enabled: bool) -> None:
     from . import outline_local_subdivision
 
+    local = outline_local_subdivision.get_modifier(target)
+    use_solid_proxy = local is not None and target.modifiers.get(MODIFIER_NAME) is not None
     for mod, show_viewport, show_render in states:
         try:
             if getattr(mod, "id_data", None) != target:
                 continue
+            if outline_local_subdivision.is_modifier(mod):
+                mod.show_viewport = False
+                mod.show_render = False
+                continue
+            if use_solid_proxy and mod.name == MODIFIER_NAME:
+                mod.show_viewport = bool(enabled)
+                mod.show_render = bool(enabled)
+                continue
             keep_outline = mod.name in (
                 MODIFIER_NAME,
                 SHEET_OUTLINE_MODIFIER_NAME,
-            ) or outline_local_subdivision.is_modifier(mod)
+            )
             mod.show_viewport = bool(enabled and keep_outline and show_viewport)
             mod.show_render = bool(enabled and keep_outline and show_render)
         except ReferenceError:

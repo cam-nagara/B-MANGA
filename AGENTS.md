@@ -2,7 +2,7 @@
 
 このファイルは **Claude Code / Codex / Gemini CLI など複数の AI コーディングツールで本プロジェクトを共有開発する** ための連携ハブです。**新しいセッションを開始したらまずこのファイルを読み、最後に「コミット前チェックリスト」を満たしてから書き込みを行ってください。**
 
-最終更新: 2026-06-28 (Codex)
+最終更新: 2026-07-10 (Codex)
 
 ---
 
@@ -23,9 +23,9 @@
 
 ## 1. 対象環境
 
-- **Blender: 5.1.1** (`b70da489d7f4`)。 API は 5.1.1 仕様で確認すること。 Windows での実行ファイルは `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe`
+- **Blender: 5.1.2** (`ec6e62d40fa9`)。 API は 5.1.2 仕様で確認すること。 Windows での実行ファイルは `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe`
 - アドオン形式: Blender Extensions (`blender_manifest.toml`)
-- Python: Blender 5.1.1 同梱版 (3.11)
+- Python: Blender 5.1.2 同梱版 (3.11)
 - 同梱 wheel: `wheels/` 配下 (`PyPSD`, `Pillow` 等)。 Blender Extensions の wheel ロード経由で import 可能
 
 ---
@@ -54,6 +54,7 @@
 - **(完了 / 2026-05-27〜28 Claude Code, v0.6.103〜v0.6.143)** フキダシのフチ・多重線・主線を Shapely buffer 方式に統一 + 主線「谷/山の線幅」動的化。 外側フチ / 内側フチ / 多重線も Shapely buffer ベースの Mesh band に作り直し (`docs/plans/fringe_multiline_shapely_2026-05-27.md` の計画完了)。 さらに 主線 dynamic で 「ベース太さを保ったまま 谷頂点だけ pinch + 辺は直線」 を実現 (`utils/balloon_line_mesh.py` の `_build_dynamic_multi_line_polygons` を外側アライメント sample-direct 化)。 関連実装は `utils/balloon_line_mesh.py` に集約。 詳細は CHANGELOG 冒頭 (v0.6.138〜v0.6.143)。
 - **(完了 / 2026-05-05 Codex 起点, コード検証 2026-05-28 Claude Code)** 作品要素の実体化 第一段階。 テキスト (`utils/text_real_object.py`: Pillow 画像を貼った Mesh 平面, 旧 Empty 削除) / 画像レイヤー (`utils/image_real_object.py`: 透明テクスチャ平面) / コマ枠線 (`utils/coma_border_object.py`: 実カーブ, 通常線・破線・点線・二重線・白フチ) / フキダシ本体・塗り・しっぽ / 用紙背景・ガイド線・セーフライン外塗り を Blender 実オブジェクトとして同期済み。 mirror 同期は `utils/layer_object_sync.py` `_mirror_image_text_objects` 経由で配線済み。 アドオン無効時も作品要素が Blender データに残る。 詳細: [`docs/bmanga_real_object_safety_plan_2026-05-05.md`](docs/bmanga_real_object_safety_plan_2026-05-05.md)
 - **(完了 / 2026-06-28 Codex, v0.6.398〜v0.6.400)** フキダシ / NURBSフキダシ / 効果線の入口・線設定統合。フキダシツールとNURBSフキダシツールを画面上は統合し、NURBSフキダシをフキダシツールの「なめらか自由形状」プリセットとして扱うようにした。画像パス、効果線、フキダシ線の共有選択肢と保存対象を共通定義へ集約し、効果線とフキダシの白抜き線設定UIを共通部品化した。既存のNURBSフキダシ操作は互換用として維持。詳細: [`docs/balloon_effect_tool_unification_plan_2026-06-28.md`](docs/balloon_effect_tool_unification_plan_2026-06-28.md)
+- **(完了 / 2026-07-10 Codex, v0.6.476 / B-MANGA Liner v0.3.194)** B-MANGA Linerの「中間頂点用ライン細分化」を全面ライン殻から基準カメラ輪郭の曲線化へ変更。元メッシュ成分を完全に維持し、浅い連続角だけを滑らかに補間し、鋭角・端点・分岐を保持する。生成ラインは別インスタンスとして出力し、ワイヤー表示や後段のメッシュ評価へ混入させない。詳細: [`docs/bml_line_local_subdivision_plan_2026-07-10.md`](docs/bml_line_local_subdivision_plan_2026-07-10.md)
 
 ### 2.2 直近のバグ修正トピック (2026-05-01 まで)
 

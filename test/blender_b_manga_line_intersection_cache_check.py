@@ -56,6 +56,8 @@ def _make_cube(name: str, location: tuple[float, float, float]) -> bpy.types.Obj
     settings.inner_line_enabled = False
     settings.selection_line_enabled = False
     settings.intersection_enabled = True
+    # このテストでは中間頂点調整の有無だけによる分割数を比較する。
+    settings.auto_subdivision_for_midpoint = False
     settings.outline_thickness_mm = 0.7
     settings.intersection_thickness_mm = 0.7
     settings.use_outline_creation_limit = False

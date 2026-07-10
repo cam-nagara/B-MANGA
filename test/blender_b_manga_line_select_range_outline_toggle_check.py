@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import core, presets  # noqa: E402
+from b_manga_line import core, outline_local_subdivision, presets  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -50,6 +50,13 @@ def _make_cube(name: str, location: tuple[float, float, float]) -> bpy.types.Obj
 
 def _selected_names() -> set[str]:
     return {obj.name for obj in bpy.context.selected_objects}
+
+
+def _outline_display_modifier(obj: bpy.types.Object):
+    return (
+        outline_local_subdivision.get_modifier(obj)
+        or obj.modifiers.get(core.MODIFIER_NAME)
+    )
 
 
 def _assert_perspective_selection() -> None:
@@ -93,7 +100,7 @@ def _assert_outline_toggle() -> None:
     settings.inner_line_enabled = True
     assert presets.apply_line_settings(obj, bpy.context)
 
-    outline_mod = obj.modifiers.get(core.MODIFIER_NAME)
+    outline_mod = _outline_display_modifier(obj)
     inner_mod = obj.modifiers.get(core.GN_MODIFIER_NAME)
     assert outline_mod is not None and outline_mod.show_viewport and outline_mod.show_render
     assert inner_mod is not None and inner_mod.show_viewport and inner_mod.show_render
@@ -102,7 +109,7 @@ def _assert_outline_toggle() -> None:
     assert presets.apply_line_settings(
         obj, bpy.context, line_targets=("outline",),
     )
-    outline_mod = obj.modifiers.get(core.MODIFIER_NAME)
+    outline_mod = _outline_display_modifier(obj)
     assert outline_mod is None or not outline_mod.show_viewport
     assert outline_mod is None or not outline_mod.show_render
     assert inner_mod.show_viewport
@@ -112,7 +119,7 @@ def _assert_outline_toggle() -> None:
     assert presets.apply_line_settings(
         obj, bpy.context, line_targets=("outline",),
     )
-    outline_mod = obj.modifiers.get(core.MODIFIER_NAME)
+    outline_mod = _outline_display_modifier(obj)
     assert outline_mod is not None
     assert outline_mod.show_viewport
     assert outline_mod.show_render

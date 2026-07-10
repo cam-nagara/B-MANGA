@@ -11,7 +11,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import core, outline_setup, presets  # noqa: E402
+from b_manga_line import (  # noqa: E402
+    core,
+    outline_local_subdivision,
+    outline_setup,
+    presets,
+)
 from b_manga_line.scale_utils import modifier_thickness_for_world_width  # noqa: E402
 
 
@@ -87,6 +92,10 @@ def _assert_solid_outline_fast_update() -> None:
         outline_setup.apply_outline = original
 
     assert abs(mod.thickness - modifier_thickness_for_world_width(obj, 0.025)) < 1.0e-9
+    assert abs(
+        outline_local_subdivision.local_thickness(obj)
+        - modifier_thickness_for_world_width(obj, 0.025)
+    ) < 1.0e-9
     assert abs(mod.offset + 0.2) < 1.0e-6
     _assert_close_tuple(_line_color(_outline_material(obj)), (1.0, 0.2, 0.1, 1.0))
 
@@ -175,7 +184,8 @@ def _assert_mixed_outline_fast_update() -> None:
     solid = obj.modifiers.get(core.MODIFIER_NAME)
     sheet = obj.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME)
     assert solid is not None
-    assert sheet is not None
+    assert sheet is None
+    assert outline_local_subdivision.get_modifier(obj) is not None
 
     settings.outline_thickness = 0.028
     settings.outline_color = (0.0, 0.75, 0.25, 1.0)
@@ -192,7 +202,10 @@ def _assert_mixed_outline_fast_update() -> None:
         outline_setup.apply_outline = original
 
     assert abs(solid.thickness - modifier_thickness_for_world_width(obj, 0.028)) < 1.0e-9
-    assert abs(outline_setup.sheet_outline_world_width(obj) - 0.028) < 1.0e-6
+    assert abs(
+        outline_local_subdivision.local_thickness(obj)
+        - modifier_thickness_for_world_width(obj, 0.028)
+    ) < 1.0e-9
     _assert_close_tuple(_line_color(_outline_material(obj)), (0.0, 0.75, 0.25, 1.0))
 
 

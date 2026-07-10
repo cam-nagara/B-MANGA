@@ -13,7 +13,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import core, line_only_display, outline_setup, panels  # noqa: E402
+from b_manga_line import (  # noqa: E402
+    core,
+    line_only_display,
+    outline_local_subdivision,
+    outline_setup,
+    panels,
+)
 
 
 def _clear_scene() -> None:
@@ -53,9 +59,13 @@ def _line_modifiers(obj: bpy.types.Object):
 def _assert_line_visibility(obj: bpy.types.Object, visible: bool) -> None:
     assert bool(obj.bmanga_line_settings.lines_visible) is visible
     assert bool(obj.get(core.PROP_LINES_HIDDEN, False)) is (not visible)
+    local = outline_local_subdivision.get_modifier(obj)
     for mod in _line_modifiers(obj):
-        assert bool(mod.show_viewport) is visible, (obj.name, mod.name, mod.show_viewport)
-        assert bool(mod.show_render) is visible, (obj.name, mod.name, mod.show_render)
+        expected = visible and not (
+            mod.name == core.MODIFIER_NAME and local is not None
+        )
+        assert bool(mod.show_viewport) is expected, (obj.name, mod.name, mod.show_viewport)
+        assert bool(mod.show_render) is expected, (obj.name, mod.name, mod.show_render)
 
 
 def _assert_distance_button(active: bpy.types.Object, other: bpy.types.Object) -> None:

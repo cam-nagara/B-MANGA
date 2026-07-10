@@ -660,7 +660,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     use_outline_creation_limit: BoolProperty(default=False)
     outline_creation_max_distance: FloatProperty(default=10.0, min=0.1, max=1000.0)
     use_vertex_color: BoolProperty(default=False)
-    auto_subdivision_for_midpoint: BoolProperty(default=False)
+    auto_subdivision_for_midpoint: BoolProperty(default=True)
     even_thickness: BoolProperty(default=False)
     # 2026-07-03 ユーザー確定: 板ポリ除外だけは「初期値全オフ」の対象外でオン
     exclude_sheet_meshes: BoolProperty(default=True)

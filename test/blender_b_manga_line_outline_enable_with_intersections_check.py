@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import core  # noqa: E402
+from b_manga_line import core, outline_local_subdivision  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -70,7 +70,9 @@ def main() -> None:
             obj.bmanga_line_settings.outline_enabled = True
         assert bpy.ops.bmanga_line.reflect_target("EXEC_DEFAULT", target="outline") == {"FINISHED"}
         for obj in owners:
-            outline = obj.modifiers.get(core.MODIFIER_NAME)
+            outline = outline_local_subdivision.get_modifier(obj)
+            if outline is None:
+                outline = obj.modifiers.get(core.MODIFIER_NAME)
             assert outline is not None and outline.show_viewport, obj.name
         for obj in owners:
             intersections = list(core.iter_intersection_modifiers(obj))

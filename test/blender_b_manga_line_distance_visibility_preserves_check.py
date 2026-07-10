@@ -11,7 +11,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import camera_comp, core, presets  # noqa: E402
+from b_manga_line import (  # noqa: E402
+    camera_comp,
+    core,
+    outline_local_subdivision,
+    presets,
+)
 
 
 def _clear_scene() -> None:
@@ -54,9 +59,12 @@ def _apply(obj: bpy.types.Object) -> None:
 
 
 def _line_modifiers(obj: bpy.types.Object) -> list[bpy.types.Modifier]:
-    mods = []
+    outline = outline_local_subdivision.get_modifier(obj)
+    if outline is None:
+        outline = obj.modifiers.get(core.MODIFIER_NAME)
+    assert outline is not None, f"{obj.name}: アウトラインがありません"
+    mods = [outline]
     for name in (
-        core.MODIFIER_NAME,
         core.GN_MODIFIER_NAME,
         core.SELECTION_LINE_MODIFIER_NAME,
     ):

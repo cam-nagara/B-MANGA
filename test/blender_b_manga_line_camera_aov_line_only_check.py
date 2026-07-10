@@ -17,6 +17,7 @@ from b_manga_line import (  # noqa: E402
     core,
     inner_lines,
     line_only_display,
+    outline_local_subdivision,
     outline_setup,
     presets,
 )
@@ -159,8 +160,10 @@ def _test_line_only_restore() -> None:
     assert restored_use_nodes == before_use_nodes, (restored_use_nodes, before_use_nodes)
     assert obj.modifiers.get(outline_setup.LINE_ONLY_WIREFRAME_NAME) is None
     assert bpy.ops.bmanga_line.set_visibility(visible=True) == {"FINISHED"}
+    local = outline_local_subdivision.get_modifier(obj)
     for mod in core.iter_line_modifiers(obj):
-        assert mod.show_viewport and mod.show_render
+        expected = not (mod.name == core.MODIFIER_NAME and local is not None)
+        assert mod.show_viewport == expected and mod.show_render == expected
 
 
 def _test_outline_material_aov_repair() -> None:

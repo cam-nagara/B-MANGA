@@ -127,9 +127,10 @@ def _line_modifier_enabled_by_settings(
         mod.name == MODIFIER_NAME
         and local_mod is not None
         and bool(getattr(settings, "auto_subdivision_for_midpoint", False))
+        and outline_local_subdivision.resolve_camera(obj) is not None
     ):
-        # BML_Outline is retained as settings storage while the local shell is
-        # active. Enabling both would draw two outline shells.
+        # BML_Outline is retained as settings storage while the camera-outline
+        # curve is active. Enabling both would draw two outlines.
         return False
     if (
         mod.name in (MODIFIER_NAME, SHEET_OUTLINE_MODIFIER_NAME)

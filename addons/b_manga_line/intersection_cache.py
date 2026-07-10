@@ -14,7 +14,7 @@ import bpy
 from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 
-from . import intersection_shell_node_helpers, modifier_stack
+from . import curve_smoothing_nodes, intersection_shell_node_helpers, modifier_stack
 from .core import (
     GENERATED_LINE_ATTR,
     GN_MODIFIER_NAME,
@@ -58,7 +58,7 @@ _SPLIT_LABEL = "BML_IntersectionCachedEndpoint"
 # V2: Join Geometry の結合順修正（2026-07-09、素材スロット順バグ）に伴い
 # ラベルを世代更新。保存済み.blendの旧ツリーをラベル不一致で必ず再構築させる
 # （_tree_valid 参照。outline_setup.py の _SHEET_TUBE_ANGLE_SPLIT_LABEL と同方式）。
-_SUBDIVIDE_LABEL = "BML_IntersectionCachedSubdivideV3"
+_SUBDIVIDE_LABEL = "BML_IntersectionCachedSubdivideV4"
 _PROFILE_RESOLUTION = 12
 _VISUAL_RADIUS_FACTOR = 1.0
 _EPS = 1.0e-6
@@ -240,10 +240,25 @@ def _create_display_tree() -> bpy.types.NodeTree:
         include_curve_endpoints=True,
     )
 
+    smoothing_enabled = nodes.new("FunctionNodeCompare")
+    smoothing_enabled.data_type = "INT"
+    smoothing_enabled.operation = "GREATER_THAN"
+    smoothing_enabled.location = (-420, -420)
+    smoothing_enabled.inputs[3].default_value = 0
+    links.new(gin.outputs[_RESAMPLE_COUNT_SOCKET], smoothing_enabled.inputs[2])
+    smooth_curve = curve_smoothing_nodes.add_corner_preserving_bezier(
+        nodes,
+        links,
+        split_curve,
+        smoothing_enabled.outputs["Result"],
+        (-220, -80),
+        label="BML Intersection Cached Shape",
+    )
+
     subdivide = nodes.new("GeometryNodeSubdivideCurve")
     subdivide.label = _SUBDIVIDE_LABEL
     subdivide.location = (-260, -260)
-    links.new(split_curve, subdivide.inputs["Curve"])
+    links.new(smooth_curve, subdivide.inputs["Curve"])
     links.new(gin.outputs[_RESAMPLE_COUNT_SOCKET], subdivide.inputs["Cuts"])
 
     scale = intersection_shell_node_helpers.add_curve_midpoint_width_scale_from_split_attribute(
@@ -778,7 +793,8 @@ def _set_width_control_parameters(mod: bpy.types.Modifier) -> None:
     from . import subdivision_lod
 
     resample_count = subdivision_lod.display_resample_count(
-        _needs_curve_subdivision(midpoint_factor, midpoint_jitter_percent)
+        bool(getattr(settings, "auto_subdivision_for_midpoint", False))
+        or _needs_curve_subdivision(midpoint_factor, midpoint_jitter_percent)
     )
     values = {
         _MIDPOINT_FACTOR_SOCKET: midpoint_factor,
@@ -923,14 +939,26 @@ def _restore_modifier_states(states) -> None:
 def _set_target_outline_state(states, target: bpy.types.Object, enabled: bool) -> None:
     from . import outline_local_subdivision
 
+    local = outline_local_subdivision.get_modifier(target)
+    use_solid_proxy = local is not None and target.modifiers.get(MODIFIER_NAME) is not None
     for mod, show_viewport, show_render in states:
         try:
             if getattr(mod, "id_data", None) != target:
                 continue
+            if outline_local_subdivision.is_modifier(mod):
+                # 表示用輪郭はインスタンスなので交差判定メッシュへ含めない。
+                mod.show_viewport = False
+                mod.show_render = False
+                continue
+            if use_solid_proxy and mod.name == MODIFIER_NAME:
+                # 非表示の従来アウトラインを交差判定時だけ代理形状に使う。
+                mod.show_viewport = bool(enabled)
+                mod.show_render = bool(enabled)
+                continue
             keep_outline = mod.name in (
                 MODIFIER_NAME,
                 SHEET_OUTLINE_MODIFIER_NAME,
-            ) or outline_local_subdivision.is_modifier(mod)
+            )
             mod.show_viewport = bool(enabled and keep_outline and show_viewport)
             mod.show_render = bool(enabled and keep_outline and show_render)
         except ReferenceError:

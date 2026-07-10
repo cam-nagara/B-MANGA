@@ -130,6 +130,9 @@ def _add_open_two_material_cylinder(
 
 def _apply_outline_only(obj: bpy.types.Object) -> None:
     settings = obj.bmanga_line_settings
+    # このテストは「ライン細分化」をオフにした従来の境界チューブと
+    # Solidifyの素材順を検証する。オン側は全ライン目視監査で別途確認する。
+    settings.auto_subdivision_for_midpoint = False
     settings.outline_enabled = True
     settings.outline_thickness_mm = 0.5
     settings.inner_line_enabled = False
