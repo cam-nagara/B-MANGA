@@ -64,8 +64,12 @@ def _assert_line_state(obj: bpy.types.Object, *, visible: bool) -> None:
     mods = _line_mods(obj)
     assert core.MODIFIER_NAME in mods, f"{obj.name}: アウトラインがありません"
     assert core.GN_MODIFIER_NAME in mods, f"{obj.name}: 内部線がありません"
-    assert all(mod.show_viewport == visible for mod in mods.values()), mods
-    assert all(mod.show_render == visible for mod in mods.values()), mods
+    visible_mods = dict(mods)
+    if core.OUTLINE_LOCAL_SUBDIVISION_MODIFIER_NAME in visible_mods:
+        state = visible_mods.pop(core.MODIFIER_NAME)
+        assert not state.show_viewport and not state.show_render
+    assert all(mod.show_viewport == visible for mod in visible_mods.values()), mods
+    assert all(mod.show_render == visible for mod in visible_mods.values()), mods
 
 
 def _assert_distance_limited_inner(obj: bpy.types.Object) -> None:
@@ -422,7 +426,6 @@ def _assert_preset_display_settings_apply(
     source_settings = source.bmanga_line_settings
     source_settings.lines_visible = False
     source_settings.line_only_visible = False
-    source_settings.match_subsurf_viewport_to_render = False
     source_settings.auto_subdivision_for_midpoint = False
     source_settings.inner_edge_midpoint_angle = math.radians(77.0)
     _select(source, [source])
@@ -434,7 +437,6 @@ def _assert_preset_display_settings_apply(
         applied = obj.bmanga_line_settings
         assert applied.lines_visible is False
         assert applied.line_only_visible is False
-        assert applied.match_subsurf_viewport_to_render is False
         assert math.isclose(
             applied.inner_edge_midpoint_angle,
             math.radians(77.0),
@@ -448,7 +450,6 @@ def _assert_preset_display_settings_apply(
 
     source_settings.lines_visible = True
     source_settings.line_only_visible = True
-    source_settings.match_subsurf_viewport_to_render = True
     source_settings.auto_subdivision_for_midpoint = True
     assert bpy.ops.bmanga_line.preset_save() == {"FINISHED"}
 
@@ -457,7 +458,6 @@ def _assert_preset_display_settings_apply(
     for obj in (first, second):
         applied = obj.bmanga_line_settings
         assert applied.lines_visible is True
-        assert applied.match_subsurf_viewport_to_render is True
         assert applied.auto_subdivision_for_midpoint is True
         _assert_pending(obj, "outline", "inner", "intersection", "selection")
     _apply_selected_lines(first, [first, second])
@@ -466,20 +466,18 @@ def _assert_preset_display_settings_apply(
         assert not bool(obj.get(core.PROP_LINE_ONLY, False)), (
             f"{obj.name}: プリセット適用だけでラインのみ表示が即反映されています"
         )
-        subsurfs = [mod for mod in obj.modifiers if mod.type == "SUBSURF"]
-        assert subsurfs, f"{obj.name}: 同期確認用のサブディビジョンがありません"
-        assert any(
-            subdivision_lod.is_auto_subsurf_modifier(sub)
-            and sub.levels == sub.render_levels
-            for sub in subsurfs
-        ), (
-            f"{obj.name}: ビューポートのレベル数がレンダー値へ同期されていません"
+        assert not any(
+            subdivision_lod.is_auto_subsurf_modifier(mod)
+            for mod in obj.modifiers
+        ), f"{obj.name}: 元メッシュ用の旧自動細分化が残っています"
+        assert obj.modifiers.get(core.OUTLINE_LOCAL_SUBDIVISION_MODIFIER_NAME) is not None, (
+            obj.name,
+            [(mod.name, mod.type, mod.show_viewport) for mod in obj.modifiers],
         )
 
     core.set_scene_line_only(bpy.context, False)
     source_settings.lines_visible = True
     source_settings.line_only_visible = False
-    source_settings.match_subsurf_viewport_to_render = False
     source_settings.auto_subdivision_for_midpoint = False
     for obj in (first, second):
         obj.bmanga_line_settings.line_only_visible = False

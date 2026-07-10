@@ -142,7 +142,7 @@ class BMANGA_LINE_OT_reflect_target(bpy.types.Operator):
 
 
 class BMANGA_LINE_OT_reflect_all(bpy.types.Operator):
-    """選択オブジェクトのすべてのラインと中間頂点用サブディビジョンを反映"""
+    """選択オブジェクトのすべてのラインと中間頂点用ライン細分化を反映"""
 
     bl_idname = "bmanga_line.reflect_all"
     bl_label = "すべてのラインを反映"
@@ -279,10 +279,10 @@ def _set_auto_subdivision_setting(
 
 
 class BMANGA_LINE_OT_update_auto_subdivision(bpy.types.Operator):
-    """選択オブジェクトの中間頂点用サブディビジョンを反映・削除"""
+    """選択オブジェクトの中間頂点用ライン細分化を反映・削除"""
 
     bl_idname = "bmanga_line.update_auto_subdivision"
-    bl_label = "中間頂点用サブディビジョンを反映"
+    bl_label = "中間頂点用ライン細分化を反映"
     bl_options = {"REGISTER", "UNDO"}
 
     action: EnumProperty(
@@ -306,14 +306,14 @@ class BMANGA_LINE_OT_update_auto_subdivision(bpy.types.Operator):
         skipped = _locked_skip_count(context, len(targets_to_process))
         message = (
             f"選択中の {len(targets_to_process)} オブジェクトから"
-            "中間頂点用サブディビジョンを削除します。"
+            "中間頂点用ライン細分化を削除します。"
         )
         if skipped:
             message += f"（ロック中の{skipped}件は対象外）"
         return _invoke_delete_confirm(self, context, event, message)
 
     def execute(self, context):
-        from . import batch_update, reflect, selection, settings_draft, update_state
+        from . import reflect, selection, settings_draft, update_state
 
         settings_draft.flush(context)
         targets_to_process = selection.updatable_mesh_objects(context)
@@ -323,18 +323,21 @@ class BMANGA_LINE_OT_update_auto_subdivision(bpy.types.Operator):
         if action == "DELETE":
             _set_auto_subdivision_setting(targets_to_process, False)
 
-        line_results = batch_update.refresh_all_target_visuals(
+        reflect_result = reflect.reflect_all(
             targets_to_process,
             context,
+            force_rebuild=True,
         )
         updated: dict[str, bpy.types.Object] = {}
-        for objects in line_results.values():
-            for obj in objects:
+        for obj in reflect_result.heavy_objects:
+            updated[obj.name_full] = obj
+        for result in reflect_result.targets.values():
+            for obj in result.light_objects:
                 updated[obj.name_full] = obj
 
         updated.update(reflect.refresh_plain_auto_subdivision(targets_to_process, context))
 
-        # ここではサブディビジョンに影響される全ラインの見た目更新も走らせて
+        # ここではライン細分化に影響される全ラインの見た目更新も走らせて
         # いるため、対象の更新待ち表示をまとめて解消してよい。
         update_state.clear_pending_many(targets_to_process, kind="visual")
 
@@ -342,7 +345,7 @@ class BMANGA_LINE_OT_update_auto_subdivision(bpy.types.Operator):
         self.report(
             {"INFO"},
             _with_lock_skip_note(
-                f"{len(updated)} オブジェクトの中間頂点用サブディビジョンを{label}しました",
+                f"{len(updated)} オブジェクトの中間頂点用ライン細分化を{label}しました",
                 skipped,
             ),
         )

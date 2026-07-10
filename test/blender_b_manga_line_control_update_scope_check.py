@@ -320,7 +320,6 @@ def _test_setting_edits_are_deferred(objects, counts, reset) -> None:
         ("selection_line_enabled", True, {"selection"}),
         ("selection_line_thickness", 0.0014, {"selection"}),
         ("use_camera_compensation", True, geometry_targets),
-        ("match_subsurf_viewport_to_render", True, geometry_targets),
         ("use_camera_culling", False, geometry_targets),
         ("limit_uniform_width_to_setting", True, geometry_targets),
     )

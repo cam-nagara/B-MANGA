@@ -13,6 +13,7 @@ from .core import (
     INTERSECTION_MODIFIER_NAME,
     INTERSECTION_MODIFIER_PREFIX,
     MODIFIER_NAME,
+    OUTLINE_LOCAL_SUBDIVISION_MODIFIER_NAME,
     OUTLINE_WIDTH_ATTR_MODIFIER_NAME,
     SELECTION_LINE_MODIFIER_NAME,
     SHEET_OUTLINE_MODIFIER_NAME,
@@ -32,6 +33,7 @@ class MeshData:
 def _line_modifier_names() -> tuple[str, ...]:
     return (
         MODIFIER_NAME,
+        OUTLINE_LOCAL_SUBDIVISION_MODIFIER_NAME,
         OUTLINE_WIDTH_ATTR_MODIFIER_NAME,
         SHEET_OUTLINE_MODIFIER_NAME,
         GN_MODIFIER_NAME,
@@ -41,9 +43,17 @@ def _line_modifier_names() -> tuple[str, ...]:
 
 
 def is_line_modifier(mod: bpy.types.Modifier) -> bool:
-    return mod.name in _line_modifier_names() or mod.name.startswith(
+    if mod.name == OUTLINE_LOCAL_SUBDIVISION_MODIFIER_NAME:
+        from . import outline_local_subdivision
+
+        return outline_local_subdivision.is_modifier(mod)
+    if mod.name in _line_modifier_names() or mod.name.startswith(
         INTERSECTION_MODIFIER_PREFIX
-    )
+    ):
+        return True
+    from . import outline_local_subdivision
+
+    return outline_local_subdivision.is_modifier(mod)
 
 
 def disabled_line_modifiers(objects: list[bpy.types.Object]):
@@ -75,11 +85,16 @@ def restore_modifier_states(states) -> None:
 
 
 def set_target_outline_state(states, target: bpy.types.Object, enabled: bool) -> None:
+    from . import outline_local_subdivision
+
     for mod, show_viewport, show_render in states:
         try:
             if getattr(mod, "id_data", None) != target:
                 continue
-            keep_outline = mod.name in (MODIFIER_NAME, SHEET_OUTLINE_MODIFIER_NAME)
+            keep_outline = mod.name in (
+                MODIFIER_NAME,
+                SHEET_OUTLINE_MODIFIER_NAME,
+            ) or outline_local_subdivision.is_modifier(mod)
             mod.show_viewport = bool(enabled and keep_outline and show_viewport)
             mod.show_render = bool(enabled and keep_outline and show_render)
         except ReferenceError:
@@ -87,11 +102,16 @@ def set_target_outline_state(states, target: bpy.types.Object, enabled: bool) ->
 
 
 def target_outline_was_visible(states, target: bpy.types.Object) -> bool:
+    from . import outline_local_subdivision
+
     for mod, show_viewport, _show_render in states:
         try:
             if (
                 getattr(mod, "id_data", None) == target
-                and mod.name in (MODIFIER_NAME, SHEET_OUTLINE_MODIFIER_NAME)
+                and (
+                    mod.name in (MODIFIER_NAME, SHEET_OUTLINE_MODIFIER_NAME)
+                    or outline_local_subdivision.is_modifier(mod)
+                )
                 and show_viewport
             ):
                 return True

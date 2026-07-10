@@ -34,6 +34,7 @@ def _is_bml_modifier(mod: bpy.types.Modifier) -> bool:
 
     if mod.name in (
         core.MODIFIER_NAME,
+        core.OUTLINE_LOCAL_SUBDIVISION_MODIFIER_NAME,
         core.SHEET_OUTLINE_MODIFIER_NAME,
         core.OUTLINE_WIDTH_ATTR_MODIFIER_NAME,
         core.GN_MODIFIER_NAME,

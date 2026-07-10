@@ -154,8 +154,9 @@ def main() -> None:
         assert _auto_subsurf(tri_cube) is None
         assert all(len(poly.vertices) == 3 for poly in tri_cube.data.polygons)
         assert abs(float(outline_mod.thickness) - thickness_before) < 1.0e-9
-        pending = set(update_state.pending_visual_targets(tri_cube))
+        pending = set(update_state.pending_targets(tri_cube))
         assert pending == {"outline", "inner", "intersection", "selection"}, pending
+        assert set(update_state.pending_visual_targets(tri_cube)) == {"outline"}
 
         # すべてのラインを更新
         assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {
@@ -163,18 +164,14 @@ def main() -> None:
         }
 
         for obj in objects:
-            auto_mod = _auto_subsurf(obj)
-            assert auto_mod is not None, obj.name
-            assert (
-                auto_mod.subdivision_type
-                == subdivision_lod.AUTO_SUBSURF_SUBDIVISION_TYPE
-            )
+            assert _auto_subsurf(obj) is None, obj.name
+            assert obj.modifiers.get(
+                core.OUTLINE_LOCAL_SUBDIVISION_MODIFIER_NAME
+            ) is not None, obj.name
         assert all(
-            len(poly.vertices) == 4 for poly in tri_cube.data.polygons
-        ), "三角面が四角面化されていません"
-        assert (
-            tri_cube.data.attributes.get(subdivision_lod.CREASE_EDGE_ATTR) is not None
-        )
+            len(poly.vertices) == 3 for poly in tri_cube.data.polygons
+        ), "元メッシュの三角面が変更されています"
+        assert tri_cube.data.attributes.get(subdivision_lod.CREASE_EDGE_ATTR) is None
         assert abs(float(outline_mod.thickness)) > abs(thickness_before) * 1.5, (
             thickness_before,
             float(outline_mod.thickness),
@@ -182,14 +179,19 @@ def main() -> None:
         for obj in objects:
             assert not update_state.pending_visual_targets(obj), obj.name
 
-        # チェックOFF→更新ボタンで自動Subsurfが除去される
+        # チェックOFF→更新ボタンでライン専用細分化が除去される
         settings.auto_subdivision_for_midpoint = False
-        assert _auto_subsurf(tri_cube) is not None
+        assert tri_cube.modifiers.get(
+            core.OUTLINE_LOCAL_SUBDIVISION_MODIFIER_NAME
+        ) is not None
         assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {
             "FINISHED"
         }
         for obj in objects:
             assert _auto_subsurf(obj) is None, obj.name
+            assert obj.modifiers.get(
+                core.OUTLINE_LOCAL_SUBDIVISION_MODIFIER_NAME
+            ) is None, obj.name
 
         # reflect_all はメッシュ選択さえあれば有効（未適用オブジェクトへの
         # 新規作成もこのボタン1つで行うため）。旧 update_all_visual_targets は

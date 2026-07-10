@@ -10,6 +10,7 @@ from .core import (
     INTERSECTION_MODIFIER_PREFIX,
     LINE_MODIFIER_NAMES,
     MODIFIER_NAME,
+    OUTLINE_LOCAL_SUBDIVISION_MODIFIER_NAME,
     PROP_LINES_HIDDEN,
     SELECTION_LINE_MODIFIER_NAME,
     SHEET_OUTLINE_MODIFIER_NAME,
@@ -17,10 +18,13 @@ from .core import (
 
 
 def has_outline(obj: bpy.types.Object) -> bool:
+    from . import outline_local_subdivision
+
     return (
         obj.type == "MESH"
         and (
             obj.modifiers.get(MODIFIER_NAME) is not None
+            or outline_local_subdivision.get_modifier(obj) is not None
             or obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME) is not None
         )
     )
@@ -44,10 +48,24 @@ def iter_intersection_modifiers(obj: bpy.types.Object):
 def iter_line_modifiers(obj: bpy.types.Object):
     if obj.type != "MESH":
         return
+    seen: set[int] = set()
+    from . import outline_local_subdivision
+
     for name in LINE_MODIFIER_NAMES:
         mod = obj.modifiers.get(name)
-        if mod is not None:
+        if (
+            mod is not None
+            and (
+                name != OUTLINE_LOCAL_SUBDIVISION_MODIFIER_NAME
+                or outline_local_subdivision.is_modifier(mod)
+            )
+        ):
+            seen.add(mod.as_pointer())
             yield mod
+
+    local_mod = outline_local_subdivision.get_modifier(obj)
+    if local_mod is not None and local_mod.as_pointer() not in seen:
+        yield local_mod
     yield from iter_intersection_modifiers(obj)
 
 
@@ -56,8 +74,13 @@ def iter_target_line_modifiers(obj: bpy.types.Object, targets):
         return
     target_set = set(targets or ())
     if "outline" in target_set:
-        for name in (MODIFIER_NAME, SHEET_OUTLINE_MODIFIER_NAME):
-            mod = obj.modifiers.get(name)
+        from . import outline_local_subdivision
+
+        for mod in (
+            obj.modifiers.get(MODIFIER_NAME),
+            outline_local_subdivision.get_modifier(obj),
+            obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME),
+        ):
             if mod is not None:
                 yield mod
     if "inner" in target_set:
@@ -97,7 +120,21 @@ def _line_modifier_enabled_by_settings(
         )
     if mod.name == SELECTION_LINE_MODIFIER_NAME:
         return bool(getattr(settings, "selection_line_enabled", False))
-    if mod.name in (MODIFIER_NAME, SHEET_OUTLINE_MODIFIER_NAME):
+    from . import outline_local_subdivision
+
+    local_mod = outline_local_subdivision.get_modifier(obj)
+    if (
+        mod.name == MODIFIER_NAME
+        and local_mod is not None
+        and bool(getattr(settings, "auto_subdivision_for_midpoint", False))
+    ):
+        # BML_Outline is retained as settings storage while the local shell is
+        # active. Enabling both would draw two outline shells.
+        return False
+    if (
+        mod.name in (MODIFIER_NAME, SHEET_OUTLINE_MODIFIER_NAME)
+        or mod == local_mod
+    ):
         return bool(getattr(settings, "outline_enabled", True))
     return True
 

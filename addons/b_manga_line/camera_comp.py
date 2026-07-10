@@ -561,6 +561,7 @@ def _apply_reference_line_width(scene, camera, obj, settings, mod) -> None:
         1.0e-9,
     )
     mod.thickness = modifier_thickness_for_world_width(obj, outline_width_world)
+    outline_setup.sync_local_outline_from_state(obj)
     outline_setup.sync_sheet_outline_width(obj)
 
     if _prepare_style_weights(obj, settings, "outline"):
@@ -699,6 +700,7 @@ def _apply_target_width(
     mod = obj.modifiers.get(MODIFIER_NAME)
     if mod is not None:
         mod.thickness = scaled
+        outline_setup.sync_local_outline_from_state(obj)
         outline_setup.sync_sheet_outline_width(obj)
     elif obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME) is not None:
         outline_setup.sync_sheet_outline_width(obj, scaled)
@@ -955,10 +957,14 @@ def _update_visibility(scene, camera, cam_loc, cam_fwd, objects=None, line_targe
         ):
             continue
 
+        from . import outline_local_subdivision
+
+        local_outline_mod = outline_local_subdivision.get_modifier(obj)
         outline_mods = [
             mod
             for mod in (
                 obj.modifiers.get(MODIFIER_NAME),
+                local_outline_mod,
                 obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME),
             )
             if mod is not None
@@ -1036,7 +1042,21 @@ def _update_visibility(scene, camera, cam_loc, cam_fwd, objects=None, line_targe
         if outline_mods and (target_set is None or "outline" in target_set):
             visible = in_view and outline_in_range and outline_enabled
             for outline_mod in outline_mods:
-                _set_modifier_visibility(outline_mod, visible)
+                state_only = (
+                    outline_mod.name == MODIFIER_NAME
+                    and local_outline_mod is not None
+                    and bool(
+                        getattr(
+                            settings,
+                            "auto_subdivision_for_midpoint",
+                            False,
+                        )
+                    )
+                )
+                _set_modifier_visibility(
+                    outline_mod,
+                    False if state_only else visible,
+                )
 
         if target_set is None or "intersection" in target_set:
             for intersection_mod in intersection_mods:

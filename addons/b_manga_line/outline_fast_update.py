@@ -297,6 +297,11 @@ def update_existing_outline(
     """Update a valid existing outline without rebuilding its structure."""
     if obj.type != "MESH" or obj.data is None:
         return False
+    settings = getattr(obj, "bmanga_line_settings", None)
+    if bool(getattr(settings, "auto_subdivision_for_midpoint", False)):
+        # ライン専用殻は構造と入力をまとめて同期するため、従来Solidifyだけを
+        # 更新する高速経路へ入れず、apply_outline側で一貫して更新する。
+        return False
     if plane_filter.is_sheet_mesh(obj) or outline_setup._uses_boundary_tube_only(obj):
         return _update_existing_sheet_outline(
             obj,

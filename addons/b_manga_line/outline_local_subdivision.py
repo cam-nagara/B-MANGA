@@ -20,8 +20,8 @@ GENERATED_LINE_ATTR = "BML_GeneratedLine"
 LINE_WIDTH_ATTR = "BML_LineWidth"
 
 _OWNER_KEY = "bml_outline_local_subdivision_owner"
-_TREE_GENERATION = "BML_OutlineLocalSubdivision_Generation_20260710"
-_GENERATION_LABEL = "BML Local Subdivision 2026-07-10"
+_TREE_GENERATION = "BML_OutlineLocalSubdivision_Generation_20260710_V3"
+_GENERATION_LABEL = "BML Local Subdivision 2026-07-10 V3"
 _THICKNESS_SOCKET = "線の太さ"
 _OFFSET_SOCKET = "オフセット"
 _MATERIAL_SOCKET = "マテリアル"
@@ -203,7 +203,9 @@ def _curve_width_scale(nodes, links, curve, group_in):
 def _sample_width_scale(nodes, links, curve_points, target_geometry):
     point_count = nodes.new("GeometryNodeAttributeDomainSize")
     point_count.location = (380, -610)
-    point_count.component = "CURVE"
+    # Curve to Points outputs a point cloud. CURVE would always report zero
+    # here and silently disable midpoint width sampling.
+    point_count.component = "POINTCLOUD"
     links.new(curve_points, point_count.inputs["Geometry"])
     has_points = nodes.new("FunctionNodeCompare")
     has_points.data_type = "INT"
@@ -260,10 +262,10 @@ def _create_tree() -> bpy.types.NodeTree:
     curve_points = _curve_width_scale(nodes, links, curves, group_in)
 
     level = nodes.new("GeometryNodeSwitch")
-    level.label = _GENERATION_LABEL + " Level 0 or 2"
+    level.label = _GENERATION_LABEL + " Level 1 or 2"
     level.input_type = "INT"
     level.location = (-1340, 100)
-    level.inputs["False"].default_value = 0
+    level.inputs["False"].default_value = 1
     level.inputs["True"].default_value = 2
     links.new(group_in.outputs[_SUBDIVISION_SOCKET], level.inputs["Switch"])
 
@@ -415,6 +417,11 @@ def _owned_modifier(obj: bpy.types.Object) -> bpy.types.Modifier | None:
     return None
 
 
+def get_modifier(obj: bpy.types.Object) -> bpy.types.Modifier | None:
+    """Return the owned local-outline modifier regardless of its display name."""
+    return _owned_modifier(obj)
+
+
 def _value(settings, names: tuple[str, ...], default):
     if settings is None:
         return default
@@ -438,17 +445,34 @@ def _ensure_material_slot(obj: bpy.types.Object, material: bpy.types.Material | 
 
 
 def _sync_settings(mod: bpy.types.Modifier, settings) -> None:
-    values = {
-        _MIDPOINT_FACTOR_SOCKET: _value(
+    midpoint_factor = float(
+        _value(
             settings,
             ("outline_edge_smooth_factor", "edge_smooth_factor", "midpoint_width_scale"),
             0.0,
-        ),
-        _MIDPOINT_JITTER_SOCKET: _value(
+        )
+    )
+    midpoint_jitter = float(
+        _value(
             settings,
-            ("outline_edge_midpoint_jitter_percent", "edge_midpoint_jitter_percent", "midpoint_jitter_percent"),
+            (
+                "outline_edge_midpoint_jitter_percent",
+                "edge_midpoint_jitter_percent",
+                "midpoint_jitter_percent",
+            ),
             0.0,
-        ),
+        )
+    )
+    requested = bool(
+        _value(
+            settings,
+            ("line_subdivision", "outline_line_subdivision", "auto_subdivision_for_midpoint"),
+            True,
+        )
+    )
+    values = {
+        _MIDPOINT_FACTOR_SOCKET: midpoint_factor,
+        _MIDPOINT_JITTER_SOCKET: midpoint_jitter,
         _MIDPOINT_ANGLE_SOCKET: _value(
             settings,
             ("outline_edge_midpoint_angle", "edge_midpoint_angle", "midpoint_angle"),
@@ -463,13 +487,10 @@ def _sync_settings(mod: bpy.types.Modifier, settings) -> None:
         _CURVE_75_SOCKET: _value(
             settings, ("outline_edge_width_curve_75", "edge_width_curve_75", "width_curve_75"), 0.75
         ),
-        _SUBDIVISION_SOCKET: bool(
-            _value(
-                settings,
-                ("line_subdivision", "outline_line_subdivision", "auto_subdivision_for_midpoint"),
-                True,
-            )
-        ),
+        # Avoid a 16x line-shell face increase when midpoint controls have no
+        # visible effect. The source path remains untouched in either case.
+        _SUBDIVISION_SOCKET: requested
+        and (abs(midpoint_factor) > 1.0e-7 or abs(midpoint_jitter) > 1.0e-7),
     }
     for name, value in values.items():
         _set_input(mod, name, value)

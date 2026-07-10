@@ -318,10 +318,10 @@ def dispatch_target(
 
 
 def refresh_plain_auto_subdivision(objects: list, context) -> dict:
-    """ライン未適用オブジェクトの中間頂点用サブディビジョンだけを同期する.
+    """ライン未適用オブジェクトから安全に識別できる旧生成物を撤去する.
 
-    （旧 bmanga_line.update_auto_subdivision 専用ヘルパーを reflect_all からも
-    使えるよう本モジュールへ集約。has_line なオブジェクトは自身でスキップする。）
+    生成ライン側の細分化にはライン実体が必要なため、未適用オブジェクトでは
+    旧方式が残した所有確認済みデータの整理だけを行う。
     """
     from . import modifier_stack, subdivision_lod
 
@@ -366,7 +366,6 @@ def reflect_all(
     line_objects = batch_update._unlocked_line_objects(objects)
     if line_objects:
         batch_update._update_auto_subdivision(line_objects, context)
-        batch_update._update_match_subsurf_viewport_to_render(line_objects)
 
     results: dict = {}
     all_heavy: list = []

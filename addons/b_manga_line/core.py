@@ -22,6 +22,7 @@ from .selection import selected_mesh_objects as _selected_mesh_objects
 # 命名規則 — モディファイア・マテリアル・頂点グループ等の識別子
 # ------------------------------------------------------------------
 MODIFIER_NAME = "BML_Outline"
+OUTLINE_LOCAL_SUBDIVISION_MODIFIER_NAME = "BML_OutlineLocalSubdivision"
 OUTLINE_WIDTH_ATTR_MODIFIER_NAME = "BML_OutlineWidthAttribute"
 SHEET_OUTLINE_MODIFIER_NAME = "BML_SheetOutline"
 MATERIAL_NAME = "BML_Outline"
@@ -73,6 +74,7 @@ LINE_MODIFIER_NAMES = (
     SHEET_OUTLINE_MODIFIER_NAME,
     OUTLINE_WIDTH_ATTR_MODIFIER_NAME,
     MODIFIER_NAME,
+    OUTLINE_LOCAL_SUBDIVISION_MODIFIER_NAME,
     GN_MODIFIER_NAME,
     SELECTION_LINE_MODIFIER_NAME,
 )
@@ -460,17 +462,30 @@ def set_outline_visibility_from_settings(obj: bpy.types.Object) -> bool:
     visible = outline_on and not bool(obj.get(PROP_LINES_HIDDEN, False))
     changed = False
     found = False
+    from . import outline_local_subdivision
+
+    local_mod = outline_local_subdivision.get_modifier(obj)
     # シートの境界チューブもアウトラインの一部として一緒に切り替える
-    for name in (MODIFIER_NAME, SHEET_OUTLINE_MODIFIER_NAME):
-        mod = obj.modifiers.get(name)
+    for mod in (
+        obj.modifiers.get(MODIFIER_NAME),
+        local_mod,
+        obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME),
+    ):
         if mod is None:
             continue
         found = True
-        if mod.show_viewport != visible:
-            mod.show_viewport = visible
+        mod_visible = visible
+        if (
+            mod.name == MODIFIER_NAME
+            and local_mod is not None
+            and bool(getattr(settings, "auto_subdivision_for_midpoint", False))
+        ):
+            mod_visible = False
+        if mod.show_viewport != mod_visible:
+            mod.show_viewport = mod_visible
             changed = True
-        if mod.show_render != visible:
-            mod.show_render = visible
+        if mod.show_render != mod_visible:
+            mod.show_render = mod_visible
             changed = True
     if not found:
         return False
@@ -710,10 +725,6 @@ def _on_scene_line_only_visible_changed(self, context):
     if _line_only_scene_updating:
         return
     set_scene_line_only(context, bool(self.bmanga_line_line_only_visible))
-
-
-def _on_match_subsurf_viewport_to_render_changed(self, context):
-    scene_controls.on_object_match_subsurf_viewport_to_render_changed(self, context)
 
 
 def _sync_inner_line_creation(
@@ -1419,10 +1430,10 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     )  # type: ignore[valid-type]
 
     auto_subdivision_for_midpoint: BoolProperty(
-        name="中間頂点用サブディビジョンを自動設定",
+        name="中間頂点用ライン細分化",
         description=(
-            "ラインを適用、または稜谷線・交差線・選択線の更新時に、"
-            "カメラ距離に応じたサブディビジョンサーフェスを設定する"
+            "元メッシュは変更せず、アウトライン・稜谷線・交差線・選択線の"
+            "生成ラインだけへ中間頂点を追加する"
         ),
         default=False,
         update=_on_auto_subdivision_changed,
@@ -1440,16 +1451,6 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         description="面を白く置き換え、ラインだけが見える表示へ切り替える",
         default=False,
         update=_on_line_only_visible_changed,
-    )  # type: ignore[valid-type]
-
-    match_subsurf_viewport_to_render: BoolProperty(
-        name="ビューポートのレベル数をレンダーに合わせる",
-        description=(
-            "シーン内すべてのメッシュのサブディビジョンサーフェスで、"
-            "ビューポートのレベル数をレンダーと同じ数値にする"
-        ),
-        default=False,
-        update=_on_match_subsurf_viewport_to_render_changed,
     )  # type: ignore[valid-type]
 
     even_thickness: BoolProperty(

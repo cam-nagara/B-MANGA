@@ -436,8 +436,6 @@ def _draw_global_display_controls(layout, context) -> None:
     col = layout.column(align=True)
     col.prop(scene, "bmanga_line_lines_visible")
     col.prop(scene, "bmanga_line_line_only_visible")
-    col.prop(scene, "bmanga_line_match_subsurf_viewport_to_render")
-
     row = col.row(align=True)
     row.enabled = not aov_compositor.line_aov_compositor_exists(scene)
     row.operator("bmanga_line.setup_aov_composite", icon="NODETREE")

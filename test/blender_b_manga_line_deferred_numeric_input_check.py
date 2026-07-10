@@ -5,7 +5,6 @@ from __future__ import annotations
 import math
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 import bpy
 
@@ -17,7 +16,7 @@ import b_manga_line  # noqa: E402
 from b_manga_line import (  # noqa: E402
     core,
     presets,
-    subdivision_lod,
+    outline_local_subdivision,
     update_state,
 )
 
@@ -75,64 +74,27 @@ def _setup_applied_line() -> bpy.types.Object:
     obj.name = "BML_deferred_numeric_input"
     obj.select_set(True)
     bpy.context.view_layer.objects.active = obj
+    obj.bmanga_line_settings.auto_subdivision_for_midpoint = True
+    obj.bmanga_line_settings.use_camera_culling = False
+    obj.bmanga_line_settings.weld_mesh_for_outline = False
     assert presets.apply_line_settings(obj, bpy.context)
     assert core.has_line(obj)
-    assert subdivision_lod.ensure_auto_subdivision(obj, bpy.context.scene) is not None
+    assert outline_local_subdivision.has_active(obj)
     bpy.context.view_layer.update()
     return obj
 
 
-def _fake_update(obj, *, transform: bool, geometry: bool, shading: bool):
-    return SimpleNamespace(
-        id=obj,
-        is_updated_transform=transform,
-        is_updated_geometry=geometry,
-        is_updated_shading=shading,
-    )
-
-
 def _test_numeric_edits_do_not_queue_subdivision_sync(obj: bpy.types.Object) -> None:
     settings = obj.bmanga_line_settings
-    queued: list[str] = []
-    original_queue = subdivision_lod._queue_sync
-    subdivision_lod._queue_sync = lambda item: queued.append(item.name_full)
-    try:
-        for prop_name, value in NUMERIC_CASES:
-            update_state.clear_pending(obj)
-            bpy.context.view_layer.update()
-            queued.clear()
-            setattr(settings, prop_name, value)
-            assert update_state.pending_targets(obj), f"反映待ちになりません: {prop_name}"
-            bpy.context.view_layer.update()
-            assert not queued, f"数値入力で形状追従が走りました: {prop_name}"
-
-        deferred = _fake_update(
-            obj, transform=True, geometry=True, shading=True,
+    before = outline_local_subdivision.local_thickness(obj)
+    for prop_name, value in NUMERIC_CASES:
+        update_state.clear_pending(obj)
+        setattr(settings, prop_name, value)
+        assert update_state.pending_targets(obj), f"反映待ちになりません: {prop_name}"
+        bpy.context.view_layer.update()
+        assert outline_local_subdivision.local_thickness(obj) == before, (
+            f"数値入力でライン殻が更新されました: {prop_name}"
         )
-        assert subdivision_lod._is_deferred_line_setting_update(obj, deferred)
-        subdivision_lod._on_depsgraph_update(
-            bpy.context.scene, SimpleNamespace(updates=(deferred,)),
-        )
-        assert not queued
-
-        geometry = _fake_update(
-            obj, transform=False, geometry=True, shading=True,
-        )
-        subdivision_lod._on_depsgraph_update(
-            bpy.context.scene, SimpleNamespace(updates=(geometry,)),
-        )
-        assert queued == [obj.name_full], "実際の形状変更まで抑止しています"
-        queued.clear()
-
-        transform = _fake_update(
-            obj, transform=True, geometry=False, shading=False,
-        )
-        subdivision_lod._on_depsgraph_update(
-            bpy.context.scene, SimpleNamespace(updates=(transform,)),
-        )
-        assert queued == [obj.name_full], "実際の移動追従まで抑止しています"
-    finally:
-        subdivision_lod._queue_sync = original_queue
 
 
 def _test_outline_width_changes_only_after_reflect(obj: bpy.types.Object) -> None:

@@ -1,426 +1,159 @@
-"""B-MANGA Line midpoint subdivision setup."""
+"""B-MANGA Liner generated-line subdivision and legacy cleanup.
+
+The current implementation never creates or edits a Subdivision Surface on the
+source object.  The old names are retained only to identify safely-owned legacy
+data during an explicit reflect/delete operation.
+"""
 
 from __future__ import annotations
 
-import math
-
-import bmesh
 import bpy
-from bpy.app.handlers import persistent
 
 
 AUTO_SUBSURF_MODIFIER_NAME = "BML_MidpointSubsurf"
 AUTO_SUBSURF_CREASE_EDGES_PROP = "bml_auto_midpoint_subsurf_crease_edges"
 AUTO_QUADIFIED_FACES_PROP = "bml_auto_midpoint_quadified_faces"
 CREASE_EDGE_ATTR = "crease_edge"
-SHARP_EDGE_ANGLE = math.radians(45.0)
-AUTO_SUBSURF_SUBDIVISION_TYPE = "CATMULL_CLARK"
-QUADRANGULATE_FACE_THRESHOLD = math.radians(40.0)
-QUADRANGULATE_SHAPE_THRESHOLD = math.radians(40.0)
-MAX_RENDER_LEVELS = 4
-DISTANCE_STEP_METERS = 5.0
-DEFAULT_LINE_RESAMPLE_COUNT = 4
-_MIN_LINE_RESAMPLE_COUNT = 1
+DEFAULT_LINE_RESAMPLE_COUNT = 1
 _MIDPOINT_DISPLAY_RESAMPLE_COUNT = 3
 _ROUND_LOOP_RESAMPLE_CAP = 96
-_MAX_LINE_SUBDIVIDE_CUTS = 8
-_SHARP_EDGE_ANGLE_EPSILON = 1.0e-7
-_pending_sync_names: set[str] = set()
-_sync_timer_running = False
-_repair_timer_running = False
+
+
+def _legacy_owner(mod: bpy.types.Modifier | None) -> bpy.types.Object | None:
+    owner = getattr(mod, "id_data", None)
+    return owner if isinstance(owner, bpy.types.Object) else None
 
 
 def is_auto_subsurf_modifier(mod: bpy.types.Modifier | None) -> bool:
-    return (
-        mod is not None
-        and mod.type == "SUBSURF"
+    """Return True only for an old modifier with verifiable Liner ownership."""
+    if mod is None or mod.type != "SUBSURF":
+        return False
+    if not (
+        mod.name == AUTO_SUBSURF_MODIFIER_NAME
+        or mod.name.startswith(AUTO_SUBSURF_MODIFIER_NAME + ".")
+    ):
+        return False
+    owner = _legacy_owner(mod)
+    return bool(
+        owner is not None
+        and sum(
+            1
+            for candidate in owner.modifiers
+            if candidate.type == "SUBSURF"
+            and (
+                candidate.name == AUTO_SUBSURF_MODIFIER_NAME
+                or candidate.name.startswith(AUTO_SUBSURF_MODIFIER_NAME + ".")
+            )
+        )
+        == 1
         and (
-            mod.name == AUTO_SUBSURF_MODIFIER_NAME
-            or mod.name.startswith(AUTO_SUBSURF_MODIFIER_NAME + ".")
+            AUTO_SUBSURF_CREASE_EDGES_PROP in owner
+            or AUTO_QUADIFIED_FACES_PROP in owner
         )
     )
-
-
-def render_levels_for_distance(distance: float) -> int:
-    if distance < 0.0:
-        distance = 0.0
-    level = MAX_RENDER_LEVELS - int(distance // DISTANCE_STEP_METERS)
-    return max(0, min(MAX_RENDER_LEVELS, level))
-
-
-def sync_viewport_levels_to_render(obj: bpy.types.Object) -> int:
-    """選択メッシュのSubsurfのビューポートレベルをレンダーレベルへ揃える."""
-    if obj.type != "MESH":
-        return 0
-    changed = 0
-    for mod in obj.modifiers:
-        if mod.type != "SUBSURF":
-            continue
-        render_levels = max(0, int(getattr(mod, "render_levels", 0)))
-        if int(getattr(mod, "levels", 0)) == render_levels:
-            continue
-        mod.levels = render_levels
-        changed += 1
-    if changed:
-        sync_generated_line_subdivision(obj)
-        try:
-            from . import intersection_shell
-
-            intersection_shell.sync_proxy_subdivision_for_target(obj)
-        except Exception:  # noqa: BLE001 - 交差線プロキシが無い場合も通常操作を止めない
-            pass
-    return changed
-
-
-def reset_viewport_levels_to_zero(obj: bpy.types.Object) -> int:
-    """選択メッシュのSubsurfのビューポートレベルを0へ戻す."""
-    if obj.type != "MESH":
-        return 0
-    changed = 0
-    for mod in obj.modifiers:
-        if mod.type != "SUBSURF":
-            continue
-        if int(getattr(mod, "levels", 0)) == 0:
-            continue
-        mod.levels = 0
-        changed += 1
-    if changed:
-        sync_generated_line_subdivision(obj)
-        try:
-            from . import intersection_shell
-
-            intersection_shell.sync_proxy_subdivision_for_target(obj)
-        except Exception:  # noqa: BLE001 - 交差線プロキシが無い場合も通常操作を止めない
-            pass
-    return changed
-
-
-def _line_camera(scene) -> bpy.types.Object | None:
-    if scene is None:
-        return None
-    try:
-        from . import camera_comp
-
-        return camera_comp.get_line_camera(scene)
-    except Exception:  # noqa: BLE001 - カメラ取得失敗時は既定密度で続行
-        return getattr(scene, "camera", None)
-
-
-def _distance_to_camera(obj: bpy.types.Object, scene) -> float:
-    camera = _line_camera(scene)
-    if camera is None:
-        return 0.0
-    return float((camera.matrix_world.translation - obj.matrix_world.translation).length)
-
-
-def auto_subsurf_modifier(obj: bpy.types.Object) -> bpy.types.Modifier | None:
-    mods = auto_subsurf_modifiers(obj)
-    return mods[0] if mods else None
 
 
 def auto_subsurf_modifiers(obj: bpy.types.Object) -> list[bpy.types.Modifier]:
     return [mod for mod in obj.modifiers if is_auto_subsurf_modifier(mod)]
 
 
-def _deduplicate_auto_subsurf_modifiers(
-    obj: bpy.types.Object,
-) -> tuple[bpy.types.Modifier | None, int]:
-    mods = auto_subsurf_modifiers(obj)
-    if not mods:
-        return None, 0
-    keep = mods[0]
-    removed = 0
-    for mod in mods[1:]:
-        obj.modifiers.remove(mod)
-        removed += 1
-    return keep, removed
-
-
-def has_subsurf_modifier(obj: bpy.types.Object) -> bool:
-    return any(mod.type == "SUBSURF" for mod in obj.modifiers)
+def auto_subsurf_modifier(obj: bpy.types.Object) -> bpy.types.Modifier | None:
+    modifiers = auto_subsurf_modifiers(obj)
+    return modifiers[0] if modifiers else None
 
 
 def auto_subdivision_supported(obj: bpy.types.Object) -> bool:
-    """Return True when auto Catmull-Clark can be applied to the mesh."""
-    return (
-        obj.type == "MESH"
-        and obj.data is not None
-        and bool(obj.data.polygons)
-    )
+    return obj.type == "MESH" and obj.data is not None and bool(obj.data.polygons)
 
 
-def _auto_subsurf_viewport_levels(obj: bpy.types.Object, render_levels: int) -> int:
-    settings = getattr(obj, "bmanga_line_settings", None)
-    if settings is not None and bool(
-        getattr(settings, "match_subsurf_viewport_to_render", False)
-    ):
-        return max(0, int(render_levels))
-    return 0
-
-
-def _non_quad_face_count(faces) -> int:
-    return sum(1 for face in faces if len(face.verts) != 4)
-
-
-def _quad_face_count(faces) -> int:
-    return sum(1 for face in faces if len(face.verts) == 4)
-
-
-def quadrangulate_mesh_for_auto_subdivision(obj: bpy.types.Object) -> int:
-    """Join compatible triangles before the auto Catmull-Clark modifier.
-
-    This keeps the original vertex positions and only rewrites topology when the
-    operation actually reduces non-quad faces. If the mesh datablock is shared,
-    the selected object gets its own copy so other objects are not changed.
-    """
-    if obj.type != "MESH" or obj.data is None:
+def _remove_owned_legacy_subdivision(obj: bpy.types.Object) -> int:
+    # Multiple matching names are ambiguous: an old generated modifier and a
+    # user modifier may coexist. Preserve all rather than risking user data.
+    candidates = [
+        mod
+        for mod in obj.modifiers
+        if mod.type == "SUBSURF"
+        and (
+            mod.name == AUTO_SUBSURF_MODIFIER_NAME
+            or mod.name.startswith(AUTO_SUBSURF_MODIFIER_NAME + ".")
+        )
+    ]
+    if len(candidates) != 1:
         return 0
-    mesh = obj.data
-    if not any(len(poly.vertices) != 4 for poly in mesh.polygons):
-        return 0
-
-    bm = bmesh.new()
-    try:
-        bm.from_mesh(mesh)
-        bm.faces.ensure_lookup_table()
-        before_non_quad = _non_quad_face_count(bm.faces)
-        before_quad = _quad_face_count(bm.faces)
-
-        ngons = [face for face in bm.faces if len(face.verts) > 4]
-        if ngons:
-            bmesh.ops.triangulate(bm, faces=ngons)
-            bm.faces.ensure_lookup_table()
-
-        triangles = [face for face in bm.faces if len(face.verts) == 3]
-        if triangles:
-            bmesh.ops.join_triangles(
-                bm,
-                faces=triangles,
-                cmp_seam=True,
-                cmp_sharp=True,
-                cmp_uvs=True,
-                cmp_vcols=True,
-                cmp_materials=True,
-                angle_face_threshold=QUADRANGULATE_FACE_THRESHOLD,
-                angle_shape_threshold=QUADRANGULATE_SHAPE_THRESHOLD,
-                topology_influence=1.0,
-            )
-            bm.faces.ensure_lookup_table()
-
-        after_non_quad = _non_quad_face_count(bm.faces)
-        after_quad = _quad_face_count(bm.faces)
-        if after_non_quad >= before_non_quad or after_quad <= before_quad:
-            return 0
-
-        target_mesh = mesh
-        if mesh.users > 1:
-            target_mesh = mesh.copy()
-            obj.data = target_mesh
-        bm.to_mesh(target_mesh)
-        target_mesh.update()
-        joined = before_non_quad - after_non_quad
-        obj[AUTO_QUADIFIED_FACES_PROP] = int(max(1, joined))
-        return int(max(1, joined))
-    finally:
-        bm.free()
+    removed = 0
+    for mod in list(obj.modifiers):
+        if is_auto_subsurf_modifier(mod):
+            obj.modifiers.remove(mod)
+            removed += 1
+    if removed:
+        # Metadata belongs to the retired implementation. The mesh crease
+        # attribute itself is deliberately preserved because it may also carry
+        # user-authored data and cannot be separated reliably.
+        for key in (AUTO_SUBSURF_CREASE_EDGES_PROP, AUTO_QUADIFIED_FACES_PROP):
+            if key in obj:
+                del obj[key]
+    return removed
 
 
-def _ensure_crease_attribute(mesh: bpy.types.Mesh):
-    attr = mesh.attributes.get(CREASE_EDGE_ATTR)
-    if attr is None:
-        attr = mesh.attributes.new(CREASE_EDGE_ATTR, "FLOAT", "EDGE")
-    return attr
-
-
-def mark_sharp_edges_for_subsurf(
-    obj: bpy.types.Object,
-    threshold: float = SHARP_EDGE_ANGLE,
-) -> int:
-    """Set edge crease 1.0 for mesh edges sharper than the threshold."""
-    if obj.type != "MESH" or obj.data is None:
-        return 0
-    mesh = obj.data
-    bm = bmesh.new()
-    try:
-        bm.from_mesh(mesh)
-        bm.edges.ensure_lookup_table()
-        sharp_indices: list[int] = []
-        for edge in bm.edges:
-            if len(edge.link_faces) < 2:
-                sharp_indices.append(edge.index)
-                continue
-            try:
-                if edge.calc_face_angle() + _SHARP_EDGE_ANGLE_EPSILON >= threshold:
-                    sharp_indices.append(edge.index)
-            except ValueError:
-                continue
-    finally:
-        bm.free()
-
-    attr = _ensure_crease_attribute(mesh)
-    for item in attr.data:
-        item.value = 0.0
-
-    if not sharp_indices:
-        obj[AUTO_SUBSURF_CREASE_EDGES_PROP] = []
-        mesh.update()
-        return 0
-
-    for edge_index in sharp_indices:
-        if edge_index < len(attr.data):
-            attr.data[edge_index].value = 1.0
-    obj[AUTO_SUBSURF_CREASE_EDGES_PROP] = sharp_indices
-    mesh.update()
-    return len(sharp_indices)
-
-
-def ensure_auto_subdivision(obj: bpy.types.Object, scene) -> bpy.types.Modifier | None:
-    """Create/update the auto Subdivision Surface modifier used by midpoint widths."""
-    if obj.type != "MESH" or obj.data is None:
+def ensure_auto_subdivision(obj: bpy.types.Object, _scene=None):
+    """Compatibility entry point: retire legacy source Subsurf and sync lines."""
+    if obj.type != "MESH":
         return None
-    if not auto_subdivision_supported(obj):
-        remove_auto_subdivision(obj)
-        return None
-
-    quadrangulate_mesh_for_auto_subdivision(obj)
-    mark_sharp_edges_for_subsurf(obj)
-    mod, _removed = _deduplicate_auto_subsurf_modifiers(obj)
-    if mod is None:
-        mod = obj.modifiers.new(AUTO_SUBSURF_MODIFIER_NAME, "SUBSURF")
-
-    if hasattr(mod, "subdivision_type"):
-        mod.subdivision_type = AUTO_SUBSURF_SUBDIVISION_TYPE
-    render_levels = render_levels_for_distance(_distance_to_camera(obj, scene))
-    mod.render_levels = render_levels
-    mod.levels = _auto_subsurf_viewport_levels(obj, render_levels)
-    mod.show_viewport = True
-    mod.show_render = True
-    try:
-        from . import modifier_stack
-
-        modifier_stack.reorder_line_modifiers(obj)
-    except Exception:  # noqa: BLE001 - 順序修復に失敗しても設定自体は残す
-        pass
+    _remove_owned_legacy_subdivision(obj)
     sync_generated_line_subdivision(obj)
-    return mod
+    try:
+        from . import outline_local_subdivision
 
-
-def repair_auto_subdivision_modifiers(scene: bpy.types.Scene | None = None) -> int:
-    """既存ファイル内の自動Subsurfを現行仕様へ修復する."""
-    if scene is not None:
-        objects = tuple(scene.objects)
-    else:
-        data_objects = getattr(bpy.data, "objects", None)
-        if data_objects is None:
-            return 0
-        objects = tuple(data_objects)
-
-    changed = 0
-    for obj in objects:
-        if obj.type != "MESH" or obj.data is None:
-            continue
-        mod = auto_subsurf_modifier(obj)
-        if mod is None:
-            continue
-        if not auto_subdivision_supported(obj):
-            if remove_auto_subdivision(obj):
-                changed += 1
-            continue
-        if quadrangulate_mesh_for_auto_subdivision(obj):
-            changed += 1
-        mark_sharp_edges_for_subsurf(obj)
-        mod, removed = _deduplicate_auto_subsurf_modifiers(obj)
-        if removed:
-            changed += removed
-        if mod is None:
-            continue
-        if hasattr(mod, "subdivision_type") and mod.subdivision_type != AUTO_SUBSURF_SUBDIVISION_TYPE:
-            mod.subdivision_type = AUTO_SUBSURF_SUBDIVISION_TYPE
-            changed += 1
-        desired_render_levels = render_levels_for_distance(_distance_to_camera(obj, scene))
-        desired_levels = _auto_subsurf_viewport_levels(obj, desired_render_levels)
-        if int(getattr(mod, "levels", 0)) != desired_levels:
-            mod.levels = desired_levels
-            changed += 1
-        if int(getattr(mod, "render_levels", 0)) != desired_render_levels:
-            mod.render_levels = desired_render_levels
-            changed += 1
-        if not bool(getattr(mod, "show_viewport", True)):
-            mod.show_viewport = True
-            changed += 1
-        if not bool(getattr(mod, "show_render", True)):
-            mod.show_render = True
-            changed += 1
-        if sync_generated_line_subdivision(obj):
-            changed += 1
-        try:
-            from . import intersection_shell
-
-            intersection_shell.sync_proxy_subdivision_for_target(obj)
-        except Exception:  # noqa: BLE001 - 交差線プロキシが無い場合も通常操作を止めない
-            pass
-        try:
-            from . import outline_width_attribute
-
-            if outline_width_attribute.ensure_outline_width_attribute(
-                obj,
-                getattr(obj, "bmanga_line_settings", None),
-            ):
-                changed += 1
-        except Exception:  # noqa: BLE001 - 修復失敗時もファイル読み込みを止めない
-            pass
-    return changed
+        for mod in obj.modifiers:
+            if outline_local_subdivision.is_modifier(mod):
+                return mod
+    except Exception:  # noqa: BLE001 - optional outline may not exist yet
+        pass
+    return None
 
 
 def remove_auto_subdivision(obj: bpy.types.Object) -> bool:
     if obj.type != "MESH":
         return False
-    removed = False
-    for mod in list(obj.modifiers):
-        if is_auto_subsurf_modifier(mod):
-            obj.modifiers.remove(mod)
-            removed = True
-    if AUTO_SUBSURF_CREASE_EDGES_PROP in obj:
-        del obj[AUTO_SUBSURF_CREASE_EDGES_PROP]
-    if AUTO_QUADIFIED_FACES_PROP in obj:
-        del obj[AUTO_QUADIFIED_FACES_PROP]
-    sync_generated_line_subdivision(obj)
+    changed = bool(_remove_owned_legacy_subdivision(obj))
     try:
-        from . import intersection_shell
+        from . import outline_local_subdivision
 
-        intersection_shell.sync_proxy_subdivision_for_target(obj)
-    except Exception:  # noqa: BLE001 - 交差線プロキシが無い場合も通常操作を止めない
+        changed = outline_local_subdivision.remove(obj) or changed
+    except Exception:  # noqa: BLE001 - deletion must continue for remaining lines
         pass
-    return removed
+    sync_generated_line_subdivision(obj)
+    return changed
+
+
+def repair_auto_subdivision_modifiers(scene: bpy.types.Scene | None = None) -> int:
+    """Explicitly remove only verifiably-owned legacy modifiers."""
+    objects = tuple(scene.objects) if scene is not None else tuple(bpy.data.objects)
+    return sum(_remove_owned_legacy_subdivision(obj) for obj in objects if obj.type == "MESH")
+
+
+def sync_viewport_levels_to_render(_obj: bpy.types.Object) -> int:
+    """Retired compatibility shim. User Subsurf levels are never changed."""
+    return 0
+
+
+def reset_viewport_levels_to_zero(_obj: bpy.types.Object) -> int:
+    """Retired compatibility shim. User Subsurf levels are never changed."""
+    return 0
 
 
 def line_resample_count(obj: bpy.types.Object, *, for_render: bool = False) -> int:
-    """Return cuts per source edge for internal-line curve subdivision.
-
-    The value used to mean a whole-curve resample count. Internal lines now use
-    Subdivide Curve so polygonal edges stay in place; the value is intentionally
-    small and is applied per original edge.
-    """
-    mod = auto_subsurf_modifier(obj)
-    if mod is None:
-        return DEFAULT_LINE_RESAMPLE_COUNT
-    level = int(getattr(mod, "render_levels", 0) if for_render else getattr(mod, "levels", 0))
-    if for_render and not bool(getattr(mod, "show_render", True)):
-        level = 0
-    if not for_render and not bool(getattr(mod, "show_viewport", True)):
-        level = 0
-    level = max(0, min(MAX_RENDER_LEVELS, level))
-    return max(1, min(_MAX_LINE_SUBDIVIDE_CUTS, 2 ** level))
+    del for_render
+    settings = getattr(obj, "bmanga_line_settings", None)
+    if settings is not None and bool(
+        getattr(settings, "auto_subdivision_for_midpoint", False)
+    ):
+        return _MIDPOINT_DISPLAY_RESAMPLE_COUNT
+    return DEFAULT_LINE_RESAMPLE_COUNT
 
 
 def midpoint_display_resample_count(requested: int | None = None) -> int:
-    """中間頂点の見た目調整に使う表示分割数を返す.
-
-    保存済み線の中心線は評価済みメッシュから作るため、形状追従は作成段階で
-    完了している。ここでサブディビジョン段数をそのまま使うと、乱れが細かい
-    分割点すべてへ乗って凸凹になるため、線幅カーブに必要な25/50/75%点までに
-    抑える。
-    """
+    del requested
     return _MIDPOINT_DISPLAY_RESAMPLE_COUNT
 
 
@@ -428,32 +161,28 @@ def display_resample_count(
     needs_midpoint_controls: bool,
     requested: int | None = None,
 ) -> int:
-    if not needs_midpoint_controls:
-        return _MIN_LINE_RESAMPLE_COUNT
-    return midpoint_display_resample_count(requested)
+    del requested
+    return _MIDPOINT_DISPLAY_RESAMPLE_COUNT if needs_midpoint_controls else 1
 
 
 def _closed_loop_min_resample_count(obj: bpy.types.Object) -> int:
-    """Prevent round rim loops from being resampled into triangles at low LOD."""
     if obj.type != "MESH" or obj.data is None:
-        return _MIN_LINE_RESAMPLE_COUNT
+        return 1
     try:
         from . import inner_line_chains
     except Exception:  # noqa: BLE001
-        return _MIN_LINE_RESAMPLE_COUNT
-    mesh = obj.data
-    attr = mesh.attributes.get(inner_line_chains.CHAIN_ID_ATTR)
+        return 1
+    attr = obj.data.attributes.get(inner_line_chains.CHAIN_ID_ATTR)
     if attr is None or getattr(attr, "domain", None) != "EDGE":
-        return _MIN_LINE_RESAMPLE_COUNT
+        return 1
     chains: dict[int, list[bpy.types.MeshEdge]] = {}
-    for edge in mesh.edges:
+    for edge in obj.data.edges:
         if edge.index >= len(attr.data):
             continue
         chain_id = int(getattr(attr.data[edge.index], "value", -1))
-        if chain_id < 0:
-            continue
-        chains.setdefault(chain_id, []).append(edge)
-    minimum = _MIN_LINE_RESAMPLE_COUNT
+        if chain_id >= 0:
+            chains.setdefault(chain_id, []).append(edge)
+    minimum = 1
     for edges in chains.values():
         if len(edges) < 3:
             continue
@@ -479,30 +208,30 @@ def sync_generated_line_subdivision(
         mod = obj.modifiers.get(core.GN_MODIFIER_NAME)
         if mod is None or mod.node_group is None:
             return False
-        sid = inner_lines._find_socket_id(mod.node_group, "線の分割数")
-        if sid is None:
+        socket_id = inner_lines._find_socket_id(mod.node_group, "線の分割数")
+        if socket_id is None:
             return False
         count = line_resample_count(obj, for_render=for_render)
         if inner_line_cache.is_cached_modifier(mod):
             settings = getattr(obj, "bmanga_line_settings", None)
-            needs_midpoint_controls = False
-            if settings is not None:
-                needs_midpoint_controls = (
-                    (
-                        bool(getattr(settings, "auto_subdivision_for_midpoint", False))
-                        and abs(float(getattr(settings, "inner_edge_smooth_factor", 0.0))) > 1.0e-7
-                    )
+            needs_controls = bool(
+                settings is not None
+                and bool(getattr(settings, "auto_subdivision_for_midpoint", False))
+                and (
+                    abs(float(getattr(settings, "inner_edge_smooth_factor", 0.0))) > 1.0e-7
                     or abs(float(getattr(settings, "inner_edge_midpoint_jitter_percent", 0.0))) > 1.0e-7
                 )
-            count = display_resample_count(needs_midpoint_controls, count)
+            )
+            count = display_resample_count(needs_controls, count)
+        count = max(count, _closed_loop_min_resample_count(obj))
         try:
-            current = int(mod[sid])
+            current = int(mod[socket_id])
         except (KeyError, TypeError, ValueError):
             current = -1
         if current == count:
             return False
         return bool(inner_lines.update_parameters(obj, resample_count=count))
-    except Exception:  # noqa: BLE001 - 同期失敗時も通常操作を止めない
+    except Exception:  # noqa: BLE001 - line updates must remain usable
         return False
 
 
@@ -513,139 +242,18 @@ def sync_scene_generated_line_subdivision(
 ) -> int:
     if scene is None:
         return 0
-    changed = 0
-    for obj in scene.objects:
-        if obj.type != "MESH":
-            continue
-        if sync_generated_line_subdivision(obj, for_render=for_render):
-            changed += 1
-    return changed
-
-
-def _queue_sync(obj: bpy.types.Object) -> None:
-    global _sync_timer_running
-    if obj.type != "MESH":
-        return
-    _pending_sync_names.add(obj.name_full)
-    if not _sync_timer_running:
-        _sync_timer_running = True
-        bpy.app.timers.register(_run_sync_timer, first_interval=0.0)
-
-
-def _run_sync_timer():
-    global _sync_timer_running
-    names = list(_pending_sync_names)
-    _pending_sync_names.clear()
-    for name in names:
-        obj = bpy.data.objects.get(name)
-        if obj is None or obj.type != "MESH":
-            continue
-        sync_generated_line_subdivision(obj)
-        try:
-            from . import intersection_shell
-
-            intersection_shell.sync_proxy_subdivision_for_target(obj)
-        except Exception:  # noqa: BLE001
-            pass
-    _sync_timer_running = False
-    return None
-
-
-def _run_repair_timer():
-    global _repair_timer_running
-    try:
-        repair_auto_subdivision_modifiers()
-    finally:
-        _repair_timer_running = False
-    return None
-
-
-def _queue_repair() -> None:
-    global _repair_timer_running
-    if _repair_timer_running:
-        return
-    _repair_timer_running = True
-    bpy.app.timers.register(_run_repair_timer, first_interval=0.0)
-
-
-def _is_deferred_line_setting_update(
-    obj: bpy.types.Object,
-    update,
-) -> bool:
-    """反映待ち設定のRNA通知を、実形状の更新から区別する."""
-    if not (
-        bool(getattr(update, "is_updated_transform", False))
-        and bool(getattr(update, "is_updated_geometry", False))
-        and bool(getattr(update, "is_updated_shading", False))
-    ):
-        return False
-    try:
-        from . import update_state
-
-        return bool(update_state.pending_targets(obj))
-    except Exception:  # noqa: BLE001 - 更新監視は通常操作を止めない
-        return False
-
-
-@persistent
-def _on_depsgraph_update(_scene, depsgraph=None):
-    if depsgraph is None:
-        return
-    for update in getattr(depsgraph, "updates", ()):
-        item = getattr(update, "id", None)
-        if isinstance(item, bpy.types.Object) and item.type == "MESH":
-            if (
-                has_subsurf_modifier(item)
-                and not _is_deferred_line_setting_update(item, update)
-            ):
-                _queue_sync(item)
-
-
-@persistent
-def _on_render_pre(scene, _depsgraph=None):
-    sync_scene_generated_line_subdivision(scene, for_render=True)
-
-
-@persistent
-def _on_render_done(scene, _depsgraph=None):
-    sync_scene_generated_line_subdivision(scene, for_render=False)
-
-
-@persistent
-def _on_load_post(_dummy):
-    _queue_repair()
-
-
-def _append_once(handler_list, handler) -> None:
-    if handler not in handler_list:
-        handler_list.append(handler)
-
-
-def _remove(handler_list, handler) -> None:
-    if handler in handler_list:
-        handler_list.remove(handler)
+    return sum(
+        1
+        for obj in scene.objects
+        if obj.type == "MESH"
+        and sync_generated_line_subdivision(obj, for_render=for_render)
+    )
 
 
 def register() -> None:
-    _append_once(bpy.app.handlers.depsgraph_update_post, _on_depsgraph_update)
-    _append_once(bpy.app.handlers.render_pre, _on_render_pre)
-    _append_once(bpy.app.handlers.render_post, _on_render_done)
-    _append_once(bpy.app.handlers.render_cancel, _on_render_done)
-    _append_once(bpy.app.handlers.load_post, _on_load_post)
-    _queue_repair()
+    # No depsgraph/load/render handlers: source and user Subsurf are read-only.
+    return None
 
 
 def unregister() -> None:
-    global _sync_timer_running, _repair_timer_running
-    _remove(bpy.app.handlers.depsgraph_update_post, _on_depsgraph_update)
-    _remove(bpy.app.handlers.render_pre, _on_render_pre)
-    _remove(bpy.app.handlers.render_post, _on_render_done)
-    _remove(bpy.app.handlers.render_cancel, _on_render_done)
-    _remove(bpy.app.handlers.load_post, _on_load_post)
-    if bpy.app.timers.is_registered(_run_sync_timer):
-        bpy.app.timers.unregister(_run_sync_timer)
-    if bpy.app.timers.is_registered(_run_repair_timer):
-        bpy.app.timers.unregister(_run_repair_timer)
-    _pending_sync_names.clear()
-    _sync_timer_running = False
-    _repair_timer_running = False
+    return None

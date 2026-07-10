@@ -6,7 +6,6 @@ import bpy
 from bpy.props import BoolProperty
 
 _lines_visible_scene_updating = False
-_subsurf_match_scene_updating = False
 
 
 def _scene_mesh_objects(scene: bpy.types.Scene | None) -> list[bpy.types.Object]:
@@ -55,43 +54,6 @@ def set_scene_lines_visible(context, visible: bool) -> int:
     return changed
 
 
-def _set_scene_subsurf_match_setting(scene, enabled: bool) -> None:
-    if scene is None or not hasattr(scene, "bmanga_line_match_subsurf_viewport_to_render"):
-        return
-    global _subsurf_match_scene_updating
-    old = _subsurf_match_scene_updating
-    _subsurf_match_scene_updating = True
-    try:
-        scene.bmanga_line_match_subsurf_viewport_to_render = bool(enabled)
-    finally:
-        _subsurf_match_scene_updating = old
-
-
-def set_scene_subsurf_match(context, enabled: bool) -> int:
-    """シーン内すべてのSubsurfビューポート段数をレンダー段数へ同期/解除する."""
-    from . import core, subdivision_lod
-
-    scene = getattr(context, "scene", None)
-    enabled = bool(enabled)
-    _set_scene_subsurf_match_setting(scene, enabled)
-    changed = 0
-    old = core._propagating
-    core._propagating = True
-    try:
-        for obj in _scene_mesh_objects(scene):
-            settings = getattr(obj, "bmanga_line_settings", None)
-            if settings is not None:
-                settings.match_subsurf_viewport_to_render = enabled
-                core.record_override_edits(obj)
-            if enabled:
-                changed += subdivision_lod.sync_viewport_levels_to_render(obj)
-            else:
-                changed += subdivision_lod.reset_viewport_levels_to_zero(obj)
-    finally:
-        core._propagating = old
-    return changed
-
-
 def on_object_lines_visible_changed(self, context):
     from . import core
 
@@ -100,27 +62,10 @@ def on_object_lines_visible_changed(self, context):
     set_scene_lines_visible(context, bool(self.lines_visible))
 
 
-def on_object_match_subsurf_viewport_to_render_changed(self, context):
-    from . import core
-
-    if core._propagating:
-        return
-    set_scene_subsurf_match(context, bool(self.match_subsurf_viewport_to_render))
-
-
 def _on_scene_lines_visible_changed(self, context):
     if _lines_visible_scene_updating:
         return
     set_scene_lines_visible(context, bool(self.bmanga_line_lines_visible))
-
-
-def _on_scene_match_subsurf_viewport_to_render_changed(self, context):
-    if _subsurf_match_scene_updating:
-        return
-    set_scene_subsurf_match(
-        context,
-        bool(self.bmanga_line_match_subsurf_viewport_to_render),
-    )
 
 
 def register_scene_properties() -> None:
@@ -131,16 +76,8 @@ def register_scene_properties() -> None:
         default=True,
         update=_on_scene_lines_visible_changed,
     )
-    bpy.types.Scene.bmanga_line_match_subsurf_viewport_to_render = BoolProperty(
-        name="ビューポートのレベル数をレンダーに合わせる",
-        description="シーン内すべてのサブディビジョンサーフェスのビューポート段数をレンダー段数へ合わせる",
-        default=False,
-        update=_on_scene_match_subsurf_viewport_to_render_changed,
-    )
 
 
 def unregister_scene_properties() -> None:
     if hasattr(bpy.types.Scene, "bmanga_line_lines_visible"):
         del bpy.types.Scene.bmanga_line_lines_visible
-    if hasattr(bpy.types.Scene, "bmanga_line_match_subsurf_viewport_to_render"):
-        del bpy.types.Scene.bmanga_line_match_subsurf_viewport_to_render

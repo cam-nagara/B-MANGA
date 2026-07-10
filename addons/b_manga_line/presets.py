@@ -30,7 +30,6 @@ _preset_name_updates_suspended = 0
 
 _SETTING_FIELDS = (
     "lines_visible",
-    "match_subsurf_viewport_to_render",
     "outline_enabled",
     "outline_thickness",
     "outline_offset",
@@ -500,10 +499,6 @@ def apply_line_settings(
         subdivision_lod.ensure_auto_subdivision(obj, context.scene)
     elif midpoint_targets:
         subdivision_lod.remove_auto_subdivision(obj)
-    if midpoint_targets and settings.match_subsurf_viewport_to_render:
-        subdivision_lod.sync_viewport_levels_to_render(obj)
-    elif midpoint_targets:
-        subdivision_lod.reset_viewport_levels_to_zero(obj)
 
     if "outline" in target_set:
         has_outline = core.has_outline(obj)
@@ -652,8 +647,6 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     # 2026-07-09 表示モードはプリセット保存対象から除外（_SETTING_FIELDS 参照）。
     # 旧プリセットJSON互換のためプロパティ自体は残す。
     line_only_visible: BoolProperty(default=False)
-    match_subsurf_viewport_to_render: BoolProperty(default=False)
-
     outline_enabled: BoolProperty(default=True)
     outline_thickness: FloatProperty(default=0.0003, min=0.00001, max=1.0)
     outline_offset: FloatProperty(default=0.0, min=-1.0, max=1.0)

@@ -172,7 +172,6 @@ def _assert_panels_draw_items() -> None:
         "auto_subdivision_for_midpoint",
         "bmanga_line_lines_visible",
         "bmanga_line_line_only_visible",
-        "bmanga_line_match_subsurf_viewport_to_render",
         "use_camera_compensation",
         "line_width_reference_distance",
         "use_uniform_line_width",

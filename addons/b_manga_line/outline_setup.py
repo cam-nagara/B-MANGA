@@ -69,9 +69,9 @@ _SHEET_TUBE_FLIP_SOCKET = "Solidify反転補正"
 # オブジェクトのスロット順と一致させる修正（2026-07-09）。保存済み.blendの
 # 旧ツリーは接続順を保持したままなので、ラベル不一致で必ず再構築させる
 # （docs/tokyo0004_boundary_tube_material_order_plan_2026-07-09.md 参照）。
-_SHEET_TUBE_ANGLE_SPLIT_LABEL = "BML_SheetOutlinePathWidthV19"
-_SHEET_TUBE_SUBDIVIDE_LABEL = "BML_SheetOutlinePathWidthV19Midpoints"
-_SHEET_TUBE_SAFE_SCALE_LABEL = "BML_SheetOutlineSafeScaleV19"
+_SHEET_TUBE_ANGLE_SPLIT_LABEL = "BML_SheetOutlinePathWidthV20"
+_SHEET_TUBE_SUBDIVIDE_LABEL = "BML_SheetOutlinePathWidthV20Midpoints"
+_SHEET_TUBE_SAFE_SCALE_LABEL = "BML_SheetOutlineSafeScaleV20"
 _MIN_CURVE_TO_MESH_SCALE = 0.10
 _MAX_MIXED_BOUNDARY_TUBE_EDGES = 512
 _BOUNDARY_ONLY_RATIO = 0.35
@@ -1069,7 +1069,7 @@ def _get_or_create_sheet_outline_tree() -> bpy.types.NodeTree:
     subdivide_curve = nodes.new("GeometryNodeSubdivideCurve")
     subdivide_curve.label = _SHEET_TUBE_SUBDIVIDE_LABEL
     subdivide_curve.location = (1160, 0)
-    subdivide_curve.inputs["Cuts"].default_value = 1
+    subdivide_curve.inputs["Cuts"].default_value = 3
     links.new(to_curve.outputs["Curve"], subdivide_curve.inputs["Curve"])
 
     half_width = nodes.new("ShaderNodeMath")
@@ -1442,12 +1442,18 @@ def apply_outline(
     _ensure_surface_mask_aovs(obj)
 
     local_thickness = modifier_thickness_for_world_width(obj, thickness)
+    local_subdivision_enabled = bool(
+        getattr(settings, "auto_subdivision_for_midpoint", False)
+    )
     if is_sheet or boundary_tube_only:
         # 板ポリや境界辺比率が高い平面群は、背面法の面がトゲ状に
         # 重なりやすいため境界チューブだけを使う。
         old_mod = obj.modifiers.get(MODIFIER_NAME)
         if old_mod is not None:
             obj.modifiers.remove(old_mod)
+        from . import outline_local_subdivision
+
+        outline_local_subdivision.remove(obj)
         ensure_sheet_outline(obj, None, mat, thickness=local_thickness)
     else:
         # Solidify モディファイア
@@ -1468,8 +1474,30 @@ def apply_outline(
         # 非表示素材帯(2n)へ上書きする。
         mod.material_offset_rim = material_offset
 
-        # 非シートでは旧シートチューブが残っていれば撤去する。
-        ensure_sheet_outline(obj, mod, mat, material_offset=material_offset)
+        from . import outline_local_subdivision
+
+        if local_subdivision_enabled:
+            outline_local_subdivision.ensure(
+                obj,
+                local_thickness=local_thickness,
+                offset=offset,
+                material=mat,
+                settings=settings,
+            )
+            # Solidifyは既存コードの線幅・頂点グループ設定を保持するだけにし、
+            # 表示実体は元面を変更しないライン専用殻へ一本化する。
+            mod.show_viewport = False
+            mod.show_render = False
+            stale_sheet = obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME)
+            if stale_sheet is not None:
+                obj.modifiers.remove(stale_sheet)
+        else:
+            outline_local_subdivision.remove(obj)
+            visible = _sheet_outline_visible(obj)
+            mod.show_viewport = visible
+            mod.show_render = visible
+            # 非シートでは旧シートチューブが残っていれば撤去する。
+            ensure_sheet_outline(obj, mod, mat, material_offset=material_offset)
 
     # 頂点グループによる線幅制御
     need_vg = use_vertex_color or use_vertex_group
@@ -1484,10 +1512,13 @@ def apply_outline(
         mod.vertex_group = ""
 
     from . import outline_width_attribute
-    outline_width_attribute.ensure_outline_width_attribute(
-        obj,
-        getattr(obj, "bmanga_line_settings", None),
-    )
+    if local_subdivision_enabled:
+        outline_width_attribute.remove_outline_width_attribute(obj)
+    else:
+        outline_width_attribute.ensure_outline_width_attribute(
+            obj,
+            getattr(obj, "bmanga_line_settings", None),
+        )
 
     # 線幅入力値の基準距離を保存
     if scene is not None and scene.camera is not None:
@@ -1552,6 +1583,11 @@ def remove_outline_geometry(obj: bpy.types.Object) -> bool:
             obj.modifiers.remove(mod)
             removed = True
 
+    from . import outline_local_subdivision
+
+    if outline_local_subdivision.remove(obj):
+        removed = True
+
     from . import outline_width_attribute
     if outline_width_attribute.remove_outline_width_attribute(obj):
         removed = True
@@ -1611,6 +1647,7 @@ def update_modifier_thickness(obj: bpy.types.Object, thickness: float) -> None:
     mod = obj.modifiers.get(MODIFIER_NAME)
     if mod is not None:
         mod.thickness = modifier_thickness_for_world_width(obj, thickness)
+        sync_local_outline_from_state(obj)
     else:
         sync_sheet_outline_width(
             obj,
@@ -1622,6 +1659,24 @@ def update_modifier_offset(obj: bpy.types.Object, offset: float) -> None:
     mod = obj.modifiers.get(MODIFIER_NAME)
     if mod is not None:
         mod.offset = offset
+        sync_local_outline_from_state(obj)
+
+
+def sync_local_outline_from_state(obj: bpy.types.Object) -> bool:
+    """表示用ライン殻を既存アウトライン設定へ同期する."""
+    if obj.type != "MESH":
+        return False
+    from . import outline_local_subdivision
+
+    state = obj.modifiers.get(MODIFIER_NAME)
+    local = outline_local_subdivision.sync(
+        obj,
+        local_thickness=(abs(float(state.thickness)) if state is not None else None),
+        offset=(float(state.offset) if state is not None else None),
+        material=get_outline_material(obj),
+        settings=getattr(obj, "bmanga_line_settings", None),
+    )
+    return local is not None
 
 
 # ------------------------------------------------------------------
@@ -1815,8 +1870,12 @@ def set_line_only(obj: bpy.types.Object, enabled: bool) -> bool:
     _restore_solidify_shape(obj)
     _remove_line_only_wire(obj)
     mod = obj.modifiers.get(MODIFIER_NAME)
-    if mod is not None:
+    from . import outline_local_subdivision
+
+    if mod is not None and not outline_local_subdivision.has_active(obj):
         ensure_sheet_outline(obj, mod, get_outline_material(obj))
+    elif outline_local_subdivision.has_active(obj):
+        sync_local_outline_from_state(obj)
     elif plane_filter.is_sheet_mesh(obj):
         sync_sheet_outline_width(obj)
     if PROP_LINE_ONLY_MATERIALS in obj:

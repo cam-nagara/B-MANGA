@@ -8,13 +8,20 @@ import sys
 from pathlib import Path
 
 import bpy
+import bmesh
 from mathutils import Vector
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import camera_comp, core, intersection_lines, outline_setup, presets  # noqa: E402
+from b_manga_line import (  # noqa: E402
+    camera_comp,
+    core,
+    intersection_lines,
+    outline_setup,
+    presets,
+)
 
 
 OUT_DIR = ROOT / "_verify" / "b_manga_line_full_visual_audit"
@@ -138,6 +145,18 @@ def _dark_pixel_count(path: Path) -> int:
         bpy.data.images.remove(image)
 
 
+def _saturated_pixel_count(path: Path) -> int:
+    image = bpy.data.images.load(str(path), check_existing=False)
+    try:
+        pixels = list(image.pixels)
+        return sum(
+            max(pixels[index:index + 3]) - min(pixels[index:index + 3]) > 0.35
+            for index in range(0, len(pixels), 4)
+        )
+    finally:
+        bpy.data.images.remove(image)
+
+
 def _dark_pixel_count_region(
     path: Path,
     x_min: int,
@@ -199,19 +218,48 @@ def _make_all_line_cube(mat: bpy.types.Material) -> bpy.types.Object:
     cube.name = "BML_visual_all_lines_cube"
     cube.dimensions = (2.4, 2.2, 1.25)
     bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    mesh_edit = bmesh.new()
+    mesh_edit.from_mesh(cube.data)
+    bmesh.ops.triangulate(mesh_edit, faces=list(mesh_edit.faces))
+    mesh_edit.to_mesh(cube.data)
+    mesh_edit.free()
+    cube.data.update()
+    assert all(len(polygon.vertices) == 3 for polygon in cube.data.polygons)
     cube.data.materials.append(mat)
 
     settings = cube.bmanga_line_settings
-    settings.outline_thickness = 0.045
+    settings.auto_subdivision_for_midpoint = True
+    settings.weld_mesh_for_outline = False
+    settings.outline_thickness_mm = 0.50
     settings.inner_line_enabled = True
+    settings.intersection_enabled = True
+    settings.selection_line_enabled = True
     settings.inner_line_angle = math.radians(8.0)
-    settings.inner_line_thickness = 0.018
+    settings.inner_line_thickness_mm = 0.30
+    settings.intersection_thickness_mm = 0.30
+    settings.selection_line_thickness_mm = 0.30
+    settings.inner_line_color = (0.0, 0.2, 1.0, 1.0)
+    settings.intersection_color = (0.0, 1.0, 0.0, 1.0)
+    settings.selection_line_color = (1.0, 0.0, 1.0, 1.0)
+    freestyle = cube.data.attributes.get(core.FREESTYLE_EDGE_ATTR)
+    if freestyle is None:
+        freestyle = cube.data.attributes.new(
+            core.FREESTYLE_EDGE_ATTR,
+            "BOOLEAN",
+            "EDGE",
+        )
+    for item in freestyle.data:
+        item.value = True
+    for edge in cube.data.edges:
+        if hasattr(edge, "use_freestyle_mark"):
+            edge.use_freestyle_mark = True
     settings.edge_smooth_factor = -0.65
     settings.edge_midpoint_jitter_percent = 0.0
     settings.edge_width_curve_25 = 0.12
     settings.edge_width_curve_50 = 0.02
     settings.edge_width_curve_75 = 0.12
     assert presets.apply_line_settings(cube, bpy.context)
+    assert all(len(polygon.vertices) == 3 for polygon in cube.data.polygons)
     return cube
 
 
@@ -225,9 +273,11 @@ def _make_intersection_cone(mat: bpy.types.Material) -> bpy.types.Object:
     cone = bpy.context.object
     cone.name = "BML_visual_intersection_cone"
     cone.data.materials.append(mat)
+    cone.bmanga_line_settings.auto_subdivision_for_midpoint = True
+    cone.bmanga_line_settings.weld_mesh_for_outline = False
     assert outline_setup.apply_outline(
         cone,
-        thickness=0.09,
+        thickness=0.0005,
         color=(0.0, 0.0, 0.0, 1.0),
         scene=bpy.context.scene,
     )
@@ -245,18 +295,18 @@ def _scene_all_line_types() -> Path:
     cube = _make_all_line_cube(white)
     cone = _make_intersection_cone(white)
 
-    line_mat = outline_setup.get_outline_material(cube)
+    line_mat = outline_setup.get_line_material(cube, "intersection")
     assert line_mat is not None
     assert intersection_lines.apply_intersection_lines(
         cube,
         target=cone,
-        thickness=0.018,
+        thickness=0.0003,
         material=line_mat,
         method="BOOLEAN",
     )
 
     _render(path)
-    assert _dark_pixel_count(path) > 2000
+    assert _saturated_pixel_count(path) > 500
     return path
 
 
@@ -330,7 +380,9 @@ def _scene_transparent_protection() -> Path:
     obj.name = "BML_visual_transparent_cube"
     obj.data.materials.append(_transparent_material("BML_visual_clear_surface"))
     settings = obj.bmanga_line_settings
-    settings.outline_thickness = 0.18
+    settings.auto_subdivision_for_midpoint = True
+    settings.weld_mesh_for_outline = False
+    settings.outline_thickness_mm = 0.50
     settings.hide_through_transparent = True
     assert presets.apply_line_settings(obj, bpy.context)
 

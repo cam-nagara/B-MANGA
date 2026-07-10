@@ -81,15 +81,9 @@ def _assert_hex_60_degree_edges_are_selected() -> None:
     assert vertical <= selected, f"60度の縦辺が内部線対象になっていません: {vertical - selected}"
     assert not (cap_spokes & selected), f"上下面の三角分割辺が内部線対象です: {cap_spokes & selected}"
 
-    count = subdivision_lod.mark_sharp_edges_for_subsurf(obj, math.radians(60.0))
-    attr = obj.data.attributes.get(subdivision_lod.CREASE_EDGE_ATTR)
-    assert attr is not None
-    creased = {
-        edge.index for edge in obj.data.edges
-        if edge.index < len(attr.data) and float(attr.data[edge.index].value) > 0.0
-    }
-    assert count >= len(vertical)
-    assert vertical <= creased, f"60度の縦辺にサブディビジョン保持が入りません: {vertical - creased}"
+    assert obj.data.attributes.get("crease_edge") is None, (
+        "内部線検出が元メッシュへクリースを書き込んでいます"
+    )
 
 
 def _assert_cylinder_cap_spokes_are_not_selected() -> None:

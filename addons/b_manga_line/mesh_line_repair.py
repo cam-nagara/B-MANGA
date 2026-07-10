@@ -8,9 +8,8 @@
 docs/bml_soup_mesh_line_preprocess_plan_2026-07-09.md を参照。
 
 対策として、ライン適用前に距離ウェルド（remove_doubles）で面同士の頂点を
-統合し、法線を再計算する。実装の流儀は subdivision_lod.py の
-quadrangulate_mesh_for_auto_subdivision（bmesh処理・共有メッシュコピー・
-処理済みマーカー）を踏襲する。
+統合し、法線を再計算する。共有メッシュは対象オブジェクト専用に複製し、
+処理済みマーカーで再処理を防ぐ。
 """
 
 from __future__ import annotations
@@ -64,9 +63,8 @@ def is_soup_mesh(obj: bpy.types.Object) -> bool:
 def repair_soup_mesh_for_lines(obj: bpy.types.Object) -> bool:
     """バラバラ面メッシュをライン適用前に距離ウェルド＋法線再計算で補正する.
 
-    共有メッシュ（users>1）は quadrangulate_mesh_for_auto_subdivision と
-    同様に対象オブジェクト専用のコピーを作ってから処理し、他オブジェクト・
-    他ファイルへ波及しないようにする。
+    共有メッシュ（users>1）は対象オブジェクト専用のコピーを作ってから処理し、
+    他オブジェクト・他ファイルへ波及しないようにする。
 
     一度処理（または非対象と判定・スキップ）したオブジェクトへはマーカーを
     立てて次回以降の再判定・再計算を避ける。

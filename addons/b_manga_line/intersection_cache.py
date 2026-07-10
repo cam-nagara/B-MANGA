@@ -21,6 +21,7 @@ from .core import (
     INTERSECTION_MODIFIER_NAME,
     INTERSECTION_MODIFIER_PREFIX,
     MODIFIER_NAME,
+    OUTLINE_LOCAL_SUBDIVISION_MODIFIER_NAME,
     OUTLINE_WIDTH_ATTR_MODIFIER_NAME,
     PROP_LINES_HIDDEN,
     SELECTION_LINE_MODIFIER_NAME,
@@ -363,6 +364,7 @@ def _ensure_material_slot(obj: bpy.types.Object, material: bpy.types.Material | 
 def _line_modifier_names() -> tuple[str, ...]:
     return (
         MODIFIER_NAME,
+        OUTLINE_LOCAL_SUBDIVISION_MODIFIER_NAME,
         OUTLINE_WIDTH_ATTR_MODIFIER_NAME,
         SHEET_OUTLINE_MODIFIER_NAME,
         GN_MODIFIER_NAME,
@@ -372,9 +374,17 @@ def _line_modifier_names() -> tuple[str, ...]:
 
 
 def _is_line_modifier(mod: bpy.types.Modifier) -> bool:
-    return mod.name in _line_modifier_names() or mod.name.startswith(
+    if mod.name == OUTLINE_LOCAL_SUBDIVISION_MODIFIER_NAME:
+        from . import outline_local_subdivision
+
+        return outline_local_subdivision.is_modifier(mod)
+    if mod.name in _line_modifier_names() or mod.name.startswith(
         INTERSECTION_MODIFIER_PREFIX
-    )
+    ):
+        return True
+    from . import outline_local_subdivision
+
+    return outline_local_subdivision.is_modifier(mod)
 
 
 def _cache_collection(scene: bpy.types.Scene | None) -> bpy.types.Collection:
@@ -481,6 +491,18 @@ def _outline_modifier_signature(obj: bpy.types.Object) -> tuple:
                 round(float(getattr(mod, "thickness", 0.0)), 8),
             )
         )
+    from . import outline_local_subdivision
+
+    local_mod = outline_local_subdivision.get_modifier(obj)
+    values.append(
+        (
+            OUTLINE_LOCAL_SUBDIVISION_MODIFIER_NAME,
+            local_mod is not None,
+            bool(getattr(local_mod, "show_viewport", False)),
+            bool(getattr(local_mod, "show_render", False)),
+            round(float(outline_local_subdivision.local_thickness(obj) or 0.0), 8),
+        )
+    )
     return tuple(values)
 
 
@@ -899,11 +921,16 @@ def _restore_modifier_states(states) -> None:
 
 
 def _set_target_outline_state(states, target: bpy.types.Object, enabled: bool) -> None:
+    from . import outline_local_subdivision
+
     for mod, show_viewport, show_render in states:
         try:
             if getattr(mod, "id_data", None) != target:
                 continue
-            keep_outline = mod.name in (MODIFIER_NAME, SHEET_OUTLINE_MODIFIER_NAME)
+            keep_outline = mod.name in (
+                MODIFIER_NAME,
+                SHEET_OUTLINE_MODIFIER_NAME,
+            ) or outline_local_subdivision.is_modifier(mod)
             mod.show_viewport = bool(enabled and keep_outline and show_viewport)
             mod.show_render = bool(enabled and keep_outline and show_render)
         except ReferenceError:
@@ -911,12 +938,17 @@ def _set_target_outline_state(states, target: bpy.types.Object, enabled: bool) -
 
 
 def _target_outline_was_visible(states, target: bpy.types.Object) -> bool:
+    from . import outline_local_subdivision
+
     visible = False
     for mod, show_viewport, _show_render in states:
         try:
             if getattr(mod, "id_data", None) != target:
                 continue
-            if mod.name in (MODIFIER_NAME, SHEET_OUTLINE_MODIFIER_NAME):
+            if (
+                mod.name in (MODIFIER_NAME, SHEET_OUTLINE_MODIFIER_NAME)
+                or outline_local_subdivision.is_modifier(mod)
+            ):
                 visible = visible or bool(show_viewport)
         except ReferenceError:
             continue

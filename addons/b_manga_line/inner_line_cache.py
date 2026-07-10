@@ -21,6 +21,7 @@ from .core import (
     INTERSECTION_MODIFIER_NAME,
     INTERSECTION_MODIFIER_PREFIX,
     MODIFIER_NAME,
+    OUTLINE_LOCAL_SUBDIVISION_MODIFIER_NAME,
     OUTLINE_WIDTH_ATTR_MODIFIER_NAME,
     PROP_LINES_HIDDEN,
     SELECTION_LINE_MODIFIER_NAME,
@@ -365,6 +366,7 @@ def _ensure_material_slot(obj: bpy.types.Object, material: bpy.types.Material | 
 def _line_modifier_names() -> tuple[str, ...]:
     return (
         MODIFIER_NAME,
+        OUTLINE_LOCAL_SUBDIVISION_MODIFIER_NAME,
         OUTLINE_WIDTH_ATTR_MODIFIER_NAME,
         SHEET_OUTLINE_MODIFIER_NAME,
         GN_MODIFIER_NAME,
@@ -374,9 +376,17 @@ def _line_modifier_names() -> tuple[str, ...]:
 
 
 def _is_line_modifier(mod: bpy.types.Modifier) -> bool:
-    return mod.name in _line_modifier_names() or mod.name.startswith(
+    if mod.name == OUTLINE_LOCAL_SUBDIVISION_MODIFIER_NAME:
+        from . import outline_local_subdivision
+
+        return outline_local_subdivision.is_modifier(mod)
+    if mod.name in _line_modifier_names() or mod.name.startswith(
         INTERSECTION_MODIFIER_PREFIX
-    )
+    ):
+        return True
+    from . import outline_local_subdivision
+
+    return outline_local_subdivision.is_modifier(mod)
 
 
 def _disabled_line_modifiers(objects: list[bpy.types.Object]):

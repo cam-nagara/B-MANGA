@@ -210,11 +210,10 @@ def _assert_panel_draw_uses_scene_global_controls(active: bpy.types.Object, othe
 
     assert "bmanga_line_lines_visible" in layout.props
     assert "bmanga_line_line_only_visible" in layout.props
-    assert "bmanga_line_match_subsurf_viewport_to_render" in layout.props
+    assert "bmanga_line_match_subsurf_viewport_to_render" not in layout.props
     assert any(op.idname == "bmanga_line.setup_aov_composite" for op in layout.operators)
     assert "lines_visible" not in layout.props
     assert "line_only_visible" not in layout.props
-    assert "match_subsurf_viewport_to_render" not in layout.props
     assert not bool(active.get(core.PROP_LINE_ONLY, False))
 
     bpy.ops.object.select_all(action="DESELECT")
@@ -222,7 +221,7 @@ def _assert_panel_draw_uses_scene_global_controls(active: bpy.types.Object, othe
     panels._draw_global_display_controls(empty_layout, bpy.context)
     assert "bmanga_line_lines_visible" in empty_layout.props
     assert "bmanga_line_line_only_visible" in empty_layout.props
-    assert "bmanga_line_match_subsurf_viewport_to_render" in empty_layout.props
+    assert "bmanga_line_match_subsurf_viewport_to_render" not in empty_layout.props
     assert bpy.ops.bmanga_line.setup_aov_composite.poll()
     assert bpy.ops.bmanga_line.setup_aov_composite("EXEC_DEFAULT") == {"FINISHED"}
     assert not bpy.ops.bmanga_line.setup_aov_composite.poll()
@@ -303,50 +302,23 @@ def _assert_update_buttons_are_in_line_settings(active: bpy.types.Object) -> Non
     assert "limit_uniform_width_to_setting" in camera_layout.props
 
 
-def _assert_subsurf_checkbox(active: bpy.types.Object, other: bpy.types.Object) -> None:
+def _assert_user_subsurf_is_not_controlled(active: bpy.types.Object, other: bpy.types.Object) -> None:
+    states = []
     for index, obj in enumerate((active, other), start=2):
         mod = obj.modifiers.new(f"ユーザーSubsurf_{index}", "SUBSURF")
-        mod.levels = 0
+        mod.levels = index - 1
         mod.render_levels = index
+        mod.show_viewport = index == 2
+        states.append((obj, mod, mod.levels, mod.render_levels, mod.show_viewport))
 
     _select(active, [active, other])
-    bpy.context.scene.bmanga_line_match_subsurf_viewport_to_render = True
-    for obj in (active, other):
-        for mod in obj.modifiers:
-            if mod.type == "SUBSURF":
-                assert int(mod.levels) == int(mod.render_levels), (obj.name, mod.name)
     assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
-    for obj in (active, other):
-        for mod in obj.modifiers:
-            if mod.type == "SUBSURF":
-                assert int(mod.levels) == int(mod.render_levels), (obj.name, mod.name)
-
-    for obj in (active, other):
-        for mod in obj.modifiers:
-            if mod.type == "SUBSURF":
-                mod.levels = int(mod.render_levels)
-    bpy.context.scene.bmanga_line_match_subsurf_viewport_to_render = False
-    for obj in (active, other):
-        assert not bool(obj.bmanga_line_settings.match_subsurf_viewport_to_render)
-        for mod in obj.modifiers:
-            if mod.type == "SUBSURF":
-                assert int(mod.levels) == 0, (obj.name, mod.name, mod.levels)
-    assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
-    for obj in (active, other):
-        for mod in obj.modifiers:
-            if mod.type == "SUBSURF":
-                assert int(mod.levels) == 0, (obj.name, mod.name, mod.levels)
-
-    for obj in (active, other):
-        for mod in obj.modifiers:
-            if mod.type == "SUBSURF":
-                mod.levels = 0
-    bpy.context.scene.bmanga_line_match_subsurf_viewport_to_render = True
-    assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
-    for obj in (active, other):
-        for mod in obj.modifiers:
-            if mod.type == "SUBSURF":
-                assert int(mod.levels) == int(mod.render_levels), (obj.name, mod.name)
+    for obj, mod, levels, render_levels, show_viewport in states:
+        assert (mod.levels, mod.render_levels, mod.show_viewport) == (
+            levels,
+            render_levels,
+            show_viewport,
+        ), (obj.name, mod.name)
 
 
 def main() -> None:
@@ -365,7 +337,7 @@ def main() -> None:
         _assert_panel_draw_uses_scene_global_controls(active, other)
         _assert_preset_name_field_is_hidden()
         _assert_update_buttons_are_in_line_settings(active)
-        _assert_subsurf_checkbox(active, other)
+        _assert_user_subsurf_is_not_controlled(active, other)
         print("BMANGA_LINE_UI_CONTROLS_OK")
     finally:
         try:

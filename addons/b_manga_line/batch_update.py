@@ -427,6 +427,7 @@ def _update_camera_compensation(objects: list[bpy.types.Object], context) -> Non
             obj,
             settings.outline_thickness,
         )
+        outline_setup.sync_local_outline_from_state(obj)
         inner_lines.update_parameters(
             obj,
             thickness=modifier_thickness_for_world_width(
@@ -499,6 +500,7 @@ def _update_uniform_line_width(objects: list[bpy.types.Object], context) -> None
             obj,
             settings.outline_thickness,
         )
+        outline_setup.sync_local_outline_from_state(obj)
         if vertex_analysis.has_width_controls(settings, "outline"):
             vg = _ensure_vertex_group(obj, core.VG_LINE_WIDTH)
             mod.vertex_group = vg.name
@@ -626,6 +628,7 @@ def _update_width_target(
             vertex_analysis.clear_width_weights(obj, group_name=group_name)
         if target == "outline":
             outline_width_attribute.ensure_outline_width_attribute(obj, settings)
+            outline_setup.sync_local_outline_from_state(obj)
             outline_setup.sync_sheet_outline_width(obj)
         if target == "intersection":
             intersection_lines.update_parameters(obj)
@@ -961,16 +964,6 @@ def _update_lines_visible(objects: list[bpy.types.Object], context) -> None:
         camera_comp.refresh(context)
 
 
-def _update_match_subsurf_viewport_to_render(objects: list[bpy.types.Object]) -> None:
-    from . import subdivision_lod
-
-    for obj in objects:
-        if bool(obj.bmanga_line_settings.match_subsurf_viewport_to_render):
-            subdivision_lod.sync_viewport_levels_to_render(obj)
-        else:
-            subdivision_lod.reset_viewport_levels_to_zero(obj)
-
-
 def _update_visibility_rules(objects: list[bpy.types.Object], context) -> None:
     needs_refresh = []
     for obj in objects:
@@ -1123,7 +1116,6 @@ def refresh_target_visuals(
 
     if sync_subdivision:
         _update_auto_subdivision(targets, context)
-        _update_match_subsurf_viewport_to_render(targets)
     if target == "outline":
         _update_outline_color(targets)
         _update_outline_offset(targets)
@@ -1146,7 +1138,7 @@ def refresh_all_target_visuals(
     objects: list[bpy.types.Object],
     context,
 ) -> dict[str, list[bpy.types.Object]]:
-    """作成済みライン全種と中間頂点用サブディビジョンを一括更新する."""
+    """作成済みライン全種と中間頂点用ライン細分化を一括更新する."""
     from . import update_state
 
     line_objects = _unlocked_line_objects(objects)
@@ -1155,7 +1147,6 @@ def refresh_all_target_visuals(
         return {}
     if line_objects:
         _update_auto_subdivision(line_objects, context)
-        _update_match_subsurf_viewport_to_render(line_objects)
     results: dict[str, list[bpy.types.Object]] = {}
     for target in update_state.LINE_TARGETS:
         source_objects = unlocked_mesh_objects if target == "bump" else line_objects
@@ -1216,9 +1207,6 @@ def refresh_propagated_property(
         return
     if prop_name == "lines_visible":
         _update_lines_visible(line_objects, context)
-        return
-    if prop_name == "match_subsurf_viewport_to_render":
-        _update_match_subsurf_viewport_to_render(line_objects)
         return
     if prop_name == "outline_color":
         _update_outline_color(line_objects)

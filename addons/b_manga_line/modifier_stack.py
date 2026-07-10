@@ -28,6 +28,12 @@ def is_line_modifier_name(name: str) -> bool:
     )
 
 
+def _is_line_modifier(mod: bpy.types.Modifier) -> bool:
+    from . import outline_local_subdivision
+
+    return is_line_modifier_name(mod.name) or outline_local_subdivision.is_modifier(mod)
+
+
 def _line_modifier_order(mod: bpy.types.Modifier) -> tuple[int, str]:
     name = mod.name
     # シートのチューブは Solidify より前（境界辺を元メッシュから拾うため）
@@ -37,12 +43,16 @@ def _line_modifier_order(mod: bpy.types.Modifier) -> tuple[int, str]:
         return (1, name)
     if name == MODIFIER_NAME:
         return (2, name)
-    if name == GN_MODIFIER_NAME:
+    from . import outline_local_subdivision
+
+    if outline_local_subdivision.is_modifier(mod):
         return (3, name)
-    if name == SELECTION_LINE_MODIFIER_NAME:
+    if name == GN_MODIFIER_NAME:
         return (4, name)
-    if name == INTERSECTION_MODIFIER_NAME or name.startswith(INTERSECTION_MODIFIER_PREFIX):
+    if name == SELECTION_LINE_MODIFIER_NAME:
         return (5, name)
+    if name == INTERSECTION_MODIFIER_NAME or name.startswith(INTERSECTION_MODIFIER_PREFIX):
+        return (6, name)
     return (99, name)
 
 
@@ -101,13 +111,13 @@ def reorder_line_modifiers(obj: bpy.types.Object) -> None:
     if obj.type != "MESH":
         return
     modifiers = list(obj.modifiers)
-    line_mods = [mod for mod in modifiers if is_line_modifier_name(mod.name)]
+    line_mods = [mod for mod in modifiers if _is_line_modifier(mod)]
     if not line_mods:
         return
     base_index = sum(
         1
         for mod in modifiers
-        if not is_line_modifier_name(mod.name) and not _is_auto_smooth_modifier(mod)
+        if not _is_line_modifier(mod) and not _is_auto_smooth_modifier(mod)
     )
     for mod in sorted(line_mods, key=_line_modifier_order):
         try:
