@@ -18,6 +18,7 @@ from b_manga_line import (  # noqa: E402
     camera_comp,
     core,
     inner_lines,
+    outline_setup,
     presets,
     scale_utils,
     update_state,
@@ -112,6 +113,24 @@ def _make_ratio_quad() -> bpy.types.Object:
     return obj
 
 
+def _make_depth_sheet() -> bpy.types.Object:
+    mesh = bpy.data.meshes.new("BML_width_cap_sheet_mesh")
+    mesh.from_pydata(
+        [
+            (-0.8, -0.5, -2.0),
+            (0.8, -0.5, -2.0),
+            (0.8, 0.5, -8.0),
+            (-0.8, 0.5, -8.0),
+        ],
+        [],
+        [(0, 1, 2, 3)],
+    )
+    mesh.update()
+    obj = bpy.data.objects.new("BML_width_cap_sheet", mesh)
+    bpy.context.collection.objects.link(obj)
+    return obj
+
+
 def _select(obj: bpy.types.Object) -> None:
     bpy.ops.object.select_all(action="DESELECT")
     obj.select_set(True)
@@ -149,6 +168,7 @@ def _reference_widths(
     *,
     falloff: float,
     reference_distance: float,
+    limit_to_setting: bool = False,
 ) -> tuple[list[float], list[float]]:
     target_px = camera_comp._target_pixels(scene, width_m)
     widths = []
@@ -162,9 +182,12 @@ def _reference_widths(
         else:
             depth = max(0.001, -float(local.z))
         wpp = camera_comp._world_per_pixel(scene, camera, world)
-        value = target_px * wpp
+        setting_width = target_px * wpp
+        value = setting_width
         if falloff > 0.0:
             value *= (reference_distance / depth) ** falloff
+        if limit_to_setting:
+            value = min(value, setting_width)
         widths.append(value)
         depths.append(depth)
     return widths, depths
@@ -196,6 +219,38 @@ def _assert_numpy_matches_reference() -> None:
             assert math.isclose(a, e, rel_tol=1.0e-6, abs_tol=1.0e-12), (kind, a, e)
         for a, e in zip(depths.tolist(), expected_depths):
             assert math.isclose(a, e, rel_tol=1.0e-6, abs_tol=1.0e-12), (kind, a, e)
+
+
+def _assert_numpy_cap_matches_reference() -> None:
+    for kind in ("PERSP", "ORTHO", "PANO"):
+        _clear_scene()
+        camera = _make_camera(kind)
+        obj = _make_depth_box("BML_width_cap_math_" + kind)
+        expected, _ = _reference_widths(
+            bpy.context.scene,
+            camera,
+            obj,
+            0.0004,
+            falloff=1.25,
+            reference_distance=3.0,
+            limit_to_setting=True,
+        )
+        actual, _ = width_math.vertex_widths_and_depths(
+            bpy.context.scene,
+            camera,
+            obj,
+            0.0004,
+            distance_falloff=1.25,
+            reference_distance=3.0,
+            limit_to_setting=True,
+        )
+        assert len(actual) == len(expected)
+        for a, e in zip(actual.tolist(), expected):
+            assert math.isclose(a, e, rel_tol=1.0e-6, abs_tol=1.0e-12), (
+                kind,
+                a,
+                e,
+            )
 
 
 def _apply_outline(obj: bpy.types.Object, *, falloff: float) -> None:
@@ -253,6 +308,164 @@ def _test_p2_ratio() -> None:
     ]
     ratio = screen[4] / screen[0]
     assert math.isclose(ratio, 0.25, rel_tol=1.0e-4), screen
+
+
+def _screen_widths(scene, camera, obj, world_widths: list[float]) -> list[float]:
+    return [
+        width / camera_comp._world_per_pixel(
+            scene,
+            camera,
+            obj.matrix_world @ obj.data.vertices[index].co,
+        )
+        for index, width in enumerate(world_widths)
+    ]
+
+
+def _test_setting_width_cap_is_deferred_and_preserves_far_falloff() -> None:
+    _clear_scene()
+    camera = _make_camera("PERSP")
+    obj = _make_depth_box("BML_width_cap_applied")
+    _select(obj)
+    settings = obj.bmanga_line_settings
+    settings.outline_thickness_mm = 0.5
+    settings.exclude_sheet_meshes = False
+    settings.use_uniform_line_width = True
+    settings.line_width_reference_distance = 4.0
+    settings.line_width_distance_falloff = 1.0
+    settings.limit_uniform_width_to_setting = False
+    assert presets.apply_line_settings(obj, bpy.context)
+    assert bpy.ops.bmanga_line.reflect_target(
+        "EXEC_DEFAULT", target="outline"
+    ) == {"FINISHED"}
+
+    uncapped_world = _actual_widths(obj)
+    uncapped_screen = _screen_widths(
+        bpy.context.scene,
+        camera,
+        obj,
+        uncapped_world,
+    )
+    setting_pixels = camera_comp._target_pixels(
+        bpy.context.scene,
+        settings.outline_thickness,
+    )
+    assert uncapped_screen[0] > setting_pixels * 1.9, uncapped_screen
+
+    update_state.clear_pending(obj)
+    settings.limit_uniform_width_to_setting = True
+    assert "outline" in update_state.pending_visual_targets(obj)
+    assert _actual_widths(obj) == uncapped_world, "反映前に線幅が変化しています"
+    assert bpy.ops.bmanga_line.reflect_target(
+        "EXEC_DEFAULT", target="outline"
+    ) == {"FINISHED"}
+
+    capped_screen = _screen_widths(
+        bpy.context.scene,
+        camera,
+        obj,
+        _actual_widths(obj),
+    )
+    assert all(
+        value <= setting_pixels * 1.0001 for value in capped_screen
+    ), (setting_pixels, capped_screen)
+    assert math.isclose(
+        capped_screen[0],
+        setting_pixels,
+        rel_tol=1.0e-4,
+    ), capped_screen
+    for uncapped, capped in zip(uncapped_screen[4:], capped_screen[4:]):
+        assert math.isclose(uncapped, capped, rel_tol=1.0e-4), (
+            uncapped_screen,
+            capped_screen,
+        )
+    assert capped_screen[4] < setting_pixels * 0.1, capped_screen
+
+    settings.limit_uniform_width_to_setting = False
+    assert bpy.ops.bmanga_line.reflect_all("EXEC_DEFAULT") == {"FINISHED"}
+    restored_screen = _screen_widths(
+        bpy.context.scene,
+        camera,
+        obj,
+        _actual_widths(obj),
+    )
+    for expected, actual in zip(uncapped_screen, restored_screen):
+        assert math.isclose(expected, actual, rel_tol=1.0e-4), (
+            uncapped_screen,
+            restored_screen,
+        )
+
+
+def _test_each_line_setting_is_its_own_cap() -> None:
+    _clear_scene()
+    camera = _make_camera("PERSP")
+    obj = _make_depth_box("BML_width_cap_targets")
+    settings = obj.bmanga_line_settings
+    settings.outline_thickness_mm = 0.60
+    settings.inner_line_thickness_mm = 0.25
+    settings.intersection_thickness_mm = 0.40
+    settings.selection_line_thickness_mm = 0.15
+    target_settings = {
+        "outline": settings.outline_thickness,
+        "inner": settings.inner_line_thickness,
+        "intersection": settings.intersection_thickness,
+        "selection": settings.selection_line_thickness,
+    }
+    for target, width_m in target_settings.items():
+        widths, _ = width_math.vertex_widths_and_depths(
+            bpy.context.scene,
+            camera,
+            obj,
+            width_m,
+            distance_falloff=1.0,
+            reference_distance=4.0,
+            limit_to_setting=True,
+        )
+        screen = _screen_widths(
+            bpy.context.scene,
+            camera,
+            obj,
+            widths.tolist(),
+        )
+        setting_pixels = camera_comp._target_pixels(bpy.context.scene, width_m)
+        assert all(value <= setting_pixels * 1.0001 for value in screen), (
+            target,
+            setting_pixels,
+            screen,
+        )
+
+
+def _test_boundary_tube_uses_safe_scalar_cap() -> None:
+    _clear_scene()
+    camera = _make_camera("PERSP")
+    obj = _make_depth_sheet()
+    _select(obj)
+    settings = obj.bmanga_line_settings
+    settings.outline_thickness_mm = 0.5
+    settings.use_uniform_line_width = True
+    settings.line_width_reference_distance = 4.0
+    settings.line_width_distance_falloff = 1.0
+    settings.limit_uniform_width_to_setting = True
+    assert presets.apply_line_settings(obj, bpy.context)
+    assert bpy.ops.bmanga_line.reflect_target(
+        "EXEC_DEFAULT", target="outline"
+    ) == {"FINISHED"}
+    assert obj.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME) is not None
+
+    world_width = outline_setup.sheet_outline_world_width(obj)
+    setting_pixels = camera_comp._target_pixels(
+        bpy.context.scene,
+        settings.outline_thickness,
+    )
+    screen = _screen_widths(
+        bpy.context.scene,
+        camera,
+        obj,
+        [world_width] * len(obj.data.vertices),
+    )
+    assert all(value <= setting_pixels * 1.0001 for value in screen), (
+        setting_pixels,
+        screen,
+    )
 
 
 def _test_inner_line_and_style_weights() -> None:
@@ -338,11 +551,14 @@ def _test_preset_round_trip() -> None:
     settings = obj.bmanga_line_settings
     settings.use_uniform_line_width = True
     settings.line_width_distance_falloff = 1.5
+    settings.limit_uniform_width_to_setting = True
     preset = bpy.context.scene.bmanga_line_presets.add()
     presets.copy_settings_to_preset(settings, preset)
     settings.line_width_distance_falloff = 0.0
+    settings.limit_uniform_width_to_setting = False
     presets.copy_preset_to_settings(preset, settings)
     assert math.isclose(settings.line_width_distance_falloff, 1.5, rel_tol=0.0, abs_tol=1.0e-6)
+    assert settings.limit_uniform_width_to_setting is True
 
 
 def _legacy_width_loop(scene, camera, obj, width_m: float) -> list[float]:
@@ -395,6 +611,22 @@ def _test_performance_smoke() -> None:
     assert math.isclose(max(legacy), float(widths.max()), rel_tol=1.0e-6)
 
     start = time.perf_counter()
+    capped_widths, _ = width_math.vertex_widths_and_depths(
+        bpy.context.scene,
+        camera,
+        obj,
+        settings.outline_thickness,
+        distance_falloff=1.0,
+        reference_distance=2.0,
+        limit_to_setting=True,
+    )
+    capped_numpy_elapsed = time.perf_counter() - start
+    assert capped_widths.size == widths.size
+    assert bool((capped_widths <= widths * (1.0 + 1.0e-9)).all())
+
+    settings.limit_uniform_width_to_setting = True
+    settings.line_width_distance_falloff = 1.0
+    start = time.perf_counter()
     ok = camera_comp.refresh_objects(bpy.context, [obj], width_targets=("outline",))
     refresh_elapsed = time.perf_counter() - start
     assert ok
@@ -403,6 +635,7 @@ def _test_performance_smoke() -> None:
         f"vertices={len(obj.data.vertices)} "
         f"legacy_width_loop={legacy_elapsed:.6f}s "
         f"numpy_widths={numpy_elapsed:.6f}s "
+        f"capped_numpy_widths={capped_numpy_elapsed:.6f}s "
         f"refresh={refresh_elapsed:.6f}s"
     )
 
@@ -411,8 +644,12 @@ def main() -> None:
     b_manga_line.register()
     try:
         _assert_numpy_matches_reference()
+        _assert_numpy_cap_matches_reference()
         _test_p0_and_p1_width_shape()
         _test_p2_ratio()
+        _test_setting_width_cap_is_deferred_and_preserves_far_falloff()
+        _test_each_line_setting_is_its_own_cap()
+        _test_boundary_tube_uses_safe_scalar_cap()
         _test_inner_line_and_style_weights()
         _test_generated_width_group_migrates_to_attribute()
         _test_preset_round_trip()

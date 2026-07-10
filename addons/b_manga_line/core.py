@@ -1212,6 +1212,12 @@ def _on_uniform_line_width_changed(self, context):
     _defer_line_setting(self, context, "use_uniform_line_width")
 
 
+def _on_uniform_width_limit_changed(self, context):
+    if _propagating:
+        return
+    _defer_line_setting(self, context, "limit_uniform_width_to_setting")
+
+
 def _on_culling_changed(self, context):
     if _propagating:
         return
@@ -1446,6 +1452,16 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         description="同じメッシュ内の奥行き差も見て、頂点ごとに画面上の線幅を揃える",
         default=True,
         update=_on_uniform_line_width_changed,
+    )  # type: ignore[valid-type]
+
+    limit_uniform_width_to_setting: BoolProperty(
+        name="設定線幅を上限にする",
+        description=(
+            "遠近減衰を維持したまま、近距離でもアウトライン・稜谷線・交差線・"
+            "選択線が各線幅設定より太くならないようにする"
+        ),
+        default=False,
+        update=_on_uniform_width_limit_changed,
     )  # type: ignore[valid-type]
 
     use_rim: BoolProperty(

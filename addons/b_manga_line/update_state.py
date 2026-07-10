@@ -46,6 +46,7 @@ _VISUAL_PROPS = {
     "line_width_reference_distance",
     "line_width_distance_falloff",
     "use_uniform_line_width",
+    "limit_uniform_width_to_setting",
     "use_vertex_color",
     "auto_subdivision_for_midpoint",
     "match_subsurf_viewport_to_render",

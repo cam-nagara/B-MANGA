@@ -152,6 +152,7 @@ def _draw_camera(layout, context, settings) -> None:
     sub = col.column(align=True)
     sub.enabled = settings.use_uniform_line_width
     sub.prop(settings, "line_width_distance_falloff")
+    sub.prop(settings, "limit_uniform_width_to_setting")
 
     col.separator()
     col.prop(settings, "use_camera_culling")

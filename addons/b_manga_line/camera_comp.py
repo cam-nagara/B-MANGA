@@ -412,6 +412,10 @@ def _line_width_distance_falloff(settings) -> float:
     return max(0.0, min(2.0, float(raw or 0.0)))
 
 
+def _limit_uniform_width_to_setting(settings) -> bool:
+    return bool(getattr(settings, "limit_uniform_width_to_setting", False))
+
+
 def _reference_point_for_distance(camera, distance: float) -> Vector:
     cam_loc = camera.matrix_world.translation
     cam_fwd = camera.matrix_world.to_quaternion() @ Vector((0.0, 0.0, -1.0))
@@ -507,6 +511,7 @@ def _uniform_width_basis(scene, camera, obj, settings) -> tuple[np.ndarray, floa
         1.0,
         distance_falloff=_line_width_distance_falloff(settings),
         reference_distance=_line_width_reference_distance(settings),
+        limit_to_setting=_limit_uniform_width_to_setting(settings),
     )
     if widths.size == 0:
         return widths, 0.0
@@ -755,6 +760,7 @@ def _apply_uniform_target_line_width(
             _target_width_setting(settings, target),
             distance_falloff=_line_width_distance_falloff(settings),
             reference_distance=_line_width_reference_distance(settings),
+            limit_to_setting=_limit_uniform_width_to_setting(settings),
         )
         if widths.size == 0:
             return
@@ -779,11 +785,28 @@ def _apply_uniform_target_line_width(
         combined = normalized
     vertex_analysis.write_width_weights(obj, combined, target)
     if target == "outline":
+        from . import outline_setup
+
         mod = obj.modifiers.get(MODIFIER_NAME)
         if mod is not None:
             mod.vertex_group = VG_LINE_WIDTH
             mod.thickness_vertex_group = 0.0
     _apply_target_width(obj, target, max_width)
+    if (
+        target == "outline"
+        and _limit_uniform_width_to_setting(settings)
+        and obj.modifiers.get(SHEET_OUTLINE_MODIFIER_NAME) is not None
+    ):
+        # 境界チューブは頂点ウェイトを直接使えないため、最も細い頂点幅を
+        # オブジェクト全体へ採用し、どの頂点でも設定線幅を超えない側へ倒す。
+        scalar_width = max(
+            max_width * float(normalized.min()),
+            1.0e-9,
+        )
+        outline_setup.sync_sheet_outline_width(
+            obj,
+            modifier_thickness_for_world_width(obj, scalar_width),
+        )
 
 
 def _apply_reference_target_line_width(scene, camera, obj, settings, target: str) -> None:

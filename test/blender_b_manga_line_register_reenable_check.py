@@ -141,6 +141,7 @@ def _assert_panels_draw_items() -> None:
     props = core.BMangaLineSettings.bl_rna.properties
     assert props["use_camera_compensation"].name == "線幅の均一化（オブジェクト単位）"
     assert props["use_uniform_line_width"].name == "線幅の均一化（頂点単位）"
+    assert props["limit_uniform_width_to_setting"].name == "設定線幅を上限にする"
 
     bpy.ops.object.select_all(action="DESELECT")
     bpy.ops.mesh.primitive_cube_add()
@@ -175,6 +176,7 @@ def _assert_panels_draw_items() -> None:
         "use_camera_compensation",
         "line_width_reference_distance",
         "use_uniform_line_width",
+        "limit_uniform_width_to_setting",
         "inner_line_enabled",
         "inner_line_thickness_mm",
         "inner_line_color",
@@ -286,6 +288,7 @@ def _assert_panels_draw_items() -> None:
         "line_width_reference_distance",
         "use_camera_compensation",
         "use_uniform_line_width",
+        "limit_uniform_width_to_setting",
         "use_camera_culling",
     ]
     camera_indices = [records["props"].index(item) for item in camera_props]

@@ -70,6 +70,7 @@ def vertex_widths_and_depths(
     *,
     distance_falloff: float = 0.0,
     reference_distance: float = 2.0,
+    limit_to_setting: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """各頂点の目標ワールド線幅と距離を一括計算する."""
     world = vertex_world_positions(obj)
@@ -78,13 +79,16 @@ def vertex_widths_and_depths(
         return empty, empty
 
     depth = _vertex_depths(camera, world)
-    widths = _target_pixels(scene, width_m) * _world_per_pixel_from_depth(
+    setting_widths = _target_pixels(scene, width_m) * _world_per_pixel_from_depth(
         scene,
         camera,
         depth,
     )
+    widths = setting_widths
     power = max(0.0, float(distance_falloff or 0.0))
     if power > 0.0:
         ref = max(0.001, float(reference_distance or 0.001))
         widths = widths * np.power(ref / depth, power)
+    if limit_to_setting:
+        widths = np.minimum(widths, setting_widths)
     return widths, depth

@@ -42,6 +42,7 @@ _SETTING_FIELDS = (
     "even_thickness",
     "exclude_sheet_meshes",
     "use_uniform_line_width",
+    "limit_uniform_width_to_setting",
     "use_rim",
     "hide_through_transparent",
     "weld_mesh_for_outline",
@@ -671,6 +672,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     # 2026-07-03 ユーザー確定: 板ポリ除外だけは「初期値全オフ」の対象外でオン
     exclude_sheet_meshes: BoolProperty(default=True)
     use_uniform_line_width: BoolProperty(default=True)
+    limit_uniform_width_to_setting: BoolProperty(default=False)
     use_rim: BoolProperty(default=False)
     hide_through_transparent: BoolProperty(default=False)
     weld_mesh_for_outline: BoolProperty(default=True)

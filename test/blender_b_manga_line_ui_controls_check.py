@@ -300,6 +300,7 @@ def _assert_update_buttons_are_in_line_settings(active: bpy.types.Object) -> Non
     camera_layout = _FakeUILayout()
     panels._draw_camera(camera_layout, bpy.context, active.bmanga_line_settings)
     assert "line_width_distance_falloff" in camera_layout.props
+    assert "limit_uniform_width_to_setting" in camera_layout.props
 
 
 def _assert_subsurf_checkbox(active: bpy.types.Object, other: bpy.types.Object) -> None:

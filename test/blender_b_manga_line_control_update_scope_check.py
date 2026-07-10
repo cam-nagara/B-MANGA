@@ -322,6 +322,7 @@ def _test_setting_edits_are_deferred(objects, counts, reset) -> None:
         ("use_camera_compensation", True, geometry_targets),
         ("match_subsurf_viewport_to_render", True, geometry_targets),
         ("use_camera_culling", False, geometry_targets),
+        ("limit_uniform_width_to_setting", True, geometry_targets),
     )
     for prop_name, value, targets in cases:
         _change_setting(objects, prop_name, value, targets, counts, reset)
