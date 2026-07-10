@@ -5,13 +5,14 @@ from __future__ import annotations
 bl_info = {
     "name": "B-MANGA Liner",
     "author": "B-MANGA Project",
-    "version": (0, 3, 190),
+    "version": (0, 3, 191),
     "blender": (4, 3, 0),
     "description": "背面法（反転ハル）によるマンガ風アウトライン",
     "category": "Render",
 }
 
 from . import core
+from . import settings_draft
 from . import inner_lines
 from . import selection_lines
 from . import outline_setup
@@ -26,6 +27,7 @@ from . import panels
 
 _MODULES = (
     core,
+    settings_draft,
     inner_lines,
     selection_lines,
     outline_setup,

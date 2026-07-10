@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import bpy
 
-from . import registration
+from . import registration, settings_draft
 from .core import has_line, has_outline, is_settings_locked
 
 
@@ -121,15 +121,21 @@ def _draw_outline(layout, context, settings) -> None:
 
 
 def _draw_camera(layout, context, settings) -> None:
-    from . import camera_comp
-
     col = layout.column(align=True)
-    line_camera = camera_comp.get_line_camera(context.scene)
+    has_draft_camera = hasattr(settings, settings_draft.CAMERA_FIELD)
+    override_camera = (
+        getattr(settings, settings_draft.CAMERA_FIELD, None)
+        if has_draft_camera
+        else getattr(context.scene, "bmanga_line_camera", None)
+    )
+    line_camera = override_camera or context.scene.camera
     camera_name = line_camera.name if line_camera else "未設定"
-    override_camera = getattr(context.scene, "bmanga_line_camera", None)
     basis = "別カメラ指定" if override_camera else "カメラビュー"
     col.label(text=f"基準: {basis} ({camera_name})", icon="CAMERA_DATA")
-    col.prop(context.scene, "bmanga_line_camera")
+    if has_draft_camera:
+        col.prop(settings, settings_draft.CAMERA_FIELD)
+    else:
+        col.prop(context.scene, "bmanga_line_camera")
     col.separator()
     row = col.row(align=True)
     row.prop(settings, "line_width_reference_distance")
@@ -189,7 +195,7 @@ def _draw_basic_line_settings(
     range_cell.prop(settings, range_distance_prop)
 
 
-def _draw_line_settings(layout, context, settings) -> None:
+def _draw_line_settings(layout, context, settings, *, settings_locked=None) -> None:
     if settings is None:
         return
     row = layout.row(align=True)
@@ -204,7 +210,9 @@ def _draw_line_settings(layout, context, settings) -> None:
     # ロック中は「すべてのラインを反映」以外をグレーアウトする
     # （ロック外の選択オブジェクトには効くため、このボタンだけは押下可のまま）。
     body = layout.column()
-    body.enabled = not bool(getattr(settings, "settings_locked", False))
+    if settings_locked is None:
+        settings_locked = bool(getattr(settings, "settings_locked", False))
+    body.enabled = not bool(settings_locked)
 
     row = body.row(align=True)
     row.prop(settings, "auto_subdivision_for_midpoint")
@@ -384,7 +392,8 @@ class BMANGA_LINE_OT_detail_settings(bpy.types.Operator):
     def invoke(self, context, _event):
         from . import edge_width_curve
 
-        settings = _active_settings(context)
+        settings = settings_draft.ensure(context)
+        self._draft_snapshot = settings_draft.snapshot(context)
         if settings is not None:
             for target in ("outline", "inner", "intersection", "selection"):
                 edge_width_curve.reset_node_from_settings(settings, target)
@@ -393,24 +402,30 @@ class BMANGA_LINE_OT_detail_settings(bpy.types.Operator):
     def execute(self, context):
         from . import edge_width_curve
 
-        settings = _active_settings(context)
+        settings = settings_draft.ensure(context)
         if settings is not None:
             for target in ("outline", "inner", "intersection", "selection"):
                 edge_width_curve.sync_settings_and_node(settings, target)
+            settings_draft.flush(context)
         return {"FINISHED"}
 
     def cancel(self, context):
         from . import edge_width_curve
 
-        settings = _active_settings(context)
+        settings_draft.restore_snapshot(
+            context,
+            getattr(self, "_draft_snapshot", None),
+        )
+        settings = settings_draft.ensure(context)
         if settings is not None:
             for target in ("outline", "inner", "intersection", "selection"):
                 edge_width_curve.reset_node_from_settings(settings, target)
 
     def draw(self, context):
-        settings = _active_settings(context)
+        settings = settings_draft.ensure(context)
         if settings is not None:
-            self.layout.enabled = not bool(getattr(settings, "settings_locked", False))
+            actual = _active_settings(context)
+            self.layout.enabled = not bool(getattr(actual, "settings_locked", False))
             _draw_line_detail_grid(self.layout, settings)
 
 
@@ -498,7 +513,14 @@ class BMANGA_LINE_PT_line_settings(_BMangaLineMeshPanel, bpy.types.Panel):
     bl_order = 2
 
     def draw(self, context):
-        _draw_line_settings(self.layout, context, _active_settings(context))
+        actual = _active_settings(context)
+        settings = settings_draft.ensure(context) or _active_settings(context)
+        _draw_line_settings(
+            self.layout,
+            context,
+            settings,
+            settings_locked=bool(getattr(actual, "settings_locked", False)),
+        )
 
 
 class BMANGA_LINE_PT_camera(_BMangaLineMeshPanel, bpy.types.Panel):
@@ -507,8 +529,9 @@ class BMANGA_LINE_PT_camera(_BMangaLineMeshPanel, bpy.types.Panel):
     bl_order = 3
 
     def draw(self, context):
-        settings = _active_settings(context)
-        self.layout.enabled = not bool(getattr(settings, "settings_locked", False))
+        actual = _active_settings(context)
+        settings = settings_draft.ensure(context) or actual
+        self.layout.enabled = not bool(getattr(actual, "settings_locked", False))
         _draw_camera(self.layout, context, settings)
 
 

@@ -804,6 +804,9 @@ class BMANGA_LINE_OT_preset_save(bpy.types.Operator):
         return obj is not None and obj.type == "MESH"
 
     def execute(self, context):
+        from . import settings_draft
+
+        settings_draft.flush(context)
         scene = context.scene
         ensure_presets_loaded(scene)
         obj = context.active_object
@@ -842,6 +845,9 @@ class BMANGA_LINE_OT_preset_add(bpy.types.Operator):
         return obj is not None and obj.type == "MESH"
 
     def execute(self, context):
+        from . import settings_draft
+
+        settings_draft.flush(context)
         scene = context.scene
         ensure_presets_loaded(scene)
         obj = context.active_object
@@ -874,8 +880,9 @@ class BMANGA_LINE_OT_preset_apply_selected(bpy.types.Operator):
         if preset is None:
             self.report({"WARNING"}, "プリセットが選択されていません")
             return {"CANCELLED"}
-        from . import selection, update_state
+        from . import selection, settings_draft, update_state
 
+        settings_draft.discard(context)
         targets = selection.updatable_mesh_objects(context)
         skipped = len(_selected_meshes(context)) - len(targets)
         count = 0
@@ -887,6 +894,7 @@ class BMANGA_LINE_OT_preset_apply_selected(bpy.types.Operator):
             copy_preset_to_settings(preset, obj.bmanga_line_settings)
             update_state.mark_pending(obj)
             count += 1
+        settings_draft.invalidate(context)
         message = f"{count} オブジェクトにプリセット設定を適用しました"
         if unchanged > 0:
             message += f"（変更なし{unchanged}件）"
@@ -987,6 +995,9 @@ def _on_load_post(_dummy) -> None:
 
 @persistent
 def _on_save_pre(_dummy) -> None:
+    from . import settings_draft
+
+    settings_draft.flush_all()
     _saving_scene_snapshots.clear()
     for scene in _iter_scenes():
         if not hasattr(scene, "bmanga_line_presets"):

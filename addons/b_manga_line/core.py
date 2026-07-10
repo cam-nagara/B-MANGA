@@ -148,6 +148,16 @@ def record_override_edits(obj) -> None:
         pass
 
 
+def _invalidate_settings_draft(context) -> None:
+    """外部スクリプト等で実設定が変わったら、パネルの一時設定を読み直す."""
+    try:
+        from . import settings_draft
+
+        settings_draft.invalidate(context)
+    except (AttributeError, RuntimeError):
+        pass
+
+
 def _propagate(self, context, prop_name):
     """変更されたプロパティを選択中の他オブジェクトにも反映."""
     global _propagating
@@ -176,6 +186,7 @@ def _propagate(self, context, prop_name):
                     changed.append(obj)
     finally:
         _propagating = False
+    _invalidate_settings_draft(context)
     if changed:
         from . import update_state
         update_state.mark_property_pending_many(
@@ -222,6 +233,7 @@ def _set_prop_on_selected_targets(
             changed.append(obj)
     finally:
         _propagating = False
+    _invalidate_settings_draft(context)
     return changed
 
 

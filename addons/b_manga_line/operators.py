@@ -120,8 +120,9 @@ class BMANGA_LINE_OT_reflect_target(bpy.types.Operator):
         return any(obj.type == "MESH" for obj in context.selected_objects)
 
     def execute(self, context):
-        from . import reflect, selection
+        from . import reflect, selection, settings_draft
 
+        settings_draft.flush(context)
         target = str(self.target)
         targets_to_process = selection.updatable_mesh_objects(context)
         skipped = _locked_skip_count(context, len(targets_to_process))
@@ -188,8 +189,9 @@ class BMANGA_LINE_OT_reflect_all(bpy.types.Operator):
         )
 
     def invoke(self, context, event):
-        from . import selection
+        from . import selection, settings_draft
 
+        settings_draft.flush(context)
         targets_to_process = selection.updatable_mesh_objects(context)
         if self._needs_initial_confirm(targets_to_process):
             self.reflect_scope = "SKIP_INTERSECTION"
@@ -222,8 +224,9 @@ class BMANGA_LINE_OT_reflect_all(bpy.types.Operator):
         layout.prop(self, "reflect_scope")
 
     def execute(self, context):
-        from . import reflect, selection
+        from . import reflect, selection, settings_draft
 
+        settings_draft.flush(context)
         targets_to_process = selection.updatable_mesh_objects(context)
         skipped = _locked_skip_count(context, len(targets_to_process))
         scope = str(self.reflect_scope)
@@ -310,8 +313,9 @@ class BMANGA_LINE_OT_update_auto_subdivision(bpy.types.Operator):
         return _invoke_delete_confirm(self, context, event, message)
 
     def execute(self, context):
-        from . import batch_update, reflect, selection, update_state
+        from . import batch_update, reflect, selection, settings_draft, update_state
 
+        settings_draft.flush(context)
         targets_to_process = selection.updatable_mesh_objects(context)
         skipped = _locked_skip_count(context, len(targets_to_process))
         action = str(self.action)
@@ -485,6 +489,9 @@ class BMANGA_LINE_OT_set_settings_lock(bpy.types.Operator):
         return any(obj.type == "MESH" for obj in context.selected_objects)
 
     def execute(self, context):
+        from . import settings_draft
+
+        settings_draft.flush(context)
         target_lock = bool(self.lock)
         count = 0
         for obj in context.selected_objects:
@@ -498,6 +505,8 @@ class BMANGA_LINE_OT_set_settings_lock(bpy.types.Operator):
             settings.settings_locked = target_lock
             record_override_edits(obj)
             count += 1
+
+        settings_draft.invalidate(context)
 
         action = "ロック" if target_lock else "ロック解除"
         self.report({"INFO"}, f"{count} オブジェクトを{action}しました")
@@ -566,8 +575,9 @@ class BMANGA_LINE_OT_refresh_linked(bpy.types.Operator):
         return bool(_linked_line_objects(context.scene))
 
     def execute(self, context):
-        from . import camera_comp, outline_setup
+        from . import camera_comp, outline_setup, settings_draft
 
+        settings_draft.flush(context)
         linked = _linked_line_objects(context.scene)
         outline_setup.ensure_aov_passes(context.scene)
         camera_comp.refresh(context)
@@ -588,8 +598,9 @@ class BMANGA_LINE_OT_apply_active_to_linked(bpy.types.Operator):
         return obj is not None and has_line(obj) and bool(_linked_line_objects(context.scene))
 
     def execute(self, context):
-        from . import presets, update_state
+        from . import presets, settings_draft, update_state
 
+        settings_draft.flush(context)
         source = context.active_object
         if source is None or not has_line(source):
             self.report({"WARNING"}, "ライン設定のあるオブジェクトを選択してください")
@@ -630,8 +641,9 @@ class BMANGA_LINE_OT_sync_weights(bpy.types.Operator):
         return any(has_outline(obj) for obj in context.selected_objects)
 
     def execute(self, context):
-        from . import selection, vertex_analysis
+        from . import selection, settings_draft, vertex_analysis
 
+        settings_draft.flush(context)
         targets_to_process = selection.updatable_mesh_objects(context)
         skipped = _locked_skip_count(context, len(targets_to_process))
 
@@ -657,13 +669,14 @@ class BMANGA_LINE_OT_refresh_camera(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        from . import camera_comp
+        from . import settings_draft
 
-        return camera_comp.get_line_camera(context.scene) is not None
+        return settings_draft.get_line_camera(context) is not None
 
     def execute(self, context):
-        from . import camera_comp
+        from . import camera_comp, settings_draft
 
+        settings_draft.flush(context)
         camera_comp.refresh(context)
         self.report({"INFO"}, "線幅を更新しました")
         return {"FINISHED"}
@@ -678,16 +691,17 @@ class BMANGA_LINE_OT_reset_camera_ref(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        from . import camera_comp
+        from . import settings_draft
 
         return (
-            camera_comp.get_line_camera(context.scene) is not None
+            settings_draft.get_line_camera(context) is not None
             and any(obj.type == "MESH" for obj in context.selected_objects)
         )
 
     def execute(self, context):
-        from . import camera_comp, core
+        from . import camera_comp, core, settings_draft
 
+        settings_draft.flush(context)
         camera = camera_comp.get_line_camera(context.scene)
         if camera is None:
             self.report({"WARNING"}, "カメラがありません")
@@ -715,6 +729,8 @@ class BMANGA_LINE_OT_reset_camera_ref(bpy.types.Operator):
         line_targets = [obj for obj in targets if has_outline(obj)]
         if line_targets:
             camera_comp.refresh_objects(context, line_targets)
+
+        settings_draft.invalidate(context)
 
         self.report({"INFO"}, f"{len(targets)} オブジェクトの線幅基準距離を更新しました")
         return {"FINISHED"}
