@@ -15,6 +15,8 @@ Blender 4.3+ / 5.x の Extensions Platform 配下では ``bl_idname`` に
 
 from __future__ import annotations
 
+import secrets
+
 import bpy
 from bpy.props import (
     BoolProperty,
@@ -25,7 +27,7 @@ from bpy.props import (
     IntProperty,
     StringProperty,
 )
-from bpy.types import PropertyGroup
+from bpy.types import Operator, PropertyGroup
 
 from .utils import log
 
@@ -47,6 +49,7 @@ _SPACEBAR_PRESET_ITEMS = (
 
 _USERPREF_SAVE_PENDING = False
 _USERPREF_SAVE_SUSPENDED = 0
+_MELDEX_UPDATE_DEPTH = 0
 
 
 def _save_user_preferences_timer():
@@ -76,6 +79,23 @@ def request_user_preferences_save() -> None:
 
 def _on_preferences_changed(_self, _context) -> None:  # noqa: ANN001 - Blender callback
     request_user_preferences_save()
+
+
+def _on_meldex_settings_changed(self, context) -> None:  # noqa: ANN001
+    global _MELDEX_UPDATE_DEPTH
+    if _MELDEX_UPDATE_DEPTH:
+        return
+    _MELDEX_UPDATE_DEPTH += 1
+    try:
+        if bool(getattr(self, "meldex_enabled", False)) and not str(getattr(self, "meldex_token", "") or ""):
+            self.meldex_token = secrets.token_hex(32)
+        from .io import meldex_receiver
+
+        if not meldex_receiver.restart_from_preferences(context):
+            self.meldex_enabled = False
+    finally:
+        _MELDEX_UPDATE_DEPTH = max(0, _MELDEX_UPDATE_DEPTH - 1)
+        request_user_preferences_save()
 
 
 def _on_log_level_changed(self, _context) -> None:  # noqa: ANN001 - Blender callback
@@ -194,13 +214,25 @@ class BMangaPreferences(bpy.types.AddonPreferences):
         update=_on_log_level_changed,
     )
 
+    meldex_enabled: BoolProperty(  # type: ignore[valid-type]
+        name="Meldexからの受信を有効にする",
+        description="このPCのMeldexからシナリオを受け取ります（既定はオフ）",
+        default=False,
+        update=_on_meldex_settings_changed,
+    )
     meldex_port: IntProperty(  # type: ignore[valid-type]
         name="Meldex 受信ポート",
         description="Meldex からのシナリオ受信に使う localhost ポート (Phase 5)",
         default=47817,
         min=1024,
         max=65535,
-        update=_on_preferences_changed,
+        update=_on_meldex_settings_changed,
+    )
+    meldex_token: StringProperty(  # type: ignore[valid-type]
+        name="接続トークン",
+        description="Meldexの送信画面へ入力する、このPC専用の接続トークン",
+        default="",
+        options={"HIDDEN"},
     )
 
     keymap_enabled: BoolProperty(  # type: ignore[valid-type]
@@ -420,8 +452,16 @@ class BMangaPreferences(bpy.types.AddonPreferences):
         box.prop(self, "log_level")
 
         box = layout.box()
-        box.label(text="Meldex 連携 (Phase 5)")
-        box.prop(self, "meldex_port")
+        box.label(text="Meldex 連携")
+        box.prop(self, "meldex_enabled")
+        column = box.column(align=True)
+        column.enabled = self.meldex_enabled
+        column.prop(self, "meldex_port")
+        row = column.row(align=True)
+        row.prop(self, "meldex_token", text="接続トークン")
+        row.operator("bmanga.meldex_token_regenerate", text="再生成", icon="FILE_REFRESH")
+        if self.meldex_enabled:
+            box.label(text="ポートを使用できない場合は自動的にオフになります", icon="INFO")
 
         box = layout.box()
         box.label(text="キーマップ")
@@ -523,21 +563,49 @@ def get_preferences(context=None) -> "BMangaPreferences | None":
     return prefs.preferences if prefs else None
 
 
-_CLASSES = (BMangaRubyDictEntry, BMangaPreferences)
+class BMANGA_OT_meldex_token_regenerate(Operator):
+    bl_idname = "bmanga.meldex_token_regenerate"
+    bl_label = "接続トークンを再生成"
+    bl_options = {"INTERNAL"}
+
+    def execute(self, context):
+        prefs = get_preferences(context)
+        if prefs is None:
+            return {"CANCELLED"}
+        prefs.meldex_token = secrets.token_hex(32)
+        if prefs.meldex_enabled:
+            from .io import meldex_receiver
+
+            if not meldex_receiver.restart_from_preferences(context):
+                prefs.meldex_enabled = False
+                self.report({"ERROR"}, "Meldex受信を開始できませんでした")
+                return {"CANCELLED"}
+        request_user_preferences_save()
+        self.report({"INFO"}, "接続トークンを再生成しました")
+        return {"FINISHED"}
+
+
+_CLASSES = (BMangaRubyDictEntry, BMANGA_OT_meldex_token_regenerate, BMangaPreferences)
 
 
 def register() -> None:
     global _USERPREF_SAVE_SUSPENDED
     logger = log.get_logger(__name__)
+    generated_meldex_token = False
     _USERPREF_SAVE_SUSPENDED += 1
     try:
         for cls in _CLASSES:
             bpy.utils.register_class(cls)
         prefs = get_preferences()
         if prefs is not None:
+            if not str(getattr(prefs, "meldex_token", "") or ""):
+                prefs.meldex_token = secrets.token_hex(32)
+                generated_meldex_token = True
             log.set_level(prefs.log_level)
     finally:
         _USERPREF_SAVE_SUSPENDED = max(0, _USERPREF_SAVE_SUSPENDED - 1)
+    if generated_meldex_token:
+        request_user_preferences_save()
     logger.debug("preferences registered")
 
 

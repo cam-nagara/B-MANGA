@@ -17,6 +17,7 @@ _logger = log.get_logger(__name__)
 BUNDLE_META = "b_manga_settings_bundle.json"
 PREFERENCES_JSON = "preferences.json"
 PRESETS_PREFIX = "presets/"
+PRIVATE_PREFERENCE_KEYS = {"meldex_enabled", "meldex_token"}
 
 
 def export_bundle(context, filepath: str | Path) -> Path:
@@ -107,11 +108,17 @@ def _preferences_to_dict(context) -> dict[str, Any]:
         return {
             key: value
             for key, value in vars(prefs).items()
+            if key not in PRIVATE_PREFERENCE_KEYS
             if _is_json_scalar(value) or isinstance(value, list)
         }
     for prop in bl_rna.properties:
         identifier = str(getattr(prop, "identifier", "") or "")
-        if not identifier or identifier == "rna_type" or bool(getattr(prop, "is_readonly", False)):
+        if (
+            not identifier
+            or identifier == "rna_type"
+            or identifier in PRIVATE_PREFERENCE_KEYS
+            or bool(getattr(prop, "is_readonly", False))
+        ):
             continue
         if identifier == "ruby_dictionaries":
             data[identifier] = [
@@ -143,6 +150,8 @@ def _apply_preferences_from_dict(context, data: dict[str, Any]) -> bool:
     if prefs is None:
         return False
     for key, value in data.items():
+        if key in PRIVATE_PREFERENCE_KEYS:
+            continue
         if key == "ruby_dictionaries":
             _apply_ruby_dictionaries(prefs, value)
             continue

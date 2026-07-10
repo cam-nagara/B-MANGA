@@ -1329,6 +1329,9 @@ def _free_transform_from_dict(entry, data: dict[str, Any] | None) -> None:
 def balloon_entry_to_dict(entry) -> dict[str, Any]:
     return {
         "id": entry.id,
+        "meldexSourceDocumentId": str(getattr(entry, "meldex_source_document_id", "") or ""),
+        "meldexSourceRowId": str(getattr(entry, "meldex_source_row_id", "") or ""),
+        "meldexType": str(getattr(entry, "meldex_type", "") or ""),
         "visible": bool(getattr(entry, "visible", True)),
         "shape": balloon_shapes.normalize_shape(entry.shape),
         "customPresetName": entry.custom_preset_name,
@@ -1502,6 +1505,9 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
 def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: bool = False) -> None:
     data = data or {}
     entry.id = data.get("id", entry.id)
+    entry.meldex_source_document_id = str(data.get("meldexSourceDocumentId", "") or "")
+    entry.meldex_source_row_id = str(data.get("meldexSourceRowId", "") or "")
+    entry.meldex_type = str(data.get("meldexType", "") or "")
     entry.visible = bool(data.get("visible", True))
     raw_shape = data.get("shape", entry.shape)
     legacy_flash_line_style = balloon_shapes.legacy_flash_shape_to_line_style(raw_shape)
@@ -1756,6 +1762,9 @@ def text_entry_to_dict(entry) -> dict[str, Any]:
     )
     return {
         "id": entry.id,
+        "meldexSourceDocumentId": str(getattr(entry, "meldex_source_document_id", "") or ""),
+        "meldexSourceRowId": str(getattr(entry, "meldex_source_row_id", "") or ""),
+        "meldexType": str(getattr(entry, "meldex_type", "") or ""),
         "visible": bool(getattr(entry, "visible", True)),
         "body": entry.body,
         "speakerType": entry.speaker_type,
@@ -1835,6 +1844,9 @@ def text_entry_from_dict(entry, data: dict[str, Any]) -> None:
 
     data = data or {}
     entry.id = data.get("id", entry.id)
+    entry.meldex_source_document_id = str(data.get("meldexSourceDocumentId", "") or "")
+    entry.meldex_source_row_id = str(data.get("meldexSourceRowId", "") or "")
+    entry.meldex_type = str(data.get("meldexType", "") or "")
     entry.visible = bool(data.get("visible", True))
     entry.body = data.get("body", "")
     entry.speaker_type = data.get("speakerType", "normal")

@@ -138,6 +138,22 @@ def apply_to_entry(entry, data: dict[str, Any]) -> None:
                 pass
 
 
+def reset_entry_to_defaults(entry) -> None:
+    """Restore only preset-controlled properties without touching body or placement."""
+    properties = getattr(getattr(entry, "bl_rna", None), "properties", None)
+    if properties is None:
+        return
+    for key in _TEXT_KEYS:
+        prop = properties.get(key)
+        if prop is None or bool(getattr(prop, "is_readonly", False)):
+            continue
+        default = getattr(prop, "default_array", None) if bool(getattr(prop, "is_array", False)) else getattr(prop, "default", None)
+        try:
+            setattr(entry, key, default)
+        except (AttributeError, TypeError, ValueError):
+            continue
+
+
 def save_preset(
     out_path: Path,
     name: str,

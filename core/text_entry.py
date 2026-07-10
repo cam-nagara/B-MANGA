@@ -195,6 +195,9 @@ class BMangaTextEntry(bpy.types.PropertyGroup):
     """
 
     id: StringProperty(name="ID", default="")  # type: ignore[valid-type]
+    meldex_source_document_id: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
+    meldex_source_row_id: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
+    meldex_type: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
     title: StringProperty(name="名前", default="", update=_on_text_title_changed)  # type: ignore[valid-type]
     visible: BoolProperty(  # type: ignore[valid-type]
         name="表示",

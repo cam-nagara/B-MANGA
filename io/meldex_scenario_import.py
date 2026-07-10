@@ -1,0 +1,248 @@
+"""Apply validated Meldex scenario documents to an open B-MANGA work."""
+
+from __future__ import annotations
+
+from contextlib import ExitStack
+from pathlib import Path
+
+from ..core import balloon as balloon_core
+from ..utils import (
+    balloon_curve_object,
+    json_io,
+    layer_stack,
+    page_detail,
+    page_file_scene,
+    page_grid,
+    page_range,
+    paths,
+    text_real_object,
+    text_style,
+)
+from ..utils.layer_hierarchy import page_stack_key
+from . import balloon_presets, page_io, text_presets, work_io
+from .meldex_contract import ScenarioDocument, ScenarioRow, validate_payload
+
+BALLOON_PADDING_X_MM = 6.0
+BALLOON_PADDING_Y_MM = 6.0
+
+
+def import_payload(context, work, payload: dict) -> dict[str, int]:
+    document = validate_payload(payload)
+    result = import_document(context, work, document)
+    json_io.write_json(paths.scenario_file(Path(str(work.work_dir))), payload)
+    return result
+
+
+def import_document(context, work, document: ScenarioDocument) -> dict[str, int]:
+    work_dir = Path(str(work.work_dir))
+    original_active = int(getattr(work, "active_page_index", -1))
+    added_pages, new_page_ids = _ensure_page_count(work, work_dir, len(document.pages))
+    balloon_by_name = {p.name: p for p in balloon_presets.list_all_presets(work_dir)}
+    text_by_name = {p.name: p for p in text_presets.list_all_presets(work_dir)}
+    result = {"pagesAdded": added_pages, "created": 0, "updated": 0, "ignored": 0}
+    with ExitStack() as stack:
+        stack.enter_context(balloon_curve_object.defer_auto_sync())
+        stack.enter_context(text_real_object.suspend_auto_sync())
+        for page_index, source_page in enumerate(document.pages):
+            page = work.pages[page_index]
+            was_loaded = bool(page.detail_loaded) and page.id not in new_page_ids
+            page_detail.ensure_page_detail(work, page)
+            for row_index, row in enumerate(source_page.rows):
+                if not row.body:
+                    result["ignored"] += 1
+                    continue
+                created = _upsert_row(
+                    work,
+                    page,
+                    document.document_id,
+                    row,
+                    row_index,
+                    balloon_by_name.get(row.type_name),
+                    text_by_name.get(row.type_name),
+                )
+                result["created" if created else "updated"] += 1
+            page.coma_count = len(page.comas)
+            page_io.save_page_json(work_dir, page)
+            if not was_loaded:
+                page_detail.clear_page_detail(page)
+    work.active_page_index = original_active if -1 <= original_active < len(work.pages) else -1
+    page_io.save_pages_json(work_dir, work)
+    if added_pages:
+        page_range.sync_end_number_to_page_count(work)
+        work_io.save_work_json(work_dir, work)
+        page_grid.apply_page_collection_transforms(context, work)
+    layer_stack.sync_layer_stack_after_data_change(context)
+    _sync_current_page(context, work)
+    return result
+
+
+def _ensure_page_count(work, work_dir: Path, required: int) -> tuple[int, set[str]]:
+    added = 0
+    new_ids: set[str] = set()
+    while len(work.pages) < required:
+        page = page_io.register_new_page(work)
+        page_io.ensure_page_dir(work_dir, page.id)
+        page_io.save_page_json(work_dir, page)
+        new_ids.add(page.id)
+        added += 1
+    return added, new_ids
+
+
+def _upsert_row(work, page, document_id: str, row: ScenarioRow, ordinal: int, balloon_preset, text_preset) -> bool:
+    balloon = _find_source(page.balloons, document_id, row.row_id)
+    text = _find_source(page.texts, document_id, row.row_id)
+    balloon_new = balloon is None
+    text_new = text is None
+    created = balloon_new or text_new
+    previous_type = str(getattr(text or balloon, "meldex_type", "") or "")
+    type_changed = bool(previous_type) and previous_type != row.type_name
+    if balloon_new:
+        balloon = page.balloons.add()
+        from ..operators.balloon_op import _allocate_balloon_id
+
+        balloon.id = _allocate_balloon_id(page, work)
+        balloon_core.apply_balloon_shape_defaults(balloon, force=True)
+    if text_new:
+        text = page.texts.add()
+        text.id = _allocate_id(page.texts, "text")
+    _stamp_source(balloon, document_id, row)
+    _stamp_source(text, document_id, row)
+    if balloon_new and text_new:
+        _set_initial_center(work, text, ordinal)
+    if balloon_new or type_changed:
+        _apply_balloon_preset(balloon, balloon_preset)
+    if text_new or type_changed:
+        text_presets.reset_entry_to_defaults(text)
+        if text_preset is not None:
+            text_presets.apply_to_entry(text, text_preset.data)
+    text.body = row.body
+    text.ruby_spans.clear()
+    for source in row.rubies:
+        ruby = text.ruby_spans.add()
+        ruby.start = int(source["start"])
+        ruby.length = int(source["length"])
+        ruby.ruby_text = str(source["rubyText"])
+        ruby.style = str(source["style"])
+    text_style.normalize_ruby_spans(text)
+    text.parent_balloon_id = balloon.id
+    text.parent_kind = "page"
+    text.parent_key = page_stack_key(page)
+    balloon.parent_kind = "page"
+    balloon.parent_key = page_stack_key(page)
+    balloon.text_id = text.id
+    _fit_pair(text, balloon, balloon_new=balloon_new)
+    page.active_balloon_index = len(page.balloons) - 1
+    page.active_text_index = len(page.texts) - 1
+    return created
+
+
+def _find_source(collection, document_id: str, row_id: str):
+    for entry in collection:
+        if entry.meldex_source_document_id == document_id and entry.meldex_source_row_id == row_id:
+            return entry
+    return None
+
+
+def _stamp_source(entry, document_id: str, row: ScenarioRow) -> None:
+    entry.meldex_source_document_id = document_id
+    entry.meldex_source_row_id = row.row_id
+    entry.meldex_type = row.type_name
+
+
+def _allocate_id(collection, prefix: str) -> str:
+    used = {str(getattr(item, "id", "") or "") for item in collection}
+    index = 1
+    while f"{prefix}_{index:04d}" in used:
+        index += 1
+    return f"{prefix}_{index:04d}"
+
+
+def _apply_balloon_preset(entry, preset) -> None:
+    _reset_balloon_to_defaults(entry)
+    if preset is None:
+        entry.shape = "ellipse"
+        entry.custom_preset_name = ""
+        return
+    entry.shape = "custom"
+    entry.custom_preset_name = preset.name
+
+
+def _reset_balloon_to_defaults(entry) -> None:
+    keep = {
+        "rna_type", "id", "title", "meldex_source_document_id", "meldex_source_row_id", "meldex_type",
+        "x_mm", "y_mm", "width_mm", "height_mm", "parent_kind", "parent_key", "folder_key", "text_id",
+    }
+    properties = getattr(getattr(entry, "bl_rna", None), "properties", ())
+    for prop in properties:
+        key = str(getattr(prop, "identifier", "") or "")
+        if key in keep or not key or bool(getattr(prop, "is_readonly", False)):
+            continue
+        if str(getattr(prop, "type", "") or "") in {"COLLECTION", "POINTER"}:
+            continue
+        default = getattr(prop, "default_array", None) if bool(getattr(prop, "is_array", False)) else getattr(prop, "default", None)
+        try:
+            setattr(entry, key, default)
+        except (AttributeError, TypeError, ValueError):
+            continue
+    if hasattr(entry, "tails"):
+        entry.tails.clear()
+    shape_params = getattr(entry, "shape_params", None)
+    for prop in getattr(getattr(shape_params, "bl_rna", None), "properties", ()):
+        key = str(getattr(prop, "identifier", "") or "")
+        if not key or key == "rna_type" or bool(getattr(prop, "is_readonly", False)):
+            continue
+        default = getattr(prop, "default_array", None) if bool(getattr(prop, "is_array", False)) else getattr(prop, "default", None)
+        try:
+            setattr(shape_params, key, default)
+        except (AttributeError, TypeError, ValueError):
+            continue
+    entry.shape = "ellipse"
+    balloon_core.apply_balloon_shape_defaults(entry, force=True)
+
+
+def _set_initial_center(work, text, ordinal: int) -> None:
+    paper = getattr(work, "paper", None)
+    width = float(getattr(paper, "canvas_width_mm", 182.0) or 182.0)
+    height = float(getattr(paper, "canvas_height_mm", 257.0) or 257.0)
+    column, row = divmod(ordinal, 5)
+    text.x_mm = max(12.0, width - 30.0 - column * 35.0)
+    text.y_mm = max(12.0, height - 30.0 - row * max(25.0, (height - 50.0) / 5.0))
+
+
+def _fit_pair(text, balloon, *, balloon_new: bool) -> None:
+    from ..operators import text_edit_runtime
+    from ..typography import ruby as ruby_layout
+
+    if balloon_new:
+        old_center_x = float(text.x_mm)
+        old_center_y = float(text.y_mm)
+    else:
+        old_center_x = float(balloon.x_mm) + float(balloon.width_mm) * 0.5
+        old_center_y = float(balloon.y_mm) + float(balloon.height_mm) * 0.5
+    width, height = text_edit_runtime.natural_text_outer_size(text)
+    text.width_mm = max(2.0, width)
+    text.height_mm = max(2.0, height)
+    ruby_pad = ruby_layout.render_pad_mm_for_entry(text, minimum=0.0)
+    extra_x = ruby_pad if str(getattr(text, "writing_mode", "vertical")) == "vertical" else 0.0
+    extra_y = ruby_pad if str(getattr(text, "writing_mode", "vertical")) == "horizontal" else 0.0
+    balloon.width_mm = text.width_mm + (BALLOON_PADDING_X_MM + extra_x) * 2.0
+    balloon.height_mm = text.height_mm + (BALLOON_PADDING_Y_MM + extra_y) * 2.0
+    balloon.x_mm = old_center_x - balloon.width_mm * 0.5
+    balloon.y_mm = old_center_y - balloon.height_mm * 0.5
+    text.x_mm = balloon.x_mm + BALLOON_PADDING_X_MM + extra_x
+    text.y_mm = balloon.y_mm + BALLOON_PADDING_Y_MM + extra_y
+
+
+def _sync_current_page(context, work) -> None:
+    page_id = page_file_scene.current_page_id(getattr(context, "scene", None))
+    if not page_id:
+        return
+    page = next((item for item in work.pages if item.id == page_id), None)
+    if page is None or not page.detail_loaded:
+        return
+    for balloon in page.balloons:
+        if balloon.meldex_source_document_id:
+            balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
+    for text in page.texts:
+        if text.meldex_source_document_id:
+            text_real_object.ensure_text_real_object(scene=context.scene, entry=text, page=page)
