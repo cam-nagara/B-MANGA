@@ -40,6 +40,13 @@ EFFECT_WHITE_OUTLINE_UI_FIELDS: FieldMap = {
     "black_near": "white_outline_black_length_scale_near_percent",
     "black_far": "white_outline_black_length_scale_far_percent",
     "black_attenuation": "white_outline_black_attenuation",
+    "black_in": "white_outline_black_in_percent",
+    "black_out": "white_outline_black_out_percent",
+    "black_range_mode": "white_outline_black_inout_range_mode",
+    "black_in_range_percent": "white_outline_black_in_range_percent",
+    "black_out_range_percent": "white_outline_black_out_range_percent",
+    "black_in_range_mm": "white_outline_black_in_range_mm",
+    "black_out_range_mm": "white_outline_black_out_range_mm",
 }
 
 
@@ -64,6 +71,13 @@ BALLOON_WHITE_OUTLINE_UI_FIELDS: FieldMap = {
     "black_near": "white_outline_black_length_scale_near_percent",
     "black_far": "white_outline_black_length_scale_far_percent",
     "black_attenuation": "white_outline_black_attenuation",
+    "black_in": "white_outline_black_in_percent",
+    "black_out": "white_outline_black_out_percent",
+    "black_range_mode": "white_outline_black_inout_range_mode",
+    "black_in_range_percent": "white_outline_black_in_range_percent",
+    "black_out_range_percent": "white_outline_black_out_range_percent",
+    "black_in_range_mm": "white_outline_black_in_range_mm",
+    "black_out_range_mm": "white_outline_black_out_range_mm",
     "inout_apply": "inout_apply",
     "inout_apply_brush_size": "inout_apply_brush_size",
     "inout_apply_opacity": "inout_apply_opacity",
@@ -172,6 +186,17 @@ def _draw_effect_black_settings(layout: Any, params: Any, fields: FieldMap) -> N
     row = black_box.row(align=True)
     _prop(row, params, fields, "black_near")
     _prop(row, params, fields, "black_far")
+    row = black_box.row(align=True)
+    _prop(row, params, fields, "black_in")
+    _prop(row, params, fields, "black_out")
+    _prop(black_box, params, fields, "black_range_mode")
+    range_row = black_box.row(align=True)
+    if _value(params, fields, "black_range_mode", "percent") == "length":
+        _prop(range_row, params, fields, "black_in_range_mm")
+        _prop(range_row, params, fields, "black_out_range_mm")
+    else:
+        _prop(range_row, params, fields, "black_in_range_percent")
+        _prop(range_row, params, fields, "black_out_range_percent")
 
 
 def draw_effect_white_outline_settings(
@@ -192,8 +217,8 @@ def draw_effect_white_outline_settings(
     _prop(row, params, fields, "angle")
     _prop(box, params, fields, "width")
     _draw_outline_jitter_settings(box, params, fields)
-    _draw_effect_white_settings(_column(cols, 1), params, fields)
-    _draw_effect_black_settings(_column(cols, 2), params, fields)
+    _draw_effect_black_settings(_column(cols, 1), params, fields)
+    _draw_effect_white_settings(_column(cols, 2), params, fields)
 
 
 def _draw_balloon_white_settings(layout: Any, entry: Any, fields: FieldMap) -> None:
@@ -227,6 +252,17 @@ def _draw_balloon_black_settings(layout: Any, entry: Any, fields: FieldMap) -> N
     row = black_box.row(align=True)
     _prop(row, entry, fields, "black_near")
     _prop(row, entry, fields, "black_far")
+    row = black_box.row(align=True)
+    _prop(row, entry, fields, "black_in")
+    _prop(row, entry, fields, "black_out")
+    _prop(black_box, entry, fields, "black_range_mode")
+    range_row = black_box.row(align=True)
+    if _value(entry, fields, "black_range_mode", "percent") == "length":
+        _prop(range_row, entry, fields, "black_in_range_mm")
+        _prop(range_row, entry, fields, "black_out_range_mm")
+    else:
+        _prop(range_row, entry, fields, "black_in_range_percent")
+        _prop(range_row, entry, fields, "black_out_range_percent")
 
 
 def _draw_balloon_inout_settings(
@@ -266,8 +302,8 @@ def draw_balloon_white_outline_settings(
     _prop(row, entry, fields, "width")
     _prop(row, entry, fields, "black_direction", text="")
     _draw_outline_jitter_settings(layout, entry, fields)
-    _draw_balloon_white_settings(_column(cols, 1), entry, fields)
     _draw_balloon_black_settings(_column(cols, 1), entry, fields)
+    _draw_balloon_white_settings(_column(cols, 1), entry, fields)
     _draw_balloon_inout_settings(
         _column(cols, 2),
         entry,

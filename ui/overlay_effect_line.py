@@ -14,27 +14,11 @@ DrawSegmentsMM = Callable[
     None,
 ]
 
-_HANDLE_SIZE_MM = 2.0
 _CENTER_CROSS_SIZE_MM = 8.0
 _CENTER_CROSS_WIDTH_MM = 0.6
 _SHAPE_GUIDE_WIDTH_MM = 0.18
 _START_GUIDE_COLOR = (0.0, 0.82, 0.95, 0.85)
 _END_GUIDE_COLOR = (1.0, 0.0, 0.68, 0.90)
-
-
-def _handle_rects(rect: Rect) -> list[Rect]:
-    half = _HANDLE_SIZE_MM * 0.5
-    points = (
-        (rect.x, rect.y),
-        (rect.x + rect.width * 0.5, rect.y),
-        (rect.x2, rect.y),
-        (rect.x, rect.y + rect.height * 0.5),
-        (rect.x2, rect.y + rect.height * 0.5),
-        (rect.x, rect.y2),
-        (rect.x + rect.width * 0.5, rect.y2),
-        (rect.x2, rect.y2),
-    )
-    return [Rect(x - half, y - half, _HANDLE_SIZE_MM, _HANDLE_SIZE_MM) for x, y in points]
 
 
 def draw_active_effect_line_bounds(
@@ -73,8 +57,8 @@ def draw_active_effect_line_bounds(
                 draw_segments_mm=draw_segments_mm,
                 logger=logger,
             )
-            _draw_bounds(
-                world_bounds,
+            _draw_center_cross(
+                Rect(*map(float, world_bounds)),
                 center_xy=world_center,
                 draw_rect_fill=draw_rect_fill,
                 draw_rect_outline=draw_rect_outline,
@@ -110,8 +94,8 @@ def draw_active_effect_line_bounds(
                         draw_segments_mm=draw_segments_mm,
                         logger=logger,
                     )
-                    _draw_bounds(
-                        world_bounds,
+                    _draw_center_cross(
+                        Rect(*map(float, world_bounds)),
                         center_xy=world_center,
                         draw_rect_fill=draw_rect_fill,
                         draw_rect_outline=draw_rect_outline,
@@ -174,26 +158,6 @@ def _draw_shape_guides(
         except Exception:  # noqa: BLE001
             width_mm = _SHAPE_GUIDE_WIDTH_MM
         draw_segments_mm(segments, color, width_mm)
-
-
-def _draw_bounds(
-    bounds,
-    *,
-    center_xy=None,
-    draw_rect_fill: DrawRectFill,
-    draw_rect_outline: DrawRectOutline,
-) -> None:
-    rect = Rect(float(bounds[0]), float(bounds[1]), float(bounds[2]), float(bounds[3]))
-    draw_rect_outline(rect.inset(-1.0), viewport_colors.SELECTION, width_mm=0.50)
-    _draw_center_cross(
-        rect,
-        center_xy=center_xy,
-        draw_rect_fill=draw_rect_fill,
-        draw_rect_outline=draw_rect_outline,
-    )
-    for handle in _handle_rects(rect):
-        draw_rect_fill(handle, viewport_colors.HANDLE_FILL)
-        draw_rect_outline(handle, viewport_colors.HANDLE_OUTLINE, width_mm=0.25)
 
 
 def _draw_center_cross(

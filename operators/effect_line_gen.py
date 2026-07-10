@@ -517,6 +517,21 @@ def _point_at_distance(points_xyz, cum, target: float):
     return points_xyz[-1]
 
 
+def _value_at_distance(values, cum, target: float, default: float) -> float:
+    if values is None or len(values) != len(cum):
+        return float(default)
+    if target <= cum[0]:
+        return float(values[0])
+    if target >= cum[-1]:
+        return float(values[-1])
+    for i in range(1, len(cum)):
+        if cum[i] >= target:
+            segment = cum[i] - cum[i - 1]
+            t = 0.0 if segment <= 1.0e-12 else (target - cum[i - 1]) / segment
+            return float(values[i - 1]) + (float(values[i]) - float(values[i - 1])) * t
+    return float(values[-1])
+
+
 def _apply_inout_profile(strokes, params, roles: tuple[str, ...] = ("line",)):
     """指定 role の非閉路ストロークに入り抜き範囲プロファイルを適用する.
 
@@ -563,6 +578,8 @@ def _apply_inout_profile(strokes, params, roles: tuple[str, ...] = ("line",)):
         new_pts: list[tuple[float, float, float]] = []
         radii: list[float] = []
         opac: list[float] = []
+        source_radii = list(stroke.radii) if stroke.radii is not None else None
+        source_opacities = list(stroke.opacities) if stroke.opacities is not None else None
         prev = None
         for d in ordered:
             if prev is not None and (d - prev) <= 1.0e-9:
@@ -570,8 +587,10 @@ def _apply_inout_profile(strokes, params, roles: tuple[str, ...] = ("line",)):
             prev = d
             new_pts.append(_point_at_distance(pts, cum, d))
             val = profile(d)
-            radii.append(max(0.0, stroke.radius * val))
-            opac.append(_clamp01(val))
+            base_radius = _value_at_distance(source_radii, cum, d, stroke.radius)
+            base_opacity = _value_at_distance(source_opacities, cum, d, 1.0)
+            radii.append(max(0.0, base_radius * val) if apply_width else max(0.0, base_radius))
+            opac.append(_clamp01(base_opacity * val) if apply_opacity else _clamp01(base_opacity))
         if len(new_pts) < 2:
             out.append(stroke)
             continue
@@ -580,12 +599,13 @@ def _apply_inout_profile(strokes, params, roles: tuple[str, ...] = ("line",)):
                 points_xyz=new_pts,
                 radius=stroke.radius,
                 cyclic=stroke.cyclic,
-                radii=radii if apply_width else None,
-                opacities=opac if apply_opacity else None,
+                radii=radii if apply_width or source_radii is not None else None,
+                opacities=opac if apply_opacity or source_opacities is not None else None,
                 role=stroke.role,
                 curve_type=stroke.curve_type,
                 bezier_smooth=stroke.bezier_smooth,
                 density_end=stroke.density_end,
+                side=stroke.side,
             )
         )
     return out

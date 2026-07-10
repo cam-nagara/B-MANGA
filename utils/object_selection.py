@@ -8,6 +8,7 @@ from .layer_hierarchy import OUTSIDE_STACK_KEY
 
 
 SELECTION_PROP = "bmanga_object_selection_keys"
+SELECTION_HANDLE_OUTSET_MM = 3.0
 
 
 def make_key(kind: str, page_id: str = "", item_id: str = "") -> str:

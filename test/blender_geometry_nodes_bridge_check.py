@@ -249,7 +249,7 @@ def main() -> None:
         page_key = page_stack_key(page)
 
         params = context.scene.bmanga_effect_line_params
-        _assert_close(params.in_start_percent, 50.0, "効果線 入り始点 初期値")
+        _assert_close(params.in_start_percent, 0.0, "効果線 入り始点 初期値")
         _assert_close(params.out_start_percent, 100.0, "効果線 抜き始点 初期値")
         _assert_close(params.spacing_distance_mm, 1.0, "効果線 線の間隔（距離）初期値")
         _assert_close(params.bundle_gap_mm, 5.0, "効果線 まとまり間隔 初期値")

@@ -701,8 +701,8 @@ def main() -> None:
         def _outline(rect, *args, **kwargs):
             outlines.append((rect, args, kwargs))
 
-        overlay_effect_line._draw_bounds(
-            (10.0, 20.0, 40.0, 24.0),
+        overlay_effect_line._draw_center_cross(
+            overlay_effect_line.Rect(10.0, 20.0, 40.0, 24.0),
             center_xy=(46.0, 48.0),
             draw_rect_fill=_fill,
             draw_rect_outline=_outline,

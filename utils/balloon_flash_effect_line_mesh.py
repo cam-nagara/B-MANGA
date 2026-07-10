@@ -88,6 +88,13 @@ def _effect_params_signature(entry, line_style: str) -> dict:
             "white_outline_black_length_scale_near_percent": float(getattr(entry, "white_outline_black_length_scale_near_percent", 100.0) or 0.0),
             "white_outline_black_length_scale_far_percent": float(getattr(entry, "white_outline_black_length_scale_far_percent", 100.0) or 0.0),
             "white_outline_black_attenuation": float(getattr(entry, "white_outline_black_attenuation", 0.0) or 0.0),
+            "white_outline_black_in_percent": float(getattr(entry, "white_outline_black_in_percent", 100.0) or 0.0),
+            "white_outline_black_out_percent": float(getattr(entry, "white_outline_black_out_percent", 100.0) or 0.0),
+            "white_outline_black_inout_range_mode": str(getattr(entry, "white_outline_black_inout_range_mode", "percent") or "percent"),
+            "white_outline_black_in_range_percent": float(getattr(entry, "white_outline_black_in_range_percent", 100.0) or 0.0),
+            "white_outline_black_out_range_percent": float(getattr(entry, "white_outline_black_out_range_percent", 100.0) or 0.0),
+            "white_outline_black_in_range_mm": float(getattr(entry, "white_outline_black_in_range_mm", 10.0) or 0.0),
+            "white_outline_black_out_range_mm": float(getattr(entry, "white_outline_black_out_range_mm", 10.0) or 0.0),
             # 入り抜き (ウニフラと同じ機構を白抜き線にも適用)
             "inout_apply": str(getattr(entry, "inout_apply", "brush_size") or "brush_size"),
             "inout_apply_brush_size": bool(getattr(entry, "inout_apply_brush_size", True)),
@@ -302,6 +309,13 @@ def _white_outline_params(entry, *, black_brush_mm: float) -> SimpleNamespace:
         white_outline_black_length_scale_near_percent=float(getattr(entry, "white_outline_black_length_scale_near_percent", 100.0) or 0.0),
         white_outline_black_length_scale_far_percent=float(getattr(entry, "white_outline_black_length_scale_far_percent", 100.0) or 0.0),
         white_outline_black_attenuation=float(getattr(entry, "white_outline_black_attenuation", 0.0) or 0.0),
+        white_outline_black_in_percent=float(getattr(entry, "white_outline_black_in_percent", 100.0) or 0.0),
+        white_outline_black_out_percent=float(getattr(entry, "white_outline_black_out_percent", 100.0) or 0.0),
+        white_outline_black_inout_range_mode=str(getattr(entry, "white_outline_black_inout_range_mode", "percent") or "percent"),
+        white_outline_black_in_range_percent=float(getattr(entry, "white_outline_black_in_range_percent", 100.0) or 0.0),
+        white_outline_black_out_range_percent=float(getattr(entry, "white_outline_black_out_range_percent", 100.0) or 0.0),
+        white_outline_black_in_range_mm=float(getattr(entry, "white_outline_black_in_range_mm", 10.0) or 0.0),
+        white_outline_black_out_range_mm=float(getattr(entry, "white_outline_black_out_range_mm", 10.0) or 0.0),
         white_outline_angle_deg=float(getattr(entry, "white_outline_angle_deg", 0.0) or 0.0),
     )
 

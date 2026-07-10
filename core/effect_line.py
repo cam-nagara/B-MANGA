@@ -70,16 +70,12 @@ _LEGACY_BASE_SHAPE_TO_EFFECT_SHAPE = {
     "polygon": "octagon",
 }
 
-EFFECT_PARAM_SCHEMA_VERSION = 16
+EFFECT_PARAM_SCHEMA_VERSION = 17
 _LEGACY_DEFAULT_MAX_LINE_COUNT = 300
 _DEFAULT_MAX_LINE_COUNT = 1000
 _LEGACY_DEFAULT_SPEED_LINE_COUNT = 20
 _DEFAULT_SPEED_LINE_COUNT = 300
-# 入り始点の既定が 0% だと「入り (%)」を変えても見た目が変わらない
-# (入り区間の長さがゼロ) ため、既定で始点から 50% を入り区間にして
-# 「入り%」を動かせばすぐ効く状態にする。既定の入り% は 100 なので
-# 既存・新規とも見た目は変わらない。
-_DEFAULT_IN_START_PERCENT = 50.0
+_DEFAULT_IN_START_PERCENT = 0.0
 _DEFAULT_OUT_START_PERCENT = 100.0
 
 EFFECT_PARAM_FIELDS = line_effect_schema.EFFECT_PARAM_FIELDS
@@ -237,6 +233,14 @@ def effect_params_from_dict(params, data: dict) -> None:
         data["speed_line_count"] = _DEFAULT_SPEED_LINE_COUNT
     if schema_version < EFFECT_PARAM_SCHEMA_VERSION:
         data.setdefault("spacing_density_compensation", True)
+        if schema_version < 17:
+            data.setdefault("white_outline_black_in_percent", 100.0)
+            data.setdefault("white_outline_black_out_percent", 100.0)
+            data.setdefault("white_outline_black_inout_range_mode", "percent")
+            data.setdefault("white_outline_black_in_range_percent", 100.0)
+            data.setdefault("white_outline_black_out_range_percent", 100.0)
+            data.setdefault("white_outline_black_in_range_mm", 10.0)
+            data.setdefault("white_outline_black_out_range_mm", 10.0)
         if schema_version < 8:
             if "in_start_percent" not in data and "in_range_percent" in data:
                 data["in_start_percent"] = data["in_range_percent"]
@@ -418,6 +422,13 @@ class BMangaEffectLineParams(bpy.types.PropertyGroup):
     white_outline_black_length_scale_near_percent: FloatProperty(name="黒線長さ変化 (内側)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_length_scale_far_percent: FloatProperty(name="黒線長さ変化 (外側)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_attenuation: FloatProperty(name="黒線減衰", default=0.0, min=-100.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_black_in_percent: FloatProperty(name="黒線入り (%)", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_black_out_percent: FloatProperty(name="黒線抜き (%)", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_black_inout_range_mode: EnumProperty(name="黒線入り抜き範囲", items=_INOUT_RANGE_MODE_ITEMS, default="percent", update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_black_in_range_percent: FloatProperty(name="黒線入り範囲 (%)", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_black_out_range_percent: FloatProperty(name="黒線抜き範囲 (%)", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_black_in_range_mm: FloatProperty(name="黒線入り範囲 (mm)", default=10.0, min=0.0, soft_max=200.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_black_out_range_mm: FloatProperty(name="黒線抜き範囲 (mm)", default=10.0, min=0.0, soft_max=200.0, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_angle_deg: FloatProperty(name="角度", default=0.0, update=_on_params_changed)  # type: ignore[valid-type]
 
 

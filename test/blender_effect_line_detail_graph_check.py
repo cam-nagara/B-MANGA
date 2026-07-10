@@ -202,12 +202,36 @@ def _assert_detail_layout(layer_detail_op, effect_line_op, context, scene, obj) 
     assert "white_outline_count" in layout.props_by_column.get("col1", ()), (
         "白抜き線の基本設定が線列に分割されていません"
     )
-    assert "white_outline_white_ratio_percent" in layout.props_by_column.get("col2", ()), (
+    assert "white_outline_white_ratio_percent" in layout.props_by_column.get("col3", ()), (
         "白線設定が別列に分割されていません"
     )
-    assert "white_outline_black_direction" in layout.props_by_column.get("col3", ()), (
+    assert "white_outline_black_direction" in layout.props_by_column.get("col2", ()), (
         "黒線設定が別列に分割されていません"
     )
+    for prop_name in (
+        "white_outline_black_in_percent",
+        "white_outline_black_out_percent",
+        "white_outline_black_inout_range_mode",
+        "white_outline_black_in_range_percent",
+        "white_outline_black_out_range_percent",
+    ):
+        assert prop_name in layout.props_by_column.get("col2", ()), (
+            f"黒線入り抜き設定が黒線列にありません: {prop_name}"
+        )
+    _set_params_silently(
+        scene,
+        effect_line_op,
+        lambda params: setattr(params, "white_outline_black_inout_range_mode", "length"),
+    )
+    layout = _Layout()
+    layer_detail_op._draw_effect_detail(layout, context, obj, load_from_layer=False)
+    for prop_name in (
+        "white_outline_black_in_range_mm",
+        "white_outline_black_out_range_mm",
+    ):
+        assert prop_name in layout.props_by_column.get("col2", ()), (
+            f"黒線入り抜きの長さ設定が黒線列にありません: {prop_name}"
+        )
     assert "line_image_source" in layout.props_by_column.get("col4", ()), (
         "パス線設定が独立列に分割されていません"
     )

@@ -238,6 +238,13 @@ EFFECT_WHITE_OUTLINE_FIELDS = (
     "white_outline_black_length_scale_near_percent",
     "white_outline_black_length_scale_far_percent",
     "white_outline_black_attenuation",
+    "white_outline_black_in_percent",
+    "white_outline_black_out_percent",
+    "white_outline_black_inout_range_mode",
+    "white_outline_black_in_range_percent",
+    "white_outline_black_out_range_percent",
+    "white_outline_black_in_range_mm",
+    "white_outline_black_out_range_mm",
     "white_outline_angle_deg",
 )
 
@@ -281,6 +288,13 @@ BALLOON_UNI_FLASH_PARAM_FIELDS = (
     "white_outline_black_length_scale_near_percent",
     "white_outline_black_length_scale_far_percent",
     "white_outline_black_attenuation",
+    "white_outline_black_in_percent",
+    "white_outline_black_out_percent",
+    "white_outline_black_inout_range_mode",
+    "white_outline_black_in_range_percent",
+    "white_outline_black_out_range_percent",
+    "white_outline_black_in_range_mm",
+    "white_outline_black_out_range_mm",
 )
 
 EFFECT_LINKED_SHAPE_FIELDS = frozenset(
@@ -319,5 +333,12 @@ EFFECT_LINKED_SHAPE_FIELDS = frozenset(
         "white_outline_black_length_scale_near_percent",
         "white_outline_black_length_scale_far_percent",
         "white_outline_black_attenuation",
+        "white_outline_black_in_percent",
+        "white_outline_black_out_percent",
+        "white_outline_black_inout_range_mode",
+        "white_outline_black_in_range_percent",
+        "white_outline_black_out_range_percent",
+        "white_outline_black_in_range_mm",
+        "white_outline_black_out_range_mm",
     )
 )

@@ -46,7 +46,7 @@ def _point_at_length(
     )
 
 
-def _band_specs(params, count: int, base_width: float, base_length: float, rng: random.Random) -> list[tuple[float, float]]:
+def _band_specs(params, count: int, base_width: float, rng: random.Random) -> list[tuple[float, float]]:
     specs: list[tuple[float, float]] = []
     for _index in range(count):
         width = _value_between_min_percent(
@@ -55,13 +55,13 @@ def _band_specs(params, count: int, base_width: float, base_length: float, rng: 
             bool(getattr(params, "white_outline_width_jitter_enabled", False)),
             rng,
         )
-        length = _value_between_min_percent(
-            base_length,
+        length_scale = _value_between_min_percent(
+            1.0,
             float(getattr(params, "white_outline_length_min_percent", 50.0)),
             bool(getattr(params, "white_outline_length_jitter_enabled", False)),
             rng,
         )
-        specs.append((width, length))
+        specs.append((width, length_scale))
     return specs
 
 
@@ -371,7 +371,7 @@ def _append_band(
     start_extend_mm: float,
     *,
     band_width: float,
-    band_length: float,
+    band_length_scale: float,
     white_ratio: float,
     white_brush: float,
     black_brush: float,
@@ -407,7 +407,7 @@ def _append_band(
             end_xy,
             offset_from_center=abs(offset),
             band_half=white_half,
-            band_length=band_length,
+            band_length=_distance(start_xy, end_xy) * band_length_scale,
             brush_mm=white_brush,
             end_brush_mm=0.0,
             attenuation=float(getattr(params, "white_outline_white_attenuation", 0.0)),
@@ -455,11 +455,18 @@ def _append_band(
             end_xy,
             offset_from_center=max(0.0, abs(offset) - white_half),
             band_half=max(0.005, band_half - white_half),
-            band_length=band_length * length_factor,
+            band_length=_distance(start_xy, end_xy) * band_length_scale * length_factor,
             brush_mm=effective_brush,
             end_brush_mm=effective_brush,
             attenuation=float(getattr(params, "white_outline_black_attenuation", 0.0)),
             role="white_outline_black",
+            in_percent=float(getattr(params, "white_outline_black_in_percent", 100.0)),
+            out_percent=float(getattr(params, "white_outline_black_out_percent", 100.0)),
+            range_mode=str(getattr(params, "white_outline_black_inout_range_mode", "percent") or "percent"),
+            in_range_percent=float(getattr(params, "white_outline_black_in_range_percent", 100.0)),
+            out_range_percent=float(getattr(params, "white_outline_black_out_range_percent", 100.0)),
+            in_range_mm=float(getattr(params, "white_outline_black_in_range_mm", 10.0)),
+            out_range_mm=float(getattr(params, "white_outline_black_out_range_mm", 10.0)),
         )
 
 
@@ -492,12 +499,11 @@ def generate_white_outline_strokes(
         start_extend = max(0.0, float(start_extend_mm))
     end_rect = effect_line_gen._scaled_rect(shape_center_xy_mm[0], shape_center_xy_mm[1], radius_x_mm, radius_y_mm, 1.0)
     end_outline = effect_line_gen._shape_outline(params, "end", end_rect, shape_center_xy_mm, seed=seed + 23)
-    base_length = max(0.1, math.hypot(float(radius_x_mm) * 2.0, float(radius_y_mm) * 2.0))
-    bands = _band_specs(params, count, base_width, base_length, rng)
+    bands = _band_specs(params, count, base_width, rng)
     out = []
 
     base_angle = math.radians(float(getattr(params, "white_outline_angle_deg", 0.0)))
-    for index, (band_width, band_length) in enumerate(bands):
+    for index, (band_width, band_length_scale) in enumerate(bands):
         angle = base_angle + (2.0 * math.pi * index) / max(1, count)
         _append_band(
             out,
@@ -512,7 +518,7 @@ def generate_white_outline_strokes(
             angle,
             start_extend,
             band_width=band_width,
-            band_length=band_length,
+            band_length_scale=band_length_scale,
             white_ratio=white_ratio,
             white_brush=white_brush,
             black_brush=black_brush,

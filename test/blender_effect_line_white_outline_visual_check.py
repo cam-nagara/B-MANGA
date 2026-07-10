@@ -13,6 +13,7 @@ import bpy
 ROOT = Path(__file__).resolve().parents[1]
 OUT_PATH = ROOT / "_verify" / "effect_line_white_outline_after.png"
 REFERENCE_PATH = ROOT / "_verify" / "effect_line_white_outline_reference_like.png"
+COMA_FRAME_PATH = ROOT / "_verify" / "effect_line_white_outline_coma_frame_after.png"
 
 
 def _load_addon():
@@ -87,6 +88,13 @@ def _white_outline_params() -> SimpleNamespace:
         white_outline_black_length_scale_near_percent=100.0,
         white_outline_black_length_scale_far_percent=82.0,
         white_outline_black_attenuation=-8.0,
+        white_outline_black_in_percent=30.0,
+        white_outline_black_out_percent=10.0,
+        white_outline_black_inout_range_mode="percent",
+        white_outline_black_in_range_percent=25.0,
+        white_outline_black_out_range_percent=35.0,
+        white_outline_black_in_range_mm=10.0,
+        white_outline_black_out_range_mm=10.0,
         white_outline_angle_deg=90.0,
     )
 
@@ -137,6 +145,13 @@ def _assert_white_outline_strokes(strokes, center: tuple[float, float]) -> None:
         start, end = points[0], points[-1]
         if math.dist(start[:2], center) <= math.dist(end[:2], center):
             raise AssertionError(f"白線が中心へ向かっていません: {index}")
+    for index, stroke in enumerate(black):
+        points = list(getattr(stroke, "points_xyz", []) or [])
+        radii = list(getattr(stroke, "radii", None) or [])
+        if len(points) < 4 or len(radii) != len(points):
+            raise AssertionError(f"黒線の入り抜き点と線幅点の数が一致しません: {index}")
+        if not float(radii[0]) < max(radii) or not float(radii[-1]) < max(radii):
+            raise AssertionError(f"黒線の入り抜きが反映されていません: {index}")
 
 
 def _build_display(effect_line_object, strokes, name: str) -> bpy.types.Object:
@@ -211,6 +226,51 @@ def _render_reference_like(effect_line_gen, effect_line_object) -> None:
     _render_png(REFERENCE_PATH)
 
 
+def _render_coma_frame_reach(effect_line_gen, effect_line_object) -> None:
+    _clear_scene()
+    center_mm = (105.0, 105.0)
+    params = _white_outline_params()
+    params.white_outline_count = 7
+    params.white_outline_angle_deg = 0.0
+    params.white_outline_width_jitter_enabled = False
+    params.white_outline_length_jitter_enabled = False
+    params.white_outline_white_attenuation = -30.0
+    params.white_outline_white_in_percent = 100.0
+    params.white_outline_white_out_percent = 100.0
+    params.white_outline_black_attenuation = 0.0
+    params.white_outline_black_in_percent = 100.0
+    params.white_outline_black_out_percent = 100.0
+    params.white_outline_black_length_scale_near_percent = 100.0
+    params.white_outline_black_length_scale_far_percent = 100.0
+    start_outline = [(15.0, 20.0), (195.0, 20.0), (195.0, 190.0), (15.0, 190.0)]
+    strokes = effect_line_gen.generate_strokes(
+        params,
+        center_xy_mm=center_mm,
+        radius_xy_mm=(30.0, 25.0),
+        seed=17,
+        start_outline_mm=start_outline,
+    )
+    end_rect = effect_line_gen._scaled_rect(center_mm[0], center_mm[1], 30.0, 25.0, 1.0)
+    end_outline = effect_line_gen._shape_outline(params, "end", end_rect, center_mm, seed=40)
+    misses = []
+    for stroke in strokes:
+        role = str(getattr(stroke, "role", "") or "")
+        if role not in {"white_outline_white", "white_outline_black"}:
+            continue
+        points = list(getattr(stroke, "points_xyz", ()) or ())
+        start_mm = (float(points[0][0]) * 1000.0, float(points[0][1]) * 1000.0)
+        actual_mm = (float(points[-1][0]) * 1000.0, float(points[-1][1]) * 1000.0)
+        expected_mm = effect_line_gen._focus_end_point(center_mm, end_outline, start_mm)
+        if math.dist(actual_mm, expected_mm) > 1.0e-4:
+            misses.append((role, actual_mm, expected_mm))
+    if misses:
+        raise AssertionError(f"コマ枠始点の線が終点形状へ届いていません: {misses[:8]}")
+    _build_display(effect_line_object, strokes, "B-MANGA 白抜き線 コマ枠始点")
+    _background_plane()
+    _setup_camera(ortho_scale=0.22)
+    _render_png(COMA_FRAME_PATH)
+
+
 def main() -> None:
     _load_addon()
     from bmanga_dev_white_outline_visual.operators import effect_line_gen
@@ -232,9 +292,10 @@ def main() -> None:
     _setup_camera()
     _render_png(OUT_PATH)
     _render_reference_like(effect_line_gen, effect_line_object)
+    _render_coma_frame_reach(effect_line_gen, effect_line_object)
     print(
         "BMANGA_EFFECT_LINE_WHITE_OUTLINE_VISUAL_OK "
-        f"screenshot={OUT_PATH} reference={REFERENCE_PATH}",
+        f"screenshot={OUT_PATH} reference={REFERENCE_PATH} coma_frame={COMA_FRAME_PATH}",
         flush=True,
     )
 

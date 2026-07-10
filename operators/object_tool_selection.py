@@ -25,7 +25,7 @@ from ..utils.geom import Rect
 from ..utils.layer_hierarchy import OUTSIDE_STACK_KEY
 from . import effect_line_op
 
-SELECTION_HANDLE_OUTSET_MM = 3.0
+SELECTION_HANDLE_OUTSET_MM = object_selection.SELECTION_HANDLE_OUTSET_MM
 
 
 def coma_identity(panel) -> str:

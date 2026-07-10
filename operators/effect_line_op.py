@@ -1114,35 +1114,41 @@ def _effect_hit_part(
     *,
     center_xy_mm: tuple[float, float] | None = None,
     allow_center: bool = True,
+    handle_outset_mm: float = 0.0,
 ) -> str:
     x, y, w, h = bounds
     left, bottom, right, top = x, y, x + w, y + h
+    outset = max(0.0, float(handle_outset_mm))
+    handle_left = left - outset
+    handle_bottom = bottom - outset
+    handle_right = right + outset
+    handle_top = top + outset
     threshold = min(_EFFECT_HANDLE_HIT_MM, max(0.35, min(w, h) * 0.25))
-    in_expanded_bounds = (
-        left - threshold <= x_mm <= right + threshold
-        and bottom - threshold <= y_mm <= top + threshold
+    in_handle_bounds = (
+        handle_left - threshold <= x_mm <= handle_right + threshold
+        and handle_bottom - threshold <= y_mm <= handle_top + threshold
     )
-    near_left = abs(x_mm - left) <= threshold
-    near_right = abs(x_mm - right) <= threshold
-    near_bottom = abs(y_mm - bottom) <= threshold
-    near_top = abs(y_mm - top) <= threshold
-    inside_x = left <= x_mm <= right
-    inside_y = bottom <= y_mm <= top
-    if in_expanded_bounds and near_left and near_top:
+    near_left = abs(x_mm - handle_left) <= threshold
+    near_right = abs(x_mm - handle_right) <= threshold
+    near_bottom = abs(y_mm - handle_bottom) <= threshold
+    near_top = abs(y_mm - handle_top) <= threshold
+    inside_handle_x = handle_left <= x_mm <= handle_right
+    inside_handle_y = handle_bottom <= y_mm <= handle_top
+    if in_handle_bounds and near_left and near_top:
         return "top_left"
-    if in_expanded_bounds and near_right and near_top:
+    if in_handle_bounds and near_right and near_top:
         return "top_right"
-    if in_expanded_bounds and near_left and near_bottom:
+    if in_handle_bounds and near_left and near_bottom:
         return "bottom_left"
-    if in_expanded_bounds and near_right and near_bottom:
+    if in_handle_bounds and near_right and near_bottom:
         return "bottom_right"
-    if in_expanded_bounds and near_left and inside_y:
+    if in_handle_bounds and near_left and inside_handle_y:
         return "left"
-    if in_expanded_bounds and near_right and inside_y:
+    if in_handle_bounds and near_right and inside_handle_y:
         return "right"
-    if in_expanded_bounds and near_top and inside_x:
+    if in_handle_bounds and near_top and inside_handle_x:
         return "top"
-    if in_expanded_bounds and near_bottom and inside_x:
+    if in_handle_bounds and near_bottom and inside_handle_x:
         return "bottom"
     # 「中心ズラし」ハンドルは中心十字が見えている (= 選択中) 時だけ掴む。
     # 未選択の効果線で見えない中心を拾うと、内側ドラッグのつもりが
@@ -1152,9 +1158,7 @@ def _effect_hit_part(
         cx, cy = center_xy_mm if center_xy_mm is not None else (left + w * 0.5, bottom + h * 0.5)
         if math.hypot(float(x_mm) - float(cx), float(y_mm) - float(cy)) <= center_threshold:
             return "center"
-    if not in_expanded_bounds:
-        return ""
-    if inside_x and inside_y:
+    if left <= x_mm <= right and bottom <= y_mm <= top:
         return "body"
     return ""
 
@@ -1308,13 +1312,26 @@ def _hit_effect_layer(context, x_mm: float, y_mm: float):
             bounds = effect_layer_bounds(obj, layer)
             if bounds is None:
                 continue
+            layer_key = object_selection.effect_key(layer)
+            selected_for_handles = layer_key in object_selection.get_keys(context)
+            scene = getattr(context, "scene", None)
+            if scene is not None and not selected_for_handles:
+                selected_for_handles = (
+                    str(getattr(scene, "bmanga_active_layer_kind", "") or "") == "effect"
+                    and str(getattr(scene, "bmanga_active_effect_layer_name", "") or "")
+                    == layer_stack_utils._node_stack_key(layer)
+                )
             part = _effect_hit_part(
                 bounds,
                 local_x,
                 local_y,
                 center_xy_mm=effect_layer_center(obj, layer, bounds),
-                allow_center=object_selection.effect_key(layer)
-                in object_selection.get_keys(context),
+                allow_center=selected_for_handles,
+                handle_outset_mm=(
+                    object_selection.SELECTION_HANDLE_OUTSET_MM
+                    if selected_for_handles
+                    else 0.0
+                ),
             )
             if not part:
                 part = _layer_stroke_hit_part(layer, local_x, local_y)

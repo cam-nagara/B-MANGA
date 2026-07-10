@@ -117,6 +117,20 @@ def test_white_outline_ui_maps_stay_in_shared_field_contract():
     assert not (balloon_ui_fields & set(schema.EFFECT_PATH_IMAGE_FIELDS))
     assert "white_outline_white_brush_mm" not in balloon_ui_fields
     assert "white_outline_white_inout_range_mode" not in balloon_ui_fields
+    black_inout_fields = {
+        "white_outline_black_in_percent",
+        "white_outline_black_out_percent",
+        "white_outline_black_inout_range_mode",
+        "white_outline_black_in_range_percent",
+        "white_outline_black_out_range_percent",
+        "white_outline_black_in_range_mm",
+        "white_outline_black_out_range_mm",
+    }
+    assert black_inout_fields <= effect_ui_fields
+    assert black_inout_fields <= balloon_ui_fields
+    assert black_inout_fields <= set(schema.EFFECT_WHITE_OUTLINE_FIELDS)
+    assert black_inout_fields <= set(schema.BALLOON_UNI_FLASH_PARAM_FIELDS)
+    assert black_inout_fields <= set(schema.EFFECT_LINKED_SHAPE_FIELDS)
     for field in (
         "white_outline_angle_deg",
         "white_outline_white_line_count_auto",
