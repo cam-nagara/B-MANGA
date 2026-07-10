@@ -1,5 +1,10 @@
 # B-MANGA Liner: ポリゴンスープ資産のライン前処理 修正計画書（2026-07-09）
 
+> **廃止（2026-07-11 / B-MANGA Liner v0.3.196）**
+> 距離ウェルドと法線再計算は、UV・素材面・意図的な境界を破壊し得るため撤去した。
+> 現在は、ライン反映と独立した「購入素材メッシュ最適化」を使用する。
+> 詳細: [`bml_purchased_mesh_optimizer_plan_2026-07-11.md`](bml_purchased_mesh_optimizer_plan_2026-07-11.md)
+
 ## 背景（2026-07-09 調査セッションの結論）
 
 tokyo0004 (`D:\TM Dropbox\Share\Assets\Japanese Streetscape Tokyo 0004\Japanese_Streetscape_Tokyo_0004.blend`) での実機テストで、v0.3.163（誤カリング修正）・v0.3.164（境界チューブのSolidify反転打ち消し）適用後も、輪郭カバレッジ92.8%（正解=オブジェクトIDレンダリングの輪郭、計測: `_verify/2026-07-09_tokyo0004_outline_coverage/run_coverage_check.py`）で頭打ちになる。

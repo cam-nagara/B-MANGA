@@ -668,7 +668,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     limit_uniform_width_to_setting: BoolProperty(default=False)
     use_rim: BoolProperty(default=False)
     hide_through_transparent: BoolProperty(default=False)
-    weld_mesh_for_outline: BoolProperty(default=True)
+    weld_mesh_for_outline: BoolProperty(default=False)
 
     inner_line_enabled: BoolProperty(default=False)
     inner_line_angle: FloatProperty(default=1.0471975512, min=0.0174532925, max=3.1415926536)

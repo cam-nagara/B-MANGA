@@ -616,6 +616,20 @@ def _on_sheet_exclusion_changed(self, context):
 
 
 def _on_auto_subdivision_changed(self, context):
+    owner = self.id_data
+    if (
+        owner.type == "MESH"
+        and bool(getattr(self, "auto_subdivision_for_midpoint", False))
+    ):
+        from . import mesh_optimizer
+
+        if mesh_optimizer.is_optimized(owner):
+            _set_bool_setting_without_update(
+                owner,
+                "auto_subdivision_for_midpoint",
+                False,
+            )
+            return
     if _propagating:
         return
     _defer_line_setting(self, context, "auto_subdivision_for_midpoint")
@@ -1495,12 +1509,9 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     weld_mesh_for_outline: BoolProperty(
         name="メッシュを線用に補正（ウェルド＋法線）",
         description=(
-            "頂点が面ごとに分割されたポリゴンスープ（購入アセット等）で、"
-            "アウトライン適用前に距離ウェルドと法線再計算を行い、"
-            "細い柱状部分の線欠落や法線混在面の黒塗りを防ぐ"
-            "（表面の陰影・UVが変わる場合あり）"
+            "旧ファイル互換用の設定です。現在は購入素材メッシュ最適化を使用します"
         ),
-        default=True,
+        default=False,
         update=_on_weld_mesh_changed,
     )  # type: ignore[valid-type]
 
