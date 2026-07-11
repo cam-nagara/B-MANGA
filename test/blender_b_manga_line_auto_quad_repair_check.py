@@ -214,6 +214,104 @@ def _conflicting_duplicate_mesh(name: str) -> bpy.types.Object:
     return obj
 
 
+def _mixed_duplicate_surface(name: str) -> bpy.types.Object:
+    mesh = bpy.data.meshes.new(f"{name}_Mesh")
+    mesh.from_pydata(
+        (
+            (-1.0, -1.0, 0.0),
+            (1.0, -1.0, 0.0),
+            (1.0, 1.0, 0.0),
+            (-1.0, 1.0, 0.0),
+        ),
+        [],
+        ((0, 1, 2, 3), (0, 1, 2), (0, 2, 3)),
+    )
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.scene.collection.objects.link(obj)
+    return obj
+
+
+def _collinear_ngon(name: str) -> bpy.types.Object:
+    mesh = bpy.data.meshes.new(f"{name}_Mesh")
+    mesh.from_pydata(
+        (
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+            (2.0, 0.0, 0.0),
+            (3.0, 1.0, 0.0),
+            (2.0, 2.0, 0.0),
+            (1.0, 2.0, 0.0),
+            (0.0, 1.0, 0.0),
+        ),
+        [],
+        ((0, 1, 2, 3, 4, 5, 6),),
+    )
+    mesh.materials.append(_material(f"{name}_Material", (0.3, 0.6, 0.8, 1.0)))
+    uv = mesh.uv_layers.new(name="UVMap")
+    for loop in mesh.loops:
+        coordinate = mesh.vertices[loop.vertex_index].co
+        uv.data[loop.index].uv = (coordinate.x / 3.0, coordinate.y / 2.0)
+    mesh.normals_split_custom_set([(0.0, 0.0, 1.0)] * len(mesh.loops))
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.scene.collection.objects.link(obj)
+    return obj
+
+
+def _plain_open_quad(name: str) -> bpy.types.Object:
+    mesh = bpy.data.meshes.new(f"{name}_Mesh")
+    mesh.from_pydata(
+        ((-1.0, -1.0, 0.0), (1.0, -1.0, 0.0), (1.0, 1.0, 0.0), (-1.0, 1.0, 0.0)),
+        [],
+        ((0, 1, 2, 3),),
+    )
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.scene.collection.objects.link(obj)
+    return obj
+
+
+def _attributed_open_quad(name: str) -> bpy.types.Object:
+    obj = _plain_open_quad(name)
+    mesh = obj.data
+    mesh.materials.append(_material(f"{name}_Material", (0.2, 0.7, 0.4, 1.0)))
+    uv = mesh.uv_layers.new(name="UVMap")
+    for loop in mesh.loops:
+        coordinate = mesh.vertices[loop.vertex_index].co
+        uv.data[loop.index].uv = (
+            coordinate.x * 0.5 + 0.5,
+            coordinate.y * 0.5 + 0.5,
+        )
+    mesh.normals_split_custom_set([(0.0, 0.0, 1.0)] * len(mesh.loops))
+    return obj
+
+
+def _closed_plain_quad_cube(name: str) -> bpy.types.Object:
+    mesh = bpy.data.meshes.new(f"{name}_Mesh")
+    mesh.from_pydata(
+        (
+            (-1.0, -1.0, -1.0),
+            (1.0, -1.0, -1.0),
+            (1.0, 1.0, -1.0),
+            (-1.0, 1.0, -1.0),
+            (-1.0, -1.0, 1.0),
+            (1.0, -1.0, 1.0),
+            (1.0, 1.0, 1.0),
+            (-1.0, 1.0, 1.0),
+        ),
+        [],
+        (
+            (0, 3, 2, 1),
+            (4, 5, 6, 7),
+            (0, 1, 5, 4),
+            (1, 2, 6, 5),
+            (2, 3, 7, 6),
+            (3, 0, 4, 7),
+        ),
+    )
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.scene.collection.objects.link(obj)
+    return obj
+
+
 def _closed_triangle_sphere(name: str) -> bpy.types.Object:
     bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=1.0)
     obj = bpy.context.object
@@ -463,6 +561,16 @@ def _assert_open_nonmanifold_rejection() -> None:
     bpy.data.objects.remove(obj, do_unlink=True)
 
 
+def _assert_mixed_duplicate_rejection() -> None:
+    obj = _mixed_duplicate_surface("MixedDuplicate")
+    original = obj.data
+    _select_only(obj)
+    _run_expected_cancel()
+    assert obj.data == original
+    assert "重複面" in bpy.context.scene.bmanga_line_quad_repair_error
+    bpy.data.objects.remove(obj, do_unlink=True)
+
+
 def _assert_locked_rejection() -> None:
     obj = _triangulated_open_cylinder("LockedQuad")
     obj.bmanga_line_settings.settings_locked = True
@@ -492,6 +600,141 @@ def _assert_closed_reconstruction() -> None:
     assert obj.data.has_custom_normals
     assert "強力修復 0件" in bpy.context.scene.bmanga_line_quad_repair_result
     bpy.data.objects.remove(obj, do_unlink=True)
+
+
+def _assert_collinear_ngon_repair(geometry) -> None:
+    obj = _collinear_ngon("CollinearNgon")
+    stats = geometry.QuadRepairStats()
+    cleaned, boundary, non_manifold = geometry._sanitize_candidate(obj.data, stats)
+    try:
+        assert len(cleaned.polygons) == 1
+        assert len(cleaned.polygons[0].vertices) == 7
+        assert boundary == 7 and non_manifold == 0
+    finally:
+        bpy.data.meshes.remove(cleaned)
+    _select_only(obj)
+    assert bpy.ops.bmanga_line.auto_repair_quad_mesh("EXEC_DEFAULT") == {"FINISHED"}
+    _assert_quad_mesh(obj)
+    assert len(obj.data.polygons) == 7
+    assert min(polygon.area for polygon in obj.data.polygons) > 1.0e-6
+    assert obj.data.uv_layers.get("UVMap") is not None
+    assert obj.data.has_custom_normals
+    bpy.data.objects.remove(obj, do_unlink=True)
+
+
+def _assert_plain_open_quad_repair() -> None:
+    obj = _plain_open_quad("PlainOpenQuad")
+    _select_only(obj)
+    assert bpy.ops.bmanga_line.auto_repair_quad_mesh("EXEC_DEFAULT") == {"FINISHED"}
+    _assert_quad_mesh(obj)
+    assert len(obj.data.polygons) == 1
+    assert len(obj.data.uv_layers) == 0
+    bpy.data.objects.remove(obj, do_unlink=True)
+
+
+def _assert_attributed_open_quad_preserved(geometry) -> None:
+    obj = _attributed_open_quad("AttributedOpenQuad")
+    candidate = geometry.build_candidate(
+        bpy.context,
+        obj,
+        geometry.options_for_quality("STANDARD"),
+    )
+    try:
+        assert candidate.stats.used_local_quadrangulation
+        assert candidate.stats.output_faces == 1
+        assert candidate.mesh.uv_layers.get("UVMap") is not None
+        assert candidate.mesh.has_custom_normals
+    finally:
+        bpy.data.meshes.remove(candidate.mesh)
+    close_candidate = geometry.build_candidate(
+        bpy.context,
+        obj,
+        geometry.options_for_quality("CLOSE"),
+    )
+    try:
+        assert close_candidate.stats.output_faces == 16
+        assert close_candidate.mesh.uv_layers.get("UVMap") is not None
+        assert close_candidate.mesh.has_custom_normals
+    finally:
+        bpy.data.meshes.remove(close_candidate.mesh)
+        bpy.data.objects.remove(obj, do_unlink=True)
+
+
+def _assert_closed_plain_quads_preserved(geometry) -> None:
+    obj = _closed_plain_quad_cube("ClosedPlainQuad")
+    candidate = geometry.build_candidate(
+        bpy.context,
+        obj,
+        geometry.options_for_quality("STANDARD"),
+    )
+    try:
+        assert candidate.stats.used_local_quadrangulation
+        assert not candidate.stats.used_voxel_repair
+        assert candidate.stats.output_faces == 6
+        assert all(len(polygon.vertices) == 4 for polygon in candidate.mesh.polygons)
+    finally:
+        bpy.data.meshes.remove(candidate.mesh)
+        bpy.data.objects.remove(obj, do_unlink=True)
+
+
+def _assert_direct_transfer_matches_generic(geometry, transfer) -> None:
+    obj = _triangulated_open_cylinder("TransferParity")
+    stats = geometry.QuadRepairStats()
+    cleaned, boundary, _non_manifold = geometry._sanitize_candidate(obj.data, stats)
+    options = geometry.options_for_quality("STANDARD")
+    fast = geometry._run_local_quadrangulation(
+        bpy.context,
+        obj,
+        cleaned,
+        options,
+        allow_triangle_join=False,
+        max_attribute_loops=geometry._ATTRIBUTE_LOOP_LIMIT,
+    )
+    generic = geometry._run_local_quadrangulation(
+        bpy.context,
+        obj,
+        cleaned,
+        options,
+        allow_triangle_join=False,
+        max_attribute_loops=geometry._ATTRIBUTE_LOOP_LIMIT,
+    )
+    try:
+        transfer.transfer_local_triangle_data(cleaned, fast, bool(boundary))
+        transfer.transfer_surface_data(cleaned, generic, bool(boundary))
+        assert [p.material_index for p in fast.polygons] == [
+            p.material_index for p in generic.polygons
+        ]
+        assert len(fast.vertices) == len(generic.vertices)
+        assert max(
+            (first.co - second.co).length
+            for first, second in zip(fast.vertices, generic.vertices, strict=True)
+        ) < 1.0e-5
+        for layer_name in ("UVMap", "UVDetail"):
+            fast_uv = fast.uv_layers[layer_name].data
+            generic_uv = generic.uv_layers[layer_name].data
+            assert max(
+                (first.uv - second.uv).length
+                for first, second in zip(fast_uv, generic_uv, strict=True)
+            ) < 1.0e-4
+        fast_colors = fast.color_attributes["SurfaceTint"].data
+        generic_colors = generic.color_attributes["SurfaceTint"].data
+        assert max(
+            max(abs(a - b) for a, b in zip(first.color, second.color, strict=True))
+            for first, second in zip(fast_colors, generic_colors, strict=True)
+        ) < 1.0e-4
+        assert min(
+            first.vector.dot(second.vector)
+            for first, second in zip(
+                fast.corner_normals,
+                generic.corner_normals,
+                strict=True,
+            )
+        ) > 0.999
+    finally:
+        bpy.data.meshes.remove(fast)
+        bpy.data.meshes.remove(generic)
+        bpy.data.meshes.remove(cleaned)
+        bpy.data.objects.remove(obj, do_unlink=True)
 
 
 def _assert_plain_reconstruction(geometry) -> None:
@@ -586,11 +829,20 @@ def main() -> None:
             _assert_close_density(addon.mesh_optimizer)
             _assert_concentric_boundaries()
             _assert_closed_reconstruction()
+            _assert_collinear_ngon_repair(addon.mesh_quad_repair_geometry)
+            _assert_plain_open_quad_repair()
+            _assert_attributed_open_quad_preserved(addon.mesh_quad_repair_geometry)
+            _assert_closed_plain_quads_preserved(addon.mesh_quad_repair_geometry)
+            _assert_direct_transfer_matches_generic(
+                addon.mesh_quad_repair_geometry,
+                addon.mesh_quad_repair_transfer,
+            )
             _assert_plain_reconstruction(addon.mesh_quad_repair_geometry)
             _assert_manual_crease_reconstruction(addon.mesh_quad_repair_geometry)
             strong = _assert_strong_repair()
             _assert_attribute_nonmanifold_rejection()
             _assert_conflicting_duplicate_rejection()
+            _assert_mixed_duplicate_rejection()
             _assert_open_nonmanifold_rejection()
             _assert_locked_rejection()
             _assert_atomic_rejection()

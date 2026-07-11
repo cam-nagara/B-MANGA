@@ -572,6 +572,143 @@ def _copy_custom_properties(source, candidate):
             continue
 
 
+def _direct_triangle_samples(source, candidate):
+    faces_per_source = 3
+    expected_faces = len(source.polygons) * faces_per_source
+    if any(len(polygon.vertices) != 3 for polygon in source.polygons):
+        raise SurfaceTransferError("局所転送元が三角面だけではありません")
+    if len(candidate.polygons) != expected_faces:
+        raise SurfaceTransferError("局所四角面と元三角面の対応数が一致しません")
+    loop_samples = [None] * len(candidate.loops)
+    point_samples = [None] * len(candidate.vertices)
+    for polygon in candidate.polygons:
+        source_index = int(polygon.index) // faces_per_source
+        source_polygon = source.polygons[source_index]
+        points = [source.vertices[index].co for index in source_polygon.vertices]
+        for loop_index in polygon.loop_indices:
+            vertex_index = int(candidate.loops[loop_index].vertex_index)
+            weights = _barycentric(candidate.vertices[vertex_index].co, *points)
+            sample = (source_index, weights)
+            loop_samples[loop_index] = sample
+            if point_samples[vertex_index] is None:
+                point_samples[vertex_index] = sample
+    if any(sample is None for sample in loop_samples + point_samples):
+        raise SurfaceTransferError("局所四角面の属性対応を構築できません")
+    return loop_samples, point_samples
+
+
+def _direct_sample_vector(source, data, domain, sample, field):
+    polygon_index, weights = sample
+    polygon = source.polygons[polygon_index]
+    indices = polygon.loop_indices if domain == "CORNER" else polygon.vertices
+    values = [Vector(getattr(data[index], field)) for index in indices]
+    return _interpolate(values, weights)
+
+
+def _replace_direct_attributes(source, candidate, loop_samples, point_samples):
+    candidate.materials.clear()
+    for material in source.materials:
+        candidate.materials.append(material)
+    for polygon in candidate.polygons:
+        source_polygon = source.polygons[int(polygon.index) // 3]
+        polygon.material_index = int(source_polygon.material_index)
+        polygon.use_smooth = bool(source_polygon.use_smooth)
+    for layer in list(candidate.uv_layers):
+        candidate.uv_layers.remove(layer)
+    for source_layer in source.uv_layers:
+        target_layer = candidate.uv_layers.new(name=source_layer.name, do_init=False)
+        for item, sample in zip(target_layer.data, loop_samples, strict=True):
+            item.uv = _direct_sample_vector(
+                source, source_layer.data, "CORNER", sample, "uv"
+            )
+        target_layer.active_render = bool(source_layer.active_render)
+    if source.uv_layers:
+        candidate.uv_layers.active_index = min(
+            int(source.uv_layers.active_index), len(candidate.uv_layers) - 1
+        )
+    for attribute in list(candidate.color_attributes):
+        candidate.color_attributes.remove(attribute)
+    for source_attr in source.color_attributes:
+        target_attr = candidate.color_attributes.new(
+            name=source_attr.name,
+            type=source_attr.data_type,
+            domain=source_attr.domain,
+        )
+        samples = loop_samples if source_attr.domain == "CORNER" else point_samples
+        for item, sample in zip(target_attr.data, samples, strict=True):
+            item.color = _direct_sample_vector(
+                source, source_attr.data, source_attr.domain, sample, "color"
+            )
+
+
+def _copy_split_edge_features(source, candidate):
+    source_crease = source.attributes.get("crease_edge")
+    target_crease = None
+    if source_crease is not None and source_crease.domain == "EDGE":
+        target_crease = candidate.attributes.get("crease_edge")
+        if target_crease is None:
+            target_crease = candidate.attributes.new("crease_edge", "FLOAT", "EDGE")
+    target_edges = {
+        tuple(sorted((int(edge.vertices[0]), int(edge.vertices[1])))): edge
+        for edge in candidate.edges
+    }
+    midpoint_start = len(source.vertices)
+    for source_edge in source.edges:
+        midpoint = midpoint_start + int(source_edge.index)
+        crease_value = (
+            float(source_crease.data[source_edge.index].value)
+            if target_crease is not None
+            else 0.0
+        )
+        for endpoint in source_edge.vertices:
+            target_edge = target_edges.get(tuple(sorted((int(endpoint), midpoint))))
+            if target_edge is None:
+                raise SurfaceTransferError("分割した元辺の対応を取得できません")
+            target_edge.use_seam = bool(source_edge.use_seam)
+            target_edge.use_edge_sharp = bool(source_edge.use_edge_sharp)
+            if target_crease is not None:
+                target_crease.data[target_edge.index].value = crease_value
+
+
+def _copy_original_vertex_creases(source, candidate):
+    source_crease = source.attributes.get("crease_vert")
+    if source_crease is None or source_crease.domain != "POINT":
+        return
+    target_crease = candidate.attributes.get("crease_vert")
+    if target_crease is None:
+        target_crease = candidate.attributes.new("crease_vert", "FLOAT", "POINT")
+    for vertex in source.vertices:
+        target_crease.data[vertex.index].value = float(
+            source_crease.data[vertex.index].value
+        )
+
+
+def transfer_local_triangle_data(source, candidate, preserve_boundaries):
+    """局所分割の既知対応を使い、最近傍探索なしで表示属性を転送する."""
+
+    loop_samples, point_samples = _direct_triangle_samples(source, candidate)
+    _replace_direct_attributes(source, candidate, loop_samples, point_samples)
+    _copy_split_edge_features(source, candidate)
+    _copy_original_vertex_creases(source, candidate)
+    if preserve_boundaries:
+        _protect_boundaries(candidate)
+    candidate.update()
+    if source.has_custom_normals:
+        normals = []
+        for sample in loop_samples:
+            normal = _direct_sample_vector(
+                source, source.corner_normals, "CORNER", sample, "vector"
+            )
+            if normal.length_squared <= 1.0e-20:
+                normal = Vector((0.0, 0.0, 1.0))
+            else:
+                normal.normalize()
+            normals.append(tuple(normal))
+        candidate.normals_split_custom_set(normals)
+    _copy_custom_properties(source, candidate)
+    candidate.update()
+
+
 def transfer_surface_data(source, candidate, preserve_boundaries):
     """形状を再投影し、材質・UV・カラー・分割法線を元表面から転送する."""
 

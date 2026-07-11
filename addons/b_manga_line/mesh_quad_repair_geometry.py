@@ -14,6 +14,7 @@ from mathutils.bvhtree import BVHTree
 from .mesh_quad_repair_transfer import (
     SurfaceTransferError,
     mark_catmull_features,
+    transfer_local_triangle_data,
     transfer_surface_data,
 )
 
@@ -125,17 +126,23 @@ def _coordinate_key(co: Vector, distance: float) -> tuple[int, int, int]:
     return tuple(int(round(float(value) / distance)) for value in co)
 
 
-def _triangle_area(positions, face) -> float:
-    p0, p1, p2 = (positions[index] for index in face)
-    return (p1 - p0).cross(p2 - p0).length * 0.5
+def _face_area(positions, face) -> float:
+    area_vector = Vector((0.0, 0.0, 0.0))
+    origin = positions[face[0]]
+    for index, vertex in enumerate(face):
+        following = face[(index + 1) % len(face)]
+        current_offset = positions[vertex] - origin
+        following_offset = positions[following] - origin
+        area_vector += current_offset.cross(following_offset)
+    return area_vector.length * 0.5
 
 
-def _orient_triangle_data(faces, loop_sources) -> bool:
+def _orient_face_data(faces, loop_sources) -> bool:
     occurrences: dict[tuple[int, int], list[tuple[int, bool]]] = {}
     for face_index, face in enumerate(faces):
-        for index in range(3):
+        for index in range(len(face)):
             v0 = face[index]
-            v1 = face[(index + 1) % 3]
+            v1 = face[(index + 1) % len(face)]
             pair = tuple(sorted((v0, v1)))
             occurrences.setdefault(pair, []).append((face_index, v0 < v1))
     if any(len(items) > 2 for items in occurrences.values()):
@@ -166,10 +173,8 @@ def _orient_triangle_data(faces, loop_sources) -> bool:
                 queue.append(neighbor)
     for index, should_flip in flips.items():
         if should_flip:
-            v0, v1, v2 = faces[index]
-            l0, l1, l2 = loop_sources[index]
-            faces[index] = (v0, v2, v1)
-            loop_sources[index] = (l0, l2, l1)
+            faces[index] = tuple(reversed(faces[index]))
+            loop_sources[index] = tuple(reversed(loop_sources[index]))
     return True
 
 
@@ -182,7 +187,7 @@ def _copy_sanitized_attributes(
 ) -> None:
     for material in source.materials:
         target.materials.append(material)
-    flat_loop_sources = [loop for triangle in loop_sources for loop in triangle]
+    flat_loop_sources = [loop for face in loop_sources for loop in face]
     for polygon, source_index in zip(target.polygons, polygon_sources, strict=True):
         source_polygon = source.polygons[source_index]
         polygon.material_index = int(source_polygon.material_index)
@@ -266,7 +271,7 @@ def _rounded_values(values):
     return tuple(round(float(value), 10) for value in values)
 
 
-def _triangle_display_signature(source, face, loop_indices, polygon_index):
+def _face_display_signature(source, face, loop_indices, polygon_index):
     polygon = source.polygons[polygon_index]
     corners = []
     for output_vertex, loop_index in zip(face, loop_indices, strict=True):
@@ -298,8 +303,49 @@ def _triangle_display_signature(source, face, loop_indices, polygon_index):
     )
 
 
-def _sanitize_candidate(source, stats: QuadRepairStats) -> tuple[bpy.types.Mesh, int, int]:
+def _reject_overlapping_retained_faces(
+    source,
+    positions,
+    source_to_output,
+    retained_polygon_indices,
+    area_epsilon,
+) -> None:
     source.calc_loop_triangles()
+    retained = set(retained_polygon_indices)
+    seen: dict[tuple[int, int, int], tuple[int, tuple[int, ...], tuple[int, ...]]] = {}
+    for triangle in source.loop_triangles:
+        polygon_index = int(triangle.polygon_index)
+        if polygon_index not in retained:
+            continue
+        face = tuple(source_to_output[int(index)] for index in triangle.vertices)
+        if len(set(face)) != 3 or _face_area(positions, face) <= area_epsilon:
+            continue
+        loops = tuple(int(index) for index in triangle.loops)
+        key = tuple(sorted(face))
+        previous = seen.get(key)
+        if previous is None:
+            seen[key] = (polygon_index, face, loops)
+            continue
+        previous_polygon, previous_face, previous_loops = previous
+        if previous_polygon == polygon_index:
+            continue
+        previous_signature = _face_display_signature(
+            source,
+            previous_face,
+            previous_loops,
+            previous_polygon,
+        )
+        signature = _face_display_signature(source, face, loops, polygon_index)
+        if previous_signature != signature:
+            raise QuadRepairError(
+                "重複面に異なるUV・素材・法線があり、残す面を決められません"
+            )
+        raise QuadRepairError(
+            "重複面が異なる面構成にまたがり、残す面を決められません"
+        )
+
+
+def _sanitize_candidate(source, stats: QuadRepairStats) -> tuple[bpy.types.Mesh, int, int]:
     diagonal = max(_mesh_diagonal(source), 1.0e-9)
     weld_distance = max(1.0e-9, diagonal * 1.0e-8)
     area_epsilon = max(1.0e-16, diagonal * diagonal * 1.0e-14)
@@ -318,38 +364,67 @@ def _sanitize_candidate(source, stats: QuadRepairStats) -> tuple[bpy.types.Mesh,
         source_to_output[vertex.index] = output_index
     stats.welded_vertices = len(source.vertices) - len(positions)
 
-    faces: list[tuple[int, int, int]] = []
+    faces: list[tuple[int, ...]] = []
     polygon_sources: list[int] = []
-    loop_sources: list[tuple[int, int, int]] = []
-    seen: dict[tuple[int, int, int], tuple] = {}
-    for triangle in source.loop_triangles:
-        face = tuple(source_to_output[int(index)] for index in triangle.vertices)
-        if len(set(face)) != 3 or _triangle_area(positions, face) <= area_epsilon:
+    loop_sources: list[tuple[int, ...]] = []
+    seen: dict[tuple[int, ...], tuple[int, tuple[int, ...], tuple[int, ...]]] = {}
+    for polygon in source.polygons:
+        mapped = [source_to_output[int(index)] for index in polygon.vertices]
+        source_loops = [int(index) for index in polygon.loop_indices]
+        face = []
+        face_loops = []
+        for vertex, loop_index in zip(mapped, source_loops, strict=True):
+            if face and vertex == face[-1]:
+                continue
+            face.append(vertex)
+            face_loops.append(loop_index)
+        if len(face) > 1 and face[0] == face[-1]:
+            face.pop()
+            face_loops.pop()
+        if len(face) < 3 or len(set(face)) != len(face):
             stats.removed_faces += 1
             continue
-        key = tuple(sorted(face))
-        loop_indices = tuple(int(index) for index in triangle.loops)
-        signature = _triangle_display_signature(
-            source,
-            face,
-            loop_indices,
-            int(triangle.polygon_index),
-        )
+        face_tuple = tuple(face)
+        loop_tuple = tuple(face_loops)
+        if _face_area(positions, face_tuple) <= area_epsilon:
+            stats.removed_faces += 1
+            continue
+        key = tuple(sorted(face_tuple))
         previous = seen.get(key)
         if previous is not None:
-            if previous != signature:
+            previous_polygon, previous_face, previous_loops = previous
+            previous_signature = _face_display_signature(
+                source,
+                previous_face,
+                previous_loops,
+                previous_polygon,
+            )
+            signature = _face_display_signature(
+                source,
+                face_tuple,
+                loop_tuple,
+                int(polygon.index),
+            )
+            if previous_signature != signature:
                 raise QuadRepairError(
                     "重複面に異なるUV・素材・法線があり、残す面を決められません"
                 )
             stats.removed_faces += 1
             continue
-        seen[key] = signature
-        faces.append(face)
-        polygon_sources.append(int(triangle.polygon_index))
-        loop_sources.append(loop_indices)
+        seen[key] = (int(polygon.index), face_tuple, loop_tuple)
+        faces.append(face_tuple)
+        polygon_sources.append(int(polygon.index))
+        loop_sources.append(loop_tuple)
     if not faces:
         raise QuadRepairError("修復後に有効な面が残りません")
-    oriented = _orient_triangle_data(faces, loop_sources)
+    _reject_overlapping_retained_faces(
+        source,
+        positions,
+        source_to_output,
+        polygon_sources,
+        area_epsilon,
+    )
+    oriented = _orient_face_data(faces, loop_sources)
     used_vertices = {index for face in faces for index in face}
     stats.removed_loose_elements = len(positions) - len(used_vertices)
     ordered_vertices = sorted(used_vertices)
@@ -507,6 +582,9 @@ def _run_local_quadrangulation(
     max_attribute_loops=None,
 ):
     working = cleaned.copy()
+    already_quads = all(len(polygon.vertices) == 4 for polygon in working.polygons)
+    if already_quads and options.quality != "CLOSE":
+        return working
 
     if not allow_triangle_join:
         output_faces = sum(len(polygon.vertices) for polygon in working.polygons)
@@ -569,8 +647,7 @@ def _run_local_quadrangulation(
         _remove_mesh(working)
         raise
     if result is None:
-        _remove_mesh(working)
-        return None
+        result = cleaned.copy()
     all_quads = all(len(polygon.vertices) == 4 for polygon in result.polygons)
     if all_quads and options.quality != "CLOSE":
         return result
@@ -871,6 +948,14 @@ def build_candidate(context, obj, options: QuadRepairOptions) -> QuadRepairCandi
     try:
         cleaned, boundary, non_manifold = _sanitize_candidate(source, stats)
         attribute_sensitive = _requires_local_quadrangulation(source)
+        cleaned_all_quads = all(
+            len(polygon.vertices) == 4 for polygon in cleaned.polygons
+        )
+        direct_triangle_transfer = bool(
+            attribute_sensitive
+            and options.quality == "STANDARD"
+            and all(len(polygon.vertices) == 3 for polygon in cleaned.polygons)
+        )
         if non_manifold and boundary:
             raise QuadRepairError(
                 "非多様体と開口部が併存するため、穴を塞がずに自動修復できません"
@@ -879,7 +964,13 @@ def build_candidate(context, obj, options: QuadRepairOptions) -> QuadRepairCandi
             raise QuadRepairError(
                 "非多様体の強力修復ではUV・素材・法線を安全に保持できません"
             )
-        use_local = bool(boundary) or attribute_sensitive
+        use_local = bool(boundary) or attribute_sensitive or cleaned_all_quads
+        reuse_cleaned_quads = bool(
+            non_manifold == 0
+            and use_local
+            and cleaned_all_quads
+            and options.quality == "STANDARD"
+        )
         if non_manifold == 0 and use_local:
             stats.used_local_quadrangulation = True
             candidate = _run_local_quadrangulation(
@@ -911,7 +1002,12 @@ def build_candidate(context, obj, options: QuadRepairOptions) -> QuadRepairCandi
                 f"UV・材質を安全に転送できる上限の{_ATTRIBUTE_LOOP_LIMIT:,}ループを超えます"
             )
         try:
-            transfer_surface_data(cleaned, candidate, preserve_boundaries)
+            if reuse_cleaned_quads:
+                pass
+            elif direct_triangle_transfer:
+                transfer_local_triangle_data(cleaned, candidate, preserve_boundaries)
+            else:
+                transfer_surface_data(cleaned, candidate, preserve_boundaries)
         except SurfaceTransferError as exc:
             raise QuadRepairError(str(exc)) from exc
         _validate_candidate(
