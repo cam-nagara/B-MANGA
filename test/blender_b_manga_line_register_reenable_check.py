@@ -48,6 +48,7 @@ def _assert_registered() -> None:
         "BMANGA_LINE_PT_line_settings",
         "BMANGA_LINE_PT_camera",
         "BMANGA_LINE_PT_mesh_optimizer",
+        "BMANGA_LINE_PT_auto_repair_quad_mesh",
     )
     for name in panels:
         panel = getattr(bpy.types, name, None)
@@ -72,6 +73,9 @@ def _assert_registered() -> None:
         "bmanga_line_mesh_optimize_quality",
         "bmanga_line_mesh_optimize_result",
         "bmanga_line_mesh_optimize_error",
+        "bmanga_line_quad_repair_quality",
+        "bmanga_line_quad_repair_result",
+        "bmanga_line_quad_repair_error",
     ):
         options = getattr(scene_props[prop_name], "options", None)
         if options is not None:
@@ -87,6 +91,7 @@ def _assert_unregistered() -> None:
     assert getattr(bpy.types.Object, "bmanga_line_settings", None) is None
     assert getattr(bpy.types.Scene, "bmanga_line_camera", None) is None
     assert getattr(bpy.types.Scene, "bmanga_line_mesh_optimize_quality", None) is None
+    assert getattr(bpy.types.Scene, "bmanga_line_quad_repair_quality", None) is None
 
 
 class _CaptureLayout:
@@ -141,7 +146,12 @@ class _FakeTimers:
 
 
 def _assert_panels_draw_items() -> None:
-    from b_manga_line_reenable_check import core, mesh_optimizer, panels
+    from b_manga_line_reenable_check import (
+        core,
+        mesh_optimizer,
+        mesh_quad_repair,
+        panels,
+    )
 
     props = core.BMangaLineSettings.bl_rna.properties
     assert props["use_camera_compensation"].name == "線幅の均一化（オブジェクト単位）"
@@ -165,6 +175,7 @@ def _assert_panels_draw_items() -> None:
         panels.BMANGA_LINE_PT_line_settings,
         panels.BMANGA_LINE_PT_camera,
         mesh_optimizer.BMANGA_LINE_PT_mesh_optimizer,
+        mesh_quad_repair.BMANGA_LINE_PT_auto_repair_quad_mesh,
     ):
         assert panel_cls.poll(bpy.context) if hasattr(panel_cls, "poll") else True
         panel_cls.draw(dummy, bpy.context)
@@ -209,7 +220,9 @@ def _assert_panels_draw_items() -> None:
         assert old_panel not in dir(panels), f"{old_panel} が残っています"
     assert "bmanga_line.detail_settings" in records["operators"]
     assert "bmanga_line.optimize_purchased_mesh" in records["operators"]
+    assert "bmanga_line.auto_repair_quad_mesh" in records["operators"]
     assert "bmanga_line_mesh_optimize_quality" in records["props"]
+    assert "bmanga_line_quad_repair_quality" in records["props"]
     bool_props = [
         prop.identifier
         for prop in props

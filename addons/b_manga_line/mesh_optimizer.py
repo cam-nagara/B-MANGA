@@ -12,6 +12,7 @@ from . import registration
 from .mesh_optimizer_geometry import (
     CandidateResult,
     OptimizeOptions,
+    OptimizeStats,
     UnsafeMeshError,
     build_candidate,
     validate_source_object,
@@ -107,12 +108,20 @@ def _discard_prepared(prepared: list[_Prepared]) -> None:
 
 
 def _prepare(objects, options, *, progress=None, max_batch_faces=6_000_000):
+    from . import core
+
     prepared: list[_Prepared] = []
     unchanged = 0
     output_faces = 0
     try:
         for index, obj in enumerate(objects):
             try:
+                if core.is_settings_locked(obj):
+                    raise UnsafeMeshError("ライン設定のロックを解除してください")
+                if str(obj.get(OPTIMIZED_QUALITY_PROP, "")).startswith("QUAD_"):
+                    raise UnsafeMeshError(
+                        "問題メッシュ自動修復・四角面化済みのため、この最適化は実行できません"
+                    )
                 validate_source_object(obj)
                 result = build_candidate(
                     obj.data,
@@ -190,7 +199,12 @@ def _restore_commit_state(obj: bpy.types.Object, snapshot: _CommitSnapshot) -> N
     )
 
 
-def _commit(prepared: list[_Prepared], quality: str) -> None:
+def _commit(
+    prepared: list[_Prepared],
+    quality: str,
+    *,
+    mesh_name_suffix: str = "Optimized",
+) -> None:
     assigned: list[_Prepared] = []
     snapshots = {
         item.obj.as_pointer(): _capture_commit_state(item.obj)
@@ -226,7 +240,36 @@ def _commit(prepared: list[_Prepared], quality: str) -> None:
             bpy.data.meshes.remove(old_mesh)
         for index, item in enumerate(users):
             suffix = "" if len(users) == 1 else f"_{index + 1}"
-            item.obj.data.name = f"{old_name}_Optimized{suffix}"
+            item.obj.data.name = f"{old_name}_{mesh_name_suffix}{suffix}"
+
+
+def commit_candidate_meshes(
+    assignments,
+    quality: str,
+    *,
+    mesh_name_suffix: str = "Optimized",
+) -> None:
+    """別の安全な候補生成機能でも同じ原子確定処理を共有する."""
+    prepared = []
+    for obj, old_mesh, candidate_mesh in assignments:
+        stats = OptimizeStats(
+            source_vertices=len(old_mesh.vertices),
+            source_faces=len(old_mesh.polygons),
+            output_vertices=len(candidate_mesh.vertices),
+            output_faces=len(candidate_mesh.polygons),
+        )
+        prepared.append(
+            _Prepared(
+                obj,
+                old_mesh,
+                CandidateResult(candidate_mesh, stats),
+            )
+        )
+    _commit(
+        prepared,
+        quality,
+        mesh_name_suffix=mesh_name_suffix,
+    )
 
 
 def _summary(prepared: list[_Prepared], unchanged: int) -> str:

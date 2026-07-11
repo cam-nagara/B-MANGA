@@ -58,6 +58,7 @@
 - **(完了 / 2026-06-28 Codex, v0.6.398〜v0.6.400)** フキダシ / NURBSフキダシ / 効果線の入口・線設定統合。フキダシツールとNURBSフキダシツールを画面上は統合し、NURBSフキダシをフキダシツールの「なめらか自由形状」プリセットとして扱うようにした。画像パス、効果線、フキダシ線の共有選択肢と保存対象を共通定義へ集約し、効果線とフキダシの白抜き線設定UIを共通部品化した。既存のNURBSフキダシ操作は互換用として維持。詳細: [`docs/balloon_effect_tool_unification_plan_2026-06-28.md`](docs/balloon_effect_tool_unification_plan_2026-06-28.md)
 - **(完了 / 2026-07-10 Codex, v0.6.476 / B-MANGA Liner v0.3.194)** B-MANGA Linerの「中間頂点用ライン細分化」を全面ライン殻から基準カメラ輪郭の曲線化へ変更。元メッシュ成分を完全に維持し、浅い連続角だけを滑らかに補間し、鋭角・端点・分岐を保持する。生成ラインは別インスタンスとして出力し、ワイヤー表示や後段のメッシュ評価へ混入させない。詳細: [`docs/bml_line_local_subdivision_plan_2026-07-10.md`](docs/bml_line_local_subdivision_plan_2026-07-10.md)
 - **(完了 / 2026-07-11 Codex, B-MANGA Liner v0.3.196)** 購入素材の表示メッシュ自体を法線誘導で滑らかにし、同じ確定メッシュから全線種を生成する「購入素材メッシュ最適化」を追加。永続バックアップを残さず、候補検証後に一括確定する。詳細: [`docs/bml_purchased_mesh_optimizer_plan_2026-07-11.md`](docs/bml_purchased_mesh_optimizer_plan_2026-07-11.md)
+- **(完了 / 2026-07-11 Codex, B-MANGA Liner v0.3.197)** 三角面・重複面・ゼロ面積面・孤立要素・閉じた純形状の非多様体を候補上で修復し、UV・素材・分割法線・開口輪郭・手動クリースを保ったCatmull-Clark向け全面四角形へ一括確定する「問題メッシュ自動修復・四角面化」を追加。危険な対象は全件未変更で中止する。詳細: [`docs/bml_auto_quad_repair_plan_2026-07-11.md`](docs/bml_auto_quad_repair_plan_2026-07-11.md)
 
 ### 2.2 直近のバグ修正トピック (2026-05-01 まで)
 

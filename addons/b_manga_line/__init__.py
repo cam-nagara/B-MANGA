@@ -5,7 +5,7 @@ from __future__ import annotations
 bl_info = {
     "name": "B-MANGA Liner",
     "author": "B-MANGA Project",
-    "version": (0, 3, 196),
+    "version": (0, 3, 197),
     "blender": (4, 3, 0),
     "description": "背面法（反転ハル）によるマンガ風アウトライン",
     "category": "Render",
@@ -22,6 +22,7 @@ from . import edge_width_curve
 from . import intersection_lines
 from . import subdivision_lod
 from . import mesh_optimizer
+from . import mesh_quad_repair
 from . import operators
 from . import presets
 from . import panels
@@ -37,6 +38,7 @@ _MODULES = (
     edge_width_curve,
     subdivision_lod,
     mesh_optimizer,
+    mesh_quad_repair,
     operators,
     presets,
     panels,
