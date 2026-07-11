@@ -739,16 +739,25 @@ def _draw_shared_layers(work) -> None:
         _draw_polyline_loop(poly, viewport_colors.PAPER_GUIDE, line_width=2.0, width_mm=0.5)
 
     proxy = _SharedLayerProxy(work)
-    overlay_text.draw_text_guides(
-        proxy,
-        context=bpy.context,
-        ox_mm=0.0,
-        oy_mm=0.0,
-        active=getattr(bpy.context.scene, "bmanga_active_layer_kind", "") == "text",
-        entry_visible=lambda entry: bool(getattr(entry, "visible", True)),
-        draw_rect_fill=_draw_rect_fill,
-        draw_rect_outline=_draw_rect_outline,
-    )
+    # テキストガイド (枠線・キャレット等) は常に最前面に見せたいため、
+    # このブロックのみ depth_test を無効化する (overlay_paper_guide.draw_for_page
+    # と同じパターン)。無効化しないと Z>0 のフキダシメッシュに枠線が
+    # depth test で隠されてしまう。
+    prev_depth = gpu.state.depth_test_get()
+    gpu.state.depth_test_set("NONE")
+    try:
+        overlay_text.draw_text_guides(
+            proxy,
+            context=bpy.context,
+            ox_mm=0.0,
+            oy_mm=0.0,
+            active=getattr(bpy.context.scene, "bmanga_active_layer_kind", "") == "text",
+            entry_visible=lambda entry: bool(getattr(entry, "visible", True)),
+            draw_rect_fill=_draw_rect_fill,
+            draw_rect_outline=_draw_rect_outline,
+        )
+    finally:
+        gpu.state.depth_test_set(prev_depth)
 
 
 def _draw_polygon_fill(pts: list[tuple[float, float]], color) -> None:
@@ -1269,16 +1278,25 @@ def _draw_page_overlay(
                     or str(getattr(active_page, "id", "") or "")
                     == str(getattr(page, "id", "") or "")
                 )
-        overlay_text.draw_text_guides(
-            page,
-            context=context,
-            ox_mm=ox_mm,
-            oy_mm=oy_mm,
-            active=active_text_guides,
-            entry_visible=lambda entry: overlay_visibility.entry_in_visible_coma(page, entry),
-            draw_rect_fill=_draw_rect_fill,
-            draw_rect_outline=_draw_rect_outline,
-        )
+        # テキストガイド (枠線・キャレット等) は常に最前面に見せたいため、
+        # このブロックのみ depth_test を無効化する (overlay_paper_guide.draw_for_page
+        # と同じパターン)。無効化しないと Z>0 のフキダシメッシュに枠線が
+        # depth test で隠されてしまう。
+        prev_depth = gpu.state.depth_test_get()
+        gpu.state.depth_test_set("NONE")
+        try:
+            overlay_text.draw_text_guides(
+                page,
+                context=context,
+                ox_mm=ox_mm,
+                oy_mm=oy_mm,
+                active=active_text_guides,
+                entry_visible=lambda entry: overlay_visibility.entry_in_visible_coma(page, entry),
+                draw_rect_fill=_draw_rect_fill,
+                draw_rect_outline=_draw_rect_outline,
+            )
+        finally:
+            gpu.state.depth_test_set(prev_depth)
 
 
 

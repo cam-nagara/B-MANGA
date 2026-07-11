@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from ..utils import object_selection, viewport_colors
 from ..utils.geom import Rect
 from ..operators import text_edit_runtime
 
@@ -183,8 +182,7 @@ def draw_text_guides(
     texts = getattr(page, "texts", None)
     if texts is None:
         return
-    active_idx = getattr(page, "active_text_index", -1) if active else -1
-    for i, entry in enumerate(texts):
+    for entry in texts:
         if not entry_visible(entry):
             continue
         rect = Rect(entry.x_mm + ox_mm, entry.y_mm + oy_mm, entry.width_mm, entry.height_mm)
@@ -196,8 +194,10 @@ def draw_text_guides(
             draw_rect_fill(rect, (1.0, 1.0, 1.0, 0.55))
         color = (0.2, 0.7, 1.0, 1.0) if entry.parent_balloon_id else (0.95, 0.85, 0.1, 1.0)
         draw_rect_outline(rect, color, width_mm=0.30)
-        if i == active_idx or object_selection.is_text_selected(context, page, entry):
-            draw_rect_outline(rect.inset(-1.0), viewport_colors.SELECTION_STRONG, width_mm=0.50)
+        # 選択時のピンク強調輪郭はここでは描画しない。選択フィードバックは
+        # ハンドル描画側 (ui/overlay.py の _draw_object_tool_layer_bounds) に
+        # 一本化する。ここで重ねて描くと青枠のすぐ外側にピンクの二重輪郭が
+        # 出てしまう。
         if editing_op is not None:
             cursor_index = int(getattr(editing_op, "_cursor_index", 0))
             selection_anchor = int(getattr(editing_op, "_selection_anchor", -1))
