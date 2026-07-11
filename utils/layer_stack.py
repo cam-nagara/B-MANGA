@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from array import array
 
 import bpy
@@ -86,6 +86,10 @@ class LayerTarget:
     label: str
     parent_key: str = ""
     depth: int = 0
+    # 2026-07-12: フキダシ⇔子テキストの紐付けペア用。相手 target の uid
+    # (kind:key 形式) を保持する。紐付けの無い target では空文字のまま。
+    # スタック上の実アイテムには保存しない (収集のたびに再計算する一時情報)。
+    pair_key: str = ""
 
     @property
     def uid(self) -> str:
@@ -650,6 +654,16 @@ def _collect_page_layer_targets(
     for coma_key, children in fill_panel_children.items():
         panel_children.setdefault(coma_key, []).extend(children)
 
+    # 紐付けペア (2026-07-12): テキストとフキダシが balloon.text_id /
+    # text.parent_balloon_id で相互に一致する場合だけ「紐付け」とみなし、
+    # テキストの直後にフキダシを並べ替える。balloon.text_id は単一値のため、
+    # 複数テキストが同じフキダシへ parent_balloon_id を向けていても、相互一致
+    # するテキストは高々1件 (=「最後のテキストの直後に1回だけ」を自然に満たす)。
+    # グループ化フキダシ (merge_group_id 有り) はこの並べ替えの対象外。
+    balloon_text_id_by_bid: dict[str, str] = {}
+    balloon_container_by_bid: dict[str, list] = {}
+    text_pair_anchor: dict[str, str] = {}  # bid -> tid (紐付け確定したペア)
+
     for entry in reversed(list(getattr(page, "balloons", []))):
         bid = _ensure_unique_id(entry, used_balloon, "balloon")
         explicit_parent = _explicit_entry_parent(entry, page, panels_by_key)
@@ -684,10 +698,10 @@ def _collect_page_layer_targets(
             continue
         label = getattr(entry, "title", "") or _jp_layer_label("balloon", bid)
         target = LayerTarget("balloon", f"{page_key}:{bid}", label, parent, depth)
-        if depth == 2:
-            panel_children.setdefault(parent, []).append(target)
-        else:
-            page_children.append(target)
+        container = panel_children.setdefault(parent, []) if depth == 2 else page_children
+        container.append(target)
+        balloon_text_id_by_bid[bid] = str(getattr(entry, "text_id", "") or "")
+        balloon_container_by_bid[bid] = container
 
     for group_key, group_target in balloon_groups.items():
         if len(balloon_group_parents.get(group_key, set())) > 1:
@@ -731,10 +745,38 @@ def _collect_page_layer_targets(
                 parent = page_key
                 depth = 1
         target = LayerTarget("text", f"{page_key}:{tid}", label, parent, depth)
-        if depth == 2:
-            panel_children.setdefault(parent, []).append(target)
-        else:
-            page_children.append(target)
+        container = panel_children.setdefault(parent, []) if depth == 2 else page_children
+        container.append(target)
+        # 紐付けペア (2026-07-12): balloon.text_id がこのテキストを指し、かつ
+        # 同じコンテナ (同じ親) に属する場合だけ、紐付け対象として扱う。
+        pbid = str(getattr(entry, "parent_balloon_id", "") or "")
+        if (
+            pbid
+            and balloon_text_id_by_bid.get(pbid) == tid
+            and balloon_container_by_bid.get(pbid) is container
+        ):
+            balloon_uid = target_uid("balloon", f"{page_key}:{pbid}")
+            text_uid = target_uid("text", f"{page_key}:{tid}")
+            b_idx = next((i for i, t in enumerate(container) if t.uid == balloon_uid), -1)
+            if b_idx >= 0:
+                container[b_idx] = replace(container[b_idx], pair_key=text_uid)
+                container[-1] = replace(container[-1], pair_key=balloon_uid)
+                text_pair_anchor[pbid] = tid
+
+    # 紐付け確定ペアを、コンテナ内でテキストの直後にフキダシが来るよう並べ替える。
+    # 紐付けの無いフキダシは触らない (従来の相対位置を維持)。
+    for bid, tid in text_pair_anchor.items():
+        container = balloon_container_by_bid.get(bid)
+        if container is None:
+            continue
+        balloon_uid = target_uid("balloon", f"{page_key}:{bid}")
+        text_uid = target_uid("text", f"{page_key}:{tid}")
+        b_idx = next((i for i, t in enumerate(container) if t.uid == balloon_uid), -1)
+        if b_idx < 0:
+            continue
+        balloon_target = container.pop(b_idx)
+        t_idx = next((i for i, t in enumerate(container) if t.uid == text_uid), len(container))
+        container.insert(t_idx + 1, balloon_target)
 
     for coma_key in panels_by_key:
         targets.extend(panel_children.get(coma_key, []))
@@ -992,6 +1034,19 @@ def _set_item_from_target(item, target: LayerTarget) -> None:
 def _find_insert_index_for_target(stack, target: LayerTarget) -> int:
     if target.kind == OUTSIDE_KIND:
         return 0
+    # 紐付けペア (2026-07-12): 増分同期で紐付き相手が既にスタックへ載っている
+    # 場合、汎用の「親の直後」規則より優先してペア隣接位置へ挿入する。
+    # (同一バッチでテキスト→フキダシの順に処理される場合、テキストは先に
+    # スタックへ入っているため、フキダシ側のこの分岐で正しく直後へ入る)
+    if target.pair_key:
+        if target.kind == "balloon":
+            for i, item in enumerate(stack):
+                if stack_item_uid(item) == target.pair_key:
+                    return i + 1
+        elif target.kind == "text":
+            for i, item in enumerate(stack):
+                if stack_item_uid(item) == target.pair_key:
+                    return i
     if target.parent_key:
         parent_idx = -1
         last_child_idx = -1
@@ -1694,6 +1749,41 @@ def sync_layer_stack_after_data_change(
         tag_view3d_redraw(context)
     except Exception:  # noqa: BLE001
         _logger.exception("layer stack sync after data change failed")
+
+
+def normalize_paired_layer_order(context, pairs) -> None:
+    """指定した (page_key, balloon_id, text_id) の組について、レイヤー
+    スタック上でテキストの直後にフキダシが来るよう強制する (2026-07-12)。
+
+    Meldex取込などで新規作成した紐付けペアの最終保証として呼び出す想定。
+    既存の (今回新規作成していない) ペアは呼び出し側で ``pairs`` に含めない
+    こと — このヘルパー自体は渡された組を無条件に並べ替える。
+    """
+    scene = getattr(context, "scene", None)
+    stack = getattr(scene, "bmanga_layer_stack", None) if scene is not None else None
+    if stack is None or not pairs:
+        return
+    changed = False
+    for page_key, balloon_id, text_id in pairs:
+        balloon_id = str(balloon_id or "")
+        text_id = str(text_id or "")
+        if not balloon_id or not text_id:
+            continue
+        balloon_uid = target_uid("balloon", f"{page_key}:{balloon_id}")
+        text_uid = target_uid("text", f"{page_key}:{text_id}")
+        balloon_idx = _find_stack_index_by_uid(stack, balloon_uid)
+        text_idx = _find_stack_index_by_uid(stack, text_uid)
+        if balloon_idx < 0 or text_idx < 0:
+            continue
+        if text_idx == balloon_idx - 1:
+            continue
+        if text_idx > balloon_idx:
+            stack.move(text_idx, balloon_idx)
+        else:
+            stack.move(balloon_idx, text_idx + 1)
+        changed = True
+    if changed:
+        _remember_stack_signature(context)
 
 
 def schedule_layer_stack_draw_maintenance(context) -> bool:

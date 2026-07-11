@@ -69,7 +69,14 @@ def main() -> None:
         assert not work.pages[2].detail_loaded, "追加ページの詳細は保存後に解放する"
         from bmanga_dev_meldex_import.utils import page_detail
         page_detail.ensure_page_detail(work, work.pages[2])
-        assert [len(page.comas) for page in work.pages] == [1, 0, 0]
+        # 2026-07-12: 取込で追加した不足ページには、通常のページ追加と同じ
+        # 基本枠コマを1個自動生成する。既存ページ (0, 1) は変更しない。
+        assert [len(page.comas) for page in work.pages] == [1, 0, 1]
+        added_coma = work.pages[2].comas[0]
+        assert added_coma.shape_type == "rect"
+        p = work.paper
+        assert abs(float(added_coma.rect_width_mm) - float(p.inner_frame_width_mm)) < 1.0e-6
+        assert abs(float(added_coma.rect_height_mm) - float(p.inner_frame_height_mm)) < 1.0e-6
         assert any(item.id == "manual-balloon" for item in work.pages[0].balloons)
         imported = [item for item in work.pages[0].balloons if item.meldex_source_row_id]
         assert imported[0].shape == "custom" and imported[0].custom_preset_name == "会話"

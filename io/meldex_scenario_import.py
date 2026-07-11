@@ -40,6 +40,9 @@ def import_document(context, work, document: ScenarioDocument) -> dict[str, int]
     balloon_by_name = {p.name: p for p in balloon_presets.list_all_presets(work_dir)}
     text_by_name = {p.name: p for p in text_presets.list_all_presets(work_dir)}
     result = {"pagesAdded": added_pages, "created": 0, "updated": 0, "ignored": 0}
+    # 今回の取込で新規作成した (フキダシ, テキスト) ペアだけを記録する。
+    # 既存ペア (更新のみ) は含めない — 手動で並び替えた順序を尊重するため。
+    new_pairs: list[tuple[str, str, str]] = []
     with ExitStack() as stack:
         stack.enter_context(balloon_curve_object.defer_auto_sync())
         stack.enter_context(text_real_object.suspend_auto_sync())
@@ -47,11 +50,12 @@ def import_document(context, work, document: ScenarioDocument) -> dict[str, int]
             page = work.pages[page_index]
             was_loaded = bool(page.detail_loaded) and page.id not in new_page_ids
             page_detail.ensure_page_detail(work, page)
+            page_key = page_stack_key(page)
             for row_index, row in enumerate(source_page.rows):
                 if not row.body:
                     result["ignored"] += 1
                     continue
-                created = _upsert_row(
+                created, balloon_id, text_id = _upsert_row(
                     work,
                     page,
                     document.document_id,
@@ -61,6 +65,8 @@ def import_document(context, work, document: ScenarioDocument) -> dict[str, int]
                     text_by_name.get(row.type_name),
                 )
                 result["created" if created else "updated"] += 1
+                if created:
+                    new_pairs.append((page_key, balloon_id, text_id))
             page.coma_count = len(page.comas)
             page_io.save_page_json(work_dir, page)
             if not was_loaded:
@@ -72,23 +78,36 @@ def import_document(context, work, document: ScenarioDocument) -> dict[str, int]
         work_io.save_work_json(work_dir, work)
         page_grid.apply_page_collection_transforms(context, work)
     layer_stack.sync_layer_stack_after_data_change(context)
+    layer_stack.normalize_paired_layer_order(context, new_pairs)
     _sync_current_page(context, work)
     return result
 
 
 def _ensure_page_count(work, work_dir: Path, required: int) -> tuple[int, set[str]]:
+    """ページ数が required に満たない場合、末尾へ新規ページを追加する.
+
+    2026-07-12 ユーザー指示により、通常のページ追加 (BMANGA_OT_page_add) と
+    同様に基本枠サイズの矩形コマを1個自動生成する。既存ページには一切触れない
+    (このループは len(work.pages) < required の間だけ回るため、対象は今回
+    新規登録したページに限られる)。
+    """
+    from ..operators.coma_op import create_basic_frame_coma
+
     added = 0
     new_ids: set[str] = set()
     while len(work.pages) < required:
         page = page_io.register_new_page(work)
         page_io.ensure_page_dir(work_dir, page.id)
         page_io.save_page_json(work_dir, page)
+        create_basic_frame_coma(work, page, work_dir)
         new_ids.add(page.id)
         added += 1
     return added, new_ids
 
 
-def _upsert_row(work, page, document_id: str, row: ScenarioRow, ordinal: int, balloon_preset, text_preset) -> bool:
+def _upsert_row(
+    work, page, document_id: str, row: ScenarioRow, ordinal: int, balloon_preset, text_preset
+) -> tuple[bool, str, str]:
     balloon = _find_source(page.balloons, document_id, row.row_id)
     text = _find_source(page.texts, document_id, row.row_id)
     balloon_new = balloon is None
@@ -135,7 +154,7 @@ def _upsert_row(work, page, document_id: str, row: ScenarioRow, ordinal: int, ba
         _place_initial_pair(work, page, text, balloon)
     page.active_balloon_index = len(page.balloons) - 1
     page.active_text_index = len(page.texts) - 1
-    return created
+    return created, str(balloon.id), str(text.id)
 
 
 def _find_source(collection, document_id: str, row_id: str):
