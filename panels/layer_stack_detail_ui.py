@@ -856,4 +856,17 @@ def draw_stack_item_detail(layout, context, item, resolved, *, wide: bool = Fals
             box.prop(target, "hide", text="非表示")
         if hasattr(target, "lock"):
             box.prop(target, "lock", text="ロック")
+    _draw_linked_layers_box(box, context, item)
     return True
+
+
+def _draw_linked_layers_box(box, context, item) -> None:
+    """「リンク中のレイヤー」box (相手が無ければ何も描画しない).
+
+    リンク相手の定義はレイヤー一覧のマーク表示 (gpencil_panel の
+    _link_state_icon) と同じ (utils.layer_links.related_uids_for_item)。
+    """
+    from ..utils import layer_display, layer_links
+
+    partner_uids = layer_links.related_uids_for_item(context, item)
+    layer_display.draw_linked_layers_box(box, context, partner_uids)

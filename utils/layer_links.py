@@ -5,9 +5,13 @@ from __future__ import annotations
 import json
 import uuid
 
+from . import layer_hierarchy
+
 
 LINK_PROP = "bmanga_layer_link_groups"
 LINKABLE_KINDS = {"gp", "effect", "raster", "image", "balloon", "text"}
+# テキスト⇔フキダシの紐付けが対応する kind (リンクグループとは別機構)
+_TEXT_BALLOON_KINDS = {"balloon", "text"}
 
 
 def _scene(context):
@@ -271,3 +275,135 @@ def _object_key_for_item(context, item) -> str:
         page = resolved.get("page")
         return object_selection.coma_key(page, target)
     return ""
+
+
+def _balloon_text_partner_uids(context, kind: str, entry, page) -> set[str]:
+    """テキスト⇔フキダシの紐付け相手 uid を返す (同一ページ内のみ対応).
+
+    - テキスト側: ``entry.parent_balloon_id`` が指すフキダシ
+    - フキダシ側: ``entry.text_id`` が指すテキスト、および
+      ``text.parent_balloon_id == entry.id`` となる全テキスト
+    """
+    from . import layer_stack as layer_stack_utils
+
+    if entry is None or page is None:
+        return set()
+    page_key = layer_hierarchy.page_stack_key(page)
+    partners: set[str] = set()
+    if kind == "text":
+        balloon_id = str(getattr(entry, "parent_balloon_id", "") or "")
+        if not balloon_id:
+            return partners
+        for balloon in getattr(page, "balloons", []) or []:
+            if str(getattr(balloon, "id", "") or "") == balloon_id:
+                partners.add(layer_stack_utils.target_uid("balloon", f"{page_key}:{balloon_id}"))
+                break
+    elif kind == "balloon":
+        balloon_id = str(getattr(entry, "id", "") or "")
+        text_id = str(getattr(entry, "text_id", "") or "")
+        for text in getattr(page, "texts", []) or []:
+            tid = str(getattr(text, "id", "") or "")
+            parent_id = str(getattr(text, "parent_balloon_id", "") or "")
+            if (balloon_id and parent_id == balloon_id) or (text_id and tid == text_id):
+                if tid:
+                    partners.add(layer_stack_utils.target_uid("text", f"{page_key}:{tid}"))
+    return partners
+
+
+def _link_group_partners(context, uid: str) -> set[str]:
+    """uid のリンクグループ相手を返す (グループが無い/自分だけなら空集合)."""
+    group = linked_uids_for_uid(context, uid)
+    return set(group) if len(group) > 1 else set()
+
+
+def related_uids_for_target(context, kind: str, entry, page=None) -> set[str]:
+    """kind/entry(/page) が指すレイヤー1件の『リンク相手』 uid 集合を返す (自分は含まない).
+
+    相手は次の2種類の和集合:
+      (a) ``bmanga_layer_link_groups`` の同グループメンバー
+      (b) テキスト⇔フキダシの紐付け相手 (``parent_balloon_id`` / ``text_id``)
+
+    行オブジェクト (``bmanga_layer_stack`` の item) を持たない詳細設定ダイアログ
+    (右クリック版: ``operators.layer_detail_op``) からも呼べるよう、
+    entry ベースで uid を組み立てる。gp/effect はノードキー方式で entry に
+    ``id`` が無く、ここでは uid を再構築できないため対象外
+    (呼び出し側で gp/effect は別の描画経路へ既に分岐済み)。
+    レイヤー一覧側は ``related_uids_for_item`` / ``related_uids_for_selection`` を使う。
+    """
+    from . import layer_stack as layer_stack_utils
+
+    kind = str(kind or "")
+    entry_id = str(getattr(entry, "id", "") or "")
+    if not kind or not entry_id:
+        return set()
+    if kind in _TEXT_BALLOON_KINDS:
+        page_key = layer_hierarchy.OUTSIDE_STACK_KEY if page is None else layer_hierarchy.page_stack_key(page)
+        key = f"{page_key}:{entry_id}"
+    else:
+        key = entry_id
+    uid = layer_stack_utils.target_uid(kind, key)
+    partners: set[str] = set()
+    if kind in LINKABLE_KINDS:
+        partners.update(_link_group_partners(context, uid))
+    if kind in _TEXT_BALLOON_KINDS:
+        partners.update(_balloon_text_partner_uids(context, kind, entry, page))
+    partners.discard(uid)
+    return partners
+
+
+def related_uids_for_item(context, item) -> set[str]:
+    """スタック行 (item) の『リンク相手』 uid 集合を返す (自分は含まない).
+
+    ``item.key`` (= ``stack_item_uid``) は kind ごとの正しい形式で既にスタック
+    同期時に組み立て済みなので (gp/effect のノードキー方式も含む)、
+    ``related_uids_for_target`` のような entry からの uid 再構築はせず、
+    ここでは ``stack_item_uid`` をそのまま使う。
+    """
+    if item is None:
+        return set()
+    from . import layer_stack as layer_stack_utils
+
+    uid = layer_stack_utils.stack_item_uid(item)
+    if not uid:
+        return set()
+    kind = str(getattr(item, "kind", "") or "")
+    partners: set[str] = set()
+    if kind in LINKABLE_KINDS:
+        partners.update(_link_group_partners(context, uid))
+    if kind in _TEXT_BALLOON_KINDS:
+        resolved = layer_stack_utils.resolve_stack_item(context, item)
+        target = resolved.get("target") if resolved is not None else None
+        page = resolved.get("page") if resolved is not None else None
+        if target is not None:
+            partners.update(_balloon_text_partner_uids(context, kind, target, page))
+    partners.discard(uid)
+    return partners
+
+
+def related_uids_for_selection(context, stack=None) -> set[str]:
+    """選択中の全行について『リンク相手あり』の uid 集合を返す (自分自身も含む).
+
+    レイヤー一覧のリンクマーク表示に使う。1行ごとに JSON をパースし直すため
+    毎 draw_item で呼ぶとコストが積み上がる。呼び出し側 (gpencil_panel) で
+    パネル描画につき1回だけ計算してキャッシュし、draw_item はそのキャッシュ
+    を参照するだけにすること。
+    """
+    from . import layer_stack as layer_stack_utils
+
+    if stack is None:
+        scene = _scene(context)
+        stack = getattr(scene, "bmanga_layer_stack", None) if scene is not None else None
+    if stack is None:
+        return set()
+    result: set[str] = set()
+    for item in stack:
+        if not layer_stack_utils.is_item_selected(context, item):
+            continue
+        partners = related_uids_for_item(context, item)
+        if not partners:
+            continue
+        uid = layer_stack_utils.stack_item_uid(item)
+        if uid:
+            result.add(uid)
+        result.update(partners)
+    return result

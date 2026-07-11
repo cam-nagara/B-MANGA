@@ -105,10 +105,12 @@ class BMANGA_OT_layer_stack_link_selected(Operator):
 
     @classmethod
     def poll(cls, context):
-        if layer_links.selected_linkable_count(context) >= 2:
-            return True
-        # リンク済みレイヤーが選択されていれば、1件でも「解除」として押せる
-        return layer_links.selected_any_linked(context)
+        # 2026-07-12 仕様変更: 従来は「linkable選択2件以上 or リンク済み選択あり」
+        # でないとボタンが無効化されアイコンがほぼ見えなくなっていた。1件でも
+        # linkable なレイヤーを選択していればボタン自体は押せるようにし、
+        # 実際にリンクするには2件必要という選択不足の警告は execute() 側の
+        # WARNING report に任せる。
+        return layer_links.selected_linkable_count(context) >= 1
 
     def execute(self, context):
         stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)

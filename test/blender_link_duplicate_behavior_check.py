@@ -179,11 +179,16 @@ def _test_balloon_link_duplicate(page) -> None:
     if _balloon_uid(page, linked) not in linked_uids:
         raise AssertionError("フキダシのリンク複製でリンク状態が作られていません")
     stack = layer_stack_utils.sync_layer_stack(bpy.context, preserve_active_index=True)
+    # 2026-07-12 仕様変更: リンクマークは「選択中レイヤーのリンク相手」にだけ
+    # 付く。リンク複製直後は複製先 (linked) がアクティブ選択されているので、
+    # そのキャッシュを明示的に更新してからマークを読む (通常はパネル描画の
+    # _draw_layer_stack_box が行う)。
+    gpencil_panel._refresh_related_link_uids(bpy.context)
     linked_icons = {}
     for item in stack or []:
         uid = layer_stack_utils.stack_item_uid(item)
         if uid in {_balloon_uid(page, source), _balloon_uid(page, linked)}:
-            linked_icons[uid] = gpencil_panel._link_state_icon(bpy.context, item)
+            linked_icons[uid] = gpencil_panel._link_state_icon(item)
     if linked_icons.get(_balloon_uid(page, source)) != "LINKED" or linked_icons.get(_balloon_uid(page, linked)) != "LINKED":
         raise AssertionError(f"レイヤーリストにリンク状態が表示されません: {linked_icons}")
 

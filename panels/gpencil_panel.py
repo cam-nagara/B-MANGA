@@ -16,6 +16,7 @@ from bpy.types import Panel, UIList
 from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_work
 from ..utils import gpencil as gp_utils
+from ..utils import layer_display
 from ..utils import layer_links
 from ..utils import layer_stack as layer_stack_utils
 from ..utils import layer_stack_visible
@@ -91,22 +92,9 @@ def _indent(row, depth: int) -> None:
 
 
 def _kind_icon(kind: str) -> str:
-    return {
-        "page": "FILE_BLANK",
-        "outside_group": "FILE_FOLDER",
-        "coma": "MOD_WIREFRAME",
-        "coma_preview": "IMAGE_DATA",
-        "gp": "OUTLINER_OB_GREASEPENCIL",
-        "gp_folder": "FILE_FOLDER",
-        "layer_folder": "FILE_FOLDER",
-        "image": "IMAGE_DATA",
-        "raster": "BRUSH_DATA",
-        "fill": "NODE_TEXTURE",
-        "balloon_group": "FILE_FOLDER",
-        "balloon": "MOD_FLUID",
-        "text": "FONT_DATA",
-        "effect": "STROKE",
-    }.get(kind, "RENDERLAYERS")
+    # アイコン対応表の実体は utils.layer_display に移設した (詳細設定ダイアログ
+    # の「リンク中のレイヤー」表示からも共通で使うため)。
+    return layer_display.kind_icon(kind)
 
 
 def _show_stack_item_in_layer_list(item) -> bool:
@@ -343,23 +331,49 @@ def _select_icon_name(row, index: int, text: str, icon: str, item=None, target=N
     _select_name(row, index, text, item=item, target=target)
 
 
-def _link_state_icon(context, item) -> str:
-    if item is None or not layer_links.is_linkable_item(item):
+# 選択中レイヤーの『リンク相手』uid キャッシュ (utils.layer_links.related_uids_for_selection)。
+# draw_item は毎行 JSON をパースしないよう、_draw_layer_stack_box が
+# template_list 呼び出し前にパネル描画ごと1回だけ計算してここへ書き込む。
+_related_link_uids: set[str] = set()
+
+
+def _refresh_related_link_uids(context) -> None:
+    global _related_link_uids
+    try:
+        _related_link_uids = layer_links.related_uids_for_selection(context)
+    except Exception:  # noqa: BLE001
+        _logger.exception("related link uids compute failed")
+        _related_link_uids = set()
+
+
+def _link_state_icon(item) -> str:
+    """``item`` が選択中レイヤーのリンク相手集合に入っていれば ``LINKED`` を返す.
+
+    2026-07-12 仕様変更: 従来は「リンクグループに所属していれば常時表示」
+    だったが、選択と無関係に常時マークが付くと何と何がリンクしているのか
+    分かりにくいため、「選択中レイヤーのリンク相手 (リンクグループの同グループ
+    メンバー、およびテキスト⇔フキダシの紐付け相手) にだけマークを付ける」
+    仕様に置き換えた。相手が実在する行は選択行自身にもマークが付く。
+    """
+    if item is None:
         return ""
     uid = layer_stack_utils.stack_item_uid(item)
-    if not uid:
+    if not uid or uid not in _related_link_uids:
         return ""
-    linked = layer_links.linked_uids_for_uid(context, uid)
-    return "LINKED" if len(linked) > 1 else ""
+    return "LINKED"
 
 
-def _draw_link_state_icon(row, context, item) -> None:
-    icon = _link_state_icon(context, item)
-    if not icon:
-        return
-    cell = row.row(align=True)
-    cell.ui_units_x = 0.9
-    cell.label(text="", icon=icon)
+def _draw_link_state_icon(row, item) -> None:
+    """瞳アイコンの直後・階層インデントの前に固定幅で描画する.
+
+    表示の有無で行の横幅がズレないよう、非表示時も同じ幅の placeholder を
+    描画する (``_draw_square_label`` と同じ考え方)。
+    """
+    icon = _link_state_icon(item)
+    if icon:
+        _draw_square_label(row, icon=icon)
+    else:
+        _draw_square_label(row)
 
 
 def _gp_color_style(layer):
@@ -529,10 +543,12 @@ def _draw_stack_data_row(row, controls, item, resolved, index: int) -> None:
         )
     elif item.kind == "text":
         _draw_type_icon(row, index, "FONT_DATA")
+        # レイヤー一覧では本文が長文だと行が崩れるため、表示だけ7文字に
+        # 切り詰める (データの title/body 自体は変更しない)。
         _select_name(
             row,
             index,
-            getattr(target, "title", "") or getattr(target, "body", "") or item.label,
+            layer_display.text_entry_display_name(target, item.label),
             item=item,
             target=target,
         )
@@ -603,8 +619,8 @@ class BMANGA_UL_layer_stack(UIList):
         resolved = layer_stack_utils.resolve_stack_item(context, item)
         target = resolved.get("target") if resolved is not None else None
         _draw_visibility_slot(row, item, target, index)
+        _draw_link_state_icon(row, item)
         _draw_hierarchy_slot(row, item, target, index)
-        _draw_link_state_icon(row, context, item)
         left = row.row(align=True)
         left.alignment = "LEFT"
         controls = {}
@@ -730,6 +746,9 @@ def _draw_layer_stack_box(layout, context) -> None:
     if stack is None:
         box.label(text="(レイヤーがありません)")
     else:
+        # 選択のリンク相手 uid はここで1回だけ計算してキャッシュする
+        # (draw_item で毎行 JSON をパースしないため)。
+        _refresh_related_link_uids(context)
         layer_area = box.row(align=True)
         visible_stack = getattr(scene, "bmanga_layer_stack_visible", None)
         visible_rows = len(visible_stack) if visible_stack is not None else 0
@@ -802,14 +821,17 @@ def _draw_layer_stack_rows(layout, context, stack) -> None:
     if not entries:
         layout.label(text="(レイヤーがありません)", icon="INFO")
         return
+    # このヘルパーは template_list を経由しないため、_draw_layer_stack_box とは
+    # 別に自前でキャッシュを更新する (関数内で1回だけ計算する分には問題ない)。
+    _refresh_related_link_uids(context)
     for index, item in entries:
         row = layout.row(align=True)
         row.context_pointer_set("bmanga_layer_stack_item", item)
         resolved = layer_stack_utils.resolve_stack_item(context, item)
         target = resolved.get("target") if resolved is not None else None
         _draw_visibility_slot(row, item, target, index)
+        _draw_link_state_icon(row, item)
         _draw_hierarchy_slot(row, item, target, index)
-        _draw_link_state_icon(row, context, item)
         left = row.row(align=True)
         left.alignment = "LEFT"
         controls = {}

@@ -725,6 +725,22 @@ def _draw_effect_detail(layout, context, obj, *, load_from_layer: bool = True) -
     _elp.draw_effect_params(cols[0], params, with_generate_button=True, columns=cols)
 
 
+def _draw_linked_layers_box(layout, context, kind: str, entry, page=None) -> None:
+    """「リンク中のレイヤー」box (相手が無ければ何も描画しない).
+
+    リンク相手の定義はレイヤー一覧のマーク表示・A系統詳細設定
+    (panels.layer_stack_detail_ui) と同じ (utils.layer_links.related_uids_for_target)。
+    gp/effect は entry ベースでは uid を組み立てられない (ノードキー方式) ため
+    このヘルパーには到達しない (呼び出し元で個別に return 済み)。
+    """
+    from ..utils import layer_display, layer_links
+
+    if entry is None:
+        return
+    partner_uids = layer_links.related_uids_for_target(context, kind, entry, page)
+    layer_display.draw_linked_layers_box(layout, context, partner_uids)
+
+
 def _draw_object_meta(layout, obj) -> None:
     """Object 自身の B-MANGA メタを表示 (Custom Property 直接編集)."""
     box = layout.box()
@@ -905,6 +921,7 @@ class BMANGA_OT_layer_detail_open(Operator):
             _draw_balloon_detail(layout, context, entry, page)
         elif kind == "text":
             _draw_text_detail(layout, context, entry)
+        _draw_linked_layers_box(layout, context, kind, entry, page)
 
     def check(self, context):
         profile_changed = _sync_detail_profile_curve(context, self.kind, self.bmanga_id)
