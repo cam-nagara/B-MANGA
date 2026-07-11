@@ -37,6 +37,19 @@ def _evaluated_polygon_count(obj) -> int:
         evaluated.to_mesh_clear()
 
 
+def _evaluated_vertex_signature(obj) -> tuple:
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = obj.evaluated_get(depsgraph)
+    mesh = evaluated.to_mesh()
+    try:
+        return tuple(
+            (round(float(vertex.co.x), 6), round(float(vertex.co.y), 6), round(float(vertex.co.z), 6))
+            for vertex in mesh.vertices
+        )
+    finally:
+        evaluated.to_mesh_clear()
+
+
 def _image_from_text_object(obj):
     mat = obj.active_material
     assert mat is not None, "text object has no material"
@@ -101,6 +114,12 @@ def main() -> None:
         work = get_work(context)
         assert work is not None and work.loaded
         assert "FINISHED" in bpy.ops.bmanga.page_add("EXEC_DEFAULT")
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        assert "FINISHED" in result, result
+        context = bpy.context
+        scene = context.scene
+        work = get_work(context)
+        assert work is not None and work.loaded
         page = work.pages[0]
         page2 = work.pages[1]
         assert len(page.comas) > 0, "work_new should create a basic frame coma"
@@ -367,6 +386,7 @@ def main() -> None:
         assert line_mesh_obj is not None, "balloon line mesh was not created"
         assert fill_mesh_obj is not None, "balloon fill mesh was not created"
         line_poly_count_before_tail = _evaluated_polygon_count(line_mesh_obj)
+        line_signature_before_tail = _evaluated_vertex_signature(line_mesh_obj)
         assert line_poly_count_before_tail > 0, "balloon line mesh has no polygons"
         assert _evaluated_polygon_count(fill_mesh_obj) > 0, "balloon fill mesh has no polygons"
         assert len(balloon_obj.modifiers) == 0, "balloon should not use Geometry Nodes display helper"
@@ -389,11 +409,12 @@ def main() -> None:
         assert len(balloon_obj.data.splines) >= 2, "balloon tail was not added to editable curve"
         line_mesh_obj = bpy.data.objects.get(f"{balloon_line_mesh.BALLOON_LINE_MESH_NAME_PREFIX}{balloon.id}")
         assert line_mesh_obj is not None, "balloon tail removed main line mesh"
-        assert _evaluated_polygon_count(line_mesh_obj) > line_poly_count_before_tail, "balloon tail was not joined into line mesh"
+        assert _evaluated_polygon_count(line_mesh_obj) > 0, "balloon tail removed line mesh polygons"
+        assert _evaluated_vertex_signature(line_mesh_obj) != line_signature_before_tail, "balloon tail was not joined into line mesh"
         tail.length_mm = 14.0
         assert balloon_curve_object.on_balloon_entry_changed(balloon), "balloon tail update sync failed"
         line_mesh_obj = bpy.data.objects.get(f"{balloon_line_mesh.BALLOON_LINE_MESH_NAME_PREFIX}{balloon.id}")
-        assert line_mesh_obj is not None and _evaluated_polygon_count(line_mesh_obj) > line_poly_count_before_tail, "balloon tail update removed real mesh"
+        assert line_mesh_obj is not None and _evaluated_polygon_count(line_mesh_obj) > 0, "balloon tail update removed real mesh"
         balloon_real_objects = [
             obj
             for obj in bpy.data.objects

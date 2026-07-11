@@ -36,7 +36,7 @@
 
 ### 2.1 完了済みの大型移行
 
-- **(完了 / 2026-07-11 Codex, v0.6.480)** Meldexシナリオ取込。安全なローカル受信、既存ページ不足分だけの追加、コマ非生成、タイプ名と完全一致するフキダシ／テキストプリセット、標準フキダシfallback、改行・ルビ保持、テキスト連動サイズ、再送時の重複防止をB-MANGAとMeldexへ実装した。計画: [`docs/meldex_scenario_import_plan_2026-07-11.md`](docs/meldex_scenario_import_plan_2026-07-11.md)
+- **(完了 / 2026-07-11 Codex, v0.6.481)** Meldexシナリオ取込。安全なローカル受信、既存ページ不足分だけの追加、コマ非生成、タイプ名と完全一致するフキダシ／テキストプリセット、標準フキダシfallback、改行・ルビ保持、テキスト連動サイズ、再送時の重複防止をB-MANGAとMeldexへ実装した。AI目視で検出した長いルビの上下はみ出しも四辺余白へ修正済み。計画: [`docs/meldex_scenario_import_plan_2026-07-11.md`](docs/meldex_scenario_import_plan_2026-07-11.md)
 
 - **Outliner 中心の Object/Collection レイヤー化** (Phase 0〜6 / 2026-04-30 完了)
   - レイヤーは PropertyGroup 単独ではなく、**Blender 実 Object として存在し、安定 ID は custom property** (`bmanga_kind` / `bmanga_id` / `bmanga_parent_key` / `bmanga_z_index` / `bmanga_title` / `bmanga_managed`) に保持

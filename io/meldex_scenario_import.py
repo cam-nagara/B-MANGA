@@ -131,6 +131,8 @@ def _upsert_row(work, page, document_id: str, row: ScenarioRow, ordinal: int, ba
     balloon.parent_key = page_stack_key(page)
     balloon.text_id = text.id
     _fit_pair(text, balloon, balloon_new=balloon_new)
+    if balloon_new and text_new:
+        _place_initial_pair(work, page, text, balloon)
     page.active_balloon_index = len(page.balloons) - 1
     page.active_text_index = len(page.texts) - 1
     return created
@@ -209,6 +211,42 @@ def _set_initial_center(work, text, ordinal: int) -> None:
     text.y_mm = max(12.0, height - 30.0 - row * max(25.0, (height - 50.0) / 5.0))
 
 
+def _place_initial_pair(work, page, text, balloon) -> None:
+    """新規取込フキダシを既存要素と重ならない紙面内の位置へ移す。"""
+    paper = getattr(work, "paper", None)
+    canvas_w = float(getattr(paper, "canvas_width_mm", 182.0) or 182.0)
+    canvas_h = float(getattr(paper, "canvas_height_mm", 257.0) or 257.0)
+    width = float(balloon.width_mm)
+    height = float(balloon.height_mm)
+    margin = 12.0
+    gap = 8.0
+    occupied = [item for item in page.balloons if item != balloon]
+    column_step = max(48.0, width + gap)
+    for column in range(8):
+        left = canvas_w - margin - width - column * column_step
+        if left < margin:
+            break
+        top = canvas_h - margin
+        while top - height >= margin:
+            bottom = top - height
+            colliders = [
+                item for item in occupied
+                if left < float(item.x_mm + item.width_mm) + gap
+                and left + width + gap > float(item.x_mm)
+                and bottom < float(item.y_mm + item.height_mm) + gap
+                and top + gap > float(item.y_mm)
+            ]
+            if not colliders:
+                dx = left - float(balloon.x_mm)
+                dy = bottom - float(balloon.y_mm)
+                balloon.x_mm += dx
+                balloon.y_mm += dy
+                text.x_mm += dx
+                text.y_mm += dy
+                return
+            top = min(float(item.y_mm) for item in colliders) - gap
+
+
 def _fit_pair(text, balloon, *, balloon_new: bool) -> None:
     from ..operators import text_edit_runtime
     from ..typography import ruby as ruby_layout
@@ -223,8 +261,10 @@ def _fit_pair(text, balloon, *, balloon_new: bool) -> None:
     text.width_mm = max(2.0, width)
     text.height_mm = max(2.0, height)
     ruby_pad = ruby_layout.render_pad_mm_for_entry(text, minimum=0.0)
-    extra_x = ruby_pad if str(getattr(text, "writing_mode", "vertical")) == "vertical" else 0.0
-    extra_y = ruby_pad if str(getattr(text, "writing_mode", "vertical")) == "horizontal" else 0.0
+    # 実表示用の文字画像は、縦横どちらの書字方向でも四辺へ同じルビ余白を持つ。
+    # 書字方向側だけを広げると、親文字より長いルビが上下端からはみ出す。
+    extra_x = ruby_pad
+    extra_y = ruby_pad
     balloon.width_mm = text.width_mm + (BALLOON_PADDING_X_MM + extra_x) * 2.0
     balloon.height_mm = text.height_mm + (BALLOON_PADDING_Y_MM + extra_y) * 2.0
     balloon.x_mm = old_center_x - balloon.width_mm * 0.5

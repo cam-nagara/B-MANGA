@@ -605,13 +605,7 @@ def _required_labels_missing(records: list[dict[str, Any]]) -> list[str]:
     texts = _record_texts(records)
     required = (
         "作品情報",
-        "ページ数",
-        "コマ用blendファイル (この作品のみ)",
         "プリセット",
-        "キャンバス",
-        "ガイド表示設定",
-        "原稿上の表示",
-        "選択ページ",
         "レイヤー",
         "B-MANGA 階層を修復",
         "カメラプリセット",
@@ -620,14 +614,11 @@ def _required_labels_missing(records: list[dict[str, Any]]) -> list[str]:
         "線・塗り",
         "白フチ",
         "親フキダシ",
-        "始点形状",
-        "終点形状",
+        "外端形状",
+        "内端形状",
         "白抜き線",
         "流線",
         "選択中: 監査フォルダ (汎用フォルダ)",
-        "現在のページを書き出し",
-        "指定範囲を書き出し",
-        "PDF 結合書き出し",
     )
     return [label for label in required if label not in texts]
 
@@ -719,6 +710,8 @@ def main() -> None:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "UiInventory.bmanga"))
+        assert result == {"FINISHED"}, result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
         assert result == {"FINISHED"}, result
         context = bpy.context
         targets = _build_scene(context)

@@ -104,8 +104,13 @@ def _ellipse_norm_range(
         evaluated.to_mesh_clear()
 
 
-def _assert_material_alpha(obj, slot: int, expected: float, label: str, eps: float = 1.0e-4) -> None:
-    mat = obj.data.materials[slot]
+def _assert_material_alpha(obj, name_prefix: str, expected: float, label: str, eps: float = 1.0e-4) -> None:
+    mat = next(
+        (material for material in obj.data.materials if material is not None and material.name.startswith(name_prefix)),
+        None,
+    )
+    if mat is None:
+        raise AssertionError(f"{label}: material {name_prefix!r} was not found")
     actual = float(mat.diffuse_color[3])
     if abs(actual - expected) > eps:
         raise AssertionError(f"{label}: expected alpha {expected}, got {actual}")
@@ -154,6 +159,8 @@ def main() -> None:
         mod = _load_addon()
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "GeometryNodesFunctional.bmanga"))
         assert "FINISHED" in result, result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        assert "FINISHED" in result, result
 
         from bmanga_dev_gn_functional.core.work import get_work
         from bmanga_dev_gn_functional.operators import balloon_op, effect_line_op
@@ -194,28 +201,33 @@ def main() -> None:
         ellipse_stats = _mesh_stats(balloon_obj)
 
         balloon.shape = "rect"
-        balloon.rounded_corner_enabled = False
-        balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
+        balloon.corner_type = "square"
+        balloon_obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
         rect_stats = _mesh_stats(balloon_obj)
         _assert_changed(ellipse_stats, rect_stats, "フキダシ 形状")
 
-        balloon.rounded_corner_enabled = True
+        balloon.corner_type = "rounded"
         balloon.rounded_corner_radius_mm = 8.0
-        balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
+        balloon_obj = balloon_curve_object.ensure_balloon_curve_object(
+            scene=context.scene,
+            entry=balloon,
+            page=page,
+            force_regenerate=True,
+        )
         rounded_stats = _mesh_stats(balloon_obj)
         _assert_changed(rect_stats, rounded_stats, "フキダシ 角丸")
 
         balloon.shape = "cloud"
         balloon.shape_params.cloud_bump_height_mm = 2.0
-        balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
+        balloon_obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
         cloud_low = _mesh_stats(balloon_obj)
         balloon.shape_params.cloud_bump_height_mm = 9.0
-        balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
+        balloon_obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
         cloud_high = _mesh_stats(balloon_obj)
         _assert_changed(cloud_low, cloud_high, "フキダシ 山の高さ")
 
         balloon.tails.clear()
-        balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
+        balloon_obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
         no_tail = _mesh_stats(balloon_obj)
         tail = balloon.tails.add()
         tail.type = "straight"
@@ -224,32 +236,32 @@ def main() -> None:
         tail.root_width_mm = 6.0
         tail.tip_width_mm = 0.0
         tail.curve_bend = 0.6
-        balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
+        balloon_obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
         tail_stats = _mesh_stats(balloon_obj)
         if tail_stats["bounds"][1] >= no_tail["bounds"][1] - 0.005:
             raise AssertionError("フキダシ しっぽの長さが表示範囲へ反映されていません")
 
         tail.type = "curve"
-        balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
+        balloon_obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
         tail_curve_stats = _mesh_stats(balloon_obj)
         _assert_changed(tail_stats, tail_curve_stats, "フキダシ しっぽ 曲線")
 
         tail.type = "sticky"
-        balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
+        balloon_obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
         tail_sticky_stats = _mesh_stats(balloon_obj)
         _assert_changed(tail_curve_stats, tail_sticky_stats, "フキダシ しっぽ 付箋")
 
         balloon.rotation_deg = 31.0
-        balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
+        balloon_obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
         if abs(float(balloon_obj.rotation_euler[2]) - math.radians(31.0)) > 1.0e-6:
             raise AssertionError("フキダシ 回転が実体オブジェクトへ反映されていません")
 
         balloon.line_color = (0.2, 0.4, 0.6, 1.0)
         balloon.fill_opacity = 35.0
         balloon.opacity = 80.0
-        balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
-        _assert_material_alpha(balloon_obj, 0, 0.8, "フキダシ 線の不透明度")
-        _assert_material_alpha(balloon_obj, 1, 0.28, "フキダシ 塗りの不透明度")
+        balloon_obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
+        _assert_material_alpha(balloon_obj, "BManga_Balloon_Curve_", 0.8, "フキダシ 線の不透明度")
+        _assert_material_alpha(balloon_obj, "BManga_Balloon_Fill_", 0.28, "フキダシ 塗りの不透明度")
 
         params = context.scene.bmanga_effect_line_params
         params.effect_type = "focus"

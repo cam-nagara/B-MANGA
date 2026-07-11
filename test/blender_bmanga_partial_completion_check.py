@@ -569,6 +569,8 @@ def main() -> None:
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "PartialCompletion.bmanga"))
         assert "FINISHED" in result, result
         assert "FINISHED" in bpy.ops.bmanga.page_add("EXEC_DEFAULT")
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=1)
+        assert "FINISHED" in result, result
 
         from bmanga_dev.operators import balloon_op
         from bmanga_dev.operators import effect_line_op

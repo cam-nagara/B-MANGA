@@ -342,6 +342,8 @@ def main() -> None:
         mod = _load_addon()
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "FullVisualAudit.bmanga"))
         assert result == {"FINISHED"}, result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        assert result == {"FINISHED"}, result
         context = bpy.context
         targets = _build_scene(context)
         results = _check_detail_toggles(context, targets)
