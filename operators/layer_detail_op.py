@@ -734,6 +734,50 @@ def _draw_object_meta(layout, obj) -> None:
     box.label(text=f"z_index: {obj.get('bmanga_z_index', 0)}")
 
 
+def _prepare_detail_profile_nodes(context, kind: str, bmanga_id: str) -> None:
+    """線幅グラフのノードをダイアログ表示前に作成する.
+
+    draw 中は ID データを作成できないため、operator の invoke (書き込み可能)
+    で全体・白線・黒線のグラフノードを先に用意する。
+    """
+    try:
+        from ..utils import effect_inout_curve
+
+        params = None
+        is_white_outline = False
+        if kind in {"effect", "effect_legacy"}:
+            params = getattr(context.scene, "bmanga_effect_line_params", None)
+            is_white_outline = (
+                str(getattr(params, "effect_type", "") or "") == "white_outline"
+            )
+        elif kind == "balloon":
+            _page, entry = _find_balloon_entry(context.scene, bmanga_id)
+            line_style = balloon_shapes.normalize_line_style(
+                str(getattr(entry, "line_style", "") or "")
+            )
+            if line_style in {"uni_flash", "white_outline"}:
+                params = entry
+                is_white_outline = line_style == "white_outline"
+        if params is None:
+            return
+        effect_inout_curve.ensure_profile_node(params)
+        if is_white_outline:
+            effect_inout_curve.ensure_profile_node(
+                params,
+                fields=effect_inout_curve.WHITE_PROFILE_FIELDS,
+                node_name=effect_inout_curve.WHITE_PROFILE_NODE_NAME,
+                source_prop=effect_inout_curve.WHITE_PROFILE_SOURCE_PROP,
+            )
+            effect_inout_curve.ensure_profile_node(
+                params,
+                fields=effect_inout_curve.BLACK_PROFILE_FIELDS,
+                node_name=effect_inout_curve.BLACK_PROFILE_NODE_NAME,
+                source_prop=effect_inout_curve.BLACK_PROFILE_SOURCE_PROP,
+            )
+    except Exception:  # noqa: BLE001
+        _logger.exception("detail profile nodes prepare failed")
+
+
 def _sync_detail_profile_curve(context, kind: str, bmanga_id: str) -> bool:
     try:
         from ..utils import effect_inout_curve
@@ -794,6 +838,7 @@ class BMANGA_OT_layer_detail_open(Operator):
             return {"CANCELLED"}
         from ..utils import detail_popup
 
+        _prepare_detail_profile_nodes(context, self.kind, self.bmanga_id)
         detail_popup.position_dialog_cursor(context, event, key="layer_detail")
         width = _detail_dialog_width_for_kind(context, self.kind, self.bmanga_id)
         return context.window_manager.invoke_props_dialog(self, width=width)

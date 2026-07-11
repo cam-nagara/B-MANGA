@@ -705,6 +705,7 @@ def _draw_effect_white_outline_settings(box, params) -> None:
         box,
         params,
         show_opacity=False,
+        draw_inout_curve=effect_line_panel.draw_inout_curve_mapping,
     )
 
 

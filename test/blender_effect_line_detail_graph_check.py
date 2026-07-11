@@ -202,7 +202,15 @@ def _assert_detail_layout(layer_detail_op, effect_line_op, context, scene, obj) 
     assert "white_outline_count" in layout.props_by_column.get("col1", ()), (
         "白抜き線の基本設定が線列に分割されていません"
     )
-    assert "white_outline_white_ratio_percent" in layout.props_by_column.get("col3", ()), (
+    for prop_name in (
+        "white_outline_white_ratio_percent",
+        "white_outline_black_ratio_percent",
+        "white_outline_length_percent",
+    ):
+        assert prop_name in layout.props_by_column.get("col1", ()), (
+            f"白線割合・黒線割合・長さが白抜き線セクションにありません: {prop_name}"
+        )
+    assert "white_outline_white_brush_mm" in layout.props_by_column.get("col3", ()), (
         "白線設定が別列に分割されていません"
     )
     assert "white_outline_black_direction" in layout.props_by_column.get("col2", ()), (

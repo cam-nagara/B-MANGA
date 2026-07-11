@@ -70,11 +70,16 @@ def _profile_identifiers(profile_key: str) -> tuple[str, str]:
 
 def _inout_profile_node_for_draw(params, *, fields=None, profile_key: str = "main"):
     node_name, source_prop = _profile_identifiers(profile_key)
+    # ノード生成は draw 中の ID 書き込み禁止で失敗し得るため、タイマー同期の
+    # 登録を先に単独で行う。タイマー側 (書き込み可能) が未作成ノードを作る。
     try:
-        effect_inout_curve.sync_profile_node_bidirectional(
+        effect_inout_curve.request_live_profile_sync(
             params, fields=fields, node_name=node_name, source_prop=source_prop
         )
-        effect_inout_curve.request_live_profile_sync(
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        effect_inout_curve.sync_profile_node_bidirectional(
             params, fields=fields, node_name=node_name, source_prop=source_prop
         )
     except Exception:  # noqa: BLE001

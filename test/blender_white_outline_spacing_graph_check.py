@@ -140,6 +140,80 @@ def _assert_spacing_scale(white_outline) -> None:
     black_steps = [black_200[i][0] - black_200[i - 1][0] for i in range(1, len(black_200))]
     assert max(black_steps) - min(black_steps) > 1.0e-4, "黒線の間隔変化が距離差へ反映されていません"
 
+    # 間隔変化は線ピッチ全体に掛かる。間隔 0mm でも太さ分のピッチが変化する
+    zero_gap_100 = white_outline._edge_distances(
+        10.0, 1.0, 0.0, auto_count=False, count=4, spacing_scale_percent=100.0
+    )
+    zero_gap_300 = white_outline._edge_distances(
+        10.0, 1.0, 0.0, auto_count=False, count=4, spacing_scale_percent=300.0
+    )
+    assert zero_gap_300 != zero_gap_100, "間隔0mmで間隔変化が無効になっています"
+    zero_steps = [zero_gap_300[i][0] - zero_gap_300[i - 1][0] for i in range(1, len(zero_gap_300))]
+    assert zero_steps[0] < zero_steps[-1], "間隔0mmの間隔変化が端に向かって広がっていません"
+
+
+def _band_strokes(params, effect_line_gen, *, role: str):
+    strokes = effect_line_gen.generate_white_outline_strokes(
+        params,
+        (0.0, 0.0),
+        20.0,
+        15.0,
+        seed=7,
+    )
+    return [s for s in strokes if str(getattr(s, "role", "") or "") == role]
+
+
+def _max_stroke_length_mm(strokes) -> float:
+    best = 0.0
+    for stroke in strokes:
+        points = list(getattr(stroke, "points_xyz", ()) or ())
+        if len(points) < 2:
+            continue
+        sx, sy, _sz = points[0]
+        ex, ey, _ez = points[-1]
+        best = max(best, math.hypot(float(ex) - float(sx), float(ey) - float(sy)) * 1000.0)
+    return best
+
+
+def _assert_black_ratio_and_length(params, effect_line_gen) -> None:
+    params.white_outline_black_line_count_auto = True
+    params.white_outline_white_line_count_auto = True
+
+    params.white_outline_black_ratio_percent = 70.0
+    params.white_outline_length_percent = 100.0
+    blacks_default = _band_strokes(params, effect_line_gen, role="white_outline_black")
+    assert blacks_default, "既定の黒線割合で黒線が生成されていません"
+
+    params.white_outline_black_ratio_percent = 0.0
+    blacks_none = _band_strokes(params, effect_line_gen, role="white_outline_black")
+    assert not blacks_none, "黒線割合0%でも黒線が生成されています"
+
+    params.white_outline_black_ratio_percent = 100.0
+    blacks_full = _band_strokes(params, effect_line_gen, role="white_outline_black")
+    assert len(blacks_full) >= len(blacks_default), "黒線割合を増やしても黒線が増えません"
+
+    params.white_outline_black_ratio_percent = 70.0
+    length_full = _max_stroke_length_mm(
+        _band_strokes(params, effect_line_gen, role="white_outline_white")
+    )
+    params.white_outline_length_percent = 50.0
+    length_half = _max_stroke_length_mm(
+        _band_strokes(params, effect_line_gen, role="white_outline_white")
+    )
+    assert length_full > 0.0, "白抜き線の白線が生成されていません"
+    assert math.isclose(length_half, length_full * 0.5, rel_tol=1.0e-4), (
+        f"長さ(%)が線の長さへ反映されていません: {length_full} -> {length_half}"
+    )
+    params.white_outline_length_percent = 100.0
+
+
+def _assert_schema_migration(params, effect_line_core) -> None:
+    params.white_outline_black_ratio_percent = 55.0
+    params.white_outline_length_percent = 60.0
+    effect_line_core.effect_params_from_dict(params, {"schema_version": 18})
+    _close(params.white_outline_black_ratio_percent, 70.0, "旧データ読込の黒線割合既定値")
+    _close(params.white_outline_length_percent, 100.0, "旧データ読込の長さ既定値")
+
 
 def _assert_defaults(params, entry) -> None:
     _close(params.start_cloud_sub_width_ratio, 30.0, "効果線の外端小山幅初期値")
@@ -155,6 +229,8 @@ def _assert_saved(params, entry, effect_line_core, balloon_core, schema) -> None
         "white_outline_bundle_spacing_jitter",
         "white_outline_white_spacing_scale_percent",
         "white_outline_black_spacing_scale_percent",
+        "white_outline_black_ratio_percent",
+        "white_outline_length_percent",
     }
     assert fields <= set(effect_line_core.EFFECT_PARAM_FIELDS), "効果線の新規項目が保存対象にありません"
     assert fields <= set(balloon_core.UNI_FLASH_PARAM_FIELDS), "フキダシの新規項目が保存対象にありません"
@@ -200,6 +276,8 @@ def _assert_balloon_cache_signature(entry, balloon_flash_effect_line_mesh) -> No
         "white_outline_black_out_range_percent",
         "white_outline_black_in_easing_curve",
         "white_outline_black_out_easing_curve",
+        "white_outline_black_ratio_percent",
+        "white_outline_length_percent",
     )
     signature = balloon_flash_effect_line_mesh._effect_params_signature(
         entry, "white_outline"
@@ -229,6 +307,8 @@ def main() -> None:
         _configure_white_outline(params)
         _assert_bundle_spacing(params, effect_line_gen)
         _assert_spacing_scale(effect_line_white_outline)
+        _assert_black_ratio_and_length(params, effect_line_gen)
+        _assert_schema_migration(params, effect_line_core)
         _assert_saved(params, entry, effect_line_core, balloon_core, schema)
         _assert_balloon_cache_signature(entry, balloon_flash_effect_line_mesh)
         print("BMANGA_WHITE_OUTLINE_SPACING_GRAPH_OK", flush=True)

@@ -360,12 +360,17 @@ def _live_profile_sync_tick():
     try:
         for node_name, request in tuple(_LIVE_PROFILE_REQUESTS.items()):
             params, fields, source_prop, _last_request = request
+            existed = get_profile_node(node_name) is not None
             changed |= sync_profile_node_bidirectional(
                 params,
                 fields=fields,
                 node_name=node_name,
                 source_prop=source_prop,
             )
+            if not existed and get_profile_node(node_name) is not None:
+                # draw 中に作れなかったノードをここで新規作成できた。
+                # グラフを表示するため再描画を要求する。
+                changed = True
         if changed:
             screen = getattr(bpy.context, "screen", None)
             for area in getattr(screen, "areas", ()) or ():

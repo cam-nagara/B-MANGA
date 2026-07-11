@@ -75,27 +75,28 @@ def _edge_distances(
     count: int,
     spacing_scale_percent: float = 100.0,
 ) -> list[tuple[float, float]]:
+    # 間隔変化は線ピッチ (太さ+間隔) 全体に掛ける。間隔だけに掛けると
+    # 間隔 0mm で完全に無効になり、UI の変更が見た目へ届かない。
     scale = max(0.0, float(spacing_scale_percent) / 100.0)
+    base_pitch = max(0.0, float(brush_mm)) + max(0.0, float(gap_mm))
     if not auto_count:
         total = max(1, min(256, int(count)))
-        base_gap = max(0.0, float(gap_mm))
         distance = 0.0
         denom = max(1, total - 1)
         out = []
         for index in range(total):
             norm = index / denom
             out.append((distance, norm))
-            distance += max(0.01, float(brush_mm) + base_gap * (1.0 + (scale - 1.0) * norm))
+            distance += max(0.01, base_pitch * (1.0 + (scale - 1.0) * norm))
         return out
     width = max(0.0, float(width))
     if width <= 1.0e-6:
         return []
-    base_gap = max(0.0, float(gap_mm))
     out = [(0.0, 0.0)]
     distance = 0.0
     while len(out) < 256:
         norm = _clamp01(distance / max(width, 1.0e-6))
-        distance += max(0.01, float(brush_mm) + base_gap * (1.0 + (scale - 1.0) * norm))
+        distance += max(0.01, base_pitch * (1.0 + (scale - 1.0) * norm))
         if distance > width + 1.0e-6:
             break
         out.append((distance, _clamp01(distance / max(width, 1.0e-6))))
@@ -111,8 +112,9 @@ def _line_offsets(
     count: int,
     spacing_scale_percent: float = 100.0,
 ) -> list[float]:
+    # 間隔変化は線ピッチ (太さ+間隔) 全体に掛ける (_edge_distances と同方針)。
     scale = max(0.0, float(spacing_scale_percent) / 100.0)
-    base_gap = max(0.0, float(gap_mm))
+    base_pitch = max(0.0, float(brush_mm)) + max(0.0, float(gap_mm))
     if not auto_count:
         total = max(1, min(512, int(count)))
         if total <= 1:
@@ -122,7 +124,7 @@ def _line_offsets(
         denom = max(1.0, center)
         for index in range(total - 1):
             edge_norm = min(1.0, abs(index - center) / denom)
-            intervals.append(max(0.01, float(brush_mm) + base_gap * (1.0 + (scale - 1.0) * edge_norm)))
+            intervals.append(max(0.01, base_pitch * (1.0 + (scale - 1.0) * edge_norm)))
         span = sum(intervals)
         offsets = [-span * 0.5]
         for interval in intervals:
@@ -136,7 +138,7 @@ def _line_offsets(
     distance = 0.0
     while len(positive) < 256:
         norm = _clamp01(distance / max(half, 1.0e-6))
-        distance += max(0.01, float(brush_mm) + base_gap * (1.0 + (scale - 1.0) * norm))
+        distance += max(0.01, base_pitch * (1.0 + (scale - 1.0) * norm))
         if distance > half + 1.0e-6:
             break
         positive.append(distance)
@@ -419,11 +421,14 @@ def _append_band(
     band_width: float,
     band_length_scale: float,
     white_ratio: float,
+    black_ratio: float,
+    length_scale: float,
     white_brush: float,
     black_brush: float,
     white_gap: float,
     black_gap: float,
 ) -> None:
+    band_length_scale = float(band_length_scale) * _clamp01(length_scale)
     white_width = max(0.01, float(band_width) * _clamp01(white_ratio))
     white_offsets = _line_offsets(
         white_width,
@@ -434,7 +439,11 @@ def _append_band(
         spacing_scale_percent=float(getattr(params, "white_outline_white_spacing_scale_percent", 100.0)),
     )
     white_half = max(white_width * 0.5, _offset_extent(white_offsets, white_brush))
-    band_half = max(white_half + 0.005, float(band_width) * 0.5)
+    # 黒線割合: 束の太さのうち左右の黒線領域に使う割合 (両側合計)。
+    # 既定の白 30% + 黒 70% で従来の「束の残り全部が黒領域」と一致し、
+    # 0% では自動計算の黒線が生成されなくなる。
+    black_region = max(0.0, float(band_width) * _clamp01(black_ratio) * 0.5)
+    band_half = white_half + black_region
     for offset in white_offsets:
         start_xy, end_xy = _line_points_for_offset(
             effect_line_gen,
@@ -537,6 +546,8 @@ def generate_white_outline_strokes(
     count = max(1, min(500, int(getattr(params, "white_outline_count", 5))))
     base_width = max(0.01, float(getattr(params, "white_outline_width_mm", 10.0)))
     white_ratio = _clamp01(float(getattr(params, "white_outline_white_ratio_percent", 30.0)) / 100.0)
+    black_ratio = _clamp01(float(getattr(params, "white_outline_black_ratio_percent", 70.0)) / 100.0)
+    length_scale = _clamp01(float(getattr(params, "white_outline_length_percent", 100.0)) / 100.0)
     white_brush = max(0.01, float(getattr(params, "white_outline_white_brush_mm", 0.3)))
     black_brush = max(0.01, float(getattr(params, "white_outline_black_brush_mm", 0.3)))
     white_gap = max(0.0, float(getattr(params, "white_outline_spacing_mm", 0.2)))
@@ -578,6 +589,8 @@ def generate_white_outline_strokes(
             band_width=band_width,
             band_length_scale=band_length_scale,
             white_ratio=white_ratio,
+            black_ratio=black_ratio,
+            length_scale=length_scale,
             white_brush=white_brush,
             black_brush=black_brush,
             white_gap=white_gap,

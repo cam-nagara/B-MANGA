@@ -20,7 +20,9 @@ EFFECT_WHITE_OUTLINE_UI_FIELDS: FieldMap = {
     "width_min": "white_outline_width_min_percent",
     "length_jitter": "white_outline_length_jitter_enabled",
     "length_min": "white_outline_length_min_percent",
+    "length": "white_outline_length_percent",
     "white_ratio": "white_outline_white_ratio_percent",
+    "black_ratio": "white_outline_black_ratio_percent",
     "white_auto": "white_outline_white_line_count_auto",
     "white_count": "white_outline_white_line_count",
     "white_spacing": "white_outline_spacing_mm",
@@ -68,11 +70,13 @@ BALLOON_WHITE_OUTLINE_UI_FIELDS: FieldMap = {
     "width_min": "white_outline_width_min_percent",
     "length_jitter": "white_outline_length_jitter_enabled",
     "length_min": "white_outline_length_min_percent",
+    "length": "white_outline_length_percent",
     "white_auto": "white_outline_white_line_count_auto",
     "white_count": "flash_white_outline_white_line_count",
     "white_spacing": "flash_white_outline_spacing_mm",
     "white_spacing_scale": "white_outline_white_spacing_scale_percent",
     "white_ratio": "white_outline_white_ratio_percent",
+    "black_ratio": "white_outline_black_ratio_percent",
     "white_attenuation": "white_outline_white_attenuation",
     "white_in": "white_outline_white_in_percent",
     "white_out": "white_outline_white_out_percent",
@@ -170,13 +174,20 @@ def _draw_outline_jitter_settings(layout: Any, owner: Any, fields: FieldMap) -> 
     _prop(row, owner, fields, "width_jitter")
     sub = row.row(align=True)
     sub.enabled = _bool(owner, fields, "width_jitter")
-    _prop(sub, owner, fields, "width_min", text="最小")
+    _prop(sub, owner, fields, "width_min", text="最小値")
 
     row = layout.row(align=True)
     _prop(row, owner, fields, "length_jitter")
     sub = row.row(align=True)
     sub.enabled = _bool(owner, fields, "length_jitter")
-    _prop(sub, owner, fields, "length_min", text="最小")
+    _prop(sub, owner, fields, "length_min", text="最小値")
+
+
+def _draw_outline_band_ratio_settings(layout: Any, owner: Any, fields: FieldMap) -> None:
+    row = layout.row(align=True)
+    _prop(row, owner, fields, "white_ratio")
+    _prop(row, owner, fields, "black_ratio")
+    _prop(layout, owner, fields, "length")
 
 
 def _draw_effect_white_settings(
@@ -187,7 +198,6 @@ def _draw_effect_white_settings(
 ) -> None:
     white_box = layout.box()
     white_box.label(text="白線")
-    _prop(white_box, params, fields, "white_ratio")
     row = white_box.row(align=True)
     _prop(row, params, fields, "white_auto", toggle=True)
     count_row = row.row(align=True)
@@ -268,6 +278,7 @@ def draw_effect_white_outline_settings(
     _prop(row, params, fields, "bundle_spacing")
     _prop(row, params, fields, "bundle_spacing_jitter")
     _prop(box, params, fields, "width")
+    _draw_outline_band_ratio_settings(box, params, fields)
     _draw_outline_jitter_settings(box, params, fields)
     _draw_effect_black_settings(_column(cols, 1), params, fields, draw_inout_curve)
     _draw_effect_white_settings(_column(cols, 2), params, fields, draw_inout_curve)
@@ -286,11 +297,7 @@ def _draw_balloon_white_settings(
     sub = row.row(align=True)
     sub.enabled = not _bool(entry, fields, "white_auto")
     _prop(sub, entry, fields, "white_count")
-    row = white_box.row(align=True)
-    _prop(row, entry, fields, "white_spacing")
-    ratio = row.row(align=True)
-    ratio.enabled = _bool(entry, fields, "white_auto")
-    _prop(ratio, entry, fields, "white_ratio")
+    _prop(white_box, entry, fields, "white_spacing")
     _prop(white_box, entry, fields, "white_spacing_scale")
     _prop(white_box, entry, fields, "white_attenuation", text="減衰")
     row = white_box.row(align=True)
@@ -374,6 +381,7 @@ def draw_balloon_white_outline_settings(
     row = layout.row(align=True)
     _prop(row, entry, fields, "width")
     _prop(row, entry, fields, "black_direction", text="")
+    _draw_outline_band_ratio_settings(layout, entry, fields)
     _draw_outline_jitter_settings(layout, entry, fields)
     _draw_balloon_black_settings(
         _column(cols, 1), entry, fields, draw_inout_curve
