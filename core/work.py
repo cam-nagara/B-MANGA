@@ -51,12 +51,14 @@ class BMangaComaGap(bpy.types.PropertyGroup):
 
     vertical_mm: FloatProperty(  # type: ignore[valid-type]
         name="上下スキマ (mm)",
+        description="コマとコマの上下の間隔（mm）",
         default=7.3,
         min=0.0,
         soft_max=50.0,
     )
     horizontal_mm: FloatProperty(  # type: ignore[valid-type]
         name="左右スキマ (mm)",
+        description="コマとコマの左右の間隔（mm）",
         default=2.1,
         min=0.0,
         soft_max=50.0,
@@ -101,20 +103,24 @@ class BMangaWorkData(bpy.types.PropertyGroup):
     )
     view_overlay_enabled: BoolProperty(  # type: ignore[valid-type]
         name="オーバーレイ表示",
+        description="ページ番号・作品情報・選択枠・編集ハンドルなどの補助表示を切り替えます",
         default=True,
     )
     view_overview_cols: IntProperty(  # type: ignore[valid-type]
         name="一覧の列数",
+        description="全ページ一覧時の横方向のページ数",
         default=8,
         min=2,
     )
     view_overview_gap_mm: FloatProperty(  # type: ignore[valid-type]
         name="一覧のページ間隔",
+        description="全ページ一覧時のページ同士の余白（mm）",
         default=30.0,
         min=0.0,
     )
     view_page_preview_enabled: BoolProperty(  # type: ignore[valid-type]
         name="ページ一覧表示",
+        description="ページ編集中に、他のページを軽い縮小画像で表示します",
         default=True,
     )
     view_page_preview_page_radius: IntProperty(  # type: ignore[valid-type]
@@ -125,10 +131,12 @@ class BMangaWorkData(bpy.types.PropertyGroup):
     )
     view_page_preview_range_mode: StringProperty(  # type: ignore[valid-type]
         name="ページ一覧表示範囲",
+        description="ページ一覧を全ページ表示するか、現在ページの前後だけ表示するか (ALL / NEAR)",
         default="ALL",
     )
     view_page_preview_resolution_percentage: FloatProperty(  # type: ignore[valid-type]
         name="画像解像度",
+        description="ページプレビュー画像の細かさ。ページ実解像度に対する割合(%)で指定",
         default=25.0,
         min=5.0,
         max=200.0,
@@ -136,43 +144,47 @@ class BMangaWorkData(bpy.types.PropertyGroup):
     )
     view_page_browser_position: StringProperty(  # type: ignore[valid-type]
         name="ページ一覧の位置",
+        description="ページ一覧専用ビューを表示する位置",
         default="LEFT",
     )
     view_page_browser_size: FloatProperty(  # type: ignore[valid-type]
         name="ページ一覧の幅",
+        description="ページ一覧専用ビューの分割比率",
         default=0.28,
         min=0.12,
         max=0.5,
     )
     view_page_browser_fit: BoolProperty(  # type: ignore[valid-type]
         name="フィット",
+        description="ページ一覧ビューをパネルの縦横比に合わせて表示します",
         default=True,
     )
 
     # --- 各セクション ---
-    work_info: PointerProperty(type=BMangaWorkInfo)  # type: ignore[valid-type]
-    nombre: PointerProperty(type=BMangaNombre)  # type: ignore[valid-type]
-    paper: PointerProperty(type=BMangaPaperSettings)  # type: ignore[valid-type]
-    safe_area_overlay: PointerProperty(type=BMangaSafeAreaOverlay)  # type: ignore[valid-type]
-    coma_gap: PointerProperty(type=BMangaComaGap)  # type: ignore[valid-type]
+    work_info: PointerProperty(type=BMangaWorkInfo, description="作品の書誌情報 (作品名・話数・作者名など)")  # type: ignore[valid-type]
+    nombre: PointerProperty(type=BMangaNombre, description="ノンブル (ページ番号) の表示設定")  # type: ignore[valid-type]
+    paper: PointerProperty(type=BMangaPaperSettings, description="用紙サイズ・仕上がり枠などの設定")  # type: ignore[valid-type]
+    safe_area_overlay: PointerProperty(type=BMangaSafeAreaOverlay, description="セーフエリアのオーバーレイ表示設定")  # type: ignore[valid-type]
+    coma_gap: PointerProperty(type=BMangaComaGap, description="コマ間隔の既定ルール")  # type: ignore[valid-type]
 
     # --- ページ一覧 ---
-    pages: CollectionProperty(type=BMangaPageEntry)  # type: ignore[valid-type]
+    pages: CollectionProperty(type=BMangaPageEntry, description="作品に含まれるページの一覧")  # type: ignore[valid-type]
     # フキダシ番号の採番カウンター (作品全体で単調増加)。詳細未読込の
     # ページが居ても番号が衝突しないよう、過去に使った最大番号を記憶する。
     balloon_id_counter: IntProperty(default=0, min=0, options={"HIDDEN"})  # type: ignore[valid-type]
     active_page_index: IntProperty(  # type: ignore[valid-type]
         name="アクティブページ",
+        description="現在編集中のページの番号",
         default=-1,
         min=-1,
         update=_on_active_page_index_changed,
     )
 
     # --- ページ外レイヤー ---
-    shared_balloons: CollectionProperty(type=BMangaBalloonEntry)  # type: ignore[valid-type]
-    shared_texts: CollectionProperty(type=BMangaTextEntry)  # type: ignore[valid-type]
-    shared_comas: CollectionProperty(type=BMangaComaEntry)  # type: ignore[valid-type]
-    layer_folders: CollectionProperty(type=BMangaLayerFolder)  # type: ignore[valid-type]
+    shared_balloons: CollectionProperty(type=BMangaBalloonEntry, description="どのページにも属さない共有フキダシの一覧")  # type: ignore[valid-type]
+    shared_texts: CollectionProperty(type=BMangaTextEntry, description="どのページにも属さない共有テキストの一覧")  # type: ignore[valid-type]
+    shared_comas: CollectionProperty(type=BMangaComaEntry, description="どのページにも属さない共有コマの一覧")  # type: ignore[valid-type]
+    layer_folders: CollectionProperty(type=BMangaLayerFolder, description="レイヤー一覧のフォルダ構成")  # type: ignore[valid-type]
 
 
 # ----- Scene attach ヘルパ -----

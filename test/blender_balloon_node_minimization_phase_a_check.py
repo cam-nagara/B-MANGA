@@ -5,7 +5,7 @@
      が生成され、マスク関連ソケット (マスク使用 / マスク対象 / 塗り切り抜き必要 /
      切り抜き必要) が消えていること。
   2. すべての形状 (rect / ellipse / cloud / fluffy / thorn / thorn-curve /
-     octagon / custom) でフキダシを作成し、ノードグループのモディファイア
+     custom) でフキダシを作成し、ノードグループのモディファイア
      が問題なく生成され、ノードに残骸 (Raycast / Object Info / set_mask_object)
      が一切ないこと。
   3. simple な作品を構築してレンダリングが落ちないこと。
@@ -58,7 +58,6 @@ EXPECTED_SHAPES = (
     "fluffy",
     "thorn",
     "thorn-curve",
-    "octagon",
     "custom",
     "none",
 )

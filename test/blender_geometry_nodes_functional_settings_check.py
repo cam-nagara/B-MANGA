@@ -382,10 +382,11 @@ def main() -> None:
         end_rounded = _mesh_stats(display)
         _assert_changed(end_rect, end_rounded, "効果線 終点形状 角丸")
 
-        params.end_shape = "octagon"
+        # 「八角形」は形状選択から削除済み (2026-07-12)。別形状で変化を確認する
+        params.end_shape = "thorn"
         effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
-        end_octagon = _mesh_stats(display)
-        _assert_changed(end_rounded, end_octagon, "効果線 終点形状 八角形")
+        end_thorn = _mesh_stats(display)
+        _assert_changed(end_rounded, end_thorn, "効果線 終点形状 トゲ")
 
         params.effect_type = "speed"
         params.speed_line_count = 9

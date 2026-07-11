@@ -363,24 +363,28 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
             row = line_box.row(align=True)
             row.prop(entry, "thorn_multi_line_valley_width_pct")
             row.prop(entry, "thorn_multi_line_peak_width_pct")
+    # 白抜き線は線群そのものが本体で塗りを持たないため、塗り関連は表示しない
+    has_body_fill = line_style not in {"uni_flash", "white_outline"}
     if line_style != "uni_flash":
         row = line_box.row(align=True)
         row.prop(entry, "line_color")
-        row.prop(entry, "fill_color")
-        line_box.prop(entry, "fill_opacity", slider=True)
+        if has_body_fill:
+            row.prop(entry, "fill_color")
+            line_box.prop(entry, "fill_opacity", slider=True)
     if line_style != "uni_flash":
-        line_box.prop_search(entry, "fill_material_name", bpy.data, "materials")
-        row = line_box.row(align=True)
-        row.prop(entry, "fill_blur_amount", slider=True)
-        row.prop(entry, "fill_blur_axis", text="")
-        row.prop(entry, "fill_blur_dither", toggle=True)
-        line_box.prop(entry, "fill_gradient_enabled")
-        sub = line_box.column(align=True)
-        sub.enabled = bool(getattr(entry, "fill_gradient_enabled", False))
-        row = sub.row(align=True)
-        row.prop(entry, "fill_gradient_start_color")
-        row.prop(entry, "fill_gradient_end_color")
-        sub.prop(entry, "fill_gradient_angle_deg")
+        if has_body_fill:
+            line_box.prop_search(entry, "fill_material_name", bpy.data, "materials")
+            row = line_box.row(align=True)
+            row.prop(entry, "fill_blur_amount", slider=True)
+            row.prop(entry, "fill_blur_axis", text="")
+            row.prop(entry, "fill_blur_dither", toggle=True)
+            line_box.prop(entry, "fill_gradient_enabled")
+            sub = line_box.column(align=True)
+            sub.enabled = bool(getattr(entry, "fill_gradient_enabled", False))
+            row = sub.row(align=True)
+            row.prop(entry, "fill_gradient_start_color")
+            row.prop(entry, "fill_gradient_end_color")
+            sub.prop(entry, "fill_gradient_angle_deg")
         row = line_box.row(align=True)
         row.prop(entry, "outer_white_margin_enabled", text="外側フチ", toggle=True)
         sub = row.row(align=True)
@@ -595,10 +599,10 @@ def _draw_effect_shape_settings(box, params, prefix: str, label: str, *, frame_t
     content.prop(params, shape_attr)
     shape = balloon_shapes.normalize_shape(getattr(params, shape_attr))
     if shape == "rect":
-        rounded_attr = f"{prefix}_rounded_corner_enabled"
-        content.prop(params, rounded_attr)
+        corner_attr = f"{prefix}_corner_type"
+        content.prop(params, corner_attr)
         sub = content.column(align=True)
-        sub.enabled = bool(getattr(params, rounded_attr))
+        sub.enabled = str(getattr(params, corner_attr, "square") or "square") != "square"
         corner_radius_ui.draw_corner_radius(sub, params, prefix=f"{prefix}_rounded_corner")
     if balloon_shapes.is_dynamic_meldex_shape(shape):
         row = content.row(align=True)
@@ -827,7 +831,15 @@ def draw_stack_item_detail(layout, context, item, resolved, *, wide: bool = Fals
     elif kind == "fill":
         _draw_fill_selected_settings(box, context, target)
     elif kind == "balloon":
-        _draw_balloon_selected_settings(box, context, target)
+        if wide:
+            # レイヤーリストから開くダイアログも、右クリックの詳細設定と同じ
+            # 横長 4 列レイアウトに揃える (縦長・横長の不一致をなくす)
+            from ..operators import layer_detail_op as _ldo
+
+            box.label(text=f"選択中: {getattr(target, 'title', '') or target.id} (フキダシ)")
+            _ldo._draw_balloon_detail(box, context, target, _page_for_balloon_entry(context, target))
+        else:
+            _draw_balloon_selected_settings(box, context, target)
     elif kind == "text":
         _draw_text_selected_settings(box, context, target)
     elif kind == "effect":

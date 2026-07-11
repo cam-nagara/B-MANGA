@@ -54,9 +54,16 @@ WHITE_OUTLINE_BLACK_DIRECTION_ITEMS = (
     ("both", "両側", "白線群の外側と内側へ黒線を重ねる"),
 )
 
+WHITE_OUTLINE_BUNDLE_PLACEMENT_ITEMS = (
+    ("spacing", "間隔指定", "束の数と間隔 (角度) の指定で束を配置する"),
+    ("corner", "角の位置", "内端形状の角の方向へ束を配置する"),
+    ("edge_center", "角間の中心", "内端形状の隣り合う角の中間方向へ束を配置する"),
+)
+
 EFFECT_START_SHAPE_FIELDS = (
     "start_shape",
     "start_to_coma_frame",
+    "start_corner_type",
     "start_rounded_corner_enabled",
     "start_rounded_corner_radius_mm",
     "start_rounded_corner_radius_unit",
@@ -74,6 +81,7 @@ EFFECT_START_SHAPE_FIELDS = (
 
 EFFECT_END_SHAPE_FIELDS = (
     "end_shape",
+    "end_corner_type",
     "end_rounded_corner_enabled",
     "end_rounded_corner_radius_mm",
     "end_rounded_corner_radius_unit",
@@ -211,8 +219,10 @@ EFFECT_COLOR_FIELDS = (
 
 EFFECT_WHITE_OUTLINE_FIELDS = (
     "white_outline_count",
+    "white_outline_bundle_placement",
     "white_outline_bundle_spacing_deg",
     "white_outline_bundle_spacing_jitter",
+    "white_outline_position_percent",
     "white_outline_spacing_mm",
     "white_outline_white_spacing_scale_percent",
     "white_outline_white_line_count_auto",
@@ -285,8 +295,10 @@ BALLOON_UNI_FLASH_PARAM_FIELDS = (
     *EFFECT_COLOR_FIELDS,
     "uni_flash_offset_percent",
     "white_outline_angle_deg",
+    "white_outline_bundle_placement",
     "white_outline_bundle_spacing_deg",
     "white_outline_bundle_spacing_jitter",
+    "white_outline_position_percent",
     "white_outline_width_jitter_enabled",
     "white_outline_width_min_percent",
     "white_outline_length_jitter_enabled",
@@ -333,8 +345,10 @@ EFFECT_LINKED_SHAPE_FIELDS = frozenset(
         "spacing_density_compensation",
         "speed_angle_deg",
         "white_outline_count",
+        "white_outline_bundle_placement",
         "white_outline_bundle_spacing_deg",
         "white_outline_bundle_spacing_jitter",
+        "white_outline_position_percent",
         "white_outline_spacing_mm",
         "white_outline_white_spacing_scale_percent",
         "white_outline_white_line_count_auto",

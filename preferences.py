@@ -198,6 +198,7 @@ class BMangaRubyDictEntry(PropertyGroup):
     )
     enabled: BoolProperty(  # type: ignore[valid-type]
         name="有効",
+        description="この辞書を自動ルビ変換に使用するか",
         default=True,
         update=_on_preferences_changed,
     )
@@ -285,10 +286,12 @@ class BMangaPreferences(bpy.types.AddonPreferences):
 
     ruby_dictionaries: CollectionProperty(  # type: ignore[valid-type]
         name="自動ルビ辞書",
+        description="登録されている自動ルビ辞書の一覧",
         type=BMangaRubyDictEntry,
     )
     ruby_dict_active_index: IntProperty(  # type: ignore[valid-type]
         name="選択中の辞書",
+        description="自動ルビ辞書一覧で選択中の項目",
         default=0,
         update=_on_preferences_changed,
     )
@@ -386,62 +389,66 @@ class BMangaPreferences(bpy.types.AddonPreferences):
 
     key_set_mode_object: StringProperty(  # type: ignore[valid-type]
         name="オブジェクトツール切替",
+        description="オブジェクトツールに切り替えるキー",
         default="O",
         update=_on_keymap_settings_changed,
     )
     mod_set_mode_object_shift: BoolProperty(  # type: ignore[valid-type]
-        name="Shift", default=False, update=_on_keymap_settings_changed
+        name="Shift", description="オブジェクトツール切替キーにShiftを追加", default=False, update=_on_keymap_settings_changed
     )
     mod_set_mode_object_ctrl: BoolProperty(  # type: ignore[valid-type]
-        name="Ctrl", default=False, update=_on_keymap_settings_changed
+        name="Ctrl", description="オブジェクトツール切替キーにCtrlを追加", default=False, update=_on_keymap_settings_changed
     )
     mod_set_mode_object_alt: BoolProperty(  # type: ignore[valid-type]
-        name="Alt", default=False, update=_on_keymap_settings_changed
+        name="Alt", description="オブジェクトツール切替キーにAltを追加", default=False, update=_on_keymap_settings_changed
     )
 
     key_set_mode_draw: StringProperty(  # type: ignore[valid-type]
         name="描画ツール切替",
+        description="描画ツールに切り替えるキー",
         default="P",
         update=_on_keymap_settings_changed,
     )
     mod_set_mode_draw_shift: BoolProperty(  # type: ignore[valid-type]
-        name="Shift", default=False, update=_on_keymap_settings_changed
+        name="Shift", description="描画ツール切替キーにShiftを追加", default=False, update=_on_keymap_settings_changed
     )
     mod_set_mode_draw_ctrl: BoolProperty(  # type: ignore[valid-type]
-        name="Ctrl", default=False, update=_on_keymap_settings_changed
+        name="Ctrl", description="描画ツール切替キーにCtrlを追加", default=False, update=_on_keymap_settings_changed
     )
     mod_set_mode_draw_alt: BoolProperty(  # type: ignore[valid-type]
-        name="Alt", default=False, update=_on_keymap_settings_changed
+        name="Alt", description="描画ツール切替キーにAltを追加", default=False, update=_on_keymap_settings_changed
     )
 
     key_page_next: StringProperty(  # type: ignore[valid-type]
         name="次のページ",
+        description="次のページに移動するキー",
         default="COMMA",
         update=_on_keymap_settings_changed,
     )
     mod_page_next_shift: BoolProperty(  # type: ignore[valid-type]
-        name="Shift", default=False, update=_on_keymap_settings_changed
+        name="Shift", description="次のページキーにShiftを追加", default=False, update=_on_keymap_settings_changed
     )
     mod_page_next_ctrl: BoolProperty(  # type: ignore[valid-type]
-        name="Ctrl", default=False, update=_on_keymap_settings_changed
+        name="Ctrl", description="次のページキーにCtrlを追加", default=False, update=_on_keymap_settings_changed
     )
     mod_page_next_alt: BoolProperty(  # type: ignore[valid-type]
-        name="Alt", default=False, update=_on_keymap_settings_changed
+        name="Alt", description="次のページキーにAltを追加", default=False, update=_on_keymap_settings_changed
     )
 
     key_page_prev: StringProperty(  # type: ignore[valid-type]
         name="前のページ",
+        description="前のページに移動するキー",
         default="PERIOD",
         update=_on_keymap_settings_changed,
     )
     mod_page_prev_shift: BoolProperty(  # type: ignore[valid-type]
-        name="Shift", default=False, update=_on_keymap_settings_changed
+        name="Shift", description="前のページキーにShiftを追加", default=False, update=_on_keymap_settings_changed
     )
     mod_page_prev_ctrl: BoolProperty(  # type: ignore[valid-type]
-        name="Ctrl", default=False, update=_on_keymap_settings_changed
+        name="Ctrl", description="前のページキーにCtrlを追加", default=False, update=_on_keymap_settings_changed
     )
     mod_page_prev_alt: BoolProperty(  # type: ignore[valid-type]
-        name="Alt", default=False, update=_on_keymap_settings_changed
+        name="Alt", description="前のページキーにAltを追加", default=False, update=_on_keymap_settings_changed
     )
 
     def draw(self, context) -> None:  # noqa: D401, ANN001

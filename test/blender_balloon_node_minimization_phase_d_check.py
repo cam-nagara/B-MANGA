@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 _OUT_ENV = os.environ.get("BMANGA_PHASE_D_OUT", "")
 _OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bmanga_phase_d_"))
 
-SHAPES = ["rect", "ellipse", "octagon", "cloud", "fluffy", "thorn", "thorn-curve"]
+SHAPES = ["rect", "ellipse", "cloud", "fluffy", "thorn", "thorn-curve"]
 
 
 def _load_addon():

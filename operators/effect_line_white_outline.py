@@ -195,6 +195,72 @@ def _offset_extent(offsets: Sequence[float], brush_mm: float) -> float:
     return max(abs(float(offset)) for offset in offsets) + max(0.0, float(brush_mm)) * 0.5
 
 
+def _shift_segment(
+    start_xy: tuple[float, float],
+    end_xy: tuple[float, float],
+    shift_mm: float,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """線分を進行方向 (外端→内端) へ shift_mm だけ平行移動する。"""
+    dx = float(end_xy[0]) - float(start_xy[0])
+    dy = float(end_xy[1]) - float(start_xy[1])
+    length = math.hypot(dx, dy)
+    if length <= 1.0e-9 or abs(float(shift_mm)) <= 1.0e-9:
+        return start_xy, end_xy
+    ux = dx / length * float(shift_mm)
+    uy = dy / length * float(shift_mm)
+    return (
+        (float(start_xy[0]) + ux, float(start_xy[1]) + uy),
+        (float(end_xy[0]) + ux, float(end_xy[1]) + uy),
+    )
+
+
+def _corner_angles_from_indices(
+    center_xy_mm: tuple[float, float],
+    outline: Sequence[tuple[float, float]],
+    corner_indices: Sequence[int],
+) -> list[float]:
+    """角にあたる頂点インデックスから、中心を基準とした方位角を返す。"""
+    cx, cy = float(center_xy_mm[0]), float(center_xy_mm[1])
+    angles: set[float] = set()
+    for index in corner_indices or ():
+        i = int(index)
+        if not 0 <= i < len(outline):
+            continue
+        x, y = outline[i]
+        if math.hypot(float(x) - cx, float(y) - cy) <= 1.0e-9:
+            continue
+        angles.add(math.atan2(float(y) - cy, float(x) - cx) % (2.0 * math.pi))
+    return sorted(angles)
+
+
+def _rect_corner_angles(
+    radius_x_mm: float,
+    radius_y_mm: float,
+    rotation_deg: float,
+) -> list[float]:
+    """矩形の 4 隅の方位角 (角丸・面取りでも元の角の方向) を返す。"""
+    rotation = math.radians(float(rotation_deg))
+    return sorted(
+        (math.atan2(sy * float(radius_y_mm), sx * float(radius_x_mm)) + rotation) % (2.0 * math.pi)
+        for sx, sy in ((1.0, 1.0), (-1.0, 1.0), (-1.0, -1.0), (1.0, -1.0))
+    )
+
+
+def _midpoint_angles(angles: Sequence[float]) -> list[float]:
+    """ソート済み方位角リストの、隣り合う角の中間方位角を返す。"""
+    values = sorted(float(a) % (2.0 * math.pi) for a in angles)
+    if len(values) < 2:
+        return list(values)
+    out: list[float] = []
+    for index in range(len(values)):
+        left = values[index]
+        right = values[(index + 1) % len(values)]
+        if index == len(values) - 1:
+            right += 2.0 * math.pi
+        out.append(((left + right) * 0.5) % (2.0 * math.pi))
+    return sorted(out)
+
+
 def _line_points_for_offset(
     effect_line_gen,
     center_xy_mm: tuple[float, float],
@@ -423,12 +489,28 @@ def _append_band(
     white_ratio: float,
     black_ratio: float,
     length_scale: float,
+    position_percent: float = 100.0,
     white_brush: float,
     black_brush: float,
     white_gap: float,
     black_gap: float,
 ) -> None:
     band_length_scale = float(band_length_scale) * _clamp01(length_scale)
+    # 位置 (%): 100 で線の長さ分ぴったり内端形状の外側 (従来どおり)、
+    # 0 で線の中心が内端形状上。束の基準長の半分を単位に内向きへずらす。
+    center_start, center_end = _line_points_for_offset(
+        effect_line_gen,
+        center_xy_mm,
+        start_outline,
+        end_outline,
+        radius_x_mm,
+        radius_y_mm,
+        base_angle,
+        0.0,
+        start_extend_mm,
+    )
+    band_length_ref = _distance(center_start, center_end) * band_length_scale
+    shift_mm = (1.0 - float(position_percent) / 100.0) * band_length_ref * 0.5
     white_width = max(0.01, float(band_width) * _clamp01(white_ratio))
     white_offsets = _line_offsets(
         white_width,
@@ -456,6 +538,7 @@ def _append_band(
             offset,
             start_extend_mm,
         )
+        start_xy, end_xy = _shift_segment(start_xy, end_xy, shift_mm)
         _append_line(
             out,
             stroke_cls,
@@ -504,6 +587,7 @@ def _append_band(
             offset,
             start_extend_mm,
         )
+        start_xy, end_xy = _shift_segment(start_xy, end_xy, shift_mm)
         width_factor = max(0.0, 1.0 + (black_width_far - 1.0) * _clamp01(norm))
         length_factor = max(0.0, black_length_near + (black_length_far - black_length_near) * _clamp01(norm))
         effective_brush = max(0.01, black_brush * width_factor)
@@ -561,19 +645,45 @@ def generate_white_outline_strokes(
         start_outline = [(float(x), float(y)) for x, y in start_outline_mm]
         start_extend = max(0.0, float(start_extend_mm))
     end_rect = effect_line_gen._scaled_rect(shape_center_xy_mm[0], shape_center_xy_mm[1], radius_x_mm, radius_y_mm, 1.0)
-    end_outline = effect_line_gen._shape_outline(params, "end", end_rect, shape_center_xy_mm, seed=seed + 23)
-    bands = _band_specs(params, count, base_width, rng)
-    out = []
+    end_outline, end_corners = effect_line_gen._shape_outline_with_corners(
+        params, "end", end_rect, shape_center_xy_mm, seed=seed + 23
+    )
+    position_percent = max(-200.0, min(200.0, float(getattr(params, "white_outline_position_percent", 100.0))))
 
-    base_angle = math.radians(float(getattr(params, "white_outline_angle_deg", 0.0)))
-    configured_spacing = math.radians(max(0.0, float(getattr(params, "white_outline_bundle_spacing_deg", 0.0))))
-    bundle_step = configured_spacing if configured_spacing > 1.0e-9 else (2.0 * math.pi) / max(1, count)
-    spacing_jitter = _clamp01(float(getattr(params, "white_outline_bundle_spacing_jitter", 0.0)))
-    spacing_rng = random.Random(int(seed) ^ 0x5A17)
-    angle = base_angle
-    for index, (band_width, band_length_scale) in enumerate(bands):
-        if index > 0:
-            angle += bundle_step * (1.0 + spacing_jitter * (spacing_rng.random() * 2.0 - 1.0))
+    # 束の配置角度: 間隔指定 (従来) / 内端形状の角の位置 / 角間の中心
+    placement = str(getattr(params, "white_outline_bundle_placement", "spacing") or "spacing")
+    bundle_angles: list[float] | None = None
+    if placement in {"corner", "edge_center"}:
+        if str(getattr(params, "end_shape", "") or "") == "rect":
+            # 矩形は角丸・面取りでも「元の 4 隅の方向」を角として扱う
+            corner_angles = _rect_corner_angles(
+                radius_x_mm, radius_y_mm, float(getattr(params, "rotation_deg", 0.0))
+            )
+        else:
+            corner_angles = _corner_angles_from_indices(shape_center_xy_mm, end_outline, end_corners)
+        if placement == "edge_center":
+            corner_angles = _midpoint_angles(corner_angles)
+        if corner_angles:
+            bundle_angles = corner_angles[:500]
+    out = []
+    if bundle_angles is not None:
+        bands = _band_specs(params, len(bundle_angles), base_width, rng)
+        angle_list = bundle_angles
+    else:
+        # 角が見つからない形状 (楕円など) は従来の間隔指定へフォールバックする
+        bands = _band_specs(params, count, base_width, rng)
+        base_angle = math.radians(float(getattr(params, "white_outline_angle_deg", 0.0)))
+        configured_spacing = math.radians(max(0.0, float(getattr(params, "white_outline_bundle_spacing_deg", 0.0))))
+        bundle_step = configured_spacing if configured_spacing > 1.0e-9 else (2.0 * math.pi) / max(1, count)
+        spacing_jitter = _clamp01(float(getattr(params, "white_outline_bundle_spacing_jitter", 0.0)))
+        spacing_rng = random.Random(int(seed) ^ 0x5A17)
+        angle_list = []
+        angle = base_angle
+        for index in range(len(bands)):
+            if index > 0:
+                angle += bundle_step * (1.0 + spacing_jitter * (spacing_rng.random() * 2.0 - 1.0))
+            angle_list.append(angle)
+    for (band_width, band_length_scale), angle in zip(bands, angle_list):
         _append_band(
             out,
             effect_line_gen.EffectLineStroke,
@@ -591,6 +701,7 @@ def generate_white_outline_strokes(
             white_ratio=white_ratio,
             black_ratio=black_ratio,
             length_scale=length_scale,
+            position_percent=position_percent,
             white_brush=white_brush,
             black_brush=black_brush,
             white_gap=white_gap,

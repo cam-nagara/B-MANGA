@@ -91,7 +91,7 @@ def main() -> None:
     parent_key = page_stack_key(page)
 
     # count=3 outside で「主線+多重線3本」が見える。spacing と本数を AI 目視できるサイズで配置。
-    for shape, count in [("cloud", 3), ("rect", 3), ("ellipse", 4), ("octagon", 3), ("thorn", 3), ("thorn-curve", 3), ("fluffy", 3)]:
+    for shape, count in [("cloud", 3), ("rect", 3), ("ellipse", 4), ("thorn", 3), ("thorn-curve", 3), ("fluffy", 3)]:
         _delete_all_balloons(page)
         balloon_curve_object.cleanup_orphan_balloon_objects(context.scene)
         entry = balloon_op._create_balloon_entry(

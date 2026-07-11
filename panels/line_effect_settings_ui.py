@@ -12,8 +12,10 @@ CurveDrawCallback = Callable[[Any, Any], None]
 
 EFFECT_WHITE_OUTLINE_UI_FIELDS: FieldMap = {
     "count": "white_outline_count",
+    "bundle_placement": "white_outline_bundle_placement",
     "bundle_spacing": "white_outline_bundle_spacing_deg",
     "bundle_spacing_jitter": "white_outline_bundle_spacing_jitter",
+    "position": "white_outline_position_percent",
     "angle": "white_outline_angle_deg",
     "width": "white_outline_width_mm",
     "width_jitter": "white_outline_width_jitter_enabled",
@@ -62,8 +64,10 @@ EFFECT_WHITE_OUTLINE_UI_FIELDS: FieldMap = {
 
 BALLOON_WHITE_OUTLINE_UI_FIELDS: FieldMap = {
     "count": "flash_white_outline_count",
+    "bundle_placement": "white_outline_bundle_placement",
     "bundle_spacing": "white_outline_bundle_spacing_deg",
     "bundle_spacing_jitter": "white_outline_bundle_spacing_jitter",
+    "position": "white_outline_position_percent",
     "angle": "white_outline_angle_deg",
     "width": "flash_white_outline_width_mm",
     "width_jitter": "white_outline_width_jitter_enabled",
@@ -187,7 +191,40 @@ def _draw_outline_band_ratio_settings(layout: Any, owner: Any, fields: FieldMap)
     row = layout.row(align=True)
     _prop(row, owner, fields, "white_ratio")
     _prop(row, owner, fields, "black_ratio")
-    _prop(layout, owner, fields, "length")
+    row = layout.row(align=True)
+    _prop(row, owner, fields, "length")
+    _prop(row, owner, fields, "position")
+
+
+def _draw_outline_bundle_settings(
+    layout: Any,
+    owner: Any,
+    fields: FieldMap,
+    *,
+    show_placement: bool = True,
+) -> None:
+    """束の数・配置・間隔 (角度) の共通描画。角配置では間隔系を無効化する。
+
+    フキダシの白抜き線は内端が常に楕円 (角が無い) のため、配置モードは
+    ``show_placement=False`` で隠す。
+    """
+    placement = "spacing"
+    if show_placement:
+        placement = str(_value(owner, fields, "bundle_placement", "spacing") or "spacing")
+    spacing_mode = placement == "spacing"
+    row = layout.row(align=True)
+    count_sub = row.row(align=True)
+    count_sub.enabled = spacing_mode
+    _prop(count_sub, owner, fields, "count")
+    angle_sub = row.row(align=True)
+    angle_sub.enabled = spacing_mode
+    _prop(angle_sub, owner, fields, "angle")
+    if show_placement:
+        _prop(layout, owner, fields, "bundle_placement")
+    row = layout.row(align=True)
+    row.enabled = spacing_mode
+    _prop(row, owner, fields, "bundle_spacing")
+    _prop(row, owner, fields, "bundle_spacing_jitter")
 
 
 def _draw_effect_white_settings(
@@ -271,12 +308,7 @@ def draw_effect_white_outline_settings(
     box.label(text="白抜き線")
     if show_opacity:
         box.prop(params, "opacity", slider=True)
-    row = box.row(align=True)
-    _prop(row, params, fields, "count")
-    _prop(row, params, fields, "angle")
-    row = box.row(align=True)
-    _prop(row, params, fields, "bundle_spacing")
-    _prop(row, params, fields, "bundle_spacing_jitter")
+    _draw_outline_bundle_settings(box, params, fields)
     _prop(box, params, fields, "width")
     _draw_outline_band_ratio_settings(box, params, fields)
     _draw_outline_jitter_settings(box, params, fields)
@@ -372,12 +404,7 @@ def draw_balloon_white_outline_settings(
     fields = BALLOON_WHITE_OUTLINE_UI_FIELDS
     cols = _columns(layout, columns)
 
-    row = layout.row(align=True)
-    _prop(row, entry, fields, "count")
-    _prop(row, entry, fields, "angle")
-    row = layout.row(align=True)
-    _prop(row, entry, fields, "bundle_spacing")
-    _prop(row, entry, fields, "bundle_spacing_jitter")
+    _draw_outline_bundle_settings(layout, entry, fields, show_placement=False)
     row = layout.row(align=True)
     _prop(row, entry, fields, "width")
     _prop(row, entry, fields, "black_direction", text="")

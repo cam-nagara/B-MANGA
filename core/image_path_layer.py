@@ -52,9 +52,10 @@ def _on_image_path_title_changed(_self, context) -> None:
 
 class BMangaImagePathLayer(bpy.types.PropertyGroup):
     id: StringProperty(name="ID", default="")  # type: ignore[valid-type]
-    title: StringProperty(name="表示名", default="", update=_on_image_path_title_changed)  # type: ignore[valid-type]
+    title: StringProperty(name="表示名", description="レイヤー一覧に表示する名前です", default="", update=_on_image_path_title_changed)  # type: ignore[valid-type]
     filepath: StringProperty(  # type: ignore[valid-type]
         name="画像",
+        description="パスに沿って表示する画像ファイルです",
         default="",
         subtype="FILE_PATH",
         update=_on_image_path_changed,
@@ -62,18 +63,21 @@ class BMangaImagePathLayer(bpy.types.PropertyGroup):
     path_points_json: StringProperty(name="パス頂点", default="", update=_on_image_path_changed)  # type: ignore[valid-type]
     content_source: EnumProperty(  # type: ignore[valid-type]
         name="内容",
+        description="画像か生成形状かを選択します",
         items=IMAGE_PATH_SOURCE_ITEMS,
         default="image",
         update=_on_image_path_changed,
     )
     shape_kind: EnumProperty(  # type: ignore[valid-type]
         name="生成形状",
+        description="生成する図形の形状を選択します",
         items=IMAGE_PATH_SHAPE_ITEMS,
         default="circle",
         update=_on_image_path_changed,
     )
     shape_sides: IntProperty(  # type: ignore[valid-type]
         name="角数",
+        description="多角形の頂点数です",
         default=6,
         min=3,
         max=16,
@@ -82,12 +86,14 @@ class BMangaImagePathLayer(bpy.types.PropertyGroup):
 
     draw_mode: EnumProperty(  # type: ignore[valid-type]
         name="表示方法",
+        description="パスに沿った画像の表示方法を選択します",
         items=IMAGE_PATH_DRAW_MODE_ITEMS,
         default="stamp",
         update=_on_image_path_changed,
     )
     brush_size_mm: FloatProperty(  # type: ignore[valid-type]
         name="ブラシサイズ",
+        description="画像・図形のサイズです (mm)",
         default=10.0,
         min=0.1,
         soft_max=100.0,
@@ -96,6 +102,7 @@ class BMangaImagePathLayer(bpy.types.PropertyGroup):
     )
     aspect_ratio: FloatProperty(  # type: ignore[valid-type]
         name="縦横比",
+        description="画像・図形の縦横比です",
         default=1.0,
         min=0.01,
         soft_min=0.1,
@@ -104,6 +111,7 @@ class BMangaImagePathLayer(bpy.types.PropertyGroup):
     )
     image_angle_deg: FloatProperty(  # type: ignore[valid-type]
         name="画像の角度",
+        description="画像・図形の表示角度です (度)",
         default=0.0,
         soft_min=-180.0,
         soft_max=180.0,
@@ -111,6 +119,7 @@ class BMangaImagePathLayer(bpy.types.PropertyGroup):
     )
     spacing_percent: FloatProperty(  # type: ignore[valid-type]
         name="間隔",
+        description="パスに沿って並べる画像の間隔です (%)",
         default=100.0,
         min=1.0,
         soft_max=400.0,
@@ -119,23 +128,27 @@ class BMangaImagePathLayer(bpy.types.PropertyGroup):
     )
     stamp_angle_mode: EnumProperty(  # type: ignore[valid-type]
         name="角度",
+        description="スタンプ画像の向きの決め方を選択します",
         items=IMAGE_PATH_STAMP_ANGLE_MODE_ITEMS,
         default="line",
         update=_on_image_path_changed,
     )
     stamp_angle_object_name: StringProperty(  # type: ignore[valid-type]
         name="方向オブジェクト",
+        description="向きの基準にするオブジェクトの名前です",
         default="",
         update=_on_image_path_changed,
     )
     ribbon_repeat_mode: EnumProperty(  # type: ignore[valid-type]
         name="リボン",
+        description="リボン画像の繰り返し方法を選択します",
         items=IMAGE_PATH_RIBBON_REPEAT_MODE_ITEMS,
         default="repeat",
         update=_on_image_path_changed,
     )
     color: FloatVectorProperty(  # type: ignore[valid-type]
         name="色",
+        description="画像に重ねる色、または生成形状の塗り色です",
         subtype="COLOR",
         size=4,
         default=(1.0, 1.0, 1.0, 1.0),
@@ -143,17 +156,18 @@ class BMangaImagePathLayer(bpy.types.PropertyGroup):
         max=1.0,
         update=_on_image_path_changed,
     )
-    inout_size_enabled: BoolProperty(name="サイズ", default=False, update=_on_image_path_changed)  # type: ignore[valid-type]
-    inout_opacity_enabled: BoolProperty(name="不透明度", default=False, update=_on_image_path_changed)  # type: ignore[valid-type]
-    inout_color_enabled: BoolProperty(name="色", default=False, update=_on_image_path_changed)  # type: ignore[valid-type]
-    in_percent: FloatProperty(name="入り (%)", default=100.0, min=0.0, max=100.0, update=_on_image_path_changed)  # type: ignore[valid-type]
-    out_percent: FloatProperty(name="抜き (%)", default=100.0, min=0.0, max=100.0, update=_on_image_path_changed)  # type: ignore[valid-type]
+    inout_size_enabled: BoolProperty(name="サイズ", description="入り抜きでサイズを変化させます", default=False, update=_on_image_path_changed)  # type: ignore[valid-type]
+    inout_opacity_enabled: BoolProperty(name="不透明度", description="入り抜きで不透明度を変化させます", default=False, update=_on_image_path_changed)  # type: ignore[valid-type]
+    inout_color_enabled: BoolProperty(name="色", description="入り抜きで色を変化させます", default=False, update=_on_image_path_changed)  # type: ignore[valid-type]
+    in_percent: FloatProperty(name="入り (%)", description="入り側 (始点) でのサイズ・不透明度・色の変化量です", default=100.0, min=0.0, max=100.0, update=_on_image_path_changed)  # type: ignore[valid-type]
+    out_percent: FloatProperty(name="抜き (%)", description="抜き側 (終点) でのサイズ・不透明度・色の変化量です", default=100.0, min=0.0, max=100.0, update=_on_image_path_changed)  # type: ignore[valid-type]
     in_start_percent: FloatProperty(name="入り側グラフ位置", default=0.0, min=0.0, max=100.0, options={"HIDDEN"}, update=_on_image_path_changed)  # type: ignore[valid-type]
     out_start_percent: FloatProperty(name="抜き側グラフ位置", default=0.0, min=0.0, max=100.0, options={"HIDDEN"}, update=_on_image_path_changed)  # type: ignore[valid-type]
     in_easing_curve: StringProperty(name="入りカーブ", default="0.0000,0.0000;1.0000,1.0000", update=_on_image_path_changed)  # type: ignore[valid-type]
     out_easing_curve: StringProperty(name="抜きカーブ", default="0.0000,0.0000;1.0000,1.0000", update=_on_image_path_changed)  # type: ignore[valid-type]
     inout_start_color: FloatVectorProperty(  # type: ignore[valid-type]
         name="入り色",
+        description="入り側 (始点) の色です",
         subtype="COLOR",
         size=4,
         default=(1.0, 1.0, 1.0, 1.0),
@@ -163,6 +177,7 @@ class BMangaImagePathLayer(bpy.types.PropertyGroup):
     )
     inout_end_color: FloatVectorProperty(  # type: ignore[valid-type]
         name="抜き色",
+        description="抜き側 (終点) の色です",
         subtype="COLOR",
         size=4,
         default=(1.0, 1.0, 1.0, 1.0),
@@ -173,15 +188,16 @@ class BMangaImagePathLayer(bpy.types.PropertyGroup):
 
     opacity: FloatProperty(  # type: ignore[valid-type]
         name="不透明度",
+        description="レイヤー全体の不透明度です (%)",
         default=100.0,
         min=0.0,
         max=100.0,
         subtype="PERCENTAGE",
         update=_on_image_path_changed,
     )
-    visible: BoolProperty(name="表示", default=True, update=_on_image_path_changed)  # type: ignore[valid-type]
+    visible: BoolProperty(name="表示", description="このレイヤーを表示します", default=True, update=_on_image_path_changed)  # type: ignore[valid-type]
     selected: BoolProperty(name="マルチ選択", default=False, options={"SKIP_SAVE"})  # type: ignore[valid-type]
-    locked: BoolProperty(name="ロック", default=False)  # type: ignore[valid-type]
+    locked: BoolProperty(name="ロック", description="このレイヤーの編集をロックします", default=False)  # type: ignore[valid-type]
 
     parent_kind: StringProperty(name="親種別", default="page", update=_on_image_path_changed)  # type: ignore[valid-type]
     parent_key: StringProperty(name="親キー", default="", update=_on_image_path_changed)  # type: ignore[valid-type]

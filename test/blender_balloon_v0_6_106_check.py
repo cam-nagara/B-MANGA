@@ -94,7 +94,7 @@ def main() -> None:
     page = work.pages[0]
     parent_key = page_stack_key(page)
 
-    SHAPES = ["rect", "ellipse", "octagon", "cloud", "fluffy", "thorn", "thorn-curve"]
+    SHAPES = ["rect", "ellipse", "cloud", "fluffy", "thorn", "thorn-curve"]
 
     # --- 1) 角を尖らせる: round vs mitre 比較 (全形状) ---
     for valley_sharp_value in (False, True):

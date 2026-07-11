@@ -271,7 +271,9 @@ def _balloon_tool_preset_enum_items(_self, context):
     try:
         from ..core.balloon import _SHAPE_ITEMS
 
-        for shape_id, label, desc in _SHAPE_ITEMS:
+        # _SHAPE_ITEMS は保存番号付きの 5 要素タプル (id, name, desc, icon, number)
+        for item in _SHAPE_ITEMS:
+            shape_id, label, desc = item[0], item[1], item[2]
             if shape_id in {"custom", "none"}:
                 continue
             items.append((f"shape:{shape_id}", label, desc or f"{label}で作成する"))

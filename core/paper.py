@@ -314,6 +314,7 @@ class BMangaPaperSettings(bpy.types.PropertyGroup):
     )
     inner_frame_offset_x_mm: FloatProperty(  # type: ignore[valid-type]
         name="横オフセット",
+        description="基本枠の中心から見た横方向のオフセット (mm)",
         default=0.00,
         soft_min=-100.0,
         soft_max=100.0,
@@ -321,6 +322,7 @@ class BMangaPaperSettings(bpy.types.PropertyGroup):
     )
     inner_frame_offset_y_mm: FloatProperty(  # type: ignore[valid-type]
         name="縦オフセット",
+        description="基本枠の中心から見た縦方向のオフセット (mm)",
         default=0.00,
         soft_min=-100.0,
         soft_max=100.0,
@@ -379,6 +381,7 @@ class BMangaPaperSettings(bpy.types.PropertyGroup):
     # --- セーフライン (天/地/ノド/小口) ---
     safe_top_mm: FloatProperty(  # type: ignore[valid-type]
         name="天",
+        description="天のセーフライン (mm)",
         default=17.49,
         min=0.0,
         soft_max=100.0,
@@ -386,6 +389,7 @@ class BMangaPaperSettings(bpy.types.PropertyGroup):
     )
     safe_bottom_mm: FloatProperty(  # type: ignore[valid-type]
         name="地",
+        description="地のセーフライン (mm)",
         default=17.49,
         min=0.0,
         soft_max=100.0,
@@ -451,6 +455,7 @@ class BMangaPaperSettings(bpy.types.PropertyGroup):
     # --- 色・線数 ---
     color_mode: EnumProperty(  # type: ignore[valid-type]
         name="基本表現色",
+        description="原稿の基本表現色 (モノクロ/グレースケール/RGB/CMYK)",
         items=_COLOR_MODE_ITEMS,
         default="monochrome",
     )
@@ -463,6 +468,7 @@ class BMangaPaperSettings(bpy.types.PropertyGroup):
     )
     paper_color: FloatVectorProperty(  # type: ignore[valid-type]
         name="用紙色",
+        description="原稿用紙の背景色",
         subtype="COLOR",
         size=4,
         default=(1.0, 1.0, 1.0, 1.0),
@@ -589,6 +595,7 @@ class BMangaPaperSettings(bpy.types.PropertyGroup):
     # --- プリセット参照 ---
     preset_name: StringProperty(  # type: ignore[valid-type]
         name="使用プリセット名",
+        description="現在適用されている用紙プリセットの名前",
         default="商業誌B4マンガ原稿用紙",
     )
 

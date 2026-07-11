@@ -43,7 +43,7 @@ def _load_addon():
     return mod
 
 
-SHAPES = ["rect", "ellipse", "octagon", "cloud", "fluffy", "thorn", "thorn-curve"]
+SHAPES = ["rect", "ellipse", "cloud", "fluffy", "thorn", "thorn-curve"]
 
 
 def main() -> int:

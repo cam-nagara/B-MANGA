@@ -140,7 +140,6 @@ def _check_balloon_selector(context, wm) -> None:
         "shape:fluffy",
         "shape:thorn",
         "shape:thorn-curve",
-        "shape:octagon",
     }
     assert expected <= set(ids), ids
     for preset_id in ids:

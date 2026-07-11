@@ -329,7 +329,6 @@ def _check_tool_presets(package_name: str, context) -> dict[str, Any]:
         "shape:fluffy",
         "shape:thorn",
         "shape:thorn-curve",
-        "shape:octagon",
     }
     for preset_id in balloon_ids:
         wm.bmanga_balloon_tool_preset_selector = preset_id

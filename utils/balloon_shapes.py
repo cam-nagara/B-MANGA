@@ -41,10 +41,12 @@ _THORN_CURVE_PEAK_PULL = 0.05
 _THORN_CURVE_VALLEY_PULL = 0.38
 
 _LEGACY_SHAPE_ALIASES = {
-    "polygon": "octagon",
+    "polygon": "rect",
     "pill": "ellipse",
-    "hexagon": "octagon",
-    "diamond": "octagon",
+    "hexagon": "rect",
+    "diamond": "rect",
+    # 八角形は選択肢から削除済み (2026-07-12)。既存データは矩形として扱う。
+    "octagon": "rect",
     "star": "thorn",
     "spike_straight": "thorn",
     "spike_curve": "thorn-curve",

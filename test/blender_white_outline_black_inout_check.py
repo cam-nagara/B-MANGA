@@ -114,7 +114,6 @@ def _assert_full_length_shapes(params, effect_line_gen, start_outline) -> None:
         ("ellipse", 0.0, False),
         ("rect", 0.0, False),
         ("rect", 23.0, True),
-        ("octagon", -17.0, False),
         ("cloud", 11.0, False),
         ("fluffy", 0.0, False),
         ("thorn", 0.0, False),

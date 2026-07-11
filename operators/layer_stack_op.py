@@ -28,6 +28,8 @@ _INLINE_RENAME_DOUBLE_CLICK_SEC = 0.45
 _LAST_INLINE_RENAME_CLICK = {"index": -1, "uid": "", "time": 0.0}
 _DETAIL_DIALOG_DEFAULT_WIDTH = 360
 _DETAIL_DIALOG_EFFECT_WIDTH = 1320
+# フキダシは右クリックの詳細設定 (layer_detail_op) と同じ横長 4 列で開く
+_DETAIL_DIALOG_BALLOON_WIDTH = 1080
 
 
 _ADD_KIND_ITEMS = (
@@ -73,8 +75,11 @@ def _active_stack_item(context):
 
 
 def _detail_dialog_width_for_item(_context, item) -> int:
-    if item is not None and str(getattr(item, "kind", "") or "") in {"effect", "effect_legacy"}:
+    kind = str(getattr(item, "kind", "") or "") if item is not None else ""
+    if kind in {"effect", "effect_legacy"}:
         return _DETAIL_DIALOG_EFFECT_WIDTH
+    if kind == "balloon":
+        return _DETAIL_DIALOG_BALLOON_WIDTH
     return _DETAIL_DIALOG_DEFAULT_WIDTH
 
 
@@ -1652,6 +1657,8 @@ class BMANGA_OT_layer_stack_detail(Operator):
 
             curve_changed = effect_inout_curve.sync_ui_nodes_to_params(params)
             curve_changed |= effect_inout_curve.sync_profile_node_bidirectional(params)
+            # 白抜き線の白線・黒線グラフも数値へ確定する
+            curve_changed |= effect_inout_curve.sync_active_profile_nodes_to_params(params)
             if curve_changed:
                 if item.kind in {"effect", "effect_legacy"}:
                     from ..operators import effect_line_op
@@ -1665,10 +1672,30 @@ class BMANGA_OT_layer_stack_detail(Operator):
         if params is None:
             return
         try:
-            from ..utils import effect_inout_curve
+            from ..utils import balloon_shapes, effect_inout_curve
 
             effect_inout_curve.ensure_ui_nodes(params)
             effect_inout_curve.ensure_profile_node(params)
+            is_white_outline = (
+                str(getattr(params, "effect_type", "") or "") == "white_outline"
+                or balloon_shapes.normalize_line_style(
+                    str(getattr(params, "line_style", "") or "")
+                )
+                == "white_outline"
+            )
+            if is_white_outline:
+                effect_inout_curve.ensure_profile_node(
+                    params,
+                    fields=effect_inout_curve.WHITE_PROFILE_FIELDS,
+                    node_name=effect_inout_curve.WHITE_PROFILE_NODE_NAME,
+                    source_prop=effect_inout_curve.WHITE_PROFILE_SOURCE_PROP,
+                )
+                effect_inout_curve.ensure_profile_node(
+                    params,
+                    fields=effect_inout_curve.BLACK_PROFILE_FIELDS,
+                    node_name=effect_inout_curve.BLACK_PROFILE_NODE_NAME,
+                    source_prop=effect_inout_curve.BLACK_PROFILE_SOURCE_PROP,
+                )
         except Exception:  # noqa: BLE001
             pass
 

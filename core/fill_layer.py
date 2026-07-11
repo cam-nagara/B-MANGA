@@ -16,13 +16,13 @@ from ..utils import log
 _logger = log.get_logger(__name__)
 
 FILL_TYPE_ITEMS = (
-    ("solid", "ベタ塗り", ""),
-    ("gradient", "グラデーション", ""),
+    ("solid", "ベタ塗り", "単色で塗りつぶします"),
+    ("gradient", "グラデーション", "2色のグラデーションで塗りつぶします"),
 )
 
 GRADIENT_TYPE_ITEMS = (
-    ("linear", "線形", ""),
-    ("radial", "円形", ""),
+    ("linear", "線形", "直線状にグラデーションします"),
+    ("radial", "円形", "円状にグラデーションします"),
 )
 
 
@@ -55,10 +55,11 @@ def _on_fill_title_changed(_self, context) -> None:
 
 class BMangaFillLayer(bpy.types.PropertyGroup):
     id: StringProperty(name="ID", default="")  # type: ignore[valid-type]
-    title: StringProperty(name="表示名", default="", update=_on_fill_title_changed)  # type: ignore[valid-type]
+    title: StringProperty(name="表示名", description="レイヤー一覧に表示する名前です", default="", update=_on_fill_title_changed)  # type: ignore[valid-type]
 
     fill_type: EnumProperty(  # type: ignore[valid-type]
         name="塗りタイプ",
+        description="ベタ塗りかグラデーションかを選択します",
         items=FILL_TYPE_ITEMS,
         default="solid",
         update=_on_fill_layer_changed,
@@ -66,6 +67,7 @@ class BMangaFillLayer(bpy.types.PropertyGroup):
 
     color: FloatVectorProperty(  # type: ignore[valid-type]
         name="色",
+        description="塗りつぶしの色です (グラデーション時は開始色)",
         subtype="COLOR",
         size=4,
         default=(0.0, 0.0, 0.0, 1.0),
@@ -75,6 +77,7 @@ class BMangaFillLayer(bpy.types.PropertyGroup):
     )
     color2: FloatVectorProperty(  # type: ignore[valid-type]
         name="色2",
+        description="グラデーションの終了色です",
         subtype="COLOR",
         size=4,
         default=(1.0, 1.0, 1.0, 1.0),
@@ -85,12 +88,14 @@ class BMangaFillLayer(bpy.types.PropertyGroup):
 
     gradient_type: EnumProperty(  # type: ignore[valid-type]
         name="グラデーション種別",
+        description="グラデーションの形状を選択します",
         items=GRADIENT_TYPE_ITEMS,
         default="linear",
         update=_on_fill_layer_changed,
     )
     gradient_angle: FloatProperty(  # type: ignore[valid-type]
         name="角度",
+        description="線形グラデーションの向きを指定する角度です",
         default=0.0,
         soft_min=-180.0,
         soft_max=180.0,
@@ -100,33 +105,34 @@ class BMangaFillLayer(bpy.types.PropertyGroup):
 
     opacity: FloatProperty(  # type: ignore[valid-type]
         name="不透明度",
+        description="レイヤー全体の不透明度です (%)",
         default=100.0,
         min=0.0,
         max=100.0,
         subtype="PERCENTAGE",
         update=_on_fill_layer_changed,
     )
-    visible: BoolProperty(name="表示", default=True, update=_on_fill_layer_changed)  # type: ignore[valid-type]
+    visible: BoolProperty(name="表示", description="このレイヤーを表示します", default=True, update=_on_fill_layer_changed)  # type: ignore[valid-type]
     selected: BoolProperty(name="マルチ選択", default=False, options={"SKIP_SAVE"})  # type: ignore[valid-type]
-    locked: BoolProperty(name="ロック", default=False)  # type: ignore[valid-type]
+    locked: BoolProperty(name="ロック", description="このレイヤーの編集をロックします", default=False)  # type: ignore[valid-type]
 
     parent_kind: StringProperty(name="親種別", default="page", update=_on_fill_layer_changed)  # type: ignore[valid-type]
     parent_key: StringProperty(name="親キー", default="", update=_on_fill_layer_changed)  # type: ignore[valid-type]
     folder_key: StringProperty(name="レイヤーフォルダ", default="", update=_on_fill_layer_changed)  # type: ignore[valid-type]
 
     use_region: BoolProperty(name="領域指定", default=False, update=_on_fill_layer_changed)  # type: ignore[valid-type]
-    region_x_mm: FloatProperty(name="X (mm)", default=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
-    region_y_mm: FloatProperty(name="Y (mm)", default=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
-    region_width_mm: FloatProperty(name="幅 (mm)", default=0.0, min=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
-    region_height_mm: FloatProperty(name="高さ (mm)", default=0.0, min=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
+    region_x_mm: FloatProperty(name="X (mm)", description="塗り範囲左上のX座標です (mm)", default=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
+    region_y_mm: FloatProperty(name="Y (mm)", description="塗り範囲左上のY座標です (mm)", default=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
+    region_width_mm: FloatProperty(name="幅 (mm)", description="塗り範囲の幅です (mm)", default=0.0, min=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
+    region_height_mm: FloatProperty(name="高さ (mm)", description="塗り範囲の高さです (mm)", default=0.0, min=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
 
     lasso_points_json: StringProperty(name="投げ縄頂点", default="", update=_on_fill_layer_changed)  # type: ignore[valid-type]
 
     use_gradient_endpoints: BoolProperty(name="端点指定", default=False, update=_on_fill_layer_changed)  # type: ignore[valid-type]
-    gradient_start_x_mm: FloatProperty(name="開始X", default=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
-    gradient_start_y_mm: FloatProperty(name="開始Y", default=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
-    gradient_end_x_mm: FloatProperty(name="終了X", default=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
-    gradient_end_y_mm: FloatProperty(name="終了Y", default=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
+    gradient_start_x_mm: FloatProperty(name="開始X", description="グラデーション開始点のX座標です (mm)", default=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
+    gradient_start_y_mm: FloatProperty(name="開始Y", description="グラデーション開始点のY座標です (mm)", default=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
+    gradient_end_x_mm: FloatProperty(name="終了X", description="グラデーション終了点のX座標です (mm)", default=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
+    gradient_end_y_mm: FloatProperty(name="終了Y", description="グラデーション終了点のY座標です (mm)", default=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
 
 
 _CLASSES = (BMangaFillLayer,)

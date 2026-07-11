@@ -95,7 +95,7 @@ def main() -> None:
     _delete_all_balloons(page)
     balloon_curve_object.cleanup_orphan_balloon_objects(context.scene)
     objects = []
-    for idx, shape in enumerate(["thorn", "thorn-curve", "fluffy", "cloud", "octagon"]):
+    for idx, shape in enumerate(["thorn", "thorn-curve", "fluffy", "cloud"]):
         entry = balloon_op._create_balloon_entry(
             context, page,
             shape=shape, x=20.0 + idx * 70.0, y=20.0, w=60.0, h=60.0,

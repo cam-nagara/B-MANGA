@@ -75,12 +75,12 @@ def _on_page_number_range_changed(self, context) -> None:
 # 原稿上の 6 通り配置 (上下 × 左中右、middle 段は仕上がり枠外への配置で
 # 自然なアンカーが取りづらく実用性が低いため除外)
 _POSITION_ITEMS = (
-    ("top-left", "左上", ""),
-    ("top-center", "上中央", ""),
-    ("top-right", "右上", ""),
-    ("bottom-left", "左下", ""),
-    ("bottom-center", "下中央", ""),
-    ("bottom-right", "右下", ""),
+    ("top-left", "左上", "原稿の左上に配置します"),
+    ("top-center", "上中央", "原稿の上中央に配置します"),
+    ("top-right", "右上", "原稿の右上に配置します"),
+    ("bottom-left", "左下", "原稿の左下に配置します"),
+    ("bottom-center", "下中央", "原稿の下中央に配置します"),
+    ("bottom-right", "右下", "原稿の右下に配置します"),
 )
 
 
@@ -144,11 +144,13 @@ class BMangaDisplayItem(bpy.types.PropertyGroup):
 
     enabled: BoolProperty(  # type: ignore[valid-type]
         name="表示",
+        description="この項目を原稿上に表示します",
         default=False,
         update=_on_work_info_changed,
     )
     position: EnumProperty(  # type: ignore[valid-type]
         name="位置",
+        description="原稿上での配置位置を選択します",
         items=_POSITION_ITEMS,
         default="bottom-left",
         update=_on_work_info_changed,
@@ -190,6 +192,7 @@ class BMangaDisplayItem(bpy.types.PropertyGroup):
     )
     color: FloatVectorProperty(  # type: ignore[valid-type]
         name="色",
+        description="この項目の文字色",
         subtype="COLOR",
         size=4,
         default=(1.0, 1.0, 1.0, 1.0),
@@ -210,11 +213,13 @@ class BMangaWorkInfo(bpy.types.PropertyGroup):
     )
     work_name: StringProperty(  # type: ignore[valid-type]
         name="作品名",
+        description="原稿上に表示する作品名",
         default="",
         update=_on_work_info_changed,
     )
     episode_number: IntProperty(  # type: ignore[valid-type]
         name="話数",
+        description="原稿上に表示する話数",
         default=1,
         min=0,
         soft_max=9999,
@@ -222,11 +227,13 @@ class BMangaWorkInfo(bpy.types.PropertyGroup):
     )
     subtitle: StringProperty(  # type: ignore[valid-type]
         name="サブタイトル",
+        description="原稿上に表示するサブタイトル",
         default="",
         update=_on_work_info_changed,
     )
     author: StringProperty(  # type: ignore[valid-type]
         name="作者名",
+        description="原稿上に表示する作者名",
         default="",
         update=_on_work_info_changed,
     )
@@ -242,12 +249,12 @@ class BMangaWorkInfo(bpy.types.PropertyGroup):
         update=_on_work_info_changed,
     )
 
-    display_work_name: PointerProperty(type=BMangaDisplayItem)  # type: ignore[valid-type]
-    display_episode: PointerProperty(type=BMangaDisplayItem)  # type: ignore[valid-type]
-    display_subtitle: PointerProperty(type=BMangaDisplayItem)  # type: ignore[valid-type]
-    display_author: PointerProperty(type=BMangaDisplayItem)  # type: ignore[valid-type]
+    display_work_name: PointerProperty(type=BMangaDisplayItem, description="作品名の原稿上表示設定")  # type: ignore[valid-type]
+    display_episode: PointerProperty(type=BMangaDisplayItem, description="話数の原稿上表示設定")  # type: ignore[valid-type]
+    display_subtitle: PointerProperty(type=BMangaDisplayItem, description="サブタイトルの原稿上表示設定")  # type: ignore[valid-type]
+    display_author: PointerProperty(type=BMangaDisplayItem, description="作者名の原稿上表示設定")  # type: ignore[valid-type]
     # 「原稿上の表示」のページ番号項目 (旧ノンブルの UI 後継)
-    display_page_number: PointerProperty(type=BMangaDisplayItem)  # type: ignore[valid-type]
+    display_page_number: PointerProperty(type=BMangaDisplayItem, description="ページ番号の原稿上表示設定")  # type: ignore[valid-type]
     page_number_start: IntProperty(  # type: ignore[valid-type]
         name="開始番号",
         description="ページ番号表示の開始値 (active_page_index=0 のページに割り当てる番号)",
@@ -275,6 +282,7 @@ class BMangaNombre(bpy.types.PropertyGroup):
 
     enabled: BoolProperty(  # type: ignore[valid-type]
         name="ノンブル表示",
+        description="原稿上にノンブル (ページ番号) を表示します",
         default=True,
     )
     format: StringProperty(  # type: ignore[valid-type]
@@ -284,33 +292,39 @@ class BMangaNombre(bpy.types.PropertyGroup):
     )
     font: StringProperty(  # type: ignore[valid-type]
         name="フォント",
+        description="ノンブルの表示に使うフォント",
         default="I-OTFアンチックStd B",
     )
     font_size_pt: FloatProperty(  # type: ignore[valid-type]
         name="フォントサイズ (pt)",
+        description="ノンブルの文字サイズ (pt)",
         default=9.0,
         min=1.0,
         soft_max=72.0,
     )
     position: EnumProperty(  # type: ignore[valid-type]
         name="位置",
+        description="原稿上でのノンブルの配置位置を選択します",
         items=_POSITION_ITEMS,
         default="bottom-center",
     )
     gap_vertical_mm: FloatProperty(  # type: ignore[valid-type]
         name="基本枠との間隔 (縦)",
+        description="仕上がり基本枠からの縦方向の間隔（mm）",
         default=5.00,
         soft_min=-50.0,
         soft_max=50.0,
     )
     gap_horizontal_mm: FloatProperty(  # type: ignore[valid-type]
         name="基本枠との間隔 (横)",
+        description="仕上がり基本枠からの横方向の間隔（mm）",
         default=0.00,
         soft_min=-50.0,
         soft_max=50.0,
     )
     color: FloatVectorProperty(  # type: ignore[valid-type]
         name="色",
+        description="ノンブルの文字色",
         subtype="COLOR",
         size=4,
         default=(1.0, 1.0, 1.0, 1.0),
@@ -319,16 +333,19 @@ class BMangaNombre(bpy.types.PropertyGroup):
     )
     border_enabled: BoolProperty(  # type: ignore[valid-type]
         name="フチをつける",
+        description="ノンブルの文字にフチを付けます",
         default=False,
     )
     border_width_mm: FloatProperty(  # type: ignore[valid-type]
         name="フチ幅 (mm)",
+        description="ノンブルのフチの太さ（mm）",
         default=0.30,
         min=0.0,
         soft_max=5.0,
     )
     border_color: FloatVectorProperty(  # type: ignore[valid-type]
         name="フチ色",
+        description="ノンブルのフチの色",
         subtype="COLOR",
         size=4,
         default=(1.0, 1.0, 1.0, 1.0),
@@ -337,6 +354,7 @@ class BMangaNombre(bpy.types.PropertyGroup):
     )
     start_number: IntProperty(  # type: ignore[valid-type]
         name="開始番号",
+        description="ノンブルの開始番号",
         default=1,
         min=0,
         soft_max=9999,

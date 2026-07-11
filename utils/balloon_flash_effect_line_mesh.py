@@ -42,44 +42,48 @@ def _effect_params_signature(entry, line_style: str) -> dict:
             float(getattr(entry, "line_peak_width_pct", 100.0) or 100.0),
             float(getattr(entry, "line_valley_width_pct", 0.0) or 0.0),
         )
+        # PropertyGroup の数値は None にならないため `or 既定値` は使わない。
+        # (0.00 の設定値が既定値へ化け、「間隔0にすると広がる」バグになっていた)
         return {
             "line_width_mm": line_width_mm,
-            "line_peak_width_pct": float(getattr(entry, "line_peak_width_pct", 100.0) or 100.0),
-            "line_valley_width_pct": float(getattr(entry, "line_valley_width_pct", 0.0) or 0.0),
+            "line_peak_width_pct": float(getattr(entry, "line_peak_width_pct", 100.0)),
+            "line_valley_width_pct": float(getattr(entry, "line_valley_width_pct", 0.0)),
             "black_brush_mm": black_brush_mm,
             "black_endpoint_pct": black_endpoint_pct,
             "flash_white_line_width_percent": float(
-                getattr(entry, "flash_white_line_width_percent", 100.0) or 100.0
+                getattr(entry, "flash_white_line_width_percent", 100.0)
             ),
             "flash_white_line_valley_width_pct": float(
-                getattr(entry, "flash_white_line_valley_width_pct", 0.0) or 0.0
+                getattr(entry, "flash_white_line_valley_width_pct", 0.0)
             ),
             "flash_white_line_peak_width_pct": float(
-                getattr(entry, "flash_white_line_peak_width_pct", 100.0) or 100.0
+                getattr(entry, "flash_white_line_peak_width_pct", 100.0)
             ),
-            "flash_white_outline_count": int(getattr(entry, "flash_white_outline_count", 5) or 5),
-            "white_outline_bundle_spacing_deg": float(getattr(entry, "white_outline_bundle_spacing_deg", 0.0) or 0.0),
-            "white_outline_bundle_spacing_jitter": float(getattr(entry, "white_outline_bundle_spacing_jitter", 0.0) or 0.0),
+            "flash_white_outline_count": int(getattr(entry, "flash_white_outline_count", 5)),
+            "white_outline_bundle_placement": str(getattr(entry, "white_outline_bundle_placement", "spacing") or "spacing"),
+            "white_outline_bundle_spacing_deg": float(getattr(entry, "white_outline_bundle_spacing_deg", 0.0)),
+            "white_outline_bundle_spacing_jitter": float(getattr(entry, "white_outline_bundle_spacing_jitter", 0.0)),
+            "white_outline_position_percent": float(getattr(entry, "white_outline_position_percent", 100.0)),
             "flash_white_outline_width_mm": float(
-                getattr(entry, "flash_white_outline_width_mm", 10.0) or 10.0
+                getattr(entry, "flash_white_outline_width_mm", 10.0)
             ),
             "flash_white_outline_spacing_mm": float(
-                getattr(entry, "flash_white_outline_spacing_mm", 0.25) or 0.25
+                getattr(entry, "flash_white_outline_spacing_mm", 0.25)
             ),
             "white_outline_white_spacing_scale_percent": float(
-                getattr(entry, "white_outline_white_spacing_scale_percent", 100.0) or 0.0
+                getattr(entry, "white_outline_white_spacing_scale_percent", 100.0)
             ),
             "flash_white_outline_white_line_count": int(
-                getattr(entry, "flash_white_outline_white_line_count", 24) or 24
+                getattr(entry, "flash_white_outline_white_line_count", 24)
             ),
             "flash_white_outline_black_line_count": int(
-                getattr(entry, "flash_white_outline_black_line_count", 3) or 3
+                getattr(entry, "flash_white_outline_black_line_count", 3)
             ),
             "flash_white_outline_black_spacing_mm": float(
-                getattr(entry, "flash_white_outline_black_spacing_mm", 0.25) or 0.25
+                getattr(entry, "flash_white_outline_black_spacing_mm", 0.25)
             ),
             "white_outline_black_spacing_scale_percent": float(
-                getattr(entry, "white_outline_black_spacing_scale_percent", 100.0) or 0.0
+                getattr(entry, "white_outline_black_spacing_scale_percent", 100.0)
             ),
             # 白抜き線の詳細 (v0.6.290): 変更で再構築されるよう署名に含める
             "white_outline_angle_deg": float(getattr(entry, "white_outline_angle_deg", 0.0) or 0.0),
@@ -290,9 +294,10 @@ def _white_outline_params(entry, *, black_brush_mm: float) -> SimpleNamespace:
         float(getattr(entry, "flash_white_line_peak_width_pct", 100.0) or 100.0),
         float(getattr(entry, "flash_white_line_valley_width_pct", 0.0) or 0.0),
     )
-    white_width_scale = max(0.0, float(getattr(entry, "flash_white_line_width_percent", 100.0) or 100.0)) / 100.0
+    white_width_scale = max(0.0, float(getattr(entry, "flash_white_line_width_percent", 100.0))) / 100.0
     white_brush = max(0.01, white_brush * white_width_scale)
-    spacing = max(0.0, float(getattr(entry, "flash_white_outline_spacing_mm", 0.25) or 0.25))
+    # `or 既定値` は 0.00 の設定を既定値へ化けさせるため使わない
+    spacing = max(0.0, float(getattr(entry, "flash_white_outline_spacing_mm", 0.25)))
     # 詳細フィールドはフキダシ側にも同名で持ち、既定値 = 従来の固定値
     # (既存フキダシの見た目を変えない)
     return SimpleNamespace(
@@ -303,13 +308,15 @@ def _white_outline_params(entry, *, black_brush_mm: float) -> SimpleNamespace:
         start_rounded_corner_enabled=False,
         end_rounded_corner_enabled=False,
         white_outline_count=max(1, int(getattr(entry, "flash_white_outline_count", 5) or 5)),
+        white_outline_bundle_placement=str(getattr(entry, "white_outline_bundle_placement", "spacing") or "spacing"),
         white_outline_bundle_spacing_deg=float(getattr(entry, "white_outline_bundle_spacing_deg", 0.0) or 0.0),
         white_outline_bundle_spacing_jitter=float(getattr(entry, "white_outline_bundle_spacing_jitter", 0.0) or 0.0),
+        white_outline_position_percent=float(getattr(entry, "white_outline_position_percent", 100.0)),
         white_outline_spacing_mm=spacing,
         white_outline_white_spacing_scale_percent=float(getattr(entry, "white_outline_white_spacing_scale_percent", 100.0) or 0.0),
         white_outline_white_line_count_auto=bool(getattr(entry, "white_outline_white_line_count_auto", False)),
         white_outline_white_line_count=max(1, int(getattr(entry, "flash_white_outline_white_line_count", 24) or 24)),
-        white_outline_width_mm=max(0.01, float(getattr(entry, "flash_white_outline_width_mm", 10.0) or 10.0)),
+        white_outline_width_mm=max(0.01, float(getattr(entry, "flash_white_outline_width_mm", 10.0))),
         white_outline_width_jitter_enabled=bool(getattr(entry, "white_outline_width_jitter_enabled", False)),
         white_outline_width_min_percent=float(getattr(entry, "white_outline_width_min_percent", 100.0) or 0.0),
         white_outline_length_jitter_enabled=bool(getattr(entry, "white_outline_length_jitter_enabled", False)),
@@ -332,7 +339,7 @@ def _white_outline_params(entry, *, black_brush_mm: float) -> SimpleNamespace:
         white_outline_black_line_count=max(1, int(getattr(entry, "flash_white_outline_black_line_count", 3) or 3)),
         white_outline_black_direction=str(getattr(entry, "white_outline_black_direction", "outside") or "outside"),
         white_outline_black_brush_mm=max(0.01, black_brush_mm),
-        white_outline_black_spacing_mm=max(0.0, float(getattr(entry, "flash_white_outline_black_spacing_mm", spacing) or spacing)),
+        white_outline_black_spacing_mm=max(0.0, float(getattr(entry, "flash_white_outline_black_spacing_mm", spacing))),
         white_outline_black_spacing_scale_percent=float(getattr(entry, "white_outline_black_spacing_scale_percent", 100.0) or 0.0),
         white_outline_black_width_scale_percent=float(getattr(entry, "white_outline_black_width_scale_percent", 100.0) or 0.0),
         white_outline_black_length_scale_near_percent=float(getattr(entry, "white_outline_black_length_scale_near_percent", 100.0) or 0.0),

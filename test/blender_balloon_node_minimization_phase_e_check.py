@@ -135,7 +135,6 @@ def main() -> int:
         )),
         ("rect-opacity-50", lambda e: setattr(e, "opacity", 50.0)),
         ("ellipse-solid", lambda e: None),
-        ("octagon-solid", lambda e: None),
         ("cloud-default", lambda e: None),
         ("fluffy-default", lambda e: None),
         ("thorn-default", lambda e: None),
@@ -168,7 +167,6 @@ def main() -> int:
 
     shapes_for_default = {
         "ellipse-solid": "ellipse",
-        "octagon-solid": "octagon",
         "cloud-default": "cloud",
         "fluffy-default": "fluffy",
         "thorn-default": "thorn",

@@ -213,6 +213,113 @@ def _assert_schema_migration(params, effect_line_core) -> None:
     effect_line_core.effect_params_from_dict(params, {"schema_version": 18})
     _close(params.white_outline_black_ratio_percent, 70.0, "旧データ読込の黒線割合既定値")
     _close(params.white_outline_length_percent, 100.0, "旧データ読込の長さ既定値")
+    params.white_outline_bundle_placement = "corner"
+    params.white_outline_position_percent = 40.0
+    params.start_corner_type = "bevel"
+    effect_line_core.effect_params_from_dict(
+        params, {"schema_version": 19, "start_rounded_corner_enabled": True}
+    )
+    assert params.white_outline_bundle_placement == "spacing", "旧データ読込の束配置既定値"
+    _close(params.white_outline_position_percent, 100.0, "旧データ読込の位置既定値")
+    assert params.start_corner_type == "rounded", "旧データの角丸チェックが角タイプへ移行されていません"
+
+
+def _bundle_direction_bins(params, effect_line_gen, *, tol_deg: float = 12.0) -> set[float]:
+    strokes = effect_line_gen.generate_white_outline_strokes(
+        params,
+        (0.0, 0.0),
+        40.0,
+        30.0,
+        seed=3,
+    )
+    directions: set[float] = set()
+    for stroke in strokes:
+        if str(getattr(stroke, "role", "") or "") != "white_outline_white":
+            continue
+        x, y, _z = list(getattr(stroke, "points_xyz", ()) or ())[0]
+        directions.add(math.atan2(float(y), float(x)) % (2.0 * math.pi))
+    bins: set[float] = set()
+    for angle in directions:
+        merged = False
+        for existing in tuple(bins):
+            delta = abs(angle - existing)
+            if min(delta, 2.0 * math.pi - delta) < math.radians(tol_deg):
+                merged = True
+                break
+        if not merged:
+            bins.add(angle)
+    return bins
+
+
+def _assert_bundle_placement(params, effect_line_gen) -> None:
+    params.end_shape = "rect"
+    params.white_outline_count = 6
+    params.white_outline_bundle_placement = "corner"
+    corner_bins = _bundle_direction_bins(params, effect_line_gen)
+    assert len(corner_bins) == 4, f"矩形内端の角配置が4方向になっていません: {len(corner_bins)}"
+    expected = {
+        math.atan2(sy * 30.0, sx * 40.0) % (2.0 * math.pi)
+        for sx, sy in ((1, 1), (-1, 1), (-1, -1), (1, -1))
+    }
+    for angle in corner_bins:
+        best = min(
+            (min(abs(angle - e), 2.0 * math.pi - abs(angle - e)) for e in expected),
+        )
+        assert best < math.radians(12.0), f"角配置の方向がずれています: {math.degrees(angle)}"
+
+    params.white_outline_bundle_placement = "edge_center"
+    edge_bins = _bundle_direction_bins(params, effect_line_gen)
+    assert len(edge_bins) == 4, f"角間の中心配置が4方向になっていません: {len(edge_bins)}"
+    for angle in edge_bins:
+        best = min(
+            min(abs(angle - e), 2.0 * math.pi - abs(angle - e))
+            for e in (0.0, math.pi / 2.0, math.pi, 3.0 * math.pi / 2.0)
+        )
+        assert best < math.radians(12.0), f"角間の中心の方向がずれています: {math.degrees(angle)}"
+
+    # 角が無い内端形状 (楕円) では従来の等間隔配置へフォールバックする
+    params.end_shape = "ellipse"
+    params.white_outline_bundle_placement = "corner"
+    fallback_bins = _bundle_direction_bins(params, effect_line_gen, tol_deg=20.0)
+    assert len(fallback_bins) == 6, f"楕円内端のフォールバックが束の数と一致しません: {len(fallback_bins)}"
+    params.white_outline_bundle_placement = "spacing"
+    params.white_outline_count = 4
+
+
+def _assert_position_percent(params, effect_line_gen) -> None:
+    params.end_shape = "ellipse"
+    params.white_outline_bundle_placement = "spacing"
+    params.white_outline_length_percent = 100.0
+    params.white_outline_angle_deg = 0.0
+    params.white_outline_bundle_spacing_deg = 0.0
+    params.white_outline_bundle_spacing_jitter = 0.0
+
+    def _axis_white_extents(position: float) -> tuple[float, float]:
+        """方位角 0 の束の中心線 (X 軸上の白線) の外側・内側半径 (mm)。"""
+        params.white_outline_position_percent = position
+        strokes = effect_line_gen.generate_white_outline_strokes(
+            params, (0.0, 0.0), 40.0, 30.0, seed=5
+        )
+        for stroke in strokes:
+            if str(getattr(stroke, "role", "") or "") != "white_outline_white":
+                continue
+            x0, y0, _z0 = stroke.points_xyz[0]
+            if abs(float(y0)) > 1.0e-6:
+                continue
+            x1, y1, _z1 = stroke.points_xyz[-1]
+            r_start = math.hypot(float(x0), float(y0)) * 1000.0
+            r_end = math.hypot(float(x1), float(y1)) * 1000.0
+            return max(r_start, r_end), min(r_start, r_end)
+        raise AssertionError("X軸上の白線が見つかりません")
+
+    outer_100, inner_100 = _axis_white_extents(100.0)
+    length_mm = outer_100 - inner_100
+    assert length_mm > 1.0, f"白線の長さが取れません: {length_mm}"
+    outer_0, inner_0 = _axis_white_extents(0.0)
+    _close((outer_0 + inner_0) * 0.5, inner_100, "位置0%で線の中心が内端形状上", tolerance=1.0e-3)
+    outer_m100, _inner_m100 = _axis_white_extents(-100.0)
+    _close(outer_m100, inner_100, "位置-100%で線の外側端が内端形状上", tolerance=1.0e-3)
+    params.white_outline_position_percent = 100.0
 
 
 def _assert_defaults(params, entry) -> None:
@@ -231,6 +338,8 @@ def _assert_saved(params, entry, effect_line_core, balloon_core, schema) -> None
         "white_outline_black_spacing_scale_percent",
         "white_outline_black_ratio_percent",
         "white_outline_length_percent",
+        "white_outline_bundle_placement",
+        "white_outline_position_percent",
     }
     assert fields <= set(effect_line_core.EFFECT_PARAM_FIELDS), "効果線の新規項目が保存対象にありません"
     assert fields <= set(balloon_core.UNI_FLASH_PARAM_FIELDS), "フキダシの新規項目が保存対象にありません"
@@ -278,6 +387,8 @@ def _assert_balloon_cache_signature(entry, balloon_flash_effect_line_mesh) -> No
         "white_outline_black_out_easing_curve",
         "white_outline_black_ratio_percent",
         "white_outline_length_percent",
+        "white_outline_bundle_placement",
+        "white_outline_position_percent",
     )
     signature = balloon_flash_effect_line_mesh._effect_params_signature(
         entry, "white_outline"
@@ -308,6 +419,8 @@ def main() -> None:
         _assert_bundle_spacing(params, effect_line_gen)
         _assert_spacing_scale(effect_line_white_outline)
         _assert_black_ratio_and_length(params, effect_line_gen)
+        _assert_bundle_placement(params, effect_line_gen)
+        _assert_position_percent(params, effect_line_gen)
         _assert_schema_migration(params, effect_line_core)
         _assert_saved(params, entry, effect_line_core, balloon_core, schema)
         _assert_balloon_cache_signature(entry, balloon_flash_effect_line_mesh)

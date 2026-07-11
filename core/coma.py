@@ -150,17 +150,17 @@ class BMangaComaVertex(bpy.types.PropertyGroup):
     """コマ枠の頂点 (mm)."""
 
     x_mm: FloatProperty(  # type: ignore[valid-type]
-        name="X", default=0.0, update=_on_coma_vertex_changed
+        name="X", description="コマ枠頂点のX座標 (mm)", default=0.0, update=_on_coma_vertex_changed
     )
     y_mm: FloatProperty(  # type: ignore[valid-type]
-        name="Y", default=0.0, update=_on_coma_vertex_changed
+        name="Y", description="コマ枠頂点のY座標 (mm)", default=0.0, update=_on_coma_vertex_changed
     )
 
 
 class BMangaLayerRef(bpy.types.PropertyGroup):
     """作画レイヤー ID 参照 (Grease Pencil / 画像レイヤー / フキダシ)."""
 
-    layer_id: StringProperty(name="Layer ID", default="")  # type: ignore[valid-type]
+    layer_id: StringProperty(name="Layer ID", description="紐づく作画レイヤーのID (内部参照用)", default="")  # type: ignore[valid-type]
 
 
 class BMangaComaEntry(bpy.types.PropertyGroup):
@@ -174,6 +174,7 @@ class BMangaComaEntry(bpy.types.PropertyGroup):
     )
     title: StringProperty(  # type: ignore[valid-type]
         name="表示名",
+        description="コマ一覧に表示する名前。空欄なら自動生成の番号のみ表示します",
         default="",
     )
     coma_id: StringProperty(  # type: ignore[valid-type]
@@ -214,6 +215,7 @@ class BMangaComaEntry(bpy.types.PropertyGroup):
     # --- 形状 ---
     shape_type: EnumProperty(  # type: ignore[valid-type]
         name="形状",
+        description="コマ枠の形状 (矩形/多角形/曲線/フリーフォーム)",
         items=_SHAPE_TYPE_ITEMS,
         default="rect",
     )
@@ -221,16 +223,16 @@ class BMangaComaEntry(bpy.types.PropertyGroup):
 
     # 矩形ショートカット (shape_type='rect' のときに使用)
     rect_x_mm: FloatProperty(  # type: ignore[valid-type]
-        name="X", default=0.0, update=_on_coma_geometry_changed
+        name="X", description="矩形コマのページ内基準位置 X (mm)", default=0.0, update=_on_coma_geometry_changed
     )
     rect_y_mm: FloatProperty(  # type: ignore[valid-type]
-        name="Y", default=0.0, update=_on_coma_geometry_changed
+        name="Y", description="矩形コマのページ内基準位置 Y (mm)", default=0.0, update=_on_coma_geometry_changed
     )
     rect_width_mm: FloatProperty(  # type: ignore[valid-type]
-        name="幅", default=50.0, min=0.1, update=_on_coma_geometry_changed
+        name="幅", description="矩形コマの幅 (mm)", default=50.0, min=0.1, update=_on_coma_geometry_changed
     )
     rect_height_mm: FloatProperty(  # type: ignore[valid-type]
-        name="高さ", default=50.0, min=0.1, update=_on_coma_geometry_changed
+        name="高さ", description="矩形コマの高さ (mm)", default=50.0, min=0.1, update=_on_coma_geometry_changed
     )
     merged_border_mode: StringProperty(  # type: ignore[valid-type]
         name="結合枠線",
@@ -268,6 +270,7 @@ class BMangaComaEntry(bpy.types.PropertyGroup):
     )
     selected: BoolProperty(  # type: ignore[valid-type]
         name="マルチ選択",
+        description="複数選択時の一時的な選択状態 (ファイルには保存されません)",
         default=False,
         options={"SKIP_SAVE"},
     )

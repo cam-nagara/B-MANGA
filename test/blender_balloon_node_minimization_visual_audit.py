@@ -184,7 +184,7 @@ def scenario_1_coma_mask_all_shapes():
     cp.ensure_coma_plane(scene, work, page, coma)
     cp.ensure_coma_mask(scene, work, page, coma)
 
-    shapes = ["rect", "ellipse", "octagon", "cloud", "fluffy", "thorn", "thorn-curve"]
+    shapes = ["rect", "ellipse", "cloud", "fluffy", "thorn", "thorn-curve"]
     cols = 4
     cell_w = 23.0
     cell_h = 23.0
@@ -395,7 +395,7 @@ def scenario_5_extreme_sizes_and_widths():
         ("tiny_thick", "ellipse", 60.0, 130.0,  8.0,  8.0, 1.5),
         ("normal",     "cloud",  100.0, 130.0, 30.0, 30.0, 1.0),
         ("big",        "rect",    20.0,  20.0, 80.0, 80.0, 2.5),
-        ("very_big",   "octagon",110.0,  20.0, 80.0, 80.0, 3.5),
+        ("very_big",   "rect",110.0,  20.0, 80.0, 80.0, 3.5),
     ]
     for label, shape, x, y, w, h, lw in cases:
         _add_balloon(

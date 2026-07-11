@@ -48,6 +48,7 @@ def _interaction_enabled_update(self, context) -> None:
 def register() -> None:
     bpy.types.Scene.bmanga_mode = EnumProperty(
         name="B-MANGA モード",
+        description="現在の編集モード (紙面編集 / コマ編集)",
         items=_MODE_ITEMS,
         default=MODE_PAGE,
     )
@@ -59,14 +60,17 @@ def register() -> None:
     )
     bpy.types.Scene.bmanga_current_coma_id = StringProperty(
         name="現在編集中のコマ ID",
+        description="現在編集中のコマを示す内部ID",
         default="",
     )
     bpy.types.Scene.bmanga_current_coma_page_id = StringProperty(
         name="現在編集中のコマ page_id",
+        description="現在編集中のコマが属するページの内部ID",
         default="",
     )
     bpy.types.Scene.bmanga_current_page_id = StringProperty(
         name="現在編集中のページ ID",
+        description="現在編集中のページを示す内部ID",
         default="",
     )
     _logger.debug("mode registered")

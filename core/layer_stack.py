@@ -53,12 +53,12 @@ class BMangaLayerStackItem(bpy.types.PropertyGroup):
     並びで管理する。
     """
 
-    kind: EnumProperty(name="種別", items=LAYER_KIND_ITEMS, default="gp")  # type: ignore[valid-type]
-    name: StringProperty(name="名前", default="")  # type: ignore[valid-type]
-    key: StringProperty(name="参照キー", default="")  # type: ignore[valid-type]
-    label: StringProperty(name="表示名", default="")  # type: ignore[valid-type]
-    parent_key: StringProperty(name="親キー", default="")  # type: ignore[valid-type]
-    depth: IntProperty(name="階層", default=0, min=0)  # type: ignore[valid-type]
+    kind: EnumProperty(name="種別", description="この行が参照する要素の種類", items=LAYER_KIND_ITEMS, default="gp")  # type: ignore[valid-type]
+    name: StringProperty(name="名前", description="この行の名前 (表示名と同じ値、一覧検索用)", default="")  # type: ignore[valid-type]
+    key: StringProperty(name="参照キー", description="実データ (GP/画像/ページ要素など) を参照するための一意なキー", default="")  # type: ignore[valid-type]
+    label: StringProperty(name="表示名", description="レイヤーパネルに表示する名前", default="")  # type: ignore[valid-type]
+    parent_key: StringProperty(name="親キー", description="親レイヤーまたは親フォルダを示す参照キー", default="")  # type: ignore[valid-type]
+    depth: IntProperty(name="階層", description="レイヤーパネルでの階層の深さ (インデント表示に使用)", default=0, min=0)  # type: ignore[valid-type]
 
 
 _CLASSES = (BMangaLayerStackItem,)
@@ -167,6 +167,7 @@ def register() -> None:
     )
     bpy.types.Scene.bmanga_active_layer_kind = EnumProperty(
         name="アクティブレイヤー種別",
+        description="現在アクティブなレイヤーの種別 (内部状態)",
         items=ACTIVE_LAYER_KIND_ITEMS,
         default="gp",
     )

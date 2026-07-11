@@ -18,19 +18,19 @@ from ..utils import log
 _logger = log.get_logger(__name__)
 
 BIT_DEPTH_ITEMS = (
-    ("gray8", "グレー 8bit", ""),
-    ("gray1", "1bit", ""),
+    ("gray8", "グレー 8bit", "256階調のグレースケールで保存します"),
+    ("gray1", "1bit", "白黒2階調で保存します"),
 )
 
 SCOPE_ITEMS = (
-    ("page", "ページ", ""),
-    ("master", "マスター", ""),
+    ("page", "ページ", "このページだけに配置します"),
+    ("master", "マスター", "全ページ共通のマスターに配置します"),
 )
 
 PARENT_KIND_ITEMS = (
-    ("none", "なし", ""),
-    ("page", "ページ", ""),
-    ("coma", "コマ", ""),
+    ("none", "なし", "親を持ちません"),
+    ("page", "ページ", "ページを親にします"),
+    ("coma", "コマ", "コマを親にします"),
 )
 
 
@@ -61,22 +61,25 @@ def _on_raster_title_changed(_self, context) -> None:
 
 class BMangaRasterLayer(bpy.types.PropertyGroup):
     id: StringProperty(name="ID", default="")  # type: ignore[valid-type]
-    title: StringProperty(name="表示名", default="", update=_on_raster_title_changed)  # type: ignore[valid-type]
-    image_name: StringProperty(name="Image名", default="")  # type: ignore[valid-type]
-    filepath_rel: StringProperty(name="PNG相対パス", default="")  # type: ignore[valid-type]
+    title: StringProperty(name="表示名", description="レイヤー一覧に表示する名前です", default="", update=_on_raster_title_changed)  # type: ignore[valid-type]
+    image_name: StringProperty(name="Image名", description="このレイヤーが参照するBlender画像データの名前です", default="")  # type: ignore[valid-type]
+    filepath_rel: StringProperty(name="PNG相対パス", description="書き出し先PNGファイルの相対パスです", default="")  # type: ignore[valid-type]
     dpi: IntProperty(  # type: ignore[valid-type]
         name="DPI",
+        description="ラスター画像の解像度です (dpi)",
         default=300,
         min=30,
         soft_max=1200,
     )
     bit_depth: EnumProperty(  # type: ignore[valid-type]
         name="階調",
+        description="保存する画像の階調を選択します",
         items=BIT_DEPTH_ITEMS,
         default="gray8",
     )
     line_color: FloatVectorProperty(  # type: ignore[valid-type]
         name="線色",
+        description="描画に使う線の色です",
         subtype="COLOR",
         size=4,
         default=(0.0, 0.0, 0.0, 1.0),
@@ -86,17 +89,19 @@ class BMangaRasterLayer(bpy.types.PropertyGroup):
     )
     opacity: FloatProperty(  # type: ignore[valid-type]
         name="不透明度",
+        description="レイヤー全体の不透明度です (%)",
         default=100.0,
         min=0.0,
         max=100.0,
         subtype="PERCENTAGE",
         update=_on_raster_runtime_display_changed,
     )
-    visible: BoolProperty(name="表示", default=True, update=_on_raster_runtime_display_changed)  # type: ignore[valid-type]
+    visible: BoolProperty(name="表示", description="このレイヤーを表示します", default=True, update=_on_raster_runtime_display_changed)  # type: ignore[valid-type]
     selected: BoolProperty(name="マルチ選択", default=False, options={"SKIP_SAVE"})  # type: ignore[valid-type]
-    locked: BoolProperty(name="ロック", default=False)  # type: ignore[valid-type]
+    locked: BoolProperty(name="ロック", description="このレイヤーの編集をロックします", default=False)  # type: ignore[valid-type]
     scope: EnumProperty(  # type: ignore[valid-type]
         name="所属",
+        description="レイヤーの所属先を選択します (ページ固有かマスターか)",
         items=SCOPE_ITEMS,
         default="page",
     )

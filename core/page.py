@@ -40,6 +40,7 @@ class BMangaOriginalPageRef(bpy.types.PropertyGroup):
 
     page_id: StringProperty(  # type: ignore[valid-type]
         name="ページ ID",
+        description="結合元ページを識別するID",
         default="",
     )
 
@@ -55,6 +56,7 @@ class BMangaPageEntry(bpy.types.PropertyGroup):
     )
     title: StringProperty(  # type: ignore[valid-type]
         name="表示名",
+        description="ページ一覧に表示するこのページの名前",
         default="",
     )
     dir_rel: StringProperty(  # type: ignore[valid-type]
@@ -71,10 +73,12 @@ class BMangaPageEntry(bpy.types.PropertyGroup):
     )
     original_pages: CollectionProperty(  # type: ignore[valid-type]
         name="結合元ページ",
+        description="見開き結合前の元ページIDの一覧",
         type=BMangaOriginalPageRef,
     )
     tombo_aligned: BoolProperty(  # type: ignore[valid-type]
         name="トンボを合わせる",
+        description="見開きの2ページ間でトンボ (裁ち落とし目印) の位置を揃えます",
         default=True,
     )
     tombo_gap_mm: FloatProperty(  # type: ignore[valid-type]
@@ -88,10 +92,12 @@ class BMangaPageEntry(bpy.types.PropertyGroup):
     # --- キャッシュ情報 ---
     thumbnail_rel: StringProperty(  # type: ignore[valid-type]
         name="ページサムネイル (相対パス)",
+        description="作品ルートからの、このページのサムネイル画像への相対パス",
         default="",
     )
     coma_count: IntProperty(  # type: ignore[valid-type]
         name="コマ数",
+        description="このページに含まれるコマの数",
         default=0,
         min=0,
     )
@@ -140,23 +146,26 @@ class BMangaPageEntry(bpy.types.PropertyGroup):
     )
 
     # --- コマ一覧 ---
-    comas: CollectionProperty(type=BMangaComaEntry)  # type: ignore[valid-type]
+    comas: CollectionProperty(type=BMangaComaEntry, description="このページに含まれるコマの一覧")  # type: ignore[valid-type]
     active_coma_index: IntProperty(  # type: ignore[valid-type]
         name="アクティブコマ",
+        description="レイヤー一覧で選択中のコマの番号",
         default=-1,
         min=-1,
     )
 
     # --- フキダシ / テキスト (Phase 3 以降: ページ単位保持) ---
-    balloons: CollectionProperty(type=BMangaBalloonEntry)  # type: ignore[valid-type]
+    balloons: CollectionProperty(type=BMangaBalloonEntry, description="このページに含まれるフキダシの一覧")  # type: ignore[valid-type]
     active_balloon_index: IntProperty(  # type: ignore[valid-type]
         name="アクティブフキダシ",
+        description="レイヤー一覧で選択中のフキダシの番号",
         default=-1,
         min=-1,
     )
-    texts: CollectionProperty(type=BMangaTextEntry)  # type: ignore[valid-type]
+    texts: CollectionProperty(type=BMangaTextEntry, description="このページに含まれるテキストの一覧")  # type: ignore[valid-type]
     active_text_index: IntProperty(  # type: ignore[valid-type]
         name="アクティブテキスト",
+        description="レイヤー一覧で選択中のテキストの番号",
         default=-1,
         min=-1,
     )

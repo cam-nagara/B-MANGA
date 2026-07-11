@@ -70,7 +70,7 @@ def _delete_all_balloons(page) -> None:
         page.balloons.remove(0)
 
 
-SHAPES = ["cloud", "fluffy", "thorn", "thorn-curve", "rect", "ellipse", "octagon"]
+SHAPES = ["cloud", "fluffy", "thorn", "thorn-curve", "rect", "ellipse"]
 
 
 def _create_entry(context, page, parent_key, shape: str, balloon_op):

@@ -156,21 +156,32 @@ def _rotate_points(
     return out
 
 
-def _shape_outline(
+def _shape_outline_with_corners(
     params,
     prefix: str,
     rect: Rect,
     center_xy_mm: tuple[float, float],
     *,
     seed: int = 0,
-) -> list[tuple[float, float]]:
+) -> tuple[list[tuple[float, float]], list[int]]:
+    """形状アウトラインと、角にあたる頂点インデックスを返す。
+
+    回転は頂点順を変えないため、インデックスは回転後も有効。
+    """
     shape = getattr(params, f"{prefix}_shape", getattr(params, "base_shape", "rect"))
     if shape == "polygon":
-        shape = "octagon"
-    points = balloon_shapes.outline_for_shape(
+        shape = "rect"
+    corner_type = str(getattr(params, f"{prefix}_corner_type", "") or "")
+    rounded_enabled = bool(getattr(params, f"{prefix}_rounded_corner_enabled", False))
+    if corner_type == "square" and rounded_enabled:
+        # 旧データ・旧コードは「角丸」チェックだけを立てる。UI からは角タイプと
+        # 常に同期されるため、この組み合わせは旧経路とみなして角丸として扱う。
+        corner_type = "rounded"
+    points, corners = balloon_shapes.outline_with_corners_for_shape(
         shape,
         rect,
-        rounded_corner_enabled=bool(getattr(params, f"{prefix}_rounded_corner_enabled", False)),
+        corner_type=corner_type,
+        rounded_corner_enabled=rounded_enabled,
         rounded_corner_radius_mm=corner_radius.radius_for_effect_params(params, prefix, rect.width, rect.height),
         cloud_bump_width_mm=float(getattr(params, f"{prefix}_cloud_bump_width_mm", 10.0)),
         cloud_bump_width_jitter=float(getattr(params, f"{prefix}_cloud_bump_width_jitter", 0.0)),
@@ -183,7 +194,21 @@ def _shape_outline(
         cloud_sub_height_jitter=float(getattr(params, f"{prefix}_cloud_sub_height_jitter", 0.0)),
         jitter_seed=int(seed),
     )
-    return _rotate_points(points, center_xy_mm, getattr(params, "rotation_deg", 0.0))
+    return (
+        _rotate_points(points, center_xy_mm, getattr(params, "rotation_deg", 0.0)),
+        list(corners or ()),
+    )
+
+
+def _shape_outline(
+    params,
+    prefix: str,
+    rect: Rect,
+    center_xy_mm: tuple[float, float],
+    *,
+    seed: int = 0,
+) -> list[tuple[float, float]]:
+    return _shape_outline_with_corners(params, prefix, rect, center_xy_mm, seed=seed)[0]
 
 
 def _jitter_trim_fraction(params, enabled_attr: str, amount_attr: str, rng: random.Random) -> float:
@@ -225,6 +250,9 @@ def _shape_guide_uses_smooth_bezier(params, prefix: str, *, frame_outline: bool 
     if shape in {"polygon", "octagon", "diamond", "hexagon", "star", "thorn", "spike_straight"}:
         return False
     if shape == "rect":
+        corner = str(getattr(params, f"{prefix}_corner_type", "") or "")
+        if corner and corner != "rounded":
+            return False
         return bool(getattr(params, f"{prefix}_rounded_corner_enabled", False)) and corner_radius.has_positive_value(
             params,
             prefix=f"{prefix}_rounded_corner",

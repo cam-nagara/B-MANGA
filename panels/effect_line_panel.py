@@ -23,10 +23,10 @@ def _draw_shape_settings(layout, params, prefix: str, label: str, *, frame_toggl
     content.prop(params, shape_attr)
     shape = balloon_shapes.normalize_shape(getattr(params, shape_attr))
     if shape == "rect":
-        rounded_attr = f"{prefix}_rounded_corner_enabled"
-        content.prop(params, rounded_attr)
+        corner_attr = f"{prefix}_corner_type"
+        content.prop(params, corner_attr)
         sub = content.column(align=True)
-        sub.enabled = bool(getattr(params, rounded_attr))
+        sub.enabled = str(getattr(params, corner_attr, "square") or "square") != "square"
         corner_radius_ui.draw_corner_radius(sub, params, prefix=f"{prefix}_rounded_corner")
     if balloon_shapes.is_dynamic_meldex_shape(shape):
         row = content.row(align=True)

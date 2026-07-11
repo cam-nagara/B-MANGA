@@ -45,12 +45,14 @@ class BMangaComaBorder(bpy.types.PropertyGroup):
 
     style: EnumProperty(  # type: ignore[valid-type]
         name="線種",
+        description="コマ枠線の線種 (実線・破線・点線・二重線・輪郭ぼかし)",
         items=_LINE_STYLE_ITEMS,
         default="solid",
         update=_on_border_changed,
     )
     width_mm: FloatProperty(  # type: ignore[valid-type]
         name="線幅 (mm)",
+        description="コマ枠線の太さ",
         default=0.5,
         min=0.0,
         soft_max=10.0,
@@ -58,6 +60,7 @@ class BMangaComaBorder(bpy.types.PropertyGroup):
     )
     color: FloatVectorProperty(  # type: ignore[valid-type]
         name="線色",
+        description="コマ枠線の色",
         subtype="COLOR",
         size=4,
         default=(0.0, 0.0, 0.0, 1.0),
@@ -67,12 +70,14 @@ class BMangaComaBorder(bpy.types.PropertyGroup):
     )
     corner_type: EnumProperty(  # type: ignore[valid-type]
         name="角処理",
+        description="コマ枠の角の処理方法 (直角・丸角・面取り)",
         items=_CORNER_ITEMS,
         default="square",
         update=_on_border_changed,
     )
     corner_radius_mm: FloatProperty(  # type: ignore[valid-type]
         name="角半径 (mm)",
+        description="丸角・面取り時の角の半径",
         default=0.0,
         min=0.0,
         soft_max=20.0,
@@ -101,6 +106,7 @@ class BMangaComaBorder(bpy.types.PropertyGroup):
     )
     visible: BoolProperty(  # type: ignore[valid-type]
         name="枠線を表示",
+        description="コマ枠線を表示する",
         default=True,
         update=_on_border_changed,
     )
@@ -117,17 +123,20 @@ class BMangaComaWhiteMargin(bpy.types.PropertyGroup):
 
     enabled: BoolProperty(  # type: ignore[valid-type]
         name="フチ",
+        description="コマ枠の外側または内側にフチ (縁取り) を表示する",
         default=True,
         update=_on_border_changed,
     )
     placement: EnumProperty(  # type: ignore[valid-type]
         name="位置",
+        description="フチを配置する位置 (外側・内側・両側)",
         items=_WHITE_MARGIN_PLACEMENT_ITEMS,
         default="outside",
         update=_on_border_changed,
     )
     width_mm: FloatProperty(  # type: ignore[valid-type]
         name="幅 (mm)",
+        description="フチの幅",
         default=0.5,
         min=0.0,
         soft_max=5.0,
@@ -135,6 +144,7 @@ class BMangaComaWhiteMargin(bpy.types.PropertyGroup):
     )
     color: FloatVectorProperty(  # type: ignore[valid-type]
         name="色",
+        description="外側色・内側色が未設定の場合に使うフォールバック色 (通常は使用されません)",
         subtype="COLOR",
         size=4,
         default=(1.0, 1.0, 1.0, 1.0),
@@ -144,6 +154,7 @@ class BMangaComaWhiteMargin(bpy.types.PropertyGroup):
     )
     outer_color: FloatVectorProperty(  # type: ignore[valid-type]
         name="外側色",
+        description="フチの外側部分の色",
         subtype="COLOR",
         size=4,
         default=(1.0, 1.0, 1.0, 1.0),
@@ -153,6 +164,7 @@ class BMangaComaWhiteMargin(bpy.types.PropertyGroup):
     )
     inner_color: FloatVectorProperty(  # type: ignore[valid-type]
         name="内側色",
+        description="フチの内側部分の色",
         subtype="COLOR",
         size=4,
         default=(1.0, 1.0, 1.0, 1.0),
