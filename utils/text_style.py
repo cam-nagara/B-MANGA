@@ -214,10 +214,30 @@ def dropdown_choice_for_font_path(path: str) -> str:
     return _DEFAULT_FONT_CHOICE
 
 
+def preferred_base_font_path() -> str:
+    """アドオンプリファレンスで設定された標準フォントのパスを返す.
+
+    プリファレンス未登録・headless実行など取得できない状況では空文字を返す
+    (例外を伝播させない)。
+    """
+    try:
+        from ..preferences import get_preferences
+
+        prefs = get_preferences()
+        if prefs is None:
+            return ""
+        return _abspath_maybe(str(getattr(prefs, "default_base_font_path", "") or ""))
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def resolve_font_path(preferred: str = "") -> str:
     preferred = _abspath_maybe(preferred)
     if preferred and Path(preferred).is_file():
         return preferred
+    base_font = preferred_base_font_path()
+    if base_font and Path(base_font).is_file():
+        return base_font
     for candidate in font_candidates():
         if Path(candidate).is_file():
             return candidate

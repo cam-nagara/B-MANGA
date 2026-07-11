@@ -8,13 +8,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 import math
-import os
 from pathlib import Path
 from typing import Any, Sequence
 
 from . import export_group_masks, export_psd, export_raster, export_soft_mask
 from ..ui import overlay_shared
-from ..utils import border_geom, color_space, log, coma_content_mask, coma_preview, page_grid, percentage, spread_merge_geometry
+from ..utils import (
+    border_geom,
+    color_space,
+    log,
+    coma_content_mask,
+    coma_preview,
+    page_grid,
+    percentage,
+    spread_merge_geometry,
+    text_style,
+)
 from ..utils.geom import Rect, m_to_mm, mm_to_px, q_to_mm
 
 _logger = log.get_logger(__name__)
@@ -322,29 +331,13 @@ def _abspath_maybe(path_str: str) -> str:
 
 
 def _font_candidates() -> list[str]:
-    if os.name == "nt":
-        return [
-            r"C:\Windows\Fonts\YuGothM.ttc",
-            r"C:\Windows\Fonts\YuGothR.ttc",
-            r"C:\Windows\Fonts\meiryo.ttc",
-            r"C:\Windows\Fonts\msgothic.ttc",
-        ]
-    return [
-        "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
-        "/System/Library/Fonts/PingFang.ttc",
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf",
-    ]
+    # utils.text_style と挙動を揃えるための委譲 (プリファレンスの標準フォント
+    # にも対応させるため、実体は text_style 側に一本化している)。
+    return text_style.font_candidates()
 
 
 def _resolve_font_path(preferred: str = "") -> str:
-    preferred = _abspath_maybe(preferred).strip()
-    if preferred and Path(preferred).is_file():
-        return preferred
-    for candidate in _font_candidates():
-        if Path(candidate).is_file():
-            return candidate
-    return preferred
+    return text_style.resolve_font_path(preferred)
 
 
 def _load_font(font_path: str, size_px: int):
@@ -1059,7 +1052,6 @@ def _render_text_layer(entry, canvas_height_px: int, dpi: int) -> ExportLayer | 
     if canvas is None:
         return None
     from ..typography import export_renderer, layout as text_layout
-    from ..utils import text_style
 
     font_path = _resolve_font_path(str(getattr(entry, "font", "")))
     result = text_layout.typeset(entry, pad_mm, pad_mm, float(entry.width_mm), float(entry.height_mm))

@@ -317,6 +317,17 @@ class BMangaPreferences(bpy.types.AddonPreferences):
         update=_on_preferences_changed,
     )
 
+    default_base_font_path: StringProperty(  # type: ignore[valid-type]
+        name="標準フォント",
+        description=(
+            "テキストやルビにフォントが設定されていない時に使うフォントファイル。"
+            "空欄ならOS標準の日本語フォントを自動選択"
+        ),
+        default="",
+        subtype="FILE_PATH",
+        update=_on_preferences_changed,
+    )
+
     last_balloon_tool_preset: StringProperty(  # type: ignore[valid-type]
         name="前回のフキダシ形状",
         default="DEFAULT",
@@ -481,6 +492,11 @@ class BMangaPreferences(bpy.types.AddonPreferences):
         box = layout.box()
         box.label(text="テキスト編集")
         box.prop(self, "text_selection_color", text="選択ハイライト色")
+        box.prop(self, "default_base_font_path", text="標準フォント")
+        col = box.column(align=True)
+        col.scale_y = 0.85
+        col.label(text="テキストやルビにフォントが設定されていない時に使うフォント", icon="INFO")
+        col.label(text="空欄ならOS標準の日本語フォントを自動選択")
 
         box = layout.box()
         box.label(text="コマ枠編集")
