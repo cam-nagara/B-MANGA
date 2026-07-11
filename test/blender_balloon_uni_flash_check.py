@@ -182,13 +182,13 @@ def _assert_detail_profile_graph_sync(context, page, entry, layer_detail_op, eff
     )
 
 
-def _assert_balloon_detail_columns_stay_wide(context, page, entry, layer_detail_op) -> None:
-    assert layer_detail_op._detail_dialog_width_for_kind(context, "balloon", entry.id) == 1080
+def _assert_balloon_detail_columns_stay_tall(context, page, entry, layer_detail_op) -> None:
+    assert layer_detail_op._detail_dialog_width_for_kind(context, "balloon", entry.id) == 560
     for line_style in ("solid", "uni_flash", "white_outline"):
         entry.line_style = line_style
         layout = _RecordingLayout()
         layer_detail_op._draw_balloon_detail(layout, context, entry, page)
-        assert 4 in layout.grid_columns, f"線種 {line_style} でフキダシ詳細設定が4列幅になっていません"
+        assert 2 in layout.grid_columns, f"線種 {line_style} でフキダシ詳細設定が2列縦長になっていません"
 
 
 def main() -> None:
@@ -279,7 +279,7 @@ def main() -> None:
                 effect_inout_curve,
             )
             if graph_index == 0:
-                _assert_balloon_detail_columns_stay_wide(context, page, graph_entry, layer_detail_op)
+                _assert_balloon_detail_columns_stay_tall(context, page, graph_entry, layer_detail_op)
             page.balloons.remove(len(page.balloons) - 1)
 
         for index, line_style in enumerate(("uni_flash", "white_outline")):
@@ -379,7 +379,10 @@ def main() -> None:
                     "white_outline_white_line_count_auto",
                     "flash_white_outline_white_line_count",
                     "flash_white_outline_spacing_mm",
+                    "flash_white_outline_white_brush_mm",
                     "white_outline_white_ratio_percent",
+                    "white_outline_black_ratio_percent",
+                    "white_outline_length_percent",
                     "white_outline_white_attenuation",
                     "white_outline_black_line_count_auto",
                     "flash_white_outline_black_line_count",
@@ -400,6 +403,7 @@ def main() -> None:
                     "white_outline_black_spacing_scale_percent",
                     "white_outline_white_in_percent",
                     "white_outline_white_out_percent",
+                    "line_peak_width_pct",
                 }
                 forbidden_white_outline_props = set(effect_line_core.line_effect_schema.EFFECT_PATH_IMAGE_FIELDS) | {
                     "white_outline_white_brush_mm",
@@ -413,6 +417,11 @@ def main() -> None:
                     "white_outline_white_out_range_percent",
                     "white_outline_white_in_range_mm",
                     "white_outline_white_out_range_mm",
+                    "flash_line_count",
+                    "flash_line_spacing_mm",
+                    "line_valley_width_pct",
+                    "outer_white_margin_enabled",
+                    "inner_white_margin_enabled",
                 }
                 panel_layout = _RecordingLayout()
                 balloon_panel.draw_white_outline_line_settings(panel_layout, entry)
@@ -426,6 +435,13 @@ def main() -> None:
                     assert not missing, f"白抜き線詳細に必要な項目がありません: {sorted(missing)}"
                     extra = forbidden_white_outline_props & prop_set
                     assert not extra, f"白抜き線詳細に効果線専用項目が混ざっています: {sorted(extra)}"
+                assert bool(entry.white_outline_white_line_count_auto)
+                assert bool(entry.white_outline_black_line_count_auto)
+                assert abs(float(entry.white_outline_white_ratio_percent) - 50.0) < 1.0e-6
+                assert abs(float(entry.white_outline_black_ratio_percent) - 50.0) < 1.0e-6
+                assert abs(float(entry.white_outline_width_min_percent) - 50.0) < 1.0e-6
+                assert abs(float(entry.white_outline_length_min_percent) - 50.0) < 1.0e-6
+                assert abs(float(entry.flash_white_outline_white_brush_mm) - 0.3) < 1.0e-6
             assert int(entry.flash_line_count) == 120
             assert abs(float(entry.flash_line_spacing_mm) - 1.0) < 1.0e-6
             assert bool(entry.flash_white_line_enabled), "白線が初期状態で有効ではありません"
@@ -451,6 +467,8 @@ def main() -> None:
             assert saved["flashWhiteLineValleyWidthPct"] == 0.0
             assert saved["flashWhiteLinePeakWidthPct"] == 100.0
             assert saved["flashWhiteOutlineCount"] == 5
+            assert saved["whiteOutlineSettingsVersion"] == 2
+            assert saved["flashWhiteOutlineWhiteBrushMm"] == 0.3
             assert saved["flashWhiteOutlineWhiteLineCount"] == 24
             assert saved["flashWhiteOutlineBlackLineCount"] == 3
             if line_style == "uni_flash":
@@ -477,6 +495,7 @@ def main() -> None:
             assert abs(float(restored.flash_white_line_valley_width_pct) - 0.0) < 1.0e-6
             assert abs(float(restored.flash_white_line_peak_width_pct) - 100.0) < 1.0e-6
             assert int(restored.flash_white_outline_count) == 5
+            assert abs(float(restored.flash_white_outline_white_brush_mm) - 0.3) < 1.0e-6
             assert int(restored.flash_white_outline_white_line_count) == 24
             assert int(restored.flash_white_outline_black_line_count) == 3
             if line_style == "uni_flash":
@@ -508,7 +527,7 @@ def main() -> None:
                 entry.out_percent = 25.0
                 entry.white_underlay_width_percent = 175.0
             else:
-                entry.flash_white_line_width_percent = 175.0
+                entry.flash_white_outline_white_brush_mm = 0.73
             custom_saved = schema.balloon_entry_to_dict(entry)
             if line_style == "uni_flash":
                 assert custom_saved["uniFlashParams"]["start_shape"] == "rect"
@@ -516,7 +535,7 @@ def main() -> None:
                 assert custom_saved["uniFlashParams"]["bundle_enabled"] is True
                 assert custom_saved["uniFlashParams"]["white_underlay_width_percent"] == 175.0
             else:
-                assert custom_saved["flashWhiteLineWidthPercent"] == 175.0
+                assert custom_saved["flashWhiteOutlineWhiteBrushMm"] == 0.73
             custom_restored = page.balloons.add()
             schema.balloon_entry_from_dict(custom_restored, custom_saved)
             if line_style == "uni_flash":
@@ -525,7 +544,7 @@ def main() -> None:
                 assert custom_restored.bundle_enabled is True
                 assert abs(float(custom_restored.white_underlay_width_percent) - 175.0) < 1.0e-6
             else:
-                assert abs(float(custom_restored.flash_white_line_width_percent) - 175.0) < 1.0e-6
+                assert abs(float(custom_restored.flash_white_outline_white_brush_mm) - 0.73) < 1.0e-6
             page.balloons.remove(len(page.balloons) - 1)
             if line_style == "uni_flash":
                 entry.start_shape = "ellipse"
@@ -539,7 +558,7 @@ def main() -> None:
                 entry.white_underlay_enabled = True
                 entry.white_underlay_width_percent = 100.0
             else:
-                entry.flash_white_line_width_percent = 100.0
+                entry.flash_white_outline_white_brush_mm = 0.3
 
             obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
             assert obj is not None and obj.type == "CURVE", "フキダシのカーブ実体が作成されていません"
@@ -586,12 +605,31 @@ def main() -> None:
             black_z = max((z for _x, _y, z in verts), default=0.0)
             white_z = min((z for _x, _y, z in verts if z > 0.0), default=0.0)
             assert 0.0 < white_z < black_z, "白線が黒線と下地の間に配置されていません"
+            if line_style == "white_outline":
+                entry.opacity = 50.0
+                balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
+                black_mat = bpy.data.materials.get(
+                    f"{balloon_curve_object.BALLOON_CURVE_MATERIAL_PREFIX}{entry.id}"
+                )
+                white_mat = bpy.data.materials.get(
+                    f"{balloon_curve_object.BALLOON_FLASH_WHITE_LINE_MATERIAL_PREFIX}{entry.id}"
+                )
+                assert black_mat is not None and white_mat is not None
+                assert abs(float(black_mat.diffuse_color[3]) - 0.5) < 1.0e-6, "黒線へ不透明度50%が反映されていません"
+                assert abs(float(white_mat.diffuse_color[3]) - 0.5) < 1.0e-6, "白線へ不透明度50%が反映されていません"
+                entry.opacity = 100.0
+                balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
             if line_style == "uni_flash":
                 entry.white_underlay_enabled = False
             else:
                 entry.flash_white_line_enabled = False
             balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
             assert bpy.data.objects.get(balloon_line_mesh._flash_white_line_mesh_object_name(entry.id)) is None
+            layer_without_legacy_band = None
+            if line_style == "white_outline":
+                layer_without_legacy_band = export_balloon.render_balloon_layer(
+                    entry, canvas_height_px=1200, dpi=144
+                )
             if line_style == "uni_flash":
                 entry.white_underlay_enabled = True
             else:
@@ -601,6 +639,12 @@ def main() -> None:
             layer = export_balloon.render_balloon_layer(entry, canvas_height_px=1200, dpi=144)
             assert layer is not None, "フキダシを書き出せません"
             assert layer.image.size[0] > 0 and layer.image.size[1] > 0
+            if line_style == "white_outline":
+                assert layer_without_legacy_band is not None
+                assert layer.image.size == layer_without_legacy_band.image.size
+                assert layer.image.tobytes() == layer_without_legacy_band.image.tobytes(), (
+                    "白抜き線のページ出力が非表示の旧・内周白帯設定で変化しています"
+                )
 
         print("BMANGA_BALLOON_FLASH_LINE_STYLES_OK")
     finally:

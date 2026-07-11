@@ -78,6 +78,7 @@ BALLOON_WHITE_OUTLINE_UI_FIELDS: FieldMap = {
     "white_auto": "white_outline_white_line_count_auto",
     "white_count": "flash_white_outline_white_line_count",
     "white_spacing": "flash_white_outline_spacing_mm",
+    "white_brush": "flash_white_outline_white_brush_mm",
     "white_spacing_scale": "white_outline_white_spacing_scale_percent",
     "white_ratio": "white_outline_white_ratio_percent",
     "black_ratio": "white_outline_black_ratio_percent",
@@ -94,6 +95,7 @@ BALLOON_WHITE_OUTLINE_UI_FIELDS: FieldMap = {
     "black_auto": "white_outline_black_line_count_auto",
     "black_count": "flash_white_outline_black_line_count",
     "black_direction": "white_outline_black_direction",
+    "black_brush_pct": "line_peak_width_pct",
     "black_spacing": "flash_white_outline_black_spacing_mm",
     "black_spacing_scale": "white_outline_black_spacing_scale_percent",
     "black_width_scale": "white_outline_black_width_scale_percent",
@@ -241,7 +243,9 @@ def _draw_effect_white_settings(
     count_row.enabled = not _bool(params, fields, "white_auto")
     _prop(count_row, params, fields, "white_count", text="本数")
     row = white_box.row(align=True)
-    _prop(row, params, fields, "white_spacing")
+    spacing_sub = row.row(align=True)
+    spacing_sub.enabled = _bool(params, fields, "white_auto")
+    _prop(spacing_sub, params, fields, "white_spacing")
     _prop(row, params, fields, "white_brush")
     _prop(white_box, params, fields, "white_spacing_scale")
     _prop(white_box, params, fields, "white_attenuation")
@@ -274,7 +278,9 @@ def _draw_effect_black_settings(
     _prop(black_box, params, fields, "black_direction")
     row = black_box.row(align=True)
     _prop(row, params, fields, "black_brush")
-    _prop(row, params, fields, "black_spacing")
+    spacing_sub = row.row(align=True)
+    spacing_sub.enabled = _bool(params, fields, "black_auto")
+    _prop(spacing_sub, params, fields, "black_spacing")
     _prop(black_box, params, fields, "black_spacing_scale")
     row = black_box.row(align=True)
     _prop(row, params, fields, "black_width_scale")
@@ -308,6 +314,7 @@ def draw_effect_white_outline_settings(
     box.label(text="白抜き線")
     if show_opacity:
         box.prop(params, "opacity", slider=True)
+    box.prop(params, "line_color", text="線色")
     _draw_outline_bundle_settings(box, params, fields)
     _prop(box, params, fields, "width")
     _draw_outline_band_ratio_settings(box, params, fields)
@@ -329,7 +336,11 @@ def _draw_balloon_white_settings(
     sub = row.row(align=True)
     sub.enabled = not _bool(entry, fields, "white_auto")
     _prop(sub, entry, fields, "white_count")
-    _prop(white_box, entry, fields, "white_spacing")
+    row = white_box.row(align=True)
+    spacing_sub = row.row(align=True)
+    spacing_sub.enabled = _bool(entry, fields, "white_auto")
+    _prop(spacing_sub, entry, fields, "white_spacing")
+    _prop(row, entry, fields, "white_brush")
     _prop(white_box, entry, fields, "white_spacing_scale")
     _prop(white_box, entry, fields, "white_attenuation", text="減衰")
     row = white_box.row(align=True)
@@ -357,7 +368,13 @@ def _draw_balloon_black_settings(
     sub = row.row(align=True)
     sub.enabled = not _bool(entry, fields, "black_auto")
     _prop(sub, entry, fields, "black_count")
-    _prop(black_box, entry, fields, "black_spacing")
+    _prop(black_box, entry, fields, "black_direction")
+    if "black_brush_pct" in fields:
+        # フキダシの黒線太さは主線の「線幅」×この割合で決まる
+        _prop(black_box, entry, fields, "black_brush_pct", text="太さ (%)")
+    row = black_box.row(align=True)
+    row.enabled = _bool(entry, fields, "black_auto")
+    _prop(row, entry, fields, "black_spacing")
     _prop(black_box, entry, fields, "black_spacing_scale")
     row = black_box.row(align=True)
     _prop(row, entry, fields, "black_width_scale")
@@ -405,9 +422,7 @@ def draw_balloon_white_outline_settings(
     cols = _columns(layout, columns)
 
     _draw_outline_bundle_settings(layout, entry, fields, show_placement=False)
-    row = layout.row(align=True)
-    _prop(row, entry, fields, "width")
-    _prop(row, entry, fields, "black_direction", text="")
+    _prop(layout, entry, fields, "width")
     _draw_outline_band_ratio_settings(layout, entry, fields)
     _draw_outline_jitter_settings(layout, entry, fields)
     _draw_balloon_black_settings(

@@ -37,27 +37,15 @@ def _flash_effect_line_mesh_data_name(balloon_id: str) -> str:
 def _effect_params_signature(entry, line_style: str) -> dict:
     if line_style == "white_outline":
         line_width_mm = balloon_line_mesh.scaled_entry_width_mm(entry, "line_width_mm", 0.3)
-        black_brush_mm, black_endpoint_pct = _line_width_and_endpoint_pct(
-            line_width_mm,
-            float(getattr(entry, "line_peak_width_pct", 100.0) or 100.0),
-            float(getattr(entry, "line_valley_width_pct", 0.0) or 0.0),
-        )
+        black_brush_mm = _white_outline_black_brush_mm(entry, line_width_mm)
         # PropertyGroup の数値は None にならないため `or 既定値` は使わない。
         # (0.00 の設定値が既定値へ化け、「間隔0にすると広がる」バグになっていた)
         return {
             "line_width_mm": line_width_mm,
             "line_peak_width_pct": float(getattr(entry, "line_peak_width_pct", 100.0)),
-            "line_valley_width_pct": float(getattr(entry, "line_valley_width_pct", 0.0)),
             "black_brush_mm": black_brush_mm,
-            "black_endpoint_pct": black_endpoint_pct,
-            "flash_white_line_width_percent": float(
-                getattr(entry, "flash_white_line_width_percent", 100.0)
-            ),
-            "flash_white_line_valley_width_pct": float(
-                getattr(entry, "flash_white_line_valley_width_pct", 0.0)
-            ),
-            "flash_white_line_peak_width_pct": float(
-                getattr(entry, "flash_white_line_peak_width_pct", 100.0)
+            "flash_white_outline_white_brush_mm": float(
+                getattr(entry, "flash_white_outline_white_brush_mm", 0.3)
             ),
             "flash_white_outline_count": int(getattr(entry, "flash_white_outline_count", 5)),
             "white_outline_bundle_placement": str(getattr(entry, "white_outline_bundle_placement", "spacing") or "spacing"),
@@ -68,7 +56,7 @@ def _effect_params_signature(entry, line_style: str) -> dict:
                 getattr(entry, "flash_white_outline_width_mm", 10.0)
             ),
             "flash_white_outline_spacing_mm": float(
-                getattr(entry, "flash_white_outline_spacing_mm", 0.25)
+                getattr(entry, "flash_white_outline_spacing_mm", 0.2)
             ),
             "white_outline_white_spacing_scale_percent": float(
                 getattr(entry, "white_outline_white_spacing_scale_percent", 100.0)
@@ -80,7 +68,7 @@ def _effect_params_signature(entry, line_style: str) -> dict:
                 getattr(entry, "flash_white_outline_black_line_count", 3)
             ),
             "flash_white_outline_black_spacing_mm": float(
-                getattr(entry, "flash_white_outline_black_spacing_mm", 0.25)
+                getattr(entry, "flash_white_outline_black_spacing_mm", 0.2)
             ),
             "white_outline_black_spacing_scale_percent": float(
                 getattr(entry, "white_outline_black_spacing_scale_percent", 100.0)
@@ -88,17 +76,17 @@ def _effect_params_signature(entry, line_style: str) -> dict:
             # 白抜き線の詳細 (v0.6.290): 変更で再構築されるよう署名に含める
             "white_outline_angle_deg": float(getattr(entry, "white_outline_angle_deg", 0.0) or 0.0),
             "white_outline_width_jitter_enabled": bool(getattr(entry, "white_outline_width_jitter_enabled", False)),
-            "white_outline_width_min_percent": float(getattr(entry, "white_outline_width_min_percent", 100.0) or 0.0),
+            "white_outline_width_min_percent": float(getattr(entry, "white_outline_width_min_percent", 50.0) or 0.0),
             "white_outline_length_jitter_enabled": bool(getattr(entry, "white_outline_length_jitter_enabled", False)),
-            "white_outline_length_min_percent": float(getattr(entry, "white_outline_length_min_percent", 100.0) or 0.0),
+            "white_outline_length_min_percent": float(getattr(entry, "white_outline_length_min_percent", 50.0) or 0.0),
             "white_outline_length_percent": float(getattr(entry, "white_outline_length_percent", 100.0) or 0.0),
-            "white_outline_white_line_count_auto": bool(getattr(entry, "white_outline_white_line_count_auto", False)),
-            "white_outline_black_line_count_auto": bool(getattr(entry, "white_outline_black_line_count_auto", False)),
-            "white_outline_white_ratio_percent": float(getattr(entry, "white_outline_white_ratio_percent", 70.0) or 0.0),
-            "white_outline_black_ratio_percent": float(getattr(entry, "white_outline_black_ratio_percent", 30.0) or 0.0),
+            "white_outline_white_line_count_auto": bool(getattr(entry, "white_outline_white_line_count_auto", True)),
+            "white_outline_black_line_count_auto": bool(getattr(entry, "white_outline_black_line_count_auto", True)),
+            "white_outline_white_ratio_percent": float(getattr(entry, "white_outline_white_ratio_percent", 50.0) or 0.0),
+            "white_outline_black_ratio_percent": float(getattr(entry, "white_outline_black_ratio_percent", 50.0) or 0.0),
             "white_outline_white_attenuation": float(getattr(entry, "white_outline_white_attenuation", 0.0) or 0.0),
             "white_outline_white_in_percent": float(getattr(entry, "white_outline_white_in_percent", 100.0) or 0.0),
-            "white_outline_white_out_percent": float(getattr(entry, "white_outline_white_out_percent", 100.0) or 0.0),
+            "white_outline_white_out_percent": float(getattr(entry, "white_outline_white_out_percent", 0.0) or 0.0),
             "white_outline_white_inout_range_mode": str(getattr(entry, "white_outline_white_inout_range_mode", "percent") or "percent"),
             "white_outline_white_in_range_percent": float(getattr(entry, "white_outline_white_in_range_percent", 100.0) or 0.0),
             "white_outline_white_out_range_percent": float(getattr(entry, "white_outline_white_out_range_percent", 100.0) or 0.0),
@@ -163,6 +151,13 @@ def _mesh_has_material_index(mesh: bpy.types.Mesh, material_index: int) -> bool:
 
 def _mesh_has_expected_layers(mesh: bpy.types.Mesh, entry, line_style: str) -> bool:
     if line_style == "white_outline":
+        try:
+            if float(getattr(entry, "white_outline_white_ratio_percent", 50.0) or 0.0) <= 1.0e-6:
+                # 白線割合0%は黒線だけが正しい完成形。白素材の面を要求すると、
+                # 同期のたびに同じメッシュを作り直してしまう。
+                return True
+        except Exception:  # noqa: BLE001
+            pass
         return _mesh_has_material_index(mesh, 1)
     if line_style == "uni_flash" and bool(getattr(entry, "white_underlay_enabled", True)):
         try:
@@ -256,6 +251,12 @@ def _line_width_and_endpoint_pct(
     return width, _clamp(float(endpoint_pct) / middle * 100.0, 0.0, 100.0)
 
 
+def _white_outline_black_brush_mm(entry, line_width_mm: float) -> float:
+    """白抜き線の黒線太さ。主線の「線幅」×「黒線太さ (%)」(line_peak_width_pct)。"""
+    peak = max(0.0, float(getattr(entry, "line_peak_width_pct", 100.0)))
+    return max(0.0, float(line_width_mm)) * peak / 100.0
+
+
 def _base_rect(entry) -> tuple[tuple[float, float], float, float]:
     width = max(0.001, float(getattr(entry, "width_mm", 0.0) or 0.0))
     height = max(0.001, float(getattr(entry, "height_mm", 0.0) or 0.0))
@@ -289,17 +290,18 @@ def _focus_params(entry) -> SimpleNamespace:
 
 
 def _white_outline_params(entry, *, black_brush_mm: float) -> SimpleNamespace:
-    white_brush, white_endpoint = _line_width_and_endpoint_pct(
-        black_brush_mm,
-        float(getattr(entry, "flash_white_line_peak_width_pct", 100.0) or 100.0),
-        float(getattr(entry, "flash_white_line_valley_width_pct", 0.0) or 0.0),
+    # 白線の太さは効果線と同じ直接指定 (v0.6.484)。以前はウニフラの隠し
+    # プロパティ (flash_white_line_*) から導出しており、UI 非表示の係数が
+    # 白線の太さと入り抜きを支配していた。
+    white_brush = max(
+        0.01,
+        float(getattr(entry, "flash_white_outline_white_brush_mm", 0.3))
+        * balloon_line_mesh.entry_line_width_scale(entry),
     )
-    white_width_scale = max(0.0, float(getattr(entry, "flash_white_line_width_percent", 100.0))) / 100.0
-    white_brush = max(0.01, white_brush * white_width_scale)
     # `or 既定値` は 0.00 の設定を既定値へ化けさせるため使わない
-    spacing = max(0.0, float(getattr(entry, "flash_white_outline_spacing_mm", 0.25)))
-    # 詳細フィールドはフキダシ側にも同名で持ち、既定値 = 従来の固定値
-    # (既存フキダシの見た目を変えない)
+    spacing = max(0.0, float(getattr(entry, "flash_white_outline_spacing_mm", 0.2)))
+    # 詳細フィールドはフキダシ側にも同名で持つ。旧作品の値は
+    # io.schema の設定版移行で実効値へ変換される。
     return SimpleNamespace(
         effect_type="white_outline",
         rotation_deg=0.0,
@@ -314,20 +316,22 @@ def _white_outline_params(entry, *, black_brush_mm: float) -> SimpleNamespace:
         white_outline_position_percent=float(getattr(entry, "white_outline_position_percent", 100.0)),
         white_outline_spacing_mm=spacing,
         white_outline_white_spacing_scale_percent=float(getattr(entry, "white_outline_white_spacing_scale_percent", 100.0) or 0.0),
-        white_outline_white_line_count_auto=bool(getattr(entry, "white_outline_white_line_count_auto", False)),
+        white_outline_white_line_count_auto=bool(getattr(entry, "white_outline_white_line_count_auto", True)),
         white_outline_white_line_count=max(1, int(getattr(entry, "flash_white_outline_white_line_count", 24) or 24)),
         white_outline_width_mm=max(0.01, float(getattr(entry, "flash_white_outline_width_mm", 10.0))),
         white_outline_width_jitter_enabled=bool(getattr(entry, "white_outline_width_jitter_enabled", False)),
-        white_outline_width_min_percent=float(getattr(entry, "white_outline_width_min_percent", 100.0) or 0.0),
+        white_outline_width_min_percent=float(getattr(entry, "white_outline_width_min_percent", 50.0) or 0.0),
         white_outline_length_jitter_enabled=bool(getattr(entry, "white_outline_length_jitter_enabled", False)),
-        white_outline_length_min_percent=float(getattr(entry, "white_outline_length_min_percent", 100.0) or 0.0),
+        white_outline_length_min_percent=float(getattr(entry, "white_outline_length_min_percent", 50.0) or 0.0),
         white_outline_length_percent=float(getattr(entry, "white_outline_length_percent", 100.0) or 0.0),
-        white_outline_white_ratio_percent=float(getattr(entry, "white_outline_white_ratio_percent", 70.0) or 0.0),
-        white_outline_black_ratio_percent=float(getattr(entry, "white_outline_black_ratio_percent", 30.0) or 0.0),
+        white_outline_white_ratio_percent=float(getattr(entry, "white_outline_white_ratio_percent", 50.0) or 0.0),
+        white_outline_black_ratio_percent=float(getattr(entry, "white_outline_black_ratio_percent", 50.0) or 0.0),
         white_outline_white_brush_mm=white_brush,
         white_outline_white_attenuation=float(getattr(entry, "white_outline_white_attenuation", 0.0) or 0.0),
-        white_outline_white_in_percent=white_endpoint * float(getattr(entry, "white_outline_white_in_percent", 100.0) or 0.0) / 100.0,
-        white_outline_white_out_percent=white_endpoint * float(getattr(entry, "white_outline_white_out_percent", 100.0) or 0.0) / 100.0,
+        # 入り/抜きは効果線と同じ直渡し (旧実装は UI 非表示の白線係数を乗算して
+        # おり、スライダーが常時無効になっていた)
+        white_outline_white_in_percent=float(getattr(entry, "white_outline_white_in_percent", 100.0) or 0.0),
+        white_outline_white_out_percent=float(getattr(entry, "white_outline_white_out_percent", 0.0) or 0.0),
         white_outline_white_inout_range_mode=str(getattr(entry, "white_outline_white_inout_range_mode", "percent") or "percent"),
         white_outline_white_in_range_percent=float(getattr(entry, "white_outline_white_in_range_percent", 100.0) or 0.0),
         white_outline_white_out_range_percent=float(getattr(entry, "white_outline_white_out_range_percent", 100.0) or 0.0),
@@ -335,7 +339,7 @@ def _white_outline_params(entry, *, black_brush_mm: float) -> SimpleNamespace:
         white_outline_white_out_range_mm=float(getattr(entry, "white_outline_white_out_range_mm", 10.0) or 0.0),
         white_outline_white_in_easing_curve=str(getattr(entry, "white_outline_white_in_easing_curve", _default_easing_curve()) or _default_easing_curve()),
         white_outline_white_out_easing_curve=str(getattr(entry, "white_outline_white_out_easing_curve", _default_easing_curve()) or _default_easing_curve()),
-        white_outline_black_line_count_auto=bool(getattr(entry, "white_outline_black_line_count_auto", False)),
+        white_outline_black_line_count_auto=bool(getattr(entry, "white_outline_black_line_count_auto", True)),
         white_outline_black_line_count=max(1, int(getattr(entry, "flash_white_outline_black_line_count", 3) or 3)),
         white_outline_black_direction=str(getattr(entry, "white_outline_black_direction", "outside") or "outside"),
         white_outline_black_brush_mm=max(0.01, black_brush_mm),
@@ -450,14 +454,11 @@ def generate_flash_strokes_rect_local(entry):
     line_style = balloon_shapes.normalize_line_style(str(getattr(entry, "line_style", "") or ""))
     if line_style == "white_outline":
         line_width_mm = balloon_line_mesh.scaled_entry_width_mm(entry, "line_width_mm", 0.3)
-        black_brush_mm, _black_endpoint_pct = _line_width_and_endpoint_pct(
-            line_width_mm,
-            float(getattr(entry, "line_peak_width_pct", 100.0) or 100.0),
-            float(getattr(entry, "line_valley_width_pct", 0.0) or 0.0),
-        )
-        if black_brush_mm <= 1.0e-9:
-            return []
+        black_brush_mm = _white_outline_black_brush_mm(entry, line_width_mm)
         params = _white_outline_params(entry, black_brush_mm=black_brush_mm)
+        if black_brush_mm <= 1.0e-9:
+            # 黒線の太さ0%でも白線は残す。黒線領域だけを0にする。
+            params.white_outline_black_ratio_percent = 0.0
         strokes = effect_line_gen.generate_white_outline_strokes(
             params,
             center,

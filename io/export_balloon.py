@@ -789,7 +789,9 @@ def _draw_inner_white_loop(canvas, clip_mask, pts, color, width_px: int, style: 
 
 
 def _flash_white_line_width_px(entry, line_w_mm: float, dpi: int) -> int:
-    if not balloon_shapes.is_flash_line_style(getattr(entry, "line_style", "")):
+    # 内周の白帯はウニフラ専用。白抜き線は放射状の白線そのものを描くため、
+    # 旧・非表示設定からページ出力だけへ白帯を足さない。
+    if balloon_shapes.normalize_line_style(getattr(entry, "line_style", "")) != "uni_flash":
         return 0
     if not bool(getattr(entry, "flash_white_line_enabled", True)):
         return 0

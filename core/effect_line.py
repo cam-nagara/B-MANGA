@@ -272,7 +272,9 @@ def effect_params_from_dict(params, data: dict) -> None:
             data.setdefault("white_outline_black_in_easing_curve", "0.0000,0.0000;1.0000,1.0000")
             data.setdefault("white_outline_black_out_easing_curve", "0.0000,0.0000;1.0000,1.0000")
         if schema_version < 19:
-            # 黒線割合は従来の「束の残り全部が黒領域」(白 30% の残り 70%) を既定にする
+            # 旧保存値の既定は白30%・黒70%。新規作成の50%・50%と
+            # 混ざらないよう、欠落している両方を明示して復元する。
+            data.setdefault("white_outline_white_ratio_percent", 30.0)
             data.setdefault("white_outline_black_ratio_percent", 70.0)
             data.setdefault("white_outline_length_percent", 100.0)
         if schema_version < 20:
@@ -346,7 +348,7 @@ class BMangaEffectLineParams(bpy.types.PropertyGroup):
     start_cloud_offset_percent: FloatProperty(name="ズラし量 (%)", description="外端形状の山をずらす量です（%）", default=50.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     start_cloud_sub_width_ratio: FloatProperty(name="小山幅 (%)", description="外端形状の小さい山の幅を、大きい山に対する割合で指定します", default=30.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     start_cloud_sub_width_jitter: FloatProperty(name="小山幅 乱れ", description="外端形状の小山の幅をランダムに変化させる度合いです", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
-    start_cloud_sub_height_ratio: FloatProperty(name="小山高 (%)", description="外端形状の小さい山の高さを、大きい山に対する割合で指定します", default=0.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    start_cloud_sub_height_ratio: FloatProperty(name="小山高 (%)", description="外端形状の小さい山の高さを、大きい山に対する割合で指定します。0% は自動 (50%) になります", default=0.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     start_cloud_sub_height_jitter: FloatProperty(name="小山高 乱れ", description="外端形状の小山の高さをランダムに変化させる度合いです", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
 
     end_shape: EnumProperty(name="内端形状", description="線が向かう内側の形を選びます", items=_EFFECT_SHAPE_ITEMS, default="ellipse", update=_on_params_changed)  # type: ignore[valid-type]
@@ -362,7 +364,7 @@ class BMangaEffectLineParams(bpy.types.PropertyGroup):
     end_cloud_offset_percent: FloatProperty(name="ズラし量 (%)", description="内端形状の山をずらす量です（%）", default=50.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     end_cloud_sub_width_ratio: FloatProperty(name="小山幅 (%)", description="内端形状の小さい山の幅を、大きい山に対する割合で指定します", default=30.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     end_cloud_sub_width_jitter: FloatProperty(name="小山幅 乱れ", description="内端形状の小山の幅をランダムに変化させる度合いです", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
-    end_cloud_sub_height_ratio: FloatProperty(name="小山高 (%)", description="内端形状の小さい山の高さを、大きい山に対する割合で指定します", default=0.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    end_cloud_sub_height_ratio: FloatProperty(name="小山高 (%)", description="内端形状の小さい山の高さを、大きい山に対する割合で指定します。0% は自動 (50%) になります", default=0.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     end_cloud_sub_height_jitter: FloatProperty(name="小山高 乱れ", description="内端形状の小山の高さをランダムに変化させる度合いです", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
 
     brush_size_mm: FloatProperty(name="線幅 (mm)", description="線の太さです（mm）", default=0.30, min=0.01, soft_max=5.0, update=_on_params_changed)  # type: ignore[valid-type]
@@ -455,10 +457,10 @@ class BMangaEffectLineParams(bpy.types.PropertyGroup):
     white_outline_length_jitter_enabled: BoolProperty(name="長さ乱れ", description="束ごとに長さをランダムに変化させます", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_length_min_percent: FloatProperty(name="最小値 (%)", description="束の長さをランダムに変化させる下限です（基準の長さに対する割合）", default=50.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_length_percent: FloatProperty(name="長さ (%)", description="100% で内端形状まで伸ばし、小さくするほど内端形状から離れます", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
-    white_outline_white_ratio_percent: FloatProperty(name="白線割合 (%)", description="束の太さのうち、白線が占める割合です", default=30.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
-    white_outline_black_ratio_percent: FloatProperty(name="黒線割合 (%)", description="束の太さのうち左右の黒線領域に使う割合", default=70.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_white_ratio_percent: FloatProperty(name="白線割合 (%)", description="束の太さのうち、白線が占める割合です", default=50.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_black_ratio_percent: FloatProperty(name="黒線割合 (%)", description="束の太さのうち左右の黒線領域に使う割合", default=50.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_white_brush_mm: FloatProperty(name="太さ (mm)", description="白線1本の太さです（mm）", default=0.3, min=0.01, soft_max=5.0, update=_on_params_changed)  # type: ignore[valid-type]
-    white_outline_white_attenuation: FloatProperty(name="減衰", description="束の中心から外側の白線ほど、線を短くする度合いです", default=0.0, min=-100.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_white_attenuation: FloatProperty(name="減衰", description="束の中心から外側の白線ほど、線を短くする度合いです。マイナスは元の長さまで伸ばします (長さ100%では変化しません)", default=0.0, min=-100.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_white_in_percent: FloatProperty(name="入り (%)", description="白線の入り側（外端側）の線幅です（100% で細くしません）", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_white_out_percent: FloatProperty(name="抜き (%)", description="白線の抜き側（内端側）の線幅です（100% で細くしません）", default=0.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_white_inout_range_mode: EnumProperty(name="入り抜き範囲", description="白線の入り抜きの範囲を割合（%）で指定するか、長さ（mm）で指定するかを選びます", items=_INOUT_RANGE_MODE_ITEMS, default="percent", update=_on_params_changed)  # type: ignore[valid-type]
@@ -470,14 +472,14 @@ class BMangaEffectLineParams(bpy.types.PropertyGroup):
     white_outline_white_out_easing_curve: StringProperty(name="抜きカーブ", default="0.0000,0.0000;1.0000,1.0000", options={"HIDDEN"}, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_line_count_auto: BoolProperty(name="本数を自動計算", description="黒線の本数を自動計算します", default=True, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_line_count: IntProperty(name="本数", description="黒線の本数です（自動計算をオフにした場合に使います）", default=3, min=1, soft_max=50, update=_on_params_changed)  # type: ignore[valid-type]
-    white_outline_black_direction: EnumProperty(name="方向", description="黒線を白線群の外側・内側・両側のどこに重ねるかを選びます", items=_WHITE_OUTLINE_BLACK_DIRECTION_ITEMS, default="outside", update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_black_direction: EnumProperty(name="重ねる方向", description="黒線を白線群の外側・内側・両側のどこに重ねるかを選びます", items=_WHITE_OUTLINE_BLACK_DIRECTION_ITEMS, default="outside", update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_brush_mm: FloatProperty(name="太さ (mm)", description="黒線1本の太さです（mm）", default=0.3, min=0.01, soft_max=5.0, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_spacing_mm: FloatProperty(name="間隔 (mm)", description="黒線どうしの間隔です（mm）", default=0.2, min=0.0, soft_max=20.0, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_spacing_scale_percent: FloatProperty(name="間隔変化 (%)", description="束の外側ほど黒線の間隔をどれだけ広げるかです（%）", default=100.0, min=0.0, max=300.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
-    white_outline_black_width_scale_percent: FloatProperty(name="幅変化 (%)", description="束の外側の黒線ほど太さをどれだけ変えるかです（%）", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
-    white_outline_black_length_scale_near_percent: FloatProperty(name="長さ変化 (内側)", description="内端形状に近い側の黒線の長さです（基準の長さに対する割合）", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
-    white_outline_black_length_scale_far_percent: FloatProperty(name="長さ変化 (外側)", description="内端形状から遠い側の黒線の長さです（基準の長さに対する割合）", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
-    white_outline_black_attenuation: FloatProperty(name="減衰", description="束の中心から外側の黒線ほど、線を短くする度合いです", default=0.0, min=-100.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_black_width_scale_percent: FloatProperty(name="幅変化 (%)", description="束の外側の黒線ほど太さをどれだけ変えるかです（%）", default=100.0, min=0.0, max=300.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_black_length_scale_near_percent: FloatProperty(name="長さ変化 (内側)", description="内端形状に近い側の黒線の長さです（基準の長さに対する割合）。100%超は長さを縮めている場合に元の長さまで伸ばします", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_black_length_scale_far_percent: FloatProperty(name="長さ変化 (外側)", description="内端形状から遠い側の黒線の長さです（基準の長さに対する割合）。100%超は長さを縮めている場合に元の長さまで伸ばします", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_black_attenuation: FloatProperty(name="減衰", description="領域の端の黒線ほど、線を短くする度合いです。マイナスは元の長さまで伸ばします (長さ100%では変化しません)", default=0.0, min=-100.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_in_percent: FloatProperty(name="入り (%)", description="黒線の入り側（外端側）の線幅です（100% で細くしません）", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_out_percent: FloatProperty(name="抜き (%)", description="黒線の抜き側（内端側）の線幅です（100% で細くしません）", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_inout_range_mode: EnumProperty(name="入り抜き範囲", description="黒線の入り抜きの範囲を割合（%）で指定するか、長さ（mm）で指定するかを選びます", items=_INOUT_RANGE_MODE_ITEMS, default="percent", update=_on_params_changed)  # type: ignore[valid-type]
@@ -487,7 +489,7 @@ class BMangaEffectLineParams(bpy.types.PropertyGroup):
     white_outline_black_out_range_mm: FloatProperty(name="抜き範囲 (mm)", description="黒線の抜き側の変化区間です（mm）", default=10.0, min=0.0, soft_max=200.0, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_in_easing_curve: StringProperty(name="入りカーブ", default="0.0000,0.0000;1.0000,1.0000", options={"HIDDEN"}, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_out_easing_curve: StringProperty(name="抜きカーブ", default="0.0000,0.0000;1.0000,1.0000", options={"HIDDEN"}, update=_on_params_changed)  # type: ignore[valid-type]
-    white_outline_angle_deg: FloatProperty(name="角度", description="束の配置に使う基準角度です（度）", default=0.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_angle_deg: FloatProperty(name="角度", description="束の配置に使う基準角度です（度）", default=0.0, soft_min=-360.0, soft_max=360.0, update=_on_params_changed)  # type: ignore[valid-type]
 
 
 _CLASSES = (BMangaEffectLineParams,)

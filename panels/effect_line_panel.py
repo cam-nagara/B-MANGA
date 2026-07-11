@@ -136,12 +136,22 @@ def draw_effect_path_settings(layout, params) -> None:
     else:
         image_box.prop(params, "line_image_path", text="画像")
         image_box.prop(params, "line_image_draw_mode", text="表示方法")
+    # リボン (画像ひとつを伸ばす) では縦横比・間隔が使われないため無効化する
+    is_stretch = (
+        source == "image"
+        and str(getattr(params, "line_image_draw_mode", "ribbon") or "ribbon") == "ribbon"
+        and str(getattr(params, "line_image_ribbon_repeat_mode", "repeat") or "repeat") == "stretch"
+    )
     row = image_box.row(align=True)
     row.prop(params, "line_image_brush_size_mm", text="ブラシサイズ")
-    row.prop(params, "line_image_aspect_ratio", text="縦横比")
+    aspect_sub = row.row(align=True)
+    aspect_sub.enabled = not is_stretch
+    aspect_sub.prop(params, "line_image_aspect_ratio", text="縦横比")
     row = image_box.row(align=True)
     row.prop(params, "line_image_angle_deg", text="角度")
-    row.prop(params, "line_image_spacing_percent", text="間隔")
+    spacing_sub = row.row(align=True)
+    spacing_sub.enabled = not is_stretch
+    spacing_sub.prop(params, "line_image_spacing_percent", text="間隔")
     image_box.prop(params, "line_image_color", text="色")
     if source == "image" and str(getattr(params, "line_image_draw_mode", "ribbon") or "ribbon") == "stamp":
         image_box.prop(params, "line_image_stamp_angle_mode", text="角度")

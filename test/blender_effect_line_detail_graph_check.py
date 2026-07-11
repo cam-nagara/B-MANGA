@@ -189,7 +189,7 @@ def _create_test_effect(context, scene, page, effect_line_op, page_stack_key):
 def _assert_detail_layout(layer_detail_op, effect_line_op, context, scene, obj) -> None:
     layout = _Layout()
     layer_detail_op._draw_effect_detail(layout, context, obj, load_from_layer=True)
-    assert 5 in layout.grid_columns, f"効果線詳細設定が5列で描画されていません: {layout.grid_columns}"
+    assert 2 in layout.grid_columns, f"効果線詳細設定が2列で描画されていません: {layout.grid_columns}"
     assert scene.bmanga_active_layer_kind == "effect", "効果線詳細設定の編集対象が選択されていません"
     assert scene.bmanga_active_effect_layer_name, "効果線詳細設定の対象レイヤー名が設定されていません"
 
@@ -210,18 +210,18 @@ def _assert_detail_layout(layer_detail_op, effect_line_op, context, scene, obj) 
         assert prop_name in layout.props_by_column.get("col1", ()), (
             f"白線割合・黒線割合・長さが白抜き線セクションにありません: {prop_name}"
         )
-    assert "white_outline_white_brush_mm" in layout.props_by_column.get("col3", ()), (
-        "白線設定が別列に分割されていません"
+    assert "white_outline_white_brush_mm" in layout.props_by_column.get("col1", ()), (
+        "白線設定が設定列にありません"
     )
-    assert "white_outline_black_direction" in layout.props_by_column.get("col2", ()), (
-        "黒線設定が別列に分割されていません"
+    assert "white_outline_black_direction" in layout.props_by_column.get("col1", ()), (
+        "黒線設定が設定列にありません"
     )
     for prop_name in (
         "white_outline_black_in_percent",
         "white_outline_black_out_percent",
     ):
-        assert prop_name in layout.props_by_column.get("col2", ()), (
-            f"黒線入り抜き設定が黒線列にありません: {prop_name}"
+        assert prop_name in layout.props_by_column.get("col1", ()), (
+            f"黒線入り抜き設定が設定列にありません: {prop_name}"
         )
     for prop_name in (
         "white_outline_black_inout_range_mode",
@@ -234,8 +234,11 @@ def _assert_detail_layout(layer_detail_op, effect_line_op, context, scene, obj) 
             f"線幅グラフに統合した範囲設定が表示されています: {prop_name}"
         )
     assert layout.labels.count("線幅グラフ") >= 3, "主線・黒線・白線の線幅グラフが揃っていません"
-    assert "line_image_source" in layout.props_by_column.get("col4", ()), (
-        "パス線設定が独立列に分割されていません"
+    assert "line_image_source" in layout.props_by_column.get("col1", ()), (
+        "パス線設定が設定列にありません"
+    )
+    assert "line_color" in layout.props_by_column.get("col1", ()), (
+        "白抜き線の線色が設定列にありません"
     )
 
 
@@ -252,7 +255,7 @@ def _assert_layer_stack_dialog_layout(
     uid = layer_stack_utils.target_uid("effect", layer_stack_utils._node_stack_key(layer))
     item = next((candidate for candidate in stack if layer_stack_utils.stack_item_uid(candidate) == uid), None)
     assert item is not None, "レイヤーリスト上の効果線行が見つかりません"
-    assert layer_stack_op._detail_dialog_width_for_item(context, item) == 1320
+    assert layer_stack_op._detail_dialog_width_for_item(context, item) == 560
     resolved = layer_stack_utils.resolve_stack_item(context, item)
 
     def focus_values(p):
@@ -261,16 +264,16 @@ def _assert_layer_stack_dialog_layout(
     _set_params_silently(scene, effect_line_op, focus_values)
     layout = _Layout()
     layer_stack_detail_ui.draw_stack_item_detail(layout, context, item, resolved, wide=True)
-    assert 5 in layout.grid_columns, f"レイヤーリスト詳細の効果線設定が5列で描画されていません: {layout.grid_columns}"
+    assert 2 in layout.grid_columns, f"レイヤーリスト詳細の効果線設定が2列で描画されていません: {layout.grid_columns}"
     assert "effect_type" in layout.props_by_column.get("col0", ()), "種類が1列目にありません"
     assert "brush_size_mm" in layout.props_by_column.get("col1", ()), "線設定が2列目にありません"
-    assert "in_percent" in layout.props_by_column.get("col2", ()), "入り抜きが3列目にありません"
-    assert "line_color" in layout.props_by_column.get("col3", ()), "色設定が4列目にありません"
-    assert "line_image_source" in layout.props_by_column.get("col4", ()), "パス線設定が5列目にありません"
+    assert "in_percent" in layout.props_by_column.get("col1", ()), "入り抜きが2列目にありません"
+    assert "line_color" in layout.props_by_column.get("col1", ()), "色設定が2列目にありません"
+    assert "line_image_source" in layout.props_by_column.get("col1", ()), "パス線設定が2列目にありません"
 
     layout = _Layout()
     layer_stack_detail_ui.draw_stack_item_detail(layout, context, item, resolved, wide=False)
-    assert 5 not in layout.grid_columns, "サイドバー内の詳細表示まで5列になっています"
+    assert 2 not in layout.grid_columns, "サイドバー内の詳細表示までダイアログ用2列になっています"
 
 
 def _assert_graph_numeric_to_curve(layer_detail_op, effect_line_op, effect_inout_curve, context, scene, obj):
@@ -432,7 +435,7 @@ def main() -> None:
         obj, layer = _create_test_effect(context, scene, page, effect_line_op, page_stack_key)
         assert obj is not None and layer is not None
         bmanga_id = object_naming.get_bmanga_id(obj)
-        assert layer_detail_op._detail_dialog_width_for_kind(context, "effect", bmanga_id) == 1320
+        assert layer_detail_op._detail_dialog_width_for_kind(context, "effect", bmanga_id) == 560
 
         _assert_detail_layout(layer_detail_op, effect_line_op, context, scene, obj)
         _assert_layer_stack_dialog_layout(

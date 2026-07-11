@@ -465,10 +465,12 @@ def _check_effect_detail_graph(package_name: str, context, scene, page) -> dict[
     bmanga_id = object_naming.get_bmanga_id(obj)
     layer_detail_op._sync_detail_profile_curve(context, "effect", bmanga_id)
     params = scene.bmanga_effect_line_params
-    _assert_close(params.in_percent, 15.0, "入り")
-    _assert_close(params.out_percent, 35.0, "抜き")
-    _assert_close(params.in_start_percent, 45.0, "入り始点")
-    _assert_close(params.out_start_percent, 25.0, "抜き始点")
+    # 画面グラフは v0.6.482 以降「内端→外端」。保存・生成側の
+    # 「入り→抜き」へ反転して同期されるため、左右の値も入れ替わる。
+    _assert_close(params.in_percent, 35.0, "入り")
+    _assert_close(params.out_percent, 15.0, "抜き")
+    _assert_close(params.in_start_percent, 25.0, "入り始点")
+    _assert_close(params.out_start_percent, 45.0, "抜き始点")
     assert layer_detail_op._apply_effect_detail_params_to_layer(context, obj, layer)
     strokes = effect_line_gen.generate_strokes(
         params,
@@ -477,11 +479,11 @@ def _check_effect_detail_graph(package_name: str, context, scene, page) -> dict[
         seed=4,
     )
     radii = [float(radius) for stroke in strokes for radius in (getattr(stroke, "radii", None) or ())]
-    ok = 5 in layout.grid_columns and radii and min(radii) < max(radii) * 0.8
+    ok = 2 in layout.grid_columns and radii and min(radii) < max(radii) * 0.8
     return _result(
         "効果線詳細設定と線幅グラフ",
         ok,
-        "詳細設定は5列、グラフ編集は入り抜き数値と生成線の太さへ反映。",
+        "詳細設定は2列、グラフ編集は入り抜き数値と生成線の太さへ反映。",
         evidence={
             "grid_columns": layout.grid_columns,
             "in_percent": float(params.in_percent),

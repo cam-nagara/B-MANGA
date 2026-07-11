@@ -27,9 +27,10 @@ from ..utils.layer_hierarchy import (
 _INLINE_RENAME_DOUBLE_CLICK_SEC = 0.45
 _LAST_INLINE_RENAME_CLICK = {"index": -1, "uid": "", "time": 0.0}
 _DETAIL_DIALOG_DEFAULT_WIDTH = 360
-_DETAIL_DIALOG_EFFECT_WIDTH = 1320
-# フキダシは右クリックの詳細設定 (layer_detail_op) と同じ横長 4 列で開く
-_DETAIL_DIALOG_BALLOON_WIDTH = 1080
+# 詳細設定ダイアログは右クリックの詳細設定 (layer_detail_op) と同じ
+# 2 列の縦長で開く (2026-07-12 ユーザー指定)
+_DETAIL_DIALOG_EFFECT_WIDTH = 560
+_DETAIL_DIALOG_BALLOON_WIDTH = 560
 
 
 _ADD_KIND_ITEMS = (

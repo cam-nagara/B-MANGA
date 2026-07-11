@@ -117,10 +117,11 @@ def _assert_spacing_scale(white_outline) -> None:
     white_100 = white_outline._line_offsets(
         10.0, 0.4, 0.6, auto_count=False, count=5, spacing_scale_percent=100.0
     )
-    expected_white = [-2.0, -1.0, 0.0, 1.0, 2.0]
+    # 本数指定は指定本数を白線領域の幅いっぱいへ均等配置する。
+    expected_white = [-5.0, -2.5, 0.0, 2.5, 5.0]
     assert len(white_100) == len(expected_white)
     for actual, expected in zip(white_100, expected_white):
-        _close(actual, expected, "白線間隔変化100%の互換")
+        _close(actual, expected, "白線の本数指定の均等配置")
     white_200 = white_outline._line_offsets(
         10.0, 0.4, 0.6, auto_count=False, count=5, spacing_scale_percent=200.0
     )
@@ -132,7 +133,10 @@ def _assert_spacing_scale(white_outline) -> None:
     black_100 = white_outline._edge_distances(
         10.0, 0.4, 0.6, auto_count=False, count=4, spacing_scale_percent=100.0
     )
-    assert [round(distance, 6) for distance, _norm in black_100] == [0.0, 1.0, 2.0, 3.0]
+    expected_black = [0.0, 10.0 / 3.0, 20.0 / 3.0, 10.0]
+    for (distance, norm), expected in zip(black_100, expected_black):
+        _close(distance, expected, "黒線の本数指定の均等配置")
+        _close(norm, expected / 10.0, "黒線の本数指定の位置率")
     black_200 = white_outline._edge_distances(
         10.0, 0.4, 0.6, auto_count=False, count=4, spacing_scale_percent=200.0
     )
@@ -179,6 +183,11 @@ def _assert_black_ratio_and_length(params, effect_line_gen) -> None:
     params.white_outline_black_line_count_auto = True
     params.white_outline_white_line_count_auto = True
 
+    params.white_outline_white_ratio_percent = 0.0
+    whites_none = _band_strokes(params, effect_line_gen, role="white_outline_white")
+    assert not whites_none, "白線割合0%でも白線が生成されています"
+    params.white_outline_white_ratio_percent = 50.0
+
     params.white_outline_black_ratio_percent = 70.0
     params.white_outline_length_percent = 100.0
     blacks_default = _band_strokes(params, effect_line_gen, role="white_outline_black")
@@ -207,10 +216,111 @@ def _assert_black_ratio_and_length(params, effect_line_gen) -> None:
     params.white_outline_length_percent = 100.0
 
 
+def _stroke_lengths_mm(strokes) -> list[float]:
+    lengths = []
+    for stroke in strokes:
+        points = list(getattr(stroke, "points_xyz", ()) or ())
+        if len(points) < 2:
+            continue
+        start = points[0]
+        end = points[-1]
+        lengths.append(math.hypot(float(end[0]) - float(start[0]), float(end[1]) - float(start[1])) * 1000.0)
+    return sorted(lengths)
+
+
+def _assert_black_inside_attenuation(params, effect_line_gen) -> None:
+    params.white_outline_count = 1
+    params.white_outline_white_ratio_percent = 80.0
+    params.white_outline_black_ratio_percent = 20.0
+    params.white_outline_white_line_count_auto = False
+    params.white_outline_white_line_count = 1
+    params.white_outline_black_line_count_auto = False
+    params.white_outline_black_line_count = 3
+    params.white_outline_black_direction = "inside"
+    params.white_outline_black_attenuation = 0.0
+    baseline = _stroke_lengths_mm(_band_strokes(params, effect_line_gen, role="white_outline_black"))
+    params.white_outline_black_attenuation = 80.0
+    attenuated = _stroke_lengths_mm(_band_strokes(params, effect_line_gen, role="white_outline_black"))
+    assert baseline and len(baseline) == len(attenuated), "内側黒線の減衰比較用ストロークが不足しています"
+    assert any(after < before - 1.0e-4 for before, after in zip(baseline, attenuated)), (
+        "重ねる方向=内側で黒線の減衰が効いていません"
+    )
+    params.white_outline_black_attenuation = 0.0
+    params.white_outline_black_direction = "outside"
+    params.white_outline_white_ratio_percent = 50.0
+    params.white_outline_black_ratio_percent = 50.0
+    params.white_outline_count = 4
+
+
+def _assert_balloon_legacy_migration(page, entry, schema, balloon_mesh) -> None:
+    legacy = schema.balloon_entry_to_dict(entry)
+    legacy.pop("whiteOutlineSettingsVersion", None)
+    legacy.pop("flashWhiteOutlineWhiteBrushMm", None)
+    legacy.update(
+        {
+            "lineStyle": "white_outline",
+            "lineWidthMm": 0.4,
+            "freeTransformLineWidthScale": 1.75,
+            "linePeakWidthPct": 80.0,
+            "flashWhiteLinePeakWidthPct": 75.0,
+            "flashWhiteLineValleyWidthPct": 25.0,
+            "flashWhiteLineWidthPercent": 150.0,
+        }
+    )
+    params = dict(legacy.get("uniFlashParams") or {})
+    for field in (
+        "white_outline_width_min_percent",
+        "white_outline_length_min_percent",
+        "white_outline_white_line_count_auto",
+        "white_outline_black_line_count_auto",
+        "white_outline_white_ratio_percent",
+        "white_outline_black_ratio_percent",
+    ):
+        params.pop(field, None)
+    params.update(
+        {
+            "white_outline_white_in_percent": 60.0,
+            "white_outline_white_out_percent": 40.0,
+            "white_outline_white_attenuation": 0.5,
+            "white_outline_black_attenuation": 0.25,
+        }
+    )
+    legacy["uniFlashParams"] = params
+
+    restored = page.balloons.add()
+    schema.balloon_entry_from_dict(restored, legacy)
+    expected_brush = 0.4 * 0.8 * 0.75 * 1.5
+    _close(restored.flash_white_outline_white_brush_mm, expected_brush, "旧白線太さの基準mm移行")
+    _close(restored.white_outline_white_in_percent, 20.0, "旧白線入りの実効値移行")
+    _close(restored.white_outline_white_out_percent, 40.0 / 3.0, "旧白線抜きの実効値移行")
+    _close(restored.white_outline_white_attenuation, 50.0, "旧白線減衰の百分率移行")
+    _close(restored.white_outline_black_attenuation, 25.0, "旧黒線減衰の百分率移行")
+    assert not restored.white_outline_white_line_count_auto
+    assert not restored.white_outline_black_line_count_auto
+    _close(restored.white_outline_white_ratio_percent, 70.0, "旧フキダシの白線割合")
+    _close(restored.white_outline_black_ratio_percent, 30.0, "旧フキダシの黒線割合")
+    _close(restored.white_outline_width_min_percent, 100.0, "旧フキダシの太さ乱れ最小値")
+    _close(restored.white_outline_length_min_percent, 100.0, "旧フキダシの長さ乱れ最小値")
+    adapted = balloon_mesh._white_outline_params(restored, black_brush_mm=0.32 * 1.75)
+    _close(adapted.white_outline_white_brush_mm, expected_brush * 1.75, "自由変形後の白線太さ")
+
+    migrated = schema.balloon_entry_to_dict(restored)
+    assert migrated["whiteOutlineSettingsVersion"] == 2
+    second = page.balloons.add()
+    schema.balloon_entry_from_dict(second, migrated)
+    _close(second.flash_white_outline_white_brush_mm, expected_brush, "白線太さの二重移行防止")
+    _close(second.white_outline_white_in_percent, 20.0, "白線入りの二重移行防止")
+    _close(second.white_outline_white_attenuation, 50.0, "白線減衰の二重移行防止")
+    page.balloons.remove(len(page.balloons) - 1)
+    page.balloons.remove(len(page.balloons) - 1)
+
+
 def _assert_schema_migration(params, effect_line_core) -> None:
+    params.white_outline_white_ratio_percent = 45.0
     params.white_outline_black_ratio_percent = 55.0
     params.white_outline_length_percent = 60.0
     effect_line_core.effect_params_from_dict(params, {"schema_version": 18})
+    _close(params.white_outline_white_ratio_percent, 30.0, "旧データ読込の白線割合既定値")
     _close(params.white_outline_black_ratio_percent, 70.0, "旧データ読込の黒線割合既定値")
     _close(params.white_outline_length_percent, 100.0, "旧データ読込の長さ既定値")
     params.white_outline_bundle_placement = "corner"
@@ -222,6 +332,16 @@ def _assert_schema_migration(params, effect_line_core) -> None:
     assert params.white_outline_bundle_placement == "spacing", "旧データ読込の束配置既定値"
     _close(params.white_outline_position_percent, 100.0, "旧データ読込の位置既定値")
     assert params.start_corner_type == "rounded", "旧データの角丸チェックが角タイプへ移行されていません"
+
+
+def _assert_builtin_preset_defaults(params, effect_line_presets) -> None:
+    preset = effect_line_presets.load_preset_by_name("白抜き線")
+    assert preset is not None, "組込の白抜き線プリセットがありません"
+    params.white_outline_white_ratio_percent = 12.0
+    params.white_outline_black_ratio_percent = 34.0
+    effect_line_presets.apply_preset_to_params(preset, params)
+    _close(params.white_outline_white_ratio_percent, 50.0, "組込プリセットの白線割合")
+    _close(params.white_outline_black_ratio_percent, 50.0, "組込プリセットの黒線割合")
 
 
 def _bundle_direction_bins(params, effect_line_gen, *, tol_deg: float = 12.0) -> set[float]:
@@ -323,6 +443,19 @@ def _assert_position_percent(params, effect_line_gen) -> None:
 
 
 def _assert_defaults(params, entry) -> None:
+    for owner, label in ((params, "効果線"), (entry, "フキダシ")):
+        _close(owner.white_outline_white_ratio_percent, 50.0, f"{label}の白線割合初期値")
+        _close(owner.white_outline_black_ratio_percent, 50.0, f"{label}の黒線割合初期値")
+        assert bool(owner.white_outline_white_line_count_auto), f"{label}の白線本数自動計算が初期ONではありません"
+        assert bool(owner.white_outline_black_line_count_auto), f"{label}の黒線本数自動計算が初期ONではありません"
+        _close(owner.white_outline_width_min_percent, 50.0, f"{label}の太さ乱れ最小値")
+        _close(owner.white_outline_length_min_percent, 50.0, f"{label}の長さ乱れ最小値")
+        _close(owner.white_outline_white_out_percent, 0.0, f"{label}の白線抜き初期値")
+    _close(params.white_outline_spacing_mm, 0.2, "効果線の白線間隔初期値")
+    _close(params.white_outline_black_spacing_mm, 0.2, "効果線の黒線間隔初期値")
+    _close(entry.flash_white_outline_spacing_mm, 0.2, "フキダシの白線間隔初期値")
+    _close(entry.flash_white_outline_black_spacing_mm, 0.2, "フキダシの黒線間隔初期値")
+    _close(entry.flash_white_outline_white_brush_mm, 0.3, "フキダシの白線太さ初期値")
     _close(params.start_cloud_sub_width_ratio, 30.0, "効果線の外端小山幅初期値")
     _close(params.end_cloud_sub_width_ratio, 30.0, "効果線の内端小山幅初期値")
     _close(entry.shape_params.cloud_sub_width_ratio, 30.0, "フキダシ形状の小山幅初期値")
@@ -359,8 +492,11 @@ def _assert_saved(params, entry, effect_line_core, balloon_core, schema) -> None
     entry.white_outline_bundle_spacing_jitter = 0.3
     entry.white_outline_white_spacing_scale_percent = 75.0
     entry.white_outline_black_spacing_scale_percent = 160.0
+    entry.flash_white_outline_white_brush_mm = 0.47
     balloon_saved = schema.balloon_entry_to_dict(entry)
     nested = balloon_saved["uniFlashParams"]
+    assert balloon_saved["whiteOutlineSettingsVersion"] == 2
+    _close(balloon_saved["flashWhiteOutlineWhiteBrushMm"], 0.47, "フキダシ 白線太さ保存")
     _close(nested["white_outline_bundle_spacing_deg"], 41.0, "フキダシ 束の間隔保存")
     _close(nested["white_outline_bundle_spacing_jitter"], 0.3, "フキダシ 間隔乱れ保存")
     _close(nested["white_outline_white_spacing_scale_percent"], 75.0, "フキダシ 白線間隔変化保存")
@@ -389,12 +525,51 @@ def _assert_balloon_cache_signature(entry, balloon_flash_effect_line_mesh) -> No
         "white_outline_length_percent",
         "white_outline_bundle_placement",
         "white_outline_position_percent",
+        "flash_white_outline_white_brush_mm",
     )
     signature = balloon_flash_effect_line_mesh._effect_params_signature(
         entry, "white_outline"
     )
     missing = set(fields) - set(signature)
     assert not missing, f"フキダシの再構築条件に不足があります: {sorted(missing)}"
+    obsolete = {
+        "line_valley_width_pct",
+        "flash_white_line_width_percent",
+        "flash_white_line_valley_width_pct",
+        "flash_white_line_peak_width_pct",
+    }
+    assert not (obsolete & set(signature)), "白抜き線の再構築条件に旧・非表示係数が残っています"
+
+
+def _assert_black_zero_keeps_white(entry, balloon_mesh) -> None:
+    entry.line_style = "white_outline"
+    entry.line_peak_width_pct = 0.0
+    entry.white_outline_white_ratio_percent = 50.0
+    entry.white_outline_black_ratio_percent = 50.0
+    strokes = balloon_mesh.generate_flash_strokes_rect_local(entry)
+    roles = [str(getattr(stroke, "role", "") or "") for stroke in strokes]
+    assert "white_outline_white" in roles, "黒線太さ0%で白線まで消えています"
+    assert "white_outline_black" not in roles, "黒線太さ0%でも黒線が残っています"
+    entry.line_peak_width_pct = 100.0
+
+
+def _assert_zero_white_ratio_cache(entry, balloon_mesh) -> None:
+    mesh = bpy.data.meshes.new("BMangaWhiteOutlineZeroRatioCacheCheck")
+    try:
+        mesh.from_pydata(((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)), (), ((0, 1, 2),))
+        mesh.update()
+        mesh.polygons[0].material_index = 0
+        entry.white_outline_white_ratio_percent = 0.0
+        assert balloon_mesh._mesh_has_expected_layers(mesh, entry, "white_outline"), (
+            "白線割合0%の黒線だけのメッシュが未完成扱いになります"
+        )
+        entry.white_outline_white_ratio_percent = 50.0
+        assert not balloon_mesh._mesh_has_expected_layers(mesh, entry, "white_outline"), (
+            "白線割合ありで白線面が無いメッシュを完成扱いしています"
+        )
+    finally:
+        bpy.data.meshes.remove(mesh)
+        entry.white_outline_white_ratio_percent = 50.0
 
 
 def main() -> None:
@@ -406,24 +581,31 @@ def main() -> None:
         from bmanga_dev_white_outline_spacing.core import balloon as balloon_core
         from bmanga_dev_white_outline_spacing.core import effect_line as effect_line_core
         from bmanga_dev_white_outline_spacing.io import schema
+        from bmanga_dev_white_outline_spacing.io import effect_line_presets
         from bmanga_dev_white_outline_spacing.operators import effect_line_gen
         from bmanga_dev_white_outline_spacing.operators import effect_line_white_outline
         from bmanga_dev_white_outline_spacing.utils import balloon_flash_effect_line_mesh
 
         params = bpy.context.scene.bmanga_effect_line_params
         work = bpy.context.scene.bmanga_work
-        entry = work.pages.add().balloons.add()
+        page = work.pages.add()
+        entry = page.balloons.add()
 
         _assert_defaults(params, entry)
         _configure_white_outline(params)
         _assert_bundle_spacing(params, effect_line_gen)
         _assert_spacing_scale(effect_line_white_outline)
         _assert_black_ratio_and_length(params, effect_line_gen)
+        _assert_black_inside_attenuation(params, effect_line_gen)
         _assert_bundle_placement(params, effect_line_gen)
         _assert_position_percent(params, effect_line_gen)
         _assert_schema_migration(params, effect_line_core)
+        _assert_builtin_preset_defaults(params, effect_line_presets)
         _assert_saved(params, entry, effect_line_core, balloon_core, schema)
         _assert_balloon_cache_signature(entry, balloon_flash_effect_line_mesh)
+        _assert_black_zero_keeps_white(entry, balloon_flash_effect_line_mesh)
+        _assert_zero_white_ratio_cache(entry, balloon_flash_effect_line_mesh)
+        _assert_balloon_legacy_migration(page, entry, schema, balloon_flash_effect_line_mesh)
         print("BMANGA_WHITE_OUTLINE_SPACING_GRAPH_OK", flush=True)
     finally:
         if mod is not None:

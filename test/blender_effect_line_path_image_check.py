@@ -248,7 +248,8 @@ def main() -> None:
             params.line_image_inout_end_color = (1.0, 0.0, 1.0, 0.3)
         finally:
             effect_line_op._set_scene_params_syncing(scene, False)
-        expected_vertices = {"circle": 16, "square": 4, "polygon": 6, "star": 10, "heart": 20}
+        # 円形とハートは v0.6.408 で輪郭を滑らかにするため64点化済み。
+        expected_vertices = {"circle": 64, "square": 4, "polygon": 6, "star": 10, "heart": 64}
         for kind, vertex_count in expected_vertices.items():
             effect_line_op._set_scene_params_syncing(scene, True)
             try:

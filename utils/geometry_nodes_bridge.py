@@ -156,7 +156,7 @@ _EFFECT_FIELD_SPECS: dict[str, SocketSpec] = {
     "white_outline_width_min_percent": SocketSpec("白抜き線 最小太さ (%)", "NodeSocketFloat", 50.0),
     "white_outline_length_jitter_enabled": SocketSpec("白抜き線 長さ乱れ", "NodeSocketBool", False),
     "white_outline_length_min_percent": SocketSpec("白抜き線 最小長さ (%)", "NodeSocketFloat", 50.0),
-    "white_outline_white_ratio_percent": SocketSpec("白線割合 (%)", "NodeSocketFloat", 30.0),
+    "white_outline_white_ratio_percent": SocketSpec("白線割合 (%)", "NodeSocketFloat", 50.0),
     "white_outline_white_brush_mm": SocketSpec(WHITE_OUTLINE_WHITE_BRUSH_MM_SOCKET, "NodeSocketFloat", 0.3),
     "white_outline_white_attenuation": SocketSpec("白線減衰", "NodeSocketFloat", 0.0),
     "white_outline_white_in_percent": SocketSpec("白線入り (%)", "NodeSocketFloat", 100.0),

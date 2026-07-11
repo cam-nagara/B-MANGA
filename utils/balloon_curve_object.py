@@ -868,9 +868,12 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
     )
     if is_flash_line_style:
         if line_mat is not None:
+            # 白線にもフキダシの不透明度を反映する (黒線だけ薄くなり
+            # 白線が残る、ビューポートと出力の見た目不一致を防ぐ)
+            white_alpha = max(0.0, min(1.0, float(getattr(entry, "opacity", 100.0) or 0.0) / 100.0))
             white_mat = _ensure_color_material(
                 f"{BALLOON_FLASH_WHITE_LINE_MATERIAL_PREFIX}{balloon_id}",
-                (1.0, 1.0, 1.0, 1.0),
+                (1.0, 1.0, 1.0, white_alpha),
                 mask_info=mask_info,
                 mask_power=_LINE_AND_EDGE_MASK_POWER,
             )
@@ -1574,10 +1577,10 @@ def _geometry_key_for_entry(entry) -> str:
         "flash_white_line_peak_width_pct": float(getattr(entry, "flash_white_line_peak_width_pct", 100.0) or 0.0),
         "flash_white_outline_count": int(getattr(entry, "flash_white_outline_count", 5) or 5),
         "flash_white_outline_width_mm": float(getattr(entry, "flash_white_outline_width_mm", 10.0) or 0.0),
-        "flash_white_outline_spacing_mm": float(getattr(entry, "flash_white_outline_spacing_mm", 0.25) or 0.0),
+        "flash_white_outline_spacing_mm": float(getattr(entry, "flash_white_outline_spacing_mm", 0.2) or 0.0),
         "flash_white_outline_white_line_count": int(getattr(entry, "flash_white_outline_white_line_count", 24) or 24),
         "flash_white_outline_black_line_count": int(getattr(entry, "flash_white_outline_black_line_count", 3) or 3),
-        "flash_white_outline_black_spacing_mm": float(getattr(entry, "flash_white_outline_black_spacing_mm", 0.25) or 0.0),
+        "flash_white_outline_black_spacing_mm": float(getattr(entry, "flash_white_outline_black_spacing_mm", 0.2) or 0.0),
         "multi_line_count": int(getattr(entry, "multi_line_count", 3) or 3),
         "multi_line_width": float(getattr(entry, "multi_line_width_mm", 0.3) or 0.0),
         "multi_line_spacing": float(getattr(entry, "multi_line_spacing_mm", 0.4) or 0.0),

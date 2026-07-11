@@ -22,8 +22,9 @@ from ..utils import balloon_curve_source_state
 
 _logger = log.get_logger(__name__)
 _DETAIL_DIALOG_DEFAULT_WIDTH = 260
-_DETAIL_DIALOG_BALLOON_WIDTH = 1080
-_DETAIL_DIALOG_EFFECT_WIDTH = 1320
+# 詳細設定ダイアログは 2 列の縦長で開く (2026-07-12 ユーザー指定)
+_DETAIL_DIALOG_BALLOON_WIDTH = 560
+_DETAIL_DIALOG_EFFECT_WIDTH = 560
 
 
 def _has_safe_gp_layer_prop(layer, prop_name: str) -> bool:
@@ -286,9 +287,6 @@ def _equal_columns(layout, count: int):
 
 def _detail_dialog_width_for_kind(_context, kind: str, _bmanga_id: str) -> int:
     if kind == "balloon":
-        # Blender の標準プロパティダイアログは、開いた後に幅を変更できない。
-        # フキダシは線種変更で通常線からウニフラ/白抜き線へ列数が増えるため、
-        # 最初から最大列数に合う幅で開く。
         return _DETAIL_DIALOG_BALLOON_WIDTH
     if kind in {"effect", "effect_legacy"}:
         return _DETAIL_DIALOG_EFFECT_WIDTH
@@ -308,13 +306,11 @@ def _draw_balloon_detail(layout, context, entry=None, page=None) -> None:
 
     preset_management_ui.draw_balloon_preset_management(layout, context)
 
-    # 縦長になりすぎるため複数列に分ける。
-    # 標準ダイアログは表示中に幅を変えられないため、線種切替で列数が増えても
-    # 幅不足にならないよう常に 4 列分の幅で描画する。
-    dialog_line_style = balloon_shapes.normalize_line_style(str(getattr(entry, "line_style", "") or ""))
-    left_col, right_col, effect_col3, effect_col4 = _equal_columns(layout, 4)
-    effect_cols = (effect_col3, effect_col4)
-    tail_col = left_col if dialog_line_style in {"uni_flash", "white_outline"} else effect_col3
+    # 2 列の縦長で描画する (2026-07-12 ユーザー指定)。
+    # ウニフラ/白抜き線の設定群は「線・塗り」ボックス内へ縦に積む。
+    left_col, right_col = _equal_columns(layout, 2)
+    effect_cols = ()
+    tail_col = left_col
 
     # 配置 (mm) を Outliner メタ の次 (最上段) に配置
     box = left_col.box()
@@ -447,12 +443,15 @@ def _draw_balloon_detail(layout, context, entry=None, page=None) -> None:
             show_path_settings=False,
         )
     elif balloon_shapes.is_flash_line_style(line_style):
-        row = box.row(align=True)
-        row.prop(entry, "flash_line_count", text="線の本数")
-        row.prop(entry, "flash_line_spacing_mm", text="線の間隔")
-        row = box.row(align=True)
-        row.prop(entry, "line_valley_width_pct", text="入り・抜き")
-        row.prop(entry, "line_peak_width_pct", text="中間線幅")
+        if line_style != "white_outline":
+            # 「線の本数」「線の間隔」「入り・抜き」「中間線幅」はウニフラ用。
+            # 白抜き線では機能しない (黒線の太さは黒線ボックスの「太さ (%)」)
+            row = box.row(align=True)
+            row.prop(entry, "flash_line_count", text="線の本数")
+            row.prop(entry, "flash_line_spacing_mm", text="線の間隔")
+            row = box.row(align=True)
+            row.prop(entry, "line_valley_width_pct", text="入り・抜き")
+            row.prop(entry, "line_peak_width_pct", text="中間線幅")
         if line_style == "white_outline":
             from ..panels import balloon_panel as _bp
 
@@ -509,18 +508,20 @@ def _draw_balloon_detail(layout, context, entry=None, page=None) -> None:
             row.prop(entry, "fill_gradient_start_color")
             row.prop(entry, "fill_gradient_end_color")
             sub.prop(entry, "fill_gradient_angle_deg")
-        row = box.row(align=True)
-        row.prop(entry, "outer_white_margin_enabled", text="外側フチ", toggle=True)
-        sub = row.row(align=True)
-        sub.enabled = bool(getattr(entry, "outer_white_margin_enabled", False))
-        sub.prop(entry, "outer_white_margin_width_mm", text="幅")
-        sub.prop(entry, "outer_white_margin_color", text="")
-        row = box.row(align=True)
-        row.prop(entry, "inner_white_margin_enabled", text="内側フチ", toggle=True)
-        sub = row.row(align=True)
-        sub.enabled = bool(getattr(entry, "inner_white_margin_enabled", False))
-        sub.prop(entry, "inner_white_margin_width_mm", text="幅")
-        sub.prop(entry, "inner_white_margin_color", text="")
+        if has_body_fill:
+            # フチは白抜き線では画面にも出力にも描かれないため表示しない
+            row = box.row(align=True)
+            row.prop(entry, "outer_white_margin_enabled", text="外側フチ", toggle=True)
+            sub = row.row(align=True)
+            sub.enabled = bool(getattr(entry, "outer_white_margin_enabled", False))
+            sub.prop(entry, "outer_white_margin_width_mm", text="幅")
+            sub.prop(entry, "outer_white_margin_color", text="")
+            row = box.row(align=True)
+            row.prop(entry, "inner_white_margin_enabled", text="内側フチ", toggle=True)
+            sub = row.row(align=True)
+            sub.enabled = bool(getattr(entry, "inner_white_margin_enabled", False))
+            sub.prop(entry, "inner_white_margin_width_mm", text="幅")
+            sub.prop(entry, "inner_white_margin_color", text="")
         box.prop(entry, "opacity", slider=True)
 
     _draw_balloon_tails(tail_col, entry, page)
@@ -715,12 +716,12 @@ def _draw_effect_detail(layout, context, obj, *, load_from_layer: bool = True) -
         _load_effect_detail_params_from_layer(context, obj, active_layer)
 
     # effect_line_panel の draw_effect_params を再利用。
-    # 縦長になりすぎるため、種類/形状・線・入り抜き・色・パス線の 5 列に分配する
+    # 種類/形状の列と、それ以外の設定の列の 2 列 (縦長) に分配する
     from ..panels import effect_line_panel as _elp
 
     layout.separator()
     _elp.draw_effect_line_preset_management(layout, context)
-    cols = _equal_columns(layout, 5)
+    cols = _equal_columns(layout, 2)
     _elp.draw_effect_params(cols[0], params, with_generate_button=True, columns=cols)
 
 

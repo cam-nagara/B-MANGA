@@ -49,7 +49,10 @@ _BUILTIN_PRESETS: tuple[dict[str, Any], ...] = (
         "presetType": "effect_line",
         "presetName": "白抜き線",
         "description": "白線の両側に黒線を重ねる効果線",
+        "schema_version": 20,
         "effect_type": "white_outline",
+        "white_outline_white_ratio_percent": 50.0,
+        "white_outline_black_ratio_percent": 50.0,
     },
 )
 

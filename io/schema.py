@@ -14,6 +14,7 @@ import json
 from contextlib import ExitStack, contextmanager
 from typing import Any
 
+from . import balloon_white_outline_migration
 from .image_path_schema import image_path_layer_from_dict, image_path_layer_to_dict
 from ..core import balloon as balloon_core
 from ..utils import (
@@ -1352,6 +1353,7 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "roundedCornerRadiusUnit": str(getattr(entry, "rounded_corner_radius_unit", "mm") or "mm"),
         "roundedCornerRadiusPercent": round(float(getattr(entry, "rounded_corner_radius_percent", 30.0)), 3),
         "lineStyle": entry.line_style,
+        "whiteOutlineSettingsVersion": balloon_white_outline_migration.SETTINGS_VERSION,
         "lineWidthMm": round(entry.line_width_mm, 3),
         "dashedSegmentLengthMm": round(float(getattr(entry, "dashed_segment_length_mm", 3.6)), 3),
         "dashedGapMm": round(float(getattr(entry, "dashed_gap_mm", 2.4)), 3),
@@ -1385,10 +1387,11 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "flashWhiteLinePeakWidthPct": round(float(getattr(entry, "flash_white_line_peak_width_pct", 100.0)), 3),
         "flashWhiteOutlineCount": int(getattr(entry, "flash_white_outline_count", 5) or 5),
         "flashWhiteOutlineWidthMm": round(float(getattr(entry, "flash_white_outline_width_mm", 10.0)), 3),
-        "flashWhiteOutlineSpacingMm": round(float(getattr(entry, "flash_white_outline_spacing_mm", 0.25)), 3),
+        "flashWhiteOutlineWhiteBrushMm": round(float(getattr(entry, "flash_white_outline_white_brush_mm", 0.3)), 3),
+        "flashWhiteOutlineSpacingMm": round(float(getattr(entry, "flash_white_outline_spacing_mm", 0.2)), 3),
         "flashWhiteOutlineWhiteLineCount": int(getattr(entry, "flash_white_outline_white_line_count", 24) or 24),
         "flashWhiteOutlineBlackLineCount": int(getattr(entry, "flash_white_outline_black_line_count", 3) or 3),
-        "flashWhiteOutlineBlackSpacingMm": round(float(getattr(entry, "flash_white_outline_black_spacing_mm", 0.25)), 3),
+        "flashWhiteOutlineBlackSpacingMm": round(float(getattr(entry, "flash_white_outline_black_spacing_mm", 0.2)), 3),
         "uniFlashParams": (
             balloon_core.uni_flash_params_to_dict(entry)
             if str(getattr(entry, "line_style", "") or "") in {"uni_flash", "white_outline"}
@@ -1582,14 +1585,29 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
         entry.flash_white_outline_count = int(data.get("flashWhiteOutlineCount", 5))
     if hasattr(entry, "flash_white_outline_width_mm"):
         entry.flash_white_outline_width_mm = float(data.get("flashWhiteOutlineWidthMm", 10.0))
+    legacy_white_outline = (
+        entry.line_style == "white_outline"
+        and balloon_white_outline_migration.settings_version(data)
+        < balloon_white_outline_migration.SETTINGS_VERSION
+    )
+    if hasattr(entry, "flash_white_outline_white_brush_mm"):
+        fallback_brush = (
+            balloon_white_outline_migration.legacy_white_brush_mm(data)
+            if legacy_white_outline
+            else 0.3
+        )
+        entry.flash_white_outline_white_brush_mm = float(
+            data.get("flashWhiteOutlineWhiteBrushMm", fallback_brush)
+        )
+    spacing_default = 0.25 if legacy_white_outline else 0.2
     if hasattr(entry, "flash_white_outline_spacing_mm"):
-        entry.flash_white_outline_spacing_mm = float(data.get("flashWhiteOutlineSpacingMm", 0.25))
+        entry.flash_white_outline_spacing_mm = float(data.get("flashWhiteOutlineSpacingMm", spacing_default))
     if hasattr(entry, "flash_white_outline_white_line_count"):
         entry.flash_white_outline_white_line_count = int(data.get("flashWhiteOutlineWhiteLineCount", 24))
     if hasattr(entry, "flash_white_outline_black_line_count"):
         entry.flash_white_outline_black_line_count = int(data.get("flashWhiteOutlineBlackLineCount", 3))
     if hasattr(entry, "flash_white_outline_black_spacing_mm"):
-        entry.flash_white_outline_black_spacing_mm = float(data.get("flashWhiteOutlineBlackSpacingMm", 0.25))
+        entry.flash_white_outline_black_spacing_mm = float(data.get("flashWhiteOutlineBlackSpacingMm", spacing_default))
     entry.multi_line_direction = data.get("multiLineDirection", "outside")
     entry.thorn_multi_line_valley_width_pct = float(
         data.get("thornMultiLineValleyWidthPct", default_flash_endpoint_width)
@@ -1608,7 +1626,17 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     entry.fill_opacity = _opacity_from_data(data, "fillOpacity", 100.0, percent_schema=opacity_percent)
     uni_flash_data = data.get("uniFlashParams")
     if isinstance(uni_flash_data, dict):
+        if legacy_white_outline:
+            balloon_white_outline_migration.prepare_legacy_values(entry, uni_flash_data)
         balloon_core.uni_flash_params_from_dict(entry, uni_flash_data)
+        if legacy_white_outline:
+            balloon_white_outline_migration.finish_legacy_migration(entry, data)
+    elif legacy_white_outline:
+        # 初期の白抜き線データには uniFlashParams 自体が無い場合がある。
+        # 当時の既定値を入れてから同じ一度限りの単位移行を行う。
+        balloon_white_outline_migration.prepare_legacy_values(entry, {})
+        balloon_core.uni_flash_params_from_dict(entry, {})
+        balloon_white_outline_migration.finish_legacy_migration(entry, data)
     elif entry.line_style == "uni_flash":
         peak_pct = max(0.0, float(getattr(entry, "line_peak_width_pct", 100.0) or 100.0))
         valley_pct = max(0.0, float(getattr(entry, "line_valley_width_pct", 0.0) or 0.0))

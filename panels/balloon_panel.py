@@ -193,12 +193,13 @@ class BMANGA_PT_balloons(Panel):
                 show_path_settings=False,
             )
         elif balloon_shapes.is_flash_line_style(line_style):
-            row = box.row(align=True)
-            row.prop(entry, "flash_line_count", text="線の本数")
-            row.prop(entry, "flash_line_spacing_mm", text="線の間隔")
-            row = box.row(align=True)
-            row.prop(entry, "line_valley_width_pct", text="入り・抜き")
-            row.prop(entry, "line_peak_width_pct", text="中間線幅")
+            if line_style != "white_outline":
+                row = box.row(align=True)
+                row.prop(entry, "flash_line_count", text="線の本数")
+                row.prop(entry, "flash_line_spacing_mm", text="線の間隔")
+                row = box.row(align=True)
+                row.prop(entry, "line_valley_width_pct", text="入り・抜き")
+                row.prop(entry, "line_peak_width_pct", text="中間線幅")
             if line_style == "white_outline":
                 draw_white_outline_line_settings(box, entry)
         elif balloon_shapes.is_dynamic_meldex_shape(_shape_norm_for_main_line):
@@ -249,18 +250,20 @@ class BMANGA_PT_balloons(Panel):
                 row.prop(entry, "fill_gradient_start_color")
                 row.prop(entry, "fill_gradient_end_color")
                 sub.prop(entry, "fill_gradient_angle_deg")
-            row = box.row(align=True)
-            row.prop(entry, "outer_white_margin_enabled", text="外側フチ", toggle=True)
-            sub = row.row(align=True)
-            sub.enabled = bool(getattr(entry, "outer_white_margin_enabled", False))
-            sub.prop(entry, "outer_white_margin_width_mm", text="幅")
-            sub.prop(entry, "outer_white_margin_color", text="")
-            row = box.row(align=True)
-            row.prop(entry, "inner_white_margin_enabled", text="内側フチ", toggle=True)
-            sub = row.row(align=True)
-            sub.enabled = bool(getattr(entry, "inner_white_margin_enabled", False))
-            sub.prop(entry, "inner_white_margin_width_mm", text="幅")
-            sub.prop(entry, "inner_white_margin_color", text="")
+            if has_body_fill:
+                # フチは白抜き線では画面にも出力にも描かれないため表示しない
+                row = box.row(align=True)
+                row.prop(entry, "outer_white_margin_enabled", text="外側フチ", toggle=True)
+                sub = row.row(align=True)
+                sub.enabled = bool(getattr(entry, "outer_white_margin_enabled", False))
+                sub.prop(entry, "outer_white_margin_width_mm", text="幅")
+                sub.prop(entry, "outer_white_margin_color", text="")
+                row = box.row(align=True)
+                row.prop(entry, "inner_white_margin_enabled", text="内側フチ", toggle=True)
+                sub = row.row(align=True)
+                sub.enabled = bool(getattr(entry, "inner_white_margin_enabled", False))
+                sub.prop(entry, "inner_white_margin_width_mm", text="幅")
+                sub.prop(entry, "inner_white_margin_color", text="")
 
         # 形状別パラメータ
         sp = entry.shape_params

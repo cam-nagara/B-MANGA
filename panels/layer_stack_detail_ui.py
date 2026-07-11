@@ -327,12 +327,13 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
             show_path_settings=False,
         )
     elif balloon_shapes.is_flash_line_style(line_style):
-        row = line_box.row(align=True)
-        row.prop(entry, "flash_line_count", text="線の本数")
-        row.prop(entry, "flash_line_spacing_mm", text="線の間隔")
-        row = line_box.row(align=True)
-        row.prop(entry, "line_valley_width_pct", text="入り・抜き")
-        row.prop(entry, "line_peak_width_pct", text="中間線幅")
+        if line_style != "white_outline":
+            row = line_box.row(align=True)
+            row.prop(entry, "flash_line_count", text="線の本数")
+            row.prop(entry, "flash_line_spacing_mm", text="線の間隔")
+            row = line_box.row(align=True)
+            row.prop(entry, "line_valley_width_pct", text="入り・抜き")
+            row.prop(entry, "line_peak_width_pct", text="中間線幅")
         if line_style == "white_outline":
             line_effect_settings_ui.draw_balloon_white_outline_settings(
                 line_box,
@@ -385,18 +386,20 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
             row.prop(entry, "fill_gradient_start_color")
             row.prop(entry, "fill_gradient_end_color")
             sub.prop(entry, "fill_gradient_angle_deg")
-        row = line_box.row(align=True)
-        row.prop(entry, "outer_white_margin_enabled", text="外側フチ", toggle=True)
-        sub = row.row(align=True)
-        sub.enabled = bool(getattr(entry, "outer_white_margin_enabled", False))
-        sub.prop(entry, "outer_white_margin_width_mm", text="幅")
-        sub.prop(entry, "outer_white_margin_color", text="")
-        row = line_box.row(align=True)
-        row.prop(entry, "inner_white_margin_enabled", text="内側フチ", toggle=True)
-        sub = row.row(align=True)
-        sub.enabled = bool(getattr(entry, "inner_white_margin_enabled", False))
-        sub.prop(entry, "inner_white_margin_width_mm", text="幅")
-        sub.prop(entry, "inner_white_margin_color", text="")
+        if has_body_fill:
+            # フチは白抜き線では画面にも出力にも描かれないため表示しない
+            row = line_box.row(align=True)
+            row.prop(entry, "outer_white_margin_enabled", text="外側フチ", toggle=True)
+            sub = row.row(align=True)
+            sub.enabled = bool(getattr(entry, "outer_white_margin_enabled", False))
+            sub.prop(entry, "outer_white_margin_width_mm", text="幅")
+            sub.prop(entry, "outer_white_margin_color", text="")
+            row = line_box.row(align=True)
+            row.prop(entry, "inner_white_margin_enabled", text="内側フチ", toggle=True)
+            sub = row.row(align=True)
+            sub.enabled = bool(getattr(entry, "inner_white_margin_enabled", False))
+            sub.prop(entry, "inner_white_margin_width_mm", text="幅")
+            sub.prop(entry, "inner_white_margin_color", text="")
 
     sp = entry.shape_params
     if (
@@ -583,7 +586,7 @@ def _draw_effect_type_settings(box, params) -> None:
     param_box = box.box()
     param_box.label(text="種類", icon="STROKE")
     param_box.prop(params, "effect_type")
-    if params.effect_type not in {"white_outline", "speed"}:
+    if params.effect_type != "speed":
         param_box.prop(params, "rotation_deg")
 
 
@@ -729,12 +732,12 @@ def _draw_effect_selected_settings(box, context, obj, active_layer, *, wide: boo
     if wide:
         grid = box.grid_flow(
             row_major=True,
-            columns=5,
+            columns=2,
             even_columns=True,
             even_rows=False,
             align=True,
         )
-        cols = tuple(grid.column(align=True) for _ in range(5))
+        cols = tuple(grid.column(align=True) for _ in range(2))
         effect_line_panel.draw_effect_line_preset_management(cols[0], context)
         effect_line_panel.draw_effect_params(cols[0], params, with_generate_button=True, columns=cols)
     else:
