@@ -323,6 +323,7 @@ def _replace_uv_layers(source, candidate, loop_samples):
         target_layer = candidate.uv_layers.new(name=source_layer.name, do_init=False)
         for loop, sample in zip(target_layer.data, loop_samples, strict=True):
             loop.uv = _sample_vector(source, source_layer.data, "CORNER", sample, "uv")
+        target_layer.active_clone = bool(source_layer.active_clone)
         target_layer.active_render = bool(source_layer.active_render)
     if source.uv_layers:
         candidate.uv_layers.active_index = min(
@@ -344,6 +345,21 @@ def _replace_color_attributes(source, candidate, loop_samples, point_samples):
             item.color = _sample_vector(
                 source, source_attr.data, source_attr.domain, sample, "color"
             )
+    copy_color_attribute_selection(source, candidate)
+
+
+def copy_color_attribute_selection(source, candidate):
+    """カラー属性の表示対象とレンダー対象を同じ添字で維持する."""
+
+    count = len(candidate.color_attributes)
+    if count == 0:
+        return
+    candidate.color_attributes.active_color_index = min(
+        max(0, int(source.color_attributes.active_color_index)), count - 1
+    )
+    candidate.color_attributes.render_color_index = min(
+        max(0, int(source.color_attributes.render_color_index)), count - 1
+    )
 
 
 def _replace_custom_normals(source, candidate, loop_samples):
@@ -621,6 +637,7 @@ def _replace_direct_attributes(source, candidate, loop_samples, point_samples):
             item.uv = _direct_sample_vector(
                 source, source_layer.data, "CORNER", sample, "uv"
             )
+        target_layer.active_clone = bool(source_layer.active_clone)
         target_layer.active_render = bool(source_layer.active_render)
     if source.uv_layers:
         candidate.uv_layers.active_index = min(
@@ -639,6 +656,7 @@ def _replace_direct_attributes(source, candidate, loop_samples, point_samples):
             item.color = _direct_sample_vector(
                 source, source_attr.data, source_attr.domain, sample, "color"
             )
+    copy_color_attribute_selection(source, candidate)
 
 
 def _copy_split_edge_features(source, candidate):

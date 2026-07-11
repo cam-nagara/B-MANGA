@@ -64,6 +64,11 @@ def _triangulated_open_cylinder(name: str, segments: int = 10) -> bpy.types.Obje
         type="BYTE_COLOR",
         domain="CORNER",
     )
+    point_color = mesh.color_attributes.new(
+        name="PointTint",
+        type="FLOAT_COLOR",
+        domain="POINT",
+    )
     normals = []
     for polygon in mesh.polygons:
         wedge = polygon.index // 2
@@ -90,6 +95,20 @@ def _triangulated_open_cylinder(name: str, segments: int = 10) -> bpy.types.Obje
             normal.z = 0.25 if wedge == 1 else 0.0
             normal.normalize()
             normals.append(tuple(normal))
+    for vertex in mesh.vertices:
+        point_color.data[vertex.index].color = (
+            vertex.co.x * 0.25 + 0.5,
+            vertex.co.y * 0.25 + 0.5,
+            vertex.co.z * 0.25 + 0.5,
+            1.0,
+        )
+    uv.active_clone = True
+    uv.active_render = False
+    uv_detail.active_clone = False
+    uv_detail.active_render = True
+    mesh.uv_layers.active_index = 1
+    mesh.color_attributes.active_color_index = 1
+    mesh.color_attributes.render_color_index = 0
     mesh.normals_split_custom_set(normals)
     mesh["asset_tag"] = f"{name}_source"
     crease = mesh.attributes.new("crease_edge", "FLOAT", "EDGE")
@@ -677,10 +696,28 @@ def _assert_closed_plain_quads_preserved(geometry) -> None:
         bpy.data.objects.remove(obj, do_unlink=True)
 
 
+def _assert_attribute_selection_matches(source, target) -> None:
+    assert target.uv_layers.active.name == source.uv_layers.active.name
+    assert [layer.name for layer in target.uv_layers if layer.active_clone] == [
+        layer.name for layer in source.uv_layers if layer.active_clone
+    ]
+    assert [layer.name for layer in target.uv_layers if layer.active_render] == [
+        layer.name for layer in source.uv_layers if layer.active_render
+    ]
+    assert (
+        target.color_attributes.active_color.name
+        == source.color_attributes.active_color.name
+    )
+    assert target.color_attributes[target.color_attributes.render_color_index].name == (
+        source.color_attributes[source.color_attributes.render_color_index].name
+    )
+
+
 def _assert_direct_transfer_matches_generic(geometry, transfer) -> None:
     obj = _triangulated_open_cylinder("TransferParity")
     stats = geometry.QuadRepairStats()
     cleaned, boundary, _non_manifold = geometry._sanitize_candidate(obj.data, stats)
+    _assert_attribute_selection_matches(obj.data, cleaned)
     options = geometry.options_for_quality("STANDARD")
     fast = geometry._run_local_quadrangulation(
         bpy.context,
@@ -701,6 +738,8 @@ def _assert_direct_transfer_matches_generic(geometry, transfer) -> None:
     try:
         transfer.transfer_local_triangle_data(cleaned, fast, bool(boundary))
         transfer.transfer_surface_data(cleaned, generic, bool(boundary))
+        _assert_attribute_selection_matches(cleaned, fast)
+        _assert_attribute_selection_matches(cleaned, generic)
         assert [p.material_index for p in fast.polygons] == [
             p.material_index for p in generic.polygons
         ]
@@ -716,12 +755,13 @@ def _assert_direct_transfer_matches_generic(geometry, transfer) -> None:
                 (first.uv - second.uv).length
                 for first, second in zip(fast_uv, generic_uv, strict=True)
             ) < 1.0e-4
-        fast_colors = fast.color_attributes["SurfaceTint"].data
-        generic_colors = generic.color_attributes["SurfaceTint"].data
-        assert max(
-            max(abs(a - b) for a, b in zip(first.color, second.color, strict=True))
-            for first, second in zip(fast_colors, generic_colors, strict=True)
-        ) < 1.0e-4
+        for layer_name in ("SurfaceTint", "PointTint"):
+            fast_colors = fast.color_attributes[layer_name].data
+            generic_colors = generic.color_attributes[layer_name].data
+            assert max(
+                max(abs(a - b) for a, b in zip(first.color, second.color, strict=True))
+                for first, second in zip(fast_colors, generic_colors, strict=True)
+            ) < 1.0e-4
         assert min(
             first.vector.dot(second.vector)
             for first, second in zip(

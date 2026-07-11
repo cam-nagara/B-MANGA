@@ -13,6 +13,7 @@ from mathutils.bvhtree import BVHTree
 
 from .mesh_quad_repair_transfer import (
     SurfaceTransferError,
+    copy_color_attribute_selection,
     mark_catmull_features,
     transfer_local_triangle_data,
     transfer_surface_data,
@@ -196,6 +197,7 @@ def _copy_sanitized_attributes(
         target_layer = target.uv_layers.new(name=source_layer.name, do_init=False)
         for item, loop_index in zip(target_layer.data, flat_loop_sources, strict=True):
             item.uv = source_layer.data[loop_index].uv
+        target_layer.active_clone = bool(source_layer.active_clone)
         target_layer.active_render = bool(source_layer.active_render)
     if source.uv_layers:
         target.uv_layers.active_index = min(
@@ -215,6 +217,7 @@ def _copy_sanitized_attributes(
         )
         for item, source_index in zip(target_attr.data, source_indices, strict=True):
             item.color = source_attr.data[source_index].color
+    copy_color_attribute_selection(source, target)
     if source.has_custom_normals:
         normals = [
             tuple(source.corner_normals[loop_index].vector)
