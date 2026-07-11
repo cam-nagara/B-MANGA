@@ -57,6 +57,12 @@ _EDGE_PICK_WORLD_TOLERANCE_MAX_MM = 12.0
 _DOUBLE_CLICK_INTERVAL_SEC = 0.4
 _DOUBLE_CLICK_DISTANCE_PX = 8.0
 _ARROW_KEYS = {"UP_ARROW", "DOWN_ARROW", "LEFT_ARROW", "RIGHT_ARROW"}
+# 選択中フォールバック (_selected_move_hit_from_event) のヒット余白。
+# ハンドルは本体境界の外側 SELECTION_HANDLE_OUTSET_MM (3mm) に描画され、
+# ハンドル四角自体も幅2mm (半径1mm) あるため、境界からの最大到達距離は
+# 3+1=4mm。他の判定 (_balloon_hit_part 等) が threshold 分の余裕を
+# 持たせているのに合わせ、ここでも同程度の余裕を加える。
+_SELECTED_MOVE_HIT_PAD_MM = object_tool_selection.SELECTION_HANDLE_OUTSET_MM + 2.5
 _NUDGE_PX = 1.0
 _NUDGE_SHIFT_PX = 20.0
 
@@ -1170,7 +1176,12 @@ class BMANGA_OT_object_tool(Operator):
         }:
             return None
         rect = selection_bounds_for_key(context, key)
-        if rect is None or not object_tool_selection.rect_contains_point(rect, float(x_mm), float(y_mm), pad=2.5):
+        # key は選択中(アクティブ)のものだけなので、ハンドルリングぶんまで
+        # 常に余白を広げてよい (効果線・フキダシ・テキストと同じ「選択中のみ
+        # 拡張」仕様)。
+        if rect is None or not object_tool_selection.rect_contains_point(
+            rect, float(x_mm), float(y_mm), pad=_SELECTED_MOVE_HIT_PAD_MM
+        ):
             return None
         hit = {
             "kind": kind,

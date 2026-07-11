@@ -329,17 +329,26 @@ def _balloon_rect(entry) -> tuple[float, float, float, float]:
     return x, y, x + w, y + h
 
 
-def _balloon_hit_part(entry, x_mm: float, y_mm: float) -> str:
+def _balloon_hit_part(entry, x_mm: float, y_mm: float, *, handle_outset_mm: float = 0.0) -> str:
     left, bottom, right, top = _balloon_rect(entry)
     width = max(0.0, right - left)
     height = max(0.0, top - bottom)
+    outset = max(0.0, float(handle_outset_mm))
+    # ハンドル四角(本体境界の外側 outset mm に描画。ui/overlay.py の
+    # handle_rect_for_bounds と同じ考え方)を判定基準にする。選択中のみ
+    # outset>0 が呼び出し側から渡され、未選択時は outset=0 で従来どおり
+    # 本体境界そのものを判定する(非選択時の判定域は広げない)。
+    handle_left = left - outset
+    handle_right = right + outset
+    handle_bottom = bottom - outset
+    handle_top = top + outset
     threshold = min(
         _BALLOON_HANDLE_HIT_MM,
         max(0.35, min(width, height) * 0.25),
     )
     if not (
-        left - threshold <= x_mm <= right + threshold
-        and bottom - threshold <= y_mm <= top + threshold
+        handle_left - threshold <= x_mm <= handle_right + threshold
+        and handle_bottom - threshold <= y_mm <= handle_top + threshold
     ):
         if free_transform.entry_enabled(entry):
             quad = free_transform.quad_from_rect_offsets(
@@ -349,12 +358,12 @@ def _balloon_hit_part(entry, x_mm: float, y_mm: float) -> str:
             if free_transform.point_in_quad(quad, x_mm, y_mm, tolerance_mm=threshold):
                 return "body"
         return ""
-    near_left = abs(x_mm - left) <= threshold
-    near_right = abs(x_mm - right) <= threshold
-    near_bottom = abs(y_mm - bottom) <= threshold
-    near_top = abs(y_mm - top) <= threshold
-    inside_x = left <= x_mm <= right
-    inside_y = bottom <= y_mm <= top
+    near_left = abs(x_mm - handle_left) <= threshold
+    near_right = abs(x_mm - handle_right) <= threshold
+    near_bottom = abs(y_mm - handle_bottom) <= threshold
+    near_top = abs(y_mm - handle_top) <= threshold
+    inside_x = handle_left <= x_mm <= handle_right
+    inside_y = handle_bottom <= y_mm <= handle_top
     if near_left and near_top:
         return "top_left"
     if near_right and near_top:
@@ -410,7 +419,17 @@ def _hit_balloon_collection(collection, active_idx: int, x_mm: float, y_mm: floa
         part = _balloon_tail_hit_part(entry, x_mm, y_mm)
         if part:
             return idx, entry, part
-        part = _balloon_hit_part(entry, x_mm, y_mm)
+        # 選択中のフキダシだけハンドルが本体境界の外側 (SELECTION_HANDLE_OUTSET_MM)
+        # に描画される (ui/overlay.py, 効果線の _effect_hit_part と同じ仕様)。
+        # entry.selected は object_selection のビューポート選択と常に同期済み
+        # (utils/object_selection.py の _sync_balloon_flags) なので、ここでは
+        # context を引き回さずに entry.selected だけで判定できる。
+        outset = (
+            object_selection.SELECTION_HANDLE_OUTSET_MM
+            if bool(getattr(entry, "selected", False))
+            else 0.0
+        )
+        part = _balloon_hit_part(entry, x_mm, y_mm, handle_outset_mm=outset)
         if part:
             return idx, entry, part
     return -1, None, ""

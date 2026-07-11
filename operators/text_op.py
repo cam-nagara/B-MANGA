@@ -414,12 +414,18 @@ def _text_rect(entry) -> tuple[float, float, float, float]:
     return x, y, x + w, y + h
 
 
-def _text_hit_part(entry, x_mm: float, y_mm: float) -> str:
+def _text_hit_part(entry, x_mm: float, y_mm: float, *, handle_outset_mm: float = 0.0) -> str:
     left, bottom, right, top = _text_rect(entry)
+    outset = max(0.0, float(handle_outset_mm))
     threshold = _TEXT_HANDLE_HIT_MM
+    # テキストはリサイズハンドルを持たず常に "body" (移動) のみを返す仕様だが、
+    # 選択中は表示上のハンドルが本体境界の外側 (SELECTION_HANDLE_OUTSET_MM) に
+    # 出るため、判定域もそこまで広げないとハンドルをクリックしても反応せず
+    # 下のオブジェクトへフォールスルーしてしまう。未選択時は outset=0 で
+    # 従来どおり境界そのものを判定する。
     if (
-        left - threshold <= x_mm <= right + threshold
-        and bottom - threshold <= y_mm <= top + threshold
+        left - outset - threshold <= x_mm <= right + outset + threshold
+        and bottom - outset - threshold <= y_mm <= top + outset + threshold
     ):
         return "body"
     return ""
@@ -432,11 +438,19 @@ def _hit_text_entry(page, x_mm: float, y_mm: float):
         indices.append(active_idx)
     indices.extend(i for i in reversed(range(len(page.texts))) if i != active_idx)
     for idx in indices:
-        if not coma_hit_visibility.local_point_visible_in_entry_parent(page, page.texts[idx], x_mm, y_mm):
+        entry = page.texts[idx]
+        if not coma_hit_visibility.local_point_visible_in_entry_parent(page, entry, x_mm, y_mm):
             continue
-        part = _text_hit_part(page.texts[idx], x_mm, y_mm)
+        # フキダシと同じ仕様: 選択中のテキストだけハンドルリング分の判定域を広げる。
+        # entry.selected は object_selection のビューポート選択と同期済み。
+        outset = (
+            object_selection.SELECTION_HANDLE_OUTSET_MM
+            if bool(getattr(entry, "selected", False))
+            else 0.0
+        )
+        part = _text_hit_part(entry, x_mm, y_mm, handle_outset_mm=outset)
         if part:
-            return idx, page.texts[idx], part
+            return idx, entry, part
     return -1, None, ""
 
 
