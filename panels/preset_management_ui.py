@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ..core.work import get_work
 from ..io import effect_line_presets, image_path_presets
+from . import preset_list_ui
 
 
 def _work_dir(context) -> Path | None:
@@ -22,7 +23,7 @@ def _selected(context, attr: str) -> str:
     return str(getattr(wm, attr, "") or "")
 
 
-# ───────────────────────────���───────────────────────────��────────
+# ────────────────────────────────────────────────────────────────
 # 統一プリセットリスト描画
 # ────────────────────────────────────────────────────────────────
 
@@ -52,7 +53,6 @@ _PRESET_CONFIGS = {
         "has_move": True,
         "has_save": True,
         "save_op": "bmanga.text_preset_save",
-        "save_label": "上書き保存",
     },
     "effect_line": {
         "label": "効果線プリセット",
@@ -70,7 +70,6 @@ _PRESET_CONFIGS = {
         "has_move": True,
         "has_save": True,
         "save_op": "bmanga.fill_preset_save",
-        "save_label": "上書き保存",
     },
     "gradient": {
         "label": "グラデーションプリセット",
@@ -80,7 +79,6 @@ _PRESET_CONFIGS = {
         "has_move": True,
         "has_save": True,
         "save_op": "bmanga.gradient_preset_save",
-        "save_label": "上書き保存",
     },
     "image_path": {
         "label": "パターンカーブプリセット",
@@ -124,7 +122,8 @@ def draw_preset_list(layout, context, preset_type: str, *, compact: bool = False
     layout : UILayout
     context : bpy.types.Context
     preset_type : str
-        "border", "balloon", "text", "effect_line", "fill", "gradient", "image_path", "tail"
+        "border", "balloon", "text", "effect_line", "fill", "gradient",
+        "image_path", "tail"
     compact : bool
         True ならボックスなしでコンパクトに描画（ツールパネル用）
     """
@@ -135,13 +134,31 @@ def draw_preset_list(layout, context, preset_type: str, *, compact: bool = False
     if wm is None or not hasattr(wm, cfg["selector_attr"]):
         return
 
+    col_attr = f"bmanga_{preset_type}_preset_list"
+    idx_attr = f"bmanga_{preset_type}_preset_list_index"
+    if not hasattr(wm, col_attr):
+        return
+
+    preset_list_ui.refresh_preset_list(context, preset_type)
+
     if compact:
         container = layout
     else:
         container = layout.box()
         container.label(text=cfg["label"], icon=cfg["icon"])
 
-    container.prop(wm, cfg["selector_attr"], text="")
+    row = container.row()
+    rows = 3 if compact else 4
+    row.template_list(
+        "BMANGA_UL_presets",
+        preset_type,
+        wm,
+        col_attr,
+        wm,
+        idx_attr,
+        rows=rows,
+        maxrows=rows + 2,
+    )
 
     if cfg["op_prefix"] is None:
         return
@@ -149,42 +166,64 @@ def draw_preset_list(layout, context, preset_type: str, *, compact: bool = False
     selected = _get_selected_name(context, preset_type)
     op_prefix = cfg["op_prefix"]
 
-    # CRUD ボタン行
-    row = container.row(align=True)
+    col = row.column(align=True)
+
     add_op = cfg.get("add_op") or f"{op_prefix}_add_local"
-    row.operator(add_op, text="", icon="ADD")
+    col.operator(add_op, text="", icon="ADD")
+
     if selected:
-        op = row.operator(f"{op_prefix}_rename", text="", icon="GREASEPENCIL")
-        op.preset_name = selected
-        op.new_name = selected
-        op = row.operator(f"{op_prefix}_duplicate", text="", icon="DUPLICATE")
-        op.preset_name = selected
-        op.new_name = f"{selected} コピー"
-        op = row.operator(f"{op_prefix}_delete", text="", icon="TRASH")
+        op = col.operator(f"{op_prefix}_delete", text="", icon="REMOVE")
         op.preset_name = selected
     else:
-        row.label(text="")
-        row.label(text="")
-        row.label(text="")
+        sub = col.column()
+        sub.enabled = False
+        sub.operator(f"{op_prefix}_delete" if cfg.get("has_move") else add_op, text="", icon="REMOVE")
 
-    # 上書き保存ボタン
+    col.separator()
+
+    if cfg.get("has_move"):
+        if selected:
+            op = col.operator(f"{op_prefix}_move", text="", icon="TRIA_UP")
+            op.preset_name = selected
+            op.direction = "UP"
+            op = col.operator(f"{op_prefix}_move", text="", icon="TRIA_DOWN")
+            op.preset_name = selected
+            op.direction = "DOWN"
+        else:
+            sub = col.column()
+            sub.enabled = False
+            sub.operator(add_op, text="", icon="TRIA_UP")
+            sub.operator(add_op, text="", icon="TRIA_DOWN")
+
+    col.separator()
+
+    if selected:
+        op = col.operator(f"{op_prefix}_rename", text="", icon="GREASEPENCIL")
+        op.preset_name = selected
+        op.new_name = selected
+        op = col.operator(f"{op_prefix}_duplicate", text="", icon="DUPLICATE")
+        op.preset_name = selected
+        op.new_name = f"{selected} コピー"
+    else:
+        sub = col.column()
+        sub.enabled = False
+        sub.operator(add_op, text="", icon="GREASEPENCIL")
+        sub.operator(add_op, text="", icon="DUPLICATE")
+
     if cfg.get("has_save") and cfg.get("save_op"):
-        container.operator(cfg["save_op"], text=cfg.get("save_label", "上書き保存"), icon="FILE_TICK")
-
-    # 並べ替えボタン
-    if cfg.get("has_move") and selected:
-        move_row = container.row(align=True)
-        op = move_row.operator(f"{op_prefix}_move", text="", icon="TRIA_UP")
-        op.preset_name = selected
-        op.direction = "UP"
-        op = move_row.operator(f"{op_prefix}_move", text="", icon="TRIA_DOWN")
-        op.preset_name = selected
-        op.direction = "DOWN"
+        col.separator()
+        if selected:
+            col.operator(cfg["save_op"], text="", icon="FILE_TICK")
+        else:
+            sub = col.column()
+            sub.enabled = False
+            sub.operator(cfg["save_op"], text="", icon="FILE_TICK")
 
 
 # ────────────────────────────────────────────────────────────────
 # 旧API互換（既存呼び出し元がまだ使う可能性）
 # ────────────────────────────────────────────────────────────────
+
 
 def draw_image_path_preset_management(layout, context) -> None:
     draw_preset_list(layout, context, "image_path")

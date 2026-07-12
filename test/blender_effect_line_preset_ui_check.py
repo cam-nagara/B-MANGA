@@ -78,6 +78,10 @@ class _Layout:
     def template_curve_mapping(self, *_args, **_kwargs):
         return None
 
+    def template_list(self, listtype, list_id, data, propname, active_data, active_propname, **_kwargs):
+        self.props.append(str(propname))
+        return None
+
 
 class _Op:
     def __init__(self, op_id: str):
@@ -129,7 +133,7 @@ def main() -> None:
 
         layout = _Layout()
         effect_line_panel.draw_effect_line_preset_management(layout, bpy.context)
-        assert "bmanga_effect_line_tool_preset_selector" in layout.props
+        assert "bmanga_effect_line_preset_list" in layout.props
         assert {
             "bmanga.effect_line_preset_add_local",
             "bmanga.effect_line_preset_rename",
@@ -148,7 +152,7 @@ def main() -> None:
         try:
             layout = _Layout()
             tool_panel._draw_tool_preset_list(layout, bpy.context)
-            assert "bmanga_effect_line_tool_preset_selector" in layout.props
+            assert "bmanga_effect_line_preset_list" in layout.props
         finally:
             coma_modal_state.clear_active("effect_line_tool", tool, bpy.context)
     finally:

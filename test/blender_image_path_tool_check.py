@@ -118,11 +118,18 @@ class _RecordingLayout:
         self.props.append(str(attr))
         return None
 
+    def separator(self, **_kwargs):
+        return None
+
     def operator(self, op_id: str, **_kwargs):
         self.ops.append(str(op_id))
         op = _RecordingOperator(str(op_id))
         self.op_instances.append(op)
         return op
+
+    def template_list(self, listtype, list_id, data, propname, active_data, active_propname, **_kwargs):
+        self.props.append(str(propname))
+        return None
 
 
 class _RecordingOperator:
@@ -374,7 +381,7 @@ def main() -> None:
         context.window_manager.bmanga_image_path_tool_preset_selector = "テスト画像パス"
         preset_layout = _RecordingLayout()
         preset_management_ui.draw_image_path_preset_management(preset_layout, context)
-        assert "bmanga_image_path_tool_preset_selector" in preset_layout.props
+        assert "bmanga_image_path_preset_list" in preset_layout.props
         op_by_id = {op.op_id: op for op in preset_layout.op_instances}
         assert op_by_id["bmanga.image_path_preset_rename"].preset_name == "テスト画像パス"
         assert op_by_id["bmanga.image_path_preset_rename"].new_name == "テスト画像パス"

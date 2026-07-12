@@ -35,14 +35,32 @@ def _sub(path: str):
     return importlib.import_module(f"{MOD_NAME}.{path}")
 
 
+class _Op:
+    def __init__(self, op_id: str):
+        self.op_id = op_id
+
+    def __setattr__(self, name, value):
+        object.__setattr__(self, name, value)
+
+
 class _Layout:
-    def __init__(self, props=None, labels=None):
+    def __init__(self, props=None, labels=None, ops=None):
         self.props = [] if props is None else props
         self.labels = [] if labels is None else labels
+        self.ops = [] if ops is None else ops
         self.enabled = True
 
     def row(self, align: bool = False):
-        return _Layout(self.props, self.labels)
+        return _Layout(self.props, self.labels, self.ops)
+
+    def column(self, align: bool = False):
+        return _Layout(self.props, self.labels, self.ops)
+
+    def box(self):
+        return _Layout(self.props, self.labels, self.ops)
+
+    def separator(self, **_kwargs):
+        return None
 
     def label(self, text: str = "", **_kwargs):
         self.labels.append(str(text))
@@ -50,6 +68,14 @@ class _Layout:
 
     def prop(self, _owner, attr: str, **_kwargs):
         self.props.append(str(attr))
+        return None
+
+    def operator(self, op_id: str, **_kwargs):
+        self.ops.append(str(op_id))
+        return _Op(str(op_id))
+
+    def template_list(self, listtype, list_id, data, propname, active_data, active_propname, **_kwargs):
+        self.props.append(str(propname))
         return None
 
 
@@ -101,15 +127,15 @@ def _check_tool_panel_rows(context, wm) -> None:
     coma_modal_state = _sub("operators.coma_modal_state")
     tool_panel = _sub("panels.tool_panel")
     expected = {
-        "coma_create": ("コマ作成の枠線", "bmanga_border_preset_selector"),
-        "balloon_tool": ("フキダシプリセット", "bmanga_balloon_tool_preset_selector"),
-        "balloon_nurbs_tool": ("フキダシプリセット", "bmanga_balloon_tool_preset_selector"),
-        "balloon_tail_tool": ("しっぽプリセット", "bmanga_tail_preset_selector"),
-        "text_tool": ("テキストプリセット", "bmanga_text_tool_preset_selector"),
-        "effect_line_tool": ("効果線プリセット", "bmanga_effect_line_tool_preset_selector"),
-        "fill_tool": ("囲い塗りプリセット", "bmanga_fill_tool_preset_selector"),
-        "gradient_tool": ("グラデーション", "bmanga_gradient_tool_preset_selector"),
-        "image_path_tool": ("パターンカーブ", "bmanga_image_path_tool_preset_selector"),
+        "coma_create": ("コマ作成の枠線", "bmanga_border_preset_list"),
+        "balloon_tool": ("フキダシプリセット", "bmanga_balloon_preset_list"),
+        "balloon_nurbs_tool": ("フキダシプリセット", "bmanga_balloon_preset_list"),
+        "balloon_tail_tool": ("しっぽプリセット", "bmanga_tail_preset_list"),
+        "text_tool": ("テキストプリセット", "bmanga_text_preset_list"),
+        "effect_line_tool": ("効果線プリセット", "bmanga_effect_line_preset_list"),
+        "fill_tool": ("囲い塗りプリセット", "bmanga_fill_preset_list"),
+        "gradient_tool": ("グラデーション", "bmanga_gradient_preset_list"),
+        "image_path_tool": ("パターンカーブ", "bmanga_image_path_preset_list"),
     }
     dummies: list[_DummyTool] = []
     for tool_name, (_label, prop_name) in expected.items():
