@@ -150,7 +150,8 @@ class BMANGA_OT_text_selection_style_popup(Operator):
                 self.ruby_style = ruby_sty
                 break
         text_edit_runtime.suppress_ime_text()
-        return context.window_manager.invoke_props_popup(self, event)
+        text_edit_runtime.set_dialog_cursor_override(context, True)
+        return context.window_manager.invoke_props_dialog(self, width=320)
 
     def draw(self, _context):
         layout = self.layout
@@ -195,6 +196,7 @@ class BMANGA_OT_text_selection_style_popup(Operator):
 
     def execute(self, context):
         text_edit_runtime.unsuppress_ime_text()
+        text_edit_runtime.set_dialog_cursor_override(context, False)
         page, entry, idx = _find_text_entry(context, self.page_id, self.text_id)
         if page is None or entry is None:
             return {"FINISHED"}
@@ -218,6 +220,7 @@ class BMANGA_OT_text_selection_style_popup(Operator):
 
     def cancel(self, context):
         text_edit_runtime.unsuppress_ime_text()
+        text_edit_runtime.set_dialog_cursor_override(context, False)
 
     def _bounds(self, entry) -> tuple[int, int]:
         body_len = len(str(getattr(entry, "body", "") or ""))

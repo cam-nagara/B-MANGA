@@ -624,6 +624,8 @@ class BMANGA_OT_coma_knife_cut(Operator):
     def invoke(self, context, event):
         if not shortcut_visibility.shortcuts_allowed(context):
             return {"PASS_THROUGH"}
+        if coma_modal_state.event_blocked_by_inline_text_edit(event):
+            return {"CANCELLED"}
         target = _find_view3d(context)
         if target is None:
             return {"PASS_THROUGH"}

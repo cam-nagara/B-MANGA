@@ -75,6 +75,26 @@ def is_active(tool_name: str) -> bool:
     return get_active(tool_name) is not None
 
 
+def inline_text_edit_active() -> bool:
+    """テキストツールがインライン本文入力中 (キャレット表示中) なら True."""
+    op = get_active("text_tool")
+    return op is not None and bool(getattr(op, "_editing", False))
+
+
+def event_blocked_by_inline_text_edit(event) -> bool:
+    """インライン本文入力中はキーボード発火の単キーショートカットを無効化する.
+
+    本文入力中に IME 変換や単純な打鍵 (K/F/Z/X/O/E 等) が Window キーマップの
+    B-MANGA ツール切替・Undo/Redo を発火させると、編集中テキストが勝手に
+    確定・破壊される。パネルボタン経由 (マウスイベント発火) は従来どおり
+    通し、キーボードイベント発火だけを塞ぐ。
+    """
+    if not inline_text_edit_active():
+        return False
+    event_type = str(getattr(event, "type", "") or "")
+    return event_type not in {"LEFTMOUSE", "MIDDLEMOUSE", "RIGHTMOUSE"}
+
+
 def mark_heartbeat(op) -> None:
     """modal() がイベントを受け取るたびに呼び、生存時刻を記録する."""
     try:

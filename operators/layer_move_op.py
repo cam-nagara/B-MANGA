@@ -212,6 +212,8 @@ class BMANGA_OT_layer_move_tool(Operator):
     def invoke(self, context, event):
         if not shortcut_visibility.shortcuts_allowed(context):
             return {"PASS_THROUGH"}
+        if coma_modal_state.event_blocked_by_inline_text_edit(event):
+            return {"CANCELLED"}
         active = coma_modal_state.get_active("layer_move")
         if active is not None:
             active.finish_from_external(context, keep_selection=True)

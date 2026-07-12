@@ -65,11 +65,29 @@ def main() -> None:
                 self.value = value
 
         text_edit_runtime._clear_ime_text_queue()
-        assert not text_op._event_should_pass_to_ime(Event("RET"))
+        assert not text_op._event_consumed_by_ime(Event("RET"))
         text_edit_runtime._set_ime_composition_text("日本")
-        assert text_op._event_should_pass_to_ime(Event("RET"))
-        assert text_op._event_should_pass_to_ime(Event("TEXTINPUT", "NOTHING"))
-        assert not text_op._event_should_pass_to_ime(Event("LEFTMOUSE"))
+        assert text_op._event_consumed_by_ime(Event("RET"))
+        assert text_op._event_consumed_by_ime(Event("TEXTINPUT", "NOTHING"))
+        assert not text_op._event_consumed_by_ime(Event("LEFTMOUSE"))
+        # 変換中のキーは B-MANGA 単キーショートカットへ流れてはならない
+        # (K/F/Z/X 等がテキストを勝手に確定・Undo する回帰の防止)。
+        from bmanga_dev.operators import coma_modal_state as _cms
+
+        class _EditingOpStub:
+            _editing = True
+
+        _cms._ACTIVE_REFS["text_tool"] = lambda: _EditingOpStub()
+        try:
+            assert _cms.inline_text_edit_active()
+            assert _cms.event_blocked_by_inline_text_edit(Event("K"))
+            assert _cms.event_blocked_by_inline_text_edit(Event("T"))
+            assert not _cms.event_blocked_by_inline_text_edit(Event("LEFTMOUSE"))
+        finally:
+            _cms._ACTIVE_REFS["text_tool"] = None
+        assert not _cms.event_blocked_by_inline_text_edit(Event("K"))
+        text_edit_runtime._clear_ime_text_queue()
+        text_edit_runtime._set_ime_composition_text("日本")
         preview, caret, bounds = text_edit_runtime.preview_entry_with_composition(entry, 2, -1)
         assert entry.body == "abcdef"
         assert preview.body == "ab日本cdef"
@@ -95,12 +113,15 @@ def main() -> None:
             vertical_region.height,
         )
         first_glyph = layout_result.placements[0]
-        expected_x = vertical_region.x2 - vertical_em * 0.5
-        assert abs(vertical_caret.x - expected_x) < 1e-6, (vertical_caret.x, expected_x)
-        assert abs(vertical_caret.x - first_glyph.x_mm) < 1e-6, (vertical_caret.x, first_glyph.x_mm)
+        # キャレットバーは字列中心を挟んで左右対称 (caret.x は左端)。
+        # バー中心 = 字列中心 = 先頭グリフ em ボックス中心、が仕様。
+        caret_center_x = vertical_caret.x + vertical_caret.width * 0.5
+        expected_center_x = vertical_region.x2 - vertical_em * 0.5
+        assert abs(caret_center_x - expected_center_x) < 1e-6, (caret_center_x, expected_center_x)
+        glyph_center_x = first_glyph.x_mm + vertical_em * 0.5
+        assert abs(caret_center_x - glyph_center_x) < 1e-6, (caret_center_x, glyph_center_x)
         selection_rect = overlay_text._selection_rects(entry, vertical_rect, 1, 0)[0]
-        expected_sel_x = vertical_caret.x - vertical_caret.width * 0.5
-        assert abs(selection_rect.x - expected_sel_x) < 1e-6, (selection_rect.x, expected_sel_x)
+        assert abs(selection_rect.x - vertical_caret.x) < 1e-6, (selection_rect.x, vertical_caret.x)
 
         entry.body = "abcdef"
         entry.writing_mode = "horizontal"
@@ -240,8 +261,18 @@ def main() -> None:
         assert tool.finished
         assert routed == [(getattr(page, "id", ""), getattr(entry, "id", ""))]
 
+        # IME 候補ウィンドウ位置用キャレット矩形 API
+        text_edit_runtime.set_ime_caret_client_rect(120, 40, 3, 18)
+        assert text_edit_runtime._IME_CARET_CLIENT_RECT == (120, 40, 3, 18)
+        text_edit_runtime.set_ime_caret_client_rect(5, 6, 0, 0)
+        assert text_edit_runtime._IME_CARET_CLIENT_RECT == (5, 6, 1, 1), "最小1pxが保証されていない"
+        text_edit_runtime.clear_ime_caret_client_rect()
+        assert text_edit_runtime._IME_CARET_CLIENT_RECT is None
+
+        text_edit_runtime.set_ime_caret_client_rect(10, 20, 2, 16)
         text_edit_runtime.begin_ime_capture()
         text_edit_runtime.end_ime_capture()
+        assert text_edit_runtime._IME_CARET_CLIENT_RECT is None, "end_ime_capture がキャレット矩形を掃除していない"
         print("BMANGA_TEXT_IME_RUNTIME_OK")
     finally:
         if mod is not None:

@@ -9,7 +9,6 @@ from ..operators import text_edit_runtime
 
 EntryVisiblePredicate = Callable[[object], bool]
 _TEXT_HANDLE_SIZE_MM = 2.0
-_TEXT_CARET_MIN_THICKNESS_MM = 0.18
 _TEXT_CARET_COLOR = (0.02, 0.02, 0.02, 1.0)
 _TEXT_SELECTION_COLOR_DEFAULT = (0.0, 0.7, 1.0, 0.45)
 
@@ -50,74 +49,12 @@ def _text_handle_rects(rect: Rect) -> list[Rect]:
     ]
 
 
-def _text_content(entry) -> str:
-    return text_edit_runtime.text_body(entry)
-
-
 def _text_em_mm(entry) -> float:
     return text_edit_runtime.text_em_mm(entry)
 
 
-def _text_line_height(entry) -> float:
-    return text_edit_runtime.text_line_height(entry)
-
-
 def _text_letter_spacing(entry) -> float:
     return text_edit_runtime.text_letter_spacing(entry)
-
-
-def _text_inner_rect(rect: Rect) -> Rect:
-    return text_edit_runtime.text_inner_rect(rect)
-
-
-def _vertical_caret_rect(entry, rect: Rect) -> Rect:
-    """縦書き用の横向きキャレット矩形を返す。"""
-    region = _text_inner_rect(rect)
-    em = _text_em_mm(entry)
-    line_pitch = em * _text_line_height(entry)
-    char_pitch = em * max(0.1, 1.0 + _text_letter_spacing(entry))
-    col = 0
-    row = 0
-    for ch in _text_content(entry):
-        if ch == "\n":
-            col += 1
-            row = 0
-            continue
-        row += 1
-        if region.y2 - row * char_pitch < region.y:
-            col += 1
-            row = 0
-    x_center = region.x2 - em * 0.5 - col * line_pitch
-    y = region.y2 - row * char_pitch
-    half_width = min(em * 0.45, max(0.6, region.width * 0.5))
-    thickness = max(_TEXT_CARET_MIN_THICKNESS_MM, em * 0.08)
-    x = max(region.x, min(region.x2, x_center))
-    y = max(region.y, min(region.y2, y)) - thickness * 0.5
-    return Rect(x, y, half_width * 2.0, thickness)
-
-
-def _horizontal_caret_rect(entry, rect: Rect) -> Rect:
-    region = _text_inner_rect(rect)
-    em = _text_em_mm(entry)
-    line_pitch = em * _text_line_height(entry)
-    char_pitch = em * max(0.1, 1.0 + _text_letter_spacing(entry))
-    row = 0
-    col = 0
-    for ch in _text_content(entry):
-        if ch == "\n":
-            row += 1
-            col = 0
-            continue
-        col += 1
-        if region.x + col * char_pitch > region.x2:
-            row += 1
-            col = 0
-    x = region.x + col * char_pitch
-    y = region.y2 - em - row * line_pitch
-    thickness = max(_TEXT_CARET_MIN_THICKNESS_MM, em * 0.08)
-    x = max(region.x, min(region.x2, x)) - thickness * 0.5
-    y = max(region.y, min(region.y2 - em, y))
-    return Rect(x, y, thickness, min(em, region.height))
 
 
 def text_caret_rect(entry, rect: Rect, cursor_index: int | None = None) -> Rect | None:
@@ -162,7 +99,9 @@ def _selection_rects(entry, rect: Rect, cursor_index: int, selection_anchor: int
         if caret is None:
             continue
         if vertical:
-            rects.append(Rect(caret.x - caret.width * 0.5, caret.y - char_pitch, caret.width, char_pitch))
+            # caret_rect は字列中心を挟んだ左右対称バーを返すため、選択矩形は
+            # caret.x をそのまま左端に使えば字列と一致する。
+            rects.append(Rect(caret.x, caret.y - char_pitch, caret.width, char_pitch))
         else:
             rects.append(Rect(caret.x, caret.y, char_pitch, caret.height))
     return rects

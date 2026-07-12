@@ -328,7 +328,8 @@ def _event_text(event) -> str:
     return ""
 
 
-def _event_should_pass_to_ime(event) -> bool:
+def _event_consumed_by_ime(event) -> bool:
+    """IME 変換中に OS 側 IME が処理済みのキーイベントか (モーダルで消費する)."""
     if not text_edit_runtime.ime_composition_active():
         return False
     event_type = str(getattr(event, "type", "") or "")
@@ -766,6 +767,9 @@ def _draw_vertical_cursor(op: "BMANGA_OT_text_tool") -> None:
     # 早期スキップする (復帰時は _tool_cursor 経由でこの描画に戻る)。
     if getattr(op, "_rotate_cursor_active", False):
         return
+    # ダイアログ表示中は OS カーソルを可視種別へ戻しているため描画しない。
+    if getattr(op, "_dialog_cursor_override", False):
+        return
     cx = getattr(op, "_vcur_x", -1)
     cy = getattr(op, "_vcur_y", -1)
     if cx < 0 or cy < 0:
@@ -799,6 +803,7 @@ class BMANGA_OT_text_tool(Operator):
     _cursor_modal_set: bool
     _tool_cursor: str
     _rotate_cursor_active: bool
+    _dialog_cursor_override: bool
     _editing: bool
     _editing_created_new: bool
     _edit_original_body: str
@@ -863,6 +868,7 @@ class BMANGA_OT_text_tool(Operator):
         self._vcur_draw_handler = None
         self._tool_cursor = ""
         self._cursor_modal_set = False
+        self._dialog_cursor_override = False
         self._apply_tool_cursor(context)
         self._editing = False
         self._editing_created_new = False
@@ -1039,6 +1045,9 @@ class BMANGA_OT_text_tool(Operator):
         if queued_text:
             return self._insert_current_text(context, queued_text)
         if event.type == "TIMER":
+            # IME 候補ウィンドウの表示位置用に、キャレットのクライアント座標を
+            # 常時更新する (ビューのパン/ズームや変換中の伸縮へ 50ms で追従)。
+            self._publish_ime_caret_rect(context)
             if text_edit_runtime.ime_composition_active():
                 layer_stack_utils.tag_view3d_redraw(context)
             return {"RUNNING_MODAL"}
@@ -1048,9 +1057,14 @@ class BMANGA_OT_text_tool(Operator):
                 return {"RUNNING_MODAL"}
             layer_stack_utils.tag_view3d_redraw(context)
             return {"PASS_THROUGH"}
-        if _event_should_pass_to_ime(event):
+        if _event_consumed_by_ime(event):
+            # IME 変換中のキーは OS 側の IME が既に処理済みで、Blender 側の
+            # イベントは残骸にすぎない。PASS_THROUGH すると Window キーマップ
+            # の単キーショートカット (K/F/Z/X/O/E 等) が発火し、変換中の
+            # ローマ字入力でテキストが勝手に確定・Undo される (「t 等の
+            # キーで確定してしまう」報告の主因)。ここで消費する。
             layer_stack_utils.tag_view3d_redraw(context)
-            return {"PASS_THROUGH"}
+            return {"RUNNING_MODAL"}
         if view_event_region.modal_navigation_ui_passthrough(self, context, event):
             return {"PASS_THROUGH"}
         if not _event_in_view3d_window(context, event):
@@ -1104,6 +1118,7 @@ class BMANGA_OT_text_tool(Operator):
 
     def _begin_inline_input(self, context) -> None:
         text_edit_runtime.begin_ime_capture()
+        self._publish_ime_caret_rect(context)
         if getattr(self, "_ime_timer", None) is not None:
             return
         window = getattr(context, "window", None)
@@ -1127,6 +1142,94 @@ class BMANGA_OT_text_tool(Operator):
         self._ime_timer = None
         self._clear_selection_drag_state()
         text_edit_runtime.end_ime_capture()
+
+    def _publish_ime_caret_rect(self, context) -> None:
+        """IME 候補ウィンドウの表示位置用にキャレットのクライアント座標を公開する.
+
+        キャレット矩形 (ページローカル mm) をワールド座標経由で VIEW_3D の
+        region ピクセルへ投影し、Blender ウィンドウのクライアント座標
+        (原点=左上・Y 下向き) へ変換して text_edit_runtime に渡す。
+        """
+        try:
+            page, entry, _idx = self._current_text_entry(context)
+            if page is None or entry is None:
+                text_edit_runtime.clear_ime_caret_client_rect()
+                return
+            preview, preview_cursor, _bounds = text_edit_runtime.preview_entry_with_composition(
+                entry,
+                self._cursor_index,
+                self._selection_anchor,
+            )
+            caret = text_edit_runtime.caret_rect(
+                preview,
+                text_edit_runtime.text_rect(entry),
+                preview_cursor,
+            )
+            if caret is None:
+                text_edit_runtime.clear_ime_caret_client_rect()
+                return
+            client_rect = self._caret_client_rect_px(context, page, caret)
+            if client_rect is None:
+                text_edit_runtime.clear_ime_caret_client_rect()
+                return
+            text_edit_runtime.set_ime_caret_client_rect(*client_rect)
+        except Exception:  # noqa: BLE001
+            _logger.exception("text_tool: publish ime caret rect failed")
+
+    def _caret_client_rect_px(
+        self, context, page, caret
+    ) -> tuple[int, int, int, int] | None:
+        from bpy_extras.view3d_utils import location_3d_to_region_2d
+
+        from ..utils import geom, page_grid
+
+        work = get_work(context)
+        window = getattr(context, "window", None)
+        screen = getattr(window, "screen", None) if window is not None else None
+        if work is None or window is None or screen is None:
+            return None
+        page_id = str(getattr(page, "id", "") or "")
+        page_index = next(
+            (i for i, p in enumerate(work.pages) if str(getattr(p, "id", "") or "") == page_id),
+            -1,
+        )
+        if page_index < 0:
+            return None
+        ox_mm, oy_mm = page_grid.page_total_offset_mm(work, context.scene, page_index)
+        x0 = geom.mm_to_m(caret.x + ox_mm)
+        y0 = geom.mm_to_m(caret.y + oy_mm)
+        x1 = geom.mm_to_m(caret.x + caret.width + ox_mm)
+        y1 = geom.mm_to_m(caret.y + caret.height + oy_mm)
+        fallback: tuple[int, int, int, int] | None = None
+        for area in screen.areas:
+            if area.type != "VIEW_3D":
+                continue
+            space = area.spaces.active
+            rv3d = getattr(space, "region_3d", None) if space is not None else None
+            if rv3d is None:
+                continue
+            for region in area.regions:
+                if region.type != "WINDOW":
+                    continue
+                p0 = location_3d_to_region_2d(region, rv3d, (x0, y0, 0.0))
+                p1 = location_3d_to_region_2d(region, rv3d, (x1, y1, 0.0))
+                if p0 is None or p1 is None:
+                    continue
+                left = min(p0.x, p1.x)
+                right = max(p0.x, p1.x)
+                bottom = min(p0.y, p1.y)
+                top = max(p0.y, p1.y)
+                client_rect = (
+                    int(region.x + left),
+                    int(window.height - (region.y + top)),
+                    int(max(1.0, right - left)),
+                    int(max(1.0, top - bottom)),
+                )
+                if 0.0 <= left <= region.width and 0.0 <= top <= region.height:
+                    return client_rect
+                if fallback is None:
+                    fallback = client_rect
+        return fallback
 
     def _finish_current_text_edit(self, context, *, fit_to_body: bool = True) -> None:
         _page, entry, _idx = self._current_text_entry(context)
@@ -1691,6 +1794,29 @@ class BMANGA_OT_text_tool(Operator):
             self._touch_current_text(context, page, entry, idx)
         return {"RUNNING_MODAL"}
 
+    def begin_dialog_cursor_override(self, context) -> None:
+        """ダイアログ/ポップアップ表示中は OS カーソルを可視種別へ戻す.
+
+        縦書きモードは OS カーソル "NONE" + カスタム I ビーム描画だが、
+        ダイアログ表示中は modal にマウスイベントが届かず I ビームの座標が
+        更新されないため、ビューポート上でカーソルが見えなくなる。表示中は
+        通常カーソルへ戻し、閉じたら end_dialog_cursor_override で復帰する。
+        """
+        if getattr(self, "_dialog_cursor_override", False):
+            return
+        self._dialog_cursor_override = True
+        self._vcur_x = -1
+        self._vcur_y = -1
+        self._tool_cursor = "DEFAULT"
+        self._cursor_modal_set = coma_modal_state.set_modal_cursor(context, "DEFAULT")
+        self._tag_redraw_vcur(context)
+
+    def end_dialog_cursor_override(self, context) -> None:
+        if not getattr(self, "_dialog_cursor_override", False):
+            return
+        self._dialog_cursor_override = False
+        self._apply_tool_cursor(context)
+
     def _apply_tool_cursor(self, context) -> None:
         """縦書き/横書きプリセットに応じてカーソル表示を一本化して切り替える.
 
@@ -1702,6 +1828,9 @@ class BMANGA_OT_text_tool(Operator):
         起動時 (invoke) とツール実行中のプリセット切替 (preset_op 経由) の
         両方からここを通すことで、カーソルが "消えたまま残る" 状態を防ぐ。
         """
+        if getattr(self, "_dialog_cursor_override", False):
+            # ダイアログ表示中は可視カーソルを維持 (閉じた時に復帰する)。
+            return
         cursor_type = preset_op.text_tool_cursor_type(context)
         want_vertical = cursor_type == "vertical"
         self._setup_vertical_cursor(context, want_vertical)
@@ -1749,7 +1878,7 @@ class BMANGA_OT_text_tool(Operator):
         同じ手法)。ビューポート外では -1 にして非表示にする。
         """
         view = view_event_region.view3d_window_under_event(context, event)
-        if view is None:
+        if view is None or getattr(self, "_dialog_cursor_override", False):
             self._vcur_x = -1
             self._vcur_y = -1
         else:

@@ -144,6 +144,7 @@ class BMANGA_OT_text_ruby_add_dialog(Operator):
                     self.style = style
                     break
         text_edit_runtime.suppress_ime_text()
+        text_edit_runtime.set_dialog_cursor_override(context, True)
         return context.window_manager.invoke_props_dialog(self, width=320)
 
     def draw(self, context):
@@ -160,6 +161,7 @@ class BMANGA_OT_text_ruby_add_dialog(Operator):
 
     def execute(self, context):
         text_edit_runtime.unsuppress_ime_text()
+        text_edit_runtime.set_dialog_cursor_override(context, False)
         page, entry = self._resolve_target(context)
         if entry is None:
             self.report({"ERROR"}, "テキストが選択されていません")
@@ -177,6 +179,7 @@ class BMANGA_OT_text_ruby_add_dialog(Operator):
 
     def cancel(self, context):
         text_edit_runtime.unsuppress_ime_text()
+        text_edit_runtime.set_dialog_cursor_override(context, False)
 
 
 class BMANGA_OT_text_ruby_clear(Operator):

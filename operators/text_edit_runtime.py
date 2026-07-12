@@ -11,10 +11,27 @@ if sys.platform == "win32":
     import ctypes
     from ctypes import wintypes
     _LRESULT = ctypes.c_ssize_t
+
+    class _COMPOSITIONFORM(ctypes.Structure):
+        _fields_ = [
+            ("dwStyle", wintypes.DWORD),
+            ("ptCurrentPos", wintypes.POINT),
+            ("rcArea", wintypes.RECT),
+        ]
+
+    class _CANDIDATEFORM(ctypes.Structure):
+        _fields_ = [
+            ("dwIndex", wintypes.DWORD),
+            ("dwStyle", wintypes.DWORD),
+            ("ptCurrentPos", wintypes.POINT),
+            ("rcArea", wintypes.RECT),
+        ]
 else:  # pragma: no cover - Windows IME bridge is only available on Windows.
     ctypes = None
     wintypes = None
     _LRESULT = None
+    _COMPOSITIONFORM = None
+    _CANDIDATEFORM = None
 
 from ..utils import text_layout_bounds, text_style
 from ..utils.geom import Rect, q_to_mm
@@ -46,8 +63,15 @@ _WM_CHAR = 0x0102
 _WM_IME_STARTCOMPOSITION = 0x010D
 _WM_IME_ENDCOMPOSITION = 0x010E
 _WM_IME_COMPOSITION = 0x010F
+_WM_IME_NOTIFY = 0x0282
+_IMN_OPENCANDIDATE = 0x0005
+_IMN_CHANGECANDIDATE = 0x0003
 _GCS_COMPSTR = 0x0008
 _GCS_RESULTSTR = 0x0800
+_CFS_POINT = 0x0002
+_CFS_CANDIDATEPOS = 0x0040
+_CFS_EXCLUDE = 0x0080
+_IACE_DEFAULT = 0x0010
 _GWL_WNDPROC = -4
 _VK_KANJI = 0x19
 _VK_IME_ON = 0x16
@@ -59,6 +83,11 @@ _IME_CAPTURE_OLD_PROC = None
 _IME_CAPTURE_PROC = None
 _IME_CAPTURE_CONTEXT = None
 _IME_CAPTURE_OLD_CONTEXT = None
+_IME_CAPTURE_DEFAULT_ASSOCIATED = False
+_IME_SYSTEM_CARET_CREATED = False
+# インライン編集キャレットの Blender ウィンドウクライアント座標 (x, y_top, w, h)。
+# IME の変換候補ウィンドウ・変換中文字列ウィンドウの表示位置に使う。
+_IME_CARET_CLIENT_RECT: tuple[int, int, int, int] | None = None
 _IME_TEXT_QUEUE: list[str] = []
 _IME_LAST_APPEND = ("", 0.0)
 _IME_LAST_TOGGLE_TIME = 0.0
@@ -125,6 +154,32 @@ def unsuppress_ime_text() -> None:
     """Re-enable IME text insertion after popup/dialog closes."""
     global _IME_SUPPRESS_COUNT
     _IME_SUPPRESS_COUNT = max(0, _IME_SUPPRESS_COUNT - 1)
+
+
+def set_dialog_cursor_override(context, active: bool) -> None:
+    """テキスト編集中に開くポップアップ/ダイアログのカーソル表示を切り替える.
+
+    縦書きモードの text_tool は OS カーソル "NONE" + カスタム I ビーム描画
+    だが、ダイアログ表示中は modal にマウスイベントが届かず I ビームが更新
+    されないため、ビューポート上でカーソルが見えなくなる。ダイアログの
+    invoke で active=True、execute / cancel で active=False を呼ぶ。
+    """
+    try:
+        from . import coma_modal_state
+
+        op = coma_modal_state.get_active("text_tool")
+    except Exception:  # noqa: BLE001
+        return
+    if op is None:
+        return
+    method_name = "begin_dialog_cursor_override" if active else "end_dialog_cursor_override"
+    method = getattr(op, method_name, None)
+    if method is None:
+        return
+    try:
+        method(context)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def poll_ime_text() -> str:
@@ -263,6 +318,18 @@ def _ensure_win32_ime_api() -> bool:
         imm32.ImmGetOpenStatus.restype = wintypes.BOOL
         imm32.ImmSetOpenStatus.argtypes = [wintypes.HANDLE, wintypes.BOOL]
         imm32.ImmSetOpenStatus.restype = wintypes.BOOL
+        imm32.ImmAssociateContextEx.argtypes = [wintypes.HWND, wintypes.HANDLE, wintypes.DWORD]
+        imm32.ImmAssociateContextEx.restype = wintypes.BOOL
+        imm32.ImmSetCandidateWindow.argtypes = [wintypes.HANDLE, ctypes.c_void_p]
+        imm32.ImmSetCandidateWindow.restype = wintypes.BOOL
+        imm32.ImmSetCompositionWindow.argtypes = [wintypes.HANDLE, ctypes.c_void_p]
+        imm32.ImmSetCompositionWindow.restype = wintypes.BOOL
+        user32.CreateCaret.argtypes = [wintypes.HWND, wintypes.HANDLE, ctypes.c_int, ctypes.c_int]
+        user32.CreateCaret.restype = wintypes.BOOL
+        user32.DestroyCaret.argtypes = []
+        user32.DestroyCaret.restype = wintypes.BOOL
+        user32.SetCaretPos.argtypes = [ctypes.c_int, ctypes.c_int]
+        user32.SetCaretPos.restype = wintypes.BOOL
     except Exception:  # noqa: BLE001
         return False
     _USER32 = user32
@@ -421,13 +488,30 @@ def _read_ime_string(hwnd, lparam, flag: int) -> str:
 
 
 def _ensure_capture_ime_context(hwnd: int) -> bool:
-    global _IME_CAPTURE_CONTEXT, _IME_CAPTURE_OLD_CONTEXT
+    global _IME_CAPTURE_CONTEXT, _IME_CAPTURE_OLD_CONTEXT, _IME_CAPTURE_DEFAULT_ASSOCIATED
     if _IMM32 is None or not hwnd:
         return False
     existing = _IMM32.ImmGetContext(hwnd)
     if existing:
         _IMM32.ImmReleaseContext(hwnd, existing)
         return True
+    # Blender はテキストフィールド外で IME コンテキストの関連付けを外す
+    # (GHOST EndIME = ImmAssociateContextEx(hwnd, NULL, 0))。まず Blender の
+    # テキストフィールドと同じ「スレッド既定コンテキストの復帰」
+    # (GHOST BeginIME = ImmAssociateContextEx(hwnd, NULL, IACE_DEFAULT)) を
+    # 試す。新しい MS-IME (TSF) の変換候補ウィンドウは既定コンテキストに
+    # しか表示されないため、ImmCreateContext による自作コンテキストでは
+    # 変換はできても候補一覧が出ない。
+    try:
+        if _IMM32.ImmAssociateContextEx(hwnd, None, _IACE_DEFAULT):
+            verify = _IMM32.ImmGetContext(hwnd)
+            if verify:
+                _IMM32.ImmReleaseContext(hwnd, verify)
+                _IME_CAPTURE_DEFAULT_ASSOCIATED = True
+                return True
+    except Exception:  # noqa: BLE001
+        pass
+    # フォールバック: 従来どおり自作コンテキストを関連付ける。
     created = _IMM32.ImmCreateContext()
     if not created:
         return False
@@ -444,7 +528,17 @@ def _ensure_capture_ime_context(hwnd: int) -> bool:
 
 
 def _release_capture_ime_context() -> None:
-    global _IME_CAPTURE_CONTEXT, _IME_CAPTURE_OLD_CONTEXT
+    global _IME_CAPTURE_CONTEXT, _IME_CAPTURE_OLD_CONTEXT, _IME_CAPTURE_DEFAULT_ASSOCIATED
+    if _IME_CAPTURE_DEFAULT_ASSOCIATED:
+        # 既定コンテキストを復帰させていた場合は、Blender がフィールド外で
+        # 期待する「関連付けなし」(GHOST EndIME 相当) へ戻す。戻さないと
+        # 通常のビューポート操作中も IME が生きてしまう。
+        try:
+            if _IMM32 is not None and _IME_CAPTURE_HWND:
+                _IMM32.ImmAssociateContextEx(_IME_CAPTURE_HWND, None, 0)
+        except Exception:  # noqa: BLE001
+            pass
+        _IME_CAPTURE_DEFAULT_ASSOCIATED = False
     if _IMM32 is None or not _IME_CAPTURE_HWND or not _IME_CAPTURE_CONTEXT:
         _IME_CAPTURE_CONTEXT = None
         _IME_CAPTURE_OLD_CONTEXT = None
@@ -459,6 +553,87 @@ def _release_capture_ime_context() -> None:
         pass
     _IME_CAPTURE_CONTEXT = None
     _IME_CAPTURE_OLD_CONTEXT = None
+
+
+def set_ime_caret_client_rect(x: int, y_top: int, width: int, height: int) -> None:
+    """インライン編集キャレットのウィンドウクライアント座標を記録する.
+
+    Windows クライアント座標 (原点=クライアント領域左上、Y は下向き)。
+    IME の変換候補ウィンドウ・変換文字列ウィンドウの表示位置に使う。
+    """
+    global _IME_CARET_CLIENT_RECT
+    _IME_CARET_CLIENT_RECT = (int(x), int(y_top), max(1, int(width)), max(1, int(height)))
+
+
+def clear_ime_caret_client_rect() -> None:
+    global _IME_CARET_CLIENT_RECT
+    _IME_CARET_CLIENT_RECT = None
+
+
+def _destroy_ime_system_caret() -> None:
+    global _IME_SYSTEM_CARET_CREATED
+    if not _IME_SYSTEM_CARET_CREATED:
+        return
+    try:
+        if _USER32 is not None:
+            _USER32.DestroyCaret()
+    except Exception:  # noqa: BLE001
+        pass
+    _IME_SYSTEM_CARET_CREATED = False
+
+
+def _move_ime_windows(hwnd: int) -> None:
+    """変換候補・変換文字列ウィンドウをキャレット位置へ移動する.
+
+    Blender 本体のテキストフィールドが GHOST_ImeWin32 (Chromium 由来) で
+    行っているのと同じ方法: CFS_CANDIDATEPOS + CFS_EXCLUDE の
+    ImmSetCandidateWindow、CFS_POINT の ImmSetCompositionWindow、および
+    キャレット追従型 IME 用のシステムキャレット (CreateCaret/SetCaretPos)。
+    """
+    global _IME_SYSTEM_CARET_CREATED
+    if _IMM32 is None or _USER32 is None or not hwnd:
+        return
+    rect = _IME_CARET_CLIENT_RECT
+    if rect is None:
+        return
+    x, y_top, width, height = rect
+    himc = _IMM32.ImmGetContext(hwnd)
+    if not himc:
+        return
+    try:
+        if not _IME_SYSTEM_CARET_CREATED:
+            try:
+                if _USER32.CreateCaret(hwnd, None, 1, max(1, height)):
+                    _IME_SYSTEM_CARET_CREATED = True
+            except Exception:  # noqa: BLE001
+                pass
+        if _IME_SYSTEM_CARET_CREATED:
+            _USER32.SetCaretPos(x, y_top)
+        candidate = _CANDIDATEFORM()
+        candidate.dwIndex = 0
+        candidate.dwStyle = _CFS_CANDIDATEPOS
+        candidate.ptCurrentPos.x = x
+        candidate.ptCurrentPos.y = y_top + height
+        _IMM32.ImmSetCandidateWindow(himc, ctypes.byref(candidate))
+        exclude = _CANDIDATEFORM()
+        exclude.dwIndex = 0
+        exclude.dwStyle = _CFS_EXCLUDE
+        exclude.ptCurrentPos.x = x
+        exclude.ptCurrentPos.y = y_top
+        exclude.rcArea.left = x
+        exclude.rcArea.top = y_top
+        exclude.rcArea.right = x + width
+        exclude.rcArea.bottom = y_top + height
+        _IMM32.ImmSetCandidateWindow(himc, ctypes.byref(exclude))
+        composition = _COMPOSITIONFORM()
+        composition.dwStyle = _CFS_POINT
+        composition.ptCurrentPos.x = x
+        composition.ptCurrentPos.y = y_top
+        _IMM32.ImmSetCompositionWindow(himc, ctypes.byref(composition))
+    except Exception:  # noqa: BLE001
+        pass
+    finally:
+        _IMM32.ImmReleaseContext(hwnd, himc)
 
 
 def _handle_ime_keydown(hwnd: int, vk_code: int, lparam: int) -> bool:
@@ -507,8 +682,10 @@ def begin_ime_capture() -> None:
                     return 0
             elif msg == _WM_IME_STARTCOMPOSITION:
                 _begin_ime_composition()
+                _move_ime_windows(hwnd_arg)
             elif msg == _WM_IME_ENDCOMPOSITION:
                 _end_ime_composition()
+                _destroy_ime_system_caret()
             elif msg == _WM_IME_COMPOSITION:
                 committed = _read_ime_string(hwnd_arg, lparam, _GCS_RESULTSTR)
                 if committed:
@@ -517,6 +694,10 @@ def begin_ime_capture() -> None:
                     composition = _read_ime_string(hwnd_arg, lparam, _GCS_COMPSTR)
                     if composition or int(lparam) & _GCS_COMPSTR:
                         _set_ime_composition_text(composition)
+                _move_ime_windows(hwnd_arg)
+            elif msg == _WM_IME_NOTIFY:
+                if int(wparam) in {_IMN_OPENCANDIDATE, _IMN_CHANGECANDIDATE}:
+                    _move_ime_windows(hwnd_arg)
             elif msg == _WM_CHAR:
                 char_code = int(wparam)
                 if char_code >= 128:
@@ -541,6 +722,8 @@ def end_ime_capture() -> None:
     """Restore the Blender window procedure after inline text editing."""
     global _IME_CAPTURE_HWND, _IME_CAPTURE_OLD_PROC, _IME_CAPTURE_PROC, _IME_SUPPRESS_COUNT
     _IME_SUPPRESS_COUNT = 0
+    _destroy_ime_system_caret()
+    clear_ime_caret_client_rect()
     _release_capture_ime_context()
     if _USER32 is not None and _IME_CAPTURE_HWND and _IME_CAPTURE_OLD_PROC:
         try:
@@ -901,7 +1084,11 @@ def caret_rect(entry, rect: Rect, cursor_index: int) -> Rect | None:
     if x_center < region.x - em:
         return None
     half_width = min(em * 0.45, max(0.6, region.width * 0.5))
-    x = max(region.x, min(region.x2, x_center))
+    # キャレットバーは字列 (グリフの em ボックス) の中心 x_center を挟んで
+    # 左右対称に置く。x_center をそのまま Rect.x (左端) に使うと、バーが
+    # half_width ぶん右へはみ出し、縦書きでキャレットだけ文字列より右に
+    # 見える (blender_text_ime_runtime_check.py の回帰対象)。
+    x = max(region.x, min(region.x2, x_center)) - half_width
     y = max(region.y, min(region.y2, y)) - thickness * 0.5
     return Rect(x, y, half_width * 2.0, thickness)
 

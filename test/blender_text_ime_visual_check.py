@@ -182,9 +182,9 @@ def _install_text_probe() -> None:
             "composition_preview_body": preview.body,
             "composition_preview_caret": caret,
             "composition_bounds": list(bounds) if bounds is not None else None,
-            "pass_ret_to_ime": text_op._event_should_pass_to_ime(_Event("RET")),
-            "pass_textinput_to_ime": text_op._event_should_pass_to_ime(_Event("TEXTINPUT", "NOTHING")),
-            "block_mouse_to_ime": not text_op._event_should_pass_to_ime(_Event("LEFTMOUSE")),
+            "pass_ret_to_ime": text_op._event_consumed_by_ime(_Event("RET")),
+            "pass_textinput_to_ime": text_op._event_consumed_by_ime(_Event("TEXTINPUT", "NOTHING")),
+            "block_mouse_to_ime": not text_op._event_consumed_by_ime(_Event("LEFTMOUSE")),
             "ime_capture_hwnd_present": bool(getattr(text_edit_runtime, "_IME_CAPTURE_HWND", None)),
         }
     )

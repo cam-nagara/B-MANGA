@@ -110,6 +110,11 @@ class BMANGA_OT_set_mode_object(Operator):
     def poll(cls, context):
         return context.view_layer is not None and _shortcuts_allowed(context)
 
+    def invoke(self, context, event):
+        if coma_modal_state.event_blocked_by_inline_text_edit(event):
+            return {"CANCELLED"}
+        return self.execute(context)
+
     def execute(self, context):
         _finish_modal_tools_for_mode_switch(context)
         if getattr(context.scene, "bmanga_active_layer_kind", "") == "raster":
@@ -142,6 +147,11 @@ class BMANGA_OT_set_mode_draw(Operator):
     @classmethod
     def poll(cls, context):
         return context.view_layer is not None and _shortcuts_allowed(context)
+
+    def invoke(self, context, event):
+        if coma_modal_state.event_blocked_by_inline_text_edit(event):
+            return {"CANCELLED"}
+        return self.execute(context)
 
     def execute(self, context):
         _finish_modal_tools_for_mode_switch(context)
@@ -306,6 +316,10 @@ class BMANGA_OT_undo(Operator):
     def invoke(self, context, event):
         if not _shortcuts_allowed(context):
             return {"PASS_THROUGH"}
+        if coma_modal_state.event_blocked_by_inline_text_edit(event):
+            # 本文入力中の Z は Undo ではなく文字入力 (テキスト編集側の
+            # Ctrl+Z 履歴は text_edit_history が処理する)。
+            return {"CANCELLED"}
         if not _bmanga_work_loaded(context):
             return {"PASS_THROUGH"}
         return self._run(context)
@@ -337,6 +351,8 @@ class BMANGA_OT_redo(Operator):
     def invoke(self, context, event):
         if not _shortcuts_allowed(context):
             return {"PASS_THROUGH"}
+        if coma_modal_state.event_blocked_by_inline_text_edit(event):
+            return {"CANCELLED"}
         if not _bmanga_work_loaded(context):
             return {"PASS_THROUGH"}
         return self._run(context)
@@ -378,6 +394,8 @@ class BMANGA_OT_toggle_eraser_brush(Operator):
     def invoke(self, context, event):
         if not _shortcuts_allowed(context):
             return {"PASS_THROUGH"}
+        if coma_modal_state.event_blocked_by_inline_text_edit(event):
+            return {"CANCELLED"}
         if not _bmanga_work_loaded(context):
             return {"PASS_THROUGH"}
         brush = _active_gp_paint_brush(context)
