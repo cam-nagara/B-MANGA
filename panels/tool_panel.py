@@ -77,7 +77,7 @@ class BMANGA_PT_tools(Panel):
 
     def draw(self, context):
         layout = self.layout
-        layout.prop(context.scene, "bmanga_interaction_enabled", text="B-MANGA操作")
+        layout.prop(context.scene, "bmanga_interaction_enabled", text="B-MANGAショートカットキー")
         obj = None
         try:
             from ..utils import gpencil as gp_utils

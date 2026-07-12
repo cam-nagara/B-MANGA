@@ -53,7 +53,7 @@ def register() -> None:
         default=MODE_PAGE,
     )
     bpy.types.Scene.bmanga_interaction_enabled = BoolProperty(
-        name="B-MANGA操作",
+        name="B-MANGAショートカットキー",
         description="B-MANGAのビューポート操作と専用ショートカットを有効にする",
         default=True,
         update=_interaction_enabled_update,

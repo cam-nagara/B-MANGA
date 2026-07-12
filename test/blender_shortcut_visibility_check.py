@@ -228,8 +228,8 @@ def main() -> None:
             SimpleNamespace(layout=_RecordingLayout(records)),
             bpy.context,
         )
-        assert ("prop", "bmanga_interaction_enabled", "B-MANGA操作") not in records, (
-            "コマ用blendファイルのパネルにB-MANGA操作チェックボックスが残っています"
+        assert ("prop", "bmanga_interaction_enabled", "B-MANGAショートカットキー") not in records, (
+            "コマ用blendファイルのパネルにB-MANGAショートカットキーチェックボックスが残っています"
         )
 
         bpy.context.scene.bmanga_mode = "PAGE"
@@ -240,11 +240,11 @@ def main() -> None:
         dummy_mode = _DummyModal()
         coma_modal_state.set_active("balloon_tool", dummy_mode, bpy.context)
         bpy.context.scene.bmanga_interaction_enabled = False
-        assert dummy_mode.finished == [True], "B-MANGA操作OFFで起動済み操作が終了しません"
-        assert not coma_modal_state.is_active("balloon_tool"), "B-MANGA操作OFF後も起動済み操作が残っています"
+        assert dummy_mode.finished == [True], "B-MANGAショートカットキーOFFで起動済み操作が終了しません"
+        assert not coma_modal_state.is_active("balloon_tool"), "B-MANGAショートカットキーOFF後も起動済み操作が残っています"
         keymap_mod._watch_bmanga_tab()
-        assert _active_bmanga_items(keymap_mod) == 0, "B-MANGA操作OFFでショートカットが有効です"
-        assert not shortcut_visibility.any_shortcuts_allowed(bpy.context), "B-MANGA操作OFFで実行判定が有効です"
+        assert _active_bmanga_items(keymap_mod) == 0, "B-MANGAショートカットキーOFFでショートカットが有効です"
+        assert not shortcut_visibility.any_shortcuts_allowed(bpy.context), "B-MANGAショートカットキーOFFで実行判定が有効です"
         bpy.context.scene.bmanga_interaction_enabled = True
 
         shortcut_visibility.bmanga_panel_visible = lambda _context=None: False

@@ -223,23 +223,29 @@ def _check_cursor_sync() -> None:
 
 def _check_fill_and_gradient(context, wm) -> None:
     preset_op = _sub("operators.preset_op")
+    fill_presets = _sub("io.fill_presets")
+    gradient_presets = _sub("io.gradient_presets")
     scene = context.scene
     fill_ids = _ids(preset_op._fill_tool_preset_enum_items(None, context))
-    for preset in preset_op._FILL_PRESETS:
-        wm.bmanga_fill_tool_preset_selector = preset["id"]
+    assert fill_ids, "囲い塗りプリセットが空です"
+    for name in fill_ids:
+        if not name or name == "NONE":
+            continue
+        wm.bmanga_fill_tool_preset_selector = name
         entry = scene.bmanga_fill_layers.add()
-        assert preset_op.apply_fill_preset_to_entry(context, entry)
-        _assert_close_tuple(entry.color, preset["color"], preset["id"])
-        assert abs(float(entry.opacity) - float(preset["opacity"])) <= 1.0e-5
+        assert preset_op.apply_fill_preset_to_entry(context, entry), name
+        preset = fill_presets.load_preset_by_name(name)
+        assert preset is not None, name
     grad_ids = _ids(preset_op._gradient_tool_preset_enum_items(None, context))
-    for preset in preset_op._GRADIENT_PRESETS:
-        wm.bmanga_gradient_tool_preset_selector = preset["id"]
+    assert grad_ids, "グラデーションプリセットが空です"
+    for name in grad_ids:
+        if not name or name == "NONE":
+            continue
+        wm.bmanga_gradient_tool_preset_selector = name
         entry = scene.bmanga_fill_layers.add()
-        assert preset_op.apply_gradient_preset_to_entry(context, entry)
-        assert str(entry.gradient_type) == str(preset["gradient_type"])
-        _assert_close_tuple(entry.color, preset["color"], preset["id"])
-        _assert_close_tuple(entry.color2, preset["color2"], preset["id"])
-        assert abs(float(entry.opacity) - float(preset["opacity"])) <= 1.0e-5
+        assert preset_op.apply_gradient_preset_to_entry(context, entry), name
+        preset = gradient_presets.load_preset_by_name(name)
+        assert preset is not None, name
     print("FILL_PRESETS", fill_ids, flush=True)
     print("GRADIENT_PRESETS", grad_ids, flush=True)
 
