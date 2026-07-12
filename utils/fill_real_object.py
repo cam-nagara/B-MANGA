@@ -61,6 +61,22 @@ def _material_name(fill_id: str) -> str:
     return f"{FILL_MATERIAL_NAME_PREFIX}{_safe_token(fill_id)}"
 
 
+def is_gradient_endpoint_rotation_locked(entry) -> bool:
+    """端点指定グラデーション塗りか (回転抑制条件の単一情報源).
+
+    ``fill_type=="gradient"`` かつ ``use_gradient_endpoints=True`` の場合の
+    みTrue。ベタ塗りへ fill_type を変更しても use_gradient_endpoints が
+    True のまま残留する仕様のため、fill_type 側も必ず併せて見る
+    (use_gradient_endpoints 単独で判定すると、端点グラデ→ベタ塗りへ変更した
+    直後にパネルは編集可能なのに回転だけ永久に無反応になる不整合が起きる)。
+    panels/layer_stack_detail_ui.py の回転欄の活性判定と同じ条件式であり、
+    operators/object_rotation_fill.py の capture_fn/can_rotate_fn と
+    ここ (obj.rotation_euler 抑制) の3箇所から共通で呼ばれる。
+    """
+    fill_type = str(getattr(entry, "fill_type", "solid") or "solid")
+    return fill_type == "gradient" and bool(getattr(entry, "use_gradient_endpoints", False))
+
+
 def _ensure_parent_collection(
     scene: bpy.types.Scene, parent_kind: str, parent_key: str,
 ) -> None:
@@ -608,6 +624,25 @@ def ensure_fill_real_object(
     else:
         obj.location.x = mm_to_m(canvas_w_mm * 0.5 + ox_mm)
         obj.location.y = mm_to_m(canvas_h_mm * 0.5 + oy_mm)
+    # balloon/image/text と同じく、メッシュ・UV は中心基準のローカル座標で
+    # 構築済みのため、location 設定直後に Z回転を足すだけで中心軸回転になる。
+    # グラデーションの向き (角度指定・端点指定とも) はメッシュのUV/材質ノード
+    # 側でローカル空間に焼き込まれているため、オブジェクト回転と一緒に
+    # 剛体としてそのまま回転し、二重回転にはならない。
+    # ただし端点指定グラデーション (is_gradient_endpoint_rotation_locked) は、
+    # ドラッグ用の始点/終点ハンドル (別オブジェクト) とオーバーレイ接続線
+    # (ui/overlay.py) が絶対mm座標を直接参照しておりオブジェクト回転に
+    # 追従しないため、operators/object_rotation_fill.py 側で回転リングを
+    # 無効化した上、ここでも rotation_deg に値が残っていても常に0扱いにして
+    # (トグルの順序に関わらず) 不整合を出さないようにしている。
+    # 判定条件は fill_type=="gradient" かつ use_gradient_endpoints の両方
+    # (is_gradient_endpoint_rotation_locked に集約。単独条件で判定すると
+    # 端点グラデ→ベタ塗りへ変更した直後に回転が永久に無反応になる不整合
+    # が起きる)。
+    if is_gradient_endpoint_rotation_locked(entry):
+        obj.rotation_euler[2] = 0.0
+    else:
+        obj.rotation_euler[2] = math.radians(float(getattr(entry, "rotation_deg", 0.0) or 0.0))
 
     _ensure_parent_collection(scene, parent_kind, parent_key)
     los.stamp_layer_object(

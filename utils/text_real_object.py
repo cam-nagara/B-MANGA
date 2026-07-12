@@ -6,6 +6,7 @@ B-MANGA のテキストは、編集時のカーソルや選択範囲だけをオ
 
 from __future__ import annotations
 
+import math
 from contextlib import contextmanager
 from typing import Optional
 
@@ -579,6 +580,78 @@ def _can_reuse_rendered_object(obj: Optional[bpy.types.Object], signature: str) 
     return True
 
 
+def _rotation_offset_mm(width_mm: float, height_mm: float, rotation_deg: float) -> tuple[float, float]:
+    """矩形左下 (0, 0) を中心軸周りに rotation_deg 回転した時の変位 (Ox, Oy) を返す.
+
+    _rotated_bottom_left_mm(entry) の中心回転の式を x_mm=y_mm=0 で展開すると
+
+        center = (w/2, h/2)
+        dx = 0 - center.x = -w/2  (x_mm に依存しない定数)
+        dy = 0 - center.y = -h/2  (y_mm に依存しない定数)
+        rotated = center + R(theta) @ (dx, dy)
+
+    となり、一般の x_mm, y_mm についても
+        rotated_bl(x, y) = (x, y) + rotated_bl(0, 0)
+    が成り立つ (dx, dy が x_mm, y_mm に依存しないため、回転はどの (x_mm, y_mm)
+    でも同じ定数オフセットの平行移動として作用する)。つまり
+    ``rotated_bl(x, y) - (x, y)`` は x_mm, y_mm に依存しない定数であり、
+    この関数はその定数部分だけを計算する。逆変換 (unrotate_bottom_left_mm)
+    はこのオフセットを引くだけで得られる。
+    """
+    if abs(rotation_deg) <= 1.0e-9:
+        return 0.0, 0.0
+    theta = math.radians(rotation_deg)
+    cos_t = math.cos(theta)
+    sin_t = math.sin(theta)
+    # dx=-w/2, dy=-h/2 を center=(w/2, h/2) に加えた式を展開したもの。
+    offset_x = width_mm * 0.5 * (1.0 - cos_t) + height_mm * 0.5 * sin_t
+    offset_y = height_mm * 0.5 * (1.0 - cos_t) - width_mm * 0.5 * sin_t
+    return offset_x, offset_y
+
+
+def _rotated_bottom_left_mm(entry) -> tuple[float, float]:
+    """矩形左下 (x_mm, y_mm) を、矩形中心を軸に rotation_deg だけ回転した位置へ変換する.
+
+    テキストの実体オブジェクトはメッシュ原点が矩形左下のままなので (要件は
+    「選択枠の中心軸で回転」)、位置側でこの補正を行い obj.rotation_euler[2] と
+    組み合わせて見かけ上の中心回転を再現する。rotation_deg == 0 のときは
+    補正前 (= 従来) の x_mm, y_mm とビット単位で一致し、後方互換を保つ。
+    """
+    x_mm = float(getattr(entry, "x_mm", 0.0) or 0.0)
+    y_mm = float(getattr(entry, "y_mm", 0.0) or 0.0)
+    rotation_deg = float(getattr(entry, "rotation_deg", 0.0) or 0.0)
+    width_mm = float(getattr(entry, "width_mm", 0.0) or 0.0)
+    height_mm = float(getattr(entry, "height_mm", 0.0) or 0.0)
+    offset_x, offset_y = _rotation_offset_mm(width_mm, height_mm, rotation_deg)
+    return x_mm + offset_x, y_mm + offset_y
+
+
+def unrotate_bottom_left_mm(
+    bl_x_mm: float,
+    bl_y_mm: float,
+    width_mm: float,
+    height_mm: float,
+    rotation_deg: float,
+) -> tuple[float, float]:
+    """_rotated_bottom_left_mm の逆変換.
+
+    「中心軸回転後の左下」座標 (bl_x_mm, bl_y_mm) から、回転前の矩形左下
+    (= entry.x_mm, entry.y_mm 相当) を復元する。ユーザーが Blender の
+    3D ビューポートで回転済みテキストの実体オブジェクトを直接動かした時、
+    obj.location (mm 換算・ページオフセット減算後) はこの「回転後の左下」に
+    なっているため、entry.x_mm/y_mm へ書き戻す前にこの関数を通す必要がある
+    (utils/empty_layer_object.py の sync_entry_position_from_object 参照)。
+
+    _rotation_offset_mm の導出により rotated_bl(x, y) = (x, y) + offset
+    (offset は x_mm, y_mm に依存しない定数) が成り立つため、逆変換は
+    単純に offset を引くだけで厳密に得られる (反復計算や近似は不要)。
+    rotation_deg == 0 のときは offset が (0, 0) になり、入力をそのまま返す
+    (従来の無回転挙動とビット単位で一致)。
+    """
+    offset_x, offset_y = _rotation_offset_mm(width_mm, height_mm, rotation_deg)
+    return bl_x_mm - offset_x, bl_y_mm - offset_y
+
+
 def _apply_text_object_state(
     scene: bpy.types.Scene,
     page,
@@ -591,26 +664,38 @@ def _apply_text_object_state(
 ) -> None:
     work = getattr(scene, "bmanga_work", None)
     ox_mm, oy_mm = _page_offset_mm(scene, work, page)
-    obj.location.x = mm_to_m(float(getattr(entry, "x_mm", 0.0) or 0.0) + ox_mm)
-    obj.location.y = mm_to_m(float(getattr(entry, "y_mm", 0.0) or 0.0) + oy_mm)
+    bl_x_mm, bl_y_mm = _rotated_bottom_left_mm(entry)
+    # entry.x_mm/y_mm は矩形「左下」だが rotation_deg != 0 のときは obj.location
+    # に「中心軸回転後の左下」を書き込むため、entry の値とビット単位では
+    # 一致しなくなる。depsgraph_update_post 経由の Blender→entry 書戻し
+    # (utils/empty_layer_object.py の sync_entry_position_from_object) は
+    # この差分を「ユーザーが3Dビューポートで直接動かした」と誤認して
+    # entry.x_mm/y_mm を回転後の値で上書きしてしまう (往復不整合)。
+    # los.suppress_sync() で自分自身の書込み中は depsgraph 側の書戻しを
+    # 抑止し、この誤検知を防ぐ (balloon/image は x_mm/y_mm 自体が中心座標
+    # なのでこの往復不整合が起きず、これまで顕在化していなかった)。
+    with los.suppress_sync():
+        obj.location.x = mm_to_m(bl_x_mm + ox_mm)
+        obj.location.y = mm_to_m(bl_y_mm + oy_mm)
+        obj.rotation_euler[2] = math.radians(float(getattr(entry, "rotation_deg", 0.0) or 0.0))
 
-    parent_kind, parent_key, stamp_folder = _resolve_parent_for_entry(entry, page, folder_id)
-    los.stamp_layer_object(
-        obj,
-        kind="text",
-        bmanga_id=full_id,
-        title=str(getattr(entry, "title", "") or getattr(entry, "body", "") or text_id)[:40],
-        z_index=_text_z_index(page, text_id),
-        parent_kind=parent_kind,
-        parent_key=parent_key,
-        folder_id=stamp_folder,
-        scene=scene,
-        apply_page_offset=False,
-    )
-    preview_hidden = _preview_hidden(obj)
-    obj.hide_viewport = preview_hidden or not bool(getattr(entry, "visible", True))
-    obj.hide_render = obj.hide_viewport
-    obj.hide_select = False
+        parent_kind, parent_key, stamp_folder = _resolve_parent_for_entry(entry, page, folder_id)
+        los.stamp_layer_object(
+            obj,
+            kind="text",
+            bmanga_id=full_id,
+            title=str(getattr(entry, "title", "") or getattr(entry, "body", "") or text_id)[:40],
+            z_index=_text_z_index(page, text_id),
+            parent_kind=parent_kind,
+            parent_key=parent_key,
+            folder_id=stamp_folder,
+            scene=scene,
+            apply_page_offset=False,
+        )
+        preview_hidden = _preview_hidden(obj)
+        obj.hide_viewport = preview_hidden or not bool(getattr(entry, "visible", True))
+        obj.hide_render = obj.hide_viewport
+        obj.hide_select = False
 
 
 def ensure_text_real_object(

@@ -17,6 +17,7 @@ from ..utils import layer_stack as layer_stack_utils
 from ..utils import log, page_grid, paths
 from .coma_knife_cut_op import _coma_polygon, _polygon_area, _set_coma_polygon, _split_convex_polygon_by_line
 from . import coma_modal_state
+from . import object_rotation_coma  # noqa: F401 (import時にコマ回転ハンドラーを登録)
 
 _logger = log.get_logger(__name__)
 

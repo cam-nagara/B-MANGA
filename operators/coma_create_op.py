@@ -168,6 +168,7 @@ class BMANGA_OT_coma_create_tool(Operator):
         if getattr(self, "_cursor_modal_set", False):
             coma_modal_state.restore_modal_cursor(context)
             self._cursor_modal_set = False
+        self._rotate_cursor_active = False
         h = getattr(self, "_draw_handler", None)
         if h is not None:
             try:
@@ -225,7 +226,7 @@ class BMANGA_OT_coma_create_tool(Operator):
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active("coma_create", self, context)
             return {"FINISHED", "PASS_THROUGH"}
-        from . import handle_intercept
+        from . import handle_intercept, object_rotation
         if handle_intercept.is_dragging(self):
             if event.type == "MOUSEMOVE":
                 handle_intercept.update_drag(context, event, self)
@@ -282,6 +283,10 @@ class BMANGA_OT_coma_create_tool(Operator):
                 dy = self._cursor_px[1] - self._press_px[1]
                 if (dx * dx + dy * dy) ** 0.5 >= _DRAG_THRESHOLD_PX:
                     self._mode = "rect"
+            if not self._maybe_dragging:
+                object_rotation.update_rotation_hover_cursor(
+                    context, event, self, restore_cursor="CROSSHAIR",
+                )
             self._tag_redraw()
             return {"RUNNING_MODAL"}
 

@@ -103,6 +103,13 @@ class BMangaFillLayer(bpy.types.PropertyGroup):
         update=_on_fill_layer_changed,
     )
 
+    rotation_deg: FloatProperty(  # type: ignore[valid-type]
+        name="回転",
+        description="レイヤー全体を表示上の中心を軸に回転する角度です (度)",
+        default=0.0,
+        update=_on_fill_layer_changed,
+    )
+
     opacity: FloatProperty(  # type: ignore[valid-type]
         name="不透明度",
         description="レイヤー全体の不透明度です (%)",

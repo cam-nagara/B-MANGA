@@ -17,6 +17,7 @@ from ..core.work import get_active_page, get_work
 from ..utils import layer_stack as layer_stack_utils
 from ..utils import log, paths, percentage
 from ..utils.geom import mm_to_m, mm_to_px
+from . import object_rotation_raster  # noqa: F401 (import時にraster回転ハンドラーを登録)
 
 _logger = log.get_logger(__name__)
 

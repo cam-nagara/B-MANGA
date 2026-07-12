@@ -32,6 +32,7 @@ from ..utils import (
 )
 from ..utils.layer_hierarchy import page_stack_key
 from . import coma_modal_state, preset_op, selection_context_menu, text_edit_history, text_edit_runtime, view_event_region
+from . import object_rotation_text  # noqa: F401  (import時にテキストの回転ハンドラーを登録)
 
 _logger = log.get_logger(__name__)
 
@@ -402,7 +403,35 @@ def _text_rect(entry) -> tuple[float, float, float, float]:
     return x, y, x + w, y + h
 
 
+def _unrotate_point_for_entry(entry, x_mm: float, y_mm: float) -> tuple[float, float]:
+    """クリック座標 (x_mm, y_mm) を entry の矩形中心を軸に -rotation_deg 回転する.
+
+    entry.rotation_deg が付いたテキストは表示上、選択枠の中心軸を回転してい
+    るが (utils/text_real_object.py の _rotated_bottom_left_mm 参照)、矩形
+    自体は軸並行のまま持っている。ヒット判定はこのプローブ座標を先に矩形の
+    表示回転と逆方向へ回転させることで、「軸並行矩形の判定」を変えずに
+    「見た目の回転済み矩形」への当たり判定を実現する (剛体回転の標準手法)。
+    rotation_deg == 0 のときは計算そのものを省略し、従来と完全に同一の
+    座標を返す (bit-for-bit で後方互換)。
+    """
+    rotation_deg = float(getattr(entry, "rotation_deg", 0.0) or 0.0)
+    if abs(rotation_deg) <= 1.0e-9:
+        return x_mm, y_mm
+    left, bottom, right, top = _text_rect(entry)
+    center_x = (left + right) * 0.5
+    center_y = (bottom + top) * 0.5
+    dx = x_mm - center_x
+    dy = y_mm - center_y
+    theta = math.radians(-rotation_deg)
+    cos_t = math.cos(theta)
+    sin_t = math.sin(theta)
+    rotated_dx = dx * cos_t - dy * sin_t
+    rotated_dy = dx * sin_t + dy * cos_t
+    return center_x + rotated_dx, center_y + rotated_dy
+
+
 def _text_hit_part(entry, x_mm: float, y_mm: float, *, handle_outset_mm: float = 0.0) -> str:
+    x_mm, y_mm = _unrotate_point_for_entry(entry, x_mm, y_mm)
     left, bottom, right, top = _text_rect(entry)
     outset = max(0.0, float(handle_outset_mm))
     threshold = _TEXT_HANDLE_HIT_MM
@@ -732,6 +761,11 @@ _VCUR_SHADOW = (1.0, 1.0, 1.0, 0.5)
 
 
 def _draw_vertical_cursor(op: "BMANGA_OT_text_tool") -> None:
+    # 選択ハンドル回転リングをホバー中は OS カーソルが SCROLL_XY に
+    # 変わるため、縦書きカスタム I ビームと二重表示にならないよう描画を
+    # 早期スキップする (復帰時は _tool_cursor 経由でこの描画に戻る)。
+    if getattr(op, "_rotate_cursor_active", False):
+        return
     cx = getattr(op, "_vcur_x", -1)
     cy = getattr(op, "_vcur_y", -1)
     if cx < 0 or cy < 0:
@@ -763,6 +797,8 @@ class BMANGA_OT_text_tool(Operator):
 
     _externally_finished: bool
     _cursor_modal_set: bool
+    _tool_cursor: str
+    _rotate_cursor_active: bool
     _editing: bool
     _editing_created_new: bool
     _edit_original_body: str
@@ -825,11 +861,9 @@ class BMANGA_OT_text_tool(Operator):
         self._vcur_x = -1
         self._vcur_y = -1
         self._vcur_draw_handler = None
-        cursor_type = preset_op.text_tool_cursor_type(context)
-        self._setup_vertical_cursor(context, cursor_type == "vertical")
-        self._cursor_modal_set = coma_modal_state.set_modal_cursor(
-            context, "CROSSHAIR" if cursor_type == "vertical" else cursor_type
-        )
+        self._tool_cursor = ""
+        self._cursor_modal_set = False
+        self._apply_tool_cursor(context)
         self._editing = False
         self._editing_created_new = False
         self._edit_original_body = ""
@@ -850,17 +884,22 @@ class BMANGA_OT_text_tool(Operator):
         return {"RUNNING_MODAL"}
 
     def modal(self, context, event):
-        if event.type == "MOUSEMOVE" and not getattr(self, "_editing", False) and getattr(self, "_vcur_draw_handler", None) is not None:
-            self._vcur_x = event.mouse_region_x
-            self._vcur_y = event.mouse_region_y
-            self._tag_redraw_vcur(context)
+        # 縦書きカスタムカーソルの座標追従。インライン編集中 (_editing) でも
+        # 横書き時の OS "TEXT" カーソルと同様にマウス追従させるため、
+        # _editing 条件では絞り込まない。
+        if event.type == "MOUSEMOVE" and getattr(self, "_vcur_draw_handler", None) is not None:
+            self._update_vcur_position(context, event)
         if getattr(self, "_externally_finished", False):
             self._cleanup(context)
             coma_modal_state.clear_active("text_tool", self, context)
             return {"FINISHED", "PASS_THROUGH"}
+        # VIEW_3D 作業領域外ではツールカーソルを一時的に戻し、戻ってきたら復帰する。
+        coma_modal_state.sync_modal_cursor_for_event_region(
+            context, event, self, getattr(self, "_tool_cursor", "TEXT")
+        )
         if getattr(self, "_editing", False):
             return self._modal_editing(context, event)
-        from . import handle_intercept
+        from . import handle_intercept, object_rotation
         if handle_intercept.is_dragging(self):
             if event.type == "MOUSEMOVE":
                 handle_intercept.update_drag(context, event, self)
@@ -882,6 +921,10 @@ class BMANGA_OT_text_tool(Operator):
             if event.type == "LEFTMOUSE" and event.value == "PRESS":
                 self._clear_click_state()
             return {"PASS_THROUGH"}
+        if event.type == "MOUSEMOVE":
+            object_rotation.update_rotation_hover_cursor(
+                context, event, self, restore_cursor=getattr(self, "_tool_cursor", "TEXT"),
+            )
         if event.type == "RIGHTMOUSE" and event.value == "PRESS":
             if selection_context_menu.open_for_text_tool(context, event):
                 return {"RUNNING_MODAL"}
@@ -1154,6 +1197,20 @@ class BMANGA_OT_text_tool(Operator):
                 layer_stack_utils.sync_layer_stack_after_data_change(context)
         self._finish_current_text_edit(context, fit_to_body=False)
 
+    def _reset_rotate_cursor_for_editing(self, context) -> None:
+        """編集突入時、回転リングホバー由来の OS カーソル残留を解消する.
+
+        modal() は _editing 中は object_rotation.update_rotation_hover_cursor
+        を呼ばなくなる (_modal_editing へ委譲するため) ので、編集開始の直前に
+        回転リングをホバーしていた場合 _rotate_cursor_active=True のまま固定
+        され、OS カーソルが SCROLL_XY (回転) で編集中もずっと残ってしまう。
+        編集突入時に明示的にツールカーソルへ戻す。
+        """
+        if not getattr(self, "_rotate_cursor_active", False):
+            return
+        coma_modal_state.set_modal_cursor(context, str(getattr(self, "_tool_cursor", "TEXT") or "TEXT"))
+        self._rotate_cursor_active = False
+
     def _start_editing_existing(self, context, page, entry) -> None:
         with text_real_object.suspend_auto_sync():
             text_edit_runtime.fit_text_rect_to_body(
@@ -1162,6 +1219,7 @@ class BMANGA_OT_text_tool(Operator):
                 min_height=_TEXT_MIN_SIZE_MM,
                 allow_shrink=False,
             )
+        self._reset_rotate_cursor_for_editing(context)
         self._editing = True
         self._editing_created_new = False
         self._edit_original_body = str(getattr(entry, "body", ""))
@@ -1181,6 +1239,7 @@ class BMANGA_OT_text_tool(Operator):
         layer_stack_utils.tag_view3d_redraw(context)
 
     def _start_editing_created(self, context, page, entry) -> None:
+        self._reset_rotate_cursor_for_editing(context)
         self._editing = True
         self._editing_created_new = True
         self._edit_original_body = ""
@@ -1632,12 +1691,40 @@ class BMANGA_OT_text_tool(Operator):
             self._touch_current_text(context, page, entry, idx)
         return {"RUNNING_MODAL"}
 
+    def _apply_tool_cursor(self, context) -> None:
+        """縦書き/横書きプリセットに応じてカーソル表示を一本化して切り替える.
+
+        縦書き: カスタム回転 I ビームを描画し、描画ハンドラの登録に**成功した
+        場合のみ** OS カーソルを "NONE" にする。登録に失敗した場合はカーソル
+        消失を避けるため "CROSSHAIR" にフォールバックする。
+        横書き: 描画ハンドラを外し、OS カーソルを text_tool_cursor_type の
+        返す種別 (通常 "TEXT") にする。
+        起動時 (invoke) とツール実行中のプリセット切替 (preset_op 経由) の
+        両方からここを通すことで、カーソルが "消えたまま残る" 状態を防ぐ。
+        """
+        cursor_type = preset_op.text_tool_cursor_type(context)
+        want_vertical = cursor_type == "vertical"
+        self._setup_vertical_cursor(context, want_vertical)
+        handler_ready = want_vertical and getattr(self, "_vcur_draw_handler", None) is not None
+        if want_vertical:
+            self._tool_cursor = "NONE" if handler_ready else "CROSSHAIR"
+        else:
+            self._tool_cursor = cursor_type
+        self._cursor_modal_set = coma_modal_state.set_modal_cursor(context, self._tool_cursor)
+
     def _setup_vertical_cursor(self, context, vertical: bool) -> None:
         self._remove_vcur_handler()
         if vertical:
-            self._vcur_draw_handler = bpy.types.SpaceView3D.draw_handler_add(
-                _draw_vertical_cursor, (self,), "WINDOW", "POST_PIXEL"
-            )
+            try:
+                self._vcur_draw_handler = bpy.types.SpaceView3D.draw_handler_add(
+                    _draw_vertical_cursor, (self,), "WINDOW", "POST_PIXEL"
+                )
+            except Exception:  # noqa: BLE001
+                # ハンドラ登録に失敗しても例外を外へ伝播させない。呼び出し側
+                # (_apply_tool_cursor) が _vcur_draw_handler の None を見て
+                # OS カーソルのフォールバックを選べるようにするため。
+                _logger.exception("text_tool: vertical cursor handler registration failed")
+                self._vcur_draw_handler = None
             self._tag_redraw_vcur(context)
         else:
             self._vcur_x = -1
@@ -1652,6 +1739,25 @@ class BMANGA_OT_text_tool(Operator):
                 pass
             self._vcur_draw_handler = None
 
+    def _update_vcur_position(self, context, event) -> None:
+        """縦書きカスタムカーソルの描画座標を更新する.
+
+        event.mouse_region_x/y は「invoke された region」基準の値であり、
+        複数 VIEW_3D が存在する環境ではマウス直下の region と一致しない
+        ことがある。マウス直下の VIEW_3D WINDOW region を都度検索し、その
+        region ローカル座標を使う (object_tool_op._update_overlay_pointer と
+        同じ手法)。ビューポート外では -1 にして非表示にする。
+        """
+        view = view_event_region.view3d_window_under_event(context, event)
+        if view is None:
+            self._vcur_x = -1
+            self._vcur_y = -1
+        else:
+            _area, _region, _rv3d, mx, my = view
+            self._vcur_x = mx
+            self._vcur_y = my
+        self._tag_redraw_vcur(context)
+
     @staticmethod
     def _tag_redraw_vcur(context) -> None:
         for area in getattr(getattr(context, "screen", None), "areas", ()):
@@ -1663,6 +1769,7 @@ class BMANGA_OT_text_tool(Operator):
         if getattr(self, "_cursor_modal_set", False):
             coma_modal_state.restore_modal_cursor(context)
             self._cursor_modal_set = False
+        self._rotate_cursor_active = False
         self._end_inline_input(context)
         self._editing = False
         self._editing_created_new = False

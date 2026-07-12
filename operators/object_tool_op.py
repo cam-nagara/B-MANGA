@@ -36,6 +36,7 @@ from .alt_reparent_op import (
 from . import (
     balloon_op,
     object_tool_free_transform,
+    object_rotation,
     object_tool_balloon_tail,
     effect_line_op,
     layer_move_session,
@@ -1009,14 +1010,26 @@ class BMANGA_OT_object_tool(Operator):
                 elif self._try_enter_coma_from_hit(context, open_hit):
                     return {"FINISHED"}
             self._remember_coma_click(event, hit or open_hit)
+        if event.value == "PRESS" and mode == "single":
+            # 回転リングの判定は「hit が None の時だけ」ではなく常に行う。
+            # コマ/ページは矩形内部全体でヒットを返すため、hit is None
+            # ゲートの内側だけで判定するとコマ内・ページ上のオブジェクトの
+            # 回転リングへ絶対に到達できなかった (v0.6.301 のバグ)。
+            # hit を渡すことで、優先順位判定 (rotation_hit_with_priority) が
+            # 精密ハンドル/別オブジェクトへの通常クリックとだけ排他する。
+            # event.value == "PRESS" 限定 (DOUBLE_CLICK からは回転を開始
+            # させない。実 DOUBLE_CLICK イベントで空ドラッグが始まる理論
+            # 経路を塞ぐ)。
+            rot_hit = object_rotation.rotation_hit_with_priority(
+                context, event, _event_world_xy_mm, hit=hit,
+            )
+            if rot_hit is not None and self._start_rotation_drag(context, event, rot_hit):
+                # capture 失敗 (None) の場合は状態を一切変更せず False が
+                # 返るので、通常のヒット処理へフォールスルーする
+                # (空ドラッグ/空Undo防止)。
+                return {"RUNNING_MODAL"}
         if hit is None:
             if mode == "single":
-                rot_hit = object_tool_free_transform.hit_rotation_zone_at_event(
-                    context, event, _event_world_xy_mm,
-                )
-                if rot_hit is not None:
-                    self._start_rotation_drag(context, event, rot_hit)
-                    return {"RUNNING_MODAL"}
                 move_hit = self._selected_move_hit_from_event(context, event)
                 if move_hit is not None:
                     self._activate_hit(context, move_hit, mode="single")
@@ -1510,10 +1523,22 @@ class BMANGA_OT_object_tool(Operator):
             exclude_effect_layer_names=exclude_effect_layer_names,
         )
 
-    def _start_rotation_drag(self, context, event, rot_hit: dict) -> None:
+    def _start_rotation_drag(self, context, event, rot_hit: dict) -> bool:
+        """回転ドラッグを開始する。capture 失敗時は状態を一切変更せず False を
+        返す (呼び出し側は通常のヒット処理へフォールスルーすること)。
+
+        capture_rotation_snapshot を**先に**呼んで結果を確認してから
+        ドラッグ状態をセットする (逆順だと capture が None を返す対象でも
+        _dragging=True になり、ドラッグ後に空の Undo が積まれてしまう)。
+        """
         x_mm, y_mm = _event_world_xy_mm(context, event)
         if x_mm is None or y_mm is None:
-            return
+            return False
+        # kind別のスナップショット取得は object_rotation のレジストリに集約
+        # (effect は per-layer 化のためのアクティブ化もここで行われる)。
+        snapshot = object_rotation.capture_rotation_snapshot(context, rot_hit["key"])
+        if snapshot is None:
+            return False
         self._dragging = True
         self._drag_action = "rotate"
         self._drag_start_x = float(x_mm)
@@ -1521,33 +1546,9 @@ class BMANGA_OT_object_tool(Operator):
         self._rotate_center = rot_hit["center"]
         self._drag_keys = [rot_hit["key"]]
         self._drag_moved = False
-        self._rotate_snapshots = []
-        key = rot_hit["key"]
-        kind, page_id, item_id = object_selection.parse_key(key)
-        work = get_work(context)
-        if kind == "balloon" and work is not None:
-            _pi, _p, _idx, entry = _find_balloon_by_key(work, page_id, item_id)
-            if entry is not None:
-                self._rotate_snapshots.append({
-                    "entry": entry,
-                    "rotation_deg": float(getattr(entry, "rotation_deg", 0.0)),
-                })
-        elif kind == "effect":
-            scene = getattr(context, "scene", None)
-            params = getattr(scene, "bmanga_effect_line_params", None) if scene else None
-            if params is not None:
-                self._rotate_snapshots.append({
-                    "entry": params,
-                    "rotation_deg": float(getattr(params, "rotation_deg", 0.0)),
-                })
-        elif kind == "image":
-            _idx, entry = _find_image_by_key(context, item_id)
-            if entry is not None:
-                self._rotate_snapshots.append({
-                    "entry": entry,
-                    "rotation_deg": float(getattr(entry, "rotation_deg", 0.0)),
-                })
+        self._rotate_snapshots = [snapshot]
         coma_modal_state.set_modal_cursor(context, "SCROLL_XY")
+        return True
 
     def _start_marquee_select(self, context, event, mode: str) -> bool:
         x_mm, y_mm = _event_world_xy_mm(context, event)
@@ -1764,17 +1765,18 @@ class BMANGA_OT_object_tool(Operator):
             pass
 
     def _update_rotation_cursor(self, context, event, *, in_view: bool) -> None:
-        was_rotate = getattr(self, "_rotate_cursor_active", False)
+        # 回転ドラッグ中は _start_rotation_drag が設定した SCROLL_XY を維持する。
+        # ここで触るとホバー由来の _rotate_cursor_active が残っている場合に
+        # 最初の MOUSEMOVE でカーソルが DEFAULT へ戻ってしまう
+        # (DEFAULT へ戻すのは _finish_drag / _cancel_drag の役目)。
+        if getattr(self, "_dragging", False) and str(getattr(self, "_drag_action", "")) == "rotate":
+            return
         if in_view and not getattr(self, "_dragging", False):
-            rot_hit = object_tool_free_transform.hit_rotation_zone_at_event(
-                context, event, _event_world_xy_mm,
-            )
-            if rot_hit is not None:
-                if not was_rotate:
-                    coma_modal_state.set_modal_cursor(context, "SCROLL_XY")
-                    self._rotate_cursor_active = True
-                return
-        if was_rotate:
+            # プレス時 (_handle_left_press) と全く同じ統一判定関数を使うことで、
+            # 「カーソルは回転なのにドラッグすると別の動作になる」不一致を防ぐ。
+            object_rotation.update_rotation_hover_cursor(context, event, self)
+            return
+        if getattr(self, "_rotate_cursor_active", False):
             coma_modal_state.set_modal_cursor(context, "DEFAULT")
             self._rotate_cursor_active = False
 
@@ -1783,7 +1785,7 @@ class BMANGA_OT_object_tool(Operator):
             x_mm, y_mm = _event_world_xy_mm(context, event)
             if x_mm is None or y_mm is None:
                 return
-            delta_deg = object_tool_free_transform.compute_rotation_delta(
+            delta_deg = object_rotation.compute_rotation_delta(
                 self._rotate_center,
                 self._drag_start_x, self._drag_start_y,
                 x_mm, y_mm,
@@ -1791,9 +1793,9 @@ class BMANGA_OT_object_tool(Operator):
             if abs(delta_deg) > 0.001:
                 self._drag_moved = True
             for snap in self._rotate_snapshots:
-                entry = snap.get("entry")
-                if entry is not None:
-                    entry.rotation_deg = float(snap.get("rotation_deg", 0.0)) + delta_deg
+                object_rotation.apply_rotation_snapshot(
+                    context, snap, float(snap.get("base_rotation_deg", 0.0)) + delta_deg,
+                )
             layer_stack_utils.tag_view3d_redraw(context)
             return
         if self._drag_action == "marquee":
@@ -2197,9 +2199,7 @@ class BMANGA_OT_object_tool(Operator):
     def _cancel_drag(self, context) -> None:
         if self._drag_action == "rotate":
             for snap in self._rotate_snapshots:
-                entry = snap.get("entry")
-                if entry is not None:
-                    entry.rotation_deg = float(snap.get("rotation_deg", 0.0))
+                object_rotation.restore_rotation_snapshot(context, snap)
             coma_modal_state.set_modal_cursor(context, "DEFAULT")
             self._rotate_cursor_active = False
             self._clear_drag_state()
@@ -2389,6 +2389,12 @@ class BMANGA_OT_object_tool(Operator):
         elif getattr(self, "_drag_action", "") == "reparent":
             reparent_overlay.clear_hover()
             reparent_overlay.clear_preview()
+        elif getattr(self, "_drag_action", "") == "rotate":
+            # ツール切替等の外部終了で回転ドラッグ中に割り込まれた場合、
+            # 角度を確定もキャンセルもせず放置すると回転しかけの状態が
+            # 残ってしまう。_cancel_drag と同じ手順 (スナップショット復元 +
+            # カーソル復帰 + 状態クリア) で安全に巻き戻す。
+            self._cancel_drag(context)
         self._clear_drag_state()
         object_tool_balloon_tail.clear_pending(self)
         if getattr(self, "_ft_mode", False):

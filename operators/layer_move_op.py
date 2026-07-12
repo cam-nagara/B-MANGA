@@ -190,6 +190,7 @@ class BMANGA_OT_layer_move_tool(Operator):
     _moved: bool
     _externally_finished: bool
     _cursor_modal_set: bool
+    _rotate_cursor_active: bool
     _drag_origin_world: tuple[float, float] | None
     _last_applied_total: tuple[float, float]
     _center_snap_targets: list[tuple[float, float]]
@@ -252,7 +253,7 @@ class BMANGA_OT_layer_move_tool(Operator):
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active("layer_move", self, context)
             return {"FINISHED", "PASS_THROUGH"}
-        from . import handle_intercept
+        from . import handle_intercept, object_rotation
         if handle_intercept.is_dragging(self):
             if event.type == "MOUSEMOVE":
                 handle_intercept.update_drag(context, event, self)
@@ -357,6 +358,10 @@ class BMANGA_OT_layer_move_tool(Operator):
             return {"PASS_THROUGH"}
         if not view_event_region.is_view3d_window_event(context, event):
             return {"RUNNING_MODAL"} if self._dragging else {"PASS_THROUGH"}
+        if not self._dragging:
+            # レイヤー移動ツール自体のカーソルも SCROLL_XY のため見た目は
+            # 変わらないが、他ツールと同じ回転状態管理を揃えておく。
+            object_rotation.update_rotation_hover_cursor(context, event, self, restore_cursor="SCROLL_XY")
         coords = coma_picker._event_world_mm(context, event)
         if coords is None or self._last_world is None or not self._dragging:
             return {"PASS_THROUGH"}
@@ -501,6 +506,7 @@ class BMANGA_OT_layer_move_tool(Operator):
         if getattr(self, "_cursor_modal_set", False):
             coma_modal_state.restore_modal_cursor(context)
             self._cursor_modal_set = False
+        self._rotate_cursor_active = False
 
     def finish_from_external(self, context, *, keep_selection: bool) -> None:
         _ = keep_selection

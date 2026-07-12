@@ -11,8 +11,6 @@ from ..utils.layer_hierarchy import OUTSIDE_STACK_KEY
 from . import object_tool_selection
 
 _HANDLE_HIT_MM = 3.0
-_ROTATE_ZONE_INNER_MM = 3.0
-_ROTATE_ZONE_OUTER_MM = 8.0
 
 
 def mode_key(context) -> str:
@@ -163,74 +161,6 @@ def hit_transformed_handle_at_event(
     return None
 
 
-def _rect_center(context, key: str) -> tuple[float, float] | None:
-    rect = object_tool_selection.selection_bounds_for_key(context, key)
-    if rect is None:
-        return None
-    return rect.x + rect.width * 0.5, rect.y + rect.height * 0.5
-
-
-def _rect_corners(context, key: str) -> list[tuple[float, float]] | None:
-    rect = object_tool_selection.selection_bounds_for_key(context, key)
-    if rect is None:
-        return None
-    return [
-        (rect.x, rect.y),
-        (rect.x2, rect.y),
-        (rect.x2, rect.y2),
-        (rect.x, rect.y2),
-    ]
-
-
-def _hit_rotation_zone(context, key: str, x_mm: float, y_mm: float) -> bool:
-    corners = _rect_corners(context, key)
-    if not corners:
-        return False
-    for cx, cy in corners:
-        dx = x_mm - cx
-        dy = y_mm - cy
-        dist = (dx * dx + dy * dy) ** 0.5
-        if _ROTATE_ZONE_INNER_MM < dist <= _ROTATE_ZONE_OUTER_MM:
-            return True
-    return False
-
-
-def hit_rotation_zone_at_event(
-    context,
-    event,
-    event_world_xy: Callable,
-) -> dict | None:
-    x_mm, y_mm = event_world_xy(context, event)
-    if x_mm is None or y_mm is None:
-        return None
-    keys = list(object_selection.get_keys(context))
-    active_key = object_tool_selection.active_selection_key(context)
-    if active_key and active_key not in keys:
-        keys.append(active_key)
-    for key in reversed(keys):
-        kind = object_selection.parse_key(key)[0]
-        if kind not in {"balloon", "effect", "image"}:
-            continue
-        if not _hit_rotation_zone(context, key, float(x_mm), float(y_mm)):
-            continue
-        center = _rect_center(context, key)
-        if center is None:
-            continue
-        return {
-            "key": key,
-            "kind": kind,
-            "center": center,
-            "world": (float(x_mm), float(y_mm)),
-        }
-    return None
-
-
-def compute_rotation_delta(
-    center: tuple[float, float],
-    prev_x: float, prev_y: float,
-    curr_x: float, curr_y: float,
-) -> float:
-    cx, cy = center
-    angle_prev = math.atan2(prev_y - cy, prev_x - cx)
-    angle_curr = math.atan2(curr_y - cy, curr_x - cx)
-    return math.degrees(angle_curr - angle_prev)
+# 回転リング判定・回転角度計算は operators/object_rotation.py へ移設した
+# (ゲート問題・幾何の重なり問題を修正するため、hit_object_at_event の結果や
+# 他ハンドルとの優先順位を踏まえた判定に作り直す必要があったため)。

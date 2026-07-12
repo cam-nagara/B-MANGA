@@ -226,7 +226,16 @@ def restore_modal_cursor(context) -> None:
 
 
 def sync_modal_cursor_for_event_region(context, event, op, cursor: str) -> None:
-    """VIEW_3D の作業領域外ではツールカーソルを一時的に戻す."""
+    """VIEW_3D の作業領域外ではツールカーソルを一時的に戻す.
+
+    ここでカーソルを強制的にツールカーソル/通常カーソルへ戻す際は、
+    ``op._rotate_cursor_active`` (回転リングのホバーカーソル表示中フラグ)
+    も合わせて False へリセットする。リセットしないと「フラグは True の
+    ままなのに実際のカーソルはツールカーソル」という不整合が起き、
+    リング内へ再進入してもホバー更新側 (object_rotation.
+    update_rotation_hover_cursor) が「既に回転カーソル表示中」と誤認して
+    SCROLL_XY を設定し直さない。
+    """
     try:
         from . import view_event_region
 
@@ -236,9 +245,13 @@ def sync_modal_cursor_for_event_region(context, event, op, cursor: str) -> None:
     if in_view:
         if getattr(op, "_cursor_temporarily_restored", False):
             op._cursor_modal_set = set_modal_cursor(context, cursor)
+            if getattr(op, "_rotate_cursor_active", False):
+                op._rotate_cursor_active = False
         op._cursor_temporarily_restored = False
         return
     if getattr(op, "_cursor_modal_set", False):
         restore_modal_cursor(context)
         op._cursor_modal_set = False
         op._cursor_temporarily_restored = True
+        if getattr(op, "_rotate_cursor_active", False):
+            op._rotate_cursor_active = False

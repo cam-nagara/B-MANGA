@@ -88,7 +88,7 @@ class BMANGA_OT_balloon_tail_tool(Operator):
             coma_modal_state.clear_active(TOOL_NAME, self, context)
             return {"FINISHED", "PASS_THROUGH"}
 
-        from . import handle_intercept
+        from . import handle_intercept, object_rotation
 
         # handle_intercept ドラッグ中 (コマ枠線・自由変形など)
         if handle_intercept.is_dragging(self):
@@ -127,6 +127,9 @@ class BMANGA_OT_balloon_tail_tool(Operator):
         coma_modal_state.sync_modal_cursor_for_event_region(context, event, self, "CROSSHAIR")
         if not view_event_region.is_view3d_window_event(context, event):
             return {"PASS_THROUGH"}
+        # 選択ハンドル回転リングのホバーカーソル (pending なし・非ドラッグ時のみ)
+        if event.type == "MOUSEMOVE":
+            object_rotation.update_rotation_hover_cursor(context, event, self, restore_cursor="CROSSHAIR")
         if event.type == "ESC" and event.value == "PRESS":
             if self._has_pending():
                 self._cancel_pending(context)
@@ -350,6 +353,7 @@ class BMANGA_OT_balloon_tail_tool(Operator):
         self._finalize_pending(context)
         if getattr(self, "_cursor_modal_set", False):
             coma_modal_state.restore_modal_cursor(context)
+        self._rotate_cursor_active = False
         coma_modal_state.clear_active(TOOL_NAME, self, context)
         return {"FINISHED"}
 
@@ -358,6 +362,7 @@ class BMANGA_OT_balloon_tail_tool(Operator):
         self._finalize_pending(context)
         if getattr(self, "_cursor_modal_set", False):
             coma_modal_state.restore_modal_cursor(context)
+        self._rotate_cursor_active = False
         self._externally_finished = True
 
 

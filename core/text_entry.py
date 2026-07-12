@@ -208,6 +208,7 @@ class BMangaTextEntry(bpy.types.PropertyGroup):
     y_mm: FloatProperty(name="Y", default=0.0, description="ページ上でのY座標（mm）", update=_on_text_entry_changed)  # type: ignore[valid-type]
     width_mm: FloatProperty(name="幅", default=30.0, min=0.1, description="テキスト枠の幅（mm）", update=_on_text_entry_changed)  # type: ignore[valid-type]
     height_mm: FloatProperty(name="高さ", default=15.0, min=0.1, description="テキスト枠の高さ（mm）", update=_on_text_entry_changed)  # type: ignore[valid-type]
+    rotation_deg: FloatProperty(name="回転", description="テキストの回転角度（選択枠の中心を軸に回転します）", default=0.0, update=_on_text_entry_changed)  # type: ignore[valid-type]
     free_transform_enabled: BoolProperty(name="自由変形", default=False, options={"HIDDEN"}, update=_on_text_free_transform_changed)  # type: ignore[valid-type]
     free_transform_bottom_left: FloatVectorProperty(size=2, default=(0.0, 0.0), options={"HIDDEN"}, update=_on_text_free_transform_changed)  # type: ignore[valid-type]
     free_transform_bottom_right: FloatVectorProperty(size=2, default=(0.0, 0.0), options={"HIDDEN"}, update=_on_text_free_transform_changed)  # type: ignore[valid-type]

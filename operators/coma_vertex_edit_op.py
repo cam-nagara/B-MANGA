@@ -291,7 +291,7 @@ class BMANGA_OT_coma_edit_vertices(Operator):
         except Exception:  # noqa: BLE001
             self._cleanup(context)
             return {"CANCELLED"}
-        from . import handle_intercept
+        from . import handle_intercept, object_rotation
         if handle_intercept.is_dragging(self):
             if event.type == "MOUSEMOVE":
                 handle_intercept.update_drag(context, event, self)
@@ -324,6 +324,7 @@ class BMANGA_OT_coma_edit_vertices(Operator):
             mx, my = _to_window(event)
             if self._drag is None:
                 self._hover = self._hit_test(context, mx, my)
+                object_rotation.update_rotation_hover_cursor(context, event, self)
             else:
                 self._update_drag(context, mx, my)
             self._tag_redraw(context)
@@ -591,6 +592,12 @@ class BMANGA_OT_coma_edit_vertices(Operator):
             self._cleanup(context)
 
     def _cleanup(self, context) -> None:
+        if getattr(self, "_rotate_cursor_active", False):
+            # このツールは通常時に set_modal_cursor を呼ばない (Blender の
+            # ツールカーソルに任せている) ため、回転リングのホバー用に
+            # 上書きしたカーソルだけを明示的に元へ戻す。
+            coma_modal_state.restore_modal_cursor(context)
+            self._rotate_cursor_active = False
         handler = getattr(self, "_draw_handler", None)
         if handler is not None:
             try:

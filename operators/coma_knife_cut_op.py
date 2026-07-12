@@ -727,6 +727,7 @@ class BMANGA_OT_coma_knife_cut(Operator):
         if getattr(self, "_cursor_modal_set", False):
             coma_modal_state.restore_modal_cursor(context)
             self._cursor_modal_set = False
+        self._rotate_cursor_active = False
         h = getattr(self, "_draw_handler", None)
         if h is not None:
             try:
@@ -754,7 +755,7 @@ class BMANGA_OT_coma_knife_cut(Operator):
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active("knife_cut", self, context)
             return {"FINISHED", "PASS_THROUGH"}
-        from . import handle_intercept
+        from . import handle_intercept, object_rotation
         if handle_intercept.is_dragging(self):
             if event.type == "MOUSEMOVE":
                 handle_intercept.update_drag(context, event, self)
@@ -832,6 +833,10 @@ class BMANGA_OT_coma_knife_cut(Operator):
                 return {"PASS_THROUGH"}
             if not self._dragging and not self._is_inside_region(event):
                 return {"PASS_THROUGH"}
+            if not self._dragging:
+                object_rotation.update_rotation_hover_cursor(
+                    context, event, self, restore_cursor="CROSSHAIR",
+                )
             if self._dragging:
                 self._p2_px = self._snap_p2(self._to_window(event), event.shift)
                 self._tag_redraw()

@@ -24,6 +24,7 @@ from bpy.types import Operator
 from ..core.work import get_active_page, get_work
 from ..utils import gpencil as gp_utils
 from ..utils import geom, layer_stack as layer_stack_utils, log, page_grid
+from . import object_rotation_gp  # noqa: F401 (import時にgp回転ハンドラーを登録)
 
 _logger = log.get_logger(__name__)
 

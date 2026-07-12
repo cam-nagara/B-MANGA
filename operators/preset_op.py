@@ -368,17 +368,19 @@ def _text_preset_enum_items(_self, context):
 
 
 def _on_text_preset_selector_change(self, context):
-    """テキストプリセット変更時: カーソル形状を縦書き/横書きに合わせて切替."""
+    """テキストプリセット変更時: カーソル形状を縦書き/横書きに合わせて切替.
+
+    カーソルの実際の切替は BMANGA_OT_text_tool._apply_tool_cursor に一本化する。
+    ここで直接 set_modal_cursor を呼ぶと、op が取得できない (is_active は True
+    だが weakref 切れなどで get_active が None) 場合に "NONE" だけが残ってカー
+    ソルが消えたままになる不具合があったため、op 経由でのみ切り替える。
+    """
     value = str(getattr(self, "bmanga_text_tool_preset_selector", "") or "")
     _remember_tool_preset(context, "last_text_tool_preset", value)
     if coma_modal_state.is_active("text_tool"):
-        cursor_type = text_tool_cursor_type(context)
         op = coma_modal_state.get_active("text_tool")
-        if op is not None and hasattr(op, "_setup_vertical_cursor"):
-            op._setup_vertical_cursor(context, cursor_type == "vertical")
-        coma_modal_state.set_modal_cursor(
-            context, "NONE" if cursor_type == "vertical" else cursor_type
-        )
+        if op is not None and hasattr(op, "_apply_tool_cursor"):
+            op._apply_tool_cursor(context)
 
 
 def text_tool_cursor_type(context) -> str:

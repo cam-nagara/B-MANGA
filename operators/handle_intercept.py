@@ -22,6 +22,7 @@ from . import (
     coma_edge_move_op,
     coma_modal_state,
     coma_picker,
+    object_rotation,
     object_tool_balloon_tail,
     object_tool_free_transform,
     object_tool_selection,
@@ -148,22 +149,31 @@ def try_intercept_press(context, event, operator) -> bool:
                     setattr(operator, _ATTR, session)
                     return True
 
-    # 回転ゾーン (角の少し外側)
-    rot_hit = object_tool_free_transform.hit_rotation_zone_at_event(
-        context, event, world_fn,
+    # 回転ゾーン (角の少し外側)。ここまでに計算済みの `hit`
+    # (object_tool_op.hit_object_at_event の結果、無ければ None) を渡すことで
+    # 同一キーの精密ハンドルとだけ排他する統一判定を使う (object_tool_op と
+    # 同じ優先順位)。
+    rot_hit = object_rotation.rotation_hit_with_priority(
+        context, event, world_fn, hit=hit,
     )
     if rot_hit is not None:
-        session = _DragSession("rotate", "")
-        session.center = rot_hit["center"]
         coords = world_fn(context, event)
         if coords[0] is not None:
-            session.start_x, session.start_y = coords
-            session.prev_x, session.prev_y = coords
-            session.keys = [rot_hit["key"]]
-            session.snapshots = _capture_rotation_snapshots(context, session.keys)
-            setattr(operator, _ATTR, session)
-            coma_modal_state.set_modal_cursor(context, "SCROLL_XY")
-            return True
+            # capture を先に試し、スナップショットが1件も取れない場合は
+            # セッションを作らずフォールスルーする (空ドラッグ/空Undo防止。
+            # object_tool_op._start_rotation_drag と同じ考え方)。
+            keys = [rot_hit["key"]]
+            snapshots = _capture_rotation_snapshots(context, keys)
+            if snapshots:
+                session = _DragSession("rotate", "")
+                session.center = rot_hit["center"]
+                session.start_x, session.start_y = coords
+                session.prev_x, session.prev_y = coords
+                session.keys = keys
+                session.snapshots = snapshots
+                setattr(operator, _ATTR, session)
+                coma_modal_state.set_modal_cursor(context, "SCROLL_XY")
+                return True
 
     if bool(getattr(event, "ctrl", False)):
         hit = object_tool_op.hit_object_at_event(context, event)
@@ -205,7 +215,7 @@ def update_drag(context, event, operator) -> bool:
         return True
 
     if session.kind == "rotate":
-        delta_deg = object_tool_free_transform.compute_rotation_delta(
+        delta_deg = object_rotation.compute_rotation_delta(
             session.center,
             session.start_x, session.start_y,
             x_mm, y_mm,
@@ -213,9 +223,9 @@ def update_drag(context, event, operator) -> bool:
         if abs(delta_deg) > 0.001:
             session.moved = True
         for snap in session.snapshots:
-            entry = snap.get("entry")
-            if entry is not None:
-                entry.rotation_deg = float(snap.get("rotation_deg", 0.0)) + delta_deg
+            object_rotation.apply_rotation_snapshot(
+                context, snap, float(snap.get("base_rotation_deg", 0.0)) + delta_deg,
+            )
         return True
 
     if session.kind == "resize":
@@ -343,9 +353,7 @@ def cancel_drag(context, operator) -> None:
                     effect_line_op._write_effect_strokes(context, obj, layer, (x, y, w, h), center_xy_mm=(cx, cy))
     elif session.kind == "rotate":
         for snap in session.snapshots:
-            entry = snap.get("entry")
-            if entry is not None:
-                entry.rotation_deg = float(snap.get("rotation_deg", 0.0))
+            object_rotation.restore_rotation_snapshot(context, snap)
         coma_modal_state.restore_modal_cursor(context)
     setattr(operator, _ATTR, None)
 
@@ -376,35 +384,12 @@ def _capture_free_transform_snapshots(context, keys: list[str]) -> list[dict]:
 
 
 def _capture_rotation_snapshots(context, keys: list[str]) -> list[dict]:
+    """kind別の回転スナップショット取得を object_rotation のレジストリへ委譲する."""
     snapshots: list[dict] = []
-    work = get_work(context)
-    if work is None:
-        return snapshots
     for key in keys:
-        kind, page_id, item_id = object_selection.parse_key(key)
-        if kind == "balloon":
-            entry = _find_entry(context, kind, page_id, item_id)
-            if entry is not None:
-                snapshots.append({
-                    "entry": entry,
-                    "rotation_deg": float(getattr(entry, "rotation_deg", 0.0)),
-                })
-        elif kind == "effect":
-            scene = getattr(context, "scene", None)
-            params = getattr(scene, "bmanga_effect_line_params", None) if scene else None
-            if params is not None:
-                snapshots.append({
-                    "entry": params,
-                    "rotation_deg": float(getattr(params, "rotation_deg", 0.0)),
-                })
-        elif kind == "image":
-            from . import object_tool_op
-            _idx, entry = object_tool_op._find_image_by_key(context, item_id)
-            if entry is not None:
-                snapshots.append({
-                    "entry": entry,
-                    "rotation_deg": float(getattr(entry, "rotation_deg", 0.0)),
-                })
+        snapshot = object_rotation.capture_rotation_snapshot(context, key)
+        if snapshot is not None:
+            snapshots.append(snapshot)
     return snapshots
 
 

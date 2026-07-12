@@ -342,7 +342,7 @@ def _draw_object_tool_layer_bounds(context) -> None:
         keys.add(active_key)
     for key in sorted(keys):
         kind = object_selection.parse_key(key)[0]
-        if kind not in {"page", "coma", "balloon", "text", "effect", "image", "raster", "fill", "gp"}:
+        if kind not in {"page", "coma", "balloon", "text", "effect", "image", "raster", "fill", "gp", "image_path"}:
             continue
         if kind == "coma":
             continue

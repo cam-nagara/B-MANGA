@@ -290,6 +290,20 @@ def sync_entry_position_from_object(scene: bpy.types.Scene, obj: bpy.types.Objec
         new_w = max(0.1, old_w * max(1.0e-6, abs(sx)))
         new_h = max(0.1, old_h * max(1.0e-6, abs(sy)))
         new_rotation = 0.0
+        # obj.location (mm換算・ページオフセット減算済みの new_x_mm/new_y_mm)
+        # は entry.rotation_deg != 0 のとき「矩形中心軸で回転した後の左下」を
+        # 保持している (utils/text_real_object.py の _apply_text_object_state /
+        # _rotated_bottom_left_mm 参照)。entry.x_mm/y_mm は常に回転前の左下
+        # なので、そのまま書き戻すとユーザーが実体オブジェクトを直接動かした
+        # 時に位置が化ける (往復不整合)。書き戻す前に逆変換で回転前の値へ戻す。
+        # scale (old_w/old_h) は回転オフセットの計算に使う幅・高さで、
+        # obj.location (=局所原点の位置) 自体は scale の影響を受けない。
+        from . import text_real_object
+
+        entry_rotation = float(getattr(entry, "rotation_deg", 0.0) or 0.0)
+        new_x_mm, new_y_mm = text_real_object.unrotate_bottom_left_mm(
+            new_x_mm, new_y_mm, old_w, old_h, entry_rotation,
+        )
 
     cur_x = float(getattr(entry, "x_mm", 0.0) or 0.0)
     cur_y = float(getattr(entry, "y_mm", 0.0) or 0.0)

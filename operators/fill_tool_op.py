@@ -13,6 +13,7 @@ from gpu_extras.batch import batch_for_shader
 from ..core.work import get_active_page, get_work
 from ..utils import geom, layer_stack as layer_stack_utils, log, page_file_scene
 from . import coma_modal_state, selection_context_menu, view_event_region
+from . import object_rotation_fill  # noqa: F401 (import時に塗りの回転ハンドラーを登録)
 
 _logger = log.get_logger(__name__)
 
@@ -170,7 +171,7 @@ class BMANGA_OT_fill_tool(Operator):
             self._cleanup(context)
             return {"FINISHED"}
 
-        from . import handle_intercept
+        from . import handle_intercept, object_rotation
         if handle_intercept.is_dragging(self):
             if event.type == "MOUSEMOVE":
                 handle_intercept.update_drag(context, event, self)
@@ -204,6 +205,10 @@ class BMANGA_OT_fill_tool(Operator):
         coma_modal_state.sync_modal_cursor_for_event_region(context, event, self, "CROSSHAIR")
         if not view_event_region.is_view3d_window_event(context, event):
             return {"PASS_THROUGH"}
+
+        # 選択ハンドル回転リングのホバーカーソル (投げ縄ドラッグ中は対象外)
+        if ev_type == "MOUSEMOVE" and not self._points_px:
+            object_rotation.update_rotation_hover_cursor(context, event, self, restore_cursor="CROSSHAIR")
 
         if (
             ev_type == "LEFTMOUSE"
@@ -373,6 +378,7 @@ class BMANGA_OT_fill_tool(Operator):
         if getattr(self, "_cursor_modal_set", False):
             coma_modal_state.restore_modal_cursor(context)
             self._cursor_modal_set = False
+        self._rotate_cursor_active = False
         h = getattr(self, "_draw_handler", None)
         if h is not None:
             try:

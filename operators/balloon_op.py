@@ -1228,7 +1228,7 @@ class BMANGA_OT_balloon_tool(Operator):
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active("balloon_tool", self, context)
             return {"FINISHED", "PASS_THROUGH"}
-        from . import handle_intercept
+        from . import handle_intercept, object_rotation
         if handle_intercept.is_dragging(self):
             if event.type == "MOUSEMOVE":
                 handle_intercept.update_drag(context, event, self)
@@ -1249,6 +1249,8 @@ class BMANGA_OT_balloon_tool(Operator):
         coma_modal_state.sync_modal_cursor_for_event_region(context, event, self, "CROSSHAIR")
         if not _event_in_view3d_window(context, event):
             return {"PASS_THROUGH"}
+        if event.type == "MOUSEMOVE":
+            object_rotation.update_rotation_hover_cursor(context, event, self, restore_cursor="CROSSHAIR")
         if event.type == "RIGHTMOUSE" and event.value == "PRESS":
             if self._open_tail_point_menu(context, event):
                 return {"RUNNING_MODAL"}
@@ -1817,6 +1819,7 @@ class BMANGA_OT_balloon_tool(Operator):
         if getattr(self, "_cursor_modal_set", False):
             coma_modal_state.restore_modal_cursor(context)
             self._cursor_modal_set = False
+        self._rotate_cursor_active = False
         self._clear_drag_state()
 
     def _finish_create_preview(self, context) -> None:

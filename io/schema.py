@@ -667,6 +667,7 @@ def fill_layer_to_dict(entry) -> dict[str, Any]:
         "color2": color_to_hex((*c2, float(entry.color2[3]))),
         "gradientType": str(getattr(entry, "gradient_type", "linear") or "linear"),
         "gradientAngle": round(float(getattr(entry, "gradient_angle", 0.0) or 0.0), 4),
+        "rotationDeg": round(float(getattr(entry, "rotation_deg", 0.0) or 0.0), 3),
         "visible": bool(entry.visible),
         "locked": bool(entry.locked),
         "opacity": _opacity_to_data(entry.opacity),
@@ -714,6 +715,7 @@ def fill_layer_from_dict(entry, data: dict[str, Any], *, opacity_percent: bool =
     entry.color2 = (*color_space.srgb_to_linear_rgb(c2[:3]), c2[3])
     entry.gradient_type = str(data.get("gradientType", data.get("gradient_type", "linear")) or "linear")
     entry.gradient_angle = float(data.get("gradientAngle", data.get("gradient_angle", 0.0)) or 0.0)
+    entry.rotation_deg = float(data.get("rotationDeg", data.get("rotation_deg", 0.0)) or 0.0)
     entry.visible = bool(data.get("visible", True))
     entry.locked = bool(data.get("locked", False))
     entry.opacity = _opacity_from_data(data, "opacity", 100.0, percent_schema=opacity_percent)
@@ -1821,6 +1823,7 @@ def text_entry_to_dict(entry) -> dict[str, Any]:
         "yMm": round(entry.y_mm, 3),
         "widthMm": round(entry.width_mm, 3),
         "heightMm": round(entry.height_mm, 3),
+        "rotationDeg": round(float(getattr(entry, "rotation_deg", 0.0) or 0.0), 3),
         "freeTransform": _free_transform_to_dict(entry),
         "parentBalloonId": entry.parent_balloon_id,
         "parentKind": getattr(entry, "parent_kind", "page"),
@@ -1921,6 +1924,8 @@ def text_entry_from_dict(entry, data: dict[str, Any]) -> None:
     entry.y_mm = float(data.get("yMm", 0.0))
     entry.width_mm = float(data.get("widthMm", 30.0))
     entry.height_mm = float(data.get("heightMm", 15.0))
+    if hasattr(entry, "rotation_deg"):
+        entry.rotation_deg = float(data.get("rotationDeg", 0.0) or 0.0)
     _free_transform_from_dict(entry, data.get("freeTransform"))
     entry.parent_balloon_id = data.get("parentBalloonId", "")
     entry.parent_kind = data.get("parentKind", data.get("parent_kind", "page"))

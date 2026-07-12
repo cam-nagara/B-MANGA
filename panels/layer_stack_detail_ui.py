@@ -227,6 +227,16 @@ def _draw_fill_selected_settings(box, context, entry) -> None:
     settings.prop(entry, "visible", text="表示")
     settings.prop(entry, "locked", text="ロック")
     settings.prop(entry, "opacity", text="不透明度", slider=True)
+    if fill_type == "gradient" and bool(getattr(entry, "use_gradient_endpoints", False)):
+        # 端点指定グラデーションは回転させると始点/終点ハンドルとオーバー
+        # レイの接続線が絶対mm座標のまま追従せず不整合になるため、
+        # operators/object_rotation_fill.py 側でも回転リングを無効化して
+        # いる。手入力欄も同じ理由で無効表示にする (値自体は保持される)。
+        rot_row = settings.row()
+        rot_row.enabled = False
+        rot_row.prop(entry, "rotation_deg", text="回転 (端点指定時は非対応)")
+    else:
+        settings.prop(entry, "rotation_deg", text="回転")
     settings.prop(entry, "fill_type", text="タイプ")
     settings.prop(entry, "color", text="色")
     if fill_type == "gradient":
@@ -523,6 +533,7 @@ def _draw_text_selected_settings(box, context, entry) -> None:
     row = settings.row(align=True)
     row.prop(entry, "width_mm")
     row.prop(entry, "height_mm")
+    settings.prop(entry, "rotation_deg")
 
     type_box = box.box()
     type_box.label(text="組版", icon="FONT_DATA")

@@ -1075,11 +1075,24 @@ def _render_text_layer(entry, canvas_height_px: int, dpi: int) -> ExportLayer | 
         stroke_color=stroke_color,
         ruby_placements=ruby_placements,
     )
+    image, left_px, top_px = canvas.image, canvas.left, canvas.top
+    rotation_deg = float(getattr(entry, "rotation_deg", 0.0) or 0.0)
+    if abs(rotation_deg) > 1e-6:
+        # canvas は矩形中心を基準に pad_mm を等分に取っているため、画像自身の
+        # 中心 = entry 矩形の中心。image レイヤー (_apply_image_adjustments) と
+        # 同じ考え方で、矩形中心を軸に回転して中心位置を維持する。
+        image = image.rotate(-rotation_deg, expand=True, resample=Image.BICUBIC)
+        center_x_mm = float(entry.x_mm) + float(entry.width_mm) * 0.5
+        center_y_mm = float(entry.y_mm) + float(entry.height_mm) * 0.5
+        center_x_px = int(round(mm_to_px(center_x_mm, dpi)))
+        center_y_px = canvas_height_px - int(round(mm_to_px(center_y_mm, dpi)))
+        left_px = center_x_px - image.width // 2
+        top_px = center_y_px - image.height // 2
     return ExportLayer(
         str(getattr(entry, "id", "") or "text"),
-        canvas.image,
-        canvas.left,
-        canvas.top,
+        image,
+        left_px,
+        top_px,
         group_path=("texts",),
     )
 
