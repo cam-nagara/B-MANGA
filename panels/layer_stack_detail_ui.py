@@ -217,50 +217,62 @@ def _draw_raster_selected_settings(box, entry) -> None:
     op.force = True
 
 
-def _draw_fill_selected_settings(box, context, entry) -> None:
+def _draw_fill_selected_settings(box, context, entry, *, preset_mode: bool = False) -> None:
+    """囲い塗り/グラデーションレイヤーの設定を描画する.
+
+    ``preset_mode=True`` は囲い塗り/グラデーションプリセット詳細編集ダイア
+    ログからの呼び出し用で、実レイヤーとは無関係なスクラッチ
+    ``BMangaFillLayer`` を渡す。この場合、プリセットに保存されない項目
+    (表示名・表示/ロック・回転・塗り範囲・グラデーション端点・濃度カーブ等。
+    ``io/fill_presets.py`` / ``io/gradient_presets.py`` の保存対象キーを参照)
+    は描画しない。
+    """
     settings = box.column(align=True)
     fill_type = str(getattr(entry, "fill_type", "solid") or "solid")
-    type_label = "グラデーション" if fill_type == "gradient" else "ベタ塗り"
-    settings.label(text=f"選択中: {entry.title or entry.id} ({type_label})", icon="NODE_TEXTURE")
-    preset_management_ui.draw_fill_preset_selection(box, context, gradient=fill_type == "gradient")
-    settings.prop(entry, "title", text="名前")
-    settings.prop(entry, "visible", text="表示")
-    settings.prop(entry, "locked", text="ロック")
+    if not preset_mode:
+        type_label = "グラデーション" if fill_type == "gradient" else "ベタ塗り"
+        settings.label(text=f"選択中: {entry.title or entry.id} ({type_label})", icon="NODE_TEXTURE")
+        preset_management_ui.draw_fill_preset_selection(box, context, gradient=fill_type == "gradient")
+        settings.prop(entry, "title", text="名前")
+        settings.prop(entry, "visible", text="表示")
+        settings.prop(entry, "locked", text="ロック")
     settings.prop(entry, "opacity", text="不透明度", slider=True)
-    if fill_type == "gradient" and bool(getattr(entry, "use_gradient_endpoints", False)):
-        # 端点指定グラデーションは回転させると始点/終点ハンドルとオーバー
-        # レイの接続線が絶対mm座標のまま追従せず不整合になるため、
-        # operators/object_rotation_fill.py 側でも回転リングを無効化して
-        # いる。手入力欄も同じ理由で無効表示にする (値自体は保持される)。
-        rot_row = settings.row()
-        rot_row.enabled = False
-        rot_row.prop(entry, "rotation_deg", text="回転 (端点指定時は非対応)")
-    else:
-        settings.prop(entry, "rotation_deg", text="回転")
-    settings.prop(entry, "fill_type", text="タイプ")
+    if not preset_mode:
+        if fill_type == "gradient" and bool(getattr(entry, "use_gradient_endpoints", False)):
+            # 端点指定グラデーションは回転させると始点/終点ハンドルとオーバー
+            # レイの接続線が絶対mm座標のまま追従せず不整合になるため、
+            # operators/object_rotation_fill.py 側でも回転リングを無効化して
+            # いる。手入力欄も同じ理由で無効表示にする (値自体は保持される)。
+            rot_row = settings.row()
+            rot_row.enabled = False
+            rot_row.prop(entry, "rotation_deg", text="回転 (端点指定時は非対応)")
+        else:
+            settings.prop(entry, "rotation_deg", text="回転")
+        settings.prop(entry, "fill_type", text="タイプ")
     settings.prop(entry, "color", text="色")
     if fill_type == "gradient":
         settings.prop(entry, "color2", text="色2")
         settings.prop(entry, "gradient_type", text="形状")
-        grad_type = str(getattr(entry, "gradient_type", "linear") or "linear")
-        if grad_type == "linear":
-            settings.prop(entry, "gradient_angle", text="角度")
-        from ..utils.fill_real_object import get_gradient_curve_node
-        curve_node = get_gradient_curve_node(str(getattr(entry, "id", "") or ""))
-        if curve_node is not None:
-            curve_box = settings.box()
-            curve_box.label(text="濃度カーブ", icon="CURVE_DATA")
-            curve_box.template_curve_mapping(curve_node, "mapping", type="NONE")
-        if getattr(entry, "use_gradient_endpoints", False):
-            ep_box = settings.box()
-            ep_box.label(text="グラデーション範囲", icon="ARROW_LEFTRIGHT")
-            row = ep_box.row(align=True)
-            row.prop(entry, "gradient_start_x_mm", text="開始X")
-            row.prop(entry, "gradient_start_y_mm", text="Y")
-            row = ep_box.row(align=True)
-            row.prop(entry, "gradient_end_x_mm", text="終了X")
-            row.prop(entry, "gradient_end_y_mm", text="Y")
-    if getattr(entry, "use_region", False):
+        if not preset_mode:
+            grad_type = str(getattr(entry, "gradient_type", "linear") or "linear")
+            if grad_type == "linear":
+                settings.prop(entry, "gradient_angle", text="角度")
+            from ..utils.fill_real_object import get_gradient_curve_node
+            curve_node = get_gradient_curve_node(str(getattr(entry, "id", "") or ""))
+            if curve_node is not None:
+                curve_box = settings.box()
+                curve_box.label(text="濃度カーブ", icon="CURVE_DATA")
+                curve_box.template_curve_mapping(curve_node, "mapping", type="NONE")
+            if getattr(entry, "use_gradient_endpoints", False):
+                ep_box = settings.box()
+                ep_box.label(text="グラデーション範囲", icon="ARROW_LEFTRIGHT")
+                row = ep_box.row(align=True)
+                row.prop(entry, "gradient_start_x_mm", text="開始X")
+                row.prop(entry, "gradient_start_y_mm", text="Y")
+                row = ep_box.row(align=True)
+                row.prop(entry, "gradient_end_x_mm", text="終了X")
+                row.prop(entry, "gradient_end_y_mm", text="Y")
+    if not preset_mode and getattr(entry, "use_region", False):
         reg_box = settings.box()
         reg_box.label(text="塗り範囲", icon="SELECT_SET")
         row = reg_box.row(align=True)

@@ -197,16 +197,24 @@ class BMANGA_OT_balloon_tail_preset_delete(Operator):
         return {"CANCELLED"}
 
 
-def _draw_tail_box(layout, context, page, entry, tail, tail_index: int) -> None:
+def _draw_tail_box(layout, context, page, entry, tail, tail_index: int, *, preset_mode: bool = False) -> None:
+    """しっぽ 1 件分の設定を描画する.
+
+    ``preset_mode=True`` はしっぽプリセット詳細編集ダイアログからの呼び出し
+    用で、実フキダシとは無関係なスクラッチ ``BMangaBalloonTail`` を渡す
+    (``page``/``entry`` は None でよい)。この場合、実しっぽ前提の要素
+    (削除ボタン・「別のプリセットをこのしっぽへ適用」列) は描画しない。
+    """
     page_id = str(getattr(page, "id", "") or "")
     balloon_id = str(getattr(entry, "id", "") or "")
     box = layout.box()
-    header = box.row(align=True)
-    header.label(text=f"しっぽ {tail_index + 1}", icon="SHARPCURVE")
-    remove = header.operator("bmanga.balloon_tail_remove", text="", icon="X")
-    remove.page_id = page_id
-    remove.balloon_id = balloon_id
-    remove.tail_index = tail_index
+    if not preset_mode:
+        header = box.row(align=True)
+        header.label(text=f"しっぽ {tail_index + 1}", icon="SHARPCURVE")
+        remove = header.operator("bmanga.balloon_tail_remove", text="", icon="X")
+        remove.page_id = page_id
+        remove.balloon_id = balloon_id
+        remove.tail_index = tail_index
 
     has_points = len(balloon_tail_geom.tail_local_points(tail)) >= 2
     row = box.row(align=True)
@@ -238,24 +246,25 @@ def _draw_tail_box(layout, context, page, entry, tail, tail_index: int) -> None:
     row.prop(tail, "root_width_mm")
     row.prop(tail, "tip_width_mm")
 
-    preset_row = box.row(align=True)
-    preset_row.prop(context.window_manager, "bmanga_tail_preset_selector", text="")
-    apply_op = preset_row.operator(
-        BMANGA_OT_balloon_tail_preset_apply.bl_idname,
-        text="適用",
-        icon="PRESET",
-    )
-    apply_op.page_id = page_id
-    apply_op.balloon_id = balloon_id
-    apply_op.tail_index = tail_index
-    save_op = preset_row.operator(
-        BMANGA_OT_balloon_tail_preset_save.bl_idname,
-        text="",
-        icon="FILE_TICK",
-    )
-    save_op.page_id = page_id
-    save_op.balloon_id = balloon_id
-    save_op.tail_index = tail_index
+    if not preset_mode:
+        preset_row = box.row(align=True)
+        preset_row.prop(context.window_manager, "bmanga_tail_preset_selector", text="")
+        apply_op = preset_row.operator(
+            BMANGA_OT_balloon_tail_preset_apply.bl_idname,
+            text="適用",
+            icon="PRESET",
+        )
+        apply_op.page_id = page_id
+        apply_op.balloon_id = balloon_id
+        apply_op.tail_index = tail_index
+        save_op = preset_row.operator(
+            BMANGA_OT_balloon_tail_preset_save.bl_idname,
+            text="",
+            icon="FILE_TICK",
+        )
+        save_op.page_id = page_id
+        save_op.balloon_id = balloon_id
+        save_op.tail_index = tail_index
 
 
 class BMANGA_OT_balloon_tail_detail_open(Operator):

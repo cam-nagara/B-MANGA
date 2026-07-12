@@ -112,15 +112,32 @@ def _check_bundled_presets(text_presets) -> None:
         )
 
 
-def _check_dialog_enum_items() -> None:
-    try:
-        rna = bpy.ops.bmanga.preset_detail_edit.get_rna_type()
-    except Exception:  # noqa: BLE001
-        rna = None
-    _check(rna is not None, "BMANGA_OT_preset_detail_edit が登録されている")
-    if rna is None:
+def _check_dialog_enum_items(context) -> None:
+    """プリセット詳細編集ダイアログの font_size_unit Enum を確認する.
+
+    2026-07-13 の「各ツールの通常の詳細設定ダイアログを共用する」改修で、
+    プリセット詳細編集専用の Enum 定義 (BMANGA_OT_preset_detail_edit 自身の
+    font_size_unit プロパティ) は廃止された。ダイアログは
+    core/text_entry.py の BMangaTextEntry をそのまま (WindowManager 上の
+    スクラッチインスタンスとして) 編集するため、単位 Enum の二重管理その
+    ものが構造的に無くなっている。ここではスクラッチインスタンスの型が
+    実際に BMangaTextEntry であること・その font_size_unit の識別子が
+    ('q', 'pt') であることを確認する。
+    """
+    wm = context.window_manager
+    scratch = getattr(wm, "bmanga_preset_scratch_text", None)
+    _check(
+        scratch is not None,
+        "プリセット詳細編集用のテキストスクラッチ (bmanga_preset_scratch_text) が登録されている",
+    )
+    if scratch is None:
         return
-    prop = rna.properties.get("font_size_unit")
+    _check(
+        type(scratch).__name__ == "BMangaTextEntry",
+        "プリセット詳細編集のテキストスクラッチが core.text_entry.BMangaTextEntry そのもの"
+        f" (実際: {type(scratch).__name__}) — 別定義の Enum を持ち得ない構造になっている",
+    )
+    prop = scratch.bl_rna.properties.get("font_size_unit")
     _check(prop is not None, "font_size_unit プロパティが存在する")
     if prop is None:
         return
@@ -131,48 +148,80 @@ def _check_dialog_enum_items() -> None:
     )
 
 
-def _check_load_type_fields(preset_detail_op) -> None:
-    op_cls = preset_detail_op.BMANGA_OT_preset_detail_edit
+def _check_load_type_fields(context, text_presets, preset_detail_op) -> None:
+    """旧表記 'Q' / 不正な writing_mode を含む legacy プリセットの読込確認 (v0.6.497 回帰).
 
-    class _Stub:
-        preset_type = "text"
-        _enum_or = op_cls.__dict__["_enum_or"]
+    専用ダイアログの ``_load_type_fields`` / ``_enum_or`` は廃止された。
+    実際に (BMANGA_USER_CONFIG_DIR 配下の) ローカルプリセットとして legacy
+    形式のファイルを書き、本番と同じ経路
+    (``text_presets.load_preset_by_name`` → 正規化 →
+    ``preset_detail_op._load_text`` → ``text_presets.apply_to_entry``) を
+    通して、単位の正規化と不正値の安全な扱いを確認する。
+    """
+    import json
 
-    stub = _Stub()
-    data = {
+    target_dir = text_presets._local_dir()
+    target_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schemaVersion": 1,
+        "presetType": "text",
+        "presetName": "legacy_probe",
+        "description": "legacy probe",
         "writing_mode": "sideways",  # 不正値
         "font_size_unit": "Q",  # 旧表記
         "font_size_value": 16.0,
         "color": [0.0, 0.0, 0.0, 1.0],
     }
+    (target_dir / "legacy_probe.json").write_text(
+        json.dumps(payload, ensure_ascii=False), encoding="utf-8"
+    )
+
     try:
-        op_cls._load_type_fields(stub, data)
+        description = preset_detail_op._load_text(context, "legacy_probe")
     except Exception:  # noqa: BLE001
-        FAILURES.append("_load_type_fields が例外を出さない")
+        FAILURES.append("_load_text が legacy データで例外を出さない")
         traceback.print_exc()
         return
-    _check(getattr(stub, "font_size_unit", "") == "q", "旧表記 'Q' が 'q' として読み込まれる")
+    _check(description == "legacy probe", f"_load_text が説明を返す (実際: {description!r})")
+    scratch = context.window_manager.bmanga_preset_scratch_text
+    _check(getattr(scratch, "font_size_unit", "") == "q", "旧表記 'Q' が 'q' として読み込まれる")
+    entry_writing_mode = getattr(scratch, "writing_mode", None)
     _check(
-        getattr(stub, "writing_mode", "") == "vertical",
-        "不正な writing_mode が既定値 vertical に丸められる",
+        entry_writing_mode == "vertical",
+        f"不正な writing_mode が既定値 vertical のまま残る (実際: {entry_writing_mode!r})",
     )
 
 
 def main() -> int:
-    mod = _load_addon()
+    import os
+    import shutil
+
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_text_preset_font_unit_"))
+    old_config = os.environ.get("BMANGA_USER_CONFIG_DIR")
+    os.environ["BMANGA_USER_CONFIG_DIR"] = str(temp_root / "config")
+    mod = None
     try:
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+        mod = _load_addon()
+        context = bpy.context
         text_presets = _sub("io.text_presets")
         preset_detail_op = _sub("operators.preset_detail_op")
         _check_normalizer(text_presets)
         _check_loader_normalizes(text_presets)
         _check_bundled_presets(text_presets)
-        _check_dialog_enum_items()
-        _check_load_type_fields(preset_detail_op)
+        _check_dialog_enum_items(context)
+        _check_load_type_fields(context, text_presets, preset_detail_op)
     finally:
-        try:
-            mod.unregister()
-        except Exception:  # noqa: BLE001  (後片付け失敗はテスト結果に影響させない)
-            traceback.print_exc()
+        if mod is not None:
+            try:
+                mod.unregister()
+            except Exception:  # noqa: BLE001  (後片付け失敗はテスト結果に影響させない)
+                traceback.print_exc()
+        if old_config is None:
+            os.environ.pop("BMANGA_USER_CONFIG_DIR", None)
+        else:
+            os.environ["BMANGA_USER_CONFIG_DIR"] = old_config
+        shutil.rmtree(temp_root, ignore_errors=True)
     print(f"\n結果: 失敗 {len(FAILURES)} 件", flush=True)
     return 1 if FAILURES else 0
 

@@ -35,10 +35,17 @@ def draw_coma_shape_settings(layout, context, entry) -> None:
     row.prop(entry, "background_color", text="背景色")
 
 
-def draw_coma_border_settings(layout, context, entry) -> None:
+def draw_coma_border_settings(layout, context, entry, *, preset_mode: bool = False) -> None:
+    """コマ枠線設定を描画する.
+
+    ``preset_mode=True`` は枠線プリセット詳細編集ダイアログからの呼び出し用で、
+    実コマとは無関係なスクラッチ入れ物 (``entry``) を渡す。この場合、実コマ
+    前提の要素 (プリセット選択・適用列 = 「別のプリセットをこのコマへ適用」の
+    ためのUI) は入れ子になり意味を持たないため描画しない。
+    """
     b = entry.border
     wm = getattr(context, "window_manager", None)
-    if wm is not None and hasattr(wm, "bmanga_border_preset_selector"):
+    if not preset_mode and wm is not None and hasattr(wm, "bmanga_border_preset_selector"):
         row = layout.row(align=True)
         preset = row.row(align=True)
         preset.label(text="プリセット", icon="PRESET")

@@ -1,147 +1,389 @@
-"""プリセット詳細設定ダイアログ."""
+"""プリセット詳細設定ダイアログ.
+
+各プリセットタイプ用の専用ダイアログを持つのをやめ、各ツールが普段使っている
+詳細設定描画関数 (panels/coma_detail_panel.py・operators/layer_detail_op.py・
+panels/effect_line_panel.py・panels/layer_stack_detail_ui.py・
+operators/balloon_tail_detail_op.py) をそのまま共用する。
+
+流れ:
+  invoke  — プリセット JSON を読み込み、WindowManager 上のスクラッチ
+            PropertyGroup (実コマ/実テキスト等とは無関係な入れ物) へ
+            io の apply 関数で流し込む。
+  draw    — 説明編集欄 + 各ツールの詳細設定描画関数 (``preset_mode=True``)。
+  execute — スクラッチ PropertyGroup から io の snapshot/save 関数で
+            同じプリセット名へ上書き保存する。
+
+スクラッチ PropertyGroup は WindowManager 上に持たせるため Blender セッション
+中ずっと生き続ける。update= コールバックの安全性 (実シーンの実データを書き
+換えないこと) は各コールバックがポインタ同一性 or entry.id で実体を解決する
+既存の仕組みに依存しており、スクラッチ側の id は常に空文字のままにする
+(実体側の id が空になることはない前提。border は id を持たない専用の
+入れ物クラスを新設し、そもそも対象を持たない)。唯一 id に依存しない
+core/effect_line.py の ``_on_params_changed`` だけは、対象が
+``scene.bmanga_effect_line_params`` と同一インスタンスかを明示的に確認する
+ガードを追加している。
+"""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 import bpy
-from bpy.props import (
-    BoolProperty,
-    EnumProperty,
-    FloatProperty,
-    FloatVectorProperty,
-    IntProperty,
-    StringProperty,
-)
-from bpy.types import Operator
+from bpy.props import FloatVectorProperty, PointerProperty, StringProperty
+from bpy.types import Operator, PropertyGroup
 
+from ..core.balloon import BMangaBalloonTail
+from ..core.coma_border import BMangaComaBorder, BMangaComaWhiteMargin
+from ..core.effect_line import BMangaEffectLineParams
+from ..core.fill_layer import BMangaFillLayer
+from ..core.image_path_layer import BMangaImagePathLayer
+from ..core.text_entry import BMangaTextEntry
 from ..utils import log
 
 _logger = log.get_logger(__name__)
 
-_ICON_MAP = {
-    "border": "MESH_PLANE",
-    "balloon": "MESH_CIRCLE",
-    "text": "FONT_DATA",
-    "effect_line": "FORCE_FORCE",
-    "fill": "SNAP_FACE",
-    "gradient": "NODE_TEXTURE",
-    "image_path": "CURVE_BEZCURVE",
-    "tail": "SHARPCURVE",
+
+# ────────────────────────────────────────────────────────────────
+# スクラッチ PropertyGroup
+# ────────────────────────────────────────────────────────────────
+
+
+class _BMangaPresetScratchComa(PropertyGroup):
+    """枠線プリセット詳細編集用のスクラッチ入れ物 (実コマとは無関係).
+
+    io/border_presets.py の ``apply_preset_to_coma`` / ``save_local_preset``
+    は ``coma.border`` / ``coma.white_margin`` に加え ``coma.paper_visible`` /
+    ``coma.background_color`` も参照するため、それらも保持する。実 Coma の
+    それらのプロパティと違い update= コールバックは付けない (実シーンへは
+    一切同期しないダミー値のため付ける必要が無い)。
+    """
+
+    border: PointerProperty(type=BMangaComaBorder)  # type: ignore[valid-type]
+    white_margin: PointerProperty(type=BMangaComaWhiteMargin)  # type: ignore[valid-type]
+    paper_visible: bpy.props.BoolProperty(default=True)  # type: ignore[valid-type]
+    background_color: FloatVectorProperty(  # type: ignore[valid-type]
+        subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0
+    )
+
+
+# WindowManager 側スクラッチ属性名 → 保持する PropertyGroup 型。
+# fill と gradient は同じ BMangaFillLayer だが、プリセットの実体
+# (JSON 保存先ディレクトリ) が別なので取り違え防止のため別インスタンスにする。
+_SCRATCH_WM_PROPS: tuple[tuple[str, type], ...] = (
+    ("bmanga_preset_scratch_border", _BMangaPresetScratchComa),
+    ("bmanga_preset_scratch_text", BMangaTextEntry),
+    ("bmanga_preset_scratch_effect_line", BMangaEffectLineParams),
+    ("bmanga_preset_scratch_fill", BMangaFillLayer),
+    ("bmanga_preset_scratch_gradient", BMangaFillLayer),
+    ("bmanga_preset_scratch_image_path", BMangaImagePathLayer),
+    ("bmanga_preset_scratch_tail", BMangaBalloonTail),
+)
+
+
+def _reset_props(instance) -> None:
+    """PropertyGroup インスタンスの全プロパティを型のデフォルト値へ戻す.
+
+    WindowManager 上のスクラッチ入れ物は Blender セッション中ずっと生き
+    続ける。一方、io 側の apply 関数の多くは「JSON に無いキーはスキップ」
+    する部分適用のため、先に別のプリセットを編集した際の値が残ったまま
+    だと、今回読み込むプリセットに存在しない項目が古い値を引きずって
+    しまう。プリセットを読み込む直前に必ず呼び、型のデフォルトへ戻して
+    から適用する。COLLECTION / POINTER (ネストした PropertyGroup) は
+    対象外 — 呼び出し側が個別に扱う (例: border の ``.border``/
+    ``.white_margin``、tail の ``.points``)。
+    """
+    props = getattr(getattr(instance, "bl_rna", None), "properties", None)
+    if props is None:
+        return
+    for prop in props:
+        identifier = prop.identifier
+        if identifier == "rna_type":
+            continue
+        if getattr(prop, "is_readonly", False):
+            continue
+        if str(getattr(prop, "type", "")) in {"COLLECTION", "POINTER"}:
+            continue
+        try:
+            instance.property_unset(identifier)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+# ────────────────────────────────────────────────────────────────
+# タイプ別 load / draw / save
+# ────────────────────────────────────────────────────────────────
+
+
+def _load_border(context, preset_name: str) -> str | None:
+    from ..io import border_presets
+
+    preset = border_presets.load_preset_by_name(preset_name, None)
+    if preset is None:
+        return None
+    scratch = context.window_manager.bmanga_preset_scratch_border
+    _reset_props(scratch)
+    _reset_props(scratch.border)
+    _reset_props(scratch.white_margin)
+    border_presets.apply_preset_to_coma(preset, scratch)
+    return str(preset.data.get("description", "") or "")
+
+
+def _draw_border(layout, context) -> None:
+    from ..panels import coma_detail_panel
+
+    scratch = context.window_manager.bmanga_preset_scratch_border
+    border_box = layout.box()
+    border_box.label(text="枠線")
+    coma_detail_panel.draw_coma_border_settings(border_box, context, scratch, preset_mode=True)
+    white_box = layout.box()
+    white_box.label(text="フチ")
+    coma_detail_panel.draw_coma_white_margin_settings(white_box, scratch)
+
+
+def _save_border(context, preset_name: str, description: str) -> None:
+    from ..io import border_presets
+
+    scratch = context.window_manager.bmanga_preset_scratch_border
+    original = border_presets.load_preset_by_name(preset_name, None)
+    original_data = original.data if original is not None else {}
+    new_data = border_presets.preset_dict_from_coma(scratch, preset_name, description)
+    for key in ("paperVisible", "backgroundColor", "backgroundColorAlpha"):
+        if key in original_data:
+            new_data[key] = original_data[key]
+        else:
+            new_data.pop(key, None)
+    border_presets._write_local_preset_data(None, new_data, preset_name, description=description)
+
+
+def _load_text(context, preset_name: str) -> str | None:
+    from ..io import text_presets
+
+    preset = text_presets.load_preset_by_name(preset_name)
+    if preset is None:
+        return None
+    scratch = context.window_manager.bmanga_preset_scratch_text
+    _reset_props(scratch)
+    text_presets.apply_to_entry(scratch, preset.data)
+    return str(preset.data.get("description", "") or "")
+
+
+def _draw_text(layout, context) -> None:
+    from . import layer_detail_op
+
+    scratch = context.window_manager.bmanga_preset_scratch_text
+    layer_detail_op._draw_text_detail(layout, context, scratch, preset_mode=True)
+
+
+def _save_text(context, preset_name: str, description: str) -> None:
+    from ..io import text_presets
+
+    scratch = context.window_manager.bmanga_preset_scratch_text
+    data = text_presets.snapshot_from_entry(scratch)
+    text_presets.save_local_preset(None, preset_name, description, data)
+
+
+def _load_effect_line(context, preset_name: str) -> str | None:
+    from ..io import effect_line_presets
+
+    preset = effect_line_presets.load_preset_by_name(preset_name, None)
+    if preset is None:
+        return None
+    scratch = context.window_manager.bmanga_preset_scratch_effect_line
+    _reset_props(scratch)
+    effect_line_presets.apply_preset_to_params(preset, scratch)
+    return str(preset.data.get("description", "") or "")
+
+
+def _draw_effect_line(layout, context) -> None:
+    from . import layer_detail_op
+    from ..panels import effect_line_panel
+
+    scratch = context.window_manager.bmanga_preset_scratch_effect_line
+    cols = layer_detail_op._equal_columns(layout, 2)
+    effect_line_panel.draw_effect_params(
+        cols[0], scratch, with_generate_button=False, columns=cols, preset_mode=True
+    )
+
+
+def _save_effect_line(context, preset_name: str, description: str) -> None:
+    from ..io import effect_line_presets
+
+    scratch = context.window_manager.bmanga_preset_scratch_effect_line
+    effect_line_presets.save_local_preset(None, scratch, preset_name, description)
+
+
+def _load_fill(context, preset_name: str) -> str | None:
+    from ..io import fill_presets
+
+    preset = fill_presets.load_preset_by_name(preset_name, None)
+    if preset is None:
+        return None
+    scratch = context.window_manager.bmanga_preset_scratch_fill
+    _reset_props(scratch)
+    scratch.fill_type = "solid"
+    fill_presets.apply_to_entry(scratch, preset.data)
+    return str(preset.data.get("description", "") or "")
+
+
+def _draw_fill(layout, context) -> None:
+    from ..panels import layer_stack_detail_ui
+
+    scratch = context.window_manager.bmanga_preset_scratch_fill
+    layer_stack_detail_ui._draw_fill_selected_settings(layout, context, scratch, preset_mode=True)
+
+
+def _save_fill(context, preset_name: str, description: str) -> None:
+    from ..io import fill_presets
+
+    scratch = context.window_manager.bmanga_preset_scratch_fill
+    data = fill_presets.snapshot_from_entry(scratch)
+    fill_presets.save_local_preset(preset_name, description, data)
+
+
+def _load_gradient(context, preset_name: str) -> str | None:
+    from ..io import gradient_presets
+
+    preset = gradient_presets.load_preset_by_name(preset_name, None)
+    if preset is None:
+        return None
+    scratch = context.window_manager.bmanga_preset_scratch_gradient
+    _reset_props(scratch)
+    scratch.fill_type = "gradient"
+    gradient_presets.apply_to_entry(scratch, preset.data)
+    return str(preset.data.get("description", "") or "")
+
+
+def _draw_gradient(layout, context) -> None:
+    from ..panels import layer_stack_detail_ui
+
+    scratch = context.window_manager.bmanga_preset_scratch_gradient
+    layer_stack_detail_ui._draw_fill_selected_settings(layout, context, scratch, preset_mode=True)
+
+
+def _save_gradient(context, preset_name: str, description: str) -> None:
+    from ..io import gradient_presets
+
+    scratch = context.window_manager.bmanga_preset_scratch_gradient
+    data = gradient_presets.snapshot_from_entry(scratch)
+    gradient_presets.save_local_preset(preset_name, description, data)
+
+
+def _load_image_path(context, preset_name: str) -> str | None:
+    from ..io import image_path_presets
+
+    preset = image_path_presets.load_preset_by_name(preset_name, None)
+    if preset is None:
+        return None
+    scratch = context.window_manager.bmanga_preset_scratch_image_path
+    _reset_props(scratch)
+    image_path_presets.apply_preset_to_entry(preset, scratch)
+    return str(preset.data.get("description", "") or "")
+
+
+def _draw_image_path(layout, context) -> None:
+    from . import layer_detail_op
+
+    scratch = context.window_manager.bmanga_preset_scratch_image_path
+    layer_detail_op._draw_image_path_detail(layout, context, scratch, preset_mode=True)
+
+
+def _save_image_path(context, preset_name: str, description: str) -> None:
+    from ..io import image_path_presets
+
+    scratch = context.window_manager.bmanga_preset_scratch_image_path
+    image_path_presets.save_local_preset(None, scratch, preset_name, description)
+
+
+def _load_tail(context, preset_name: str) -> str | None:
+    from ..io import tail_presets
+
+    preset = tail_presets.load_preset_by_name(preset_name, None)
+    if preset is None:
+        return None
+    scratch = context.window_manager.bmanga_preset_scratch_tail
+    _reset_props(scratch)
+    scratch.points.clear()
+    tail_presets.apply_preset_to_tail(preset, scratch)
+    return str(preset.data.get("description", "") or "")
+
+
+def _draw_tail(layout, context) -> None:
+    from . import balloon_tail_detail_op
+
+    scratch = context.window_manager.bmanga_preset_scratch_tail
+    balloon_tail_detail_op._draw_tail_box(layout, context, None, None, scratch, 0, preset_mode=True)
+
+
+def _save_tail(context, preset_name: str, description: str) -> None:
+    from ..io import tail_presets
+
+    scratch = context.window_manager.bmanga_preset_scratch_tail
+    tail_presets.save_local_preset(None, scratch, preset_name, description)
+
+
+# balloon は対象外 (プリセットの実体が頂点座標列で、ツール詳細ダイアログが
+# 存在しない)。説明編集のみ現行どおり残す。
+
+
+def _load_balloon(preset_name: str) -> dict[str, Any] | None:
+    from ..io import balloon_presets
+
+    preset = balloon_presets.load_preset_by_name(preset_name)
+    if preset is None:
+        return None
+    return dict(preset.data)
+
+
+def _save_balloon(preset_name: str, description: str, data: dict[str, Any]) -> None:
+    from ..io import balloon_presets
+
+    payload = dict(data)
+    payload["description"] = description
+    balloon_presets._write_local_preset_data(payload, preset_name, description=description)
+
+
+_LoaderFn = Callable[[Any, str], "str | None"]
+_DrawerFn = Callable[[Any, Any], None]
+_SaverFn = Callable[[Any, str, str], None]
+
+_LOADERS: dict[str, _LoaderFn] = {
+    "border": _load_border,
+    "text": _load_text,
+    "effect_line": _load_effect_line,
+    "fill": _load_fill,
+    "gradient": _load_gradient,
+    "image_path": _load_image_path,
+    "tail": _load_tail,
+}
+_DRAWERS: dict[str, _DrawerFn] = {
+    "border": _draw_border,
+    "text": _draw_text,
+    "effect_line": _draw_effect_line,
+    "fill": _draw_fill,
+    "gradient": _draw_gradient,
+    "image_path": _draw_image_path,
+    "tail": _draw_tail,
+}
+_SAVERS: dict[str, _SaverFn] = {
+    "border": _save_border,
+    "text": _save_text,
+    "effect_line": _save_effect_line,
+    "fill": _save_fill,
+    "gradient": _save_gradient,
+    "image_path": _save_image_path,
+    "tail": _save_tail,
 }
 
-
-def _load_preset_data(preset_type: str, preset_name: str) -> dict[str, Any] | None:
-    try:
-        if preset_type == "fill":
-            from ..io import fill_presets
-            p = fill_presets.load_preset_by_name(preset_name)
-            return p.data if p else None
-        if preset_type == "gradient":
-            from ..io import gradient_presets
-            p = gradient_presets.load_preset_by_name(preset_name)
-            return p.data if p else None
-        if preset_type == "text":
-            from ..io import text_presets
-            p = text_presets.load_preset_by_name(preset_name)
-            return p.data if p else None
-        if preset_type == "border":
-            from ..io import border_presets
-            p = border_presets.load_preset_by_name(preset_name, None)
-            return p.data if p else None
-        if preset_type == "tail":
-            from ..io import tail_presets
-            from ..core.work import get_work
-            work = get_work(bpy.context)
-            work_dir = None
-            if work and getattr(work, "work_dir", ""):
-                from pathlib import Path
-                work_dir = Path(work.work_dir)
-            p = tail_presets.load_preset_by_name(preset_name, work_dir)
-            return p.data if p else None
-        if preset_type == "effect_line":
-            from ..io import effect_line_presets
-            p = effect_line_presets.load_preset_by_name(preset_name, None)
-            return p.data if p else None
-        if preset_type == "image_path":
-            from ..io import image_path_presets
-            p = image_path_presets.load_preset_by_name(preset_name, None)
-            return p.data if p else None
-    except Exception:  # noqa: BLE001
-        _logger.exception("failed to load preset %s/%s", preset_type, preset_name)
-    return None
-
-
-def _save_preset_data(preset_type: str, preset_name: str, data: dict[str, Any]) -> bool:
-    try:
-        if preset_type == "fill":
-            from ..io import fill_presets
-            fill_presets.save_local_preset(preset_name, data.get("description", ""), data)
-            return True
-        if preset_type == "gradient":
-            from ..io import gradient_presets
-            gradient_presets.save_local_preset(preset_name, data.get("description", ""), data)
-            return True
-        if preset_type == "text":
-            from ..io import text_presets
-            text_presets.save_local_preset(None, preset_name, data.get("description", ""), data)
-            return True
-        if preset_type == "border":
-            from ..io import border_presets
-            border_presets._write_local_preset_data(None, data, preset_name)
-            return True
-        if preset_type == "tail":
-            from ..io import tail_presets
-            from ..utils import json_io
-            from ..io import shared_presets
-            target_dir = shared_presets.preset_dir("tails")
-            target_dir.mkdir(parents=True, exist_ok=True)
-            filename = preset_name.replace("/", "_").replace("\\", "_") + ".json"
-            json_io.write_json(target_dir / filename, data)
-            return True
-        if preset_type == "effect_line":
-            from ..io import effect_line_presets
-            from ..utils import json_io
-            from ..io import shared_presets
-            target_dir = shared_presets.preset_dir("effect_lines")
-            target_dir.mkdir(parents=True, exist_ok=True)
-            filename = preset_name.replace("/", "_").replace("\\", "_") + ".json"
-            json_io.write_json(target_dir / filename, data)
-            return True
-    except Exception:  # noqa: BLE001
-        _logger.exception("failed to save preset %s/%s", preset_type, preset_name)
-    return False
-
-
-def _color_from_data(data: dict, key: str, default=(0.0, 0.0, 0.0, 1.0)):
-    raw = data.get(key, default)
-    if isinstance(raw, str):
-        raw = _hex_to_rgba(raw)
-    try:
-        return tuple(float(raw[i]) for i in range(4))
-    except (TypeError, IndexError, ValueError):
-        return default
-
-
-def _hex_to_rgba(hex_str: str) -> tuple[float, float, float, float]:
-    hex_str = hex_str.lstrip("#")
-    if len(hex_str) == 6:
-        hex_str += "FF"
-    try:
-        r = int(hex_str[0:2], 16) / 255.0
-        g = int(hex_str[2:4], 16) / 255.0
-        b = int(hex_str[4:6], 16) / 255.0
-        a = int(hex_str[6:8], 16) / 255.0
-        return (r, g, b, a)
-    except (ValueError, IndexError):
-        return (0.0, 0.0, 0.0, 1.0)
-
-
-def _rgba_to_hex(rgba) -> str:
-    r = int(round(max(0.0, min(1.0, rgba[0])) * 255))
-    g = int(round(max(0.0, min(1.0, rgba[1])) * 255))
-    b = int(round(max(0.0, min(1.0, rgba[2])) * 255))
-    return f"#{r:02X}{g:02X}{b:02X}"
+_DIALOG_WIDTH: dict[str, int] = {
+    "border": 320,
+    "balloon": 320,
+    "text": 340,
+    "effect_line": 560,
+    "fill": 300,
+    "gradient": 320,
+    "image_path": 340,
+    "tail": 300,
+}
 
 
 class BMANGA_OT_preset_detail_edit(Operator):
@@ -154,266 +396,91 @@ class BMANGA_OT_preset_detail_edit(Operator):
 
     description_text: StringProperty(name="説明")  # type: ignore[valid-type]
 
-    # Fill / Gradient
-    color: FloatVectorProperty(  # type: ignore[valid-type]
-        name="色", subtype="COLOR", size=4, min=0.0, max=1.0, default=(0, 0, 0, 1)
-    )
-    color2: FloatVectorProperty(  # type: ignore[valid-type]
-        name="色2", subtype="COLOR", size=4, min=0.0, max=1.0, default=(1, 1, 1, 1)
-    )
-    opacity: IntProperty(name="不透明度 (%)", min=0, max=100, default=100)  # type: ignore[valid-type]
-    gradient_type: EnumProperty(  # type: ignore[valid-type]
-        name="グラデーション種類",
-        items=[("linear", "線形", ""), ("radial", "円形", "")],
-    )
-
-    # Text
-    writing_mode: EnumProperty(  # type: ignore[valid-type]
-        name="書字方向",
-        items=[("vertical", "縦書き", ""), ("horizontal", "横書き", "")],
-    )
-    font_size_value: FloatProperty(name="フォントサイズ", min=1.0, max=200.0, default=20.0)  # type: ignore[valid-type]
-    # 識別子はエントリ側 (core/text_entry.py _FONT_SIZE_UNIT_ITEMS) と同じ小文字が正規形。
-    # 旧定義の大文字 "Q"・存在しない "mm" はプリセット適用時に無言で失敗していた。
-    font_size_unit: EnumProperty(  # type: ignore[valid-type]
-        name="単位",
-        items=[("q", "Q", ""), ("pt", "pt", "")],
-    )
-    line_height: FloatProperty(name="行間", min=0.5, max=5.0, default=1.4)  # type: ignore[valid-type]
-    letter_spacing: FloatProperty(name="字間", min=-1.0, max=2.0, default=0.0)  # type: ignore[valid-type]
-    font_bold: BoolProperty(name="太字", default=False)  # type: ignore[valid-type]
-    font_italic: BoolProperty(name="斜体", default=False)  # type: ignore[valid-type]
-    stroke_enabled: BoolProperty(name="フチ文字", default=False)  # type: ignore[valid-type]
-
-    # Border
-    border_style: EnumProperty(  # type: ignore[valid-type]
-        name="スタイル",
-        items=[("solid", "実線", ""), ("none", "なし", ""), ("dashed", "破線", "")],
-    )
-    border_width_mm: FloatProperty(name="線幅 (mm)", min=0.0, max=10.0, default=0.5)  # type: ignore[valid-type]
-    border_color: FloatVectorProperty(  # type: ignore[valid-type]
-        name="枠色", subtype="COLOR", size=4, min=0.0, max=1.0, default=(0, 0, 0, 1)
-    )
-    border_blur: FloatProperty(name="ぼかし", min=0.0, max=10.0, default=0.5)  # type: ignore[valid-type]
-    white_margin_enabled: BoolProperty(name="白フチ", default=True)  # type: ignore[valid-type]
-    white_margin_width_mm: FloatProperty(name="白フチ幅 (mm)", min=0.0, max=10.0, default=0.5)  # type: ignore[valid-type]
-
-    # Tail
-    tail_line_type: EnumProperty(  # type: ignore[valid-type]
-        name="形状",
-        items=[
-            ("wedge", "三角 (くさび)", ""),
-            ("curve", "曲線", ""),
-            ("pen", "ペン線 (抜き)", ""),
-            ("ellipse", "楕円", ""),
-        ],
-    )
-    tail_root_width_mm: FloatProperty(name="根元幅 (mm)", min=0.0, max=30.0, default=3.0)  # type: ignore[valid-type]
-    tail_tip_width_mm: FloatProperty(name="先端幅 (mm)", min=0.0, max=30.0, default=0.0)  # type: ignore[valid-type]
-    tail_length_mm: FloatProperty(name="長さ (mm)", min=0.0, max=100.0, default=6.0)  # type: ignore[valid-type]
-    tail_curve_bend: FloatProperty(name="曲がり", min=-1.0, max=1.0, default=0.0)  # type: ignore[valid-type]
-
-    # Effect line (key fields only)
-    effect_type: EnumProperty(  # type: ignore[valid-type]
-        name="効果線種類",
-        items=[
-            ("focus", "集中線", ""),
-            ("uni_flash", "ウニフラ", ""),
-            ("beta_flash", "ベタフラ", ""),
-            ("speed", "流線", ""),
-            ("white_outline", "白抜き線", ""),
-        ],
-    )
-    brush_size_mm: FloatProperty(name="ブラシサイズ (mm)", min=0.01, max=10.0, default=0.3)  # type: ignore[valid-type]
-    max_line_count: IntProperty(name="最大本数", min=1, max=2000, default=60)  # type: ignore[valid-type]
-
-    _preset_data: dict[str, Any] = {}
+    _balloon_data: dict[str, Any] = {}
 
     def invoke(self, context, event):
-        data = _load_preset_data(self.preset_type, self.preset_name)
-        if data is None:
+        pt = self.preset_type
+        if pt == "balloon":
+            data = _load_balloon(self.preset_name)
+            if data is None:
+                self.report({"WARNING"}, f"プリセットが見つかりません: {self.preset_name}")
+                return {"CANCELLED"}
+            self._balloon_data = data
+            self.description_text = str(data.get("description", "") or "")
+            return context.window_manager.invoke_props_dialog(self, width=_DIALOG_WIDTH.get(pt, 320))
+
+        loader = _LOADERS.get(pt)
+        if loader is None:
+            self.report({"WARNING"}, f"未対応のプリセットタイプです: {pt}")
+            return {"CANCELLED"}
+        try:
+            description = loader(context, self.preset_name)
+        except Exception:  # noqa: BLE001
+            _logger.exception("failed to load preset %s/%s", pt, self.preset_name)
+            description = None
+        if description is None:
             self.report({"WARNING"}, f"プリセットが見つかりません: {self.preset_name}")
             return {"CANCELLED"}
-        self._preset_data = data
-        self.description_text = str(data.get("description", "") or "")
-        self._load_type_fields(data)
-        return context.window_manager.invoke_props_dialog(self, width=320)
-
-    @staticmethod
-    def _enum_or(value, allowed: tuple[str, ...], default: str) -> str:
-        """ファイル由来の値を EnumProperty へ入れる前に検証する.
-
-        プリセット JSON は手編集・旧バージョン由来の値を含み得るため、
-        識別子に無い値をそのまま代入すると invoke ごと TypeError で落ちる。
-        """
-        text = str(value or "").strip()
-        return text if text in allowed else default
-
-    def _load_type_fields(self, data: dict[str, Any]) -> None:
-        pt = self.preset_type
-        if pt == "fill":
-            self.color = _color_from_data(data, "color")
-            self.opacity = int(data.get("opacity", 100))
-        elif pt == "gradient":
-            self.gradient_type = self._enum_or(
-                data.get("gradient_type"), ("linear", "radial"), "linear")
-            self.color = _color_from_data(data, "color")
-            self.color2 = _color_from_data(data, "color2", (1, 1, 1, 1))
-            self.opacity = int(data.get("opacity", 100))
-        elif pt == "text":
-            from ..io import text_presets
-
-            self.writing_mode = self._enum_or(
-                data.get("writing_mode"), ("vertical", "horizontal"), "vertical")
-            self.font_size_value = float(data.get("font_size_value", 20.0))
-            self.font_size_unit = text_presets.normalize_font_size_unit(
-                data.get("font_size_unit"))
-            self.line_height = float(data.get("line_height", 1.4))
-            self.letter_spacing = float(data.get("letter_spacing", 0.0))
-            self.color = _color_from_data(data, "color")
-            self.font_bold = bool(data.get("font_bold", False))
-            self.font_italic = bool(data.get("font_italic", False))
-            self.stroke_enabled = bool(data.get("stroke_enabled", False))
-        elif pt == "border":
-            border = data.get("border", {})
-            self.border_style = self._enum_or(
-                border.get("style"), ("solid", "none", "dashed"), "solid")
-            self.border_width_mm = float(border.get("widthMm", 0.5))
-            self.border_color = _color_from_data(border, "color", (0, 0, 0, 1))
-            self.border_blur = float(border.get("blurAmount", 0.5))
-            wm_data = data.get("whiteMargin", {})
-            self.white_margin_enabled = bool(wm_data.get("enabled", True))
-            self.white_margin_width_mm = float(wm_data.get("widthMm", 0.5))
-        elif pt == "tail":
-            tail = data.get("tail", {})
-            self.tail_line_type = self._enum_or(
-                tail.get("lineType"), ("wedge", "curve", "pen", "ellipse"), "wedge")
-            self.tail_root_width_mm = float(tail.get("rootWidthMm", 3.0))
-            self.tail_tip_width_mm = float(tail.get("tipWidthMm", 0.0))
-            self.tail_length_mm = float(tail.get("lengthMm", 6.0))
-            self.tail_curve_bend = float(tail.get("curveBend", 0.0))
-        elif pt == "effect_line":
-            self.effect_type = self._enum_or(
-                data.get("effect_type"),
-                ("focus", "uni_flash", "beta_flash", "speed", "white_outline"),
-                "focus")
-            self.opacity = int(data.get("opacity") or 100)
-            self.brush_size_mm = float(data.get("brush_size_mm") or 0.3)
-            self.max_line_count = int(data.get("max_line_count") or 60)
+        self.description_text = description
+        return context.window_manager.invoke_props_dialog(self, width=_DIALOG_WIDTH.get(pt, 320))
 
     def draw(self, context):
         layout = self.layout
-        pt = self.preset_type
         layout.prop(self, "description_text")
         layout.separator()
-
-        if pt == "fill":
-            layout.prop(self, "color")
-            layout.prop(self, "opacity")
-        elif pt == "gradient":
-            layout.prop(self, "gradient_type")
-            layout.prop(self, "color")
-            layout.prop(self, "color2")
-            layout.prop(self, "opacity")
-        elif pt == "text":
-            layout.prop(self, "writing_mode")
-            row = layout.row(align=True)
-            row.prop(self, "font_size_value")
-            row.prop(self, "font_size_unit", text="")
-            layout.prop(self, "line_height")
-            layout.prop(self, "letter_spacing")
-            layout.prop(self, "color")
-            row = layout.row()
-            row.prop(self, "font_bold")
-            row.prop(self, "font_italic")
-            layout.prop(self, "stroke_enabled")
-        elif pt == "border":
-            layout.prop(self, "border_style")
-            layout.prop(self, "border_width_mm")
-            layout.prop(self, "border_color")
-            layout.prop(self, "border_blur")
-            layout.separator()
-            layout.prop(self, "white_margin_enabled")
-            if self.white_margin_enabled:
-                layout.prop(self, "white_margin_width_mm")
-        elif pt == "tail":
-            layout.prop(self, "tail_line_type")
-            layout.prop(self, "tail_root_width_mm")
-            layout.prop(self, "tail_tip_width_mm")
-            layout.prop(self, "tail_length_mm")
-            layout.prop(self, "tail_curve_bend")
-        elif pt == "effect_line":
-            layout.prop(self, "effect_type")
-            layout.prop(self, "opacity")
-            layout.prop(self, "brush_size_mm")
-            layout.prop(self, "max_line_count")
-        else:
+        pt = self.preset_type
+        drawer = _DRAWERS.get(pt)
+        if drawer is None:
             layout.label(text="このプリセットタイプは詳細編集未対応です")
+            return
+        drawer(layout, context)
 
     def execute(self, context):
-        data = self._preset_data.copy()
-        data["description"] = self.description_text
         pt = self.preset_type
-        if pt == "fill":
-            data["color"] = list(self.color)
-            data["opacity"] = self.opacity
-        elif pt == "gradient":
-            data["gradient_type"] = self.gradient_type
-            data["color"] = list(self.color)
-            data["color2"] = list(self.color2)
-            data["opacity"] = self.opacity
-        elif pt == "text":
-            data["writing_mode"] = self.writing_mode
-            data["font_size_value"] = self.font_size_value
-            data["font_size_unit"] = self.font_size_unit
-            data["line_height"] = self.line_height
-            data["letter_spacing"] = self.letter_spacing
-            data["color"] = list(self.color)
-            data["font_bold"] = self.font_bold
-            data["font_italic"] = self.font_italic
-            data["stroke_enabled"] = self.stroke_enabled
-        elif pt == "border":
-            border = data.get("border", {})
-            border["style"] = self.border_style
-            border["widthMm"] = self.border_width_mm
-            border["color"] = _rgba_to_hex(self.border_color)
-            border["blurAmount"] = self.border_blur
-            data["border"] = border
-            wm_data = data.get("whiteMargin", {})
-            wm_data["enabled"] = self.white_margin_enabled
-            wm_data["widthMm"] = self.white_margin_width_mm
-            data["whiteMargin"] = wm_data
-        elif pt == "tail":
-            tail = data.get("tail", {})
-            tail["lineType"] = self.tail_line_type
-            tail["rootWidthMm"] = self.tail_root_width_mm
-            tail["tipWidthMm"] = self.tail_tip_width_mm
-            tail["lengthMm"] = self.tail_length_mm
-            tail["curveBend"] = self.tail_curve_bend
-            data["tail"] = tail
-        elif pt == "effect_line":
-            data["effect_type"] = self.effect_type
-            data["opacity"] = self.opacity
-            data["brush_size_mm"] = self.brush_size_mm
-            data["max_line_count"] = self.max_line_count
+        from ..panels import preset_list_ui
 
-        if _save_preset_data(pt, self.preset_name, data):
+        if pt == "balloon":
+            try:
+                _save_balloon(self.preset_name, self.description_text, self._balloon_data)
+            except Exception:  # noqa: BLE001
+                _logger.exception("failed to save balloon preset description %s", self.preset_name)
+                self.report({"WARNING"}, f"プリセット「{self.preset_name}」の保存に失敗しました")
+                return {"CANCELLED"}
+            preset_list_ui.refresh_preset_list(context, pt)
             self.report({"INFO"}, f"プリセット「{self.preset_name}」を保存しました")
-        else:
+            return {"FINISHED"}
+
+        saver = _SAVERS.get(pt)
+        if saver is None:
+            self.report({"WARNING"}, f"未対応のプリセットタイプです: {pt}")
+            return {"CANCELLED"}
+        try:
+            saver(context, self.preset_name, self.description_text)
+        except Exception:  # noqa: BLE001
+            _logger.exception("failed to save preset %s/%s", pt, self.preset_name)
             self.report({"WARNING"}, f"プリセット「{self.preset_name}」の保存に失敗しました")
             return {"CANCELLED"}
+        preset_list_ui.refresh_preset_list(context, pt)
+        self.report({"INFO"}, f"プリセット「{self.preset_name}」を保存しました")
         return {"FINISHED"}
 
 
-_CLASSES = (BMANGA_OT_preset_detail_edit,)
+_CLASSES = (_BMangaPresetScratchComa, BMANGA_OT_preset_detail_edit)
 
 
 def register():
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
+    for attr, prop_type in _SCRATCH_WM_PROPS:
+        setattr(bpy.types.WindowManager, attr, PointerProperty(type=prop_type))
 
 
 def unregister():
+    for attr, _prop_type in _SCRATCH_WM_PROPS:
+        try:
+            delattr(bpy.types.WindowManager, attr)
+        except AttributeError:
+            pass
     for cls in reversed(_CLASSES):
         try:
             bpy.utils.unregister_class(cls)

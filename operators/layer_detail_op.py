@@ -185,11 +185,19 @@ def _draw_image_detail(layout, entry) -> None:
         box.prop(entry, "binarize_threshold")
 
 
-def _draw_image_path_detail(layout, context, entry=None) -> None:
+def _draw_image_path_detail(layout, context, entry=None, *, preset_mode: bool = False) -> None:
+    """パターンカーブレイヤーの詳細設定を描画する.
+
+    ``preset_mode=True`` はパターンカーブプリセット詳細編集ダイアログからの
+    呼び出し用で、実レイヤーとは無関係なスクラッチ ``BMangaImagePathLayer``
+    を渡す。表示名・表示/ロックはプリセットに保存されない
+    (``io/image_path_presets.py`` の保存対象キー参照) ため描画しない。
+    """
     if entry is None:
         entry = context
         context = bpy.context
-    layout.prop(entry, "title", text="表示名")
+    if not preset_mode:
+        layout.prop(entry, "title", text="表示名")
     layout.prop(entry, "content_source", text="内容")
     source = str(getattr(entry, "content_source", "image") or "image")
     if source == "shape":
@@ -203,8 +211,9 @@ def _draw_image_path_detail(layout, context, entry=None) -> None:
     box.label(text="表示")
     if source == "image":
         box.prop(entry, "draw_mode", text="表示方法")
-    box.prop(entry, "visible", text="表示")
-    box.prop(entry, "locked", text="ロック")
+    if not preset_mode:
+        box.prop(entry, "visible", text="表示")
+        box.prop(entry, "locked", text="ロック")
     box.prop(entry, "opacity", text="不透明度")
     row = box.row(align=True)
     row.prop(entry, "brush_size_mm", text="ブラシサイズ")
@@ -232,12 +241,22 @@ def _draw_image_path_detail(layout, context, entry=None) -> None:
     color_row.enabled = bool(getattr(entry, "inout_color_enabled", False))
     color_row.prop(entry, "inout_start_color", text="入り色")
     color_row.prop(entry, "inout_end_color", text="抜き色")
-    from ..panels import effect_line_panel as _effect_line_panel
+    if not preset_mode:
+        # 入り抜きカーブウィジェットは全インスタンス共有の単一ノードに
+        # 描画状態を書き込む (utils/effect_inout_curve.py)。プリセット編集の
+        # スクラッチ entry で開くと、実ツール側のグラフを汚染しうるため、
+        # プリセット編集ダイアログでは描画しない (数値の in/out percent 自体
+        # は上で編集・保存できる)。
+        from ..panels import effect_line_panel as _effect_line_panel
 
-    _effect_line_panel.draw_inout_curve_mapping(inout_box, entry)
-    from ..panels import preset_management_ui
+        _effect_line_panel.draw_inout_curve_mapping(inout_box, entry)
+    if not preset_mode:
+        # プリセット一覧・適用ボタンは「このレイヤーへ別のプリセットを適用
+        # する」ための UI であり、プリセット編集ダイアログ内に出すと入れ子に
+        # なってしまうため除外する。
+        from ..panels import preset_management_ui
 
-    preset_management_ui.draw_image_path_preset_management(layout, context)
+        preset_management_ui.draw_image_path_preset_management(layout, context)
 
 
 def _draw_raster_detail(layout, entry) -> None:
@@ -527,34 +546,44 @@ def _draw_balloon_detail(layout, context, entry=None, page=None) -> None:
     _draw_balloon_tails(tail_col, entry, page)
 
 
-def _draw_text_detail(layout, context, entry=None) -> None:
+def _draw_text_detail(layout, context, entry=None, *, preset_mode: bool = False) -> None:
+    """テキスト詳細設定を描画する.
+
+    ``preset_mode=True`` はテキストプリセット詳細編集ダイアログからの呼び
+    出し用で、実テキストとは無関係なスクラッチ ``BMangaTextEntry`` を渡す。
+    この場合、プリセットに保存されない項目 (配置・話者・リンクフキダシ・
+    ルビ管理ボタン等。``io/text_presets.py`` の ``_TEXT_KEYS`` を参照) は
+    描画しない。
+    """
     if entry is None:
         entry = context
         context = bpy.context
-    from ..panels import preset_management_ui
+    if not preset_mode:
+        from ..panels import preset_management_ui
 
-    preset_management_ui.draw_text_preset_selection(layout, context)
+        preset_management_ui.draw_text_preset_selection(layout, context)
 
-    # リンクフキダシプリセット
-    link_box = layout.box()
-    link_box.label(text="リンクフキダシプリセット", icon="LINKED")
-    from . import text_preset_op
+        # リンクフキダシプリセット (linked_balloon_preset はテキストプリセット
+        # の保存/適用対象外 = io/text_presets.py _TEXT_KEYS のコメント参照)
+        link_box = layout.box()
+        link_box.label(text="リンクフキダシプリセット", icon="LINKED")
+        from . import text_preset_op
 
-    text_preset_op._linked_balloon_target_text_id = entry.id
-    link_box.menu("BMANGA_MT_linked_balloon_preset", text=text_preset_op.linked_balloon_preset_display(entry.linked_balloon_preset))
+        text_preset_op._linked_balloon_target_text_id = entry.id
+        link_box.menu("BMANGA_MT_linked_balloon_preset", text=text_preset_op.linked_balloon_preset_display(entry.linked_balloon_preset))
 
-    box = layout.box()
-    box.label(text="配置 (mm)")
-    row = box.row(align=True)
-    row.prop(entry, "x_mm")
-    row.prop(entry, "y_mm")
-    row = box.row(align=True)
-    row.prop(entry, "width_mm")
-    row.prop(entry, "height_mm")
+        box = layout.box()
+        box.label(text="配置 (mm)")
+        row = box.row(align=True)
+        row.prop(entry, "x_mm")
+        row.prop(entry, "y_mm")
+        row = box.row(align=True)
+        row.prop(entry, "width_mm")
+        row.prop(entry, "height_mm")
 
-    box = layout.box()
-    box.label(text="話者")
-    box.prop(entry, "speaker_name")
+        box = layout.box()
+        box.label(text="話者")
+        box.prop(entry, "speaker_name")
 
     box = layout.box()
     box.label(text="フォント・組版")
@@ -581,12 +610,13 @@ def _draw_text_detail(layout, context, entry=None) -> None:
 
     box = layout.box()
     box.label(text="ルビ・部分スタイル")
-    row = box.row(align=True)
-    row.label(text=f"ルビ: {len(getattr(entry, 'ruby_spans', ()) or ())} 件")
-    row.label(text=f"部分フォント: {len(getattr(entry, 'font_spans', ()) or ())} 件")
-    row = box.row(align=True)
-    row.label(text=f"部分スタイル: {len(getattr(entry, 'style_spans', ()) or ())} 件")
-    row.label(text=f"縦中横: {len(getattr(entry, 'tatechuyoko_ranges', ()) or ())} 件")
+    if not preset_mode:
+        row = box.row(align=True)
+        row.label(text=f"ルビ: {len(getattr(entry, 'ruby_spans', ()) or ())} 件")
+        row.label(text=f"部分フォント: {len(getattr(entry, 'font_spans', ()) or ())} 件")
+        row = box.row(align=True)
+        row.label(text=f"部分スタイル: {len(getattr(entry, 'style_spans', ()) or ())} 件")
+        row.label(text=f"縦中横: {len(getattr(entry, 'tatechuyoko_ranges', ()) or ())} 件")
     row = box.row(align=True)
     row.prop(entry, "ruby_line_height")
     row.prop(entry, "ruby_gap_mm")
@@ -594,10 +624,11 @@ def _draw_text_detail(layout, context, entry=None) -> None:
     row.prop(entry, "ruby_letter_spacing")
     row.prop(entry, "ruby_size_percent")
     box.prop(entry, "ruby_font")
-    row = box.row(align=True)
-    row.operator("bmanga.text_ruby_add_dialog", text="ルビを付ける", icon="ADD")
-    row.operator("bmanga.text_ruby_clear", text="ルビを削除", icon="TRASH")
-    box.operator("bmanga.text_meta_dialog", text="メタ情報を編集", icon="INFO")
+    if not preset_mode:
+        row = box.row(align=True)
+        row.operator("bmanga.text_ruby_add_dialog", text="ルビを付ける", icon="ADD")
+        row.operator("bmanga.text_ruby_clear", text="ルビを削除", icon="TRASH")
+        box.operator("bmanga.text_meta_dialog", text="メタ情報を編集", icon="INFO")
 
 
 def _draw_gp_detail(layout, obj) -> None:

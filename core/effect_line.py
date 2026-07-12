@@ -83,9 +83,23 @@ EFFECT_PARAM_FIELDS = line_effect_schema.EFFECT_PARAM_FIELDS
 
 
 def _on_params_changed(self, context) -> None:
-    """選択中の効果線レイヤーへ詳細設定の変更を即時反映する。"""
+    """選択中の効果線レイヤーへ詳細設定の変更を即時反映する。
+
+    ``scene.bmanga_effect_line_params`` (ツールの現在設定) 以外のインスタンス
+    (プリセット詳細編集ダイアログのスクラッチ用等) からの変更では、選択中の
+    効果線レイヤーを書き換えてはならない。ここで同一性 (as_pointer) を確認
+    し、シーン本体のインスタンスでなければ即 return する。
+    """
     if context is None:
         return
+    scene = getattr(context, "scene", None)
+    scene_params = getattr(scene, "bmanga_effect_line_params", None) if scene is not None else None
+    if scene_params is not None:
+        try:
+            if int(self.as_pointer()) != int(scene_params.as_pointer()):
+                return
+        except Exception:  # noqa: BLE001
+            pass
     try:
         from ..operators import effect_line_op
 

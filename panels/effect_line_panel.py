@@ -44,13 +44,15 @@ def _draw_shape_settings(layout, params, prefix: str, label: str, *, frame_toggl
         row.prop(params, f"{prefix}_cloud_sub_height_jitter", text="乱れ")
 
 
-def _draw_white_outline_settings(layout, params, *, show_opacity: bool = True, columns=None) -> None:
+def _draw_white_outline_settings(
+    layout, params, *, show_opacity: bool = True, columns=None, preset_mode: bool = False
+) -> None:
     line_effect_settings_ui.draw_effect_white_outline_settings(
         layout,
         params,
         show_opacity=show_opacity,
         columns=columns,
-        draw_inout_curve=draw_inout_curve_mapping,
+        draw_inout_curve=None if preset_mode else draw_inout_curve_mapping,
     )
 
 
@@ -115,14 +117,17 @@ def draw_effect_line_preset_management(layout, context) -> None:
     preset_management_ui.draw_effect_line_preset_management(layout, context)
 
 
-def draw_effect_path_settings(layout, params) -> None:
+def draw_effect_path_settings(layout, params, *, preset_mode: bool = False) -> None:
     path_box = layout.box()
     path_box.label(text="パス")
     row = path_box.row(align=True)
     row.prop(params, "base_path_enabled", text="基準パス")
-    edit = row.row(align=True)
-    edit.enabled = bool(getattr(params, "base_path_enabled", False))
-    edit.operator("bmanga.effect_line_base_path_edit", text="編集", icon="CURVE_BEZCURVE")
+    if not preset_mode:
+        # 編集ボタンは選択中の実効果線オブジェクトを操作するモーダル操作の
+        # ため、実オブジェクトを持たないプリセット編集では出さない。
+        edit = row.row(align=True)
+        edit.enabled = bool(getattr(params, "base_path_enabled", False))
+        edit.operator("bmanga.effect_line_base_path_edit", text="編集", icon="CURVE_BEZCURVE")
 
     image_box = layout.box()
     image_box.label(text="パス線")
@@ -188,19 +193,28 @@ def draw_effect_params(
     show_opacity: bool = True,
     show_path_settings: bool = True,
     columns=None,
+    preset_mode: bool = False,
 ) -> None:
     """効果線パラメータを ``layout`` に描画 (パネル / 詳細設定ダイアログ共通).
 
     ``with_generate_button=True`` で末尾に「効果線を追加」 ボタンを追加。
-    ``params`` は ``scene.bmanga_effect_line_params`` (BMangaEffectLineParams)。
+    ``params`` は通常 ``scene.bmanga_effect_line_params``
+    (BMangaEffectLineParams) だが、``preset_mode=True`` の場合は効果線
+    プリセット詳細編集ダイアログのスクラッチインスタンスを渡す。
     ``columns`` に複数の column を渡すと、設定群を列に分配する
     (縦長になりすぎる詳細設定ダイアログ用。None なら従来どおり縦一列)。
+
+    ``preset_mode=True`` では、実オブジェクト前提の操作 (「効果線を追加」
+    ボタン・基準パスのモーダル編集ボタン) と、全インスタンス共有の単一ノード
+    に書き込む入り抜きカーブウィジェット (utils/effect_inout_curve.py。実
+    ツール側のグラフを汚染しうる) を描画しない。数値項目自体は編集できる。
     """
     if params is None:
         layout.label(text="未初期化", icon="ERROR")
         return
 
     cols = [c for c in (columns or ()) if c is not None] or [layout]
+    generate_button = with_generate_button and not preset_mode
 
     def _col(index: int):
         return cols[min(int(index), len(cols) - 1)]
@@ -234,10 +248,11 @@ def draw_effect_params(
             params,
             show_opacity=show_opacity,
             columns=white_cols,
+            preset_mode=preset_mode,
         )
         if show_path_settings:
-            draw_effect_path_settings(_col(path_col), params)
-        if with_generate_button:
+            draw_effect_path_settings(_col(path_col), params, preset_mode=preset_mode)
+        if generate_button:
             _col(0).operator("bmanga.effect_line_generate", icon="STROKE")
         return
 
@@ -301,9 +316,10 @@ def draw_effect_params(
     row = box.row(align=True)
     row.prop(params, "in_percent")
     row.prop(params, "out_percent")
-    draw_inout_curve_mapping(box, params)
+    if not preset_mode:
+        draw_inout_curve_mapping(box, params)
     if show_path_settings:
-        draw_effect_path_settings(_col(path_col), params)
+        draw_effect_path_settings(_col(path_col), params, preset_mode=preset_mode)
 
     box = _col(side_col).box()
     box.label(text="色")
@@ -330,7 +346,7 @@ def draw_effect_params(
         box.prop(params, "speed_angle_deg")
         box.prop(params, "speed_line_count")
 
-    if with_generate_button:
+    if generate_button:
         _col(0).operator("bmanga.effect_line_generate", icon="STROKE")
 
 
