@@ -155,7 +155,6 @@ def _check_creation_scope_for_layout(context, work, page_index: int, *, start_si
         context,
         page,
         body="ページずれ確認",
-        speaker_type="normal",
         x_mm=local_x + 6.0,
         y_mm=local_y + 6.0,
         width_mm=20.0,

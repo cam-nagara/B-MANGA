@@ -220,7 +220,7 @@ def _run_check() -> None:
         )
         text, missing = text_op._create_text_entry(
             context, page,
-            body="hit", speaker_type="normal",
+            body="hit",
             x_mm=TEXT_RECT[0], y_mm=TEXT_RECT[1], width_mm=TEXT_RECT[2], height_mm=TEXT_RECT[3],
             parent_kind="coma", parent_key=coma_key,
         )

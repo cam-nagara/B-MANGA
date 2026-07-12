@@ -107,7 +107,6 @@ def _assert_text_size_and_meta_dialog() -> None:
     assert abs(entry.font_size_q - pt_to_q(10.0)) < 0.001
     entry.font_size_unit = "q"
     assert abs(entry.font_size_value - pt_to_q(10.0)) < 0.001
-    entry.speaker_type = "thought"
     entry.speaker_name = "話者"
     data = schema.text_entry_to_dict(entry)
     assert data["fontSizeUnit"] == "q", data
@@ -116,7 +115,6 @@ def _assert_text_size_and_meta_dialog() -> None:
     schema.text_entry_from_dict(restored, data)
     assert restored.font_size_unit == "q"
     assert abs(restored.font_size_pt - 10.0) < 0.001
-    assert restored.speaker_type == "thought"
     assert restored.speaker_name == "話者"
     result = bpy.ops.bmanga.text_meta_dialog()
     assert result == {"FINISHED"}, result

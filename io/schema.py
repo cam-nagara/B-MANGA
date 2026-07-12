@@ -1795,7 +1795,6 @@ def text_entry_to_dict(entry) -> dict[str, Any]:
         "meldexType": str(getattr(entry, "meldex_type", "") or ""),
         "visible": bool(getattr(entry, "visible", True)),
         "body": entry.body,
-        "speakerType": entry.speaker_type,
         "speakerName": entry.speaker_name,
         "font": entry.font,
         "fontSizeQ": round(font_size_q, 3),
@@ -1877,7 +1876,6 @@ def text_entry_from_dict(entry, data: dict[str, Any]) -> None:
     entry.meldex_type = str(data.get("meldexType", "") or "")
     entry.visible = bool(data.get("visible", True))
     entry.body = data.get("body", "")
-    entry.speaker_type = data.get("speakerType", "normal")
     entry.speaker_name = data.get("speakerName", "")
     entry.font = data.get("font", "")
     unit = str(data.get("fontSizeUnit", "q") or "q")

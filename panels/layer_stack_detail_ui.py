@@ -517,7 +517,6 @@ def _draw_text_selected_settings(box, context, entry) -> None:
     settings.label(text=f"選択中: {getattr(entry, 'title', '') or entry.id} (テキスト)")
     preset_management_ui.draw_text_preset_selection(box, context)
     settings.prop(entry, "title", text="名前")
-    settings.prop(entry, "speaker_type")
     row = settings.row(align=True)
     row.prop(entry, "x_mm")
     row.prop(entry, "y_mm")

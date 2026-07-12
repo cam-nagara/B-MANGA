@@ -204,7 +204,6 @@ def _setup_scene(temp_root: Path):
         context,
         page,
         body="ハンドル",
-        speaker_type="normal",
         x_mm=45.0,
         y_mm=94.0,
         width_mm=34.0,

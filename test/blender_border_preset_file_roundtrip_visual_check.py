@@ -135,7 +135,6 @@ def _add_page_content(temp_root: Path, page, coma, index: int) -> None:
         bpy.context,
         page,
         body=f"{index + 1}",
-        speaker_type="normal",
         x_mm=130.0,
         y_mm=100.0,
         width_mm=18.0,

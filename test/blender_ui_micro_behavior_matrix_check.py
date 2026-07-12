@@ -277,7 +277,6 @@ def _create_scene(context):
         context,
         page,
         body="詳細設定チェック",
-        speaker_type="normal",
         x_mm=x,
         y_mm=y,
         width_mm=42.0,

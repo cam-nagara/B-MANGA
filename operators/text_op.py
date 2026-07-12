@@ -12,7 +12,7 @@ import math
 import time
 
 import bpy
-from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
+from bpy.props import BoolProperty, FloatProperty, StringProperty
 from bpy.types import Operator
 import gpu
 from gpu_extras.batch import batch_for_shader
@@ -55,16 +55,6 @@ _IME_MOUSE_EVENT_TYPES = {
     "WHEELOUTMOUSE",
     "TIMER",
 }
-
-
-_SPEAKER_TYPE_ITEMS = (
-    ("normal", "通常セリフ", ""),
-    ("thought", "思考", ""),
-    ("shout", "叫び", ""),
-    ("narration", "ナレーション", ""),
-    ("monologue", "モノローグ", ""),
-    ("sfx", "擬音", ""),
-)
 
 
 def _text_tool_initial_writing_mode(context) -> str:
@@ -219,7 +209,6 @@ def _create_text_entry(
     page,
     *,
     body: str,
-    speaker_type: str,
     x_mm: float,
     y_mm: float,
     width_mm: float,
@@ -231,7 +220,6 @@ def _create_text_entry(
     entry = page.texts.add()
     entry.id = _allocate_text_id(page)
     entry.body = body
-    entry.speaker_type = speaker_type
     entry.x_mm = x_mm
     entry.y_mm = y_mm
     entry.width_mm = width_mm
@@ -529,11 +517,6 @@ class BMANGA_OT_text_add(Operator):
     bl_options = {"REGISTER", "UNDO"}
 
     body: StringProperty(name="本文", default="")  # type: ignore[valid-type]
-    speaker_type: EnumProperty(  # type: ignore[valid-type]
-        name="種別",
-        items=_SPEAKER_TYPE_ITEMS,
-        default="normal",
-    )
     x_mm: FloatProperty(name="X (mm)", default=0.0)  # type: ignore[valid-type]
     y_mm: FloatProperty(name="Y (mm)", default=0.0)  # type: ignore[valid-type]
     width_mm: FloatProperty(name="幅 (mm)", default=30.0, min=0.1)  # type: ignore[valid-type]
@@ -552,7 +535,6 @@ class BMANGA_OT_text_add(Operator):
 
     def draw(self, _context):
         layout = self.layout
-        layout.prop(self, "speaker_type")
         row = layout.row(align=True)
         row.prop(self, "width_mm")
         row.prop(self, "height_mm")
@@ -585,7 +567,6 @@ class BMANGA_OT_text_add(Operator):
             context,
             page,
             body=self.body,
-            speaker_type=self.speaker_type,
             x_mm=self.x_mm,
             y_mm=self.y_mm,
             width_mm=self.width_mm,
@@ -989,7 +970,6 @@ class BMANGA_OT_text_tool(Operator):
             context,
             page,
             body="",
-            speaker_type="normal",
             x_mm=x_mm,
             y_mm=y_mm,
             width_mm=width,

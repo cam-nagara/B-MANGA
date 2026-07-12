@@ -28,16 +28,6 @@ _WRITING_MODE_ITEMS = (
     ("horizontal", "横書き", "文字を左から右へ横に並べます"),
 )
 
-_SPEAKER_TYPE_ITEMS = (
-    ("normal", "通常セリフ", "通常の会話セリフ"),
-    ("thought", "思考", "心の中の声（思考）"),
-    ("shout", "叫び", "叫び声・大声"),
-    ("narration", "ナレーション", "状況説明などの地の文"),
-    ("monologue", "モノローグ", "独白"),
-    ("sfx", "擬音", "効果音・擬音語"),
-    ("custom", "カスタム", "その他の分類"),
-)
-
 _RUBY_ALIGN_ITEMS = (
     ("center", "中付き", "ルビと親文字の中心を揃える（JIS標準）"),
     ("start", "肩付き", "ルビと親文字の先頭を揃える"),
@@ -235,12 +225,6 @@ class BMangaTextEntry(bpy.types.PropertyGroup):
     parent_kind: StringProperty(name="親種別", default="page", update=_on_text_entry_changed)  # type: ignore[valid-type]
     parent_key: StringProperty(name="親キー", default="", update=_on_text_entry_changed)  # type: ignore[valid-type]
     folder_key: StringProperty(name="レイヤーフォルダ", default="", update=_on_text_entry_changed)  # type: ignore[valid-type]
-    speaker_type: EnumProperty(  # type: ignore[valid-type]
-        name="セリフ種別",
-        description="セリフの種類を選択します（通常・思考・叫びなど）",
-        items=_SPEAKER_TYPE_ITEMS,
-        default="normal",
-    )
     speaker_name: StringProperty(name="話者", default="", description="このセリフを話すキャラクター名")  # type: ignore[valid-type]
 
     font: StringProperty(name="基本フォント", default="", description="本文全体に使う基本フォント（部分フォントで範囲ごとに上書き可能）", subtype="FILE_PATH", update=_on_text_entry_changed)  # type: ignore[valid-type]

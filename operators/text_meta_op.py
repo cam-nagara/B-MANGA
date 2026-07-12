@@ -42,7 +42,7 @@ def _resolve_text_entry(context):
 
 
 class BMANGA_OT_text_meta_dialog(Operator):
-    """テキストのセリフ種別や話者を編集する."""
+    """テキストの話者などメタ情報を編集する."""
 
     bl_idname = "bmanga.text_meta_dialog"
     bl_label = "テキストメタ情報"
@@ -68,7 +68,6 @@ class BMANGA_OT_text_meta_dialog(Operator):
         box.prop(entry, "visible", text="表示")
         box = layout.box()
         box.label(text="メタ情報", icon="INFO")
-        box.prop(entry, "speaker_type", text="セリフ種別")
         box.prop(entry, "speaker_name", text="話者")
         box.prop(entry, "parent_balloon_id", text="親フキダシ")
         owner = "ページ外" if page is None else str(getattr(page, "title", "") or getattr(page, "id", "") or "ページ")

@@ -131,7 +131,6 @@ def main() -> None:
             context,
             page,
             body="実体テキスト",
-            speaker_type="normal",
             x_mm=24.0,
             y_mm=38.0,
             width_mm=30.0,

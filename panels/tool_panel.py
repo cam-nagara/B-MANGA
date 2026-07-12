@@ -211,15 +211,6 @@ def _draw_active_tool_preset_row(layout, context) -> None:
         prow = layout.row(align=True)
         prow.label(text="テキストプリセット", icon="FONT_DATA")
         prow.prop(wm, "bmanga_text_tool_preset_selector", text="")
-        work = get_work(context)
-        if work is not None and work.pages:
-            try:
-                page = work.pages[work.active_page_index]
-                idx = getattr(page, "active_text_index", -1)
-                if 0 <= idx < len(page.texts):
-                    layout.prop(page.texts[idx], "speaker_type", text="セリフ種別")
-            except (IndexError, AttributeError):
-                pass
         return
     if coma_modal_state.is_active("effect_line_tool") and hasattr(wm, "bmanga_effect_line_tool_preset_selector"):
         prow = layout.row(align=True)

@@ -545,7 +545,6 @@ def _draw_text_detail(layout, context, entry=None) -> None:
 
     box = layout.box()
     box.label(text="話者")
-    box.prop(entry, "speaker_type")
     box.prop(entry, "speaker_name")
 
     box = layout.box()

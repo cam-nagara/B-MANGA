@@ -351,7 +351,6 @@ class BMANGA_PT_texts(Panel):
         entry = page.texts[idx]
 
         box = layout.box()
-        box.prop(entry, "speaker_type")
         row = box.row(align=True)
         row.prop(entry, "x_mm")
         row.prop(entry, "y_mm")

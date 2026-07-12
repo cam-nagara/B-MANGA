@@ -71,7 +71,6 @@ def main() -> None:
             context,
             page,
             body="hit",
-            speaker_type="normal",
             x_mm=30.0,
             y_mm=55.0,
             width_mm=50.0,

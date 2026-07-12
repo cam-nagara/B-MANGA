@@ -178,7 +178,6 @@ def _create_text(context, page, parent_kind: str, parent_key: str, index: int):
         context,
         page,
         body=f"文字{index}",
-        speaker_type="normal",
         x_mm=-20.0,
         y_mm=20.0,
         width_mm=190.0,

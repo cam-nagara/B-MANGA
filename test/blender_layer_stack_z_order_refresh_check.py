@@ -160,7 +160,6 @@ def _create_text(context, page, parent_kind: str, parent_key: str, suffix: str):
         context,
         page,
         body="順序",
-        speaker_type="normal",
         x_mm=82.0,
         y_mm=92.0,
         width_mm=55.0,

@@ -116,7 +116,6 @@ def main() -> None:
             context,
             page,
             body="reset",
-            speaker_type="normal",
             x_mm=50.0,
             y_mm=100.0,
             width_mm=50.0,

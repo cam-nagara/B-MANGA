@@ -41,7 +41,6 @@ _TEXT_KEYS = (
     "stroke_enabled",
     "stroke_width_mm",
     "stroke_color",
-    "speaker_type",
 )
 
 

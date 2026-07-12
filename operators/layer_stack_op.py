@@ -1132,7 +1132,6 @@ class BMANGA_OT_layer_stack_add(Operator, ImportHelper):
             context,
             page,
             body="テキスト",
-            speaker_type="normal",
             x_mm=x_mm,
             y_mm=y_mm,
             width_mm=width,
