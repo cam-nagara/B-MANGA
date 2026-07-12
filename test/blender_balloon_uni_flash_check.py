@@ -122,6 +122,9 @@ class _RecordingLayout:
     def template_curve_mapping(self, *_args, **_kwargs):
         return None
 
+    def template_list(self, *_args, **_kwargs):
+        return None
+
 
 class _RecordingOperator:
     pass

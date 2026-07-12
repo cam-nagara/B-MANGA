@@ -541,7 +541,7 @@ def _draw_text_detail(layout, context, entry=None) -> None:
     from . import text_preset_op
 
     text_preset_op._linked_balloon_target_text_id = entry.id
-    link_box.menu("BMANGA_MT_linked_balloon_preset", text=entry.linked_balloon_preset or "なし")
+    link_box.menu("BMANGA_MT_linked_balloon_preset", text=text_preset_op.linked_balloon_preset_display(entry.linked_balloon_preset))
 
     box = layout.box()
     box.label(text="配置 (mm)")

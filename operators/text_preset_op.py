@@ -6,11 +6,13 @@ import bpy
 from bpy.props import StringProperty
 from bpy.types import Menu, Operator
 
-from ..core.work import get_active_page
+from ..core.work import get_active_page, get_work
 from ..io import balloon_presets, text_presets
 from ..utils import log
 
 _logger = log.get_logger(__name__)
+
+NONE_SHAPE_VALUE = "__NONE_SHAPE__"
 
 # BMANGA_MT_linked_balloon_preset.draw() が active_text_index に依存せず対象
 # テキストを一意に特定できるようにするための一時受け渡し変数。
@@ -19,6 +21,14 @@ _logger = log.get_logger(__name__)
 # Blender のメニュー描画は単一スレッドで行われるため、モジュールレベル
 # 変数でのコンテキスト受け渡しは安全。
 _linked_balloon_target_text_id: str = ""
+
+
+def linked_balloon_preset_display(value: str) -> str:
+    if not value:
+        return "なし"
+    if value == NONE_SHAPE_VALUE:
+        return "フキダシ無し"
+    return value
 
 
 def _selected_text_preset_name(context) -> str:
@@ -284,24 +294,80 @@ class BMANGA_OT_set_linked_balloon_preset(Operator):
     text_id: StringProperty(default="")  # type: ignore[valid-type]
 
     def execute(self, context):
-        page = get_active_page(context)
-        if page is None:
+        work = get_work(context)
+        if work is None:
             self.report({"ERROR"}, "テキストが選択されていません")
             return {"CANCELLED"}
         target_id = self.text_id or _linked_balloon_target_text_id
         entry = None
         if target_id:
-            for e in page.texts:
-                if e.id == target_id:
-                    entry = e
-                    break
-        if entry is None and 0 <= page.active_text_index < len(page.texts):
-            entry = page.texts[page.active_text_index]
+            # text_id が明示されている場合は、全ページの texts と
+            # work.shared_texts (ページ外へ出した共有テキスト) を横断して
+            # id で解決する。ここでアクティブページの active_text_index へ
+            # 盲目的にフォールバックすると、共有テキスト選択時などに無関係な
+            # ページテキストとその親フキダシを黙って書き換えてしまうため、
+            # 見つからなければフォールバックせずに CANCELLED する。
+            from ..utils import text_real_object
+
+            _owner_page, entry = text_real_object.find_text_entry(context.scene, target_id)
+            if entry is None:
+                self.report({"WARNING"}, "対象のテキストが見つかりません")
+                return {"CANCELLED"}
+        else:
+            # text_id 未指定のときだけ、アクティブページのアクティブテキストへ
+            # フォールバックする。
+            page = get_active_page(context)
+            if page is not None and 0 <= page.active_text_index < len(page.texts):
+                entry = page.texts[page.active_text_index]
         if entry is None:
             self.report({"ERROR"}, "テキストが選択されていません")
             return {"CANCELLED"}
         entry.linked_balloon_preset = self.preset_name
+        self._apply_to_parent_balloon(work, entry)
         return {"FINISHED"}
+
+    @staticmethod
+    def _find_balloon_by_id(work, bid: str):
+        """全ページの balloons と work.shared_balloons を横断して id で探す.
+
+        operators/layer_detail_op._find_balloon_entry と同じ探索範囲。
+        ページ外へ出したフキダシ (共有フキダシ) も対象にするため、
+        アクティブページの balloons だけを見てはならない。
+        """
+        if work is None or not bid:
+            return None
+        for page in getattr(work, "pages", []):
+            for b in getattr(page, "balloons", []):
+                if str(getattr(b, "id", "") or "") == bid:
+                    return b
+        for b in getattr(work, "shared_balloons", []):
+            if str(getattr(b, "id", "") or "") == bid:
+                return b
+        return None
+
+    def _apply_to_parent_balloon(self, work, entry) -> None:
+        bid = str(getattr(entry, "parent_balloon_id", "") or "")
+        if not bid:
+            return
+        balloon = self._find_balloon_by_id(work, bid)
+        if balloon is None:
+            return
+        name = self.preset_name
+        if name == NONE_SHAPE_VALUE:
+            balloon.shape = "none"
+            balloon.custom_preset_name = ""
+        elif name:
+            balloon.shape = "custom"
+            balloon.custom_preset_name = name
+        else:
+            # 「なし」(preset_name 空 = プリセット連動の解除)。
+            # フキダシ無し (shape=="none") で本体を隠した状態のときだけ、
+            # 形状を既定の可視形状へ戻して本体を復帰させる。
+            # "rect" は core/balloon.py の shape EnumProperty の default 値。
+            # shape が "none" 以外 (既に可視) の場合は手編集を壊さないため触れない。
+            if str(getattr(balloon, "shape", "") or "") == "none":
+                balloon.shape = "rect"
+                balloon.custom_preset_name = ""
 
 
 class BMANGA_MT_linked_balloon_preset(Menu):
@@ -315,6 +381,9 @@ class BMANGA_MT_linked_balloon_preset(Menu):
         target_id = _linked_balloon_target_text_id
         op = layout.operator(BMANGA_OT_set_linked_balloon_preset.bl_idname, text="なし")
         op.preset_name = ""
+        op.text_id = target_id
+        op = layout.operator(BMANGA_OT_set_linked_balloon_preset.bl_idname, text="フキダシ無し")
+        op.preset_name = NONE_SHAPE_VALUE
         op.text_id = target_id
         layout.separator()
         for preset in balloon_presets.list_all_presets(None):

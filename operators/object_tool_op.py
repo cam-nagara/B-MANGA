@@ -9,7 +9,7 @@ import bpy
 from bpy.props import StringProperty
 from bpy.types import Operator
 
-from ..core.work import get_work
+from ..core.work import get_active_page, get_work
 from ..ui import reparent_overlay
 from ..utils import (
     balloon_curve_object,
@@ -278,6 +278,48 @@ def _edge_hit_close_in_world(context, work, edge_hit: dict, area, region, rv3d, 
     return dist <= tolerance
 
 
+def _pick_selected_coma_edge_or_vertex(
+    context, work, area, region, rv3d, mx: int, my: int,
+) -> dict | None:
+    """選択中/アクティブなコマの辺/頂点をヒットテストする (表示位置で判定)."""
+    selected_keys = set()
+    for k in object_selection.get_keys(context):
+        if object_selection.parse_key(k)[0] == "coma":
+            selected_keys.add(k)
+    ak = active_selection_key(context)
+    if ak and object_selection.parse_key(ak)[0] == "coma":
+        selected_keys.add(ak)
+    if not selected_keys:
+        return None
+    edge_hit = coma_edge_move_op.pick_selected_coma_edge_or_vertex(
+        work, region, rv3d, mx, my,
+        context=context, area=area,
+        selected_keys=selected_keys,
+    )
+    if edge_hit is None:
+        return None
+    page_index = int(edge_hit["page"])
+    coma_index = int(edge_hit["coma"])
+    if page_index < 0 or page_index >= len(work.pages):
+        return None
+    page = work.pages[page_index]
+    comas = list(getattr(page, "comas", []) or [])
+    if coma_index < 0 or coma_index >= len(comas):
+        return None
+    panel = comas[coma_index]
+    key = object_selection.coma_key(page, panel)
+    kind = "coma_vertex" if edge_hit.get("type") == "vertex" else "coma_edge"
+    hit = dict(edge_hit)
+    hit.update({
+        "kind": kind,
+        "key": key,
+        "area": area,
+        "region": region,
+        "rv3d": rv3d,
+    })
+    return hit
+
+
 def hit_object_at_event(context, event) -> dict | None:
     """Return the selectable B-MANGA object under a viewport event."""
     work = get_work(context)
@@ -305,6 +347,13 @@ def hit_object_at_event(context, event) -> dict | None:
     transformed = object_tool_free_transform.hit_transformed_handle_at_event(context, event, _event_world_xy_mm)
     if _hit_visible(transformed):
         return transformed
+    # 選択中/アクティブなコマの辺/頂点はレイヤーオブジェクトより先にチェック
+    # （ハンドルが描画されているのに背面オブジェクトに負けるのを防ぐ）
+    active_coma_edge = _pick_selected_coma_edge_or_vertex(
+        context, work, area, region, rv3d, int(mx), int(my),
+    )
+    if active_coma_edge is not None:
+        return active_coma_edge
     for resolver in (
         _hit_gradient_handle_at_event,
         _hit_text_at_event,
@@ -803,6 +852,9 @@ class BMANGA_OT_object_tool(Operator):
     _marquee_start_y: float
     _marquee_current_x: float
     _marquee_current_y: float
+    _center_snap_targets: list[tuple[float, float]]
+    _original_center: tuple[float, float] | None
+    _center_snap_armed: bool
 
     @classmethod
     def poll(cls, context):
@@ -1397,6 +1449,66 @@ class BMANGA_OT_object_tool(Operator):
         self._drag_keys = keys
         self._snapshots = self._make_snapshots(context, keys, primary_key=key, action=action)
         self._drag_moved = False
+        self._center_snap_targets = []
+        self._original_center = None
+        self._center_snap_armed = False
+        self._setup_center_snap(context)
+
+    def _setup_center_snap(self, context) -> None:
+        """ドラッグ開始時に中心点スナップデータを準備する。"""
+        if self._drag_action != "move":
+            return
+        from ..utils import center_point_snap
+
+        work = get_work(context)
+        if work is None:
+            return
+        original_center = None
+        exclude_balloon_ids: set[str] = set()
+        exclude_effect_layer_names: set[str] = set()
+        page = None
+
+        for snapshot in self._snapshots:
+            kind = snapshot.get("kind", "")
+            if kind == "balloon":
+                co = snapshot.get("center_offset")
+                if co is not None:
+                    rect = snapshot.get("rect", (0, 0, 0, 0))
+                    x, y, w, h = rect
+                    c = (x + w * 0.5 + co[0], y + h * 0.5 + co[1])
+                    if original_center is None:
+                        page_id = snapshot.get("page_id", "")
+                        item_id = snapshot.get("item_id", "")
+                        _pi, page, _idx, entry = _find_balloon_by_key(work, page_id, item_id)
+                        if entry is not None:
+                            from ..utils import balloon_shapes
+                            if balloon_shapes.is_flash_line_style(getattr(entry, "line_style", "")):
+                                original_center = c
+                    exclude_balloon_ids.add(snapshot.get("item_id", ""))
+            elif kind == "effect":
+                center = snapshot.get("center")
+                if center is not None and original_center is None:
+                    original_center = (float(center[0]), float(center[1]))
+                # snapshot["item_id"] はポインタ由来キー("ptr_XXXX")なので、
+                # collect_page_center_points が比較する layer.name へ解決してから除外する。
+                _obj, _layer = _find_effect_layer(snapshot.get("item_id", ""))
+                if _layer is not None:
+                    exclude_effect_layer_names.add(str(getattr(_layer, "name", "") or ""))
+
+        if original_center is None or page is None:
+            if original_center is not None and page is None:
+                page = get_active_page(context)
+            if original_center is None:
+                return
+
+        if page is None:
+            return
+        self._original_center = original_center
+        self._center_snap_targets = center_point_snap.collect_page_center_points(
+            context, page,
+            exclude_balloon_ids=exclude_balloon_ids,
+            exclude_effect_layer_names=exclude_effect_layer_names,
+        )
 
     def _start_rotation_drag(self, context, event, rot_hit: dict) -> None:
         x_mm, y_mm = _event_world_xy_mm(context, event)
@@ -1728,6 +1840,15 @@ class BMANGA_OT_object_tool(Operator):
             return
         dx = float(x_mm) - self._drag_start_x
         dy = float(y_mm) - self._drag_start_y
+        if self._center_snap_targets and self._original_center:
+            from ..utils import center_point_snap
+            # クリック時の微小ジッタでスナップが発火しないよう、
+            # 生の移動量が発動しきい値を超えて初めてスナップを有効化する。
+            # 一度有効化されたらそのドラッグ中は継続して有効。
+            if not self._center_snap_armed and max(abs(dx), abs(dy)) >= center_point_snap.SNAP_ACTIVATION_MM:
+                self._center_snap_armed = True
+            if self._center_snap_armed:
+                dx, dy = center_point_snap.snap_center(self._original_center, dx, dy, self._center_snap_targets)
         if abs(dx) > _DRAG_EPS_MM or abs(dy) > _DRAG_EPS_MM:
             self._drag_moved = True
         self._apply_snapshots(context, dx, dy)
@@ -2128,6 +2249,9 @@ class BMANGA_OT_object_tool(Operator):
         self._rotate_snapshots = []
         self._reparent_start_px = (0.0, 0.0)
         self._reparent_target = None
+        self._center_snap_targets = []
+        self._original_center = None
+        self._center_snap_armed = False
 
     def _enter_free_transform(self, context) -> None:
         key = object_tool_selection.active_selection_key(context)

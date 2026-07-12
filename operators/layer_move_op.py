@@ -192,6 +192,10 @@ class BMANGA_OT_layer_move_tool(Operator):
     _cursor_modal_set: bool
     _drag_origin_world: tuple[float, float] | None
     _last_applied_total: tuple[float, float]
+    _center_snap_targets: list[tuple[float, float]]
+    _original_center: tuple[float, float] | None
+    _center_snap_armed: bool
+    _effect_meta_origin: tuple | None
 
     @classmethod
     def poll(cls, context):
@@ -228,6 +232,10 @@ class BMANGA_OT_layer_move_tool(Operator):
         self._externally_finished = False
         self._drag_origin_world = None
         self._last_applied_total = (0.0, 0.0)
+        self._center_snap_targets = []
+        self._original_center = None
+        self._center_snap_armed = False
+        self._effect_meta_origin = None
         self._cursor_modal_set = coma_modal_state.set_modal_cursor(context, "SCROLL_XY")
         context.window_manager.modal_handler_add(self)
         coma_modal_state.set_active("layer_move", self, context)
@@ -330,8 +338,12 @@ class BMANGA_OT_layer_move_tool(Operator):
                 return {"PASS_THROUGH"}
             if self._dragging:
                 if self._moved:
+                    # 効果線メタ(bounds/center)は確定時に累計移動量で一括更新する。
+                    # _last_applied_total がリセットされる前に読むこと。
+                    self._commit_effect_meta()
                     self._push_undo_step()
                     layer_stack_utils.sync_layer_stack(context)
+                self._effect_meta_origin = None
                 self._target = None
                 self._snapshots = []
                 self._last_world = None
@@ -352,11 +364,34 @@ class BMANGA_OT_layer_move_tool(Operator):
             self._drag_origin_world = self._last_world
         total_dx = coords[0] - self._drag_origin_world[0]
         total_dy = coords[1] - self._drag_origin_world[1]
+        # スナップ発動しきい値判定はスナップ前の生の移動量で行う。
+        raw_move_mm = max(abs(total_dx), abs(total_dy))
+        # Shift 軸ロック: 生の total 値で判定する（スナップ後の値で判定すると
+        # 軸が入れ替わり得るため）。どの軸をロックしたかを記録しておく。
+        shift_locked_axis = None
         if bool(getattr(event, "shift", False)):
             if abs(total_dx) >= abs(total_dy):
                 total_dy = 0.0
+                shift_locked_axis = "y"
             else:
                 total_dx = 0.0
+                shift_locked_axis = "x"
+        if self._center_snap_targets and self._original_center:
+            from ..utils import center_point_snap
+            # 微小ジッタで即スナップしないよう、生の移動量が発動しきい値を
+            # 超えてからスナップを有効化する。一度超えたらそのドラッグ中は継続。
+            if not self._center_snap_armed and raw_move_mm >= center_point_snap.SNAP_ACTIVATION_MM:
+                self._center_snap_armed = True
+            if self._center_snap_armed:
+                total_dx, total_dy = center_point_snap.snap_center(
+                    self._original_center, total_dx, total_dy, self._center_snap_targets,
+                )
+        # スナップは各軸独立に働くため、Shift 軸ロックをスナップ後に再適用して
+        # ロック軸へ移動が再導入されるのを防ぐ。
+        if shift_locked_axis == "y":
+            total_dy = 0.0
+        elif shift_locked_axis == "x":
+            total_dx = 0.0
         dx = total_dx - self._last_applied_total[0]
         dy = total_dy - self._last_applied_total[1]
         if dx == 0.0 and dy == 0.0:
@@ -384,7 +419,75 @@ class BMANGA_OT_layer_move_tool(Operator):
         self._last_applied_total = (0.0, 0.0)
         self._dragging = True
         self._moved = False
+        self._center_snap_targets = []
+        self._original_center = None
+        self._center_snap_armed = False
+        self._effect_meta_origin = None
+        if item.kind == "effect":
+            # 効果線メタ更新のため、ドラッグ開始時点の bounds/center を保持する。
+            # ドラッグ中はメタを触らず、確定時に一括更新する（ESCキャンセル整合性）。
+            from . import effect_line_op
+            obj = resolved.get("object")
+            bounds = effect_line_op.effect_layer_bounds(obj, resolved.get("target"))
+            if bounds is not None:
+                center = effect_line_op.effect_layer_center(obj, resolved.get("target"), bounds)
+                self._effect_meta_origin = (obj, resolved.get("target"), bounds, center)
+        self._setup_center_snap(context, item.kind, resolved)
         return True
+
+    def _setup_center_snap(self, context, kind: str, resolved: dict) -> None:
+        """ドラッグ開始時に中心点スナップデータを準備する。"""
+        from ..utils import center_point_snap
+
+        target = resolved.get("target")
+        page = resolved.get("page") or get_active_page(context)
+        if page is None or target is None:
+            return
+
+        original_center = None
+        exclude_balloon_ids: set[str] = set()
+        exclude_effect_layer_names: set[str] = set()
+
+        if kind == "balloon":
+            c = center_point_snap.balloon_center(target)
+            if c is not None:
+                original_center = c
+                exclude_balloon_ids.add(str(getattr(target, "id", "") or ""))
+        elif kind == "effect":
+            obj = resolved.get("object")
+            if obj is not None:
+                c = center_point_snap.effect_center(obj, target)
+                if c is not None:
+                    original_center = c
+                    exclude_effect_layer_names.add(str(getattr(target, "name", "") or ""))
+
+        if original_center is None:
+            return
+        self._original_center = original_center
+        self._center_snap_targets = center_point_snap.collect_page_center_points(
+            context, page,
+            exclude_balloon_ids=exclude_balloon_ids,
+            exclude_effect_layer_names=exclude_effect_layer_names,
+        )
+
+    def _commit_effect_meta(self) -> None:
+        """効果線ドラッグ確定時に、累計移動量ぶんだけメタ(bounds/center)を更新する。"""
+        origin = getattr(self, "_effect_meta_origin", None)
+        if not origin:
+            return
+        obj, layer, bounds, center = origin
+        if obj is None or layer is None or bounds is None:
+            return
+        tdx, tdy = self._last_applied_total
+        x, y, w, h = bounds
+        center_xy = None
+        if center is not None:
+            center_xy = (float(center[0]) + tdx, float(center[1]) + tdy)
+        from . import effect_line_op
+        effect_line_op._set_layer_bounds(
+            obj, layer, (float(x) + tdx, float(y) + tdy, float(w), float(h)),
+            center_xy_mm=center_xy,
+        )
 
     def _push_undo_step(self) -> None:
         try:
@@ -393,6 +496,8 @@ class BMANGA_OT_layer_move_tool(Operator):
             pass
 
     def _cleanup(self, context) -> None:
+        # ESC/RIGHTMOUSE キャンセルや外部終了ではメタ更新せず、保持データのみクリアする。
+        self._effect_meta_origin = None
         if getattr(self, "_cursor_modal_set", False):
             coma_modal_state.restore_modal_cursor(context)
             self._cursor_modal_set = False

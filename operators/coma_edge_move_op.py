@@ -52,6 +52,7 @@ HANDLE_HIT_RADIUS_PX = 28.0
 ADJACENCY_GAP_TOLERANCE_MM = 0.2  # 隣接判定: 対応辺との垂直距離が gap ± この値以内
 ADJACENCY_OVERLAP_RATIO = 0.2  # 隣接判定: 重なり比率がこの値以上で連動
 DOUBLE_CLICK_INTERVAL = 0.4  # シングル/ダブル判定の閾値 (秒)
+SELECTION_OUTSET_MM = object_selection.SELECTION_HANDLE_OUTSET_MM
 
 COLOR_SELECTED_EDGE = viewport_colors.SELECTION_STRONG
 COLOR_SELECTED_BORDER = viewport_colors.SELECTION
@@ -149,6 +150,45 @@ def _coma_polygon(panel) -> list[tuple[float, float]]:
     if panel.shape_type == "polygon":
         return [(v.x_mm, v.y_mm) for v in panel.vertices]
     return []
+
+
+def _expanded_poly_for_selection(
+    poly: list[tuple[float, float]],
+    outset_mm: float,
+) -> list[tuple[float, float]]:
+    """選択表示用にポリゴンを外側へ膨らませる (overlay_coma_selection と同じロジック)."""
+    if len(poly) < 3 or outset_mm <= 0.0:
+        return list(poly)
+    xs = [float(x) for x, _y in poly]
+    ys = [float(y) for _x, y in poly]
+    unique_x = sorted({round(x, 6) for x in xs})
+    unique_y = sorted({round(y, 6) for y in ys})
+    if len(poly) == 4 and len(unique_x) == 2 and len(unique_y) == 2:
+        # 頂点順を保存したまま各頂点を外側へ押し出す。 canonical
+        # [(min,min),(max,min),(max,max),(min,max)] へ並べ替えると、 polygon 型で
+        # 頂点順が異なるコマ (例: ナイフカット直後) の edge/vertex インデックスが
+        # 生ポリゴンとずれ、 別の辺/角が操作されてしまうため。
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+        out = []
+        for x, y in poly:
+            nx = x - outset_mm if (x - min_x) < (max_x - x) else x + outset_mm
+            ny = y - outset_mm if (y - min_y) < (max_y - y) else y + outset_mm
+            out.append((nx, ny))
+        return out
+    cx = sum(xs) / len(xs)
+    cy = sum(ys) / len(ys)
+    out: list[tuple[float, float]] = []
+    for x, y in poly:
+        dx = float(x) - cx
+        dy = float(y) - cy
+        length = math.hypot(dx, dy)
+        if length <= 1.0e-6:
+            out.append((float(x), float(y)))
+        else:
+            scale = (length + outset_mm) / length
+            out.append((cx + dx * scale, cy + dy * scale))
+    return out
 
 
 def _set_coma_polygon(panel, poly: list[tuple[float, float]]) -> None:
@@ -526,6 +566,115 @@ def _find_overlapping_coma_edges(
 # ---------- ピック ----------
 
 
+def pick_selected_coma_edge_or_vertex(
+    work, region, rv3d, mx: int, my: int,
+    *, context=None, area=None,
+    selected_keys: set | None = None,
+) -> dict | None:
+    """選択中コマの辺/頂点を拡張ポリゴン (SELECTION_OUTSET_MM) でヒットテストする.
+
+    _pick_edge_or_vertex は全コマを生ポリゴンで走査するが、
+    選択ハンドルは3mm外側に描画されるため、ここでは選択中コマだけを
+    拡張ポリゴンで判定する。
+
+    描画側 (overlay_coma_selection.draw) と同じ可視性ゲート
+    (page_visible / coma_visible) を適用し、非表示のページ/コマは判定から
+    除外する (非表示コマがクリックを奪う不具合を防ぐ)。頂点を辺より無条件に
+    優先する 2 パス方式で、パネルは辺数ぶん重複させず 1 度だけ列挙する。
+    """
+    if selected_keys is None or not selected_keys:
+        return None
+
+    # ui パッケージにあるため循環 import 回避で関数内遅延 import
+    # (overlay_visibility は operators を import しないので安全)。
+    from ..ui import overlay_visibility
+
+    def _offset_for_page(pi: int, page) -> tuple[float, float]:
+        if area is not None:
+            return _page_offset_for_area(context or bpy.context, work, area, pi)
+        scene = getattr(context, "scene", None) or bpy.context.scene
+        cols = max(1, int(getattr(scene, "bmanga_overview_cols", 4)))
+        gap_x, gap_y = page_grid.resolve_gap_mm(scene)
+        cw = work.paper.canvas_width_mm
+        ch = work.paper.canvas_height_mm
+        start_side = getattr(work.paper, "start_side", "right")
+        read_direction = getattr(work.paper, "read_direction", "left")
+        ox, oy = page_grid.page_grid_offset_mm(
+            pi, cols, gap_x, cw, ch, start_side, read_direction,
+            work=work, gap_y_mm=gap_y,
+        )
+        add_x, add_y = page_grid.page_manual_offset_mm(page)
+        return ox + add_x, oy + add_y
+
+    # 選択中かつ表示中のパネルを 1 度だけ列挙 (辺数ぶんの重複フルスキャンを排除)。
+    panels: list[tuple[int, int, list, float, float]] = []
+    for pi, page in enumerate(work.pages):
+        if not overlay_visibility.page_visible(page):
+            continue
+        comas = list(getattr(page, "comas", []) or [])
+        offset: tuple[float, float] | None = None
+        for panel_i, panel in enumerate(comas):
+            key = object_selection.coma_key(page, panel)
+            if key not in selected_keys:
+                continue
+            if not overlay_visibility.coma_visible(panel, page=page):
+                continue
+            poly = _coma_polygon(panel)
+            if len(poly) < 2:
+                continue
+            if offset is None:
+                offset = _offset_for_page(pi, page)
+            ox, oy = offset
+            expanded = _expanded_poly_for_selection(poly, SELECTION_OUTSET_MM)
+            panels.append((pi, panel_i, expanded, ox, oy))
+
+    if not panels:
+        return None
+
+    # 第 1 パス: 全頂点を走査し、許容範囲内の最寄り頂点があれば即返す
+    # (辺より無条件に優先。 パネルの走査順に依存しない絶対的頂点優先)。
+    best_vertex: dict | None = None
+    best_vertex_dist = VERTEX_PICK_TOLERANCE_PX
+    for pi, panel_i, expanded, ox, oy in panels:
+        for vi in range(len(expanded)):
+            vx, vy = expanded[vi][0] + ox, expanded[vi][1] + oy
+            vp = _world_mm_to_region(region, rv3d, vx, vy)
+            if vp is None:
+                continue
+            d = math.hypot(vp[0] - mx, vp[1] - my)
+            if d < best_vertex_dist:
+                best_vertex = {
+                    "type": "vertex",
+                    "page": pi, "coma": panel_i, "vertex": vi,
+                }
+                best_vertex_dist = d
+    if best_vertex is not None:
+        return best_vertex
+
+    # 第 2 パス: 頂点ヒットが無ければ全辺を走査して最寄り辺を返す。
+    best_edge: dict | None = None
+    best_edge_dist = EDGE_PICK_TOLERANCE_PX
+    for pi, panel_i, expanded, ox, oy in panels:
+        n = len(expanded)
+        for ei_exp in range(n):
+            a_exp = expanded[ei_exp]
+            b_exp = expanded[(ei_exp + 1) % n]
+            ax, ay = a_exp[0] + ox, a_exp[1] + oy
+            bx, by = b_exp[0] + ox, b_exp[1] + oy
+            ap = _world_mm_to_region(region, rv3d, ax, ay)
+            bp = _world_mm_to_region(region, rv3d, bx, by)
+            if ap is None or bp is None:
+                continue
+            d, _t = _distance_point_to_segment((mx, my), ap, bp)
+            if d < best_edge_dist:
+                best_edge = {
+                    "type": "edge",
+                    "page": pi, "coma": panel_i, "edge": ei_exp,
+                }
+                best_edge_dist = d
+    return best_edge
+
+
 def _pick_edge_or_vertex(
     work, region, rv3d, mx: int, my: int, *, context=None, area=None,
 ) -> Optional[dict]:
@@ -645,13 +794,18 @@ def _iter_selection_edge_refs(work, selection: dict | None):
         yield page_index, coma_index, edge_index, poly[edge_index], poly[(edge_index + 1) % len(poly)]
 
 
-def _iter_panel_edge_refs_for_handles(work, selection: dict | None):
+def _iter_panel_edge_refs_for_handles(work, selection: dict | None, *, outset_mm: float = 0.0):
     """▲ ハンドル hit テスト用: 選択中の (page, coma) の **全 4 辺** を yield する.
 
     描画用 ``_iter_selection_edge_refs`` と異なり、 kind が ``edge`` (= 1 辺
     だけ選択) でも、 vertex でも、 panel 全 4 辺の ▲ をクリック対象にする。
     これにより ``edge`` 状態のまま連続して別辺の ▲ をクリックできる
     (枠線カットツールでの ``_pick_edge_or_vertex`` 直後など)。
+
+    ``outset_mm`` は判定に使うポリゴンの外側膨張量 (mm)。 呼び出し元の描画に
+    合わせる: オブジェクトツール等の overlay 描画は拡張ポリゴン (3mm 外側) を
+    使うため ``SELECTION_OUTSET_MM``、 枠線編集モーダルの ``_draw_callback`` は
+    生ポリゴンで ▲ を描くため ``0.0`` を渡す。 描画と判定の中心を一致させる。
     """
     if selection is None:
         return
@@ -669,6 +823,7 @@ def _iter_panel_edge_refs_for_handles(work, selection: dict | None):
         return
     panel = page.comas[coma_index]
     poly = _coma_polygon(panel)
+    poly = _expanded_poly_for_selection(poly, outset_mm)
     if len(poly) < 2:
         return
     for edge_index in range(len(poly)):
@@ -684,10 +839,14 @@ def _hit_selection_handle(
     rv3d,
     mx: int,
     my: int,
+    *,
+    outset_mm: float = 0.0,
 ) -> dict | None:
     best: dict | None = None
     best_dist = HANDLE_HIT_RADIUS_PX
-    for page_index, coma_index, edge_index, a, b in _iter_panel_edge_refs_for_handles(work, selection):
+    for page_index, coma_index, edge_index, a, b in _iter_panel_edge_refs_for_handles(
+        work, selection, outset_mm=outset_mm
+    ):
         ox, oy = _page_offset_for_area(context, work, area, page_index)
         edge_a = (a[0] + ox, a[1] + oy)
         edge_b = (b[0] + ox, b[1] + oy)
@@ -771,9 +930,16 @@ def find_selected_handle_at_event(context, event) -> dict | None:
     except Exception:  # noqa: BLE001
         pass
 
+    # 判定に使う拡張量は「実際に ▲ を描いている側」に合わせる:
+    # 枠線編集モーダル (edge_move) が動作中は overlay_coma_selection.draw が
+    # 早期 return し、 モーダルの _draw_callback が生ポリゴンで ▲ を描くため
+    # 0.0。 それ以外はオブジェクトツール等の overlay が拡張ポリゴン (3mm 外側)
+    # で ▲ を描くため SELECTION_OUTSET_MM。 これで描画と判定の中心が一致する。
+    outset = 0.0 if coma_modal_state.is_active("edge_move") else SELECTION_OUTSET_MM
     for selection in candidates:
         hit = _hit_selection_handle(
-            context, work, selection, area, region, rv3d, mx, my
+            context, work, selection, area, region, rv3d, mx, my,
+            outset_mm=outset,
         )
         if hit is not None:
             return hit
@@ -1052,6 +1218,8 @@ class BMANGA_OT_coma_edge_move(Operator):
                     return {"RUNNING_MODAL"}
                 mx, my = self._to_window(event)
                 # 既存選択の▲ハンドルを、辺/枠線全体選択のどちらでも最優先で拾う。
+                # モーダルの _draw_callback は生ポリゴンで ▲ を描くため、 判定も
+                # 生ポリゴン (outset_mm=0.0 の既定) で行い描画中心と一致させる。
                 handle_hit = _hit_selection_handle(
                     context,
                     self._work,
@@ -1061,6 +1229,7 @@ class BMANGA_OT_coma_edge_move(Operator):
                     self._rv3d,
                     mx,
                     my,
+                    outset_mm=0.0,
                 )
                 if handle_hit is not None:
                     # 拡張前の selection kind を保持。 ``_do_extend`` 後に

@@ -167,9 +167,18 @@ def _expanded_poly_for_selection(
     unique_x = sorted({round(x, 6) for x in xs})
     unique_y = sorted({round(y, 6) for y in ys})
     if len(poly) == 4 and len(unique_x) == 2 and len(unique_y) == 2:
-        min_x, max_x = min(xs) - outset_mm, max(xs) + outset_mm
-        min_y, max_y = min(ys) - outset_mm, max(ys) + outset_mm
-        return [(min_x, min_y), (max_x, min_y), (max_x, max_y), (min_x, max_y)]
+        # 頂点順を保存したまま各頂点を外側へ押し出す。 canonical
+        # [(min,min),(max,min),(max,max),(min,max)] へ並べ替えると、 polygon 型で
+        # 頂点順が異なるコマ (例: ナイフカット直後) の edge/vertex インデックスが
+        # 生ポリゴンとずれ、 選択辺ハイライトが別の辺に描かれてしまうため。
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+        out = []
+        for x, y in poly:
+            nx = x - outset_mm if (x - min_x) < (max_x - x) else x + outset_mm
+            ny = y - outset_mm if (y - min_y) < (max_y - y) else y + outset_mm
+            out.append((nx, ny))
+        return out
     cx = sum(xs) / len(xs)
     cy = sum(ys) / len(ys)
     out: list[tuple[float, float]] = []
