@@ -4,7 +4,7 @@
   "presetName": "セリフ（標準）",
   "description": "通常のセリフ用。縦書き、標準フォントサイズ",
   "writing_mode": "vertical",
-  "font_size_unit": "Q",
+  "font_size_unit": "q",
   "font_size_value": 20.0,
   "line_height": 1.4,
   "letter_spacing": 0.0,

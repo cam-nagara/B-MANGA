@@ -61,6 +61,23 @@ class TextPreset:
     data: dict[str, Any]
 
 
+def normalize_font_size_unit(value: Any) -> str:
+    """サイズ単位を正規形 ("q" / "pt") へ揃える.
+
+    エントリ側 EnumProperty (core/text_entry.py の _FONT_SIZE_UNIT_ITEMS) の
+    識別子は小文字だが、旧同梱プリセット等に大文字 "Q" が残っており、
+    そのまま代入すると TypeError になる (v0.6.497 実機で発生)。
+    """
+    unit = str(value or "q").strip().lower()
+    return unit if unit in {"q", "pt"} else "q"
+
+
+def _normalize_preset_data(data: dict[str, Any]) -> dict[str, Any]:
+    if "font_size_unit" in data:
+        data["font_size_unit"] = normalize_font_size_unit(data.get("font_size_unit"))
+    return data
+
+
 def _list_in_dir(base: Path, *, source: str) -> list[TextPreset]:
     if not base.is_dir():
         return []
@@ -80,7 +97,7 @@ def _list_in_dir(base: Path, *, source: str) -> list[TextPreset]:
                 description=data.get("description", ""),
                 path=path,
                 source=source,
-                data=data,
+                data=_normalize_preset_data(data),
             )
         )
     return out

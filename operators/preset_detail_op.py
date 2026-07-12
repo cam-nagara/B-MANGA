@@ -173,9 +173,11 @@ class BMANGA_OT_preset_detail_edit(Operator):
         items=[("vertical", "縦書き", ""), ("horizontal", "横書き", "")],
     )
     font_size_value: FloatProperty(name="フォントサイズ", min=1.0, max=200.0, default=20.0)  # type: ignore[valid-type]
+    # 識別子はエントリ側 (core/text_entry.py _FONT_SIZE_UNIT_ITEMS) と同じ小文字が正規形。
+    # 旧定義の大文字 "Q"・存在しない "mm" はプリセット適用時に無言で失敗していた。
     font_size_unit: EnumProperty(  # type: ignore[valid-type]
         name="単位",
-        items=[("Q", "Q", ""), ("pt", "pt", ""), ("mm", "mm", "")],
+        items=[("q", "Q", ""), ("pt", "pt", "")],
     )
     line_height: FloatProperty(name="行間", min=0.5, max=5.0, default=1.4)  # type: ignore[valid-type]
     letter_spacing: FloatProperty(name="字間", min=-1.0, max=2.0, default=0.0)  # type: ignore[valid-type]
@@ -237,20 +239,35 @@ class BMANGA_OT_preset_detail_edit(Operator):
         self._load_type_fields(data)
         return context.window_manager.invoke_props_dialog(self, width=320)
 
+    @staticmethod
+    def _enum_or(value, allowed: tuple[str, ...], default: str) -> str:
+        """ファイル由来の値を EnumProperty へ入れる前に検証する.
+
+        プリセット JSON は手編集・旧バージョン由来の値を含み得るため、
+        識別子に無い値をそのまま代入すると invoke ごと TypeError で落ちる。
+        """
+        text = str(value or "").strip()
+        return text if text in allowed else default
+
     def _load_type_fields(self, data: dict[str, Any]) -> None:
         pt = self.preset_type
         if pt == "fill":
             self.color = _color_from_data(data, "color")
             self.opacity = int(data.get("opacity", 100))
         elif pt == "gradient":
-            self.gradient_type = str(data.get("gradient_type", "linear"))
+            self.gradient_type = self._enum_or(
+                data.get("gradient_type"), ("linear", "radial"), "linear")
             self.color = _color_from_data(data, "color")
             self.color2 = _color_from_data(data, "color2", (1, 1, 1, 1))
             self.opacity = int(data.get("opacity", 100))
         elif pt == "text":
-            self.writing_mode = str(data.get("writing_mode", "vertical"))
+            from ..io import text_presets
+
+            self.writing_mode = self._enum_or(
+                data.get("writing_mode"), ("vertical", "horizontal"), "vertical")
             self.font_size_value = float(data.get("font_size_value", 20.0))
-            self.font_size_unit = str(data.get("font_size_unit", "Q"))
+            self.font_size_unit = text_presets.normalize_font_size_unit(
+                data.get("font_size_unit"))
             self.line_height = float(data.get("line_height", 1.4))
             self.letter_spacing = float(data.get("letter_spacing", 0.0))
             self.color = _color_from_data(data, "color")
@@ -259,7 +276,8 @@ class BMANGA_OT_preset_detail_edit(Operator):
             self.stroke_enabled = bool(data.get("stroke_enabled", False))
         elif pt == "border":
             border = data.get("border", {})
-            self.border_style = str(border.get("style", "solid"))
+            self.border_style = self._enum_or(
+                border.get("style"), ("solid", "none", "dashed"), "solid")
             self.border_width_mm = float(border.get("widthMm", 0.5))
             self.border_color = _color_from_data(border, "color", (0, 0, 0, 1))
             self.border_blur = float(border.get("blurAmount", 0.5))
@@ -268,13 +286,17 @@ class BMANGA_OT_preset_detail_edit(Operator):
             self.white_margin_width_mm = float(wm_data.get("widthMm", 0.5))
         elif pt == "tail":
             tail = data.get("tail", {})
-            self.tail_line_type = str(tail.get("lineType", "wedge"))
+            self.tail_line_type = self._enum_or(
+                tail.get("lineType"), ("wedge", "curve", "pen", "ellipse"), "wedge")
             self.tail_root_width_mm = float(tail.get("rootWidthMm", 3.0))
             self.tail_tip_width_mm = float(tail.get("tipWidthMm", 0.0))
             self.tail_length_mm = float(tail.get("lengthMm", 6.0))
             self.tail_curve_bend = float(tail.get("curveBend", 0.0))
         elif pt == "effect_line":
-            self.effect_type = str(data.get("effect_type", "focus"))
+            self.effect_type = self._enum_or(
+                data.get("effect_type"),
+                ("focus", "uni_flash", "beta_flash", "speed", "white_outline"),
+                "focus")
             self.opacity = int(data.get("opacity") or 100)
             self.brush_size_mm = float(data.get("brush_size_mm") or 0.3)
             self.max_line_count = int(data.get("max_line_count") or 60)

@@ -4,7 +4,7 @@
   "presetName": "ナレーション",
   "description": "ナレーション・モノローグ用。横書き、やや小さめ",
   "writing_mode": "horizontal",
-  "font_size_unit": "Q",
+  "font_size_unit": "q",
   "font_size_value": 14.0,
   "line_height": 1.5,
   "letter_spacing": 0.0,
