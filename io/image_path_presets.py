@@ -413,11 +413,10 @@ def _global_preset_by_name(name: str) -> ImagePathPreset | None:
 
 
 def preset_name_exists(work_dir: Path | None, name: str) -> bool:
-    _ = work_dir
     name = str(name or "").strip()
     if not name:
         return False
-    return _global_preset_by_name(name) is not None or _local_preset_by_name(name) is not None
+    return any(p.name == name for p in list_all_presets(work_dir))
 
 
 def unique_preset_name(work_dir: Path | None, base: str) -> str:
@@ -480,6 +479,12 @@ def save_local_preset(
         name,
         description=description,
     )
+    index = _read_local_index()
+    hidden = set(index.get("hidden", []))
+    if name in hidden:
+        hidden.discard(name)
+        index["hidden"] = list(hidden)
+        _write_local_index(index)
     if is_new:
         _insert_order_name(work_dir, name, after_name=insert_after)
     _logger.info("shared image path preset saved: %s", out)
@@ -507,6 +512,7 @@ def rename_preset(work_dir: Path | None, old_name: str, new_name: str) -> ImageP
     hidden = set(index.get("hidden", []))
     if preset.source == "global":
         hidden.add(old_name)
+    hidden.discard(new_name)
     out = _write_local_preset_data(preset.data, new_name)
     if preset.source == "user" and preset.path != out:
         try:
@@ -536,6 +542,12 @@ def duplicate_preset(work_dir: Path | None, source_name: str, new_name: str) -> 
     if preset is None:
         raise ValueError(f"プリセットが見つかりません: {source_name}")
     _write_local_preset_data(preset.data, new_name)
+    index = _read_local_index()
+    hidden = set(index.get("hidden", []))
+    if new_name in hidden:
+        hidden.discard(new_name)
+        index["hidden"] = list(hidden)
+        _write_local_index(index)
     _insert_order_name(work_dir, new_name, after_name=source_name)
     result = _local_preset_by_name(new_name)
     if result is None:

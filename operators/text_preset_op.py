@@ -4,13 +4,21 @@ from __future__ import annotations
 
 import bpy
 from bpy.props import StringProperty
-from bpy.types import Operator
+from bpy.types import Menu, Operator
 
 from ..core.work import get_active_page
-from ..io import text_presets
+from ..io import balloon_presets, text_presets
 from ..utils import log
 
 _logger = log.get_logger(__name__)
+
+# BMANGA_MT_linked_balloon_preset.draw() が active_text_index に依存せず対象
+# テキストを一意に特定できるようにするための一時受け渡し変数。
+# メニュー描画の直前に呼び出し側 (panels/layer_stack_detail_ui.py,
+# operators/layer_detail_op.py) が描画対象 entry.id を設定する。
+# Blender のメニュー描画は単一スレッドで行われるため、モジュールレベル
+# 変数でのコンテキスト受け渡しは安全。
+_linked_balloon_target_text_id: str = ""
 
 
 def _selected_text_preset_name(context) -> str:
@@ -265,6 +273,56 @@ class BMANGA_OT_text_preset_move(Operator):
         return {"FINISHED"}
 
 
+class BMANGA_OT_set_linked_balloon_preset(Operator):
+    """アクティブなテキストのリンクフキダシプリセットを設定する."""
+
+    bl_idname = "bmanga.set_linked_balloon_preset"
+    bl_label = "リンクフキダシプリセットを設定"
+    bl_options = {"REGISTER", "UNDO"}
+
+    preset_name: StringProperty(default="")  # type: ignore[valid-type]
+    text_id: StringProperty(default="")  # type: ignore[valid-type]
+
+    def execute(self, context):
+        page = get_active_page(context)
+        if page is None:
+            self.report({"ERROR"}, "テキストが選択されていません")
+            return {"CANCELLED"}
+        target_id = self.text_id or _linked_balloon_target_text_id
+        entry = None
+        if target_id:
+            for e in page.texts:
+                if e.id == target_id:
+                    entry = e
+                    break
+        if entry is None and 0 <= page.active_text_index < len(page.texts):
+            entry = page.texts[page.active_text_index]
+        if entry is None:
+            self.report({"ERROR"}, "テキストが選択されていません")
+            return {"CANCELLED"}
+        entry.linked_balloon_preset = self.preset_name
+        return {"FINISHED"}
+
+
+class BMANGA_MT_linked_balloon_preset(Menu):
+    """リンクフキダシプリセットを選択するメニュー."""
+
+    bl_idname = "BMANGA_MT_linked_balloon_preset"
+    bl_label = "リンクフキダシプリセット"
+
+    def draw(self, context):
+        layout = self.layout
+        target_id = _linked_balloon_target_text_id
+        op = layout.operator(BMANGA_OT_set_linked_balloon_preset.bl_idname, text="なし")
+        op.preset_name = ""
+        op.text_id = target_id
+        layout.separator()
+        for preset in balloon_presets.list_all_presets(None):
+            op = layout.operator(BMANGA_OT_set_linked_balloon_preset.bl_idname, text=preset.name)
+            op.preset_name = preset.name
+            op.text_id = target_id
+
+
 _CLASSES = (
     BMANGA_OT_text_preset_add_local,
     BMANGA_OT_text_preset_save,
@@ -272,6 +330,8 @@ _CLASSES = (
     BMANGA_OT_text_preset_duplicate,
     BMANGA_OT_text_preset_delete,
     BMANGA_OT_text_preset_move,
+    BMANGA_OT_set_linked_balloon_preset,
+    BMANGA_MT_linked_balloon_preset,
 )
 
 

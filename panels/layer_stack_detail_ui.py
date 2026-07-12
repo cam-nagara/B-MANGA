@@ -566,7 +566,10 @@ def _draw_text_selected_settings(box, context, entry) -> None:
     # リンクフキダシプリセット
     link_box = box.box()
     link_box.label(text="リンクフキダシプリセット", icon="LINKED")
-    link_box.prop(entry, "linked_balloon_preset", text="")
+    from ..operators import text_preset_op
+
+    text_preset_op._linked_balloon_target_text_id = entry.id
+    link_box.menu("BMANGA_MT_linked_balloon_preset", text=entry.linked_balloon_preset or "なし")
 
     parent_box = box.box()
     parent_box.label(text="親フキダシ", icon="LINKED")

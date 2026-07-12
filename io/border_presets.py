@@ -290,6 +290,12 @@ def save_local_preset(
         name,
         description=description,
     )
+    index = _read_local_index(work_dir)
+    hidden = set(index.get("hidden", []))
+    if name in hidden:
+        hidden.discard(name)
+        index["hidden"] = list(hidden)
+        _write_local_index(work_dir, index)
     if is_new:
         _insert_order_name(work_dir, name, after_name=insert_after)
     _logger.info("shared border preset saved: %s", out)
@@ -297,9 +303,7 @@ def save_local_preset(
 
 
 def preset_name_exists(work_dir: Path, name: str) -> bool:
-    if _global_preset_by_name(name) is not None:
-        return True
-    return _local_preset_by_name(work_dir, name) is not None
+    return any(p.name == name for p in list_all_presets(work_dir))
 
 
 def unique_preset_name(work_dir: Path, base: str) -> str:
@@ -334,6 +338,7 @@ def rename_preset(work_dir: Path, old_name: str, new_name: str) -> BorderPreset:
     hidden = set(index.get("hidden", []))
     if preset.source == "global":
         hidden.add(old_name)
+    hidden.discard(new_name)
     out = _write_local_preset_data(work_dir, preset.data, new_name)
     if preset.source == "user" and preset.path != out:
         try:
@@ -363,6 +368,12 @@ def duplicate_preset(work_dir: Path, source_name: str, new_name: str) -> BorderP
     if preset is None:
         raise ValueError(f"プリセットが見つかりません: {source_name}")
     _write_local_preset_data(work_dir, preset.data, new_name)
+    index = _read_local_index(work_dir)
+    hidden = set(index.get("hidden", []))
+    if new_name in hidden:
+        hidden.discard(new_name)
+        index["hidden"] = list(hidden)
+        _write_local_index(work_dir, index)
     _insert_order_name(work_dir, new_name, after_name=source_name)
     result = _local_preset_by_name(work_dir, new_name)
     if result is None:

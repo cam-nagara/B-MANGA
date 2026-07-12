@@ -538,7 +538,10 @@ def _draw_text_detail(layout, context, entry=None) -> None:
     # リンクフキダシプリセット
     link_box = layout.box()
     link_box.label(text="リンクフキダシプリセット", icon="LINKED")
-    link_box.prop(entry, "linked_balloon_preset", text="")
+    from . import text_preset_op
+
+    text_preset_op._linked_balloon_target_text_id = entry.id
+    link_box.menu("BMANGA_MT_linked_balloon_preset", text=entry.linked_balloon_preset or "なし")
 
     box = layout.box()
     box.label(text="配置 (mm)")

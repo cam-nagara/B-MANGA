@@ -125,6 +125,12 @@ def save_local_preset(
     out = target_dir / f"{safe}{PRESET_SUFFIX}"
     is_new = not out.exists()
     result = save_preset(out, name, description, vertices_mm, absolute_coords=absolute_coords)
+    index = _read_local_index()
+    hidden = set(index.get("hidden", []))
+    if name in hidden:
+        hidden.discard(name)
+        index["hidden"] = list(hidden)
+        _write_local_index(index)
     if is_new:
         _insert_order_name(name)
     return result
@@ -288,9 +294,7 @@ def _write_local_preset_data(
 
 
 def preset_name_exists(name: str) -> bool:
-    if _global_preset_by_name(name) is not None:
-        return True
-    return _local_preset_by_name(name) is not None
+    return any(p.name == name for p in list_all_presets(None))
 
 
 def unique_preset_name(base: str = "新規フキダシプリセット") -> str:
@@ -332,6 +336,7 @@ def rename_preset(old_name: str, new_name: str) -> BalloonPreset:
     hidden = set(index.get("hidden", []))
     if preset.source == "global":
         hidden.add(old_name)
+    hidden.discard(new_name)
     out = _write_local_preset_data(preset.data, new_name)
     if preset.source == "user" and preset.path != out:
         try:
@@ -361,6 +366,12 @@ def duplicate_preset(source_name: str, new_name: str) -> BalloonPreset:
     if preset is None:
         raise ValueError(f"プリセットが見つかりません: {source_name}")
     _write_local_preset_data(preset.data, new_name)
+    index = _read_local_index()
+    hidden = set(index.get("hidden", []))
+    if new_name in hidden:
+        hidden.discard(new_name)
+        index["hidden"] = list(hidden)
+        _write_local_index(index)
     _insert_order_name(new_name, after_name=source_name)
     result = _local_preset_by_name(new_name)
     if result is None:

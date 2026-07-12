@@ -197,6 +197,12 @@ def save_local_preset(
     target = shared_presets.preset_dir("text")
     filename = name.replace("/", "_").replace("\\", "_") + PRESET_SUFFIX
     result = save_preset(target / filename, name, description, entry_data)
+    index = _read_local_index()
+    hidden = set(index.get("hidden", []))
+    if name in hidden:
+        hidden.discard(name)
+        index["hidden"] = list(hidden)
+        _write_local_index(index)
     if is_new:
         _insert_order_name(name)
     return result
@@ -309,9 +315,7 @@ def _write_local_preset_data(data: dict, name: str, *, description: str = "") ->
 
 
 def preset_name_exists(name: str) -> bool:
-    if _global_preset_by_name(name) is not None:
-        return True
-    return _local_preset_by_name(name) is not None
+    return any(p.name == name for p in list_all_presets(None))
 
 
 def unique_preset_name(base: str) -> str:
@@ -326,10 +330,10 @@ def unique_preset_name(base: str) -> str:
 
 
 def load_preset_by_name(name: str) -> TextPreset | None:
-    local = _local_preset_by_name(name)
-    if local is not None:
-        return local
-    return _global_preset_by_name(name)
+    for preset in list_all_presets(None):
+        if preset.name == name:
+            return preset
+    return None
 
 
 def rename_preset(old_name: str, new_name: str) -> TextPreset:
@@ -352,6 +356,7 @@ def rename_preset(old_name: str, new_name: str) -> TextPreset:
     hidden = set(index.get("hidden", []))
     if preset.source == "global":
         hidden.add(old_name)
+    hidden.discard(new_name)
     out = _write_local_preset_data(preset.data, new_name)
     if preset.source == "user" and preset.path != out:
         try:
@@ -381,6 +386,12 @@ def duplicate_preset(source_name: str, new_name: str) -> TextPreset:
     if preset is None:
         raise ValueError(f"プリセットが見つかりません: {source_name}")
     _write_local_preset_data(preset.data, new_name)
+    index = _read_local_index()
+    hidden = set(index.get("hidden", []))
+    if new_name in hidden:
+        hidden.discard(new_name)
+        index["hidden"] = list(hidden)
+        _write_local_index(index)
     _insert_order_name(new_name, after_name=source_name)
     result = _local_preset_by_name(new_name)
     if result is None:
