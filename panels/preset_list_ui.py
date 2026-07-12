@@ -11,12 +11,44 @@ class BMANGA_PresetListItem(PropertyGroup):
     identifier: StringProperty()  # type: ignore[valid-type]
 
 
+_TYPE_ICON = {
+    "border": "MESH_PLANE",
+    "balloon": "MESH_CIRCLE",
+    "text": "FONT_DATA",
+    "effect_line": "FORCE_FORCE",
+    "fill": "SNAP_FACE",
+    "gradient": "NODE_TEXTURE",
+    "image_path": "CURVE_BEZCURVE",
+    "tail": "SHARPCURVE",
+}
+
+
+def _preset_type_from_active_property(active_property: str) -> str:
+    s = active_property
+    if s.startswith("bmanga_"):
+        s = s[7:]
+    if s.endswith("_preset_list_index"):
+        s = s[:-18]
+    return s
+
+
 class BMANGA_UL_presets(UIList):
     bl_idname = "BMANGA_UL_presets"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_property, index):
         if self.layout_type in {"DEFAULT", "COMPACT"}:
-            layout.label(text=item.name)
+            preset_type = _preset_type_from_active_property(active_property)
+            tool_icon = _TYPE_ICON.get(preset_type, "PREFERENCES")
+            row = layout.row(align=True)
+            row.label(text=item.name)
+            op = row.operator(
+                "bmanga.preset_detail_edit",
+                text="",
+                icon=tool_icon,
+                emboss=False,
+            )
+            op.preset_type = preset_type
+            op.preset_name = item.identifier
         elif self.layout_type == "GRID":
             layout.alignment = "CENTER"
             layout.label(text="", icon="PRESET")
