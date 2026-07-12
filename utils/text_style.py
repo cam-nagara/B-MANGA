@@ -214,21 +214,38 @@ def dropdown_choice_for_font_path(path: str) -> str:
     return _DEFAULT_FONT_CHOICE
 
 
+# ビューポートはグリフ単位で resolve_font_path を毎フレーム呼ぶため、
+# プリファレンスの RNA 参照を毎回行わないようモジュール内にキャッシュする。
+# 値の変更時は preferences 側の update コールバックが reset する。
+_PREFERRED_BASE_FONT_CACHE: str | None = None
+
+
+def reset_preferred_base_font_cache() -> None:
+    """標準フォントプリファレンスのキャッシュを破棄する (設定変更時に呼ぶ)."""
+    global _PREFERRED_BASE_FONT_CACHE
+    _PREFERRED_BASE_FONT_CACHE = None
+
+
 def preferred_base_font_path() -> str:
     """アドオンプリファレンスで設定された標準フォントのパスを返す.
 
     プリファレンス未登録・headless実行など取得できない状況では空文字を返す
-    (例外を伝播させない)。
+    (例外を伝播させない。取得失敗時はキャッシュせず次回再試行する)。
     """
+    global _PREFERRED_BASE_FONT_CACHE
+    if _PREFERRED_BASE_FONT_CACHE is not None:
+        return _PREFERRED_BASE_FONT_CACHE
     try:
         from ..preferences import get_preferences
 
         prefs = get_preferences()
         if prefs is None:
             return ""
-        return _abspath_maybe(str(getattr(prefs, "default_base_font_path", "") or ""))
+        value = _abspath_maybe(str(getattr(prefs, "default_base_font_path", "") or ""))
     except Exception:  # noqa: BLE001
         return ""
+    _PREFERRED_BASE_FONT_CACHE = value
+    return value
 
 
 def resolve_font_path(preferred: str = "") -> str:

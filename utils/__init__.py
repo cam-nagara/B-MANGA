@@ -62,6 +62,7 @@ def unregister() -> None:
     try:
         from . import text_style
         text_style.reset_font_dropdown_cache()
+        text_style.reset_preferred_base_font_cache()
     except Exception:  # noqa: BLE001
         pass
     log.unregister()

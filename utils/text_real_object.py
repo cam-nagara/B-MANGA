@@ -336,7 +336,10 @@ def _entry_render_signature(entry) -> str:
         _float_sig(getattr(entry, "width_mm", 0.0)),
         _float_sig(getattr(entry, "height_mm", 0.0)),
         str(getattr(entry, "writing_mode", "vertical") or "vertical"),
-        str(getattr(entry, "font", "") or ""),
+        # 生のフォント指定ではなく解決結果を署名へ含める。標準フォント
+        # プリファレンスの変更が、フォント未指定テキストの再レンダリングに
+        # 反映されるようにするため (解決結果が変われば署名も変わる)。
+        text_style.resolve_font_path(str(getattr(entry, "font", "") or "")),
         _float_sig(getattr(entry, "font_size_q", 20.0)),
         bool(getattr(entry, "font_bold", False)),
         bool(getattr(entry, "font_italic", False)),

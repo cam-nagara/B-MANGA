@@ -392,7 +392,15 @@ def related_uids_for_selection(context, stack=None) -> set[str]:
 
     if stack is None:
         scene = _scene(context)
-        stack = getattr(scene, "bmanga_layer_stack", None) if scene is not None else None
+        # 全ページ横断の統合スタックではなく、画面に出ている行 (現在ページ+共有)
+        # だけを走査する。マークが付くのは可視行だけなので判定はこれで足り、
+        # ページ数×レイヤー数に比例した毎描画の全件走査を避けられる。
+        # (可視リストが未構築の場合のみ統合スタックへフォールバック)
+        visible = getattr(scene, "bmanga_layer_stack_visible", None) if scene is not None else None
+        if visible is not None and len(visible) > 0:
+            stack = visible
+        else:
+            stack = getattr(scene, "bmanga_layer_stack", None) if scene is not None else None
     if stack is None:
         return set()
     result: set[str] = set()

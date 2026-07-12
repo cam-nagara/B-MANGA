@@ -174,7 +174,6 @@ def draw_text_guides(
     context=None,
     ox_mm: float = 0.0,
     oy_mm: float = 0.0,
-    active: bool = False,
     entry_visible: EntryVisiblePredicate,
     draw_rect_fill: Callable[..., None],
     draw_rect_outline: Callable[..., None],

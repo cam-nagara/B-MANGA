@@ -81,6 +81,25 @@ def _on_preferences_changed(_self, _context) -> None:  # noqa: ANN001 - Blender 
     request_user_preferences_save()
 
 
+def _on_base_font_changed(self, context) -> None:  # noqa: ANN001 - Blender callback
+    """標準フォント変更時: 解決キャッシュを破棄し、ビューポートへ即時反映する."""
+    _on_preferences_changed(self, context)
+    try:
+        from .utils import text_style
+
+        text_style.reset_preferred_base_font_cache()
+    except Exception:  # noqa: BLE001
+        log.get_logger(__name__).exception("base font cache reset failed")
+    try:
+        wm = getattr(context, "window_manager", None)
+        for window in getattr(wm, "windows", []) or []:
+            for area in window.screen.areas:
+                if area.type == "VIEW_3D":
+                    area.tag_redraw()
+    except Exception:  # noqa: BLE001 - 再描画は次の操作時に任せる
+        pass
+
+
 def _on_meldex_settings_changed(self, context) -> None:  # noqa: ANN001
     global _MELDEX_UPDATE_DEPTH
     if _MELDEX_UPDATE_DEPTH:
@@ -325,7 +344,7 @@ class BMangaPreferences(bpy.types.AddonPreferences):
         ),
         default="",
         subtype="FILE_PATH",
-        update=_on_preferences_changed,
+        update=_on_base_font_changed,
     )
 
     last_balloon_tool_preset: StringProperty(  # type: ignore[valid-type]

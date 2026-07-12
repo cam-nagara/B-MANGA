@@ -1775,6 +1775,13 @@ def normalize_paired_layer_order(context, pairs) -> None:
         text_idx = _find_stack_index_by_uid(stack, text_uid)
         if balloon_idx < 0 or text_idx < 0:
             continue
+        # 親コンテナ (ページ直下 / コマ直下 / フォルダ) が異なるペアは移動しない。
+        # フラットな stack.move はコンテナ境界を跨げるため、片方だけ別の親へ
+        # 移動済みの場合に階層表示とインデックス位置が矛盾するのを防ぐ。
+        balloon_parent = str(getattr(stack[balloon_idx], "parent_key", "") or "")
+        text_parent = str(getattr(stack[text_idx], "parent_key", "") or "")
+        if balloon_parent != text_parent:
+            continue
         if text_idx == balloon_idx - 1:
             continue
         if text_idx > balloon_idx:

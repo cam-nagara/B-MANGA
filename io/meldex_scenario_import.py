@@ -10,6 +10,7 @@ from ..utils import (
     balloon_curve_object,
     json_io,
     layer_stack,
+    log,
     page_detail,
     page_file_scene,
     page_grid,
@@ -24,6 +25,8 @@ from .meldex_contract import ScenarioDocument, ScenarioRow, validate_payload
 
 BALLOON_PADDING_X_MM = 6.0
 BALLOON_PADDING_Y_MM = 6.0
+
+_logger = log.get_logger(__name__)
 
 
 def import_payload(context, work, payload: dict) -> dict[str, int]:
@@ -55,7 +58,7 @@ def import_document(context, work, document: ScenarioDocument) -> dict[str, int]
                 if not row.body:
                     result["ignored"] += 1
                     continue
-                created, balloon_id, text_id = _upsert_row(
+                created, pair_new, balloon_id, text_id = _upsert_row(
                     work,
                     page,
                     document.document_id,
@@ -65,7 +68,10 @@ def import_document(context, work, document: ScenarioDocument) -> dict[str, int]
                     text_by_name.get(row.type_name),
                 )
                 result["created" if created else "updated"] += 1
-                if created:
+                # フキダシ・テキストの両方を今回新規作成した行だけを並び順の
+                # 強制対象にする。片方だけ再生成された行 (例: ユーザーが片側を
+                # 削除して再送した場合) は、生き残った側の手動配置を尊重する。
+                if pair_new:
                     new_pairs.append((page_key, balloon_id, text_id))
             page.coma_count = len(page.comas)
             page_io.save_page_json(work_dir, page)
@@ -78,7 +84,10 @@ def import_document(context, work, document: ScenarioDocument) -> dict[str, int]
         work_io.save_work_json(work_dir, work)
         page_grid.apply_page_collection_transforms(context, work)
     layer_stack.sync_layer_stack_after_data_change(context)
-    layer_stack.normalize_paired_layer_order(context, new_pairs)
+    try:
+        layer_stack.normalize_paired_layer_order(context, new_pairs)
+    except Exception:  # noqa: BLE001 - 並び順の最終保証はベストエフォート。失敗しても取込自体は成立させる
+        _logger.exception("meldex import: paired layer order normalize failed")
     _sync_current_page(context, work)
     return result
 
@@ -99,7 +108,12 @@ def _ensure_page_count(work, work_dir: Path, required: int) -> tuple[int, set[st
         page = page_io.register_new_page(work)
         page_io.ensure_page_dir(work_dir, page.id)
         page_io.save_page_json(work_dir, page)
-        create_basic_frame_coma(work, page, work_dir)
+        try:
+            create_basic_frame_coma(work, page, work_dir)
+        except Exception:  # noqa: BLE001 - コマ作成失敗で取込バッチ全体を失敗させない
+            _logger.exception(
+                "meldex import: basic frame coma creation failed (page=%s)", page.id
+            )
         new_ids.add(page.id)
         added += 1
     return added, new_ids
@@ -107,12 +121,13 @@ def _ensure_page_count(work, work_dir: Path, required: int) -> tuple[int, set[st
 
 def _upsert_row(
     work, page, document_id: str, row: ScenarioRow, ordinal: int, balloon_preset, text_preset
-) -> tuple[bool, str, str]:
+) -> tuple[bool, bool, str, str]:
     balloon = _find_source(page.balloons, document_id, row.row_id)
     text = _find_source(page.texts, document_id, row.row_id)
     balloon_new = balloon is None
     text_new = text is None
     created = balloon_new or text_new
+    pair_new = balloon_new and text_new
     previous_type = str(getattr(text or balloon, "meldex_type", "") or "")
     type_changed = bool(previous_type) and previous_type != row.type_name
     if balloon_new:
@@ -154,7 +169,7 @@ def _upsert_row(
         _place_initial_pair(work, page, text, balloon)
     page.active_balloon_index = len(page.balloons) - 1
     page.active_text_index = len(page.texts) - 1
-    return created, str(balloon.id), str(text.id)
+    return created, pair_new, str(balloon.id), str(text.id)
 
 
 def _find_source(collection, document_id: str, row_id: str):

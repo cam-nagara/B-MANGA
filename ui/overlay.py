@@ -740,24 +740,32 @@ def _draw_shared_layers(work) -> None:
 
     proxy = _SharedLayerProxy(work)
     # テキストガイド (枠線・キャレット等) は常に最前面に見せたいため、
-    # このブロックのみ depth_test を無効化する (overlay_paper_guide.draw_for_page
-    # と同じパターン)。無効化しないと Z>0 のフキダシメッシュに枠線が
-    # depth test で隠されてしまう。
-    prev_depth = gpu.state.depth_test_get()
-    gpu.state.depth_test_set("NONE")
+    # このブロックのみ depth_test を無効化する。無効化しないと Z>0 の
+    # フキダシメッシュに枠線が depth test で隠されてしまう。
+    # 退避・復元は _draw_page_highlight と同じ例外安全パターン
+    # (GPU コンテキスト外から呼ばれても他の描画を巻き込まない)。
+    prev_depth = None
+    try:
+        prev_depth = gpu.state.depth_test_get()
+        gpu.state.depth_test_set("NONE")
+    except Exception:  # noqa: BLE001 - backgroundモード等GPU不在では素通しで描く
+        prev_depth = None
     try:
         overlay_text.draw_text_guides(
             proxy,
             context=bpy.context,
             ox_mm=0.0,
             oy_mm=0.0,
-            active=getattr(bpy.context.scene, "bmanga_active_layer_kind", "") == "text",
             entry_visible=lambda entry: bool(getattr(entry, "visible", True)),
             draw_rect_fill=_draw_rect_fill,
             draw_rect_outline=_draw_rect_outline,
         )
     finally:
-        gpu.state.depth_test_set(prev_depth)
+        if prev_depth is not None:
+            try:
+                gpu.state.depth_test_set(prev_depth or "LESS_EQUAL")
+            except Exception:  # noqa: BLE001 - 復元失敗時は外側の描画終了処理に任せる
+                pass
 
 
 def _draw_polygon_fill(pts: list[tuple[float, float]], color) -> None:
@@ -1268,35 +1276,32 @@ def _draw_page_overlay(
             oy_mm=oy_mm,
             draw_borders=not use_real_page_objects,
         )
-        active_text_guides = False
-        if getattr(context.scene, "bmanga_active_layer_kind", "") == "text":
-            active_idx = int(getattr(work, "active_page_index", -1))
-            if 0 <= active_idx < len(work.pages):
-                active_page = work.pages[active_idx]
-                active_text_guides = (
-                    active_page == page
-                    or str(getattr(active_page, "id", "") or "")
-                    == str(getattr(page, "id", "") or "")
-                )
         # テキストガイド (枠線・キャレット等) は常に最前面に見せたいため、
-        # このブロックのみ depth_test を無効化する (overlay_paper_guide.draw_for_page
-        # と同じパターン)。無効化しないと Z>0 のフキダシメッシュに枠線が
-        # depth test で隠されてしまう。
-        prev_depth = gpu.state.depth_test_get()
-        gpu.state.depth_test_set("NONE")
+        # このブロックのみ depth_test を無効化する。無効化しないと Z>0 の
+        # フキダシメッシュに枠線が depth test で隠されてしまう。
+        # 退避・復元は _draw_page_highlight と同じ例外安全パターン。
+        prev_depth = None
+        try:
+            prev_depth = gpu.state.depth_test_get()
+            gpu.state.depth_test_set("NONE")
+        except Exception:  # noqa: BLE001 - backgroundモード等GPU不在では素通しで描く
+            prev_depth = None
         try:
             overlay_text.draw_text_guides(
                 page,
                 context=context,
                 ox_mm=ox_mm,
                 oy_mm=oy_mm,
-                active=active_text_guides,
                 entry_visible=lambda entry: overlay_visibility.entry_in_visible_coma(page, entry),
                 draw_rect_fill=_draw_rect_fill,
                 draw_rect_outline=_draw_rect_outline,
             )
         finally:
-            gpu.state.depth_test_set(prev_depth)
+            if prev_depth is not None:
+                try:
+                    gpu.state.depth_test_set(prev_depth or "LESS_EQUAL")
+                except Exception:  # noqa: BLE001 - 復元失敗時は外側の描画終了処理に任せる
+                    pass
 
 
 
