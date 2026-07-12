@@ -112,14 +112,13 @@ def _check_tool_panel_rows(context, wm) -> None:
         "image_path_tool": ("パターンカーブ", "bmanga_image_path_tool_preset_selector"),
     }
     dummies: list[_DummyTool] = []
-    for tool_name, (label, prop_name) in expected.items():
+    for tool_name, (_label, prop_name) in expected.items():
         dummy = _DummyTool()
         dummies.append(dummy)
         coma_modal_state.set_active(tool_name, dummy, context)
         try:
             layout = _Layout()
-            tool_panel._draw_active_tool_preset_row(layout, context)
-            assert label in layout.labels, (tool_name, layout.labels)
+            tool_panel._draw_tool_preset_list(layout, context)
             assert prop_name in layout.props, (tool_name, layout.props)
         finally:
             coma_modal_state.clear_active(tool_name, dummy, context)

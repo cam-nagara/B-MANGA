@@ -280,6 +280,14 @@ class BMangaTextEntry(bpy.types.PropertyGroup):
     stroke_width_mm: FloatProperty(name="フチ幅", default=0.2, min=0.0, soft_max=5.0, description="白フチの太さ（mm）", update=_on_text_entry_changed)  # type: ignore[valid-type]
     stroke_color: FloatVectorProperty(subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, description="白フチの色", update=_on_text_entry_changed)  # type: ignore[valid-type]
 
+    # リンクフキダシプリセット
+    linked_balloon_preset: StringProperty(  # type: ignore[valid-type]
+        name="リンクフキダシプリセット",
+        description="このテキストに連動するフキダシプリセット名（空で連動なし）",
+        default="",
+        update=_on_text_entry_changed,
+    )
+
     # ルビ (複数スパン)
     ruby_spans: CollectionProperty(type=BMangaRubySpan, description="本文内のルビ設定の一覧")  # type: ignore[valid-type]
 

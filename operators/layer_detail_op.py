@@ -534,6 +534,12 @@ def _draw_text_detail(layout, context, entry=None) -> None:
     from ..panels import preset_management_ui
 
     preset_management_ui.draw_text_preset_selection(layout, context)
+
+    # リンクフキダシプリセット
+    link_box = layout.box()
+    link_box.label(text="リンクフキダシプリセット", icon="LINKED")
+    link_box.prop(entry, "linked_balloon_preset", text="")
+
     box = layout.box()
     box.label(text="配置 (mm)")
     row = box.row(align=True)

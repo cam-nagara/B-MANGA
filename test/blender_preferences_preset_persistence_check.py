@@ -131,8 +131,8 @@ def _main_impl(temp_root: Path) -> None:
             preset_op._text_preset_enum_items(None, bpy.context),
             skip={"NONE"},
         )
-        fill_value = "black50"
-        gradient_value = "bw50"
+        fill_value = "ベタ塗り (黒 半透明)"
+        gradient_value = "黒→白 (半透明)"
         effect_line_value = _first_valid(
             effect_line_preset_op._effect_line_tool_preset_enum_items(None, bpy.context),
             skip={"集中線"},
@@ -160,8 +160,8 @@ def _main_impl(temp_root: Path) -> None:
         assert len(save_calls) >= 6, f"保存予約が呼ばれていません: {save_calls!r}"
 
         wm.bmanga_balloon_tool_preset_selector = "DEFAULT"
-        wm.bmanga_fill_tool_preset_selector = "black"
-        wm.bmanga_gradient_tool_preset_selector = "bw_linear"
+        wm.bmanga_fill_tool_preset_selector = "ベタ塗り (黒)"
+        wm.bmanga_gradient_tool_preset_selector = "黒→白"
         wm.bmanga_effect_line_tool_preset_selector = "集中線"
         prefs.last_balloon_tool_preset = balloon_value
         prefs.last_text_tool_preset = text_value
@@ -214,7 +214,7 @@ def _main_impl(temp_root: Path) -> None:
                 "paper": {},
             },
         )
-        prefs.last_fill_tool_preset = "black50"
+        prefs.last_fill_tool_preset = "ベタ塗り (黒 半透明)"
         prefs.snap_gutter_to_finish = False
         bundle_path = temp_root / "bmanga_settings.zip"
         out = settings_bundle.export_bundle(bpy.context, bundle_path)
@@ -224,7 +224,7 @@ def _main_impl(temp_root: Path) -> None:
         prefs.snap_gutter_to_finish = True
         result = settings_bundle.import_bundle(bpy.context, bundle_path)
         assert preset_file.is_file(), "共通プリセットがインポートされていません"
-        assert prefs.last_fill_tool_preset == "black50"
+        assert prefs.last_fill_tool_preset == "ベタ塗り (黒 半透明)"
         assert prefs.snap_gutter_to_finish is False
         assert int(result.get("preset_files", 0)) >= 1
 

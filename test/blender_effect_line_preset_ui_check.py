@@ -147,8 +147,7 @@ def main() -> None:
         coma_modal_state.set_active("effect_line_tool", tool, bpy.context)
         try:
             layout = _Layout()
-            tool_panel._draw_active_tool_preset_row(layout, bpy.context)
-            assert "効果線プリセット" in layout.labels
+            tool_panel._draw_tool_preset_list(layout, bpy.context)
             assert "bmanga_effect_line_tool_preset_selector" in layout.props
         finally:
             coma_modal_state.clear_active("effect_line_tool", tool, bpy.context)

@@ -1816,6 +1816,7 @@ def text_entry_to_dict(entry) -> dict[str, Any]:
         "strokeWidthMm": round(entry.stroke_width_mm, 3),
         "strokeColor": color_to_hex(entry.stroke_color),
         "strokeColorAlpha": round(entry.stroke_color[3], 3),
+        "linkedBalloonPreset": str(getattr(entry, "linked_balloon_preset", "") or ""),
         "xMm": round(entry.x_mm, 3),
         "yMm": round(entry.y_mm, 3),
         "widthMm": round(entry.width_mm, 3),
@@ -1914,6 +1915,8 @@ def text_entry_from_dict(entry, data: dict[str, Any]) -> None:
     entry.stroke_width_mm = float(data.get("strokeWidthMm", 0.2))
     alpha = float(data.get("strokeColorAlpha", 1.0))
     entry.stroke_color = hex_to_rgba(data.get("strokeColor", "#FFFFFF"), alpha)
+    if hasattr(entry, "linked_balloon_preset"):
+        entry.linked_balloon_preset = str(data.get("linkedBalloonPreset", "") or "")
     entry.x_mm = float(data.get("xMm", 0.0))
     entry.y_mm = float(data.get("yMm", 0.0))
     entry.width_mm = float(data.get("widthMm", 30.0))

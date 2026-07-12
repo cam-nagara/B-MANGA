@@ -20,6 +20,7 @@ _ADDON_ROOT = Path(__file__).resolve().parent.parent
 GLOBAL_PRESETS_DIR = _ADDON_ROOT / "presets" / "text"
 
 PRESET_SUFFIX = ".json"
+PRESET_INDEX_FILENAME = "_preset_index.json"
 
 _TEXT_KEYS = (
     "font",
@@ -41,6 +42,7 @@ _TEXT_KEYS = (
     "stroke_enabled",
     "stroke_width_mm",
     "stroke_color",
+    "linked_balloon_preset",
 )
 
 
@@ -92,12 +94,25 @@ def list_user_presets() -> list[TextPreset]:
 
 
 def list_all_presets(work_dir: Path | None) -> list[TextPreset]:
-    presets = {p.name: p for p in list_global_presets()}
     if work_dir is not None:
         _migrate_work_presets(work_dir)
+    index = _read_local_index()
+    hidden = set(index.get("hidden", []))
+    presets = {}
+    for p in list_global_presets():
+        if p.name not in hidden:
+            presets[p.name] = p
     for p in list_user_presets():
-        presets[p.name] = p
-    return list(presets.values())
+        if p.name not in hidden:
+            presets[p.name] = p
+    order = list(index.get("order", []))
+    ordered = []
+    for name in order:
+        if name in presets:
+            ordered.append(presets.pop(name))
+    for p in presets.values():
+        ordered.append(p)
+    return ordered
 
 
 def snapshot_from_entry(entry) -> dict[str, Any]:
@@ -178,9 +193,13 @@ def save_local_preset(
     entry_data: dict[str, Any],
 ) -> Path:
     del work_dir
+    is_new = _local_preset_by_name(name) is None
     target = shared_presets.preset_dir("text")
     filename = name.replace("/", "_").replace("\\", "_") + PRESET_SUFFIX
-    return save_preset(target / filename, name, description, entry_data)
+    result = save_preset(target / filename, name, description, entry_data)
+    if is_new:
+        _insert_order_name(name)
+    return result
 
 
 def _migrate_work_presets(work_dir: Path | None) -> None:
@@ -188,3 +207,224 @@ def _migrate_work_presets(work_dir: Path | None) -> None:
         return
     legacy_dir = paths.assets_dir(Path(work_dir)) / "text_presets"
     shared_presets.copy_json_presets_once(legacy_dir, shared_presets.preset_dir("text"))
+
+
+# ---------- 共通プリセット CRUD (改名・複製・削除・並べ替え) ----------
+
+
+def _local_dir() -> Path:
+    return shared_presets.preset_dir("text")
+
+
+def _local_index_path() -> Path:
+    return _local_dir() / PRESET_INDEX_FILENAME
+
+
+def _read_local_index() -> dict:
+    path = _local_index_path()
+    if not path.is_file():
+        return {"schemaVersion": 1, "order": [], "hidden": []}
+    try:
+        return json_io.read_json(path)
+    except (OSError, ValueError):
+        return {"schemaVersion": 1, "order": [], "hidden": []}
+
+
+def _write_local_index(index: dict) -> None:
+    path = _local_index_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    json_io.write_json(path, index)
+
+
+def _safe_local_path(name: str) -> Path:
+    safe = _sanitize_filename(name)
+    return _local_dir() / f"{safe}{PRESET_SUFFIX}"
+
+
+def _sanitize_filename(name: str) -> str:
+    forbidden = '<>:"/\\|?*'
+    cleaned = "".join("_" if ch in forbidden else ch for ch in name.strip())
+    return cleaned.rstrip(". ") or "preset"
+
+
+def _global_preset_by_name(name: str) -> TextPreset | None:
+    for p in list_global_presets():
+        if p.name == name:
+            return p
+    return None
+
+
+def _local_preset_by_name(name: str) -> TextPreset | None:
+    for p in list_user_presets():
+        if p.name == name:
+            return p
+    return None
+
+
+def _visible_order_names() -> list[str]:
+    index = _read_local_index()
+    hidden = set(index.get("hidden", []))
+    order = list(index.get("order", []))
+    # Add any presets not yet in order
+    all_names = set()
+    for p in list_global_presets():
+        if p.name not in hidden:
+            all_names.add(p.name)
+    for p in list_user_presets():
+        if p.name not in hidden:
+            all_names.add(p.name)
+    for name in all_names:
+        if name not in order:
+            order.append(name)
+    return [n for n in order if n in all_names]
+
+
+def _insert_order_name(name: str, *, after_name: str = "") -> None:
+    index = _read_local_index()
+    order = list(index.get("order", []))
+    if name in order:
+        return
+    if after_name and after_name in order:
+        idx = order.index(after_name) + 1
+        order.insert(idx, name)
+    else:
+        order.append(name)
+    index["order"] = order
+    _write_local_index(index)
+
+
+def _write_local_preset_data(data: dict, name: str, *, description: str = "") -> Path:
+    data = dict(data)
+    data["presetName"] = name
+    if description:
+        data["description"] = description
+    if "schemaVersion" not in data:
+        data["schemaVersion"] = 1
+    if "presetType" not in data:
+        data["presetType"] = "text"
+    out = _safe_local_path(name)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    json_io.write_json(out, data)
+    return out
+
+
+def preset_name_exists(name: str) -> bool:
+    if _global_preset_by_name(name) is not None:
+        return True
+    return _local_preset_by_name(name) is not None
+
+
+def unique_preset_name(base: str) -> str:
+    base = (base or "新規テキストプリセット").strip() or "新規テキストプリセット"
+    if not preset_name_exists(base):
+        return base
+    for i in range(2, 1000):
+        candidate = f"{base} {i:03d}"
+        if not preset_name_exists(candidate):
+            return candidate
+    return base
+
+
+def load_preset_by_name(name: str) -> TextPreset | None:
+    local = _local_preset_by_name(name)
+    if local is not None:
+        return local
+    return _global_preset_by_name(name)
+
+
+def rename_preset(old_name: str, new_name: str) -> TextPreset:
+    old_name = old_name.strip()
+    new_name = new_name.strip()
+    if not old_name or not new_name:
+        raise ValueError("プリセット名が空です")
+    if old_name == new_name:
+        preset = load_preset_by_name(old_name)
+        if preset is None:
+            raise ValueError(f"プリセットが見つかりません: {old_name}")
+        return preset
+    if preset_name_exists(new_name):
+        raise ValueError(f"同名のプリセットが既にあります: {new_name}")
+    preset = load_preset_by_name(old_name)
+    if preset is None:
+        raise ValueError(f"プリセットが見つかりません: {old_name}")
+    index = _read_local_index()
+    order = _visible_order_names()
+    hidden = set(index.get("hidden", []))
+    if preset.source == "global":
+        hidden.add(old_name)
+    out = _write_local_preset_data(preset.data, new_name)
+    if preset.source == "user" and preset.path != out:
+        try:
+            preset.path.unlink()
+        except FileNotFoundError:
+            pass
+    order = [new_name if n == old_name else n for n in order]
+    if new_name not in order:
+        order.append(new_name)
+    index["hidden"] = list(hidden)
+    index["order"] = order
+    _write_local_index(index)
+    result = _local_preset_by_name(new_name)
+    if result is None:
+        raise ValueError(f"プリセットの改名に失敗しました: {new_name}")
+    return result
+
+
+def duplicate_preset(source_name: str, new_name: str) -> TextPreset:
+    source_name = source_name.strip()
+    new_name = new_name.strip()
+    if not source_name or not new_name:
+        raise ValueError("プリセット名が空です")
+    if preset_name_exists(new_name):
+        raise ValueError(f"同名のプリセットが既にあります: {new_name}")
+    preset = load_preset_by_name(source_name)
+    if preset is None:
+        raise ValueError(f"プリセットが見つかりません: {source_name}")
+    _write_local_preset_data(preset.data, new_name)
+    _insert_order_name(new_name, after_name=source_name)
+    result = _local_preset_by_name(new_name)
+    if result is None:
+        raise ValueError(f"プリセットの複製に失敗しました: {new_name}")
+    return result
+
+
+def delete_preset(name: str) -> None:
+    name = name.strip()
+    if not name:
+        raise ValueError("プリセット名が空です")
+    preset = load_preset_by_name(name)
+    if preset is None:
+        raise ValueError(f"プリセットが見つかりません: {name}")
+    index = _read_local_index()
+    hidden = set(index.get("hidden", []))
+    local = _local_preset_by_name(name)
+    if local is not None:
+        try:
+            local.path.unlink()
+        except FileNotFoundError:
+            pass
+    if preset.source == "global" or _global_preset_by_name(name) is not None:
+        hidden.add(name)
+    index["hidden"] = list(hidden)
+    index["order"] = [item for item in _visible_order_names() if item != name]
+    _write_local_index(index)
+
+
+def move_preset(name: str, direction: str) -> list[str]:
+    name = name.strip()
+    order = _visible_order_names()
+    if name not in order:
+        raise ValueError(f"プリセットが見つかりません: {name}")
+    idx = order.index(name)
+    if direction == "UP":
+        new_idx = max(0, idx - 1)
+    elif direction == "DOWN":
+        new_idx = min(len(order) - 1, idx + 1)
+    else:
+        raise ValueError(f"不明な移動方向です: {direction}")
+    if new_idx != idx:
+        order.insert(new_idx, order.pop(idx))
+    index = _read_local_index()
+    index["order"] = order
+    _write_local_index(index)
+    return order

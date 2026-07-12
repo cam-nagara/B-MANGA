@@ -9,6 +9,7 @@ from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_work
 from ..operators import coma_modal_state
 from ..utils import page_file_scene
+from . import preset_management_ui
 
 B_NAME_CATEGORY = "B-MANGA"
 _MODAL_TOOL_NAMES = (
@@ -27,6 +28,20 @@ _MODAL_TOOL_NAMES = (
     "gradient_tool",
     "image_path_tool",
 )
+
+_TOOL_TO_PRESET_TYPE = {
+    "coma_create": "border",
+    "balloon_tool": "balloon",
+    "balloon_nurbs_tool": "balloon",
+    "balloon_tail_tool": "tail",
+    "text_tool": "text",
+    "effect_line_tool": "effect_line",
+    "fill_tool": "fill",
+    "gradient_tool": "gradient",
+    "image_path_tool": "image_path",
+}
+
+_last_preset_tool: str = ""
 
 
 def _active_stack_kind(context) -> str:
@@ -181,57 +196,34 @@ class BMANGA_PT_tools(Panel):
             depress=coma_modal_state.is_active("image_path_tool"),
         )
 
-        _draw_active_tool_preset_row(layout, context)
+        _draw_tool_preset_list(layout, context)
 
 
-def _draw_active_tool_preset_row(layout, context) -> None:
-    """選択中ツールに対応するプリセット選択を、ボタン群の下に表示する."""
-    wm = getattr(context, "window_manager", None)
-    if wm is None:
+def _draw_tool_preset_list(layout, context) -> None:
+    """アクティブツール（または最後に使ったツール）のプリセットリストを描画する."""
+    global _last_preset_tool
+
+    # 現在アクティブなツールを検出し記憶する
+    current_tool = ""
+    for tool_name in _TOOL_TO_PRESET_TYPE:
+        if coma_modal_state.is_active(tool_name):
+            current_tool = tool_name
+            break
+
+    if current_tool:
+        _last_preset_tool = current_tool
+
+    # 表示するツールを決定（アクティブ優先、なければ最後のツール）
+    display_tool = current_tool or _last_preset_tool
+    if not display_tool:
         return
-    if coma_modal_state.is_active("coma_create") and hasattr(wm, "bmanga_border_preset_selector"):
-        prow = layout.row(align=True)
-        prow.label(text="コマ作成の枠線", icon="MESH_PLANE")
-        prow.prop(wm, "bmanga_border_preset_selector", text="")
+
+    preset_type = _TOOL_TO_PRESET_TYPE.get(display_tool, "")
+    if not preset_type:
         return
-    if (
-        coma_modal_state.is_active("balloon_tool")
-        or coma_modal_state.is_active("balloon_nurbs_tool")
-    ) and hasattr(wm, "bmanga_balloon_tool_preset_selector"):
-        prow = layout.row(align=True)
-        prow.label(text="フキダシプリセット", icon="MESH_CIRCLE")
-        prow.prop(wm, "bmanga_balloon_tool_preset_selector", text="")
-        return
-    if coma_modal_state.is_active("balloon_tail_tool") and hasattr(wm, "bmanga_tail_preset_selector"):
-        prow = layout.row(align=True)
-        prow.label(text="しっぽプリセット", icon="SHARPCURVE")
-        prow.prop(wm, "bmanga_tail_preset_selector", text="")
-        return
-    if coma_modal_state.is_active("text_tool") and hasattr(wm, "bmanga_text_tool_preset_selector"):
-        prow = layout.row(align=True)
-        prow.label(text="テキストプリセット", icon="FONT_DATA")
-        prow.prop(wm, "bmanga_text_tool_preset_selector", text="")
-        return
-    if coma_modal_state.is_active("effect_line_tool") and hasattr(wm, "bmanga_effect_line_tool_preset_selector"):
-        prow = layout.row(align=True)
-        prow.label(text="効果線プリセット", icon="FORCE_FORCE")
-        prow.prop(wm, "bmanga_effect_line_tool_preset_selector", text="")
-        return
-    if coma_modal_state.is_active("fill_tool") and hasattr(wm, "bmanga_fill_tool_preset_selector"):
-        prow = layout.row(align=True)
-        prow.label(text="囲い塗りプリセット", icon="MESH_PLANE")
-        prow.prop(wm, "bmanga_fill_tool_preset_selector", text="")
-        return
-    if coma_modal_state.is_active("gradient_tool") and hasattr(wm, "bmanga_gradient_tool_preset_selector"):
-        prow = layout.row(align=True)
-        prow.label(text="グラデーション", icon="NODE_TEXTURE")
-        prow.prop(wm, "bmanga_gradient_tool_preset_selector", text="")
-        return
-    if coma_modal_state.is_active("image_path_tool") and hasattr(wm, "bmanga_image_path_tool_preset_selector"):
-        prow = layout.row(align=True)
-        prow.label(text="パターンカーブ", icon="CURVE_BEZCURVE")
-        prow.prop(wm, "bmanga_image_path_tool_preset_selector", text="")
-        return
+
+    layout.separator(factor=0.5)
+    preset_management_ui.draw_preset_list(layout, context, preset_type, compact=True)
 
 
 _CLASSES = (BMANGA_PT_tools,)

@@ -364,12 +364,12 @@ class BMangaPreferences(bpy.types.AddonPreferences):
     )
     last_fill_tool_preset: StringProperty(  # type: ignore[valid-type]
         name="前回の囲い塗りプリセット",
-        default="black",
+        default="ベタ塗り (黒)",
         options={"HIDDEN"},
     )
     last_gradient_tool_preset: StringProperty(  # type: ignore[valid-type]
         name="前回のグラデーションプリセット",
-        default="bw_linear",
+        default="黒→白",
         options={"HIDDEN"},
     )
     last_image_path_tool_preset: StringProperty(  # type: ignore[valid-type]

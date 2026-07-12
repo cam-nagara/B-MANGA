@@ -895,30 +895,30 @@ _FILL_TOOL_ENUM_CACHE: list[tuple[str, str, str]] = []
 _GRADIENT_TOOL_ENUM_CACHE: list[tuple[str, str, str]] = []
 _IMAGE_PATH_TOOL_ENUM_CACHE: list[tuple[str, str, str]] = []
 
-_FILL_PRESETS = [
-    {"id": "black", "label": "ベタ塗り (黒)", "color": (0, 0, 0, 1), "opacity": 100},
-    {"id": "white", "label": "ベタ塗り (白)", "color": (1, 1, 1, 1), "opacity": 100},
-    {"id": "gray50", "label": "ベタ塗り (50%)", "color": (0.214, 0.214, 0.214, 1), "opacity": 100},
-    {"id": "black50", "label": "ベタ塗り (黒 半透明)", "color": (0, 0, 0, 1), "opacity": 50},
-]
-
-_GRADIENT_PRESETS = [
-    {"id": "bw_linear", "label": "黒→白", "gradient_type": "linear", "color": (0, 0, 0, 1), "color2": (1, 1, 1, 1), "opacity": 100},
-    {"id": "wb_linear", "label": "白→黒", "gradient_type": "linear", "color": (1, 1, 1, 1), "color2": (0, 0, 0, 1), "opacity": 100},
-    {"id": "bw_radial", "label": "黒→白 (円形)", "gradient_type": "radial", "color": (0, 0, 0, 1), "color2": (1, 1, 1, 1), "opacity": 100},
-    {"id": "bw50", "label": "黒→白 (半透明)", "gradient_type": "linear", "color": (0, 0, 0, 1), "color2": (1, 1, 1, 1), "opacity": 50},
-]
-
 
 def _fill_tool_preset_enum_items(_self, _context):
     global _FILL_TOOL_ENUM_CACHE
-    _FILL_TOOL_ENUM_CACHE = [(p["id"], p["label"], "") for p in _FILL_PRESETS]
+    try:
+        from ..io import fill_presets
+        items = [(p.name, p.name, p.description or "") for p in fill_presets.list_all_presets()]
+    except Exception:  # noqa: BLE001
+        items = []
+    if not items:
+        items.append(("NONE", "—", ""))
+    _FILL_TOOL_ENUM_CACHE = items
     return _FILL_TOOL_ENUM_CACHE
 
 
 def _gradient_tool_preset_enum_items(_self, _context):
     global _GRADIENT_TOOL_ENUM_CACHE
-    _GRADIENT_TOOL_ENUM_CACHE = [(p["id"], p["label"], "") for p in _GRADIENT_PRESETS]
+    try:
+        from ..io import gradient_presets
+        items = [(p.name, p.name, p.description or "") for p in gradient_presets.list_all_presets()]
+    except Exception:  # noqa: BLE001
+        items = []
+    if not items:
+        items.append(("NONE", "—", ""))
+    _GRADIENT_TOOL_ENUM_CACHE = items
     return _GRADIENT_TOOL_ENUM_CACHE
 
 
@@ -949,18 +949,22 @@ def _on_image_path_tool_preset_selector_change(self, context):
     _remember_tool_preset(context, "last_image_path_tool_preset", value)
 
 
-def _find_fill_preset(preset_id: str) -> dict | None:
-    for p in _FILL_PRESETS:
-        if p["id"] == preset_id:
-            return p
-    return None
+def _find_fill_preset(name: str) -> dict | None:
+    try:
+        from ..io import fill_presets
+        preset = fill_presets.load_preset_by_name(name)
+        return preset.data if preset else None
+    except Exception:  # noqa: BLE001
+        return None
 
 
-def _find_gradient_preset(preset_id: str) -> dict | None:
-    for p in _GRADIENT_PRESETS:
-        if p["id"] == preset_id:
-            return p
-    return None
+def _find_gradient_preset(name: str) -> dict | None:
+    try:
+        from ..io import gradient_presets
+        preset = gradient_presets.load_preset_by_name(name)
+        return preset.data if preset else None
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _image_path_preset_work_dir(context) -> Path | None:
@@ -998,15 +1002,22 @@ def _active_image_path_entry(context):
 
 def apply_fill_preset_to_entry(context, entry) -> bool:
     """選択中の囲い塗りプリセットをフィルエントリに適用."""
+    try:
+        from ..io import fill_presets
+    except Exception:  # noqa: BLE001
+        return False
     wm = getattr(context, "window_manager", None)
-    pid = str(getattr(wm, "bmanga_fill_tool_preset_selector", "") or "") if wm else ""
-    preset = _find_fill_preset(pid) if pid else None
-    if preset is None and _FILL_PRESETS:
-        preset = _FILL_PRESETS[0]
+    name = str(getattr(wm, "bmanga_fill_tool_preset_selector", "") or "") if wm else ""
+    if name and name != "NONE":
+        preset = fill_presets.load_preset_by_name(name)
+    else:
+        preset = None
+    if preset is None:
+        all_p = fill_presets.list_all_presets()
+        preset = all_p[0] if all_p else None
     if preset is None:
         return False
-    entry.color = preset["color"]
-    entry.opacity = preset["opacity"]
+    fill_presets.apply_to_entry(entry, preset.data)
     return True
 
 
@@ -1026,17 +1037,22 @@ def apply_image_path_preset_to_entry(context, entry) -> bool:
 
 def apply_gradient_preset_to_entry(context, entry) -> bool:
     """選択中のグラデーションプリセットをフィルエントリに適用."""
+    try:
+        from ..io import gradient_presets
+    except Exception:  # noqa: BLE001
+        return False
     wm = getattr(context, "window_manager", None)
-    pid = str(getattr(wm, "bmanga_gradient_tool_preset_selector", "") or "") if wm else ""
-    preset = _find_gradient_preset(pid) if pid else None
-    if preset is None and _GRADIENT_PRESETS:
-        preset = _GRADIENT_PRESETS[0]
+    name = str(getattr(wm, "bmanga_gradient_tool_preset_selector", "") or "") if wm else ""
+    if name and name != "NONE":
+        preset = gradient_presets.load_preset_by_name(name)
+    else:
+        preset = None
+    if preset is None:
+        all_p = gradient_presets.list_all_presets()
+        preset = all_p[0] if all_p else None
     if preset is None:
         return False
-    entry.color = preset["color"]
-    entry.color2 = preset["color2"]
-    entry.gradient_type = preset["gradient_type"]
-    entry.opacity = preset["opacity"]
+    gradient_presets.apply_to_entry(entry, preset.data)
     return True
 
 

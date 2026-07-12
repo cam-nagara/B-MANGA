@@ -563,6 +563,11 @@ def _draw_text_selected_settings(box, context, entry) -> None:
     sub.prop(entry, "stroke_width_mm")
     sub.prop(entry, "stroke_color")
 
+    # リンクフキダシプリセット
+    link_box = box.box()
+    link_box.label(text="リンクフキダシプリセット", icon="LINKED")
+    link_box.prop(entry, "linked_balloon_preset", text="")
+
     parent_box = box.box()
     parent_box.label(text="親フキダシ", icon="LINKED")
     parent_box.prop(entry, "parent_balloon_id", text="ID")

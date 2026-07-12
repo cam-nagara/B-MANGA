@@ -23,6 +23,8 @@ PRESET_CATEGORIES = {
     "tails": "tails",
     "text": "text",
     "image_paths": "image_paths",
+    "fills": "fills",
+    "gradients": "gradients",
 }
 
 
