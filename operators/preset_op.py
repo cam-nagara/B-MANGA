@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 
 import bpy
@@ -23,6 +24,28 @@ _logger = log.get_logger(__name__)
 _PRESET_ENUM_CACHE: list[tuple[str, str, str]] = []
 _SUPPRESS_SELECTOR_UPDATE = False
 _SUPPRESS_TOOL_PRESET_REMEMBER = False
+_SUPPRESS_SELECTOR_APPLY = 0
+
+
+@contextlib.contextmanager
+def suppress_selector_apply():
+    """セレクタのプログラム書き換え中、選択中レイヤーへの即時適用を止める.
+
+    プリセットのリネーム・削除・複製・並べ替え・新規追加の後始末では
+    セレクタ値を再設定するが、それはユーザーの「プリセットを選んだ」操作
+    ではないため、選択中レイヤーへ適用してはならない (削除後のフォール
+    バック選択で別プリセットが勝手に適用される事故を防ぐ)。
+    """
+    global _SUPPRESS_SELECTOR_APPLY
+    _SUPPRESS_SELECTOR_APPLY += 1
+    try:
+        yield
+    finally:
+        _SUPPRESS_SELECTOR_APPLY = max(0, _SUPPRESS_SELECTOR_APPLY - 1)
+
+
+def _selector_apply_suppressed() -> bool:
+    return _SUPPRESS_SELECTOR_APPLY > 0 or _SUPPRESS_TOOL_PRESET_REMEMBER
 
 
 def _remember_tool_preset(context, attr: str, value: str) -> None:
@@ -296,6 +319,40 @@ def _on_balloon_tool_preset_selector_change(self, context):
     value = str(getattr(self, "bmanga_balloon_tool_preset_selector", "") or "")
     _remember_tool_preset(context, "last_balloon_tool_preset", value)
     _switch_active_balloon_tool_for_preset(context, value)
+    _apply_balloon_preset_to_selection(context, value)
+
+
+def _apply_balloon_preset_to_selection(context, value: str) -> None:
+    """選択中のフキダシへ形状プリセットを即時適用する.
+
+    「なめらか自由形状」は形状ではなく作成方式の切替なので対象外。
+    """
+    if _selector_apply_suppressed() or not value:
+        return
+    if value == BALLOON_TOOL_NURBS_PRESET:
+        return
+    if value.startswith("shape:"):
+        shape, custom = value.split(":", 1)[1], ""
+    elif value.startswith("custom:"):
+        shape, custom = "custom", value.split(":", 1)[1]
+    else:
+        return
+    entry = _active_balloon_entry(context)
+    if entry is None or not hasattr(entry, "shape"):
+        return
+    try:
+        if str(getattr(entry, "shape", "") or "") != shape:
+            entry.shape = shape
+        if hasattr(entry, "custom_preset_name") and str(getattr(entry, "custom_preset_name", "") or "") != custom:
+            entry.custom_preset_name = custom
+        from ..utils import balloon_curve_object
+
+        balloon_curve_object.on_balloon_entry_changed(entry)
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon preset apply to selection failed")
+        return
+    _refresh_layer_stack_after_preset_apply(context)
+    _logger.info("balloon preset applied via selector: %s", value)
 
 
 def _switch_active_balloon_tool_for_preset(context, value: str) -> None:
@@ -368,7 +425,7 @@ def _text_preset_enum_items(_self, context):
 
 
 def _on_text_preset_selector_change(self, context):
-    """テキストプリセット変更時: カーソル形状を縦書き/横書きに合わせて切替.
+    """テキストプリセット変更時: カーソル切替 + 選択中テキストへの即時適用.
 
     カーソルの実際の切替は BMANGA_OT_text_tool._apply_tool_cursor に一本化する。
     ここで直接 set_modal_cursor を呼ぶと、op が取得できない (is_active は True
@@ -381,6 +438,100 @@ def _on_text_preset_selector_change(self, context):
         op = coma_modal_state.get_active("text_tool")
         if op is not None and hasattr(op, "_apply_tool_cursor"):
             op._apply_tool_cursor(context)
+    _apply_text_preset_to_selection(context, value)
+
+
+def _resolve_selected_text_entry(context):
+    """テキストプリセットの適用対象 (アクティブページのアクティブテキスト) を解決."""
+    scene = getattr(context, "scene", None)
+    if str(getattr(scene, "bmanga_active_layer_kind", "") or "") != "text":
+        return None
+    page = get_active_page(context)
+    if page is None:
+        return None
+    idx = int(getattr(page, "active_text_index", -1))
+    if not (0 <= idx < len(page.texts)):
+        return None
+    return page, page.texts[idx]
+
+
+def _refresh_layer_stack_after_preset_apply(context) -> None:
+    try:
+        from ..utils import layer_stack as layer_stack_utils
+
+        layer_stack_utils.sync_layer_stack_after_data_change(context)
+        layer_stack_utils.tag_view3d_redraw(context)
+    except Exception:  # noqa: BLE001
+        _logger.debug("layer stack refresh after preset apply failed", exc_info=True)
+
+
+def _active_layer_kind_is(context, kind: str) -> bool:
+    scene = getattr(context, "scene", None)
+    return scene is not None and str(getattr(scene, "bmanga_active_layer_kind", "") or "") == kind
+
+
+def _active_fill_entry(context):
+    """アクティブな囲い塗り/グラデーションレイヤー (BMangaFillLayer) を返す."""
+    if not _active_layer_kind_is(context, "fill"):
+        return None
+    scene = context.scene
+    coll = getattr(scene, "bmanga_fill_layers", None)
+    idx = int(getattr(scene, "bmanga_active_fill_layer_index", -1))
+    if coll is not None and 0 <= idx < len(coll):
+        return coll[idx]
+    return None
+
+
+def _active_balloon_entry(context):
+    """アクティブページのアクティブフキダシエントリを返す."""
+    if not _active_layer_kind_is(context, "balloon"):
+        return None
+    page = get_active_page(context)
+    if page is None:
+        return None
+    idx = int(getattr(page, "active_balloon_index", -1))
+    if not (0 <= idx < len(page.balloons)):
+        return None
+    return page.balloons[idx]
+
+
+def _apply_text_preset_to_selection(context, name: str) -> None:
+    """選択中のテキストレイヤーへプリセットを即時適用 (枠線プリセットと同じ挙動).
+
+    詳細設定ダイアログやツールパネルのプリセットリストで選んだ瞬間に、
+    選択中テキストのスタイルが切り替わる。テキスト未選択時は新規作成用の
+    既定値の記憶だけが行われる (従来どおり)。
+    """
+    if _selector_apply_suppressed() or not name or name == "NONE":
+        return
+    resolved = _resolve_selected_text_entry(context)
+    if resolved is None:
+        return
+    page, entry = resolved
+    try:
+        from ..io import text_presets
+        from ..utils import text_real_object
+
+        work = get_work(context)
+        work_dir = Path(str(getattr(work, "work_dir", "") or "")) if work is not None else None
+        preset = next(
+            (
+                p
+                for p in text_presets.list_all_presets(work_dir if work_dir and str(work_dir) else None)
+                if p.name == name
+            ),
+            None,
+        )
+        if preset is None:
+            return
+        with text_real_object.suspend_auto_sync():
+            text_presets.apply_to_entry(entry, preset.data)
+        text_real_object.ensure_text_real_object(scene=context.scene, entry=entry, page=page)
+    except Exception:  # noqa: BLE001
+        _logger.exception("text preset apply to selection failed")
+        return
+    _refresh_layer_stack_after_preset_apply(context)
+    _logger.info("text preset applied via selector: %s", name)
 
 
 def text_tool_cursor_type(context) -> str:
@@ -939,16 +1090,84 @@ def _image_path_tool_preset_enum_items(_self, context):
 def _on_fill_tool_preset_selector_change(self, context):
     value = str(getattr(self, "bmanga_fill_tool_preset_selector", "") or "")
     _remember_tool_preset(context, "last_fill_tool_preset", value)
+    _apply_fill_preset_to_selection(context, value)
 
 
 def _on_gradient_tool_preset_selector_change(self, context):
     value = str(getattr(self, "bmanga_gradient_tool_preset_selector", "") or "")
     _remember_tool_preset(context, "last_gradient_tool_preset", value)
+    _apply_gradient_preset_to_selection(context, value)
 
 
 def _on_image_path_tool_preset_selector_change(self, context):
     value = str(getattr(self, "bmanga_image_path_tool_preset_selector", "") or "")
     _remember_tool_preset(context, "last_image_path_tool_preset", value)
+    _apply_image_path_preset_to_selection(context, value)
+
+
+def _apply_fill_preset_to_selection(context, name: str) -> None:
+    """選択中の囲い塗り (ベタ塗り) レイヤーへプリセットを即時適用する."""
+    if _selector_apply_suppressed() or not name or name == "NONE":
+        return
+    entry = _active_fill_entry(context)
+    if entry is None or str(getattr(entry, "fill_type", "") or "") == "gradient":
+        return
+    data = _find_fill_preset(name)
+    if not data:
+        return
+    try:
+        from ..io import fill_presets
+
+        fill_presets.apply_to_entry(entry, data)
+    except Exception:  # noqa: BLE001
+        _logger.exception("fill preset apply to selection failed")
+        return
+    _refresh_layer_stack_after_preset_apply(context)
+    _logger.info("fill preset applied via selector: %s", name)
+
+
+def _apply_gradient_preset_to_selection(context, name: str) -> None:
+    """選択中のグラデーションレイヤーへプリセットを即時適用する."""
+    if _selector_apply_suppressed() or not name or name == "NONE":
+        return
+    entry = _active_fill_entry(context)
+    if entry is None or str(getattr(entry, "fill_type", "") or "") != "gradient":
+        return
+    data = _find_gradient_preset(name)
+    if not data:
+        return
+    try:
+        from ..io import gradient_presets
+
+        gradient_presets.apply_to_entry(entry, data)
+    except Exception:  # noqa: BLE001
+        _logger.exception("gradient preset apply to selection failed")
+        return
+    _refresh_layer_stack_after_preset_apply(context)
+    _logger.info("gradient preset applied via selector: %s", name)
+
+
+def _apply_image_path_preset_to_selection(context, name: str) -> None:
+    """選択中のパターンカーブレイヤーへプリセットを即時適用する."""
+    if _selector_apply_suppressed() or not name or name == "NONE":
+        return
+    if not _active_layer_kind_is(context, "image_path"):
+        return
+    entry = _active_image_path_entry(context)
+    if entry is None:
+        return
+    try:
+        preset = image_path_presets.load_preset_by_name(
+            name, _image_path_preset_work_dir(context)
+        )
+        if preset is None:
+            return
+        image_path_presets.apply_preset_to_entry(preset, entry)
+    except Exception:  # noqa: BLE001
+        _logger.exception("image path preset apply to selection failed")
+        return
+    _refresh_layer_stack_after_preset_apply(context)
+    _logger.info("image path preset applied via selector: %s", name)
 
 
 def _find_fill_preset(name: str) -> dict | None:
@@ -984,13 +1203,15 @@ def _selected_image_path_preset_name(context) -> str:
 
 
 def _set_image_path_preset_selector(context, name: str) -> None:
+    """リネーム・削除等の後始末用のセレクタ再設定 (選択中レイヤーへは適用しない)."""
     wm = getattr(context, "window_manager", None)
     if wm is None or not hasattr(wm, "bmanga_image_path_tool_preset_selector") or not name:
         return
     valid = {item[0] for item in _image_path_tool_preset_enum_items(None, context)}
     if name not in valid:
         return
-    setattr(wm, "bmanga_image_path_tool_preset_selector", name)
+    with suppress_selector_apply():
+        setattr(wm, "bmanga_image_path_tool_preset_selector", name)
 
 
 def _active_image_path_entry(context):

@@ -25,11 +25,15 @@ def _selected_balloon_preset_name(context) -> str:
 
 
 def _set_balloon_preset_selector(context, name: str) -> None:
+    """リネーム・削除等の後始末用のセレクタ再設定 (選択中レイヤーへは適用しない)."""
     wm = getattr(context, "window_manager", None)
     if wm is None or not hasattr(wm, "bmanga_balloon_tool_preset_selector"):
         return
+    from . import preset_op
+
     try:
-        wm.bmanga_balloon_tool_preset_selector = f"custom:{name}" if name else "DEFAULT"
+        with preset_op.suppress_selector_apply():
+            wm.bmanga_balloon_tool_preset_selector = f"custom:{name}" if name else "DEFAULT"
     except TypeError:
         pass
 
