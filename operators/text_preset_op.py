@@ -316,6 +316,7 @@ class BMANGA_OT_set_linked_balloon_preset(Operator):
             self.report({"WARNING"}, "プリセット編集対象が見つかりません")
             return {"CANCELLED"}
         entry = None
+        owner_page = None
         if target_id:
             # text_id が明示されている場合は、全ページの texts と
             # work.shared_texts (ページ外へ出した共有テキスト) を横断して
@@ -325,21 +326,21 @@ class BMANGA_OT_set_linked_balloon_preset(Operator):
             # 見つからなければフォールバックせずに CANCELLED する。
             from ..utils import text_real_object
 
-            _owner_page, entry = text_real_object.find_text_entry(context.scene, target_id)
+            owner_page, entry = text_real_object.find_text_entry(context.scene, target_id)
             if entry is None:
                 self.report({"WARNING"}, "対象のテキストが見つかりません")
                 return {"CANCELLED"}
         else:
             # text_id 未指定のときだけ、アクティブページのアクティブテキストへ
             # フォールバックする。
-            page = get_active_page(context)
-            if page is not None and 0 <= page.active_text_index < len(page.texts):
-                entry = page.texts[page.active_text_index]
+            owner_page = get_active_page(context)
+            if owner_page is not None and 0 <= owner_page.active_text_index < len(owner_page.texts):
+                entry = owner_page.texts[owner_page.active_text_index]
         if entry is None:
             self.report({"ERROR"}, "テキストが選択されていません")
             return {"CANCELLED"}
         entry.linked_balloon_preset = self.preset_name
-        self._apply_to_parent_balloon(work, entry, context)
+        self._apply_to_parent_balloon(work, entry, context, owner_page)
         return {"FINISHED"}
 
     @staticmethod
@@ -361,11 +362,11 @@ class BMANGA_OT_set_linked_balloon_preset(Operator):
                 return b
         return None
 
-    def _apply_to_parent_balloon(self, work, entry, context=None) -> None:
+    def _apply_to_parent_balloon(self, work, entry, context=None, owner_page=None) -> None:
         bid = str(getattr(entry, "parent_balloon_id", "") or "")
         name = self.preset_name
         if not bid and name and context is not None:
-            self._create_parent_balloon_for_text(work, entry, name, context)
+            self._create_parent_balloon_for_text(work, entry, name, context, owner_page)
             return
         if not bid:
             return
@@ -384,18 +385,22 @@ class BMANGA_OT_set_linked_balloon_preset(Operator):
 
             layer_stack_utils.sync_layer_stack_after_data_change(context)
 
-    def _create_parent_balloon_for_text(self, work, entry, preset_name: str, context) -> None:
+    def _create_parent_balloon_for_text(self, work, entry, preset_name: str, context, page=None) -> None:
         """独立テキストに親フキダシを新規作成してリンクする."""
         from . import balloon_op
-        from ..utils import balloon_curve_object
         from ..utils import layer_stack as layer_stack_utils
+        from ..utils.layer_hierarchy import page_stack_key
 
-        page = get_active_page(context)
         x = float(getattr(entry, "x_mm", 0.0) or 0.0)
         y = float(getattr(entry, "y_mm", 0.0) or 0.0)
         w = float(getattr(entry, "width_mm", 30.0) or 30.0)
         h = float(getattr(entry, "height_mm", 20.0) or 20.0)
         padding = 3.0
+        parent_kind, parent_key = "", ""
+        if page is not None:
+            parent_kind, parent_key = balloon_op._parent_for_creation_point(
+                page, x + w * 0.5, y + h * 0.5,
+            )
         balloon_entry = balloon_op._create_balloon_entry(
             context,
             page,
@@ -404,18 +409,17 @@ class BMANGA_OT_set_linked_balloon_preset(Operator):
             y=y - padding,
             w=w + padding * 2,
             h=h + padding * 2,
+            parent_kind=parent_kind,
+            parent_key=parent_key,
         )
         if balloon_entry is not None:
             balloon_entry.custom_preset_name = preset_name
             entry.parent_balloon_id = balloon_entry.id
-            # meldex_scenario_import._apply_row と同じ双方向リンク規約
-            # (text.parent_balloon_id / balloon.text_id) を守る。これにより
-            # utils/layer_stack.py の pair_key 判定が新規フキダシを紐付き
-            # テキストの直後へ配置し、テキストが新規フキダシの背後に
-            # 隠れないようにする。
             balloon_entry.text_id = str(getattr(entry, "id", "") or "")
-            balloon_curve_object.on_balloon_entry_changed(balloon_entry)
-            layer_stack_utils.sync_layer_stack_after_data_change(context)
+            pk = page_stack_key(page) if page is not None else ""
+            layer_stack_utils.normalize_paired_layer_order(
+                context, [(pk, balloon_entry.id, balloon_entry.text_id)],
+            )
 
 
 class BMANGA_MT_linked_balloon_preset(Menu):
