@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import bpy
 from bpy.props import StringProperty
 from bpy.types import Menu, Operator
@@ -11,6 +13,13 @@ from ..io import balloon_presets, text_presets
 from ..utils import log
 
 _logger = log.get_logger(__name__)
+
+
+def _work_dir(context) -> Path | None:
+    work = get_work(context)
+    raw = str(getattr(work, "work_dir", "") or "") if work is not None else ""
+    return Path(raw) if raw else None
+
 
 # BMANGA_MT_linked_balloon_preset.draw() が active_text_index に依存せず対象
 # テキストを一意に特定できるようにするための一時受け渡し変数。
@@ -235,7 +244,7 @@ class BMANGA_OT_text_preset_delete(Operator):
             self.report({"ERROR"}, "プリセットが選択されていません")
             return {"CANCELLED"}
         # Find fallback before deleting
-        all_presets = text_presets.list_all_presets(None)
+        all_presets = text_presets.list_all_presets(_work_dir(context))
         names = [p.name for p in all_presets]
         fallback = ""
         if name in names and len(names) > 1:
@@ -330,7 +339,7 @@ class BMANGA_OT_set_linked_balloon_preset(Operator):
             self.report({"ERROR"}, "テキストが選択されていません")
             return {"CANCELLED"}
         entry.linked_balloon_preset = self.preset_name
-        self._apply_to_parent_balloon(work, entry)
+        self._apply_to_parent_balloon(work, entry, context)
         return {"FINISHED"}
 
     @staticmethod
@@ -352,14 +361,17 @@ class BMANGA_OT_set_linked_balloon_preset(Operator):
                 return b
         return None
 
-    def _apply_to_parent_balloon(self, work, entry) -> None:
+    def _apply_to_parent_balloon(self, work, entry, context=None) -> None:
         bid = str(getattr(entry, "parent_balloon_id", "") or "")
+        name = self.preset_name
+        if not bid and name and context is not None:
+            self._create_parent_balloon_for_text(work, entry, name, context)
+            return
         if not bid:
             return
         balloon = self._find_balloon_by_id(work, bid)
         if balloon is None:
             return
-        name = self.preset_name
         if name:
             balloon.shape = "custom"
             balloon.custom_preset_name = name
@@ -367,6 +379,43 @@ class BMANGA_OT_set_linked_balloon_preset(Operator):
             if str(getattr(balloon, "shape", "") or "") == "none":
                 balloon.shape = "rect"
                 balloon.custom_preset_name = ""
+        if context is not None:
+            from ..utils import layer_stack as layer_stack_utils
+
+            layer_stack_utils.sync_layer_stack_after_data_change(context)
+
+    def _create_parent_balloon_for_text(self, work, entry, preset_name: str, context) -> None:
+        """独立テキストに親フキダシを新規作成してリンクする."""
+        from . import balloon_op
+        from ..utils import balloon_curve_object
+        from ..utils import layer_stack as layer_stack_utils
+
+        page = get_active_page(context)
+        x = float(getattr(entry, "x_mm", 0.0) or 0.0)
+        y = float(getattr(entry, "y_mm", 0.0) or 0.0)
+        w = float(getattr(entry, "width_mm", 30.0) or 30.0)
+        h = float(getattr(entry, "height_mm", 20.0) or 20.0)
+        padding = 3.0
+        balloon_entry = balloon_op._create_balloon_entry(
+            context,
+            page,
+            shape="custom",
+            x=x - padding,
+            y=y - padding,
+            w=w + padding * 2,
+            h=h + padding * 2,
+        )
+        if balloon_entry is not None:
+            balloon_entry.custom_preset_name = preset_name
+            entry.parent_balloon_id = balloon_entry.id
+            # meldex_scenario_import._apply_row と同じ双方向リンク規約
+            # (text.parent_balloon_id / balloon.text_id) を守る。これにより
+            # utils/layer_stack.py の pair_key 判定が新規フキダシを紐付き
+            # テキストの直後へ配置し、テキストが新規フキダシの背後に
+            # 隠れないようにする。
+            balloon_entry.text_id = str(getattr(entry, "id", "") or "")
+            balloon_curve_object.on_balloon_entry_changed(balloon_entry)
+            layer_stack_utils.sync_layer_stack_after_data_change(context)
 
 
 class BMANGA_MT_linked_balloon_preset(Menu):
@@ -382,7 +431,7 @@ class BMANGA_MT_linked_balloon_preset(Menu):
         op.preset_name = ""
         op.text_id = target_id
         layout.separator()
-        for preset in balloon_presets.list_all_presets(None):
+        for preset in balloon_presets.list_all_presets(_work_dir(context)):
             op = layout.operator(BMANGA_OT_set_linked_balloon_preset.bl_idname, text=preset.name)
             op.preset_name = preset.name
             op.text_id = target_id

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 
 import bpy
@@ -393,6 +394,94 @@ def _parent_for_hit_key(context, key: str) -> tuple[str, str]:
     return "", ""
 
 
+# ---------------------------------------------------------------------------
+# 回転 (rotation_deg) 対応: 選択ハンドル描画・ヒット判定共通のヘルパー
+# ---------------------------------------------------------------------------
+# balloon/text/image/fill のみが対象 (それ以外の kind は 0.0 を返す)。
+# effect は rotation_deg を持つが、これは効果線パターンの向きだけを変える
+# 生成パラメータであり、選択矩形 (bounds) 自体は回転しない
+# (operators/effect_line_op.py._write_effect_strokes は bounds をそのまま
+# 使い、obj.rotation_euler へ rotation_deg を反映する処理も存在しない)。
+# そのため effect は本ヘルパーの対象に含めない。
+
+
+def _entry_rotation_deg(entry) -> float:
+    """entry.rotation_deg を安全に取得する (balloon/text/image 共通)."""
+    return float(getattr(entry, "rotation_deg", 0.0) or 0.0)
+
+
+def _fill_rotation_deg(entry) -> float:
+    """fill entry の rotation_deg を返す (端点指定グラデーションは常に0.0).
+
+    端点指定グラデーション (fill_type=="gradient" かつ
+    use_gradient_endpoints=True) は、実体オブジェクトの rotation_euler を
+    utils/fill_real_object.py 側で常に 0 へ抑制している (ドラッグ用の始点/
+    終点ハンドルとオーバーレイ接続線が絶対 mm 座標のままオブジェクト回転に
+    追従しないため)。選択ハンドルの見た目もこの実体の状態に合わせ、
+    rotation_deg に値が残っていても 0.0 を返す。
+    """
+    if entry is None:
+        return 0.0
+    from ..utils.fill_real_object import is_gradient_endpoint_rotation_locked
+
+    if is_gradient_endpoint_rotation_locked(entry):
+        return 0.0
+    return _entry_rotation_deg(entry)
+
+
+def rotation_deg_for_key(context, key: str) -> float:
+    """selection key に対応するエントリの rotation_deg (回転角度、度) を返す.
+
+    ui/overlay.py (ハンドル描画) と operators/object_rotation.py (回転
+    リングの基準点計算) の両方から共有される。対象外の kind・未検出の
+    entry は 0.0 (= 従来どおり軸並行として扱う)。
+    """
+    kind, page_id, item_id = object_selection.parse_key(key)
+    if kind == "balloon":
+        work = get_work(context)
+        if page_id == OUTSIDE_STACK_KEY:
+            _idx, entry = find_shared_balloon_by_key(work, item_id)
+        else:
+            _pi, _page, _idx, entry = find_balloon_by_key(work, page_id, item_id)
+        return _entry_rotation_deg(entry)
+    if kind == "text":
+        work = get_work(context)
+        if page_id == OUTSIDE_STACK_KEY:
+            _idx, entry = find_shared_text_by_key(work, item_id)
+        else:
+            _pi, _page, _idx, entry = find_text_by_key(work, page_id, item_id)
+        return _entry_rotation_deg(entry)
+    if kind == "image":
+        _idx, entry = find_image_by_key(context, item_id)
+        return _entry_rotation_deg(entry)
+    if kind == "fill":
+        _idx, entry = find_fill_by_key(context, item_id)
+        return _fill_rotation_deg(entry)
+    return 0.0
+
+
+def _unrotate_point_around_rect_center(
+    rect: Rect, x_mm: float, y_mm: float, rotation_deg: float,
+) -> tuple[float, float]:
+    """(x_mm, y_mm) を rect 中心まわりに -rotation_deg 回転する.
+
+    「見た目の回転済み矩形へのヒット」を「軸並行矩形へのヒット」に還元する
+    ための逆回転 (剛体回転の標準手法。operators/text_op.py の
+    _unrotate_point_for_entry と同じ考え方・同じ回転規約)。
+    rotation_deg == 0 のときは入力をそのまま返す (従来と bit-for-bit 一致)。
+    """
+    if abs(rotation_deg) <= 1.0e-9:
+        return x_mm, y_mm
+    cx = rect.x + rect.width * 0.5
+    cy = rect.y + rect.height * 0.5
+    theta = math.radians(-rotation_deg)
+    cos_a = math.cos(theta)
+    sin_a = math.sin(theta)
+    dx = x_mm - cx
+    dy = y_mm - cy
+    return cx + dx * cos_a - dy * sin_a, cy + dx * sin_a + dy * cos_a
+
+
 def hit_visible_at_world(context, hit: dict | None, x_mm: float, y_mm: float) -> bool:
     if hit is None:
         return False
@@ -416,7 +505,21 @@ def rect_contains_rect(outer: Rect, inner: Rect) -> bool:
     )
 
 
-def hit_part_for_rect(rect: Rect, x_mm: float, y_mm: float, threshold: float = 2.5) -> str:
+def hit_part_for_rect(
+    rect: Rect,
+    x_mm: float,
+    y_mm: float,
+    threshold: float = 2.5,
+    rotation_deg: float = 0.0,
+) -> str:
+    """rect (axis-aligned, mm) に対するヒット部位を判定する.
+
+    ``rotation_deg`` が非0の場合、判定点を先に rect 中心まわりへ逆回転して
+    から (= 見た目の回転済み矩形へのヒットを「軸並行矩形へのヒット」に
+    還元する) 以下は従来と同じ軸並行判定を行う。rotation_deg == 0 の場合は
+    従来と完全に同一の挙動 (bit-for-bit 互換)。
+    """
+    x_mm, y_mm = _unrotate_point_around_rect_center(rect, x_mm, y_mm, rotation_deg)
     handle_rect = handle_rect_for_bounds(rect)
     if not rect_contains_point(handle_rect, x_mm, y_mm, threshold):
         return ""
@@ -610,7 +713,7 @@ def hit_image_at_world(context, x_mm: float, y_mm: float) -> dict | None:
             float(getattr(entry, "width_mm", 0.0)),
             float(getattr(entry, "height_mm", 0.0)),
         )
-        part = hit_part_for_rect(rect, x_mm, y_mm)
+        part = hit_part_for_rect(rect, x_mm, y_mm, rotation_deg=_entry_rotation_deg(entry))
         if part:
             return {
                 "kind": "image",
@@ -708,7 +811,7 @@ def hit_fill_at_world(context, x_mm: float, y_mm: float) -> dict | None:
         rect = fill_world_rect(context, work, entry)
         if rect is None:
             continue
-        part = hit_part_for_rect(rect, x_mm, y_mm)
+        part = hit_part_for_rect(rect, x_mm, y_mm, rotation_deg=_fill_rotation_deg(entry))
         if part:
             hit = {
                 "kind": "fill",
@@ -743,7 +846,7 @@ def hit_shared_text_at_world(context, x_mm: float, y_mm: float) -> dict | None:
         if not bool(getattr(entry, "visible", True)) or bool(getattr(entry, "locked", False)):
             continue
         rect = world_rect_for_page_entry(context, work, -1, entry, use_parent=False)
-        part = hit_part_for_rect(rect, x_mm, y_mm)
+        part = hit_part_for_rect(rect, x_mm, y_mm, rotation_deg=_entry_rotation_deg(entry))
         if part:
             return {
                 "kind": "text",
@@ -768,10 +871,12 @@ def hit_shared_balloon_at_world(context, x_mm: float, y_mm: float) -> dict | Non
         if not bool(getattr(entry, "visible", True)) or bool(getattr(entry, "locked", False)):
             continue
         rect = world_rect_for_page_entry(context, work, -1, entry, use_parent=False)
-        part = hit_part_for_rect(rect, x_mm, y_mm)
+        rotation_deg = _entry_rotation_deg(entry)
+        part = hit_part_for_rect(rect, x_mm, y_mm, rotation_deg=rotation_deg)
         if not part and free_transform.entry_enabled(entry):
             quad = free_transform.quad_from_rect_offsets(rect, free_transform.entry_offsets(entry))
-            if free_transform.point_in_quad(quad, x_mm, y_mm, tolerance_mm=2.5):
+            qx, qy = _unrotate_point_around_rect_center(rect, x_mm, y_mm, rotation_deg)
+            if free_transform.point_in_quad(quad, qx, qy, tolerance_mm=2.5):
                 part = "body"
         if part:
             return {

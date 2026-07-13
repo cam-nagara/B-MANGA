@@ -290,6 +290,62 @@ def _expanded_quad_for_handles(quad: dict[str, tuple[float, float]], outset_mm: 
     return expanded
 
 
+def _rotate_point_around(x: float, y: float, cx: float, cy: float, rotation_deg: float) -> tuple[float, float]:
+    """(x, y) を (cx, cy) 中心に rotation_deg 度 (反時計回り) 回転する.
+
+    entry.rotation_deg と同じ回転規約 (utils/text_real_object.py の
+    _rotation_offset_mm、operators/object_rotation_gp.py の
+    rotate_point_around_center と同一の式)。選択ハンドル/枠線の見た目を
+    実体オブジェクト (obj.rotation_euler.z == radians(rotation_deg)) と
+    揃えるために使う。rotation_deg == 0 なら入力をそのまま返す。
+    """
+    if abs(rotation_deg) <= 1.0e-9:
+        return x, y
+    theta = math.radians(rotation_deg)
+    cos_a = math.cos(theta)
+    sin_a = math.sin(theta)
+    dx = x - cx
+    dy = y - cy
+    return cx + dx * cos_a - dy * sin_a, cy + dx * sin_a + dy * cos_a
+
+
+def _rotated_outline_quad(rect: Rect, rotation_deg: float) -> dict[str, tuple[float, float]]:
+    """axis-aligned rect を、rect 自身の中心軸まわりに rotation_deg 回転した
+    4隅の quad (dict) を返す (rotation_deg == 0 でも呼べる)。"""
+    cx = rect.x + rect.width * 0.5
+    cy = rect.y + rect.height * 0.5
+    return {
+        free_transform.BOTTOM_LEFT: _rotate_point_around(rect.x, rect.y, cx, cy, rotation_deg),
+        free_transform.BOTTOM_RIGHT: _rotate_point_around(rect.x2, rect.y, cx, cy, rotation_deg),
+        free_transform.TOP_RIGHT: _rotate_point_around(rect.x2, rect.y2, cx, cy, rotation_deg),
+        free_transform.TOP_LEFT: _rotate_point_around(rect.x, rect.y2, cx, cy, rotation_deg),
+    }
+
+
+def _rotated_rect_handle_rects(rect: Rect, rotation_deg: float, size_mm: float = 2.0) -> list[Rect]:
+    """rect の8ハンドル位置 (4隅+4辺中点) を rect 自身の中心軸まわりに
+    rotation_deg 回転して返す。各ハンドル自体は軸並行の小正方形のまま
+    (位置だけ回転する。一般的なグラフィックエディタの慣習と同じ)。"""
+    half = size_mm * 0.5
+    cx = rect.x + rect.width * 0.5
+    cy = rect.y + rect.height * 0.5
+    points = (
+        (rect.x, rect.y),
+        (rect.x + rect.width * 0.5, rect.y),
+        (rect.x2, rect.y),
+        (rect.x, rect.y + rect.height * 0.5),
+        (rect.x2, rect.y + rect.height * 0.5),
+        (rect.x, rect.y2),
+        (rect.x + rect.width * 0.5, rect.y2),
+        (rect.x2, rect.y2),
+    )
+    result = []
+    for px, py in points:
+        rx, ry = _rotate_point_around(px, py, cx, cy, rotation_deg)
+        result.append(Rect(rx - half, ry - half, size_mm, size_mm))
+    return result
+
+
 def _free_transform_quad_for_key(context, key: str, rect: Rect):
     try:
         from ..operators import object_tool_selection
@@ -349,18 +405,35 @@ def _draw_object_tool_layer_bounds(context) -> None:
         rect = object_tool_op.selection_bounds_for_key(context, key)
         if rect is None:
             continue
+        rotation_deg = object_tool_selection.rotation_deg_for_key(context, key)
         quad = _free_transform_quad_for_key(context, key, rect)
         if quad:
             display_quad = _expanded_quad_for_handles(
                 quad,
                 float(getattr(object_tool_selection, "SELECTION_HANDLE_OUTSET_MM", 3.0)),
             )
+            if abs(rotation_deg) > 1.0e-9:
+                # 自由変形クアッドは常に rect 自身の中心 (= 実体オブジェクトの
+                # obj.location が置かれる点) を軸に回転する。クアッド自体の
+                # 重心ではない (自由変形オフセットが非対称だと重心が rect
+                # 中心からズレ、実体オブジェクトの回転軸と食い違うため)。
+                cx = rect.x + rect.width * 0.5
+                cy = rect.y + rect.height * 0.5
+                display_quad = {
+                    corner: _rotate_point_around(px, py, cx, cy, rotation_deg)
+                    for corner, (px, py) in display_quad.items()
+                }
             _draw_quad_outline(display_quad, viewport_colors.SELECTION, line_width=2.0)
             handle_rects = _quad_handle_rects(display_quad)
         else:
             display_rect = object_tool_selection.handle_rect_for_bounds(rect)
-            _draw_rect_outline(display_rect, viewport_colors.SELECTION, width_mm=0.50)
-            handle_rects = _selection_handle_rects(display_rect)
+            if abs(rotation_deg) > 1.0e-9:
+                rotated_quad = _rotated_outline_quad(display_rect, rotation_deg)
+                _draw_quad_outline(rotated_quad, viewport_colors.SELECTION, line_width=2.0)
+                handle_rects = _rotated_rect_handle_rects(display_rect, rotation_deg)
+            else:
+                _draw_rect_outline(display_rect, viewport_colors.SELECTION, width_mm=0.50)
+                handle_rects = _selection_handle_rects(display_rect)
         for handle in handle_rects:
             _draw_rect_fill(handle, viewport_colors.HANDLE_FILL)
             _draw_rect_outline(handle, viewport_colors.HANDLE_OUTLINE, width_mm=0.25)
@@ -956,6 +1029,10 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
             half_em = size_px * 0.5
             x_px += half_em
             y_px += half_em
+        is_glyph_italic = not rotated and text_style.italic_for_index(entry, glyph.index)
+        if is_glyph_italic:
+            blf.enable(glyph_font_id, blf.ROTATION)
+            blf.rotation(glyph_font_id, math.radians(-12))
         stroke_width_px = 0.0
         if getattr(entry, "stroke_enabled", False):
             stroke_width_px = max(1.0, float(getattr(entry, "stroke_width_mm", 0.2)) * max(px_per_mm, 0.1))
@@ -1000,12 +1077,11 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
             blf.position(glyph_font_id, x_px + thicken_offset, y_px, 0.0)
             blf.draw(glyph_font_id, glyph.ch)
             if text_style.bold_for_index(entry, glyph.index):
-                blf.position(glyph_font_id, x_px + max(1.0, size_px * 0.035), y_px, 0.0)
-                blf.draw(glyph_font_id, glyph.ch)
-            if text_style.italic_for_index(entry, glyph.index):
-                blf.position(glyph_font_id, x_px + max(1.0, size_px * 0.055), y_px + max(1.0, size_px * 0.025), 0.0)
-                blf.draw(glyph_font_id, glyph.ch)
-        if rotated:
+                bold_off = max(1.0, size_px * 0.04)
+                for bx, by in ((bold_off, 0.0), (0.0, bold_off)):
+                    blf.position(glyph_font_id, x_px + bx, y_px + by, 0.0)
+                    blf.draw(glyph_font_id, glyph.ch)
+        if rotated or is_glyph_italic:
             blf.disable(glyph_font_id, blf.ROTATION)
     ruby_color = getattr(entry, "color", (0.0, 0.0, 0.0, 1.0))
     for ruby_glyph in ruby_placements:

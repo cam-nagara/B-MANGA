@@ -63,7 +63,7 @@ class BMANGA_PT_tools(Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = B_NAME_CATEGORY
-    bl_order = 13
+    bl_order = 14
 
     @classmethod
     def poll(cls, context):

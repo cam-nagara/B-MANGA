@@ -19,6 +19,7 @@ from ..utils import object_naming as on
 from ..utils import balloon_shapes
 from ..utils import balloon_curve_object
 from ..utils import balloon_curve_source_state
+from . import text_edit_runtime
 
 _logger = log.get_logger(__name__)
 _DETAIL_DIALOG_DEFAULT_WIDTH = 260
@@ -899,6 +900,7 @@ class BMANGA_OT_layer_detail_open(Operator):
         _prepare_detail_profile_nodes(context, self.kind, self.bmanga_id)
         detail_popup.position_dialog_cursor(context, event, key="layer_detail")
         width = _detail_dialog_width_for_kind(context, self.kind, self.bmanga_id)
+        text_edit_runtime.set_dialog_cursor_override(context, True)
         return context.window_manager.invoke_props_dialog(self, width=width)
 
     def draw(self, context):
@@ -975,7 +977,11 @@ class BMANGA_OT_layer_detail_open(Operator):
             pass
         return True
 
+    def cancel(self, context):
+        text_edit_runtime.set_dialog_cursor_override(context, False)
+
     def execute(self, context):
+        text_edit_runtime.set_dialog_cursor_override(context, False)
         _sync_detail_profile_curve(context, self.kind, self.bmanga_id)
         if self.kind in {"effect", "effect_legacy"}:
             obj = on.find_object_by_bmanga_id(self.bmanga_id, kind=self.kind)

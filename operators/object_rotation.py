@@ -203,6 +203,23 @@ def restore_rotation_snapshot(context, snapshot: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _rotate_ring_point(x: float, y: float, cx: float, cy: float, rotation_deg: float) -> tuple[float, float]:
+    """(x, y) を (cx, cy) 中心に rotation_deg 度回転する.
+
+    ui/overlay.py の _rotate_point_around と同じ回転規約 (entry.rotation_deg
+    と同じ規約)。回転リングの基準点を、選択ハンドルの実際の描画位置
+    (rotation_deg 分だけ回転した見た目) と一致させるために使う。
+    """
+    if abs(rotation_deg) <= 1.0e-9:
+        return x, y
+    theta = math.radians(rotation_deg)
+    cos_a = math.cos(theta)
+    sin_a = math.sin(theta)
+    dx = x - cx
+    dy = y - cy
+    return cx + dx * cos_a - dy * sin_a, cy + dx * sin_a + dy * cos_a
+
+
 def _handle_corners_for_key(context, key: str) -> list[tuple[float, float]] | None:
     """回転リングの基準点 (実際にハンドルが描画される角) を4つ返す.
 
@@ -210,25 +227,41 @@ def _handle_corners_for_key(context, key: str) -> list[tuple[float, float]] | No
     ヒット判定 = hit_transformed_handle_at_event と同じ基準) を使う。
     それ以外は矩形の角を SELECTION_HANDLE_OUTSET_MM だけ外側へ拡張した
     位置 (通常のリサイズハンドルの描画位置) を使う。
+
+    entry.rotation_deg (balloon/text/image/fill) が非0の場合、上記の基準点
+    は rect 自身の中心軸まわりに rotation_deg だけ回転する。ui/overlay.py が
+    選択ハンドルを同じ軸・同じ角度で回転して描画するため (実体オブジェクトの
+    obj.rotation_euler.z == radians(rotation_deg) と一致させるため)、ここで
+    追随させないとリング (回転をさらに続けるための掴み判定) が描画済みの
+    ハンドルからズレてしまう。effect は rotation_deg_for_key が常に 0.0 を
+    返す (bounds 自体は回転しない仕様) ため、この分岐は影響しない。
     """
     kind = object_selection.parse_key(key)[0]
     rect = object_tool_selection.selection_bounds_for_key(context, key)
     if rect is None:
         return None
+    rotation_deg = object_tool_selection.rotation_deg_for_key(context, key)
+    cx = rect.x + rect.width * 0.5
+    cy = rect.y + rect.height * 0.5
     if kind in {"balloon", "effect"}:
         quad = object_tool_free_transform._quad_for_key(context, key, force=False)
         if quad:
             expanded = object_tool_free_transform._expanded_quad_for_hit(quad)
             points = free_transform.ordered_quad_points(expanded)
             if points:
+                if abs(rotation_deg) > 1.0e-9:
+                    points = [_rotate_ring_point(px, py, cx, cy, rotation_deg) for px, py in points]
                 return points
     handle_rect = object_tool_selection.handle_rect_for_bounds(rect)
-    return [
+    corners = [
         (handle_rect.x, handle_rect.y),
         (handle_rect.x2, handle_rect.y),
         (handle_rect.x2, handle_rect.y2),
         (handle_rect.x, handle_rect.y2),
     ]
+    if abs(rotation_deg) > 1.0e-9:
+        corners = [_rotate_ring_point(px, py, cx, cy, rotation_deg) for px, py in corners]
+    return corners
 
 
 def _rect_center_for_key(context, key: str) -> tuple[float, float] | None:

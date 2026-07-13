@@ -47,18 +47,72 @@ def _draw_rotated_char(
     y: float,
     size_px: int,
     rotation_deg: float,
+    is_bold: bool = False,
+    is_italic: bool = False,
     **kwargs,
 ) -> None:
-    """1文字を回転して image に合成."""
+    """1文字を回転して image に合成（太字・斜体にも対応）."""
     margin = size_px
     tmp_size = size_px + margin * 2
     tmp = Image.new("RGBA", (tmp_size, tmp_size), (0, 0, 0, 0))
     tmp_draw = ImageDraw.Draw(tmp)
-    tmp_draw.text((margin, margin), ch, font=font, **kwargs)
+    bold_kwargs = dict(kwargs)
+    if is_bold:
+        bold_kwargs["stroke_width"] = max(
+            int(kwargs.get("stroke_width", 0) or 0),
+            max(1, size_px // 16),
+        )
+        bold_kwargs.setdefault("stroke_fill", kwargs.get("fill"))
+    tmp_draw.text((margin, margin), ch, font=font, **bold_kwargs)
+    if is_italic:
+        tmp = _apply_shear(tmp)
     rotated = tmp.rotate(-rotation_deg, resample=Image.BICUBIC, expand=False)
     paste_x = int(x - tmp_size / 2 + size_px * 0.5)
     paste_y = int(y - tmp_size / 2 + size_px * 0.5)
     image.alpha_composite(rotated, (paste_x, paste_y))
+
+
+def _draw_italic_char(
+    image: Any,
+    draw: Any,
+    ch: str,
+    font: Any,
+    x: float,
+    y: float,
+    size_px: int,
+    is_bold: bool = False,
+    **kwargs,
+) -> None:
+    """1文字を斜体（シア変換）で image に合成."""
+    margin = size_px
+    tmp_size = size_px + margin * 2
+    tmp = Image.new("RGBA", (tmp_size, tmp_size), (0, 0, 0, 0))
+    tmp_draw = ImageDraw.Draw(tmp)
+    bold_kwargs = dict(kwargs)
+    if is_bold:
+        bold_kwargs["stroke_width"] = max(
+            int(kwargs.get("stroke_width", 0) or 0),
+            max(1, size_px // 16),
+        )
+        bold_kwargs.setdefault("stroke_fill", kwargs.get("fill"))
+    tmp_draw.text((margin, margin), ch, font=font, **bold_kwargs)
+    tmp = _apply_shear(tmp)
+    paste_x = int(x - margin)
+    paste_y = int(y - margin)
+    image.alpha_composite(tmp, (paste_x, paste_y))
+
+
+def _apply_shear(img: Any, angle_deg: float = 12.0) -> Any:
+    """画像にシア（斜体）変換を適用する."""
+    import math
+
+    shear = math.tan(math.radians(angle_deg))
+    w, h = img.size
+    new_w = int(w + abs(shear) * h)
+    coeffs = (1, -shear, shear * h if shear > 0 else 0, 0, 1, 0)
+    result = img.transform((new_w, h), Image.AFFINE, coeffs, resample=Image.BICUBIC)
+    dx = (new_w - w) // 2
+    return result.crop((dx, 0, dx + w, h))
 
 
 def render_to_image(
@@ -109,19 +163,24 @@ def render_to_image(
         if stroke_width_px > 0:
             kwargs["stroke_width"] = stroke_width_px
             kwargs["stroke_fill"] = stroke_color
+        is_bold = bold_for_index is not None and bold_for_index(g.index)
+        is_italic = italic_for_index is not None and italic_for_index(g.index)
         if g.rotation_deg != 0.0:
-            _draw_rotated_char(image, draw, g.ch, font, x, y_px, size_px, g.rotation_deg, **kwargs)
+            _draw_rotated_char(
+                image, draw, g.ch, font, x, y_px, size_px, g.rotation_deg,
+                is_bold=is_bold, is_italic=is_italic, **kwargs,
+            )
+        elif is_italic:
+            _draw_italic_char(image, draw, g.ch, font, x, y_px, size_px, is_bold=is_bold, **kwargs)
         else:
-            draw.text((x, y_px), g.ch, font=font, **kwargs)
-            if bold_for_index is not None and bold_for_index(g.index):
-                draw.text((x + max(1, size_px // 28), y_px), g.ch, font=font, **kwargs)
-            if italic_for_index is not None and italic_for_index(g.index):
-                draw.text(
-                    (x + max(1, int(round(size_px * 0.055))), y_px - max(1, int(round(size_px * 0.025)))),
-                    g.ch,
-                    font=font,
-                    **kwargs,
+            glyph_kwargs = dict(kwargs)
+            if is_bold:
+                glyph_kwargs["stroke_width"] = max(
+                    int(kwargs.get("stroke_width", 0) or 0),
+                    max(1, size_px // 16),
                 )
+                glyph_kwargs.setdefault("stroke_fill", kwargs.get("fill"))
+            draw.text((x, y_px), g.ch, font=font, **glyph_kwargs)
     for r in ruby_placements or ():
         size_pt = float(getattr(r, "size_pt", 0.0) or 0.0)
         if size_pt <= 0.0:

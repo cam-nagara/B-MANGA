@@ -329,7 +329,37 @@ def _balloon_rect(entry) -> tuple[float, float, float, float]:
     return x, y, x + w, y + h
 
 
+def _unrotate_point_for_balloon_entry(entry, x_mm: float, y_mm: float) -> tuple[float, float]:
+    """クリック座標 (x_mm, y_mm) を entry の矩形中心を軸に -rotation_deg 回転する.
+
+    entry.rotation_deg が付いたフキダシは表示上、選択枠の中心軸を回転して
+    いるが (utils/balloon_curve_object.py の _apply_entry_transform /
+    _entry_origin_xy 参照: obj.location は常に矩形中心、obj.rotation_euler.z
+    が rotation_deg)、矩形自体 (_balloon_rect) は軸並行のまま持っている。
+    ヒット判定はこのプローブ座標を先に表示回転と逆方向へ回転させることで、
+    「軸並行矩形の判定」を変えずに「見た目の回転済み矩形」への当たり判定を
+    実現する (operators/text_op.py の _unrotate_point_for_entry と同じ
+    考え方・同じ回転規約)。rotation_deg == 0 のときは計算そのものを省略し、
+    従来と完全に同一の座標を返す (bit-for-bit で後方互換)。
+    """
+    rotation_deg = float(getattr(entry, "rotation_deg", 0.0) or 0.0)
+    if abs(rotation_deg) <= 1.0e-9:
+        return x_mm, y_mm
+    left, bottom, right, top = _balloon_rect(entry)
+    center_x = (left + right) * 0.5
+    center_y = (bottom + top) * 0.5
+    dx = x_mm - center_x
+    dy = y_mm - center_y
+    theta = math.radians(-rotation_deg)
+    cos_t = math.cos(theta)
+    sin_t = math.sin(theta)
+    rotated_dx = dx * cos_t - dy * sin_t
+    rotated_dy = dx * sin_t + dy * cos_t
+    return center_x + rotated_dx, center_y + rotated_dy
+
+
 def _balloon_hit_part(entry, x_mm: float, y_mm: float, *, handle_outset_mm: float = 0.0) -> str:
+    x_mm, y_mm = _unrotate_point_for_balloon_entry(entry, x_mm, y_mm)
     left, bottom, right, top = _balloon_rect(entry)
     width = max(0.0, right - left)
     height = max(0.0, top - bottom)

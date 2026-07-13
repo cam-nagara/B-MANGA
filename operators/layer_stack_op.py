@@ -13,6 +13,7 @@ from bpy_extras.io_utils import ImportHelper
 
 from ..utils import layer_stack as layer_stack_utils
 from ..utils import layer_folder as layer_folder_utils
+from . import text_edit_runtime
 from ..utils.layer_hierarchy import (
     PAGE_KIND,
     COMA_KIND,
@@ -1568,9 +1569,14 @@ class BMANGA_OT_layer_stack_detail(Operator):
         layer_stack_utils.tag_view3d_redraw(context)
         self._offset_cursor_for_selection_popup(context, event)
         width = _detail_dialog_width_for_item(context, stack[index])
+        text_edit_runtime.set_dialog_cursor_override(context, True)
         return context.window_manager.invoke_props_dialog(self, width=width)
 
+    def cancel(self, context):
+        text_edit_runtime.set_dialog_cursor_override(context, False)
+
     def execute(self, context):
+        text_edit_runtime.set_dialog_cursor_override(context, False)
         self._sync_coma_detail_curve(context)
         self._sync_effect_detail_curve(context)
         layer_stack_utils.sync_layer_stack_after_data_change(context)
