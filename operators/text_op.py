@@ -646,59 +646,6 @@ class BMANGA_OT_text_remove(Operator):
         return {"FINISHED"}
 
 
-class BMANGA_OT_text_attach_to_balloon(Operator):
-    """アクティブテキストをアクティブフキダシへ attach (親子連動対象化).
-
-    空文字でも実行: 現在の親子連携を解除して独立テキスト化する。
-    """
-
-    bl_idname = "bmanga.text_attach_to_balloon"
-    bl_label = "テキストをフキダシに紐付け"
-    bl_options = {"REGISTER", "UNDO"}
-
-    balloon_id: StringProperty(  # type: ignore[valid-type]
-        name="フキダシ ID",
-        description="空で親子関係を解除 (独立テキスト化)",
-        default="",
-    )
-
-    @classmethod
-    def poll(cls, context):
-        page = get_active_page(context)
-        if page is None:
-            return False
-        return 0 <= page.active_text_index < len(page.texts)
-
-    def execute(self, context):
-        page = get_active_page(context)
-        if page is None:
-            return {"CANCELLED"}
-        idx = page.active_text_index
-        if not (0 <= idx < len(page.texts)):
-            return {"CANCELLED"}
-        txt = page.texts[idx]
-        target_id = self.balloon_id.strip()
-        if not target_id:
-            txt.parent_balloon_id = ""
-            _sync_text_real_object(context, page, txt)
-            layer_stack_utils.sync_layer_stack_after_data_change(context)
-            self.report({"INFO"}, "テキストを独立化しました")
-            return {"FINISHED"}
-        # 指定 ID のフキダシが同じページに存在するか確認
-        for b in page.balloons:
-            if b.id == target_id:
-                txt.parent_balloon_id = target_id
-                # 位置を当該フキダシの中央に合わせる
-                txt.x_mm = b.x_mm + (b.width_mm - txt.width_mm) / 2.0
-                txt.y_mm = b.y_mm + (b.height_mm - txt.height_mm) / 2.0
-                _sync_text_real_object(context, page, txt)
-                layer_stack_utils.sync_layer_stack_after_data_change(context)
-                self.report({"INFO"}, f"テキストを紐付け: {target_id}")
-                return {"FINISHED"}
-        self.report({"ERROR"}, f"フキダシが見つかりません: {target_id}")
-        return {"CANCELLED"}
-
-
 class BMANGA_OT_text_apply_font_to_selection(Operator):
     """テキスト編集中の選択範囲へフォントを適用する."""
 
@@ -1927,7 +1874,6 @@ class BMANGA_OT_text_tool(Operator):
 _CLASSES = (
     BMANGA_OT_text_add,
     BMANGA_OT_text_remove,
-    BMANGA_OT_text_attach_to_balloon,
     BMANGA_OT_text_apply_font_to_selection,
     BMANGA_OT_text_tool,
 )
