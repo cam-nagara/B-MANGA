@@ -8,16 +8,52 @@ from bpy.types import Operator
 
 from ..core.work import get_work
 from ..utils import layer_stack as layer_stack_utils
+from ..utils import object_naming as on
 from ..utils import text_real_object, text_style
 from . import coma_modal_state
 from . import text_edit_runtime
-from .text_meta_op import _resolve_text_entry
 
 _RUBY_STYLE_ITEMS = (
     ("group", "グループルビ", ""),
     ("mono", "モノルビ", ""),
     ("jukugo", "熟語ルビ", ""),
 )
+
+
+def _resolve_text_entry(context):
+    """アクティブなテキストエントリを (page, entry) で解決する.
+
+    v0.6.501 で operators/text_meta_op.py (廃止) からこちらへ移設した。
+    レイヤースタックの選択 → アクティブオブジェクト (実テキスト) →
+    アクティブページのアクティブテキスト、の優先順で解決する。
+    """
+    scene = getattr(context, "scene", None)
+    if scene is None:
+        return None, None
+    stack = getattr(scene, "bmanga_layer_stack", None)
+    idx = int(getattr(scene, "bmanga_active_layer_stack_index", -1))
+    item = stack[idx] if stack is not None and 0 <= idx < len(stack) else None
+    resolved = layer_stack_utils.resolve_stack_item(context, item) if item is not None else None
+    if resolved is not None and resolved.get("kind") == "text" and resolved.get("target") is not None:
+        return resolved.get("page"), resolved.get("target")
+
+    obj = getattr(context, "active_object", None)
+    if obj is not None and on.is_managed(obj) and on.get_kind(obj) == "text":
+        try:
+            return text_real_object.find_text_entry(scene, on.get_bmanga_id(obj))
+        except Exception:  # noqa: BLE001
+            return None, None
+
+    work = getattr(scene, "bmanga_work", None)
+    if work is None:
+        return None, None
+    idx = int(getattr(work, "active_page_index", -1))
+    if 0 <= idx < len(work.pages):
+        page = work.pages[idx]
+        text_idx = int(getattr(page, "active_text_index", -1))
+        if 0 <= text_idx < len(page.texts):
+            return page, page.texts[text_idx]
+    return None, None
 
 
 def _find_text_index(page, entry) -> int:

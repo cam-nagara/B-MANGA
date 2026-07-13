@@ -86,7 +86,7 @@ def _assert_paper_units() -> None:
     assert "work_meta_dialog" not in dir(bpy.ops.bmanga)
 
 
-def _assert_text_size_and_meta_dialog() -> None:
+def _assert_text_size() -> None:
     from bmanga_units_meta_dev.io import schema
     from bmanga_units_meta_dev.utils.geom import pt_to_q, q_to_pt
 
@@ -116,8 +116,6 @@ def _assert_text_size_and_meta_dialog() -> None:
     assert restored.font_size_unit == "q"
     assert abs(restored.font_size_pt - 10.0) < 0.001
     assert restored.speaker_name == "話者"
-    result = bpy.ops.bmanga.text_meta_dialog()
-    assert result == {"FINISHED"}, result
 
 
 def _assert_render_ui_and_native_setup() -> None:
@@ -161,7 +159,7 @@ def main() -> None:
     try:
         bmanga = _load_package("bmanga_units_meta_dev", ROOT)
         _assert_paper_units()
-        _assert_text_size_and_meta_dialog()
+        _assert_text_size()
         render = _load_package("bmanga_render_units_meta", ROOT / "addons" / "b_manga_render")
         _assert_render_ui_and_native_setup()
         print("BMANGA_UNITS_TEXT_META_RENDER_UI_OK")

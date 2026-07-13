@@ -396,27 +396,6 @@ class BMANGA_PT_texts(Panel):
         sub.prop(entry, "stroke_width_mm")
         sub.prop(entry, "stroke_color")
 
-        # 親子連動
-        box = layout.box()
-        box.label(text="親フキダシ", icon="LINKED")
-        row = box.row(align=True)
-        row.prop(entry, "parent_balloon_id", text="ID")
-        box.operator("bmanga.text_meta_dialog", text="メタ情報を編集", icon="INFO")
-        # 既存フキダシ一覧からのクイック選択
-        if len(page.balloons) > 0:
-            row = box.row(align=True)
-            row.label(text="紐付け:")
-            for b in page.balloons:
-                op = row.operator("bmanga.text_attach_to_balloon", text=b.id)
-                op.balloon_id = b.id
-            # 独立化ボタン
-            op = box.operator(
-                "bmanga.text_attach_to_balloon",
-                text="独立テキストにする",
-                icon="UNLINKED",
-            )
-            op.balloon_id = ""
-
 
 _CLASSES = (
     BMANGA_UL_balloons,

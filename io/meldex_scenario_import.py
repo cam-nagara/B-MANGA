@@ -64,7 +64,7 @@ def import_document(context, work, document: ScenarioDocument) -> dict[str, int]
                     document.document_id,
                     row,
                     row_index,
-                    balloon_by_name.get(row.type_name),
+                    balloon_by_name,
                     text_by_name.get(row.type_name),
                 )
                 result["created" if created else "updated"] += 1
@@ -120,35 +120,26 @@ def _ensure_page_count(work, work_dir: Path, required: int) -> tuple[int, set[st
 
 
 def _upsert_row(
-    work, page, document_id: str, row: ScenarioRow, ordinal: int, balloon_preset, text_preset
+    work, page, document_id: str, row: ScenarioRow, ordinal: int, balloon_by_name: dict, text_preset
 ) -> tuple[bool, bool, str, str]:
     balloon = _find_source(page.balloons, document_id, row.row_id)
     text = _find_source(page.texts, document_id, row.row_id)
-    balloon_new = balloon is None
+    balloon_existed = balloon is not None
     text_new = text is None
-    created = balloon_new or text_new
-    pair_new = balloon_new and text_new
-    previous_type = str(getattr(text or balloon, "meldex_type", "") or "")
-    type_changed = bool(previous_type) and previous_type != row.type_name
-    if balloon_new:
-        balloon = page.balloons.add()
-        from ..operators.balloon_op import _allocate_balloon_id
-
-        balloon.id = _allocate_balloon_id(page, work)
-        balloon_core.apply_balloon_shape_defaults(balloon, force=True)
+    # previous_type は _stamp_source (直後に meldex_type を row.type_name で
+    # 上書きする) より前に読み取る。text_new のときは比較対象が無いので空文字
+    # とし、type_changed を常に False にする。
+    previous_type = str(getattr(text, "meldex_type", "") or "") if not text_new else ""
     if text_new:
         text = page.texts.add()
         text.id = _allocate_id(page.texts, "text")
-    _stamp_source(balloon, document_id, row)
     _stamp_source(text, document_id, row)
-    if balloon_new and text_new:
-        _set_initial_center(work, text, ordinal)
-    if balloon_new or type_changed:
-        _apply_balloon_preset(balloon, balloon_preset)
+    type_changed = bool(previous_type) and previous_type != row.type_name
     if text_new or type_changed:
         text_presets.reset_entry_to_defaults(text)
         if text_preset is not None:
             text_presets.apply_to_entry(text, text_preset.data)
+    text.speaker_name = row.type_name
     text.body = row.body
     text.ruby_spans.clear()
     for source in row.rubies:
@@ -158,6 +149,44 @@ def _upsert_row(
         ruby.ruby_text = str(source["rubyText"])
         ruby.style = str(source["style"])
     text_style.normalize_ruby_spans(text)
+
+    # フキダシ作成判定:
+    #   - テキストプリセットが一致し、かつ linked_balloon_preset が空 →
+    #     フキダシなしのテキスト単体行として扱う (テキストプリセット側が
+    #     フキダシとの連動を望んでいないため)。ただし既存フキダシが
+    #     あれば黙って削除はせず、従来通り更新対象にする。
+    #   - linked_balloon_preset にプリセット名があれば、そのプリセットで
+    #     フキダシを作成/更新する。
+    #   - テキストプリセットが一致しない行は、従来通り row.type_name で
+    #     フキダシプリセットを独立にマッチングする。
+    linked = str(getattr(text, "linked_balloon_preset", "") or "")
+    skip_balloon = text_preset is not None and not linked
+
+    if skip_balloon and not balloon_existed:
+        text.parent_balloon_id = ""
+        text.parent_kind = "page"
+        text.parent_key = page_stack_key(page)
+        if text_new:
+            _set_initial_center(work, text, ordinal)
+        page.active_text_index = len(page.texts) - 1
+        return text_new, False, "", str(text.id)
+
+    balloon_new = balloon is None
+    if balloon_new:
+        balloon = page.balloons.add()
+        from ..operators.balloon_op import _allocate_balloon_id
+
+        balloon.id = _allocate_balloon_id(page, work)
+        balloon_core.apply_balloon_shape_defaults(balloon, force=True)
+    _stamp_source(balloon, document_id, row)
+    pair_new = balloon_new and text_new
+    if balloon_new and text_new:
+        _set_initial_center(work, text, ordinal)
+    if balloon_new or type_changed:
+        if linked:
+            _apply_balloon_preset(balloon, balloon_by_name.get(linked))
+        else:
+            _apply_balloon_preset(balloon, balloon_by_name.get(row.type_name))
     text.parent_balloon_id = balloon.id
     text.parent_kind = "page"
     text.parent_key = page_stack_key(page)
@@ -169,6 +198,7 @@ def _upsert_row(
         _place_initial_pair(work, page, text, balloon)
     page.active_balloon_index = len(page.balloons) - 1
     page.active_text_index = len(page.texts) - 1
+    created = balloon_new or text_new
     return created, pair_new, str(balloon.id), str(text.id)
 
 

@@ -12,8 +12,6 @@ from ..utils import log
 
 _logger = log.get_logger(__name__)
 
-NONE_SHAPE_VALUE = "__NONE_SHAPE__"
-
 # BMANGA_MT_linked_balloon_preset.draw() が active_text_index に依存せず対象
 # テキストを一意に特定できるようにするための一時受け渡し変数。
 # メニュー描画の直前に呼び出し側 (panels/layer_stack_detail_ui.py,
@@ -26,8 +24,6 @@ _linked_balloon_target_text_id: str = ""
 def linked_balloon_preset_display(value: str) -> str:
     if not value:
         return "なし"
-    if value == NONE_SHAPE_VALUE:
-        return "フキダシ無し"
     return value
 
 
@@ -303,6 +299,13 @@ class BMANGA_OT_set_linked_balloon_preset(Operator):
             self.report({"ERROR"}, "テキストが選択されていません")
             return {"CANCELLED"}
         target_id = self.text_id or _linked_balloon_target_text_id
+        if target_id == "__PRESET_SCRATCH__":
+            entry = getattr(context.window_manager, "bmanga_preset_scratch_text", None)
+            if entry is not None:
+                entry.linked_balloon_preset = self.preset_name
+                return {"FINISHED"}
+            self.report({"WARNING"}, "プリセット編集対象が見つかりません")
+            return {"CANCELLED"}
         entry = None
         if target_id:
             # text_id が明示されている場合は、全ページの texts と
@@ -357,18 +360,10 @@ class BMANGA_OT_set_linked_balloon_preset(Operator):
         if balloon is None:
             return
         name = self.preset_name
-        if name == NONE_SHAPE_VALUE:
-            balloon.shape = "none"
-            balloon.custom_preset_name = ""
-        elif name:
+        if name:
             balloon.shape = "custom"
             balloon.custom_preset_name = name
         else:
-            # 「なし」(preset_name 空 = プリセット連動の解除)。
-            # フキダシ無し (shape=="none") で本体を隠した状態のときだけ、
-            # 形状を既定の可視形状へ戻して本体を復帰させる。
-            # "rect" は core/balloon.py の shape EnumProperty の default 値。
-            # shape が "none" 以外 (既に可視) の場合は手編集を壊さないため触れない。
             if str(getattr(balloon, "shape", "") or "") == "none":
                 balloon.shape = "rect"
                 balloon.custom_preset_name = ""
@@ -385,9 +380,6 @@ class BMANGA_MT_linked_balloon_preset(Menu):
         target_id = _linked_balloon_target_text_id
         op = layout.operator(BMANGA_OT_set_linked_balloon_preset.bl_idname, text="なし")
         op.preset_name = ""
-        op.text_id = target_id
-        op = layout.operator(BMANGA_OT_set_linked_balloon_preset.bl_idname, text="フキダシ無し")
-        op.preset_name = NONE_SHAPE_VALUE
         op.text_id = target_id
         layout.separator()
         for preset in balloon_presets.list_all_presets(None):

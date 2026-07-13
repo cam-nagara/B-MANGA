@@ -60,7 +60,12 @@ def main() -> None:
         manual = work.pages[0].balloons.add()
         manual.id = "manual-balloon"
         balloon_presets.list_all_presets = lambda _path: [SimpleNamespace(name="会話", data={})]
-        text_presets.list_all_presets = lambda _path: [SimpleNamespace(name="会話", data={"font_bold": True, "writing_mode": "horizontal"})]
+        text_presets.list_all_presets = lambda _path: [
+            SimpleNamespace(
+                name="会話",
+                data={"font_bold": True, "writing_mode": "horizontal", "linked_balloon_preset": "会話"},
+            )
+        ]
 
         first = meldex_scenario_import.import_payload(bpy.context, work, _payload())
         assert first == {"pagesAdded": 1, "created": 4, "updated": 0, "ignored": 0}, first

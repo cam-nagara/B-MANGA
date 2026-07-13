@@ -551,7 +551,7 @@ def _draw_text_detail(layout, context, entry=None, *, preset_mode: bool = False)
 
     ``preset_mode=True`` はテキストプリセット詳細編集ダイアログからの呼び
     出し用で、実テキストとは無関係なスクラッチ ``BMangaTextEntry`` を渡す。
-    この場合、プリセットに保存されない項目 (配置・話者・リンクフキダシ・
+    この場合、プリセットに保存されない項目 (配置・話者・
     ルビ管理ボタン等。``io/text_presets.py`` の ``_TEXT_KEYS`` を参照) は
     描画しない。
     """
@@ -562,15 +562,6 @@ def _draw_text_detail(layout, context, entry=None, *, preset_mode: bool = False)
         from ..panels import preset_management_ui
 
         preset_management_ui.draw_text_preset_selection(layout, context)
-
-        # リンクフキダシプリセット (linked_balloon_preset はテキストプリセット
-        # の保存/適用対象外 = io/text_presets.py _TEXT_KEYS のコメント参照)
-        link_box = layout.box()
-        link_box.label(text="リンクフキダシプリセット", icon="LINKED")
-        from . import text_preset_op
-
-        text_preset_op._linked_balloon_target_text_id = entry.id
-        link_box.menu("BMANGA_MT_linked_balloon_preset", text=text_preset_op.linked_balloon_preset_display(entry.linked_balloon_preset))
 
         box = layout.box()
         box.label(text="配置 (mm)")
@@ -584,6 +575,14 @@ def _draw_text_detail(layout, context, entry=None, *, preset_mode: bool = False)
         box = layout.box()
         box.label(text="話者")
         box.prop(entry, "speaker_name")
+
+    # リンクフキダシプリセット
+    link_box = layout.box()
+    link_box.label(text="リンクフキダシプリセット", icon="LINKED")
+    from . import text_preset_op
+
+    text_preset_op._linked_balloon_target_text_id = "__PRESET_SCRATCH__" if preset_mode else entry.id
+    link_box.menu("BMANGA_MT_linked_balloon_preset", text=text_preset_op.linked_balloon_preset_display(entry.linked_balloon_preset))
 
     box = layout.box()
     box.label(text="フォント・組版")
@@ -628,7 +627,6 @@ def _draw_text_detail(layout, context, entry=None, *, preset_mode: bool = False)
         row = box.row(align=True)
         row.operator("bmanga.text_ruby_add_dialog", text="ルビを付ける", icon="ADD")
         row.operator("bmanga.text_ruby_clear", text="ルビを削除", icon="TRASH")
-        box.operator("bmanga.text_meta_dialog", text="メタ情報を編集", icon="INFO")
 
 
 def _draw_gp_detail(layout, obj) -> None:

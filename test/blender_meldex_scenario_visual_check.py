@@ -138,7 +138,7 @@ def main() -> None:
         result = bpy.ops.bmanga.work_new(filepath=str(work_dir))
         assert "FINISHED" in result, result
         from bmanga_dev_meldex_visual.core.work import get_work
-        from bmanga_dev_meldex_visual.io import balloon_presets, meldex_scenario_import
+        from bmanga_dev_meldex_visual.io import balloon_presets, meldex_scenario_import, text_presets
         from bmanga_dev_meldex_visual.utils import balloon_curve_object, page_detail, text_real_object
 
         custom = SimpleNamespace(
@@ -152,6 +152,15 @@ def main() -> None:
             },
         )
         balloon_presets.list_all_presets = lambda _path: [custom]
+        # 同梱テキストプリセット「ナレーション」と行の type 名が偶然一致すると、
+        # v0.6.501 の linked_balloon_preset 連動 (text_preset があり
+        # linked_balloon_preset が空ならフキダシを作らない) によりこの行の
+        # フキダシが作られなくなってしまう。本テストの目的 (カスタム形状の
+        # フキダシプリセット適用確認) を同梱プリセットの実データに依存させない
+        # ため明示的にモックし、写像先のフキダシプリセットへ連動させておく。
+        text_presets.list_all_presets = lambda _path: [
+            SimpleNamespace(name="ナレーション", data={"writing_mode": "horizontal", "linked_balloon_preset": "ナレーション"})
+        ]
         work = get_work(bpy.context)
         initial_pages = len(work.pages)
         initial_comas = [len(page.comas) for page in work.pages]

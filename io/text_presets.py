@@ -42,13 +42,7 @@ _TEXT_KEYS = (
     "stroke_enabled",
     "stroke_width_mm",
     "stroke_color",
-    # linked_balloon_preset は「このテキストとフキダシの1対1リンク」であり、
-    # 再利用可能なフォント書式ではないため、テキストプリセットの保存・適用対象から
-    # 除外する (2026-07-12)。含めると apply_to_entry の素の setattr がラベルだけ
-    # 書き換え、フキダシ形状を変えないため表示と実態が乖離する。リンク自体は
-    # io/schema.py の linkedBalloonPreset として .bmanga 側で独立に永続化され、
-    # 形状同期は専用オペレーター (operators/text_preset_op.py の
-    # _apply_to_parent_balloon) が担うため、除外による機能欠落はない。
+    "linked_balloon_preset",
 )
 
 

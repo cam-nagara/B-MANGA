@@ -612,7 +612,6 @@ def _required_labels_missing(records: list[dict[str, Any]]) -> list[str]:
         "配置 (mm)",
         "線・塗り",
         "白フチ",
-        "親フキダシ",
         "外端形状",
         "内端形状",
         "白抜き線",

@@ -534,7 +534,6 @@ def _page_for_balloon_entry(context, entry):
 
 
 def _draw_text_selected_settings(box, context, entry) -> None:
-    page = get_active_page(context)
     settings = box.column(align=True)
     settings.label(text=f"選択中: {getattr(entry, 'title', '') or entry.id} (テキスト)")
     preset_management_ui.draw_text_preset_selection(box, context)
@@ -593,23 +592,6 @@ def _draw_text_selected_settings(box, context, entry) -> None:
 
     text_preset_op._linked_balloon_target_text_id = entry.id
     link_box.menu("BMANGA_MT_linked_balloon_preset", text=text_preset_op.linked_balloon_preset_display(entry.linked_balloon_preset))
-
-    parent_box = box.box()
-    parent_box.label(text="親フキダシ", icon="LINKED")
-    parent_box.prop(entry, "parent_balloon_id", text="ID")
-    parent_box.operator("bmanga.text_meta_dialog", text="メタ情報を編集", icon="INFO")
-    if page is not None and len(page.balloons) > 0:
-        row = parent_box.row(align=True)
-        row.label(text="紐付け:")
-        for balloon in page.balloons:
-            op = row.operator("bmanga.text_attach_to_balloon", text=balloon.id)
-            op.balloon_id = balloon.id
-        op = parent_box.operator(
-            "bmanga.text_attach_to_balloon",
-            text="独立テキストにする",
-            icon="UNLINKED",
-        )
-        op.balloon_id = ""
 
 
 def _draw_effect_type_settings(box, params) -> None:

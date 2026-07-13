@@ -352,9 +352,12 @@ def _check_text(context, preset_detail_op) -> None:
     ops = _ops(records)
     for forbidden in ("bmanga.text_ruby_add_dialog", "bmanga.text_ruby_clear", "bmanga.text_meta_dialog"):
         _check(forbidden not in ops, f"text: draw に実テキスト用ボタンが出ない ({forbidden})")
+    # v0.6.501: リンクフキダシプリセットは「テキストプリセットに保存される
+    # 項目」になったため、プリセット詳細編集 (preset_mode=True) でも表示・
+    # 編集できる必要がある (operators/layer_detail_op.py _draw_text_detail)。
     _check(
-        "BMANGA_MT_linked_balloon_preset" not in _menus(records),
-        "text: draw にリンクフキダシメニューが出ない",
+        "BMANGA_MT_linked_balloon_preset" in _menus(records),
+        "text: draw にリンクフキダシメニューが出る (プリセットモードでも編集可能)",
     )
     props = _props(records)
     for expected in ("font_size_value", "writing_mode", "color", "stroke_enabled", "line_height"):
