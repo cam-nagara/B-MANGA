@@ -38,12 +38,27 @@ _RUBY_SMALL_KANA_ITEMS = (
     ("fullsize", "直音に変換", "ゃ→や、ゅ→ゆ 等に変換して表示"),
 )
 
+_RUBY_FONT_PRESET_ITEMS = (
+    ("inherit", "本文と同じ", "本文と同じフォントを使います"),
+    ("sans-jp", "日本語サンセリフ", "OSで利用できる日本語サンセリフ体を使います"),
+    ("serif-jp", "日本語セリフ", "OSで利用できる日本語セリフ体を使います"),
+    ("gothic-jp", "日本語ゴシック", "OSで利用できる日本語ゴシック体を使います"),
+)
+
 _FONT_SIZE_UNIT_ITEMS = (
     ("q", "Q", "Q 数"),
     ("pt", "pt", "ポイント"),
 )
 
 _font_size_sync_depth = 0
+
+
+class BMangaRubySegment(bpy.types.PropertyGroup):
+    """モノルビ・熟語ルビの親文字内訳（親スパン相対）."""
+
+    start: IntProperty(name="開始", default=0, min=0)  # type: ignore[valid-type]
+    length: IntProperty(name="長さ", default=1, min=1)  # type: ignore[valid-type]
+    ruby_text: StringProperty(name="ルビ", default="")  # type: ignore[valid-type]
 
 
 class BMangaRubySpan(bpy.types.PropertyGroup):
@@ -61,8 +76,21 @@ class BMangaRubySpan(bpy.types.PropertyGroup):
             ("group", "グループルビ", "親文字列全体にまとめてルビを付けます"),
             ("jukugo", "熟語ルビ", "熟語全体に対してルビを配置します"),
         ),
-        default="mono",
+        default="group",
     )
+    origin: EnumProperty(  # type: ignore[valid-type]
+        name="設定元",
+        items=(
+            ("manual", "手動", ""),
+            ("shared-link-dictionary", "共有リンク辞書", ""),
+            ("document-rule", "文書ルール", ""),
+            ("local-auto-dictionary", "自動ルビ辞書", ""),
+        ),
+        default="manual",
+        options={"HIDDEN"},
+    )
+    priority: IntProperty(name="優先順位", default=0, options={"HIDDEN"})  # type: ignore[valid-type]
+    segments: CollectionProperty(type=BMangaRubySegment, options={"HIDDEN"})  # type: ignore[valid-type]
 
 
 class BMangaTextFontSpan(bpy.types.PropertyGroup):
@@ -177,6 +205,19 @@ def _set_text_font_size_value(self, value: float) -> None:
         self.font_size_q = size
 
 
+def _get_ruby_gap_em(self) -> float:
+    if "_ruby_gap_em" in self:
+        return max(-2.0, min(4.0, float(self["_ruby_gap_em"])))
+    # 旧文書はmm値を親文字比へ読み替え、描画上の距離を変えない。
+    base_em = max(0.001, float(getattr(self, "font_size_q", 20.0) or 20.0) * 0.25)
+    return max(0.0, float(getattr(self, "ruby_gap_mm", 0.0) or 0.0)) / base_em
+
+
+def _set_ruby_gap_em(self, value: float) -> None:
+    self["_ruby_gap_em"] = max(-2.0, min(4.0, float(value or 0.0)))
+    self["ruby_presentation_version"] = 2
+
+
 class BMangaTextEntry(bpy.types.PropertyGroup):
     """1 つのテキストオブジェクト.
 
@@ -265,14 +306,16 @@ class BMangaTextEntry(bpy.types.PropertyGroup):
     font_bold: BoolProperty(name="太字", default=False, description="本文全体を太字にします", update=_on_text_entry_changed)  # type: ignore[valid-type]
     font_italic: BoolProperty(name="斜体", default=False, description="本文全体を斜体にします", update=_on_text_entry_changed)  # type: ignore[valid-type]
     color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, description="本文の文字色", update=_on_text_entry_changed)  # type: ignore[valid-type]
-    writing_mode: EnumProperty(items=_WRITING_MODE_ITEMS, default="vertical", description="テキストの書字方向を選択します", update=_on_text_entry_changed)  # type: ignore[valid-type]
+    writing_mode: EnumProperty(items=_WRITING_MODE_ITEMS, default="horizontal", description="テキストの書字方向を選択します", update=_on_text_entry_changed)  # type: ignore[valid-type]
     line_height: FloatProperty(name="行間", default=1.4, min=0.5, soft_max=3.0, description="行と行の間隔（文字サイズに対する倍率）", update=_on_text_entry_changed)  # type: ignore[valid-type]
     letter_spacing: FloatProperty(name="字間", default=0.0, soft_min=-1.0, soft_max=1.0, description="文字と文字の間隔（文字サイズに対する倍率）", update=_on_text_entry_changed)  # type: ignore[valid-type]
-    ruby_line_height: FloatProperty(name="ルビ行の行間", default=1.8, min=0.5, soft_max=4.0, description="ルビを含む行の行間（文字サイズに対する倍率）", update=_on_text_entry_changed)  # type: ignore[valid-type]
+    ruby_line_height: FloatProperty(name="ルビ行の行間", default=1.8, min=0.5, soft_max=5.0, description="ルビを含む行の行間（文字サイズに対する倍率）", update=_on_text_entry_changed)  # type: ignore[valid-type]
     ruby_gap_mm: FloatProperty(name="親文字との間隔", default=0.0, min=0.0, soft_max=5.0, description="親文字とルビの間隔（mm）", unit="LENGTH", update=_on_text_entry_changed)  # type: ignore[valid-type]
-    ruby_letter_spacing: FloatProperty(name="ルビの字間", default=0.0, soft_min=-0.9, soft_max=3.0, description="ルビ文字同士の間隔（文字サイズに対する倍率）", update=_on_text_entry_changed)  # type: ignore[valid-type]
+    ruby_gap_em: FloatProperty(name="親文字との間隔", default=0.0, min=-2.0, max=4.0, description="親文字の大きさに対する間隔。大きいほど離れます", get=_get_ruby_gap_em, set=_set_ruby_gap_em, update=_on_text_entry_changed)  # type: ignore[valid-type]
+    ruby_letter_spacing: FloatProperty(name="ルビの字間", default=0.0, min=-0.9, soft_min=-0.5, soft_max=3.0, description="ルビ文字同士の間隔（文字サイズに対する倍率）", update=_on_text_entry_changed)  # type: ignore[valid-type]
     ruby_size_percent: FloatProperty(name="サイズ（親文字比%）", default=50.0, min=5.0, soft_max=200.0, description="ルビの文字サイズを親文字に対する割合(%)で指定", subtype="PERCENTAGE", update=_on_text_entry_changed)  # type: ignore[valid-type]
     ruby_font: StringProperty(name="ルビ用フォント", default="", description="ルビに使うフォント（空欄なら基本フォントを使用）", subtype="FILE_PATH", update=_on_text_entry_changed)  # type: ignore[valid-type]
+    ruby_font_preset: EnumProperty(name="ルビ用フォント", items=_RUBY_FONT_PRESET_ITEMS, default="inherit", update=_on_text_entry_changed)  # type: ignore[valid-type]
     ruby_align: EnumProperty(name="配置方法", description="ルビと親文字の位置揃え方を選択します", items=_RUBY_ALIGN_ITEMS, default="center", update=_on_text_entry_changed)  # type: ignore[valid-type]
     ruby_small_kana: EnumProperty(name="小書き仮名", description="小書き仮名（ゃゅょっ等）の表示方法を選択します", items=_RUBY_SMALL_KANA_ITEMS, default="keep", update=_on_text_entry_changed)  # type: ignore[valid-type]
 
@@ -303,6 +346,7 @@ class BMangaTextEntry(bpy.types.PropertyGroup):
 
 
 _CLASSES = (
+    BMangaRubySegment,
     BMangaRubySpan,
     BMangaTextFontSpan,
     BMangaTextStyleSpan,

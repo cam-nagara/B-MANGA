@@ -99,22 +99,22 @@ def _draw_ruby(layout, entry, preset_mode: bool, session) -> None:
     box.label(text="ルビ・部分スタイル")
     if not preset_mode:
         _draw_counts(box, entry)
-    prop_pair(box, entry, "ruby_line_height", "ruby_gap_mm")
-    prop_pair(box, entry, "ruby_letter_spacing", "ruby_size_percent")
+    prop_pair(box, entry, "ruby_size_percent", "ruby_gap_em")
+    prop_pair(box, entry, "ruby_letter_spacing", "ruby_line_height")
     prop_pair(box, entry, "ruby_align", "ruby_small_kana")
-    prop_if(box, entry, "ruby_font", text="ルビフォント")
+    prop_if(box, entry, "ruby_font_preset", text="ルビ用フォント")
     if not preset_mode:
         row = box.row(align=True)
         add = detail_operator(
             row,
             "bmanga.detail_text_ruby_add",
-            text="ルビを付ける",
+            text="追加・編集",
             icon="ADD",
         )
         clear = detail_operator(
             row,
             "bmanga.detail_text_ruby_clear",
-            text="ルビを削除",
+            text="全解除",
             icon="TRASH",
         )
         # 詳細対象のstable_idは誤対象防止のため「ページID:テキストID」。

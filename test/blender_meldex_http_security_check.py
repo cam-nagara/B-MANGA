@@ -61,6 +61,18 @@ def _post_declared_length(port: int, token: str, length: int) -> int:
     return response.status
 
 
+def _get_capabilities(port: int, token: str, *, origin=False):
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+    headers = {"X-B-MANGA-Token": token}
+    if origin:
+        headers["Origin"] = "http://127.0.0.1"
+    connection.request("GET", "/api/capabilities", headers=headers)
+    response = connection.getresponse()
+    body = json.loads(response.read().decode("ascii"))
+    connection.close()
+    return response.status, body
+
+
 def main() -> None:
     addon = _load_addon()
     receiver = sys.modules[f"{MODULE_NAME}.io.meldex_receiver"]
@@ -77,6 +89,13 @@ def main() -> None:
         assert prefs.meldex_token == old_token and prefs.meldex_enabled == old_enabled
         port, token = _free_port(), "a" * 64
         assert receiver.start(port, token)
+        assert _get_capabilities(port, "wrong")[0] == 401
+        assert _get_capabilities(port, token, origin=True)[0] == 403
+        capability_status, capabilities = _get_capabilities(port, token)
+        assert capability_status == 200
+        advertised = capabilities["contracts"]["meldex-bmanga-scenario"]
+        assert advertised["versions"] == [1, 2]
+        assert advertised["features"]["presentationRuby"] is True
         assert _post(port, "wrong") == 401
         assert _post(port, token, origin=True) == 403
         assert _post(port, token, content_type="text/plain") == 415

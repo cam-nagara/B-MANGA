@@ -14,7 +14,7 @@ import bpy
 from ..core.work import get_work
 from ..utils import log
 from . import meldex_scenario_import
-from .meldex_contract import ContractError, validate_payload
+from .meldex_contract import ContractError, SUPPORTED_CONTRACT_VERSIONS, validate_payload
 
 _logger = log.get_logger(__name__)
 TOKEN_HEADER = "X-B-MANGA-Token"
@@ -43,27 +43,53 @@ class _MeldexHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):  # noqa: A003
         _logger.debug("meldex http: " + format, *args)
 
-    def _json_response(self, status: int, code: str) -> None:
-        body = json.dumps({"status": code}, separators=(",", ":")).encode("ascii")
+    def _json_response(self, status: int, code: str, payload: dict | None = None) -> None:
+        response = payload if payload is not None else {"status": code}
+        body = json.dumps(response, separators=(",", ":")).encode("ascii")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
-    def do_POST(self) -> None:  # noqa: N802
+    def _request_allowed(self) -> bool:
         if self.client_address[0] != "127.0.0.1":
             self._json_response(403, "forbidden")
-            return
+            return False
         if "Origin" in self.headers:
             self._json_response(403, "origin-rejected")
-            return
-        if self.path != "/api/scenario":
-            self._json_response(404, "not-found")
-            return
+            return False
         supplied = str(self.headers.get(TOKEN_HEADER, "") or "")
         if not supplied or not hmac.compare_digest(supplied, self.server.token):
             self._json_response(401, "unauthorized")
+            return False
+        return True
+
+    def do_GET(self) -> None:  # noqa: N802
+        if not self._request_allowed():
+            return
+        if self.path != "/api/capabilities":
+            self._json_response(404, "not-found")
+            return
+        self._json_response(200, "ok", {
+            "contracts": {
+                "meldex-bmanga-scenario": {
+                    "versions": list(SUPPORTED_CONTRACT_VERSIONS),
+                    "features": {
+                        "presentationRuby": True,
+                        "rubySpanOrigins": True,
+                        "rubySegments": True,
+                        "rowPresentationOverride": True,
+                    },
+                },
+            },
+        })
+
+    def do_POST(self) -> None:  # noqa: N802
+        if self.path != "/api/scenario":
+            self._json_response(404, "not-found")
+            return
+        if not self._request_allowed():
             return
         media_type = str(self.headers.get("Content-Type", "")).split(";", 1)[0].strip().lower()
         if media_type != "application/json":

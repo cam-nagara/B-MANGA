@@ -487,12 +487,87 @@ def ruby_spans_snapshot(entry) -> tuple[RubySegment, ...]:
     return tuple(_normalized_ruby_segments(entry, "ruby_spans"))
 
 
+def ruby_records_snapshot(entry) -> tuple[tuple, ...]:
+    """Return the complete ruby state used by history and render invalidation."""
+    return tuple(
+        (
+            record["start"],
+            record["end"],
+            record["text"],
+            record["style"],
+            record["origin"],
+            record["priority"],
+            record["segments"],
+        )
+        for record in _normalized_ruby_records(entry)
+    )
+
+
 def tatechuyoko_ranges_snapshot(entry) -> tuple[RubySegment, ...]:
     return tuple(_normalized_ruby_segments(entry, "tatechuyoko_ranges"))
 
 
 def normalize_ruby_spans(entry) -> None:
-    _write_ruby_segments(entry, _normalized_ruby_segments(entry, "ruby_spans"), "ruby_spans")
+    records = _normalized_ruby_records(entry)
+    _write_ruby_records(entry, records)
+
+
+def _normalized_ruby_records(entry) -> list[dict]:
+    body_len = _body_len(entry)
+    records: list[dict] = []
+    for span in getattr(entry, "ruby_spans", ()):
+        start = max(0, min(body_len, int(getattr(span, "start", 0))))
+        end = max(start, min(body_len, start + int(getattr(span, "length", 0))))
+        text = str(getattr(span, "ruby_text", "") or "")
+        if start >= end or not text:
+            continue
+        records.append({
+            "start": start,
+            "end": end,
+            "text": text,
+            "style": str(getattr(span, "style", "group") or "group"),
+            "origin": str(getattr(span, "origin", "manual") or "manual"),
+            "priority": int(getattr(span, "priority", 0) or 0),
+            "segments": tuple(
+                (
+                    int(getattr(segment, "start", 0)),
+                    max(1, int(getattr(segment, "length", 1))),
+                    str(getattr(segment, "ruby_text", "") or ""),
+                )
+                for segment in getattr(span, "segments", ())
+                if str(getattr(segment, "ruby_text", "") or "")
+            ),
+        })
+    return sorted(records, key=lambda item: (item["start"], item["end"], item["text"], item["style"]))
+
+
+def _write_ruby_records(entry, records: list[dict], *, body_len_override: int | None = None) -> None:
+    spans = getattr(entry, "ruby_spans", None)
+    if spans is None:
+        return
+    spans.clear()
+    body_len = _body_len(entry) if body_len_override is None else max(0, int(body_len_override))
+    for record in records:
+        start = max(0, min(body_len, int(record["start"])))
+        end = max(start, min(body_len, int(record["end"])))
+        if start >= end or not str(record["text"] or ""):
+            continue
+        span = spans.add()
+        span.start = start
+        span.length = end - start
+        span.ruby_text = str(record["text"])
+        span.style = str(record["style"] or "group")
+        if hasattr(span, "origin"):
+            span.origin = str(record.get("origin", "manual") or "manual")
+        if hasattr(span, "priority"):
+            span.priority = int(record.get("priority", 0) or 0)
+        for seg_start, seg_length, seg_text in record.get("segments", ()):
+            if seg_start < 0 or seg_start + seg_length > span.length or not seg_text:
+                continue
+            segment = span.segments.add()
+            segment.start = seg_start
+            segment.length = seg_length
+            segment.ruby_text = seg_text
 
 
 def normalize_tatechuyoko_ranges(entry) -> None:
@@ -509,6 +584,7 @@ def all_spans_snapshot(entry):
         style_spans_snapshot(entry),
         ruby_spans_snapshot(entry),
         tatechuyoko_ranges_snapshot(entry),
+        ruby_records_snapshot(entry),
     )
 
 
@@ -547,6 +623,24 @@ def restore_ruby_spans(entry, snapshot) -> None:
     _write_ruby_segments(entry, segments, "ruby_spans")
 
 
+def restore_ruby_records(entry, snapshot) -> None:
+    records = []
+    for item in snapshot or ():
+        if len(item) < 7:
+            continue
+        start, end, text, style, origin, priority, segments = item[:7]
+        records.append({
+            "start": start,
+            "end": end,
+            "text": text,
+            "style": style,
+            "origin": origin,
+            "priority": priority,
+            "segments": tuple(segments or ()),
+        })
+    _write_ruby_records(entry, records)
+
+
 def restore_tatechuyoko_ranges(entry, snapshot) -> None:
     segments: list[RubySegment] = []
     body_len = _body_len(entry)
@@ -565,9 +659,13 @@ def restore_all_spans(entry, snapshot) -> None:
     style_snapshot = parts[1] if len(parts) >= 2 else ()
     ruby_snapshot = parts[2] if len(parts) >= 3 else ()
     tatechuyoko_snapshot = parts[3] if len(parts) >= 4 else ()
+    ruby_records = parts[4] if len(parts) >= 5 else ()
     restore_font_spans(entry, font_snapshot)
     restore_style_spans(entry, style_snapshot)
-    restore_ruby_spans(entry, ruby_snapshot)
+    if ruby_records:
+        restore_ruby_records(entry, ruby_records)
+    else:
+        restore_ruby_spans(entry, ruby_snapshot)
     restore_tatechuyoko_ranges(entry, tatechuyoko_snapshot)
 
 
@@ -620,20 +718,25 @@ def apply_style_span(
     return True
 
 
-def apply_ruby_span(entry, start: int, end: int, ruby_text: str, style: str = "group") -> bool:
+def apply_ruby_span(
+    entry, start: int, end: int, ruby_text: str, style: str = "group", *,
+    origin: str = "manual", priority: int = 0, segments=(),
+) -> bool:
     body_len = _body_len(entry)
     start = max(0, min(body_len, int(start)))
     end = max(start, min(body_len, int(end)))
     ruby_text = str(ruby_text or "").strip()
     if start >= end or not ruby_text:
         return False
-    segments = clear_ruby_span_segments(
-        _normalized_ruby_segments(entry, "ruby_spans"),
-        start,
-        end,
-    )
-    segments.append((start, end, ruby_text, str(style or "group")))
-    _write_ruby_segments(entry, segments, "ruby_spans")
+    records = [
+        record for record in _normalized_ruby_records(entry)
+        if record["end"] <= start or record["start"] >= end
+    ]
+    records.append({
+        "start": start, "end": end, "text": ruby_text, "style": str(style or "group"),
+        "origin": str(origin or "manual"), "priority": int(priority), "segments": tuple(segments or ()),
+    })
+    _write_ruby_records(entry, records)
     return True
 
 
@@ -656,9 +759,10 @@ def clear_ruby_spans(entry, start: int | None = None, end: int | None = None) ->
     body_len = _body_len(entry)
     start = max(0, min(body_len, int(start)))
     end = max(start, min(body_len, int(end)))
-    before = ruby_spans_snapshot(entry)
-    _write_ruby_segments(entry, clear_ruby_span_segments(list(before), start, end), "ruby_spans")
-    return before != ruby_spans_snapshot(entry)
+    before = _normalized_ruby_records(entry)
+    kept = [record for record in before if record["end"] <= start or record["start"] >= end]
+    _write_ruby_records(entry, kept)
+    return len(before) != len(kept)
 
 
 def _adjust_font_spans_for_replace(entry, start: int, end: int, new_length: int) -> None:
@@ -749,6 +853,32 @@ def _adjust_ruby_segments_for_replace(
     end = max(start, min(body_len, int(end)))
     new_length = max(0, int(new_length))
     delta = new_length - (end - start)
+    if collection_name == "ruby_spans":
+        adjusted_records: list[dict] = []
+        for record in _normalized_ruby_records(entry):
+            seg_start, seg_end = record["start"], record["end"]
+            if start == end:
+                if seg_end <= start:
+                    pass
+                elif seg_start >= start:
+                    record["start"] += delta
+                    record["end"] += delta
+                else:
+                    if record.get("segments"):
+                        # Segment correspondence is no longer reliable after an
+                        # insertion inside the annotated parent text.
+                        continue
+                    record["end"] += delta
+                adjusted_records.append(record)
+            elif seg_end <= start:
+                adjusted_records.append(record)
+            elif seg_start >= end:
+                record["start"] += delta
+                record["end"] += delta
+                adjusted_records.append(record)
+            # 親文字へ触れる置換では、そのルビと内訳を一体で無効化する。
+        _write_ruby_records(entry, adjusted_records, body_len_override=body_len + delta)
+        return
     adjusted: list[RubySegment] = []
     for seg_start, seg_end, text, style in _normalized_ruby_segments(entry, collection_name):
         if start == end:

@@ -1819,9 +1819,11 @@ def text_entry_to_dict(entry) -> dict[str, Any]:
         "letterSpacing": round(entry.letter_spacing, 3),
         "rubyLineHeight": round(float(getattr(entry, "ruby_line_height", 1.8)), 3),
         "rubyGapMm": round(float(getattr(entry, "ruby_gap_mm", 0.0)), 3),
+        "rubyGapEm": round(float(getattr(entry, "ruby_gap_em", 0.0)), 4),
         "rubyLetterSpacing": round(float(getattr(entry, "ruby_letter_spacing", 0.0)), 3),
         "rubySizePercent": round(float(getattr(entry, "ruby_size_percent", 50.0)), 3),
         "rubyFont": str(getattr(entry, "ruby_font", "") or ""),
+        "rubyFontPreset": str(getattr(entry, "ruby_font_preset", "inherit") or "inherit"),
         "rubyAlign": str(getattr(entry, "ruby_align", "center") or "center"),
         "rubySmallKana": str(getattr(entry, "ruby_small_kana", "keep") or "keep"),
         "strokeEnabled": bool(entry.stroke_enabled),
@@ -1860,15 +1862,7 @@ def text_entry_to_dict(entry) -> dict[str, Any]:
             }
             for start, end, style in text_style.style_spans_snapshot(entry)
         ],
-        "rubySpans": [
-            {
-                "start": int(start),
-                "length": int(end - start),
-                "rubyText": ruby_text,
-                "style": style,
-            }
-            for start, end, ruby_text, style in text_style.ruby_spans_snapshot(entry)
-        ],
+        "rubySpans": [_ruby_span_to_dict(span) for span in getattr(entry, "ruby_spans", ())],
         "tatechuyokoRanges": [
             {
                 "start": int(start),
@@ -1914,12 +1908,18 @@ def text_entry_from_dict(entry, data: dict[str, Any]) -> None:
         entry.ruby_line_height = float(data.get("rubyLineHeight", data.get("ruby_line_height", 1.8)))
     if hasattr(entry, "ruby_gap_mm"):
         entry.ruby_gap_mm = float(data.get("rubyGapMm", data.get("ruby_gap_mm", 0.0)))
+    if "rubyGapEm" in data or "ruby_gap_em" in data:
+        entry.ruby_gap_em = float(data.get("rubyGapEm", data.get("ruby_gap_em", 0.0)))
+    elif "_ruby_gap_em" in entry:
+        del entry["_ruby_gap_em"]
     if hasattr(entry, "ruby_letter_spacing"):
         entry.ruby_letter_spacing = float(data.get("rubyLetterSpacing", data.get("ruby_letter_spacing", 0.0)))
     if hasattr(entry, "ruby_size_percent"):
         entry.ruby_size_percent = float(data.get("rubySizePercent", data.get("ruby_size_percent", 50.0)))
     if hasattr(entry, "ruby_font"):
         entry.ruby_font = str(data.get("rubyFont", data.get("ruby_font", "")) or "")
+    if hasattr(entry, "ruby_font_preset"):
+        entry.ruby_font_preset = str(data.get("rubyFontPreset", data.get("ruby_font_preset", "inherit")) or "inherit")
     if hasattr(entry, "ruby_align"):
         entry.ruby_align = str(data.get("rubyAlign", data.get("ruby_align", "center")) or "center")
     if hasattr(entry, "ruby_small_kana"):
@@ -1968,6 +1968,15 @@ def text_entry_from_dict(entry, data: dict[str, Any]) -> None:
         span.length = max(1, int(item.get("length", 1)))
         span.ruby_text = str(item.get("rubyText", item.get("ruby_text", "")) or "")
         span.style = str(item.get("style", "group") or "group")
+        if hasattr(span, "origin"):
+            span.origin = str(item.get("origin", "manual") or "manual")
+        if hasattr(span, "priority"):
+            span.priority = int(item.get("priority", 0) or 0)
+        for segment_data in item.get("segments", []) or []:
+            segment = span.segments.add()
+            segment.start = int(segment_data.get("start", 0))
+            segment.length = max(1, int(segment_data.get("length", 1)))
+            segment.ruby_text = str(segment_data.get("rubyText", segment_data.get("ruby_text", "")) or "")
     text_style.normalize_ruby_spans(entry)
     entry.tatechuyoko_ranges.clear()
     for item in data.get("tatechuyokoRanges", data.get("tatechuyoko_ranges", [])) or []:
@@ -1976,6 +1985,29 @@ def text_entry_from_dict(entry, data: dict[str, Any]) -> None:
         span.length = max(1, int(item.get("length", 1)))
         span.style = str(item.get("style", "group") or "group")
     text_style.normalize_tatechuyoko_ranges(entry)
+
+
+def _ruby_span_to_dict(span) -> dict[str, Any]:
+    result = {
+        "start": int(getattr(span, "start", 0)),
+        "length": max(1, int(getattr(span, "length", 1))),
+        "rubyText": str(getattr(span, "ruby_text", "") or ""),
+        "style": str(getattr(span, "style", "group") or "group"),
+        "origin": str(getattr(span, "origin", "manual") or "manual"),
+        "priority": int(getattr(span, "priority", 0) or 0),
+    }
+    segments = [
+        {
+            "start": int(getattr(segment, "start", 0)),
+            "length": max(1, int(getattr(segment, "length", 1))),
+            "rubyText": str(getattr(segment, "ruby_text", "") or ""),
+        }
+        for segment in getattr(span, "segments", ())
+        if str(getattr(segment, "ruby_text", "") or "")
+    ]
+    if segments:
+        result["segments"] = segments
+    return result
 
 
 # ---------- page.json ----------

@@ -20,6 +20,7 @@ from . import object_naming as on
 from . import object_preserve
 from . import text_layout_bounds
 from . import text_style
+from ..typography import ruby_presentation
 from .geom import Rect, mm_to_m, mm_to_px, q_to_mm
 
 _logger = log.get_logger(__name__)
@@ -348,10 +349,14 @@ def _entry_render_signature(entry) -> str:
         _float_sig(getattr(entry, "line_height", 1.4)),
         _float_sig(getattr(entry, "letter_spacing", 0.0)),
         _float_sig(getattr(entry, "ruby_line_height", 1.8)),
-        _float_sig(getattr(entry, "ruby_gap_mm", 0.3)),
+        _float_sig(ruby_presentation.gap_em_from_entry(entry)),
         _float_sig(getattr(entry, "ruby_letter_spacing", 0.0)),
         _float_sig(getattr(entry, "ruby_size_percent", 50.0)),
-        str(getattr(entry, "ruby_font", "") or ""),
+        ruby_presentation.resolve_font_path(entry),
+        str(getattr(entry, "ruby_font_preset", "inherit") or "inherit"),
+        str(getattr(entry, "ruby_align", "center") or "center"),
+        str(getattr(entry, "ruby_small_kana", "keep") or "keep"),
+        _ruby_detail_signature(entry),
         bool(getattr(entry, "stroke_enabled", False)),
         _float_sig(getattr(entry, "stroke_width_mm", 0.0)),
         _rgba_sig(getattr(entry, "stroke_color", (1.0, 1.0, 1.0, 1.0))),
@@ -362,6 +367,28 @@ def _entry_render_signature(entry) -> str:
         _vec2_sig(getattr(entry, "free_transform_top_left", (0.0, 0.0))),
         _vec2_sig(getattr(entry, "free_transform_top_right", (0.0, 0.0))),
     ))
+
+
+def _ruby_detail_signature(entry) -> tuple:
+    return tuple(
+        (
+            int(getattr(span, "start", 0)),
+            int(getattr(span, "length", 1)),
+            str(getattr(span, "ruby_text", "") or ""),
+            str(getattr(span, "style", "group") or "group"),
+            str(getattr(span, "origin", "manual") or "manual"),
+            int(getattr(span, "priority", 0) or 0),
+            tuple(
+                (
+                    int(getattr(segment, "start", 0)),
+                    int(getattr(segment, "length", 1)),
+                    str(getattr(segment, "ruby_text", "") or ""),
+                )
+                for segment in getattr(span, "segments", ())
+            ),
+        )
+        for span in getattr(entry, "ruby_spans", ())
+    )
 
 
 def _ensure_image_data(name: str, pil_image) -> Optional[bpy.types.Image]:

@@ -36,6 +36,8 @@
 
 ### 2.1 完了済みの大型移行
 
+- **(完了 / 2026-07-14 Codex, v0.6.503)** Meldex／B-MANGAルビ全面統一。両アプリの書字方向、サイズ、相対間隔、字間、ルビ行間、配置、小書き、論理フォント、既定ルビ種類を共通化し、Meldex連携v2で表示設定・由来・優先順位・モノ／熟語内訳を安全に受信する。v1と旧mm間隔は見た目を維持し、能力確認できない送信元は従来形式へ戻す。計画: [`D:/Develop/Meldex-public/app/docs/meldex-bmanga-ruby-unification-plan-2026-07-14.md`](D:/Develop/Meldex-public/app/docs/meldex-bmanga-ruby-unification-plan-2026-07-14.md)
+
 - **(完了 / 2026-07-14 Codex, v0.6.502)** 詳細設定ダイアログ一元化。レイヤー一覧、3Dビュー／アウトライナー右クリック、プリセット歯車を共通描画・固定対象・OK／キャンセル契約へ統一し、Blender 5.1.2で安全な種別別最大幅固定と等幅列を採用した。GP／旧集約効果線／リンクUIDは、ユーザー確認後に全ページを一括変換・全件検証し、失敗時は全件復元する構造へ移行した。ページ複製・削除、見開き結合・分割、ページ間移動も個別レイヤーとリンクを保存後まで維持する。実作品の変換は対象ページ数・退避先・必要容量を提示してユーザー確認を得るまで実行しない。計画: [`docs/detail_dialog_unification_plan_2026-07-14.md`](docs/detail_dialog_unification_plan_2026-07-14.md)
 
 - **(完了 / 2026-07-11 Codex, v0.6.481)** Meldexシナリオ取込。安全なローカル受信、既存ページ不足分だけの追加、コマ非生成、タイプ名と完全一致するフキダシ／テキストプリセット、標準フキダシfallback、改行・ルビ保持、テキスト連動サイズ、再送時の重複防止をB-MANGAとMeldexへ実装した。AI目視で検出した長いルビの上下はみ出しも四辺余白へ修正済み。計画: [`docs/meldex_scenario_import_plan_2026-07-11.md`](docs/meldex_scenario_import_plan_2026-07-11.md)

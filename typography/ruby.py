@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .layout import GlyphPlacement
+from . import ruby_presentation
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,8 @@ def _glyph_em_mm(glyph: GlyphPlacement) -> float:
 
 
 def _span_value(span, name: str, default):
+    if isinstance(span, dict):
+        return span.get(name, default)
     try:
         return getattr(span, name)
     except Exception:  # noqa: BLE001
@@ -46,7 +49,7 @@ def ruby_size_ratio_from_entry(entry) -> float:
 
 
 def ruby_gap_mm_from_entry(entry) -> float:
-    return _entry_float(entry, "ruby_gap_mm", 0.0, min_value=0.0)
+    return ruby_presentation.gap_mm_from_entry(entry)
 
 
 def ruby_letter_spacing_from_entry(entry) -> float:
@@ -54,7 +57,7 @@ def ruby_letter_spacing_from_entry(entry) -> float:
 
 
 def ruby_font_path_from_entry(entry) -> str:
-    return str(getattr(entry, "ruby_font", "") or "")
+    return ruby_presentation.resolve_font_path(entry)
 
 
 def ruby_align_from_entry(entry) -> str:
@@ -109,7 +112,7 @@ def compute_for_entry(parent_glyphs: list[GlyphPlacement], entry) -> list[RubyPl
         ruby_offset_mm=ruby_gap_mm_from_entry(entry),
         ruby_letter_spacing=ruby_letter_spacing_from_entry(entry),
         ruby_font_path=ruby_font_path_from_entry(entry),
-        writing_mode=str(getattr(entry, "writing_mode", "vertical") or "vertical"),
+        writing_mode=str(getattr(entry, "writing_mode", "horizontal") or "horizontal"),
         ruby_align=ruby_align_from_entry(entry),
         ruby_small_kana=ruby_small_kana_from_entry(entry),
     )
@@ -158,23 +161,26 @@ def _ls_for_target_extent(target: float, ruby_em: float, count: int) -> float:
     return max(0.0, pitch / ruby_em - 1.0)
 
 
-def _ruby_rp_range(info: dict, align: str) -> tuple[float, float]:
+def _ruby_rp_range(info: dict) -> tuple[float, float]:
     actual = max(info['parent_span'], info['ext'])
+    align = info.get('align', 'center')
     if align == "start":
         return info['rp_lo'], info['rp_lo'] + actual
     c = info['rp_center']
     return c - actual * 0.5, c + actual * 0.5
 
 
-def _resolve_ruby_overlaps(infos: list[dict], align: str) -> None:
+def _resolve_ruby_overlaps(infos: list[dict]) -> None:
     for i in range(len(infos) - 1):
         a, b = infos[i], infos[i + 1]
-        _, a_hi = _ruby_rp_range(a, align)
-        b_lo, _ = _ruby_rp_range(b, align)
+        if a.get('style') == 'jukugo' and a.get('group_id') == b.get('group_id'):
+            continue
+        _, a_hi = _ruby_rp_range(a)
+        b_lo, _ = _ruby_rp_range(b)
         if a_hi <= b_lo + 1e-6:
             continue
         overlap = a_hi - b_lo
-        if align == "start":
+        if a.get('align') == "start":
             max_ext = b['rp_lo'] - a['rp_lo']
             a['ext'] = max(a['min_ext'], min(a['ext'], max_ext))
             a['eff_ls'] = _ls_for_target_extent(a['ext'], a['ruby_em'], a['count'])
@@ -204,6 +210,39 @@ def _resolve_ruby_overlaps(infos: list[dict], align: str) -> None:
         b['eff_ls'] = _ls_for_target_extent(b['ext'], b['ruby_em'], b['count'])
 
 
+def _expanded_spans(ruby_spans) -> list[dict]:
+    """v2 segmentを組版単位へ展開する。曖昧な旧データは従来の全体割付を保つ。"""
+    expanded: list[dict] = []
+    for group_id, span in enumerate(ruby_spans):
+        base = {
+            "start": int(_span_value(span, "start", 0)),
+            "length": max(1, int(_span_value(span, "length", 1))),
+            "ruby_text": str(_span_value(span, "ruby_text", "") or ""),
+            "style": str(_span_value(span, "style", "group") or "group"),
+            "group_id": group_id,
+        }
+        segments = list(_span_value(span, "segments", []) or [])
+        if base["style"] not in {"mono", "jukugo"} or not segments:
+            expanded.append(base)
+            continue
+        for segment in segments:
+            rel_start = int(_span_value(segment, "start", 0))
+            length = max(1, int(_span_value(segment, "length", 1)))
+            if rel_start < 0 or rel_start + length > base["length"]:
+                continue
+            text = str(_span_value(segment, "ruby_text", "") or "")
+            if not text:
+                continue
+            expanded.append({
+                "start": base["start"] + rel_start,
+                "length": length,
+                "ruby_text": text,
+                "style": base["style"],
+                "group_id": group_id,
+            })
+    return expanded
+
+
 def compute_ruby_placements(
     parent_glyphs: list[GlyphPlacement],
     ruby_spans,
@@ -219,11 +258,11 @@ def compute_ruby_placements(
 
     隣接スパンのルビが重なる場合は字間を自動圧縮して回避する。
     """
-    is_horiz = str(writing_mode or "vertical") == "horizontal"
+    is_horiz = str(writing_mode or "horizontal") == "horizontal"
 
     # ── Phase 1: スパン情報を収集 ──
     infos: list[dict] = []
-    for span in ruby_spans:
+    for span in _expanded_spans(ruby_spans):
         start_idx = int(_span_value(span, "start", 0))
         length = max(1, int(_span_value(span, "length", 1)))
         end_idx = start_idx + length
@@ -248,6 +287,8 @@ def compute_ruby_placements(
         else:
             rp_lo = -max(g.y_mm + _glyph_em_mm(g) for g in covered)
             rp_hi = -min(g.y_mm for g in covered)
+        style = str(_span_value(span, "style", "group") or "group")
+        effective_align = "center" if style == "mono" else ruby_align
         infos.append({
             'covered': covered, 'ruby_text': ruby_text,
             'ruby_size': ruby_size, 'ruby_em': ruby_em, 'count': count,
@@ -257,6 +298,8 @@ def compute_ruby_placements(
             'ext': _ruby_extent(ruby_em, count, ruby_letter_spacing),
             'min_ext': _ruby_extent(ruby_em, count, 0.0),
             'eff_ls': float(ruby_letter_spacing),
+            'style': style, 'group_id': _span_value(span, "group_id", -1),
+            'align': effective_align,
         })
 
     if not infos:
@@ -265,7 +308,7 @@ def compute_ruby_placements(
     # ── Phase 2: 隣接ルビの重なりを字間圧縮で解消 ──
     if len(infos) >= 2:
         infos.sort(key=lambda s: s['rp_lo'])
-        _resolve_ruby_overlaps(infos, ruby_align)
+        _resolve_ruby_overlaps(infos)
 
     # ── Phase 3: 配置を生成 ──
     out: list[RubyPlacement] = []
@@ -276,6 +319,7 @@ def compute_ruby_placements(
         cnt = info['count']
         txt = info['ruby_text']
         sz = info['ruby_size']
+        align = info['align']
         if is_horiz:
             left_x = min(g.x_mm for g in info['covered'])
             right_x = max(g.x_mm + _glyph_em_mm(g) for g in info['covered'])
@@ -283,7 +327,7 @@ def compute_ruby_placements(
             starts = _distributed_starts(
                 parent_start=left_x, parent_end=right_x,
                 ruby_em=em, count=cnt,
-                letter_spacing=ls, align=ruby_align,
+                letter_spacing=ls, align=align,
             )
             ry = top_y + ruby_offset_mm
             for rch, rx in zip(txt, starts):
@@ -298,9 +342,9 @@ def compute_ruby_placements(
             starts = _distributed_starts(
                 parent_start=bot_y, parent_end=top_y,
                 ruby_em=em, count=cnt,
-                letter_spacing=ls, align=ruby_align,
+                letter_spacing=ls, align=align,
             )
-            if ruby_align == "start" and starts:
+            if align == "start" and starts:
                 shift = (top_y - em) - starts[-1]
                 if abs(shift) > 1e-6:
                     starts = [s + shift for s in starts]

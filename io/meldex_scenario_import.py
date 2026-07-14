@@ -46,6 +46,7 @@ def import_document(context, work, document: ScenarioDocument) -> dict[str, int]
     # 今回の取込で新規作成した (フキダシ, テキスト) ペアだけを記録する。
     # 既存ペア (更新のみ) は含めない — 手動で並び替えた順序を尊重するため。
     new_pairs: list[tuple[str, str, str]] = []
+    apply_presentation = _should_apply_ruby_presentation(context) and document.version >= 2
     with ExitStack() as stack:
         stack.enter_context(balloon_curve_object.defer_auto_sync())
         stack.enter_context(text_real_object.suspend_auto_sync())
@@ -66,6 +67,7 @@ def import_document(context, work, document: ScenarioDocument) -> dict[str, int]
                     row_index,
                     balloon_by_name,
                     text_by_name.get(row.type_name),
+                    _merged_ruby_presentation(document.presentation, row.presentation) if apply_presentation else None,
                 )
                 result["created" if created else "updated"] += 1
                 # フキダシ・テキストの両方を今回新規作成した行だけを並び順の
@@ -120,7 +122,8 @@ def _ensure_page_count(work, work_dir: Path, required: int) -> tuple[int, set[st
 
 
 def _upsert_row(
-    work, page, document_id: str, row: ScenarioRow, ordinal: int, balloon_by_name: dict, text_preset
+    work, page, document_id: str, row: ScenarioRow, ordinal: int, balloon_by_name: dict, text_preset,
+    ruby_presentation: dict | None = None,
 ) -> tuple[bool, bool, str, str]:
     balloon = _find_source(page.balloons, document_id, row.row_id)
     text = _find_source(page.texts, document_id, row.row_id)
@@ -139,15 +142,26 @@ def _upsert_row(
         text_presets.reset_entry_to_defaults(text)
         if text_preset is not None:
             text_presets.apply_to_entry(text, text_preset.data)
+    if ruby_presentation is not None:
+        _apply_ruby_presentation(text, ruby_presentation)
     text.speaker_name = row.type_name
     text.body = row.body
     text.ruby_spans.clear()
-    for source in row.rubies:
+    for source in _rubies_by_priority(row.rubies):
         ruby = text.ruby_spans.add()
         ruby.start = int(source["start"])
         ruby.length = int(source["length"])
         ruby.ruby_text = str(source["rubyText"])
         ruby.style = str(source["style"])
+        if hasattr(ruby, "origin"):
+            ruby.origin = str(source.get("origin", "manual") or "manual")
+        if hasattr(ruby, "priority"):
+            ruby.priority = int(source.get("priority", 0) or 0)
+        for source_segment in source.get("segments", ()):
+            segment = ruby.segments.add()
+            segment.start = int(source_segment["start"])
+            segment.length = int(source_segment["length"])
+            segment.ruby_text = str(source_segment["rubyText"])
     text_style.normalize_ruby_spans(text)
 
     # フキダシ作成判定:
@@ -168,6 +182,7 @@ def _upsert_row(
         text.parent_key = page_stack_key(page)
         if text_new:
             _set_initial_center(work, text, ordinal)
+        _fit_text_only(text)
         page.active_text_index = len(page.texts) - 1
         return text_new, False, "", str(text.id)
 
@@ -207,6 +222,59 @@ def _find_source(collection, document_id: str, row_id: str):
         if entry.meldex_source_document_id == document_id and entry.meldex_source_row_id == row_id:
             return entry
     return None
+
+
+def _should_apply_ruby_presentation(context) -> bool:
+    from ..preferences import get_preferences
+
+    prefs = get_preferences(context)
+    return True if prefs is None else bool(getattr(prefs, "meldex_apply_ruby_presentation", True))
+
+
+def _merged_ruby_presentation(document_value, row_value) -> dict | None:
+    merged: dict = {}
+    for source in (document_value, row_value):
+        if isinstance(source, dict) and isinstance(source.get("ruby"), dict):
+            merged.update(source["ruby"])
+    return merged or None
+
+
+def _apply_ruby_presentation(text, presentation: dict) -> None:
+    property_map = {
+        "writingMode": "writing_mode",
+        "sizePercent": "ruby_size_percent",
+        "gapEm": "ruby_gap_em",
+        "letterSpacingEm": "ruby_letter_spacing",
+        "lineHeight": "ruby_line_height",
+        "align": "ruby_align",
+        "smallKana": "ruby_small_kana",
+        "fontPreset": "ruby_font_preset",
+    }
+    for wire_name, property_name in property_map.items():
+        if wire_name in presentation and hasattr(text, property_name):
+            setattr(text, property_name, presentation[wire_name])
+
+
+def _rubies_by_priority(rubies) -> tuple[dict, ...]:
+    """Resolve overlaps by priority, then longer parent range, then source order."""
+    selected: list[tuple[int, dict]] = []
+    occupied: set[int] = set()
+    ranked = sorted(
+        enumerate(rubies),
+        key=lambda pair: (
+            -int(pair[1].get("priority", 0)),
+            -int(pair[1].get("length", 0)),
+            pair[0],
+        ),
+    )
+    for source_index, ruby in ranked:
+        covered = set(range(int(ruby["start"]), int(ruby["start"]) + int(ruby["length"])))
+        if occupied.intersection(covered):
+            continue
+        occupied.update(covered)
+        selected.append((source_index, ruby))
+    selected.sort(key=lambda pair: (int(pair[1]["start"]), pair[0]))
+    return tuple(ruby for _index, ruby in selected)
 
 
 def _stamp_source(entry, document_id: str, row: ScenarioRow) -> None:
@@ -335,6 +403,14 @@ def _fit_pair(text, balloon, *, balloon_new: bool) -> None:
     balloon.y_mm = old_center_y - balloon.height_mm * 0.5
     text.x_mm = balloon.x_mm + BALLOON_PADDING_X_MM + extra_x
     text.y_mm = balloon.y_mm + BALLOON_PADDING_Y_MM + extra_y
+
+
+def _fit_text_only(text) -> None:
+    from ..operators import text_edit_runtime
+
+    width, height = text_edit_runtime.natural_text_outer_size(text)
+    text.width_mm = max(2.0, width)
+    text.height_mm = max(2.0, height)
 
 
 def _sync_current_page(context, work) -> None:

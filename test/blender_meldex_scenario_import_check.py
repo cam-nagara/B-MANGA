@@ -104,7 +104,7 @@ def main() -> None:
         assert second["created"] == 0 and second["updated"] == 4
         assert counts == [(len(page.balloons), len(page.texts), len(page.comas)) for page in work.pages]
         text = next(item for item in work.pages[0].texts if item.meldex_source_row_id == "r1")
-        assert not text.font_bold and text.writing_mode == "vertical", "未登録タイプは標準テキストへ戻す"
+        assert not text.font_bold and text.writing_mode == "horizontal", "未登録タイプは新規既定の横書きへ戻す"
         balloon = next(item for item in work.pages[0].balloons if item.meldex_source_row_id == "r1")
         assert balloon.shape == "ellipse" and not balloon.custom_preset_name
         assert abs(balloon.line_width_mm - 0.3) < 1.0e-6 and tuple(balloon.fill_color) == (1.0, 1.0, 1.0, 1.0)
@@ -114,6 +114,31 @@ def main() -> None:
         assert repaired["created"] == 1
         repaired_balloon = next(item for item in work.pages[0].balloons if item.meldex_source_row_id == "r1")
         assert repaired_balloon.shape == "custom" and repaired_balloon.custom_preset_name == "会話"
+
+        v2 = _payload()
+        v2["version"] = 2
+        v2["indexUnit"] = "unicode-code-point"
+        v2["normalization"] = "none"
+        v2["presentation"] = {"ruby": {
+            "writingMode": "vertical", "sizePercent": 75.0, "gapEm": 0.25,
+            "letterSpacingEm": 0.2, "lineHeight": 2.0, "align": "start",
+            "smallKana": "fullsize", "fontPreset": "inherit",
+        }}
+        v2_row = v2["pages"][0]["rows"][0]
+        v2_row["rubies"] = [
+            {"start": 0, "length": 1, "rubyText": "とう", "style": "mono", "origin": "manual", "priority": 10},
+            {"start": 0, "length": 2, "rubyText": "とうきょう", "style": "jukugo", "origin": "manual", "priority": 10,
+             "segments": [{"start": 0, "length": 1, "rubyText": "とう"}, {"start": 1, "length": 1, "rubyText": "きょう"}]},
+            {"start": 0, "length": 2, "rubyText": "低", "style": "group", "origin": "local-auto-dictionary", "priority": 1},
+        ]
+        meldex_scenario_import.import_payload(bpy.context, work, v2)
+        text = next(item for item in work.pages[0].texts if item.meldex_source_row_id == "r1")
+        assert text.writing_mode == "vertical" and abs(text.ruby_size_percent - 75.0) < 1.0e-6
+        assert abs(text.ruby_gap_em - 0.25) < 1.0e-6 and text.ruby_align == "start"
+        assert text.ruby_small_kana == "fullsize" and text.ruby_font_preset == "inherit"
+        assert len(text.ruby_spans) == 1 and text.ruby_spans[0].priority == 10
+        assert text.ruby_spans[0].length == 2 and text.ruby_spans[0].ruby_text == "とうきょう"
+        assert len(text.ruby_spans[0].segments) == 2 and text.ruby_spans[0].segments[1].ruby_text == "きょう"
         print("BMANGA_MELDEX_SCENARIO_IMPORT_OK")
     finally:
         try:
