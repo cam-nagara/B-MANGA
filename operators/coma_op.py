@@ -706,9 +706,7 @@ class BMANGA_OT_coma_move_to_page(Operator):
             if source_page_index >= 0 and target_page_index >= 0:
                 src_ox, src_oy = page_grid.page_total_offset_mm(work, context.scene, source_page_index)
                 dst_ox, dst_oy = page_grid.page_total_offset_mm(work, context.scene, target_page_index)
-                layer_stack_utils.translate_gp_layers_for_parent_keys(
-                    context, {old_parent_key}, dst_ox - src_ox, dst_oy - src_oy
-                )
+                # 手描き点はObjectローカル座標。移動先Objectの位置がページ原点を担う。
                 layer_stack_utils.translate_effect_layers_for_parent_keys(
                     context, {old_parent_key}, dst_ox - src_ox, dst_oy - src_oy
                 )

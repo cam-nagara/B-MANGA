@@ -17,6 +17,15 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "test"))
+
+from detail_dialog_public_test_support import (
+    close_actual_session,
+    open_actual_session,
+    sync_actual_session,
+)
+
+
 OUT_DIR = Path(
     os.environ.get("BMANGA_RECENT_FIXES_VISUAL_OUT", "")
     or ROOT / "_verify" / "recent_fixes_visual_audit"
@@ -100,6 +109,7 @@ class _Layout:
         self.props_by_column = {} if props_by_column is None else props_by_column
         self.column_name = column_name
         self.enabled = True
+        self.active = True
 
     def _child(self, column_name: str | None = None):
         return _Layout(
@@ -153,6 +163,10 @@ class _Layout:
         return self.prop(_owner, attr, **_kwargs)
 
     def operator(self, op_id: str, **_kwargs):
+        self.ops.append(str(op_id))
+        return type("_OpProps", (), {})()
+
+    def operator_menu_enum(self, op_id: str, _prop: str, **_kwargs):
         self.ops.append(str(op_id))
         return type("_OpProps", (), {})()
 
@@ -398,7 +412,10 @@ def _check_layer_order(package_name: str, context, scene, page) -> dict[str, Any
     assert parent_index >= 0
     fill_uid = layer_stack_utils.target_uid("fill", fill.id)
     balloon_uid = layer_stack_utils.target_uid("balloon", f"{page.id}:{balloon.id}")
-    effect_uid = layer_stack_utils.target_uid("effect", layer_stack_utils._node_stack_key(effect_layer))
+    effect_uid = layer_stack_utils.target_uid(
+        "effect",
+        str(effect_obj.get("bmanga_id", "") or ""),
+    )
 
     _move_uid(stack, balloon_uid, parent_index + 1, layer_stack_utils)
     _move_uid(stack, fill_uid, parent_index + 1, layer_stack_utils)
@@ -428,9 +445,8 @@ def _check_layer_order(package_name: str, context, scene, page) -> dict[str, Any
 def _check_effect_detail_graph(package_name: str, context, scene, page) -> dict[str, Any]:
     effect_line_gen = _sub(package_name, "operators.effect_line_gen")
     effect_line_op = _sub(package_name, "operators.effect_line_op")
-    layer_detail_op = _sub(package_name, "operators.layer_detail_op")
+    detail_runtime = _sub(package_name, "operators.detail_dialog_runtime")
     effect_inout_curve = _sub(package_name, "utils.effect_inout_curve")
-    object_naming = _sub(package_name, "utils.object_naming")
     page_stack_key = _sub(package_name, "utils.layer_hierarchy").page_stack_key
 
     def initial_values(p):
@@ -453,8 +469,9 @@ def _check_effect_detail_graph(package_name: str, context, scene, page) -> dict[
         parent_key=page_stack_key(page),
     )
     assert obj is not None and layer is not None
+    session = open_actual_session(package_name, context, obj)
     layout = _Layout()
-    layer_detail_op._draw_effect_detail(layout, context, obj, load_from_layer=False)
+    detail_runtime.draw_actual_session(layout, context, session)
     node = effect_inout_curve.get_profile_node()
     if node is None:
         raise AssertionError("線幅グラフが作成されていません")
@@ -462,8 +479,7 @@ def _check_effect_detail_graph(package_name: str, context, scene, page) -> dict[
         node,
         ((0.0, 0.15), (0.25, 0.7), (0.45, 1.0), (0.75, 1.0), (1.0, 0.35)),
     )
-    bmanga_id = object_naming.get_bmanga_id(obj)
-    layer_detail_op._sync_detail_profile_curve(context, "effect", bmanga_id)
+    sync_actual_session(package_name, context, session)
     params = scene.bmanga_effect_line_params
     # 画面グラフは v0.6.482 以降「内端→外端」。保存・生成側の
     # 「入り→抜き」へ反転して同期されるため、左右の値も入れ替わる。
@@ -471,7 +487,6 @@ def _check_effect_detail_graph(package_name: str, context, scene, page) -> dict[
     _assert_close(params.out_percent, 15.0, "抜き")
     _assert_close(params.in_start_percent, 25.0, "入り始点")
     _assert_close(params.out_start_percent, 45.0, "抜き始点")
-    assert layer_detail_op._apply_effect_detail_params_to_layer(context, obj, layer)
     strokes = effect_line_gen.generate_strokes(
         params,
         center_xy_mm=(82.0, 87.0),
@@ -479,13 +494,16 @@ def _check_effect_detail_graph(package_name: str, context, scene, page) -> dict[
         seed=4,
     )
     radii = [float(radius) for stroke in strokes for radius in (getattr(stroke, "radii", None) or ())]
-    ok = 2 in layout.grid_columns and radii and min(radii) < max(radii) * 0.8
+    ok = 3 in layout.grid_columns and radii and min(radii) < max(radii) * 0.8
+    fixed_width = session.layout.dialog_width
+    close_actual_session(package_name, context, session)
     return _result(
         "効果線詳細設定と線幅グラフ",
         ok,
-        "詳細設定は2列、グラフ編集は入り抜き数値と生成線の太さへ反映。",
+        "詳細設定は種別ごとの最大幅3列、グラフ編集は入り抜き数値と生成線の太さへ反映。",
         evidence={
             "grid_columns": layout.grid_columns,
+            "fixed_width": fixed_width,
             "in_percent": float(params.in_percent),
             "out_percent": float(params.out_percent),
             "in_start_percent": float(params.in_start_percent),

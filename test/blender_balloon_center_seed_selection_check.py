@@ -12,6 +12,9 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "test"))
+
+from detail_dialog_public_test_support import draw_actual_detail  # noqa: E402
 
 
 def _load_addon():
@@ -37,6 +40,7 @@ class _FakeLayout:
         self.props: list[str] = []
         self.labels: list[str] = []
         self.enabled = True
+        self.active = True
 
     def box(self):
         return self
@@ -50,6 +54,12 @@ class _FakeLayout:
     def grid_flow(self, **_kwargs):
         return self
 
+    def split(self, **_kwargs):
+        return self
+
+    def separator(self):
+        return None
+
     def label(self, text: str = "", icon: str = ""):  # noqa: ARG002
         self.labels.append(str(text or ""))
 
@@ -62,6 +72,9 @@ class _FakeLayout:
         self.prop(data, prop_name)
 
     def operator(self, _op_id: str, **_kwargs):
+        return _FakeOp()
+
+    def operator_menu_enum(self, _op_id: str, _prop: str, **_kwargs):
         return _FakeOp()
 
 
@@ -83,9 +96,15 @@ def _body_anchor_xy(obj) -> list[tuple[float, float]]:
     return [(float(p.co.x) * 1000.0, float(p.co.y) * 1000.0) for p in spline.bezier_points]
 
 
-def _draw_props(layer_detail_op, entry, page) -> list[str]:
+def _draw_props(context, entry) -> list[str]:
     layout = _FakeLayout()
-    layer_detail_op._draw_balloon_detail(layout, entry, page)  # noqa: SLF001
+    draw_actual_detail(
+        "bmanga_dev_balloon_center_seed_selection",
+        layout,
+        context,
+        entry,
+        "balloon",
+    )
     return layout.props
 
 
@@ -99,7 +118,7 @@ def main() -> None:
         assert result == {"FINISHED"}, result
 
         from bmanga_dev_balloon_center_seed_selection.core.work import get_work
-        from bmanga_dev_balloon_center_seed_selection.operators import balloon_op, layer_detail_op, object_tool_selection
+        from bmanga_dev_balloon_center_seed_selection.operators import balloon_op, object_tool_selection
         from bmanga_dev_balloon_center_seed_selection.utils import balloon_curve_object, balloon_line_mesh, object_selection, page_grid
         from bmanga_dev_balloon_center_seed_selection.utils.layer_hierarchy import OUTSIDE_STACK_KEY
 
@@ -138,7 +157,7 @@ def main() -> None:
         assert min(xs) < -19.9 and max(xs) > 19.9, f"フキダシ曲線が中心原点基準ではありません: {anchors}"
         assert min(ys) < -9.9 and max(ys) > 9.9, f"フキダシ曲線が中心原点基準ではありません: {anchors}"
 
-        rect_props = _draw_props(layer_detail_op, rect, page)
+        rect_props = _draw_props(context, rect)
         assert "corner_type" in rect_props, "矩形で角の種類が表示されていません"
         assert "blend_mode" not in rect_props, "フキダシの合成モードが詳細設定に残っています"
 
@@ -174,7 +193,7 @@ def main() -> None:
             w=30.0,
             h=18.0,
         )
-        ellipse_props = _draw_props(layer_detail_op, ellipse, page)
+        ellipse_props = _draw_props(context, ellipse)
         assert "corner_type" not in ellipse_props, "矩形以外で角の種類が表示されています"
 
         cloud = balloon_op._create_balloon_entry(  # noqa: SLF001
@@ -200,7 +219,7 @@ def main() -> None:
         balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=cloud, page=page)
         seed73 = _body_anchor_xy(cloud_obj)
         assert seed0 != seed73, "シードを変えても形状パラメータの乱れが変わりません"
-        cloud_props = _draw_props(layer_detail_op, cloud, page)
+        cloud_props = _draw_props(context, cloud)
         assert "shape_seed" in cloud_props, "形状パラメータにシードが表示されていません"
         assert "cloud_sub_width_jitter" in cloud_props, "小山幅の乱れが表示されていません"
         assert "cloud_sub_height_jitter" in cloud_props, "小山高の乱れが表示されていません"
@@ -208,7 +227,7 @@ def main() -> None:
         cloud.shape_params.dynamic_base_rounded_corner_enabled = True
         cloud.shape_params.dynamic_base_rounded_corner_radius_unit = "percent"
         cloud.shape_params.dynamic_base_rounded_corner_radius_percent = 45.0
-        cloud_props = _draw_props(layer_detail_op, cloud, page)
+        cloud_props = _draw_props(context, cloud)
         assert "dynamic_base_rounded_corner_enabled" in cloud_props, "矩形ベースの丸角が表示されていません"
         assert "dynamic_base_rounded_corner_radius_percent" in cloud_props, "矩形ベースの角半径が表示されていません"
 

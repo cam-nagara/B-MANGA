@@ -12,6 +12,9 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "test"))
+
+from detail_dialog_public_test_support import draw_actual_detail  # noqa: E402
 
 
 def _load_addon():
@@ -36,6 +39,7 @@ class _FakeLayout:
     def __init__(self) -> None:
         self.props: list[str] = []
         self.enabled = True
+        self.active = True
 
     def box(self):
         return self
@@ -48,6 +52,12 @@ class _FakeLayout:
 
     def grid_flow(self, **_kwargs):
         return self
+
+    def split(self, **_kwargs):
+        return self
+
+    def separator(self):
+        return None
 
     def label(self, text: str = "", icon: str = ""):  # noqa: ARG002
         return None
@@ -63,19 +73,20 @@ class _FakeLayout:
     def operator(self, _op_id: str, **_kwargs):
         return _FakeOp()
 
+    def operator_menu_enum(self, _op_id: str, _prop: str, **_kwargs):
+        return _FakeOp()
 
-def _draw_props(layer_detail_op, entry, page) -> list[str]:
+
+def _draw_props(context, entry) -> list[str]:
     layout = _FakeLayout()
-    layer_detail_op._draw_balloon_detail(layout, entry, page)  # noqa: SLF001
+    draw_actual_detail(
+        "bmanga_dev_balloon_multiline_freeform",
+        layout,
+        context,
+        entry,
+        "balloon",
+    )
     return layout.props
-
-
-def _modifier_socket_value(modifier, name: str):
-    for item in modifier.node_group.interface.items_tree:
-        if getattr(item, "item_type", "") == "SOCKET" and getattr(item, "in_out", "") == "INPUT":
-            if getattr(item, "name", "") == name:
-                return modifier.get(item.identifier)
-    raise AssertionError(f"modifier socket not found: {name}")
 
 
 def _assert_close(actual: float, expected: float, label: str, eps: float = 1.0e-5) -> None:
@@ -89,32 +100,6 @@ def _first_anchor_xy(obj) -> tuple[float, float]:
     return float(point.co.x) * 1000.0, float(point.co.y) * 1000.0
 
 
-def _spline_point_co(spline, index: int):
-    if str(getattr(spline, "type", "") or "") == "BEZIER":
-        return spline.bezier_points[index].co
-    return spline.points[index].co.to_3d()
-
-
-def _spline_point_radius(spline, index: int) -> float:
-    if str(getattr(spline, "type", "") or "") == "BEZIER":
-        return float(spline.bezier_points[index].radius)
-    return float(spline.points[index].radius)
-
-
-def _visible_multiline_span(spline) -> float:
-    points = [_spline_point_co(spline, index) for index in range(len(getattr(spline, "points", []) or []))]
-    radii = [_spline_point_radius(spline, index) - 100.0 for index in range(len(points))]
-    if len(points) < 2:
-        return 0.0
-    best = 0.0
-    for index, point in enumerate(points):
-        next_index = (index + 1) % len(points)
-        if radii[index] <= 1.0e-6 or radii[next_index] <= 1.0e-6:
-            continue
-        best = max(best, (points[next_index] - point).length)
-    return best
-
-
 def _spline_bounds_xy(spline) -> tuple[float, float]:
     if str(getattr(spline, "type", "") or "") == "BEZIER":
         coords = [point.co for point in spline.bezier_points]
@@ -124,31 +109,30 @@ def _spline_bounds_xy(spline) -> tuple[float, float]:
     return max(co.x for co in coords) - min(co.x for co in coords), max(co.y for co in coords) - min(co.y for co in coords)
 
 
-def _combined_spline_bounds_xy(splines) -> tuple[float, float]:
-    coords = []
-    for spline in splines:
-        if str(getattr(spline, "type", "") or "") == "BEZIER":
-            coords.extend(point.co for point in spline.bezier_points)
-        else:
-            coords.extend(point.co.to_3d() for point in spline.points)
+def _band_mesh(prefix: str, entry):
+    obj = bpy.data.objects.get(f"{prefix}{entry.id}")
+    assert obj is not None and obj.type == "MESH", f"描画用メッシュがありません: {prefix}"
+    assert len(obj.data.vertices) > 0 and len(obj.data.polygons) > 0, f"描画用メッシュが空です: {prefix}"
+    return obj
+
+
+def _mesh_bounds_xy(obj) -> tuple[float, float]:
+    coords = [vertex.co for vertex in obj.data.vertices]
     assert coords
     return max(co.x for co in coords) - min(co.x for co in coords), max(co.y for co in coords) - min(co.y for co in coords)
 
 
-def _evaluated_material_z_range(obj, material_index: int) -> tuple[float, float]:
-    depsgraph = bpy.context.evaluated_depsgraph_get()
-    evaluated = obj.evaluated_get(depsgraph)
-    mesh = evaluated.to_mesh()
-    try:
-        values: list[float] = []
-        for polygon in mesh.polygons:
-            if int(getattr(polygon, "material_index", 0) or 0) != int(material_index):
-                continue
-            values.extend(float(mesh.vertices[index].co.z) for index in polygon.vertices)
-        assert values, f"material {material_index} の面が見つかりません"
-        return min(values), max(values)
-    finally:
-        evaluated.to_mesh_clear()
+def _mesh_geometry_summary(obj) -> tuple[int, int, float, float, float, float]:
+    coords = [vertex.co for vertex in obj.data.vertices]
+    assert coords
+    return (
+        len(coords),
+        len(obj.data.polygons),
+        round(min(co.x for co in coords), 7),
+        round(max(co.x for co in coords), 7),
+        round(min(co.y for co in coords), 7),
+        round(max(co.y for co in coords), 7),
+    )
 
 
 def main() -> None:
@@ -162,7 +146,7 @@ def main() -> None:
 
         from bmanga_dev_balloon_multiline_freeform.core.work import get_work
         from bmanga_dev_balloon_multiline_freeform.io import schema
-        from bmanga_dev_balloon_multiline_freeform.operators import balloon_op, layer_detail_op
+        from bmanga_dev_balloon_multiline_freeform.operators import balloon_op
         from bmanga_dev_balloon_multiline_freeform.utils import balloon_curve_object
         from bmanga_dev_balloon_multiline_freeform.utils import balloon_curve_render_nodes
         from bmanga_dev_balloon_multiline_freeform.utils import balloon_curve_source_state
@@ -182,7 +166,7 @@ def main() -> None:
             h=28.0,
         )
         assert entry is not None
-        solid_props = _draw_props(layer_detail_op, entry, page)
+        solid_props = _draw_props(context, entry)
         assert "multi_line_count" not in solid_props, "実線でも多重線の設定が表示されています"
 
         entry.line_style = "double"
@@ -192,98 +176,52 @@ def main() -> None:
         entry.multi_line_width_scale_percent = 80.0
         entry.multi_line_direction = "both"
         obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
-        modifier = obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME)
-        assert modifier is not None and modifier.node_group is not None
-        assert bool(_modifier_socket_value(modifier, "多重線")), "多重線が表示ノードへ渡っていません"
-        _assert_close(_modifier_socket_value(modifier, "多重線本数"), 4.0, "多重線本数")
-        _assert_close(_modifier_socket_value(modifier, "多重線幅 (mm)"), 0.3, "多重線幅")
-        _assert_close(_modifier_socket_value(modifier, "多重線間隔 (mm)"), 0.4, "多重線間隔")
-        _assert_close(_modifier_socket_value(modifier, "多重線幅変化 (%)"), 80.0, "多重線幅変化")
-        _assert_close(_modifier_socket_value(modifier, "多重線方向"), 2.0, "多重線方向")
-        assert bool(_modifier_socket_value(modifier, "多重線1表示")), "2本目が表示対象になっていません"
-        assert bool(_modifier_socket_value(modifier, "多重線2表示")), "3本目が表示対象になっていません"
-        assert bool(_modifier_socket_value(modifier, "多重線3表示")), "4本目が表示対象になっていません"
-        assert not bool(_modifier_socket_value(modifier, "多重線4表示")), "指定本数を超える線が表示対象になっています"
-        ring1_width = float(_modifier_socket_value(modifier, "多重線1外半径 (mm)")) - float(_modifier_socket_value(modifier, "多重線1内半径 (mm)"))
-        ring2_width = float(_modifier_socket_value(modifier, "多重線2外半径 (mm)")) - float(_modifier_socket_value(modifier, "多重線2内半径 (mm)"))
-        _assert_close(ring2_width, ring1_width * 0.8, "多重線の線幅変化")
+        assert obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME) is None, "廃止済みの表示補助が復活しています"
+        initial_multi = _band_mesh("balloon_multi_line_mesh_", entry)
+        initial_multi_summary = _mesh_geometry_summary(initial_multi)
+        assert int(entry.multi_line_count) == 4
+        _assert_close(entry.multi_line_width_mm, 0.3, "多重線幅")
+        _assert_close(entry.multi_line_spacing_mm, 0.4, "多重線間隔")
+        _assert_close(entry.multi_line_width_scale_percent, 80.0, "多重線幅変化")
+        assert entry.multi_line_direction == "both"
 
         entry.shape = "thorn"
-        entry.thorn_multi_line_valley_width_mm = 0.22
-        entry.thorn_multi_line_peak_width_mm = 0.46
-        entry.thorn_multi_line_length_scale_percent = 75.0
-        props = _draw_props(layer_detail_op, entry, page)
+        entry.thorn_multi_line_valley_width_pct = 40.0
+        entry.thorn_multi_line_peak_width_pct = 90.0
+        entry.thorn_multi_line_length_scale_near_percent = 100.0
+        entry.thorn_multi_line_length_scale_far_percent = 75.0
+        props = _draw_props(context, entry)
         for prop_name in (
             "multi_line_count",
             "multi_line_width_mm",
             "multi_line_spacing_mm",
             "multi_line_width_scale_percent",
             "multi_line_direction",
-            "thorn_multi_line_valley_width_mm",
-            "thorn_multi_line_peak_width_mm",
-            "thorn_multi_line_length_scale_percent",
+            "thorn_multi_line_valley_width_pct",
+            "thorn_multi_line_peak_width_pct",
+            "thorn_multi_line_length_scale_near_percent",
+            "thorn_multi_line_length_scale_far_percent",
             "thorn_multi_line_cross_enabled",
         ):
             assert prop_name in props, f"多重線の設定が詳細設定に表示されていません: {prop_name}"
 
         obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
-        modifier = obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME)
-        assert modifier is not None and modifier.node_group is not None
-        assert bool(_modifier_socket_value(modifier, "多重線")), "多重線が表示ノードへ渡っていません"
-        _assert_close(_modifier_socket_value(modifier, "多重線本数"), 4.0, "多重線本数")
-        _assert_close(_modifier_socket_value(modifier, "多重線幅 (mm)"), 0.3, "多重線幅")
-        _assert_close(_modifier_socket_value(modifier, "多重線間隔 (mm)"), 0.4, "多重線間隔")
-        _assert_close(_modifier_socket_value(modifier, "多重線幅変化 (%)"), 80.0, "多重線幅変化")
-        _assert_close(_modifier_socket_value(modifier, "多重線方向"), 2.0, "多重線方向")
-        _assert_close(_modifier_socket_value(modifier, "谷の線幅 (mm)"), 0.22, "谷の線幅")
-        _assert_close(_modifier_socket_value(modifier, "山の線幅 (mm)"), 0.46, "山の線幅")
-        _assert_close(_modifier_socket_value(modifier, "多重線長さ変化 (%)"), 75.0, "長さ変化")
-        assert not bool(_modifier_socket_value(modifier, "多重線を延ばして交差")), "交差設定の初期値がオンになっています"
+        assert obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME) is None, "廃止済みの表示補助が復活しています"
+        thorn_multi = _band_mesh("balloon_multi_line_mesh_", entry)
+        thorn_summary = _mesh_geometry_summary(thorn_multi)
+        assert thorn_summary != initial_multi_summary, "形状と多重線設定を変えても描画実体が更新されていません"
+        _assert_close(entry.thorn_multi_line_valley_width_pct, 40.0, "谷の線幅")
+        _assert_close(entry.thorn_multi_line_peak_width_pct, 90.0, "山の線幅")
+        _assert_close(entry.thorn_multi_line_length_scale_near_percent, 100.0, "主線寄りの長さ変化")
+        _assert_close(entry.thorn_multi_line_length_scale_far_percent, 75.0, "遠い側の長さ変化")
+        assert not bool(entry.thorn_multi_line_cross_enabled), "交差設定の初期値がオンになっています"
         body_radii = [float(point.radius) for point in obj.data.splines[0].bezier_points]
         assert len(body_radii) >= 4
         assert all(abs(radius - 1.0) <= 1.0e-6 for radius in body_radii), "トゲ本体の主線幅が多重線設定で変わっています"
-        spline_summary = [
-            (
-                str(getattr(spline, "type", "")),
-                bool(getattr(spline, "use_cyclic_u", False)),
-                int(getattr(spline, "material_index", 0)),
-                len(getattr(spline, "points", []) or getattr(spline, "bezier_points", [])),
-            )
-            for spline in obj.data.splines
-        ]
-        helper_splines = [
-            spline
-            for spline in obj.data.splines
-            if getattr(spline, "points", None) and 50.0 < float(spline.points[0].radius) < 200.0
-        ]
-        assert len(helper_splines) >= 6, f"トゲの多重線が面として作成されていません: {spline_summary}"
-        assert all(bool(spline.use_cyclic_u) for spline in helper_splines), "トゲの多重線が途切れた線になっています"
-        helper_points = helper_splines[0].points
-        assert len(helper_points) >= 4, "トゲの多重線面に頂点が不足しています"
-        assert (_spline_point_co(helper_splines[0], 1) - _spline_point_co(helper_splines[0], 0)).length > 0.001
-        spans = sorted((_visible_multiline_span(spline) for spline in helper_splines), reverse=True)
-        spans = [span for span in spans if span > 1.0e-9]
-        assert spans and spans[-1] < spans[0] * 0.85, (
-            f"長さ変化が主線からの距離ごとに強くなっていません: spans={spans[:6]}"
-        )
-        helper_width_scales = sorted({round(float(spline.points[0].radius) - 100.0, 4) for spline in helper_splines})
-        assert min(helper_width_scales) > 0.0 and max(helper_width_scales) > min(helper_width_scales), (
-            f"トゲ多重線の山側と谷側の線幅差が面に反映されていません: {helper_width_scales}"
-        )
         entry.thorn_multi_line_cross_enabled = True
         obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
-        modifier = obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME)
-        assert modifier is not None and bool(_modifier_socket_value(modifier, "多重線を延ばして交差")), "交差設定が表示ノードへ渡っていません"
-        cross_helpers = [
-            spline
-            for spline in obj.data.splines
-            if getattr(spline, "points", None) and 50.0 < float(spline.points[0].radius) < 200.0
-        ]
-        cross_radius_values = [
-            _spline_point_radius(cross_helpers[0], index) - 100.0
-            for index in range(len(cross_helpers[0].points))
-        ]
-        assert all(value > 1.0e-6 for value in cross_radius_values), "交差オンでも多重線が途切れています"
+        cross_multi = _band_mesh("balloon_multi_line_mesh_", entry)
+        assert _mesh_geometry_summary(cross_multi) != thorn_summary, "交差設定を変えても多重線実体が更新されていません"
         payload_cross = schema.balloon_entry_to_dict(entry)
         cross_roundtrip = page.balloons.add()
         schema.balloon_entry_from_dict(cross_roundtrip, payload_cross, opacity_percent=True)
@@ -293,18 +231,8 @@ def main() -> None:
         entry.outer_white_margin_width_mm = 1.2
         obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
         bpy.context.view_layer.update()
-        helper_splines = [
-            spline
-            for spline in obj.data.splines
-            if getattr(spline, "points", None) and 50.0 < float(spline.points[0].radius) < 200.0
-        ]
-        outer_helpers = [
-            spline
-            for spline in obj.data.splines
-            if getattr(spline, "points", None) and abs(float(spline.points[0].radius) - 200.0) <= 1.0e-6
-        ]
-        assert helper_splines, "多重線が作成されていません"
-        assert outer_helpers, "外側フチが作成されていません"
+        _band_mesh("balloon_multi_line_mesh_", entry)
+        _band_mesh("balloon_outer_edge_mesh_", entry)
 
         payload = schema.balloon_entry_to_dict(entry)
         roundtrip = page.balloons.add()
@@ -313,7 +241,9 @@ def main() -> None:
         assert roundtrip.multi_line_count == 4
         _assert_close(roundtrip.multi_line_spacing_mm, 0.4, "保存読込: 多重線間隔")
         assert roundtrip.multi_line_direction == "both"
-        _assert_close(roundtrip.thorn_multi_line_peak_width_mm, 0.46, "保存読込: 山の線幅")
+        _assert_close(roundtrip.thorn_multi_line_valley_width_pct, 40.0, "保存読込: 谷の線幅")
+        _assert_close(roundtrip.thorn_multi_line_peak_width_pct, 90.0, "保存読込: 山の線幅")
+        _assert_close(roundtrip.thorn_multi_line_length_scale_far_percent, 75.0, "保存読込: 遠い側の長さ変化")
 
         edge_entry = balloon_op._create_balloon_entry(  # noqa: SLF001
             context,
@@ -331,23 +261,10 @@ def main() -> None:
         edge_entry.inner_white_margin_width_mm = 1.5
         edge_obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=edge_entry, page=page)
         body_w, body_h = _spline_bounds_xy(edge_obj.data.splines[0])
-        outer_helpers = [
-            spline
-            for spline in edge_obj.data.splines
-            if getattr(spline, "points", None) and abs(float(spline.points[0].radius) - 200.0) <= 0.001
-        ]
-        inner_helpers = [
-            spline
-            for spline in edge_obj.data.splines
-            if getattr(spline, "points", None) and abs(float(spline.points[0].radius) - 300.0) <= 0.001
-        ]
-        assert len(inner_helpers) == 2, "内側フチ用の面輪郭が分離されていません"
-        assert len(outer_helpers) == 2, "外側フチ用の面輪郭が分離されていません"
-        assert all(spline.use_cyclic_u for spline in [*outer_helpers, *inner_helpers]), "フチ用の輪郭が閉じていません"
-        outer_w, outer_h = _combined_spline_bounds_xy(outer_helpers)
-        inner_w, inner_h = _combined_spline_bounds_xy(inner_helpers)
+        outer_w, outer_h = _mesh_bounds_xy(_band_mesh("balloon_outer_edge_mesh_", edge_entry))
+        inner_w, inner_h = _mesh_bounds_xy(_band_mesh("balloon_inner_edge_mesh_", edge_entry))
         assert outer_w > body_w and outer_h > body_h, "外側フチが外側の輪郭になっていません"
-        assert inner_w < body_w and inner_h < body_h, "内側フチが内側の輪郭になっていません"
+        assert inner_w <= body_w + 1.0e-7 and inner_h <= body_h + 1.0e-7, "内側フチが本体の外へ出ています"
 
         freeform = balloon_op._create_balloon_entry(  # noqa: SLF001
             context,

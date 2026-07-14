@@ -165,8 +165,9 @@ def main() -> None:
         meta[meta_key] = entry
         effect_line_op._write_effect_meta(effect_obj, meta)
         context.scene.bmanga_active_layer_kind = "effect"
-        context.scene.bmanga_active_effect_layer_name = layer_stack_utils._node_stack_key(effect_layer)
-        _select_stack_item(context, "effect", layer_stack_utils._node_stack_key(effect_layer))
+        effect_id = str(effect_obj.get("bmanga_id", "") or "")
+        context.scene.bmanga_active_effect_layer_name = effect_id
+        _select_stack_item(context, "effect", effect_id)
         assert bpy.ops.bmanga.reset_free_transform() == {"FINISHED"}
         assert not free_transform.effect_payload_enabled(free_transform.effect_payload_for_layer(effect_obj, effect_layer))
 

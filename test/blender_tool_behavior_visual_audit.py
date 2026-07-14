@@ -251,13 +251,20 @@ def _make_contact_sheet(items: list[dict], summary: dict) -> str:
 
 
 def _add_gp_layer(context, parent_key: str):
-    from bmanga_dev_tool_visual.utils import gp_layer_parenting as gp_parent
+    from bmanga_dev_tool_visual.utils import gp_object_layer, layer_object_model
     from bmanga_dev_tool_visual.utils import gpencil as gp_utils
     from bmanga_dev_tool_visual.utils.geom import mm_to_m
 
-    obj = gp_utils.ensure_master_gpencil(context.scene)
-    layer = obj.data.layers.new("visual_gp")
-    gp_parent.set_parent_key(layer, parent_key)
+    obj = gp_object_layer.create_layer_gp_object(
+        scene=context.scene,
+        bmanga_id=layer_object_model.make_stable_id("gp"),
+        title="visual_gp",
+        z_index=210,
+        parent_kind="coma" if ":" in parent_key else "page",
+        parent_key=parent_key,
+    )
+    layer = layer_object_model.content_layer(obj)
+    assert layer is not None
     frame = gp_utils.ensure_active_frame(layer)
     assert frame is not None and getattr(frame, "drawing", None) is not None
     assert gp_utils.add_stroke_to_drawing(

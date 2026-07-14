@@ -11,9 +11,34 @@ from __future__ import annotations
 import bpy
 from bpy.types import Menu
 
+from ..utils import detail_target_resolver
 from ..utils import layer_stack as layer_stack_utils
 from ..utils import object_naming as on
 from ..utils import page_file_scene, shortcut_visibility
+
+
+def _normalize_detail_object(obj):
+    if not isinstance(obj, bpy.types.Object):
+        return None
+    try:
+        from ..utils import detail_target_resolver
+
+        obj = detail_target_resolver.normalize_effect_controller_object(obj)
+    except Exception:  # メニュー描画を壊さず、通常の管理Object判定へ戻す
+        pass
+    return obj if obj is not None and on.is_managed(obj) else None
+
+
+def _detail_operator_identity(context, obj) -> tuple[str, str]:
+    """右クリックしたObjectを、ページを含む固定対象IDへ正規化する。"""
+
+    try:
+        from ..utils import detail_target_resolver
+
+        target = detail_target_resolver.resolve_target_from_object(context, obj)
+        return target.stable_id, target.kind
+    except Exception:  # メニュー自体は維持し、実行時の厳密検証に委ねる
+        return on.get_bmanga_id(obj), on.get_kind(obj)
 
 
 def _selected_balloon_count(context) -> int:
@@ -38,25 +63,27 @@ def _active_managed_object(context):
         4. ``view_layer.active`` (Outliner の active)
     """
     # 1. 3D ビューの active_object
-    obj = getattr(context, "active_object", None)
-    if obj is not None and on.is_managed(obj):
+    obj = _normalize_detail_object(getattr(context, "active_object", None))
+    if obj is not None:
         return obj
     # 2. selected_objects (3D ビューや Outliner で選択中)
     selected = getattr(context, "selected_objects", None) or ()
-    for o in selected:
-        if on.is_managed(o):
-            return o
+    for candidate in selected:
+        obj = _normalize_detail_object(candidate)
+        if obj is not None:
+            return obj
     # 3. selected_ids (Outliner の context で利用可能)
     selected_ids = getattr(context, "selected_ids", None) or ()
-    for sid in selected_ids:
-        if isinstance(sid, bpy.types.Object) and on.is_managed(sid):
-            return sid
+    for candidate in selected_ids:
+        obj = _normalize_detail_object(candidate)
+        if obj is not None:
+            return obj
     # 4. view_layer.active (Outliner の active)
     view_layer = getattr(context, "view_layer", None)
     if view_layer is not None:
-        active = getattr(view_layer, "active", None)
-        if active is not None and on.is_managed(active):
-            return active
+        obj = _normalize_detail_object(getattr(view_layer, "active", None))
+        if obj is not None:
+            return obj
     return None
 
 
@@ -110,10 +137,6 @@ def _managed_object_matches_stack_item(obj, item) -> bool:
     key = str(getattr(item, "key", "") or "")
     obj_kind = on.get_kind(obj)
     obj_id = on.get_bmanga_id(obj)
-    if kind == "effect_legacy":
-        kind = "effect"
-    if obj_kind == "effect_legacy":
-        obj_kind = "effect"
     if obj_kind != kind:
         return False
     if obj_id == key:
@@ -182,7 +205,7 @@ def selection_command_items(context) -> list[dict]:
     item = _active_stack_item_no_sync(context)
     kind = str(getattr(item, "kind", "") or "")
     has_item = item is not None
-    normalized_kind = "effect" if kind == "effect_legacy" else kind
+    normalized_kind = kind
     copyable_kinds = {"balloon", "text", "raster", "gp", "effect"}
     has_layer_clipboard = False
     has_tail_clipboard = False
@@ -199,17 +222,48 @@ def selection_command_items(context) -> list[dict]:
     except Exception:  # noqa: BLE001
         selected_linkable_count = 0
         selected_any_linked = False
+    resolved = layer_stack_utils.resolve_stack_item(context, item) if item is not None else None
+    resolved_target = resolved.get("target") if resolved is not None else None
+    can_open_detail = detail_target_resolver.can_open_actual_detail(kind, resolved_target)
     detail_operator = "bmanga.layer_stack_detail"
-    if kind in {"image", "raster", "fill", "balloon", "text", "gp", "effect", "effect_legacy"}:
-        if _active_managed_object_for_stack_item(context, item) is not None:
-            detail_operator = "bmanga.layer_detail_open"
-    items = [
-        {
+    detail_props = {
+        "uid": layer_stack_utils.stack_item_uid(item) if item is not None else "",
+    }
+    if can_open_detail and kind in {
+        "image",
+        "image_path",
+        "raster",
+        "fill",
+        "balloon",
+        "text",
+        "gp",
+        "effect",
+    }:
+        detail_obj = _active_managed_object_for_stack_item(context, item)
+        if detail_obj is not None:
+            try:
+                object_target = detail_target_resolver.resolve_target_from_object(
+                    context, detail_obj
+                )
+            except Exception:  # 実体を固定解決できないObjectには入口を表示しない
+                object_target = None
+            if detail_target_resolver.can_open_actual_detail(kind, object_target):
+                detail_operator = "bmanga.layer_detail_open"
+                detail_id, detail_kind = _detail_operator_identity(context, detail_obj)
+                detail_props = {
+                    "bmanga_id": detail_id,
+                    "kind": detail_kind,
+                }
+    items = []
+    if can_open_detail:
+        items.append({
             "label": "詳細設定",
             "operator": detail_operator,
             "icon": "PREFERENCES",
-            "enabled": has_item,
-        },
+            "enabled": True,
+            "props": detail_props,
+        })
+    items.extend([
         {
             "label": "コピー",
             "operator": "bmanga.layer_clipboard_copy",
@@ -246,7 +300,7 @@ def selection_command_items(context) -> list[dict]:
             "icon": "UNLINKED",
             "enabled": has_item and selected_any_linked,
         },
-    ]
+    ])
     if normalized_kind in {"balloon", "effect"}:
         items.insert(
             5,
@@ -427,13 +481,19 @@ def _draw_layer_commands(layout, context) -> None:
     layout.label(text=title, icon="OBJECT_DATA")
     layout.separator()
     if not _draw_selection_command_items(layout, context):
-        detail_row = layout.row()
-        detail_row.operator_context = "INVOKE_DEFAULT"
-        detail_row.operator(
-            "bmanga.layer_detail_open", text="詳細設定", icon="PREFERENCES"
-        )
+        try:
+            detail_target = detail_target_resolver.resolve_target_from_object(context, obj)
+        except Exception:  # 管理Objectでも詳細実体が無いものには入口を出さない
+            detail_target = None
+        if detail_target_resolver.can_open_actual_detail(kind, detail_target):
+            detail_row = layout.row()
+            detail_row.operator_context = "INVOKE_DEFAULT"
+            detail_op = detail_row.operator(
+                "bmanga.layer_detail_open", text="詳細設定", icon="PREFERENCES"
+            )
+            detail_op.bmanga_id, detail_op.kind = _detail_operator_identity(context, obj)
         # フキダシ / 効果線の場合はリンク複製も
-        if kind in {"balloon", "effect", "effect_legacy"}:
+        if kind in {"balloon", "effect"}:
             link_op = getattr(bpy.ops.bmanga, "layer_stack_link_duplicate", None)
             if link_op is not None:
                 layout.operator(

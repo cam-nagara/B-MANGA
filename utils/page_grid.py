@@ -371,11 +371,9 @@ def _resolve_overview_params(scene, work) -> tuple[int, float, float, float, flo
     return cols, gap_x, gap_y, cw, ch
 
 
-# 下書き (マスター GP) のストローク座標はキャンバス絶対値のため、ページの
-# 並べ替え・列数変更などで grid 配置が変わると、その時点で閉じている
-# ページ用 blend のストロークには平行移動が届かない。ページ/コマ用 blend の
-# 保存時に「自ページの grid オフセット」を scene へ記録し、次の読込時に
-# 現在のオフセットとの差分だけストロークを動かして追従させる。
+# ページ/コマ用 blend の保存時に、自ページの grid オフセットを記録する。
+# 現行の手描きレイヤーは1 Object単位で、描画点はObjectローカル座標、ページ
+# 位置はObject.locationが担う。旧マスターGPのように描画点を移動してはならない。
 PROP_GP_SAVED_PAGE_OFFSET = "bmanga_gp_saved_page_offset"
 
 
@@ -420,48 +418,7 @@ def record_gp_page_offset(context, work) -> None:
 
 
 def reconcile_gp_strokes_with_page_offset(context, work) -> None:
-    """保存時と現在で自ページの配置が変わっていたら、下書きを差分だけ移動する."""
-    scene = getattr(context, "scene", None) or bpy.context.scene
-    if scene is None or work is None:
-        return
-    page_id = _own_detail_page_id(context)
-    if not page_id:
-        return
-    try:
-        from . import page_file_scene
-
-        index = page_file_scene.find_page_index(work, page_id)
-    except Exception:  # noqa: BLE001
-        return
-    if not (0 <= index < len(getattr(work, "pages", []) or [])):
-        return
-    stored = scene.get(PROP_GP_SAVED_PAGE_OFFSET)
-    stored_id = ""
-    stored_ox = stored_oy = 0.0
-    try:
-        if stored is not None:
-            stored_id = str(stored.get("page_id", "") or "")
-            stored_ox = float(stored.get("ox", 0.0))
-            stored_oy = float(stored.get("oy", 0.0))
-    except Exception:  # noqa: BLE001
-        stored_id = ""
-    if stored_id == page_id:
-        ox, oy = page_total_offset_mm(work, scene, index)
-        dx = ox - stored_ox
-        dy = oy - stored_oy
-        if abs(dx) > 1.0e-6 or abs(dy) > 1.0e-6:
-            try:
-                from . import layer_stack
-
-                layer_stack.translate_gp_layers_for_parent_keys(
-                    context,
-                    layer_stack.gp_parent_keys_for_page(work.pages[index]),
-                    dx,
-                    dy,
-                )
-            except Exception:  # noqa: BLE001
-                _logger.exception("gp stroke reconcile failed: %s", page_id)
-    # 旧ファイル (記録なし) や別ページの記録は、現在値の記録だけ行う
+    """現行Objectモデルでは描画点を動かさず、現在の配置だけ記録する。"""
     record_gp_page_offset(context, work)
 
 

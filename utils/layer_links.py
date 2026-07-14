@@ -258,9 +258,9 @@ def _object_key_for_item(context, item) -> str:
         return ""
     kind = str(getattr(item, "kind", "") or "")
     if kind == "gp":
-        return object_selection.gp_key(target)
+        return object_selection.gp_key(resolved.get("object"))
     if kind == "effect":
-        return object_selection.effect_key(target)
+        return object_selection.effect_key(resolved.get("object"))
     if kind == "image":
         return object_selection.image_key(target)
     if kind == "raster":

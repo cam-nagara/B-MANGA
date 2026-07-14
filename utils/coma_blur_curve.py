@@ -326,6 +326,22 @@ def sync_active_coma_curve_to_border(coma) -> bool:
     return sync_ui_curve_to_border(getattr(coma, "border", None))
 
 
+def restore_ui_curve_from_border(border) -> bool:
+    """キャンセル後の保存値をUIカーブへ強制的に戻す。"""
+
+    if bpy is None or border is None or not hasattr(border, "blur_curve_points"):
+        return False
+    node = ensure_ui_curve_node(border)
+    if node is None:
+        return False
+    text = points_to_text(parse_points(getattr(border, "blur_curve_points", DEFAULT_CURVE_TEXT)))
+    apply_points_to_node(node, parse_points(text))
+    material = bpy.data.materials.get(UI_MATERIAL_NAME)
+    if material is not None:
+        material[UI_CURVE_SOURCE_PROP] = text
+    return True
+
+
 def _owner_key_for_border(border) -> str:
     try:
         return str(int(border.as_pointer()))

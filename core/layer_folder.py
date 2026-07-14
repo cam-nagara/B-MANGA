@@ -21,6 +21,27 @@ def _on_layer_folder_title_changed(_self, context) -> None:
         pass
 
 
+def _on_layer_folder_state_changed(_self, _context) -> None:
+    """保存正本の表示・ロックを既存Collectionへ即時反映する。"""
+
+    folder_id = str(getattr(_self, "id", "") or "")
+    if not folder_id:
+        return
+    try:
+        from ..utils import object_naming
+
+        coll = object_naming.find_collection_by_bmanga_id(folder_id, kind="folder")
+        if coll is None:
+            return
+        hidden = not bool(getattr(_self, "visible", True))
+        coll.hide_viewport = hidden
+        coll.hide_render = hidden
+        if hasattr(coll, "hide_select"):
+            coll.hide_select = bool(getattr(_self, "locked", False))
+    except Exception:  # noqa: BLE001
+        pass
+
+
 class BMangaLayerFolder(bpy.types.PropertyGroup):
     """画像/ラスター/フキダシ/テキストをまとめる UI 用フォルダ."""
 
@@ -28,6 +49,8 @@ class BMangaLayerFolder(bpy.types.PropertyGroup):
     title: StringProperty(name="表示名", description="レイヤーパネルに表示するフォルダの名前", default="フォルダ", update=_on_layer_folder_title_changed)  # type: ignore[valid-type]
     parent_key: StringProperty(name="親キー", description="親フォルダまたは親要素を示す内部キー", default="")  # type: ignore[valid-type]
     expanded: BoolProperty(name="展開", description="レイヤーパネルでフォルダの中身を展開表示するか", default=True)  # type: ignore[valid-type]
+    visible: BoolProperty(name="表示", description="フォルダ内を表示するか", default=True, update=_on_layer_folder_state_changed)  # type: ignore[valid-type]
+    locked: BoolProperty(name="ロック", description="フォルダ内を選択できないようにするか", default=False, update=_on_layer_folder_state_changed)  # type: ignore[valid-type]
     selected: BoolProperty(name="マルチ選択", description="レイヤーパネルでの複数選択状態", default=False, options={"SKIP_SAVE"})  # type: ignore[valid-type]
 
 

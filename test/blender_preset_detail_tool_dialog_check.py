@@ -30,10 +30,15 @@ import sys
 import tempfile
 import traceback
 from pathlib import Path
+from types import SimpleNamespace
 
 import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "test"))
+
+from detail_dialog_public_test_support import draw_preset_detail  # noqa: E402
+
 MOD_NAME = "bmanga_dev_preset_detail_tool_dialog"
 
 FAILURES: list[str] = []
@@ -121,10 +126,6 @@ def _ops(records: list[tuple[str, str, str]]) -> set[str]:
 
 def _props(records: list[tuple[str, str, str]]) -> set[str]:
     return {name for kind, name, _text in records if kind == "prop"}
-
-
-def _menus(records: list[tuple[str, str, str]]) -> set[str]:
-    return {name for kind, name, _text in records if kind == "menu"}
 
 
 # ────────────────────────────────────────────────────────────────
@@ -304,7 +305,14 @@ def _check_border(context, preset_detail_op) -> None:
     # 網羅確認のため both にしておく。
     scratch.white_margin.placement = "both"
     records: list[tuple[str, str, str]] = []
-    preset_detail_op._draw_border(_RecordingLayout(records), context)
+    draw_preset_detail(
+        MOD_NAME,
+        _RecordingLayout(records),
+        context,
+        "border",
+        scratch,
+        preset_name="TestBorderPreset",
+    )
     ops = _ops(records)
     for forbidden in (
         "bmanga.border_preset_add_local",
@@ -348,16 +356,26 @@ def _check_text(context, preset_detail_op) -> None:
     _check(abs(scratch.font_size_value - 32.0) < 1.0e-3, "text: 上書き後の font_size_value の読込")
 
     records: list[tuple[str, str, str]] = []
-    preset_detail_op._draw_text(_RecordingLayout(records), context)
+    draw_preset_detail(
+        MOD_NAME,
+        _RecordingLayout(records),
+        context,
+        "text",
+        scratch,
+        preset_name="TestTextPreset",
+    )
     ops = _ops(records)
     for forbidden in ("bmanga.text_ruby_add_dialog", "bmanga.text_ruby_clear", "bmanga.text_meta_dialog"):
         _check(forbidden not in ops, f"text: draw に実テキスト用ボタンが出ない ({forbidden})")
-    # v0.6.501: リンクフキダシプリセットは「テキストプリセットに保存される
-    # 項目」になったため、プリセット詳細編集 (preset_mode=True) でも表示・
-    # 編集できる必要がある (operators/layer_detail_op.py _draw_text_detail)。
+    # v0.6.501: 保存対象なのでプリセットモードでも、固定session対象を渡す
+    # 選択式の専用操作として表示する（旧モジュール大域IDは使わない）。
     _check(
-        "BMANGA_MT_linked_balloon_preset" in _menus(records),
-        "text: draw にリンクフキダシメニューが出る (プリセットモードでも編集可能)",
+        any(
+            kind == "operator_menu_enum"
+            and op_id == "bmanga.detail_text_linked_balloon_set"
+            for kind, op_id, _text in records
+        ),
+        "text: draw に固定対象のリンクフキダシ選択が出る",
     )
     props = _props(records)
     for expected in ("font_size_value", "writing_mode", "color", "stroke_enabled", "line_height"):
@@ -411,7 +429,15 @@ def _check_effect_line(context, preset_detail_op, effect_line_core) -> None:
     preset_detail_op._load_effect_line(context, "TestEffectLinePreset")
 
     records: list[tuple[str, str, str]] = []
-    preset_detail_op._draw_effect_line(_RecordingLayout(records), context)
+    draw_preset_detail(
+        MOD_NAME,
+        _RecordingLayout(records),
+        context,
+        "effect_line",
+        scratch,
+        preset_name="TestEffectLinePreset",
+        params=scratch,
+    )
     ops = _ops(records)
     for forbidden in ("bmanga.effect_line_generate", "bmanga.effect_line_base_path_edit"):
         _check(forbidden not in ops, f"effect_line: draw に実オブジェクト用ボタンが出ない ({forbidden})")
@@ -444,7 +470,14 @@ def _check_fill(context, preset_detail_op) -> None:
     _check(abs(scratch.opacity - 33.0) < 1.0e-3, "fill: 上書き後の opacity の読込")
 
     records: list[tuple[str, str, str]] = []
-    preset_detail_op._draw_fill(_RecordingLayout(records), context)
+    draw_preset_detail(
+        MOD_NAME,
+        _RecordingLayout(records),
+        context,
+        "fill",
+        scratch,
+        preset_name="TestFillPreset",
+    )
     ops = _ops(records)
     _check(not ops, f"fill: draw に操作ボタンが出ない (実際: {ops})")
     props = _props(records)
@@ -480,7 +513,14 @@ def _check_gradient(context, preset_detail_op) -> None:
     _check(scratch.gradient_type == "linear", "gradient: 上書き後の gradient_type の読込")
 
     records: list[tuple[str, str, str]] = []
-    preset_detail_op._draw_gradient(_RecordingLayout(records), context)
+    draw_preset_detail(
+        MOD_NAME,
+        _RecordingLayout(records),
+        context,
+        "gradient",
+        scratch,
+        preset_name="TestGradientPreset",
+    )
     props = _props(records)
     for expected in ("color", "color2", "gradient_type", "opacity"):
         _check(expected in props, f"gradient: draw に {expected} が含まれる")
@@ -512,7 +552,14 @@ def _check_image_path(context, preset_detail_op) -> None:
     _check(scratch.shape_sides == 8, "image_path: 上書き後の shape_sides の読込")
 
     records: list[tuple[str, str, str]] = []
-    preset_detail_op._draw_image_path(_RecordingLayout(records), context)
+    draw_preset_detail(
+        MOD_NAME,
+        _RecordingLayout(records),
+        context,
+        "image_path",
+        scratch,
+        preset_name="TestImagePathPreset",
+    )
     ops = _ops(records)
     _check(not ops, f"image_path: draw に操作ボタンが出ない (実際: {ops})")
     props = _props(records)
@@ -553,7 +600,14 @@ def _check_tail(context, preset_detail_op) -> None:
     _check(abs(scratch.root_width_mm - 9.0) < 1.0e-4, "tail: 上書き後の root_width_mm の読込")
 
     records: list[tuple[str, str, str]] = []
-    preset_detail_op._draw_tail(_RecordingLayout(records), context)
+    draw_preset_detail(
+        MOD_NAME,
+        _RecordingLayout(records),
+        context,
+        "tail",
+        scratch,
+        preset_name="TestTailPreset",
+    )
     ops = _ops(records)
     for forbidden in (
         "bmanga.balloon_tail_remove",
@@ -602,12 +656,133 @@ def _check_balloon_description_only(context, preset_detail_op, balloon_presets) 
     )
 
 
-def _check_operator_dispatch_tables(preset_detail_op) -> None:
-    for key in ("border", "text", "effect_line", "fill", "gradient", "image_path", "tail"):
+def _check_operator_dispatch_tables(preset_detail_op, detail_drawer_dispatcher) -> None:
+    target_kinds = {
+        "border": "coma",
+        "text": "text",
+        "effect_line": "effect",
+        "fill": "fill",
+        "gradient": "fill",
+        "image_path": "image_path",
+        "tail": "balloon_tail",
+    }
+    for key, target_kind in target_kinds.items():
         _check(key in preset_detail_op._LOADERS, f"dispatch: _LOADERS に {key} が登録されている")
-        _check(key in preset_detail_op._DRAWERS, f"dispatch: _DRAWERS に {key} が登録されている")
         _check(key in preset_detail_op._SAVERS, f"dispatch: _SAVERS に {key} が登録されている")
+        _check(
+            key in preset_detail_op._PRESET_SCRATCH_ATTRS,
+            f"dispatch: 一時設定に {key} が登録されている",
+        )
+        _check(
+            target_kind in detail_drawer_dispatcher._BODY_DRAWERS,
+            f"dispatch: 共通本文に {target_kind} が登録されている",
+        )
+    _check(
+        not hasattr(preset_detail_op, "_DRAWERS"),
+        "dispatch: プリセット専用描画表を持たず共通描画だけを使う",
+    )
     _check("balloon" not in preset_detail_op._LOADERS, "dispatch: balloon は _LOADERS に含まれない (専用フォールバック)")
+
+
+def _open_text_preset_session(context, name: str):
+    detail = _sub("utils.detail_dialog")
+    state = _sub("utils.detail_dialog_state")
+    adapters = _sub("utils.detail_state_adapters")
+    runtime = _sub("operators.detail_dialog_runtime")
+    scratch = context.window_manager.bmanga_preset_scratch_text
+    target = detail.resolve_preset_detail_target("text", name, scratch)
+    session = state.begin_detail_session(
+        target,
+        detail.DetailMode.PRESET,
+        registry=adapters.ACTUAL_DETAIL_STATE_REGISTRY,
+        target_validator=lambda identity: identity.stable_id == target.stable_id,
+    )
+    runtime.register_preset_session(session)
+    return session
+
+
+def _check_preset_session_lock_and_failed_save_cleanup(context, preset_detail_op) -> None:
+    runtime = _sub("operators.detail_dialog_runtime")
+    state = _sub("utils.detail_dialog_state")
+    operator_cls = preset_detail_op.BMANGA_OT_preset_detail_edit
+    scratch = context.window_manager.bmanga_preset_scratch_text
+
+    preset_detail_op._reset_props(scratch)
+    scratch.font_size_value = 31.0
+    lock_session = _open_text_preset_session(context, "TestTextPreset")
+    original_loader = preset_detail_op._LOADERS["text"]
+    loader_calls = []
+
+    def _contaminating_loader(_context, _name):
+        loader_calls.append(True)
+        scratch.font_size_value = 999.0
+        return ""
+
+    class _InvokeProbe:
+        preset_type = "text"
+        preset_name = "TestTextPreset"
+        parent_session_token = ""
+        parent_target_kind = ""
+        parent_target_id = ""
+        _detail_session = None
+
+        def _parent_session_is_valid(self):
+            return True
+
+        def report(self, _level, _message):
+            return None
+
+    try:
+        preset_detail_op._LOADERS["text"] = _contaminating_loader
+        result = operator_cls.invoke(_InvokeProbe(), context, SimpleNamespace())
+        _check("CANCELLED" in result, "同種プリセット詳細の2画面目を拒否する")
+        _check(not loader_calls, "2画面目の読込前に拒否して編集中scratchを守る")
+        _check(abs(float(scratch.font_size_value) - 31.0) < 1.0e-6, "拒否後も1画面目の一時値を保つ")
+    finally:
+        preset_detail_op._LOADERS["text"] = original_loader
+        state.cancel_detail_session(lock_session)
+        runtime.unregister_preset_session(lock_session)
+
+    preset_detail_op._reset_props(scratch)
+    scratch.font_size_value = 41.0
+    failure_session = _open_text_preset_session(context, "TestTextPreset")
+    scratch.font_size_value = 42.0
+    original_saver = preset_detail_op._SAVERS["text"]
+
+    class _ExecuteProbe:
+        preset_type = "text"
+        preset_name = "TestTextPreset"
+        parent_session_token = ""
+        parent_target_kind = ""
+        parent_target_id = ""
+        description_text = "保存失敗"
+        _detail_session = failure_session
+        _parent_session_is_valid = operator_cls._parent_session_is_valid
+        _release_failed_session = operator_cls._release_failed_session
+        _restore_open_session = operator_cls._restore_open_session
+
+        def report(self, _level, _message):
+            return None
+
+    def _fail_save(_context, _name, _description):
+        raise OSError("intentional preset save failure")
+
+    probe = _ExecuteProbe()
+    try:
+        preset_detail_op._SAVERS["text"] = _fail_save
+        result = operator_cls.execute(probe, context)
+    finally:
+        preset_detail_op._SAVERS["text"] = original_saver
+    _check("CANCELLED" in result, "プリセット保存失敗を中止として返す")
+    _check(probe._detail_session is None, "保存失敗後にOperatorのセッション参照を解放する")
+    _check(
+        failure_session.token not in runtime._OPEN_PRESET_SESSIONS,
+        "保存失敗後にプリセットセッション登録を解放する",
+    )
+    _check(
+        abs(float(scratch.font_size_value) - 41.0) < 1.0e-6,
+        "保存失敗後に一時設定を開始時へ戻す",
+    )
 
 
 # ────────────────────────────────────────────────────────────────
@@ -628,10 +803,12 @@ def main() -> int:
 
         context = bpy.context
         preset_detail_op = _sub("operators.preset_detail_op")
+        detail_drawer_dispatcher = _sub("panels.detail_drawers.dispatcher")
         balloon_presets = _sub("io.balloon_presets")
         effect_line_core = _sub("core.effect_line")
 
-        _check_operator_dispatch_tables(preset_detail_op)
+        _check_operator_dispatch_tables(preset_detail_op, detail_drawer_dispatcher)
+        _check_preset_session_lock_and_failed_save_cleanup(context, preset_detail_op)
 
         fixture = _make_real_fixture(context)
         before = _snapshot_real_data(context, fixture, effect_line_core)

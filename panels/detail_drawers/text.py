@@ -1,0 +1,162 @@
+"""テキストの実レイヤー／プリセット共通詳細描画。"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+
+from .basic import (
+    body_columns,
+    detail_operator,
+    detail_operator_menu_enum,
+    prop_if,
+    prop_pair,
+    set_operator_fields,
+    value,
+)
+
+
+def draw_text_body(layout, _context, session, mode) -> None:
+    entry = session.target.data
+    preset_mode = str(getattr(mode, "value", mode)) == "preset"
+    columns = body_columns(layout, session)
+    primary = columns[0]
+    secondary = columns[min(1, len(columns) - 1)]
+
+    if not preset_mode:
+        _draw_placement(primary, entry)
+    _draw_linked_balloon_preset(primary, entry, session)
+    _draw_typography(secondary, entry)
+    _draw_stroke(secondary, entry)
+    _draw_ruby(secondary, entry, preset_mode, session)
+
+
+def _draw_placement(layout, entry) -> None:
+    box = layout.box()
+    box.label(text="配置 (mm)")
+    prop_pair(box, entry, "x_mm", "y_mm")
+    prop_pair(box, entry, "width_mm", "height_mm")
+    prop_if(box, entry, "rotation_deg", text="回転")
+    prop_if(box, entry, "speaker_name", text="話者")
+
+
+def _draw_linked_balloon_preset(layout, entry, session) -> None:
+    """モジュール大域の対象IDを書き換えず、固定済み対象IDへ適用する。"""
+
+    box = layout.box()
+    box.label(text="リンクフキダシプリセット", icon="LINKED")
+    selected = str(value(entry, "linked_balloon_preset", "") or "")
+    operator = detail_operator_menu_enum(
+        box,
+        "bmanga.detail_text_linked_balloon_set",
+        "preset_name",
+        text=selected or "なし",
+    )
+    set_operator_fields(
+        operator,
+        session_token=session.token,
+        target_id=session.target.stable_id,
+    )
+
+
+def _draw_typography(layout, entry) -> None:
+    box = layout.box()
+    box.label(text="フォント・組版", icon="FONT_DATA")
+    prop_if(box, entry, "font", text="基本フォント")
+    prop_pair(
+        box,
+        entry,
+        "font_size_unit",
+        "font_size_value",
+        font_size_unit={"text": ""},
+        font_size_value={"text": "サイズ"},
+    )
+    prop_pair(
+        box,
+        entry,
+        "font_bold",
+        "font_italic",
+        font_bold={"text": "太字", "toggle": True},
+        font_italic={"text": "斜体", "toggle": True},
+    )
+    prop_if(box, entry, "color", text="色")
+    prop_if(box, entry, "writing_mode", text="組み方向")
+    prop_pair(box, entry, "line_height", "letter_spacing")
+
+
+def _draw_stroke(layout, entry) -> None:
+    box = layout.box()
+    box.label(text="白フチ")
+    prop_if(box, entry, "stroke_enabled", text="白フチ")
+    content = box.column(align=True)
+    content.enabled = bool(value(entry, "stroke_enabled", False))
+    prop_if(content, entry, "stroke_width_mm", text="幅")
+    prop_if(content, entry, "stroke_color", text="色")
+
+
+def _draw_ruby(layout, entry, preset_mode: bool, session) -> None:
+    target = session.target
+    box = layout.box()
+    box.label(text="ルビ・部分スタイル")
+    if not preset_mode:
+        _draw_counts(box, entry)
+    prop_pair(box, entry, "ruby_line_height", "ruby_gap_mm")
+    prop_pair(box, entry, "ruby_letter_spacing", "ruby_size_percent")
+    prop_pair(box, entry, "ruby_align", "ruby_small_kana")
+    prop_if(box, entry, "ruby_font", text="ルビフォント")
+    if not preset_mode:
+        row = box.row(align=True)
+        add = detail_operator(
+            row,
+            "bmanga.detail_text_ruby_add",
+            text="ルビを付ける",
+            icon="ADD",
+        )
+        clear = detail_operator(
+            row,
+            "bmanga.detail_text_ruby_clear",
+            text="ルビを削除",
+            icon="TRASH",
+        )
+        # 詳細対象のstable_idは誤対象防止のため「ページID:テキストID」。
+        # 既存のルビ操作はpage_idとページ内text_idを別々に受け取る。
+        fields = {
+            "session_token": session.token,
+            "page_id": _page_id(target.params),
+            "text_id": str(value(entry, "id", "") or ""),
+        }
+        set_operator_fields(
+            add,
+            **fields,
+            target_id=target.stable_id,
+            start=0,
+            length=max(1, len(str(value(entry, "body", "") or ""))),
+        )
+        set_operator_fields(
+            clear,
+            **fields,
+            target_id=target.stable_id,
+            start=0,
+            end=len(str(value(entry, "body", "") or "")),
+        )
+
+
+def _draw_counts(layout, entry) -> None:
+    row = layout.row(align=True)
+    row.label(text=f"ルビ: {_count(entry, 'ruby_spans')} 件")
+    row.label(text=f"部分フォント: {_count(entry, 'font_spans')} 件")
+    row = layout.row(align=True)
+    row.label(text=f"部分スタイル: {_count(entry, 'style_spans')} 件")
+    row.label(text=f"縦中横: {_count(entry, 'tatechuyoko_ranges')} 件")
+
+
+def _count(entry, name: str) -> int:
+    return len(value(entry, name, ()) or ())
+
+
+def _page_id(params) -> str:
+    if isinstance(params, Mapping):
+        return str(params.get("page_id", "") or "")
+    return str(getattr(params, "page_id", "") or "") if params is not None else ""
+
+
+__all__ = ["draw_text_body"]

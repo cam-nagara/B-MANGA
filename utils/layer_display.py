@@ -17,7 +17,6 @@ _KIND_ICONS = {
     "coma": "MOD_WIREFRAME",
     "coma_preview": "IMAGE_DATA",
     "gp": "OUTLINER_OB_GREASEPENCIL",
-    "gp_folder": "FILE_FOLDER",
     "layer_folder": "FILE_FOLDER",
     "image": "IMAGE_DATA",
     "raster": "BRUSH_DATA",

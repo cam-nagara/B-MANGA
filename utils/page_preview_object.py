@@ -677,17 +677,27 @@ def ensure_preview_png(work, page, page_index: int, *, current: bool, scene=None
 
 
 def _save_preview_png(image, path: Path, *, variant: str, signature: str) -> None:
-    try:
-        from PIL import PngImagePlugin
+    from ..io.project_content_migration_lock import guard_path_write
+    from ..io.project_content_save_baseline import record_successful_write
 
-        metadata = PngImagePlugin.PngInfo()
-        metadata.add_text(PREVIEW_RENDER_VERSION_KEY, PREVIEW_RENDER_VERSION)
-        metadata.add_text(PREVIEW_RENDER_VARIANT_KEY, str(variant or PREVIEW_RENDER_VARIANT_WORK))
-        metadata.add_text(PREVIEW_RENDER_SIGNATURE_KEY, str(signature or ""))
-        image.save(path, pnginfo=metadata)
-        return
-    except Exception:  # noqa: BLE001
-        image.save(path)
+    # プレビューも作品フォルダー内の保存物なので、別画面の更新を上書きする
+    # 前に共通ロックと読込基準を照合する。自画面の保存が完了した時点だけ
+    # 基準を進め、失敗・途中書込みを外部変更として無条件採用しない。
+    with guard_path_write(path):
+        try:
+            from PIL import PngImagePlugin
+
+            metadata = PngImagePlugin.PngInfo()
+            metadata.add_text(PREVIEW_RENDER_VERSION_KEY, PREVIEW_RENDER_VERSION)
+            metadata.add_text(
+                PREVIEW_RENDER_VARIANT_KEY,
+                str(variant or PREVIEW_RENDER_VARIANT_WORK),
+            )
+            metadata.add_text(PREVIEW_RENDER_SIGNATURE_KEY, str(signature or ""))
+            image.save(path, pnginfo=metadata)
+        except Exception:  # noqa: BLE001
+            image.save(path)
+        record_successful_write(path)
 
 
 def _load_image(path: Path, expected_size: tuple[int, int] | None = None) -> bpy.types.Image | None:

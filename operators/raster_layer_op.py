@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import shutil
+import tempfile
 import uuid
+import zlib
 from array import array
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
@@ -50,6 +53,15 @@ RASTER_MIX_NODE = "BManga Raster Mix"
 RASTER_OUTPUT_NODE = "BManga Raster Output"
 RASTER_BRUSH_INITIALIZED_PROP = "bmanga_raster_brush_initialized"
 _RASTER_RUNTIME_BULK_DEPTH = 0
+
+
+class RasterSaveError(RuntimeError):
+    """未保存画素を持つラスターを1件以上保存できなかった。"""
+
+    def __init__(self, raster_ids: list[str]):
+        self.raster_ids = tuple(raster_ids)
+        joined = ", ".join(self.raster_ids) or "不明"
+        super().__init__(f"ラスター画像を保存できませんでした: {joined}")
 
 
 @contextmanager
@@ -132,7 +144,13 @@ def _raster_size_px(work, dpi: int) -> tuple[int, int]:
 def _abs_png_path(work_dir: Path, entry) -> Path:
     raster_id = str(getattr(entry, "id", "") or "")
     rel = str(getattr(entry, "filepath_rel", "") or raster_filepath_rel(raster_id))
-    return Path(work_dir) / rel
+    root = Path(work_dir).resolve(strict=True)
+    candidate = (root / rel).resolve(strict=False)
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("ラスター画像の保存先が作品フォルダー外です") from exc
+    return candidate
 
 
 def _set_image_relative_path(image, raster_id: str, abs_path: Path) -> None:
@@ -177,6 +195,64 @@ def _entry_has_unsaved_pixels(entry, image) -> bool:
         return bool(getattr(image, "is_dirty", False))
     except Exception:  # noqa: BLE001
         return False
+
+
+def _validate_png_file(path: Path) -> None:
+    """巨大画像を全読込せず、PNGの必須構造とIHDR CRCを検証する。"""
+
+    size = path.stat().st_size
+    if size < 45:
+        raise OSError("PNG出力が短すぎます")
+    with path.open("rb") as handle:
+        if handle.read(8) != b"\x89PNG\r\n\x1a\n":
+            raise OSError("PNG署名が不正です")
+        header = handle.read(8)
+        if len(header) != 8:
+            raise OSError("PNGヘッダーがありません")
+        length = int.from_bytes(header[:4], "big")
+        chunk_type = header[4:]
+        if length != 13 or chunk_type != b"IHDR":
+            raise OSError("PNGのIHDRが不正です")
+        ihdr = handle.read(13)
+        crc = handle.read(4)
+        if len(ihdr) != 13 or len(crc) != 4:
+            raise OSError("PNGのIHDRが途中で切れています")
+        expected_crc = zlib.crc32(chunk_type + ihdr) & 0xFFFFFFFF
+        if int.from_bytes(crc, "big") != expected_crc:
+            raise OSError("PNGのIHDR CRCが不正です")
+        if int.from_bytes(ihdr[:4], "big") <= 0 or int.from_bytes(ihdr[4:8], "big") <= 0:
+            raise OSError("PNG画像サイズが不正です")
+        handle.seek(-12, os.SEEK_END)
+        if handle.read(12) != b"\x00\x00\x00\x00IEND\xaeB`\x82":
+            raise OSError("PNGの終端が不正です")
+
+
+def _save_image_to_atomic_png(image, destination: Path) -> None:
+    """同一dirの一時PNGを検証・fsync後にだけ本番名へ置換する。"""
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.",
+        suffix=".png",
+        dir=str(destination.parent),
+    )
+    os.close(fd)
+    temp_path = Path(temp_name)
+    temp_path.unlink(missing_ok=True)
+    try:
+        image.file_format = "PNG"
+        image.filepath_raw = str(temp_path)
+        try:
+            image.save()
+        except Exception:
+            image.save_render(str(temp_path))
+        _validate_png_file(temp_path)
+        with temp_path.open("r+b") as handle:
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, destination)
+    finally:
+        temp_path.unlink(missing_ok=True)
 
 
 def ensure_raster_image(context, entry, *, create_missing: bool = True, mark_missing: bool = False):
@@ -603,13 +679,29 @@ def save_raster_png(context, entry, *, force: bool = False) -> bool:
         return False
     work_dir = Path(work.work_dir)
     abs_path = _abs_png_path(work_dir, entry)
-    abs_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        image.file_format = "PNG"
-        image.filepath_raw = str(abs_path)
-        image.save()
-    except Exception:
-        image.save_render(str(abs_path))
+    from ..io.project_content_migration_lock import guard_path_write
+    from ..io.project_content_save_baseline import record_successful_write
+
+    with guard_path_write(abs_path):
+        old_format = str(getattr(image, "file_format", "") or "")
+        old_raw = str(getattr(image, "filepath_raw", "") or "")
+        old_path = str(getattr(image, "filepath", "") or "")
+        try:
+            _save_image_to_atomic_png(image, abs_path)
+        except Exception:
+            try:
+                image.file_format = old_format
+                image.filepath_raw = old_raw
+                image.filepath = old_path
+            except Exception:  # noqa: BLE001
+                pass
+            # tempへの保存でBlender側dirtyが落ちても、次回保存対象から外さない。
+            try:
+                entry["bmanga_raster_dirty"] = True
+            except Exception:  # noqa: BLE001
+                pass
+            raise
+        record_successful_write(abs_path)
     _set_image_relative_path(image, entry.id, abs_path)
     try:
         entry["bmanga_raster_dirty"] = False
@@ -674,19 +766,62 @@ def translate_raster_layer_pixels(context, entry, dx_mm: float, dy_mm: float) ->
     return True
 
 
-def save_dirty_raster_layers(context) -> int:
+def save_dirty_raster_layers(context, *, strict: bool = False) -> int:
+    """未保存ラスターを保存する。
+
+    ``strict=True`` では、呼出し時点でdirtyだった項目が1件でも保存できなければ
+    IDを集約して例外にする。ネイティブ保存前にsidecar失敗を見逃さないための
+    モードであり、dirtyでない項目の ``False`` は失敗に数えない。
+    """
+
     scene = getattr(context, "scene", None)
     coll = _raster_collection(scene) if scene is not None else None
     if coll is None:
         return 0
     saved = 0
+    failures: list[str] = []
     for entry in coll:
+        raster_id = str(getattr(entry, "id", "") or "<IDなし>")
+        image_name = str(
+            getattr(entry, "image_name", "")
+            or raster_image_name(str(getattr(entry, "id", "") or ""))
+        )
+        image = bpy.data.images.get(image_name)
+        was_dirty = _entry_has_unsaved_pixels(entry, image)
+        if not was_dirty:
+            continue
         try:
             if save_raster_png(context, entry, force=False):
                 saved += 1
+            elif strict:
+                failures.append(raster_id)
         except Exception:  # noqa: BLE001
-            _logger.exception("dirty raster save failed: %s", getattr(entry, "id", ""))
+            _logger.exception("dirty raster save failed: %s", raster_id)
+            if strict:
+                failures.append(raster_id)
+    if failures:
+        raise RasterSaveError(failures)
     return saved
+
+
+def dirty_raster_paths(context) -> tuple[Path, ...]:
+    """現在未保存画素を持ち、次の保存で書き込むPNGだけを返す。"""
+
+    scene = getattr(context, "scene", None)
+    coll = _raster_collection(scene) if scene is not None else None
+    work = get_work(context)
+    if coll is None or work is None or not getattr(work, "work_dir", ""):
+        return ()
+    result = []
+    for entry in coll:
+        raster_id = str(getattr(entry, "id", "") or "")
+        image_name = str(
+            getattr(entry, "image_name", "") or raster_image_name(raster_id)
+        )
+        image = bpy.data.images.get(image_name)
+        if _entry_has_unsaved_pixels(entry, image):
+            result.append(_abs_png_path(Path(work.work_dir), entry))
+    return tuple(result)
 
 
 def ensure_all_raster_runtime(context) -> int:
@@ -1154,9 +1289,13 @@ class BMANGA_OT_raster_layer_set_bit_depth(Operator):
         items=(("gray8", "グレー 8bit", ""), ("gray1", "1bit", "")),
         default="gray8",
     )
+    raster_id: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
 
     def execute(self, context):
-        entry, _idx = active_raster_entry(context)
+        if self.raster_id:
+            entry, _idx = find_raster_entry(context.scene, self.raster_id)
+        else:
+            entry, _idx = active_raster_entry(context)
         if entry is None:
             return {"CANCELLED"}
         entry.bit_depth = self.bit_depth

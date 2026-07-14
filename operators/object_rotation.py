@@ -122,7 +122,8 @@ def _capture_effect_rotation(context, key: str) -> dict | None:
     # の複数選択状態 (object_selection) は変更しない)。
     from . import effect_line_op
 
-    effect_line_op._select_effect_layer(context, obj, layer)
+    if not effect_line_op._select_effect_layer(context, obj, layer):
+        return None
     scene = getattr(context, "scene", None)
     params = getattr(scene, "bmanga_effect_line_params", None) if scene is not None else None
     if params is None:

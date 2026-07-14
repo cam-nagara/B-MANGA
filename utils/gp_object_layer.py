@@ -18,6 +18,7 @@ _logger = log.get_logger(__name__)
 
 # 新モデル GP Object の data 名 prefix
 PER_LAYER_GP_DATA_PREFIX = "BManga_LayerGP_"
+INTERNAL_MASK_LAYER_NAME = "__bmanga_mask"
 
 
 def _resolve_unique_data_name(base: str) -> str:
@@ -104,6 +105,7 @@ def create_layer_gp_object(
     # 黒線材質を確保 (空マテリアルだと Draw モードで白線になる)
     try:
         gp_utils.ensure_default_stroke_material(obj)
+        gp_utils.ensure_unique_object_materials(obj)
     except Exception:  # noqa: BLE001
         _logger.exception("create_layer_gp_object: default material failed")
     # コマ/ページマスクを GP Mask Modifier で適用
@@ -114,5 +116,113 @@ def create_layer_gp_object(
     except Exception:  # noqa: BLE001
         _logger.exception("create_layer_gp_object: mask_apply failed")
     return obj
+
+
+def ensure_default_page_layer(
+    scene: bpy.types.Scene,
+    page_id: str,
+    *,
+    title: str = "ネーム",
+) -> Optional[bpy.types.Object]:
+    """ページ直下に個別GPが無い場合だけ既定レイヤーを作る。"""
+
+    from . import layer_object_model
+
+    parent_key = str(page_id or "")
+    for obj in layer_object_model.iter_layer_objects("gp"):
+        if layer_object_model.parent_key(obj) == parent_key:
+            return obj
+    return create_layer_gp_object(
+        scene=scene,
+        bmanga_id=layer_object_model.make_stable_id("gp"),
+        title=title,
+        z_index=210,
+        parent_kind="page",
+        parent_key=parent_key,
+    )
+
+
+def legacy_layer_migration_issue(layer) -> str:
+    """旧GP内部レイヤーを個別Objectへ移せない理由を返す。"""
+
+    masks = getattr(layer, "mask_layers", None)
+    if masks is not None:
+        names = {
+            str(getattr(item, "name", "") or "")
+            for item in list(masks)
+        }
+        unsupported = sorted(name for name in names if name != INTERNAL_MASK_LAYER_NAME)
+        if unsupported:
+            return "対応できないレイヤーマスク: " + ", ".join(unsupported)
+    return ""
+
+
+def _keep_only_migrated_layers(gp_data, source_name: str):
+    layers = getattr(gp_data, "layers", None)
+    selected = layers.get(source_name) if layers is not None else None
+    if selected is None:
+        raise RuntimeError("移行元の手描きレイヤーを複製できませんでした")
+    for layer in list(layers):
+        name = str(getattr(layer, "name", "") or "")
+        if layer is selected or name == INTERNAL_MASK_LAYER_NAME:
+            continue
+        layers.remove(layer)
+    for layer in list(layers):
+        gp_utils.move_layer_to_group(gp_data, layer, None)
+    selected.name = "content"
+    try:
+        layers.active = selected
+    except Exception:  # noqa: BLE001
+        pass
+    return selected
+
+
+def _transform_layer_points(layer, matrix) -> None:
+    for frame in list(getattr(layer, "frames", ()) or ()):
+        drawing = getattr(frame, "drawing", None)
+        for stroke in list(getattr(drawing, "strokes", ()) or ()):
+            for point in list(getattr(stroke, "points", ()) or ()):
+                point.position = matrix @ point.position
+
+
+def clone_legacy_layer_object(
+    *,
+    scene: bpy.types.Scene,
+    source_obj: bpy.types.Object,
+    source_layer,
+    bmanga_id: str,
+    title: str,
+    z_index: int,
+    parent_kind: str,
+    parent_key: str,
+    folder_id: str = "",
+) -> bpy.types.Object:
+    """旧集約GPの1内部レイヤーを、描画属性を失わず個別Objectへ移す。"""
+
+    issue = legacy_layer_migration_issue(source_layer)
+    if issue:
+        raise ValueError(issue)
+    source_matrix = source_obj.matrix_world.copy()
+    clone = source_obj.copy()
+    clone.data = source_obj.data.copy()
+    clone.animation_data_clear()
+    content = _keep_only_migrated_layers(clone.data, source_layer.name)
+    los.stamp_layer_object(
+        clone,
+        kind="gp",
+        bmanga_id=bmanga_id,
+        title=title,
+        z_index=z_index,
+        parent_kind=parent_kind,
+        parent_key=parent_key,
+        folder_id=folder_id,
+        scene=scene,
+    )
+    transform = clone.matrix_world.inverted_safe() @ source_matrix
+    _transform_layer_points(content, transform)
+    clone["bmanga_user_visible"] = not bool(getattr(source_layer, "hide", False))
+    clone["bmanga_user_locked"] = bool(getattr(source_layer, "lock", False))
+    gp_utils.ensure_unique_object_materials(clone)
+    return clone
 
 

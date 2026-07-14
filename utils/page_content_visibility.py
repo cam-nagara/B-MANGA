@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import bpy
 
-from . import gp_layer_parenting, object_naming as on, page_range
+from . import layer_object_model, object_naming as on, page_range
 from .layer_hierarchy import OUTSIDE_STACK_KEY
 
 DETAIL_RADIUS = 1
 PROP_VIRTUAL_HIDDEN = "bmanga_page_list_virtual_hidden"
 PROP_PREVIOUS_HIDE_VIEWPORT = "bmanga_page_list_previous_hide_viewport"
-GP_HIDE_MAP_PROP = "bmanga_page_list_gp_hide_original_map_json"
+GP_VIRTUAL_HIDDEN_PROP = "bmanga_page_list_gp_virtual_hidden"
+GP_PREVIOUS_LAYER_HIDE_PROP = "bmanga_page_list_gp_previous_layer_hide"
 
 _APPLY_SCHEDULED = False
 
@@ -238,78 +238,35 @@ def _set_virtual_hidden(obj, hidden: bool) -> bool:
     return changed
 
 
-def _load_gp_hide_map(gp_data) -> dict[str, bool]:
-    try:
-        raw = str(gp_data.get(GP_HIDE_MAP_PROP, "") or "")
-    except Exception:  # noqa: BLE001
-        return {}
-    if not raw:
-        return {}
-    try:
-        data = json.loads(raw)
-    except Exception:  # noqa: BLE001
-        return {}
-    return {str(key): bool(value) for key, value in data.items() if key}
-
-
-def _save_gp_hide_map(gp_data, data: dict[str, bool]) -> None:
-    try:
-        if data:
-            gp_data[GP_HIDE_MAP_PROP] = json.dumps(data, ensure_ascii=False, sort_keys=True)
-        elif GP_HIDE_MAP_PROP in gp_data:
-            del gp_data[GP_HIDE_MAP_PROP]
-    except Exception:  # noqa: BLE001
-        pass
-
-
 def _apply_gp_layer_visibility(
     work,
     page_ids: set[str],
     folder_pages: dict[str, str],
     visible_page_ids: set[str],
 ) -> int:
-    try:
-        from . import gpencil as gp_utils
-
-        obj = gp_utils.get_master_gpencil()
-    except Exception:  # noqa: BLE001
-        return 0
-    gp_data = getattr(obj, "data", None)
-    layers = getattr(gp_data, "layers", None)
-    if layers is None:
-        return 0
-    state = _load_gp_hide_map(gp_data)
-    known = set()
     changed = 0
-    for layer in layers:
-        name = str(getattr(layer, "name", "") or "")
-        if name:
-            known.add(name)
-        parent_key = gp_layer_parenting.parent_key(layer)
-        page_id = _page_from_parent_key(parent_key, page_ids, folder_pages)
-        if not page_id:
-            if name in state:
-                previous = bool(state.pop(name))
-                if bool(getattr(layer, "hide", False)) != previous:
-                    layer.hide = previous
-                    changed += 1
+    for obj in layer_object_model.iter_layer_objects("gp"):
+        layer = layer_object_model.content_layer(obj)
+        if layer is None:
             continue
-        should_hide = page_id not in visible_page_ids
+        parent_key = layer_object_model.parent_key(obj)
+        page_id = _page_from_parent_key(parent_key, page_ids, folder_pages)
+        should_hide = bool(page_id and page_id not in visible_page_ids)
         if should_hide:
-            if name and name not in state:
-                state[name] = bool(getattr(layer, "hide", False))
+            if not bool(obj.get(GP_VIRTUAL_HIDDEN_PROP, False)):
+                obj[GP_PREVIOUS_LAYER_HIDE_PROP] = bool(getattr(layer, "hide", False))
+                obj[GP_VIRTUAL_HIDDEN_PROP] = True
             if not bool(getattr(layer, "hide", False)):
                 layer.hide = True
                 changed += 1
-        elif name in state:
-            previous = bool(state.pop(name))
+        elif bool(obj.get(GP_VIRTUAL_HIDDEN_PROP, False)):
+            previous = bool(obj.get(GP_PREVIOUS_LAYER_HIDE_PROP, False))
             if bool(getattr(layer, "hide", False)) != previous:
                 layer.hide = previous
                 changed += 1
-    for stale in set(state) - known:
-        state.pop(stale, None)
-        changed += 1
-    _save_gp_hide_map(gp_data, state)
+            for name in (GP_VIRTUAL_HIDDEN_PROP, GP_PREVIOUS_LAYER_HIDE_PROP):
+                if name in obj:
+                    del obj[name]
     return changed
 
 

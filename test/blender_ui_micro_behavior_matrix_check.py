@@ -16,6 +16,14 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "test"))
+
+from detail_dialog_public_test_support import (  # noqa: E402
+    close_actual_session,
+    draw_actual_detail,
+    open_actual_session,
+    sync_actual_session,
+)
 OUT_DIR = Path(
     os.environ.get("BMANGA_UI_MICRO_OUT", "")
     or tempfile.mkdtemp(prefix="bmanga_ui_micro_")
@@ -62,10 +70,11 @@ class _RecordingLayout:
         object.__setattr__(self, "_group", group)
         object.__setattr__(self, "_depth", depth)
         object.__setattr__(self, "enabled", enabled)
+        object.__setattr__(self, "active", True)
         object.__setattr__(self, "operator_context", "")
 
     def __setattr__(self, name: str, value: Any) -> None:
-        if name in {"enabled", "operator_context", "scale_y"}:
+        if name in {"enabled", "active", "operator_context", "scale_y"}:
             object.__setattr__(self, name, value)
 
     def _child(self):
@@ -118,7 +127,7 @@ class _RecordingLayout:
     def operator(self, idname: str, **_kwargs):
         return _DummyOp(idname)
 
-    def operator_menu_enum(self, idname: str, **_kwargs):
+    def operator_menu_enum(self, idname: str, _property: str, **_kwargs):
         return _DummyOp(idname)
 
     def menu(self, *_args, **_kwargs) -> None:
@@ -203,10 +212,11 @@ def _raster_obj_for(entry):
 
 def _create_scene(context):
     from bmanga_dev_ui_micro.operators import balloon_op, effect_line_op, text_op
-    from bmanga_dev_ui_micro.utils import gp_layer_parenting
+    from bmanga_dev_ui_micro.utils import gp_object_layer, layer_object_model
     from bmanga_dev_ui_micro.utils import gpencil as gp_utils
     from bmanga_dev_ui_micro.utils import layer_hierarchy, layer_stack
     from bmanga_dev_ui_micro.utils import object_naming as on
+    from bmanga_dev_ui_micro.utils import text_real_object
     from bmanga_dev_ui_micro.utils.geom import mm_to_m
 
     work = context.scene.bmanga_work
@@ -288,9 +298,17 @@ def _create_scene(context):
     text.stroke_enabled = True
     text.parent_balloon_id = balloon.id
 
-    gp_obj = gp_utils.ensure_master_gpencil(context.scene)
-    gp_layer = gp_obj.data.layers.new("監査GP")
-    gp_layer_parenting.set_parent_key(gp_layer, coma_key)
+    gp_obj = gp_object_layer.create_layer_gp_object(
+        scene=context.scene,
+        bmanga_id="gp_ui_micro_audit",
+        title="監査GP",
+        z_index=1000,
+        parent_kind="coma",
+        parent_key=coma_key,
+    )
+    assert gp_obj is not None
+    gp_layer = layer_object_model.content_layer(gp_obj)
+    assert gp_layer is not None
     frame = gp_utils.ensure_active_frame(gp_layer)
     assert frame is not None and frame.drawing is not None
     gp_utils.add_stroke_to_drawing(
@@ -307,6 +325,10 @@ def _create_scene(context):
     effect_line_op._select_effect_layer(context, effect_obj, effect_layer)
 
     layer_stack.sync_layer_stack_after_data_change(context)
+    text_stable_id = text_real_object.text_object_bmanga_id(page, text)
+    text_obj = on.find_object_by_bmanga_id(text_stable_id, kind="text")
+    assert text_stable_id == f"{page.id}:{text.id}"
+    assert text_obj is not None
     return {
         "work": work,
         "page": page,
@@ -318,6 +340,8 @@ def _create_scene(context):
         "balloon": balloon,
         "balloon_target": balloon_target,
         "text": text,
+        "text_stable_id": text_stable_id,
+        "text_obj": text_obj,
         "gp_obj": gp_obj,
         "gp_layer": gp_layer,
         "gp_mat": gp_mat,
@@ -560,26 +584,30 @@ def _stack_item(kind: str, label: str = ""):
 
 
 def _collect_detail_props(records: list[dict[str, Any]], context, targets) -> None:
-    from bmanga_dev_ui_micro.operators import layer_detail_op
-    from bmanga_dev_ui_micro.panels import gpencil_panel
+    from bmanga_dev_ui_micro.operators import detail_dialog_runtime
 
     pairs = (
-        ("ページ", "page", targets["page"], None),
-        ("コマ", "coma", targets["coma"], None),
-        ("汎用フォルダ", "layer_folder", targets["folder"], None),
-        ("GP", "gp", targets["gp_layer"], targets["gp_obj"]),
-        ("画像", "image", targets["image"], None),
-        ("ラスター", "raster", targets["raster"], None),
-        ("テキスト", "text", targets["text"], None),
+        ("ページ", "page", targets["page"]),
+        ("コマ", "coma", targets["coma"]),
+        ("汎用フォルダ", "layer_folder", targets["folder"]),
+        ("GP", "", targets["gp_obj"]),
+        ("画像", "image", targets["image"]),
+        ("ラスター", "raster", targets["raster"]),
+        ("テキスト", "text", targets["text_stable_id"]),
     )
-    for label, kind, target, obj in pairs:
+
+    def _draw_public(layout, target, kind):
+        draw_actual_detail(
+            "bmanga_dev_ui_micro", layout, context, target, kind
+        )
+
+    for label, kind, target in pairs:
         _collect_draw_props(
             records,
             f"レイヤー詳細 / {label}",
-            gpencil_panel.draw_stack_item_detail,
-            context,
-            _stack_item(kind, label),
-            {"target": target, "object": obj},
+            _draw_public,
+            target,
+            kind,
         )
 
     balloon = targets["balloon"]
@@ -592,13 +620,15 @@ def _collect_detail_props(records: list[dict[str, Any]], context, targets) -> No
         _collect_draw_props(
             records,
             f"レイヤー詳細 / フキダシ / {shape}",
-            gpencil_panel.draw_stack_item_detail,
-            context,
-            _stack_item("balloon", f"フキダシ {shape}"),
-            {"target": balloon, "object": None},
+            _draw_public,
+            balloon,
+            "balloon",
         )
 
-    params = context.scene.bmanga_effect_line_params
+    stack_effect_session = open_actual_session(
+        "bmanga_dev_ui_micro", context, targets["effect_obj"]
+    )
+    params = stack_effect_session.target.params
     for effect_type in ("focus", "speed", "beta_flash", "white_outline"):
         params.effect_type = effect_type
         params.start_to_coma_frame = False
@@ -614,44 +644,60 @@ def _collect_detail_props(records: list[dict[str, Any]], context, targets) -> No
         params.fill_base_shape = True
         params.white_outline_width_jitter_enabled = True
         params.white_outline_length_jitter_enabled = True
+        sync_actual_session("bmanga_dev_ui_micro", context, stack_effect_session)
         _collect_draw_props(
             records,
             f"レイヤー詳細 / 効果線 / {effect_type}",
-            gpencil_panel.draw_stack_item_detail,
+            detail_dialog_runtime.draw_actual_session,
             context,
-            _stack_item("effect", f"効果線 {effect_type}"),
-            {"target": targets["effect_layer"], "object": targets["effect_obj"]},
+            stack_effect_session,
         )
         if effect_type == "focus":
             params.start_to_coma_frame = True
+            sync_actual_session("bmanga_dev_ui_micro", context, stack_effect_session)
             _collect_draw_props(
                 records,
                 "レイヤー詳細 / 効果線 / focus / コマ枠始点",
-                gpencil_panel.draw_stack_item_detail,
+                detail_dialog_runtime.draw_actual_session,
                 context,
-                _stack_item("effect", "効果線 focus"),
-                {"target": targets["effect_layer"], "object": targets["effect_obj"]},
+                stack_effect_session,
             )
+    close_actual_session("bmanga_dev_ui_micro", context, stack_effect_session)
 
     targets["balloon"].shape = "cloud"
-    for group, fn, target in (
-        ("右クリック詳細 / 画像", layer_detail_op._draw_image_detail, targets["image"]),
-        ("右クリック詳細 / ラスター", layer_detail_op._draw_raster_detail, targets["raster"]),
-        ("右クリック詳細 / フキダシ", layer_detail_op._draw_balloon_detail, targets["balloon"]),
-        ("右クリック詳細 / テキスト", layer_detail_op._draw_text_detail, targets["text"]),
-        ("右クリック詳細 / GP", layer_detail_op._draw_gp_detail, targets["gp_obj"]),
+    for group, target, kind in (
+        ("右クリック詳細 / 画像", targets["image"], "image"),
+        ("右クリック詳細 / ラスター", targets["raster"], "raster"),
+        ("右クリック詳細 / フキダシ", targets["balloon"], "balloon"),
+        ("右クリック詳細 / テキスト", targets["text_obj"], ""),
+        ("右クリック詳細 / GP", targets["gp_obj"], ""),
     ):
-        _collect_draw_props(records, group, fn, target)
+        def _draw_public(layout, actual_target=target, actual_kind=kind):
+            draw_actual_detail(
+                "bmanga_dev_ui_micro",
+                layout,
+                context,
+                actual_target,
+                actual_kind,
+            )
 
+        _collect_draw_props(records, group, _draw_public)
+
+    effect_session = open_actual_session(
+        "bmanga_dev_ui_micro", context, targets["effect_obj"]
+    )
+    params = effect_session.target.params
     for effect_type in ("focus", "speed", "beta_flash", "white_outline"):
         params.effect_type = effect_type
+        sync_actual_session("bmanga_dev_ui_micro", context, effect_session)
         _collect_draw_props(
             records,
             f"右クリック詳細 / 効果線 / {effect_type}",
-            layer_detail_op._draw_effect_detail,
+            detail_dialog_runtime.draw_actual_session,
             context,
-            targets["effect_obj"],
+            effect_session,
         )
+    close_actual_session("bmanga_dev_ui_micro", context, effect_session)
 
 
 def _make_background(context, name: str, *, kind: str, page_id: str = ""):

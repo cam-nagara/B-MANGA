@@ -267,12 +267,9 @@ def _stack_uid_for_coma_object(obj: bpy.types.Object, page_id: str) -> str:
         if kind in {"image", "image_path", "raster", "fill"}:
             return ls.target_uid(kind, bmanga_id)
         if kind == "effect":
-            layers = getattr(getattr(obj, "data", None), "layers", None)
-            if layers is None or len(layers) == 0:
-                return ""
-            return ls.target_uid("effect", ls._node_stack_key(layers[0]))
-        if kind in {"gp", "gp_folder"}:
-            return ls.target_uid(kind, bmanga_id)
+            return ls.target_uid("effect", bmanga_id)
+        if kind == "gp":
+            return ls.target_uid("gp", bmanga_id)
     except Exception:  # noqa: BLE001
         return ""
     return ""
@@ -889,7 +886,7 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
             parent_key_raw = str(getattr(folder, "parent_key", "") or "")
             parent_kind, parent_key = _split_folder_parent(parent_key_raw)
             z_index = int(getattr(folder, "z_order", 0) or 0)
-            om.ensure_folder_collection(
+            folder_collection = om.ensure_folder_collection(
                 scene,
                 folder_id=folder_id,
                 title=title,
@@ -897,6 +894,14 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
                 parent_key=parent_key,
                 z_index=z_index,
             )
+            if folder_collection is not None:
+                hidden = not bool(getattr(folder, "visible", True))
+                folder_collection.hide_viewport = hidden
+                folder_collection.hide_render = hidden
+                if hasattr(folder_collection, "hide_select"):
+                    folder_collection.hide_select = bool(
+                        getattr(folder, "locked", False)
+                    )
         # 画像 / テキストの表示 Object を ensure。
         # どちらも透明画像付き平面として実体化する。
         if include_content:
@@ -1002,20 +1007,6 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
         except Exception:  # noqa: BLE001
             _logger.exception("apply_masks_to_all_managed failed")
 
-        # 旧設計の集約 GP Object (BManga_EffectLines / BManga_EffectLines_data)
-        # は新設計 (1 effect = 1 GP Object @ コマ Collection) で完全置換された
-        # ため、 viewport から強制 hide する。 中身 (effect_focus 等の旧 layer
-        # stroke) は user data として残し、 ユーザーが必要なら manual で
-        # 復活できる。 過去 file 互換のために削除はしない。
-        try:
-            for legacy_name in ("BManga_EffectLines", "BManga_EffectLines_data"):
-                lo = bpy.data.objects.get(legacy_name)
-                if lo is not None and not lo.hide_viewport:
-                    lo.hide_viewport = True
-                    lo.hide_render = True
-        except Exception:  # noqa: BLE001
-            _logger.exception("legacy effect lines hide failed")
-
     # mirror 完了。outliner_watch の定期 scan が同じ件数差を再検出して、ここで
     # 済ませた mirror を冗長に再実行 (→ ビューポート連続再描画 → 細線のちらつき) し
     # ないよう、scan の件数基準を最新化しておく。
@@ -1108,6 +1099,13 @@ def stamp_layer_object(
         parent_key=parent_key,
         folder_id=folder_id,
     )
+    if kind in {"gp", "effect"}:
+        try:
+            from . import layer_object_model
+
+            layer_object_model.set_parent_key(obj, parent_key)
+        except Exception:  # noqa: BLE001
+            _logger.exception("stamp_layer_object: content parent metadata sync failed")
     on.assign_canonical_name(
         obj, kind=kind, z_index=z_index, sub_id=kind, title=title
     )

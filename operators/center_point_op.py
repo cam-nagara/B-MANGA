@@ -22,11 +22,11 @@ class BMANGA_OT_reset_center_point(Operator):
     @classmethod
     def poll(cls, context):
         kind = _active_stack_kind(context)
-        return kind in {"balloon", "effect", "effect_legacy"}
+        return kind in {"balloon", "effect"}
 
     def execute(self, context):
         kind = _active_stack_kind(context)
-        if kind in {"effect", "effect_legacy"}:
+        if kind == "effect":
             from . import effect_line_op
 
             if effect_line_op.reset_effect_center_to_bounds(context):

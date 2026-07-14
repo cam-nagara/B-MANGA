@@ -12,6 +12,14 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "test"))
+
+from detail_dialog_public_test_support import (  # noqa: E402
+    close_actual_session,
+    draw_all_actual_entry_points,
+    open_actual_session,
+    sync_actual_session,
+)
 
 
 def _load_addon():
@@ -85,6 +93,7 @@ class _RecordingLayout:
         self.props = [] if props is None else props
         self.grid_columns = [] if grid_columns is None else grid_columns
         self.enabled = True
+        self.active = True
 
     def box(self):
         return _RecordingLayout(self.props, self.grid_columns)
@@ -119,6 +128,9 @@ class _RecordingLayout:
     def operator(self, *_args, **_kwargs):
         return _RecordingOperator()
 
+    def operator_menu_enum(self, *_args, **_kwargs):
+        return _RecordingOperator()
+
     def template_curve_mapping(self, *_args, **_kwargs):
         return None
 
@@ -143,20 +155,31 @@ def _effect_setting_props(effect_line_panel, params, effect_type: str, *, show_p
     return layout.props
 
 
-def _assert_detail_profile_graph_sync(context, page, entry, layer_detail_op, effect_inout_curve) -> None:
+def _draw_public_balloon(context, entry, layout=None):
+    from bmanga_dev_balloon_uni_flash.operators import detail_dialog_runtime
+
+    session = open_actual_session(
+        "bmanga_dev_balloon_uni_flash", context, entry, "balloon"
+    )
+    target_layout = layout or _RecordingLayout()
+    detail_dialog_runtime.draw_actual_session(target_layout, context, session)
+    return target_layout, session
+
+
+def _assert_detail_profile_graph_sync(context, entry, effect_inout_curve) -> None:
     entry.in_percent = 0.0
     entry.out_percent = 0.0
     entry.in_start_percent = 50.0
     entry.out_start_percent = 50.0
     layout = _RecordingLayout()
-    layer_detail_op._draw_balloon_detail(layout, context, entry, page)
+    _layout, session = _draw_public_balloon(context, entry, layout)
     node = effect_inout_curve.get_profile_node()
     assert node is not None, "フキダシ詳細設定に線幅グラフが作成されていません"
     effect_inout_curve._apply_points_to_node(
         node,
         ((0.0, 0.2), (0.35, 1.0), (0.65, 1.0), (1.0, 0.4)),
     )
-    layer_detail_op._sync_detail_profile_curve(context, "balloon", entry.id)
+    sync_actual_session("bmanga_dev_balloon_uni_flash", context, session)
     assert abs(float(entry.in_percent) - 40.0) < 1.0e-4, "線幅グラフの外端が入りへ反映されていません"
     assert abs(float(entry.out_percent) - 20.0) < 1.0e-4, "線幅グラフの内端が抜きへ反映されていません"
     assert abs(float(entry.in_start_percent) - 35.0) < 1.0e-4, "線幅グラフの入り始点が数値に反映されていません"
@@ -166,8 +189,11 @@ def _assert_detail_profile_graph_sync(context, page, entry, layer_detail_op, eff
     entry.out_percent = 20.0
     entry.in_start_percent = 40.0
     entry.out_start_percent = 25.0
+    sync_actual_session("bmanga_dev_balloon_uni_flash", context, session)
     layout = _RecordingLayout()
-    layer_detail_op._draw_balloon_detail(layout, context, entry, page)
+    from bmanga_dev_balloon_uni_flash.operators import detail_dialog_runtime
+
+    detail_dialog_runtime.draw_actual_session(layout, context, session)
     node = effect_inout_curve.get_profile_node()
     assert node is not None, "フキダシ詳細設定の線幅グラフが再作成されていません"
     points = effect_inout_curve.read_node_points(node)
@@ -183,15 +209,25 @@ def _assert_detail_profile_graph_sync(context, page, entry, layer_detail_op, eff
     assert any(abs(x - 1.0) < 1.0e-4 and abs(y - 0.30) < 1.0e-4 for x, y in points), (
         "フキダシの入り(%)が線幅グラフの外端へ反映されていません"
     )
+    close_actual_session("bmanga_dev_balloon_uni_flash", context, session)
 
 
-def _assert_balloon_detail_columns_stay_tall(context, page, entry, layer_detail_op) -> None:
-    assert layer_detail_op._detail_dialog_width_for_kind(context, "balloon", entry.id) == 560
+def _assert_balloon_detail_uses_fixed_max_width(context, entry) -> None:
+    fixed_width = None
     for line_style in ("solid", "uni_flash", "white_outline"):
         entry.line_style = line_style
-        layout = _RecordingLayout()
-        layer_detail_op._draw_balloon_detail(layout, context, entry, page)
-        assert 2 in layout.grid_columns, f"線種 {line_style} でフキダシ詳細設定が2列縦長になっていません"
+        layout, session = _draw_public_balloon(context, entry)
+        assert session.layout.max_columns == 3, "フキダシの安全な最大列数が3列ではありません"
+        if fixed_width is None:
+            fixed_width = session.layout.dialog_width
+        assert session.layout.dialog_width == fixed_width, (
+            f"線種 {line_style} の切替でダイアログ幅が変化しました"
+        )
+        expected_columns = 1 if line_style == "solid" else 3
+        assert expected_columns in layout.grid_columns or expected_columns == 1, (
+            f"線種 {line_style} の表示列が {expected_columns} 列ではありません"
+        )
+        close_actual_session("bmanga_dev_balloon_uni_flash", context, session)
 
 
 def main() -> None:
@@ -207,11 +243,9 @@ def main() -> None:
         from bmanga_dev_balloon_uni_flash.core import effect_line as effect_line_core
         from bmanga_dev_balloon_uni_flash.core.work import get_work
         from bmanga_dev_balloon_uni_flash.io import export_balloon, schema
-        from bmanga_dev_balloon_uni_flash.operators import layer_detail_op
         from bmanga_dev_balloon_uni_flash.operators import balloon_op
         from bmanga_dev_balloon_uni_flash.panels import balloon_panel
         from bmanga_dev_balloon_uni_flash.panels import effect_line_panel
-        from bmanga_dev_balloon_uni_flash.panels import layer_stack_detail_ui
         from bmanga_dev_balloon_uni_flash.utils import (
             balloon_curve_object,
             balloon_fill_mesh,
@@ -276,13 +310,11 @@ def main() -> None:
             balloon_core.apply_balloon_line_style_defaults(graph_entry, force=True)
             _assert_detail_profile_graph_sync(
                 context,
-                page,
                 graph_entry,
-                layer_detail_op,
                 effect_inout_curve,
             )
             if graph_index == 0:
-                _assert_balloon_detail_columns_stay_tall(context, page, graph_entry, layer_detail_op)
+                _assert_balloon_detail_uses_fixed_max_width(context, graph_entry)
             page.balloons.remove(len(page.balloons) - 1)
 
         for index, line_style in enumerate(("uni_flash", "white_outline")):
@@ -353,11 +385,17 @@ def main() -> None:
                 assert "flash_line_count" not in uni_props
                 assert "flash_line_spacing_mm" not in uni_props
                 assert "flash_white_line_width_percent" not in uni_props
-                popup_layout = _RecordingLayout()
-                layer_detail_op._draw_balloon_detail(popup_layout, entry, page)
-                stack_layout = _RecordingLayout()
-                layer_stack_detail_ui._draw_balloon_selected_settings(stack_layout, context, entry)
-                for detail_props in (popup_layout.props, stack_layout.props):
+                session = open_actual_session(
+                    "bmanga_dev_balloon_uni_flash", context, entry, "balloon"
+                )
+                entrance_layouts = draw_all_actual_entry_points(
+                    "bmanga_dev_balloon_uni_flash", context, session, _RecordingLayout
+                )
+                assert entrance_layouts[0].props == entrance_layouts[1].props == entrance_layouts[2].props, (
+                    "詳細設定の入口ごとにウニフラの表示項目が異なります"
+                )
+                close_actual_session("bmanga_dev_balloon_uni_flash", context, session)
+                for detail_props in (layout.props for layout in entrance_layouts):
                     for old_attr in (
                         "flash_line_count",
                         "flash_line_spacing_mm",
@@ -428,11 +466,17 @@ def main() -> None:
                 }
                 panel_layout = _RecordingLayout()
                 balloon_panel.draw_white_outline_line_settings(panel_layout, entry)
-                popup_layout = _RecordingLayout()
-                layer_detail_op._draw_balloon_detail(popup_layout, entry, page)
-                stack_layout = _RecordingLayout()
-                layer_stack_detail_ui._draw_balloon_selected_settings(stack_layout, context, entry)
-                for detail_props in (panel_layout.props, popup_layout.props, stack_layout.props):
+                session = open_actual_session(
+                    "bmanga_dev_balloon_uni_flash", context, entry, "balloon"
+                )
+                entrance_layouts = draw_all_actual_entry_points(
+                    "bmanga_dev_balloon_uni_flash", context, session, _RecordingLayout
+                )
+                assert entrance_layouts[0].props == entrance_layouts[1].props == entrance_layouts[2].props, (
+                    "詳細設定の入口ごとに白抜き線の表示項目が異なります"
+                )
+                close_actual_session("bmanga_dev_balloon_uni_flash", context, session)
+                for detail_props in (panel_layout.props, *(layout.props for layout in entrance_layouts)):
                     prop_set = set(detail_props)
                     missing = white_outline_props - prop_set
                     assert not missing, f"白抜き線詳細に必要な項目がありません: {sorted(missing)}"

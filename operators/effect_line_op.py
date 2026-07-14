@@ -285,7 +285,11 @@ def active_effect_layer_bounds(context=None):
     return obj, active, bounds
 
 
-def _set_active_effect_layer(context, obj, layer) -> None:
+def _set_active_effect_layer(context, obj, layer) -> bool:
+    from . import detail_dialog_runtime
+
+    if not detail_dialog_runtime.effect_selection_is_allowed(context, obj):
+        return False
     if obj is not None:
         try:
             context.view_layer.objects.active = obj
@@ -302,12 +306,16 @@ def _set_active_effect_layer(context, obj, layer) -> None:
         if hasattr(scene, "bmanga_active_layer_kind"):
             scene.bmanga_active_layer_kind = "effect"
         if hasattr(scene, "bmanga_active_effect_layer_name"):
-            scene.bmanga_active_effect_layer_name = layer_stack_utils._node_stack_key(layer)
+            from ..utils import layer_object_model
+
+            scene.bmanga_active_effect_layer_name = layer_object_model.stable_id(obj)
         _load_layer_params_to_scene(context, obj, layer)
+    return True
 
 
-def _select_effect_layer(context, obj, layer) -> None:
-    _set_active_effect_layer(context, obj, layer)
+def _select_effect_layer(context, obj, layer) -> bool:
+    if not _set_active_effect_layer(context, obj, layer):
+        return False
     try:
         from ..utils import effect_line_object as _elo
 
@@ -320,7 +328,10 @@ def _select_effect_layer(context, obj, layer) -> None:
     except Exception:  # noqa: BLE001
         pass
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
-    uid = layer_stack_utils.target_uid("effect", layer_stack_utils._node_stack_key(layer))
+    from ..utils import layer_object_model
+
+    stable_id = layer_object_model.stable_id(obj)
+    uid = layer_stack_utils.target_uid("effect", stable_id) if stable_id else ""
     if stack is not None:
         for i, item in enumerate(stack):
             if layer_stack_utils.stack_item_uid(item) == uid:
@@ -328,6 +339,7 @@ def _select_effect_layer(context, obj, layer) -> None:
                 break
     layer_stack_utils.remember_layer_stack_signature(context)
     layer_stack_utils.tag_view3d_redraw(context)
+    return True
 
 
 def _seed_for_new_layer(obj) -> int:
@@ -371,21 +383,41 @@ def _set_scene_params_syncing(scene, value: bool) -> None:
     _PARAM_SYNCING = bool(value)
 
 
+def _reset_scene_effect_params(params) -> None:
+    """効果線設定を RNA 定義の既定値へ戻す。"""
+    properties = getattr(getattr(params, "bl_rna", None), "properties", ())
+    for prop in properties:
+        identifier = str(getattr(prop, "identifier", "") or "")
+        if not identifier or identifier == "rna_type":
+            continue
+        if bool(getattr(prop, "is_readonly", False)):
+            continue
+        if str(getattr(prop, "type", "") or "") in {"POINTER", "COLLECTION"}:
+            continue
+        try:
+            params.property_unset(identifier)
+        except Exception:  # noqa: BLE001
+            _logger.debug("effect_line: default reset skipped: %s", identifier)
+
+
 def _load_layer_params_to_scene(context, obj, layer) -> None:
     scene = getattr(context, "scene", None)
     params = getattr(scene, "bmanga_effect_line_params", None) if scene is not None else None
     data = _layer_params_data(obj, layer)
-    if params is None or not data:
+    if params is None:
         return
+    was_syncing = _scene_params_syncing(scene)
     try:
         from ..core import effect_line
 
         _set_scene_params_syncing(scene, True)
-        effect_line.effect_params_from_dict(params, data)
+        _reset_scene_effect_params(params)
+        if data:
+            effect_line.effect_params_from_dict(params, data)
         if "opacity" not in data and hasattr(layer, "opacity") and hasattr(params, "opacity"):
             params.opacity = percentage.legacy_factor_to_percent(getattr(layer, "opacity", 1.0))
     finally:
-        _set_scene_params_syncing(scene, False)
+        _set_scene_params_syncing(scene, was_syncing)
 
 
 def _material_slot_index(obj, mat) -> int:
@@ -869,7 +901,18 @@ def on_effect_params_changed(context, _params) -> None:
     if obj is None or layer is None or bounds is None:
         return
     try:
-        _write_effect_strokes(context, obj, layer, bounds, params_override=_params)
+        from . import detail_dialog_runtime
+
+        _write_effect_strokes(
+            context,
+            obj,
+            layer,
+            bounds,
+            params_override=_params,
+            propagate_link=not detail_dialog_runtime.effect_target_has_open_actual_session(
+                obj, layer
+            ),
+        )
         layer_stack_utils.tag_view3d_redraw(context)
     except Exception:  # noqa: BLE001
         _logger.exception("effect_line: param change rebuild failed")
@@ -1041,44 +1084,40 @@ def reset_effect_center_to_bounds(context) -> bool:
 
 
 def _delete_effect_layer(context, obj, layer) -> None:
-    """効果線レイヤーを削除する.
+    """個別管理されている効果線 Object を削除する。"""
+    from ..utils import layer_object_model
 
-    新設計 (1 effect = 1 GP Object) では、 layer を消すと obj が空シェル
-    として残るため、 obj 全体を削除する。 旧設計の集約 GP Object
-    (BManga_EffectLines) からの削除は layer のみ消す互換動作を維持する。
-    """
-    from ..utils import object_naming as on
-
-    if obj is None or layer is None:
+    if (
+        obj is None
+        or layer is None
+        or not layer_object_model.is_layer_object(obj, "effect")
+    ):
         return
     _remove_layer_bounds(obj, layer)
-    is_new_effect_obj = str(obj.get(on.PROP_KIND, "") or "") == "effect"
     try:
         obj.data.layers.remove(layer)
     except Exception:  # noqa: BLE001
         return
-    if is_new_effect_obj:
-        # 新設計: 1 effect = 1 GP Object → obj 全体を削除
+    try:
         try:
-            try:
-                from ..utils import effect_line_object as _elo
+            from ..utils import effect_line_object as _elo
 
-                _elo.delete_effect_display_object(obj)
-            except Exception:  # noqa: BLE001
-                pass
-            data = obj.data
-            bpy.data.objects.remove(obj, do_unlink=True)
-            try:
-                if data is not None and data.users == 0:
-                    blocks = getattr(bpy.data, "grease_pencils_v3", None) or getattr(
-                        bpy.data, "grease_pencils", None
-                    )
-                    if blocks is not None:
-                        blocks.remove(data)
-            except Exception:  # noqa: BLE001
-                pass
+            _elo.delete_effect_display_object(obj)
         except Exception:  # noqa: BLE001
             pass
+        data = obj.data
+        bpy.data.objects.remove(obj, do_unlink=True)
+        try:
+            if data is not None and data.users == 0:
+                blocks = getattr(bpy.data, "grease_pencils_v3", None) or getattr(
+                    bpy.data, "grease_pencils", None
+                )
+                if blocks is not None:
+                    blocks.remove(data)
+        except Exception:  # noqa: BLE001
+            pass
+    except Exception:  # noqa: BLE001
+        pass
     if hasattr(context.scene, "bmanga_active_effect_layer_name"):
         context.scene.bmanga_active_effect_layer_name = ""
     layer_stack_utils.sync_layer_stack_after_data_change(context)
@@ -1260,20 +1299,11 @@ def _display_mesh_hit_part(
 
 
 def _hit_effect_layer(context, x_mm: float, y_mm: float):
-    """全 effect GP Object をスキャンし、 (obj, layer, bounds, part) を返す.
+    """個別管理された全 effect Object を走査してヒット対象を返す。"""
+    from ..utils import gpencil, layer_object_model
 
-    新設計 (1 effect = 1 GP Object) に対応。 各 effect Object はデフォルトで
-    1 layer ("content") を持つ。 旧設計の単一集約 Object (BManga_EffectLines)
-    は新規作成時に hide されるが、 念のため fallback として最後にスキャンする。
-    """
-    from ..utils import gpencil
-    from ..utils import object_naming as on
-
-    # 新設計の effect Object 群を Z 順 (新しい順) で並べる
     candidates: list[bpy.types.Object] = []
-    for o in bpy.data.objects:
-        if str(o.get(on.PROP_KIND, "") or "") != "effect":
-            continue
+    for o in layer_object_model.iter_layer_objects("effect"):
         display = None
         try:
             from ..utils import effect_line_object as _elo
@@ -1284,13 +1314,6 @@ def _hit_effect_layer(context, x_mm: float, y_mm: float):
         if o.hide_viewport and (display is None or display.hide_viewport):
             continue
         candidates.append(o)
-    candidates.sort(key=lambda o: int(o.get(on.PROP_Z_INDEX, 0) or 0), reverse=True)
-
-    # 旧設計の集約 obj が残っている場合は最後に追加 (互換性のため)
-    legacy_obj = layer_stack_utils.get_effect_gp_object()
-    if legacy_obj is not None and legacy_obj not in candidates:
-        if not legacy_obj.hide_viewport:
-            candidates.append(legacy_obj)
 
     for obj in candidates:
         local_x, local_y = _world_local_xy_for_effect_obj(context, obj, x_mm, y_mm)
@@ -1315,7 +1338,7 @@ def _hit_effect_layer(context, x_mm: float, y_mm: float):
                 selected_for_handles = (
                     str(getattr(scene, "bmanga_active_layer_kind", "") or "") == "effect"
                     and str(getattr(scene, "bmanga_active_effect_layer_name", "") or "")
-                    == layer_stack_utils._node_stack_key(layer)
+                    == layer_object_model.stable_id(obj)
                 )
             part = _effect_hit_part(
                 bounds,
@@ -1494,7 +1517,12 @@ class BMANGA_OT_effect_line_tool(Operator):
             return {"PASS_THROUGH"}
         obj, layer, bounds, part = _hit_effect_layer(context, x_mm, y_mm)
         if obj is not None and layer is not None and bounds is not None:
-            _select_effect_layer(context, obj, layer)
+            if not _select_effect_layer(context, obj, layer):
+                self.report(
+                    {"WARNING"},
+                    "詳細設定を閉じてから別の効果線を選択してください",
+                )
+                return {"RUNNING_MODAL"}
             if event.ctrl or event.shift:
                 object_selection.select_key(
                     context,
@@ -1652,11 +1680,11 @@ class BMANGA_OT_effect_line_tool(Operator):
         return {"RUNNING_MODAL"}
 
     def _drag_target(self, context):
+        from ..utils import layer_object_model
+
         obj_name = str(getattr(self, "_drag_obj_name", "") or "")
         obj = bpy.data.objects.get(obj_name) if obj_name else None
-        if obj is None:
-            obj = layer_stack_utils.get_effect_gp_object()
-        if obj is None:
+        if not layer_object_model.is_layer_object(obj, "effect"):
             return None, None
         layers = getattr(getattr(obj, "data", None), "layers", None)
         if layers is None:

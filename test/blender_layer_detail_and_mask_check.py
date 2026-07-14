@@ -333,7 +333,7 @@ def main() -> None:
         _assert_mesh_mask(page_text_obj, mask_apply.MOD_NAME_PAGE_MASK)
         _assert_curve_no_mask(page_balloon_obj)
 
-        effect_key = layer_stack_utils._node_stack_key(effect_layer)
+        effect_key = str(effect_obj.get("bmanga_id", "") or "")
         _assert_detail_menu(context, "effect", effect_key, object_selection.effect_key(effect_layer))
         _assert_detail_menu(context, "raster", raster.id, object_selection.raster_key(raster))
         _assert_detail_menu(context, "image", image.id, object_selection.image_key(image))

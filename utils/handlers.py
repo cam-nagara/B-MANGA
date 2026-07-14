@@ -22,6 +22,175 @@ _logger = log.get_logger(__name__)
 
 _current_file_sync_generation = 0
 _saving_work_metadata = False
+_native_save_token = None
+_native_save_reload_generation = 0
+
+
+def _native_save_memory_version(scene, work) -> int:
+    """現在開いているファイル自身が保持する詳細データ版を返す."""
+
+    from . import layer_uid, page_file_scene
+
+    role, _page_id, _coma_id = page_file_scene.current_role(bpy.context)
+    if role == page_file_scene.ROLE_PAGE:
+        return layer_uid.scene_detail_data_version(scene)
+    return layer_uid.detail_data_version_for_save(work)
+
+
+def _show_native_save_notice(*, title: str, lines: tuple[str, ...]) -> None:
+    if bpy.app.background:
+        return
+
+    def _draw(menu, _context):
+        for line in lines:
+            menu.layout.label(text=str(line))
+
+    try:
+        bpy.context.window_manager.popup_menu(_draw, title=title, icon="ERROR")
+    except Exception:  # noqa: BLE001
+        _logger.exception("native save notice failed")
+
+
+def _schedule_native_save_reload(path: Path, *, notice: bool = True) -> None:
+    """旧画面の保存結果を戻した後、復旧済みファイルを安全に再読込する."""
+
+    global _native_save_reload_generation
+    _native_save_reload_generation += 1
+    generation = _native_save_reload_generation
+    if notice:
+        _show_native_save_notice(
+            title="最新の作品データを保護しました",
+            lines=(
+                "古い画面からの保存を取り消しました。",
+                "最新の作品データを再読込します。",
+            ),
+        )
+
+    def _reload():
+        if generation != _native_save_reload_generation:
+            return None
+        try:
+            result = bpy.ops.wm.open_mainfile(filepath=str(path), load_ui=False)
+            if "FINISHED" not in result:
+                raise RuntimeError("最新の作品データを再読込できませんでした")
+        except Exception as exc:  # noqa: BLE001
+            _logger.exception("native save recovery reload failed")
+            _show_native_save_notice(
+                title="再読込に失敗しました",
+                lines=(
+                    "この画面では保存せず、Blenderを閉じて作品を開き直してください。",
+                    str(exc),
+                ),
+            )
+        return None
+
+    bpy.app.timers.register(_reload, first_interval=0.05)
+
+
+def _begin_native_save_guard(filepath_arg=None) -> bool | None:
+    """ネイティブ保存を保護する。
+
+    旧画面なら ``False``、B-MANGA作品の現行保存なら ``True``、通常の
+    Blenderファイルなど保護対象外なら ``None`` を返す。
+    """
+
+    global _native_save_token
+    from ..core.work import get_work
+    from ..io import project_content_native_save_guard
+
+    force_current_restore = False
+    if _native_save_token is not None:
+        # 例外的に前回のsave_postが届かなかった場合も、ロックを残さない。
+        previous_source = _native_save_token.source
+        previous = project_content_native_save_guard.finish_native_save(
+            _native_save_token
+        )
+        _native_save_token = None
+        if previous.reload_required:
+            _schedule_native_save_reload(previous_source)
+            # save_preのreturn/例外では今回のBlender本体保存は止まらない。
+            # 復旧済み内容のreload前に始まった今回分も、改めて退避して戻す。
+            force_current_restore = True
+    scene = getattr(bpy.context, "scene", None)
+    work = get_work(bpy.context)
+    # save_as_mainfile中は bpy.data.filepath が切替前の元ファイルを指す場合が
+    # ある。handler引数は今回Blenderが実際に書く保存先なので、こちらを優先
+    # し、通常Ctrl+Sなど引数が空の環境だけ現在ファイルへフォールバックする。
+    filepath = ""
+    if isinstance(filepath_arg, (str, bytes, Path)):
+        try:
+            filepath = str(filepath_arg.decode() if isinstance(filepath_arg, bytes) else filepath_arg)
+        except (UnicodeDecodeError, OSError):
+            filepath = ""
+    filepath = filepath.strip() or str(getattr(bpy.data, "filepath", "") or "")
+    if scene is None or work is None or not filepath:
+        return None
+    work_dir_text = str(getattr(work, "work_dir", "") or "").strip()
+    if not work_dir_text:
+        return None
+    work_dir = Path(work_dir_text).resolve(strict=False)
+    try:
+        Path(filepath).resolve(strict=False).relative_to(work_dir)
+    except ValueError:
+        # アドオン登録中でも、作品外の通常blend保存へ作品用のJSON/PNG
+        # トランザクションを持ち込まない。
+        return None
+    if work_dir.suffix != paths.BMANGA_DIR_SUFFIX or not work_dir.is_dir():
+        return None
+    memory_version = _native_save_memory_version(scene, work)
+    if work_dir_text:
+        try:
+            from ..io import project_content_migration
+
+            if project_content_migration.find_incomplete_journals(work_dir_text):
+                # 未完了トランザクション中のpageを通常保存でunknown hashへ
+                # 変えない。旧版0同士の通常保存はこの分岐に入らず許可する。
+                memory_version = -1
+        except Exception:  # 壊れた記録や列挙失敗も保存側へ通さない
+            memory_version = -1
+    _native_save_token = project_content_native_save_guard.begin_native_save(
+        filepath,
+        memory_version,
+    )
+    if force_current_restore:
+        project_content_native_save_guard.force_native_save_restore(
+            _native_save_token,
+            reason="前回保存の復旧後、再読込前に保存が始まりました",
+        )
+    return not bool(
+        _native_save_token is not None and _native_save_token.requires_restore
+    )
+
+
+def _mark_native_save_metadata_result(succeeded: bool, *, error: str = "") -> None:
+    from ..io import project_content_native_save_guard
+
+    project_content_native_save_guard.mark_native_save_metadata_result(
+        _native_save_token,
+        succeeded,
+        error=error,
+    )
+
+
+def _finish_native_save_guard(*, native_save_succeeded: bool = True):
+    """保存ガードを解放し、復旧の要否と対象ファイルを返す."""
+
+    global _native_save_token
+    from ..io import project_content_native_save_guard
+
+    token = _native_save_token
+    _native_save_token = None
+    if token is None:
+        return project_content_native_save_guard.finish_native_save(
+            None,
+            native_save_succeeded=native_save_succeeded,
+        ), None
+    source = token.source
+    result = project_content_native_save_guard.finish_native_save(
+        token,
+        native_save_succeeded=native_save_succeeded,
+    )
+    return result, source
 
 
 def _find_work_root(blend_path: Path) -> Path | None:
@@ -34,6 +203,72 @@ def _find_work_root(blend_path: Path) -> Path | None:
             break
         p = p.parent
     return None
+
+
+def _loaded_page_json_paths(work, work_dir: Path) -> list[Path]:
+    page_paths = []
+    for page in getattr(work, "pages", []) or []:
+        page_id = str(getattr(page, "id", "") or "")
+        if page_id and bool(getattr(page, "detail_loaded", False)):
+            page_paths.append(paths.page_meta_path(work_dir, page_id))
+    return page_paths
+
+
+def _raster_sidecar_paths(scene, work_dir: Path) -> list[Path]:
+    raster_paths = []
+    for entry in getattr(scene, "bmanga_raster_layers", []) or []:
+        raster_id = str(getattr(entry, "id", "") or "")
+        relative = str(getattr(entry, "filepath_rel", "") or "")
+        if not relative and raster_id:
+            relative = f"{paths.RASTER_DIR_NAME}/{raster_id}.png"
+        if not relative:
+            continue
+        candidate = (work_dir / relative).resolve(strict=False)
+        try:
+            candidate.relative_to(work_dir.resolve(strict=True))
+        except ValueError as exc:
+            raise RuntimeError("ラスター画像の保存先が作品フォルダー外です") from exc
+        raster_paths.append(candidate)
+    return raster_paths
+
+
+def _native_sidecar_paths(work, work_dir: Path) -> tuple[Path, ...]:
+    from ..operators import raster_layer_op
+
+    return tuple(
+        [work_dir / "work.json", work_dir / "pages.json"]
+        + _loaded_page_json_paths(work, work_dir)
+        + list(raster_layer_op.dirty_raster_paths(bpy.context))
+    )
+
+
+def _capture_native_save_baseline(work, work_dir: Path, blend_path: Path) -> None:
+    """読込済み範囲のsidecarと現在blendを同一画面競合の基準にする."""
+
+    from ..io import project_content_save_baseline
+
+    page_paths = _loaded_page_json_paths(work, work_dir)
+    raster_paths = _raster_sidecar_paths(getattr(bpy.context, "scene", None), work_dir)
+    project_content_save_baseline.capture_loaded_baseline(
+        work_dir,
+        blend_path,
+        page_json_paths=page_paths,
+        content_paths=raster_paths,
+    )
+
+
+def _prepare_native_save_sidecars() -> None:
+    from ..core.work import get_work
+    from ..io import project_content_native_save_guard
+
+    work = get_work(bpy.context)
+    work_dir = Path(str(getattr(work, "work_dir", "") or ""))
+    if work is None or not work_dir.is_dir():
+        raise RuntimeError("作品情報の保存先がありません")
+    project_content_native_save_guard.prepare_native_save_sidecars(
+        _native_save_token,
+        _native_sidecar_paths(work, work_dir),
+    )
 
 
 def _sync_active_from_blend_path(
@@ -247,15 +482,19 @@ def sync_scene_work_from_disk(context, work_dir: Path):
     try:
         from . import page_grid
 
-        # 閉じている間に一覧側で並べ替え・配置変更があった場合、
-        # 下書き (マスター GP) のストロークを新しいページ位置へ追従させる
+        # 手描きObjectの描画点はローカル座標のまま保ち、現在のページ配置を記録する
         page_grid.reconcile_gp_strokes_with_page_offset(context, work)
     except Exception:  # noqa: BLE001
         _logger.exception("gp page-offset reconcile failed")
     return work
 
 
-def save_scene_work_to_disk(context, *, reason: str = "") -> bool:
+def save_scene_work_to_disk(
+    context,
+    *,
+    reason: str = "",
+    strict_rasters: bool = False,
+) -> bool:
     """現在 scene の B-MANGA JSON メタデータを disk へ保存する.
 
     通常の .blend 保存フックからも呼ぶため、ここでは .blend 保存は行わない。
@@ -302,9 +541,14 @@ def save_scene_work_to_disk(context, *, reason: str = "") -> bool:
         try:
             from ..operators import raster_layer_op
 
-            raster_layer_op.save_dirty_raster_layers(context)
+            raster_layer_op.save_dirty_raster_layers(
+                context,
+                strict=strict_rasters,
+            )
         except Exception:  # noqa: BLE001
             _logger.exception("raster dirty save failed")
+            if strict_rasters:
+                raise
         work_io.save_work_json(work_dir, work)
         page_io.save_pages_json(work_dir, work)
         for page in getattr(work, "pages", []):
@@ -342,6 +586,43 @@ def save_scene_work_to_disk(context, *, reason: str = "") -> bool:
         _saving_work_metadata = False
 
 
+def save_legacy_scene_sidecars(context, *, reason: str = "") -> bool:
+    """旧版0同士のCtrl+S用。新形式同期をせず既存sidecarだけ厳格保存する."""
+
+    global _saving_work_metadata
+    if _saving_work_metadata:
+        return False
+    try:
+        from ..core.work import get_work
+        from ..io import page_io, work_io
+        from ..operators import raster_layer_op
+
+        work = get_work(context)
+        work_dir = Path(str(getattr(work, "work_dir", "") or ""))
+        if (
+            work is None
+            or not work_dir.is_dir()
+        ):
+            return False
+        _saving_work_metadata = True
+        raster_layer_op.save_dirty_raster_layers(context, strict=True)
+        work_io.save_work_json(work_dir, work)
+        page_io.save_pages_json(work_dir, work)
+        for page in getattr(work, "pages", []) or []:
+            if (
+                str(getattr(page, "id", "") or "")
+                and bool(getattr(page, "detail_loaded", True))
+            ):
+                page_io.save_page_json(work_dir, page)
+        _logger.info("legacy sidecars saved%s", f" ({reason})" if reason else "")
+        return True
+    except Exception:  # noqa: BLE001
+        _logger.exception("legacy sidecar save failed%s", f" ({reason})" if reason else "")
+        return False
+    finally:
+        _saving_work_metadata = False
+
+
 def _hide_legacy_overlay_objects() -> None:
     _PREFIXES = (
         "page_paper_guide_",
@@ -360,15 +641,7 @@ def _hide_legacy_overlay_objects() -> None:
 
 
 def _reconcile_gpencil_collections(context, work, *, include_page_content: bool = True) -> None:
-    """master GP とページ Collection × pages の整合をとる (新仕様).
-
-    - 作品全体で **唯一の** master GP オブジェクトを ensure (旧 page GP は残置)
-    - 旧仕様の紙メッシュ (page_NNNN_paper) は削除し、用紙は overlay で描画
-    - 全ページ Collection の grid offset を apply
-
-    旧バージョンの page_NNNN_sketch GP オブジェクトはここでは触らない
-    (ユーザーのデータを残置)。新規描画は master GP に行う。
-    """
+    """個別管理ObjectとページCollectionの配置を再整合する。"""
     from . import gpencil as gp_utils
     from . import page_grid
 
@@ -382,21 +655,6 @@ def _reconcile_gpencil_collections(context, work, *, include_page_content: bool 
         gp_utils.remove_all_page_papers()
     except Exception:  # noqa: BLE001
         _logger.exception("load_post: remove page paper meshes failed")
-
-    # master GP はページ編集側だけで用意する。ページ一覧では中身を載せない。
-    if include_page_content:
-        try:
-            gp_utils.ensure_master_gpencil(scene)
-        except Exception:  # noqa: BLE001
-            _logger.exception("load_post: ensure_master_gpencil failed")
-
-    try:
-        from . import layer_stack as layer_stack_utils
-
-        if layer_stack_utils.get_effect_gp_object() is not None:
-            layer_stack_utils.ensure_effect_gp_object(scene)
-    except Exception:  # noqa: BLE001
-        _logger.exception("load_post: ensure_effect_gp_object failed")
 
     try:
         page_grid.apply_page_collection_transforms(context, work)
@@ -425,6 +683,14 @@ def _reconcile_gpencil_collections(context, work, *, include_page_content: bool 
 def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender handlers
     """.blend ロード直後に B-MANGA 作品のメタ情報を再同期."""
     try:
+        # ページ変換・検証ワーカーは親トランザクションの所有下で対象blendを
+        # 開く。通常load_postの自動復旧を走らせると、その親処理を自己rollback
+        # するため、明示トークンを持つワーカーでは通常同期ごと抑止する。
+        from ..operators import detail_data_migration_op
+
+        if detail_data_migration_op.migration_worker_owns_runtime():
+            _logger.info("load_post: detail migration worker owns opened blend")
+            return
         # ファイル切替前のツール modal が残っているとイベントを奪ったままになる
         # (例: 枠線ツール起動中にページ一覧へ戻ると、マウスホイールドラッグや N
         # キーが効かなくなる)。 ロードされた scene は新しいので、 旧 modal の
@@ -445,6 +711,30 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
         work_dir = _find_work_root(blend_path)
         if work_dir is None:
             return
+        try:
+            from ..io import project_content_native_save_guard
+
+            restored_paths = project_content_native_save_guard.recover_pending_native_saves(
+                work_dir
+            )
+        except Exception:  # noqa: BLE001
+            _logger.exception("load_post: native save recovery failed")
+            try:
+                scene.bmanga_work.loaded = False
+            except Exception:  # noqa: BLE001
+                pass
+            _show_native_save_notice(
+                title="作品データの復旧に失敗しました",
+                lines=(
+                    "この画面では保存せず、Blenderを閉じて作品を開き直してください。",
+                ),
+            )
+            return
+        if blend_path.resolve() in {path.resolve() for path in restored_paths}:
+            # 異常終了前の旧画面が書いたファイルを元へ戻したため、メモリ上の
+            # 旧内容を通常同期へ流さず、復旧済みファイルから読み直す。
+            _schedule_native_save_reload(blend_path, notice=True)
+            return
         work = sync_scene_work_from_disk(bpy.context, work_dir)
         if work is None:
             return
@@ -455,6 +745,28 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
             _logger.exception("load_post: failed to sync work/pages json")
             return
         _sync_active_from_blend_path(scene, work, work_dir, blend_path)
+        try:
+            _capture_native_save_baseline(work, work_dir, blend_path)
+        except Exception:  # noqa: BLE001
+            _logger.exception("load_post: save baseline capture failed")
+            try:
+                work.loaded = False
+            except Exception:  # noqa: BLE001
+                pass
+            return
+        try:
+            from ..operators import detail_data_migration_op
+
+            if detail_data_migration_op.work_requires_detail_migration(work):
+                # 旧構造を読み込んだまま通常Operatorを使うと、新経路で上書き
+                # され得る。確認画面を閉じてもpollが通らない状態を維持する。
+                detail_data_migration_op.enforce_detail_migration_gate(work)
+                detail_data_migration_op.schedule_migration_prompt(bpy.context)
+                _logger.info("load_post: waiting for detail data migration confirmation")
+                return
+        except Exception:  # noqa: BLE001
+            _logger.exception("load_post: detail data migration gate failed")
+            return
         try:
             from . import page_content_visibility
 
@@ -664,6 +976,59 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
 def _bmanga_on_save_pre(filepath_arg) -> None:  # signature: (str,) in Blender handlers
     """通常の .blend 保存前に B-MANGA の JSON メタデータも同期する."""
     try:
+        # 移行ワーカーが保存するのは作品外の一時 page.blend。コピー元sceneに
+        # 残る work_dir で通常保存を走らせると、全件検証前の元作品へ
+        # work/page/rasterを書き戻すため、ワーカーでは全保存副作用を止める。
+        from ..operators import detail_data_migration_op
+
+        if detail_data_migration_op.migration_worker_owns_runtime():
+            _logger.info("save_pre: detail migration worker owns staged blend")
+            return
+        guard_started = _begin_native_save_guard(filepath_arg)
+        if guard_started is None:
+            return
+        if not guard_started:
+            # Blenderはsave_pre例外を無視して本体保存を続行する。既存ファイルは
+            # 退避済みなので、B-MANGA側のJSONや画像を旧画面から書き戻さない。
+            _logger.warning("save_pre: stale detail data save will be restored")
+            return
+        try:
+            # 最初のJSON/PNG書込みより前に全対象と元blendを一括退避する。
+            _prepare_native_save_sidecars()
+        except Exception:  # noqa: BLE001
+            _logger.exception("save_pre: sidecar transaction prepare failed")
+            try:
+                _mark_native_save_metadata_result(
+                    False,
+                    error="作品情報の保存準備が完了しませんでした",
+                )
+            except Exception:  # noqa: BLE001
+                _logger.exception("save_pre: sidecar prepare recovery arm failed")
+            return
+        try:
+            from ..core.work import get_work as _get_work
+
+            if detail_data_migration_op.work_requires_detail_migration(
+                _get_work(bpy.context)
+            ):
+                # 旧版0同士でも未保存のJSON/PNGを失わせない。新形式のmirror等は
+                # 走らせず、既存sidecarだけをstrict保存してから本体保存を許可。
+                metadata_saved = save_legacy_scene_sidecars(
+                    bpy.context,
+                    reason="legacy_save_pre",
+                )
+                _mark_native_save_metadata_result(
+                    metadata_saved,
+                    error="旧形式の作品情報またはラスター画像を保存できませんでした",
+                )
+                if not metadata_saved:
+                    _logger.warning("save_pre: failed legacy sidecars will restore blend")
+                else:
+                    _logger.info("save_pre: legacy detail data sidecars saved")
+                return
+        except Exception:  # 判定不能時もB-MANGA側の書込みだけを止める
+            _logger.exception("save_pre: detail migration state check failed")
+            return
         try:
             from ..core.work import get_work as _get_work
             from . import page_content_visibility
@@ -713,26 +1078,94 @@ def _bmanga_on_save_pre(filepath_arg) -> None:  # signature: (str,) in Blender h
                     )
         except Exception:  # noqa: BLE001
             _logger.exception("B-MANGA thumb output save_pre sync failed")
-        try:
-            from ..operators import raster_layer_op
-
-            raster_layer_op.save_dirty_raster_layers(bpy.context)
-        except Exception:  # noqa: BLE001
-            _logger.exception("B-MANGA raster save_pre failed")
-        save_scene_work_to_disk(bpy.context, reason="save_pre")
+        metadata_saved = save_scene_work_to_disk(
+            bpy.context,
+            reason="save_pre",
+            strict_rasters=True,
+        )
+        _mark_native_save_metadata_result(
+            metadata_saved,
+            error="作品情報またはラスター画像を保存できませんでした",
+        )
+        if not metadata_saved:
+            _logger.warning("save_pre: metadata failure will restore blend")
     except Exception:  # noqa: BLE001
         _logger.exception("B-MANGA save_pre handler failed")
+        try:
+            _mark_native_save_metadata_result(
+                False,
+                error="保存前処理が完了しませんでした",
+            )
+        except Exception:  # noqa: BLE001
+            _logger.exception("save_pre: failed to arm recovery after handler error")
 
 
 @persistent
 def _bmanga_on_save_post(filepath_arg) -> None:  # signature: (str,) in Blender handlers
     """保存後にページ一覧用の軽量表示を戻す."""
     try:
+        from ..operators import detail_data_migration_op
+
+        if detail_data_migration_op.migration_worker_owns_runtime():
+            return
+        save_result, source = _finish_native_save_guard(
+            native_save_succeeded=True,
+        )
+        if save_result.reload_required and source is not None:
+            _schedule_native_save_reload(source)
+            return
+        try:
+            from ..core.work import get_work as _get_work
+
+            if detail_data_migration_op.work_requires_detail_migration(
+                _get_work(bpy.context)
+            ):
+                return
+        except Exception:  # noqa: BLE001
+            _logger.exception("save_post: detail migration state check failed")
+            return
+        try:
+            from . import cross_page_transfer
+
+            cross_page_transfer.commit_staged_imports_after_save(
+                bpy.context,
+                blend_path=source or str(getattr(bpy.data, "filepath", "") or ""),
+                metadata_saved=save_result.metadata_saved,
+                native_save_succeeded=(
+                    save_result.native_save_succeeded and not save_result.restored
+                ),
+            )
+        except Exception:  # noqa: BLE001
+            _logger.exception("save_post: staged imports commit failed")
         from . import page_content_visibility
 
         page_content_visibility.schedule_apply(bpy.context)
     except Exception:  # noqa: BLE001
-        _logger.exception("B-MANGA page content visibility reapply failed")
+        _logger.exception("B-MANGA save_post handler failed")
+
+
+@persistent
+def _bmanga_on_save_post_fail(*_args) -> None:
+    """保存失敗時も作品ロックを解放し、退避した最新ファイルを戻す."""
+
+    try:
+        from ..operators import detail_data_migration_op
+
+        if detail_data_migration_op.migration_worker_owns_runtime():
+            return
+        save_result, source = _finish_native_save_guard(
+            native_save_succeeded=False,
+        )
+        if save_result.reload_required and source is not None:
+            _schedule_native_save_reload(source)
+    except Exception:  # noqa: BLE001
+        _logger.exception("B-MANGA save_post_fail handler failed")
+        _show_native_save_notice(
+            title="保存後の復旧に失敗しました",
+            lines=(
+                "この画面では保存せず、Blenderを閉じて作品を開き直してください。",
+            ),
+        )
 
 
 def _remove_named_handler(handler_list, name: str) -> None:
@@ -764,11 +1197,16 @@ def register() -> None:
     _remove_named_handler(bpy.app.handlers.load_post, _bmanga_on_load_post.__name__)
     _remove_named_handler(bpy.app.handlers.save_pre, _bmanga_on_save_pre.__name__)
     _remove_named_handler(bpy.app.handlers.save_post, _bmanga_on_save_post.__name__)
+    save_post_fail = getattr(bpy.app.handlers, "save_post_fail", None)
+    if save_post_fail is not None:
+        _remove_named_handler(save_post_fail, _bmanga_on_save_post_fail.__name__)
     _remove_named_handler(bpy.app.handlers.undo_post, _bmanga_on_undo_post.__name__)
     _remove_named_handler(bpy.app.handlers.redo_post, _bmanga_on_undo_post.__name__)
     bpy.app.handlers.load_post.append(_bmanga_on_load_post)
     bpy.app.handlers.save_pre.append(_bmanga_on_save_pre)
     bpy.app.handlers.save_post.append(_bmanga_on_save_post)
+    if save_post_fail is not None:
+        save_post_fail.append(_bmanga_on_save_post_fail)
     bpy.app.handlers.undo_post.append(_bmanga_on_undo_post)
     bpy.app.handlers.redo_post.append(_bmanga_on_undo_post)
     _logger.debug("handlers registered")
@@ -798,8 +1236,13 @@ def schedule_current_file_sync(retries: int = 3, interval: float = 0.15) -> None
 
 
 def unregister() -> None:
-    global _current_file_sync_generation
+    global _current_file_sync_generation, _native_save_reload_generation
     _current_file_sync_generation += 1
+    _native_save_reload_generation += 1
+    try:
+        _finish_native_save_guard()
+    except Exception:  # noqa: BLE001
+        _logger.exception("native save guard release during unregister failed")
     try:
         from ..core.work import get_work as _get_work
         from . import page_content_visibility
@@ -813,6 +1256,9 @@ def unregister() -> None:
     _remove_named_handler(bpy.app.handlers.load_post, _bmanga_on_load_post.__name__)
     _remove_named_handler(bpy.app.handlers.save_pre, _bmanga_on_save_pre.__name__)
     _remove_named_handler(bpy.app.handlers.save_post, _bmanga_on_save_post.__name__)
+    save_post_fail = getattr(bpy.app.handlers, "save_post_fail", None)
+    if save_post_fail is not None:
+        _remove_named_handler(save_post_fail, _bmanga_on_save_post_fail.__name__)
     _remove_named_handler(bpy.app.handlers.undo_post, _bmanga_on_undo_post.__name__)
     _remove_named_handler(bpy.app.handlers.redo_post, _bmanga_on_undo_post.__name__)
     _logger.debug("handlers unregistered")

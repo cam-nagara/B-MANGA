@@ -91,9 +91,18 @@ def _expected_points(angle_deg: float) -> list[tuple[float, float]]:
 
 
 def _add_gp_layer(context, gp_utils, gp_parent, parent_key: str):
-    obj = gp_utils.ensure_master_gpencil(context.scene)
-    layer = obj.data.layers.new("gp_rotation_check")
-    gp_parent.set_parent_key(layer, parent_key)
+    from bmanga_dev_gp_rotation.utils import gp_object_layer, layer_object_model
+
+    obj = gp_object_layer.create_layer_gp_object(
+        scene=context.scene,
+        bmanga_id=layer_object_model.make_stable_id("gp"),
+        title="gp_rotation_check",
+        z_index=210,
+        parent_kind="coma" if ":" in parent_key else "page",
+        parent_key=parent_key,
+    )
+    layer = layer_object_model.content_layer(obj)
+    assert layer is not None
     frame = gp_utils.ensure_active_frame(layer)
     assert frame is not None and getattr(frame, "drawing", None) is not None
     from bmanga_dev_gp_rotation.utils.geom import mm_to_m

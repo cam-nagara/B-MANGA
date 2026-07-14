@@ -94,9 +94,18 @@ def main() -> None:
         raster.id = "raster_hit"
         raster.parent_kind = "coma"
         raster.parent_key = coma_key
-        gp_obj = gp_utils.ensure_page_gpencil(context.scene, page.id)
-        gp_layer = gp_obj.data.layers.new("gp_hit")
-        gp_parent.set_parent_key(gp_layer, coma_key)
+        from bmanga_dev.utils import gp_object_layer, layer_object_model
+
+        gp_obj = gp_object_layer.create_layer_gp_object(
+            scene=context.scene,
+            bmanga_id=layer_object_model.make_stable_id("gp"),
+            title="gp_hit",
+            z_index=210,
+            parent_kind="coma",
+            parent_key=coma_key,
+        )
+        gp_layer = layer_object_model.content_layer(gp_obj)
+        assert gp_layer is not None
 
         hits = [
             {"key": object_selection.balloon_key(page, balloon), "kind": "balloon"},

@@ -15,10 +15,10 @@ from bpy.types import Operator
 
 from ..core.mode import MODE_PAGE, get_mode, set_mode
 from ..core.work import get_work
-from ..io import page_io, work_io
-from ..utils import gpencil as gp_utils
+from ..io import page_io, page_operation_transaction, work_io
+from ..utils import gp_object_layer
 from ..utils import layer_stack as layer_stack_utils
-from ..utils import edge_selection, log, page_browser, page_grid, page_range, paths
+from ..utils import edge_selection, log, page_browser, page_grid, page_range
 from ..utils import page_file_scene
 from ..utils import shortcut_visibility
 
@@ -140,86 +140,8 @@ def _translate_layers_for_offset_changes(context, work, old_offsets: dict[str, t
         if abs(dx) <= 1.0e-6 and abs(dy) <= 1.0e-6:
             continue
         parent_keys = layer_stack_utils.gp_parent_keys_for_page(page)
-        layer_stack_utils.translate_gp_layers_for_parent_keys(context, parent_keys, dx, dy)
+        # 手描き点はObjectローカル座標。ページ移動は後段のObject位置更新だけで行う。
         layer_stack_utils.translate_effect_layers_for_parent_keys(context, parent_keys, dx, dy)
-
-
-def _duplicate_page_gp_layers(context, src_page, dst_page) -> None:
-    """src_page 配下の GP レイヤー (ページ本体 + 各コマ) を dst_page へ複製する.
-
-    元レイヤーの ``parent_key`` (= ページ/コマの安定 ID) を dst_page 側の
-    対応する ``parent_key`` に書き換える。コマ並びは src/dst で同順を前提とする。
-    """
-    from ..utils import gp_layer_parenting as gp_parent
-    from ..utils.layer_hierarchy import coma_stack_key, page_stack_key
-
-    master = gp_utils.get_master_gpencil()
-    if master is None:
-        return
-    layers = getattr(getattr(master, "data", None), "layers", None)
-    if layers is None:
-        return
-
-    src_page_key = page_stack_key(src_page)
-    dst_page_key = page_stack_key(dst_page)
-    work = get_work(context)
-    src_offset = _page_offset_for_entry(context, work, src_page)
-    dst_offset = _page_offset_for_entry(context, work, dst_page)
-    dx_mm = dst_offset[0] - src_offset[0]
-    dy_mm = dst_offset[1] - src_offset[1]
-    key_map = {src_page_key: dst_page_key}
-    src_comas = list(getattr(src_page, "comas", []) or [])
-    dst_comas = list(getattr(dst_page, "comas", []) or [])
-    for src_coma, dst_coma in zip(src_comas, dst_comas):
-        key_map[coma_stack_key(src_page, src_coma)] = coma_stack_key(dst_page, dst_coma)
-
-    src_keys = set(key_map.keys())
-    layers_to_copy = [layer for layer in list(layers) if gp_parent.parent_key(layer) in src_keys]
-    if not layers_to_copy:
-        return
-
-    view_layer = getattr(context, "view_layer", None)
-    saved_active_obj = (
-        view_layer.objects.active if (view_layer is not None and getattr(view_layer, "objects", None) is not None) else None
-    )
-    saved_active_layer = getattr(layers, "active", None)
-    try:
-        if view_layer is not None:
-            view_layer.objects.active = master
-        for src_layer in layers_to_copy:
-            old_key = gp_parent.parent_key(src_layer)
-            new_key = key_map.get(old_key, dst_page_key)
-            try:
-                layers.active = src_layer
-            except Exception:  # noqa: BLE001
-                continue
-            try:
-                result = bpy.ops.grease_pencil.layer_duplicate("EXEC_DEFAULT", empty_keyframes=False)
-            except Exception:  # noqa: BLE001
-                _logger.exception("page_duplicate: GP layer duplicate failed")
-                continue
-            if "FINISHED" not in result:
-                continue
-            dup_layer = getattr(layers, "active", None)
-            if dup_layer is None or dup_layer is src_layer:
-                continue
-            try:
-                gp_parent.set_parent_key(dup_layer, new_key)
-                if abs(dx_mm) > 1.0e-6 or abs(dy_mm) > 1.0e-6:
-                    gp_parent.translate_layer(dup_layer, dx_mm, dy_mm)
-            except Exception:  # noqa: BLE001
-                _logger.exception("page_duplicate: set_parent_key failed")
-    finally:
-        try:
-            if saved_active_layer is not None:
-                layers.active = saved_active_layer
-        except Exception:  # noqa: BLE001
-            pass
-        try:
-            if view_layer is not None and saved_active_obj is not None:
-                view_layer.objects.active = saved_active_obj
-        except Exception:  # noqa: BLE001
-            pass
 
 
 def _pick_object_layer_at_event(context, event) -> tuple[dict | None, object | None]:
@@ -261,7 +183,7 @@ class BMANGA_OT_page_add(Operator):
 
             create_basic_frame_coma(work, entry, work_dir)
             if not page_file_scene.is_work_list_scene(context.scene):
-                gp_utils.ensure_page_gpencil(context.scene, entry.id)
+                gp_object_layer.ensure_default_page_layer(context.scene, entry.id)
             # 全ページの Collection transform を grid 位置に再配置
             page_grid.apply_page_collection_transforms(context, work)
             page_io.save_pages_json(work_dir, work)
@@ -304,30 +226,20 @@ class BMANGA_OT_page_remove(Operator):
             return {"CANCELLED"}
         page = work.pages[idx]
         page_id = page.id
-        work_dir = Path(work.work_dir)
 
         try:
             old_offsets = _page_offsets_by_id(context, work)
-            page_io.remove_page_dir(work_dir, page_id)
+            parent_keys = layer_stack_utils.gp_parent_keys_for_page(page)
+            page_operation_transaction.delete_page(context, work, idx)
             layer_stack_utils.delete_gp_layers_for_parent_keys(
-                context, layer_stack_utils.gp_parent_keys_for_page(page)
+                context, parent_keys
             )
             layer_stack_utils.delete_effect_layers_for_parent_keys(
-                context, layer_stack_utils.gp_parent_keys_for_page(page)
+                context, parent_keys
             )
-            work.pages.remove(idx)
             _translate_layers_for_offset_changes(context, work, old_offsets)
-            # GP オブジェクト / データ / Collection も削除
-            gp_utils.remove_page_gpencil(page_id)
-            # active index の補正
-            if len(work.pages) == 0:
-                work.active_page_index = -1
-            elif idx >= len(work.pages):
-                work.active_page_index = len(work.pages) - 1
             # 残りページの Collection transform を再計算 (index が詰まるため)
             page_grid.apply_page_collection_transforms(context, work)
-            page_io.save_pages_json(work_dir, work)
-            _sync_page_number_range(work_dir, work)
             _set_page_layer_active(context)
             _sync_layer_stack_after_page_change(context, align_page_order=True)
         except Exception as exc:  # noqa: BLE001
@@ -362,56 +274,19 @@ class BMANGA_OT_page_duplicate(Operator):
         if getattr(src, "spread", False):
             self.report({"WARNING"}, "見開きページは複製できません。先に見開きを解除してください")
             return {"CANCELLED"}
-        work_dir = Path(work.work_dir)
+        src_id = str(src.id)
         try:
             old_offsets = _page_offsets_by_id(context, work)
-            new_id = page_io.allocate_new_page_id(work)
-            page_io.copy_page_dir(work_dir, src.id, new_id)
-            copied_page_blend = paths.page_blend_path(work_dir, new_id)
-            if copied_page_blend.exists():
-                copied_page_blend.unlink()
-            new_entry = work.pages.add()
-            new_entry.id = new_id
-            new_entry.title = ""
-            new_entry.dir_rel = f"{new_id}/"
-            new_entry.spread = src.spread
-            new_entry.tombo_aligned = src.tombo_aligned
-            new_entry.tombo_gap_mm = src.tombo_gap_mm
-            for ref in src.original_pages:
-                ref_new = new_entry.original_pages.add()
-                ref_new.page_id = ref.page_id
-            page_io.load_page_json(work_dir, new_entry)
-            new_entry.id = new_id
-            new_entry.title = ""
-            new_entry.dir_rel = f"{new_id}/"
-            new_entry.spread = src.spread
-            new_entry.tombo_aligned = src.tombo_aligned
-            new_entry.tombo_gap_mm = src.tombo_gap_mm
-            new_entry.offset_x_mm = 0.0
-            new_entry.offset_y_mm = 0.0
-            new_entry.coma_count = len(new_entry.comas)
-            # 直後の位置 (idx+1) に配置
-            new_index = len(work.pages) - 1
-            if new_index != idx + 1:
-                work.pages.move(new_index, idx + 1)
-            work.active_page_index = idx + 1
-            new_entry = work.pages[work.active_page_index]
-            if not page_file_scene.is_work_list_scene(context.scene):
-                gp_utils.ensure_page_gpencil(context.scene, new_id)
-                # 元ページの GP レイヤー (ページ本体 + 各コマ) を新ページへ複製。
-                _duplicate_page_gp_layers(context, src, new_entry)
+            new_id = page_operation_transaction.duplicate_page(context, work, idx)
             _translate_layers_for_offset_changes(context, work, old_offsets)
             page_grid.apply_page_collection_transforms(context, work)
-            page_io.save_page_json(work_dir, new_entry)
-            page_io.save_pages_json(work_dir, work)
-            _sync_page_number_range(work_dir, work)
             _set_page_layer_active(context)
             _sync_layer_stack_after_page_change(context, align_page_order=True)
         except Exception as exc:  # noqa: BLE001
             _logger.exception("page_duplicate failed")
             self.report({"ERROR"}, f"ページ複製失敗: {exc}")
             return {"CANCELLED"}
-        self.report({"INFO"}, f"ページ複製: {src.id} → {new_id}")
+        self.report({"INFO"}, f"ページ複製: {src_id} → {new_id}")
         return {"FINISHED"}
 
 

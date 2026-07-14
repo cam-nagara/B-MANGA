@@ -29,13 +29,20 @@ def _load_addon():
 
 
 def _add_gp_layer(context, parent_key: str):
-    from bmanga_dev.utils import gp_layer_parenting as gp_parent
+    from bmanga_dev.utils import gp_object_layer, layer_object_model
     from bmanga_dev.utils import gpencil as gp_utils
     from bmanga_dev.utils.geom import mm_to_m
 
-    obj = gp_utils.ensure_master_gpencil(context.scene)
-    layer = obj.data.layers.new("object_tool_gp")
-    gp_parent.set_parent_key(layer, parent_key)
+    obj = gp_object_layer.create_layer_gp_object(
+        scene=context.scene,
+        bmanga_id=layer_object_model.make_stable_id("gp"),
+        title="object_tool_gp",
+        z_index=210,
+        parent_kind="coma" if ":" in parent_key else "page",
+        parent_key=parent_key,
+    )
+    layer = layer_object_model.content_layer(obj)
+    assert layer is not None
     frame = gp_utils.ensure_active_frame(layer)
     assert frame is not None and getattr(frame, "drawing", None) is not None
     ok = gp_utils.add_stroke_to_drawing(
@@ -143,6 +150,8 @@ def main() -> None:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "ObjectTool.bmanga"))
+        assert "FINISHED" in result, result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
         assert "FINISHED" in result, result
 
         from bmanga_dev.operators import effect_line_op

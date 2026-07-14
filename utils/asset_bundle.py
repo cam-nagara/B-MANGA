@@ -190,6 +190,9 @@ def instantiate_payload(
     payload: dict,
     *,
     drop_world_xy_mm: tuple[float, float] | None = None,
+    drop_local_xy_mm: tuple[float, float] | None = None,
+    defer_to_page_file: bool = True,
+    stage_id: str = "",
 ) -> dict:
     work = get_work(context)
     page = get_active_page(context)
@@ -197,7 +200,9 @@ def instantiate_payload(
         raise RuntimeError("ページ一覧を開いてください")
     page_index = int(getattr(work, "active_page_index", -1))
     page_offset = page_grid.page_total_offset_mm(work, context.scene, page_index)
-    if drop_world_xy_mm is None:
+    if drop_local_xy_mm is not None:
+        drop_local = (float(drop_local_xy_mm[0]), float(drop_local_xy_mm[1]))
+    elif drop_world_xy_mm is None:
         paper = getattr(work, "paper", None)
         drop_local = (
             float(getattr(paper, "canvas_width_mm", 210.0)) * 0.5,
@@ -205,6 +210,26 @@ def instantiate_payload(
         )
     else:
         drop_local = (float(drop_world_xy_mm[0]) - page_offset[0], float(drop_world_xy_mm[1]) - page_offset[1])
+    page_id = str(getattr(page, "id", "") or "")
+    if defer_to_page_file and not _is_target_page_file(context, page_id):
+        from . import cross_page_stage
+
+        staged_id = cross_page_stage.stage_asset_bundle(
+            Path(work.work_dir),
+            page_id,
+            payload,
+            drop_local,
+        )
+        if not staged_id:
+            raise RuntimeError("素材を対象ページへ送れませんでした")
+        return {
+            "created": [],
+            "id_map": {},
+            "uids": {},
+            "created_new_count": 0,
+            "staged": True,
+            "stage_id": staged_id,
+        }
     origin = payload.get("origin") if isinstance(payload.get("origin"), dict) else {}
     dx = drop_local[0] - float(origin.get("x", 0.0) or 0.0)
     dy = drop_local[1] - float(origin.get("y", 0.0) or 0.0)
@@ -213,7 +238,8 @@ def instantiate_payload(
     parent_key_map: dict[str, str] = {}
     new_uids_by_source: dict[str, str] = {}
     made: list[object] = []
-    for entry in payload.get("entries", []) or []:
+    newly_made: list[object] = []
+    for entry_index, entry in enumerate(payload.get("entries", []) or []):
         if not isinstance(entry, dict):
             continue
         kind = str(entry.get("kind", "") or "")
@@ -223,19 +249,32 @@ def instantiate_payload(
             parent_key,
             parent_key_map,
         )
-        if kind == "coma":
-            obj = asset_bundle_extended.instantiate_coma(context, page, entry, dx, dy)
+        obj = _find_staged_asset_entry(context, page, stage_id, entry_index, kind)
+        was_created = False
+        if obj is None and kind == "coma":
+            obj = asset_bundle_extended.instantiate_coma(
+                context,
+                page,
+                entry,
+                dx,
+                dy,
+                persist_sidecars=not bool(stage_id),
+            )
             if obj is not None:
+                was_created = True
                 source_parent = asset_bundle_extended.source_parent_key(entry)
                 if source_parent:
                     parent_key_map[source_parent] = coma_stack_key(page, obj)
-        elif kind == "balloon":
+        elif obj is None and kind == "balloon":
             obj = _instantiate_balloon(context, page, entry, dx, dy, entry_parent_kind, entry_parent_key)
-        elif kind == "text":
+            was_created = obj is not None
+        elif obj is None and kind == "text":
             obj = _instantiate_text(context, page, entry, dx, dy, entry_parent_kind, entry_parent_key, id_map)
-        elif kind == "effect":
+            was_created = obj is not None
+        elif obj is None and kind == "effect":
             obj = _instantiate_effect(context, entry, dx, dy, entry_parent_key)
-        elif kind == "raster":
+            was_created = obj is not None
+        elif obj is None and kind == "raster":
             obj = asset_bundle_extended.instantiate_raster(
                 context,
                 page,
@@ -243,7 +282,8 @@ def instantiate_payload(
                 entry_parent_kind,
                 entry_parent_key,
             )
-        elif kind == "gp":
+            was_created = obj is not None
+        elif obj is None and kind == "gp":
             obj = asset_bundle_extended.instantiate_gp_layer(
                 context,
                 page,
@@ -253,11 +293,29 @@ def instantiate_payload(
                 entry_parent_kind,
                 entry_parent_key,
             )
-        else:
+            was_created = obj is not None
+        elif obj is None:
             obj = None
         if obj is None:
             continue
+        if stage_id and was_created:
+            from . import cross_page_stage
+
+            cross_page_stage.stamp_asset_created(
+                context,
+                obj,
+                stage_id,
+                entry_index,
+                kind,
+            )
+        if kind == "coma":
+            source_parent = asset_bundle_extended.source_parent_key(entry)
+            if source_parent:
+                parent_key_map[source_parent] = coma_stack_key(page, obj)
+        obj = _normalize_staged_asset_result(kind, obj)
         made.append(obj)
+        if was_created:
+            newly_made.append(obj)
         old_id = str(entry.get("source_id", "") or "")
         new_id = _entry_id(obj)
         if old_id and new_id:
@@ -267,10 +325,40 @@ def instantiate_payload(
         if source_uid and new_uid:
             new_uids_by_source[source_uid] = new_uid
     _restore_layer_links(context, payload, new_uids_by_source)
-    _link_drop_target_text_to_new_balloons(page, made, drop_local)
-    _link_overlapping_texts_to_new_balloons(page, made)
+    _link_drop_target_text_to_new_balloons(page, newly_made, drop_local)
+    _link_overlapping_texts_to_new_balloons(page, newly_made)
     layer_stack_utils.sync_layer_stack_after_data_change(context)
-    return {"created": made, "id_map": id_map, "uids": new_uids_by_source}
+    return {
+        "created": made,
+        "id_map": id_map,
+        "uids": new_uids_by_source,
+        "created_new_count": len(newly_made),
+        "staged": False,
+        "stage_id": stage_id,
+    }
+
+
+def _is_target_page_file(context, page_id: str) -> bool:
+    from . import page_file_scene
+
+    role, current_page_id, _ = page_file_scene.current_role(context)
+    return role == page_file_scene.ROLE_PAGE and current_page_id == str(page_id or "")
+
+
+def _find_staged_asset_entry(context, page, stage_id: str, index: int, kind: str):
+    if not stage_id:
+        return None
+    from . import cross_page_stage
+
+    return cross_page_stage.find_asset_created(context, page, stage_id, index, kind)
+
+
+def _normalize_staged_asset_result(kind: str, obj):
+    if kind not in {"gp", "effect"} or isinstance(obj, tuple):
+        return obj
+    from . import layer_object_model
+
+    return obj, layer_object_model.content_layer(obj)
 
 
 def process_dropped_collection_instance(context, obj) -> bool:
@@ -407,7 +495,7 @@ def _serialize_stack_item(context, item) -> dict | None:
         }
     if kind == "effect":
         from ..operators import effect_line_op
-        from . import gp_layer_parenting as gp_parent
+        from . import gp_layer_parenting as gp_parent, layer_object_model
 
         obj = resolved.get("object")
         layer = target
@@ -417,7 +505,7 @@ def _serialize_stack_item(context, item) -> dict | None:
         return {
             "kind": kind,
             "source_id": str(obj.get(on.PROP_ID, "") or getattr(layer, "name", "") or ""),
-            "title": str(getattr(layer, "name", "") or "効果線"),
+            "title": layer_object_model.display_title(obj) or "効果線",
             "bounds": list(bounds or (0.0, 0.0, 30.0, 30.0)),
             "center": list(center or (0.0, 0.0)),
             "meta": meta if isinstance(meta, dict) else {},
@@ -604,6 +692,9 @@ def _instantiate_effect(context, entry: dict, dx: float, dy: float, parent_key: 
     obj, layer = effect_line_op._create_effect_layer(context, bounds, parent_key=parent_key)
     if obj is None or layer is None:
         return None
+    from . import layer_object_model
+
+    layer_object_model.set_display_title(obj, str(entry.get("title", "") or "効果線"))
     stored = effect_line_op._effect_meta(obj)
     key = effect_line_op._layer_meta_key(layer)
     current = dict(stored.get(key) or {})
@@ -631,7 +722,7 @@ def _new_uid_for_created(context, kind: str, page, obj) -> str:
     if kind == "text":
         return layer_stack_utils.target_uid("text", f"{getattr(page, 'id', '')}:{getattr(obj, 'id', '')}")
     if kind == "effect" and isinstance(obj, tuple):
-        return layer_stack_utils.target_uid("effect", layer_stack_utils._node_stack_key(obj[1]))
+        return layer_stack_utils.target_uid("effect", str(obj[0].get(on.PROP_ID, "") or ""))
     return ""
 
 

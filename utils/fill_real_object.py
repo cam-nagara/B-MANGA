@@ -818,6 +818,19 @@ def get_gradient_curve_points(fill_id: str) -> list[tuple[float, float, str]]:
     return [(p.location[0], p.location[1], p.handle_type) for p in curve.points]
 
 
+def set_gradient_curve_points(
+    fill_id: str,
+    points: list[tuple[float, float, str]] | None,
+) -> bool:
+    """対象の濃度カーブを退避済みポイントへ戻す。"""
+
+    node = get_gradient_curve_node(fill_id)
+    if node is None or points is None:
+        return False
+    _apply_curve_points(node, points)
+    return True
+
+
 def sync_gradient_handle_visibility(context) -> None:
     """選択状態に応じてグラデーションハンドルの表示/非表示を切り替える."""
     from . import object_selection

@@ -16,6 +16,7 @@ from ..utils import (
     edge_selection,
     free_transform,
     gp_layer_parenting as gp_parent,
+    layer_object_model,
     layer_reparent,
     layer_stack as layer_stack_utils,
     log,
@@ -455,9 +456,9 @@ def _hit_effect_at_event(context, event) -> dict | None:
         return None
     return {
         "kind": "effect",
-        "layer_name": object_selection.parse_key(object_selection.effect_key(layer))[2],
+        "layer_name": layer_object_model.stable_id(obj),
         "part": "move" if part == "body" else part,
-        "key": object_selection.effect_key(layer),
+        "key": object_selection.effect_key(obj),
         "world": (float(x_mm), float(y_mm)),
     }
 
@@ -668,8 +669,9 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
     elif kind == "effect":
         obj, layer = _find_effect_layer(hit.get("layer_name", ""))
         if layer is not None:
+            if not effect_line_op._select_effect_layer(context, obj, layer):
+                return
             _focus_parent_coma_for_gp_layer(context, work, layer)
-            effect_line_op._select_effect_layer(context, obj, layer)
         edge_selection.clear_selection(context)
     elif kind == "image":
         index, entry = _find_image_by_key(context, object_selection.parse_key(key)[2])
@@ -707,7 +709,7 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
         obj, layer = _find_gp_layer(hit.get("layer_key", object_selection.parse_key(key)[2]))
         if layer is not None:
             _focus_parent_coma_for_gp_layer(context, work, layer)
-            if not _select_stack_target(context, "gp", layer_stack_utils._node_stack_key(layer)):
+            if not _select_stack_target(context, "gp", layer_object_model.stable_id(obj)):
                 try:
                     context.view_layer.objects.active = obj
                     obj.select_set(True)
@@ -1478,7 +1480,7 @@ class BMANGA_OT_object_tool(Operator):
             return
         original_center = None
         exclude_balloon_ids: set[str] = set()
-        exclude_effect_layer_names: set[str] = set()
+        exclude_effect_ids: set[str] = set()
         page = None
 
         for snapshot in self._snapshots:
@@ -1502,11 +1504,7 @@ class BMANGA_OT_object_tool(Operator):
                 center = snapshot.get("center")
                 if center is not None and original_center is None:
                     original_center = (float(center[0]), float(center[1]))
-                # snapshot["item_id"] はポインタ由来キー("ptr_XXXX")なので、
-                # collect_page_center_points が比較する layer.name へ解決してから除外する。
-                _obj, _layer = _find_effect_layer(snapshot.get("item_id", ""))
-                if _layer is not None:
-                    exclude_effect_layer_names.add(str(getattr(_layer, "name", "") or ""))
+                exclude_effect_ids.add(snapshot.get("item_id", ""))
 
         if original_center is None or page is None:
             if original_center is not None and page is None:
@@ -1520,7 +1518,7 @@ class BMANGA_OT_object_tool(Operator):
         self._center_snap_targets = center_point_snap.collect_page_center_points(
             context, page,
             exclude_balloon_ids=exclude_balloon_ids,
-            exclude_effect_layer_names=exclude_effect_layer_names,
+            exclude_effect_ids=exclude_effect_ids,
         )
 
     def _start_rotation_drag(self, context, event, rot_hit: dict) -> bool:

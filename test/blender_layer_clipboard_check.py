@@ -31,6 +31,8 @@ def _load_addon():
 def _create_work(work_dir: Path):
     result = bpy.ops.bmanga.work_new(filepath=str(work_dir))
     assert result == {"FINISHED"}, result
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+    assert result == {"FINISHED"}, result
     work = bpy.context.scene.bmanga_work
     page = work.pages[0]
 
@@ -74,9 +76,18 @@ def _create_work(work_dir: Path):
         parent_key="",
     )
 
-    gp_obj = gp_utils.ensure_master_gpencil(bpy.context.scene)
-    gp_layer = gp_obj.data.layers.new("copy_gp")
-    gp_parent.set_parent_key(gp_layer, "")
+    from bmanga_dev.utils import gp_object_layer, layer_object_model
+
+    gp_obj = gp_object_layer.create_layer_gp_object(
+        scene=bpy.context.scene,
+        bmanga_id=layer_object_model.make_stable_id("gp"),
+        title="copy_gp",
+        z_index=210,
+        parent_kind="outside",
+        parent_key="",
+    )
+    gp_layer = layer_object_model.content_layer(gp_obj)
+    assert gp_layer is not None
     frame = gp_utils.ensure_active_frame(gp_layer)
     assert frame is not None and getattr(frame, "drawing", None) is not None
     assert gp_utils.add_stroke_to_drawing(

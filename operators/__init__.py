@@ -15,6 +15,11 @@ from . import (
     brush_size_op,
     center_point_op,
     data_name_op,
+    detail_data_migration_op,
+    detail_preset_apply_op,
+    detail_preset_management_op,
+    raster_detail_action_op,
+    detail_transaction_action_op,
     effect_line_op,
     effect_line_object_op,
     effect_line_link_op,
@@ -38,6 +43,7 @@ from . import (
     layer_page_move_op,
     layer_move_op,
     layer_stack_op,
+    layer_stack_detail_op,
     mask_object_op,
     mode_op,
     object_tool_op,
@@ -76,6 +82,7 @@ from . import (
 
 _MODULES = (
     work_op,
+    detail_data_migration_op,
     page_file_op,
     page_op,
     page_reorder_drag_op,
@@ -97,6 +104,10 @@ _MODULES = (
     balloon_tail_tool_op,
     balloon_nurbs_tool_op,
     balloon_text_curve_op,
+    detail_preset_apply_op,
+    detail_preset_management_op,
+    raster_detail_action_op,
+    detail_transaction_action_op,
     text_auto_ruby_op,
     text_ruby_op,
     text_selection_style_op,
@@ -118,6 +129,7 @@ _MODULES = (
     io_op,
     raster_layer_op,
     layer_stack_op,
+    layer_stack_detail_op,
     layer_link_op,
     layer_link_duplicate_op,
     layer_clipboard_op,
@@ -152,6 +164,14 @@ def register() -> None:
 
 
 def unregister() -> None:
+    # 詳細画面の固定対象・同種プリセットロックは、関連Operatorクラスを
+    # 解除する前なら開始時状態へ戻せる。復元失敗時もruntime側で全ロックを破棄する。
+    try:
+        from . import detail_dialog_runtime
+
+        detail_dialog_runtime.cleanup_all_sessions()
+    except Exception:
+        pass
     for module in reversed(_MODULES):
         try:
             module.unregister()

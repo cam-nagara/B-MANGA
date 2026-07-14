@@ -2,24 +2,40 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from ..io import page_io, work_io
-from . import gp_layer_parenting as gp_parent
-from . import gpencil as gp_utils
+from . import gp_object_layer
+from . import layer_object_model
 from . import layer_stack as layer_stack_utils
 from . import log, page_grid
 from .layer_hierarchy import page_stack_key, split_child_key
 
 _logger = log.get_logger(__name__)
-_RANGE_HIDE_MAP_PROP = "bmanga_range_hide_original_map_json"
+_RANGE_HIDDEN_PROP = "bmanga_range_hidden"
+_RANGE_HIDE_VIEWPORT_PROP = "bmanga_range_original_hide_viewport"
+_RANGE_HIDE_RENDER_PROP = "bmanga_range_original_hide_render"
+_RANGE_HIDE_LAYER_PROP = "bmanga_range_original_layer_hide"
+
+
+def page_slot_count(work) -> int:
+    """Return the number of numbered pages represented by the page entries.
+
+    A spread is one overview entry, but it still occupies two numbered pages.
+    Counting collection entries directly would therefore create a phantom normal
+    page whenever a work containing a spread is reopened.
+    """
+
+    return sum(
+        2 if bool(getattr(page, "spread", False)) else 1
+        for page in getattr(work, "pages", [])
+    )
 
 
 def desired_page_count(work) -> int:
     info = getattr(work, "work_info", None)
     if info is None:
-        return max(0, len(getattr(work, "pages", [])))
+        return page_slot_count(work)
     start = int(getattr(info, "page_number_start", 1))
     end = int(getattr(info, "page_number_end", start))
     return max(1, end - start + 1)
@@ -70,11 +86,13 @@ def update_page_range_visibility(work) -> bool:
         return False
     desired = desired_page_count(work)
     changed = False
-    for index, page in enumerate(getattr(work, "pages", [])):
-        in_range = index < desired
+    slot_index = 0
+    for page in getattr(work, "pages", []):
+        in_range = slot_index < desired
         if hasattr(page, "in_page_range") and bool(page.in_page_range) != in_range:
             page.in_page_range = in_range
             changed = True
+        slot_index += 2 if bool(getattr(page, "spread", False)) else 1
     if _clamp_active_page_to_range(work):
         changed = True
     if _apply_range_visibility_to_gp_layers(work):
@@ -95,99 +113,58 @@ def update_page_range_visibility(work) -> bool:
     return changed
 
 
-def _load_range_hide_map(gp_data) -> dict[str, bool]:
-    try:
-        raw = str(gp_data.get(_RANGE_HIDE_MAP_PROP, "") or "")
-    except Exception:  # noqa: BLE001
-        return {}
-    if not raw:
-        return {}
-    try:
-        data = json.loads(raw)
-    except Exception:  # noqa: BLE001
-        return {}
-    if not isinstance(data, dict):
-        return {}
-    return {str(key): bool(value) for key, value in data.items() if key}
-
-
-def _save_range_hide_map(gp_data, data: dict[str, bool]) -> None:
-    try:
-        if data:
-            gp_data[_RANGE_HIDE_MAP_PROP] = json.dumps(data, ensure_ascii=False, sort_keys=True)
-        elif _RANGE_HIDE_MAP_PROP in gp_data:
-            del gp_data[_RANGE_HIDE_MAP_PROP]
-    except Exception:  # noqa: BLE001
-        pass
-
-
-def _layer_hide_key(layer) -> str:
-    return str(getattr(layer, "name", "") or "")
-
-
-def _restore_range_hidden_state(layer, state: dict[str, bool]) -> bool:
-    key = _layer_hide_key(layer)
-    if not key or key not in state:
+def _set_range_hidden(obj) -> bool:
+    if bool(obj.get(_RANGE_HIDDEN_PROP, False)):
         return False
-    try:
-        layer.hide = bool(state.pop(key))
-    except Exception:  # noqa: BLE001
-        state.pop(key, None)
+    layer = layer_object_model.content_layer(obj)
+    obj[_RANGE_HIDE_VIEWPORT_PROP] = bool(getattr(obj, "hide_viewport", False))
+    obj[_RANGE_HIDE_RENDER_PROP] = bool(getattr(obj, "hide_render", False))
+    obj[_RANGE_HIDE_LAYER_PROP] = bool(getattr(layer, "hide", False)) if layer else False
+    obj[_RANGE_HIDDEN_PROP] = True
+    obj.hide_viewport = True
+    obj.hide_render = True
+    if layer is not None:
+        layer.hide = True
     return True
 
 
-def _range_hide_layer(layer, state: dict[str, bool]) -> bool:
-    key = _layer_hide_key(layer)
-    if not key:
+def _restore_range_hidden(obj) -> bool:
+    if not bool(obj.get(_RANGE_HIDDEN_PROP, False)):
         return False
-    changed = False
-    if key not in state:
-        state[key] = bool(getattr(layer, "hide", False))
-        changed = True
-    if not bool(getattr(layer, "hide", False)):
-        try:
-            layer.hide = True
-            changed = True
-        except Exception:  # noqa: BLE001
-            pass
-    return changed
+    layer = layer_object_model.content_layer(obj)
+    obj.hide_viewport = bool(obj.get(_RANGE_HIDE_VIEWPORT_PROP, False))
+    obj.hide_render = bool(obj.get(_RANGE_HIDE_RENDER_PROP, False))
+    if layer is not None:
+        layer.hide = bool(obj.get(_RANGE_HIDE_LAYER_PROP, False))
+    for name in (
+        _RANGE_HIDDEN_PROP,
+        _RANGE_HIDE_VIEWPORT_PROP,
+        _RANGE_HIDE_RENDER_PROP,
+        _RANGE_HIDE_LAYER_PROP,
+    ):
+        if name in obj:
+            del obj[name]
+    return True
 
 
 def _apply_range_visibility_to_gp_layers(work) -> bool:
-    """Hide GP layers parented to out-of-range pages without losing user hide state."""
-    obj = gp_utils.get_master_gpencil()
-    gp_data = getattr(obj, "data", None)
-    layers = getattr(gp_data, "layers", None)
-    if layers is None:
-        return False
-    state = _load_range_hide_map(gp_data)
+    """範囲外ページの個別GPを隠し、ユーザーの表示状態を保持する。"""
     changed = False
     visible_page_keys = {
         page_stack_key(page)
         for page in getattr(work, "pages", [])
         if page_in_range(page)
     }
-    known_layer_keys = set()
-    for layer in list(layers):
-        key = _layer_hide_key(layer)
-        if key:
-            known_layer_keys.add(key)
-        parent_key = gp_parent.parent_key(layer)
+    for obj in layer_object_model.iter_layer_objects("gp"):
+        parent_key = layer_object_model.parent_key(obj)
         if not parent_key:
-            changed = _restore_range_hidden_state(layer, state) or changed
+            changed = _restore_range_hidden(obj) or changed
             continue
         page_key, _child_key = split_child_key(parent_key)
         if page_key and page_key not in visible_page_keys:
-            changed = _range_hide_layer(layer, state) or changed
+            changed = _set_range_hidden(obj) or changed
         else:
-            changed = _restore_range_hidden_state(layer, state) or changed
-    stale_keys = set(state) - known_layer_keys
-    if stale_keys:
-        for key in stale_keys:
-            state.pop(key, None)
-        changed = True
-    if changed:
-        _save_range_hide_map(gp_data, state)
+            changed = _restore_range_hidden(obj) or changed
     return changed
 
 
@@ -197,7 +174,7 @@ def sync_end_number_to_existing_pages(work) -> None:
     if info is None:
         return
     start = max(0, int(getattr(info, "page_number_start", 1)))
-    count = max(1, len(getattr(work, "pages", [])))
+    count = max(1, page_slot_count(work))
     min_end = start + count - 1
     if int(getattr(info, "page_number_end", start)) < min_end:
         info.page_number_end = min_end
@@ -208,7 +185,7 @@ def sync_end_number_to_page_count(work) -> None:
     info = getattr(work, "work_info", None)
     if info is None:
         return
-    count = len(getattr(work, "pages", []))
+    count = page_slot_count(work)
     if count <= 0:
         return
     start = max(0, int(getattr(info, "page_number_start", 1)))
@@ -233,7 +210,7 @@ def ensure_pages_for_number_range(context) -> int:
     except Exception:  # noqa: BLE001
         return 0
     desired = desired_page_count(work)
-    current = len(work.pages)
+    current = page_slot_count(work)
     range_changed = update_page_range_visibility(work)
 
     work_dir = Path(work.work_dir)
@@ -248,7 +225,7 @@ def ensure_pages_for_number_range(context) -> int:
                 entry.in_page_range = True
             page_io.ensure_page_dir(work_dir, entry.id)
             create_basic_frame_coma(work, entry, work_dir)
-            gp_utils.ensure_page_gpencil(context.scene, entry.id)
+            gp_object_layer.ensure_default_page_layer(context.scene, entry.id)
             created += 1
         range_changed = update_page_range_visibility(work) or range_changed
         if (

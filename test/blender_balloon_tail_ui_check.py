@@ -12,6 +12,9 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "test"))
+
+from detail_dialog_public_test_support import draw_actual_detail  # noqa: E402
 
 
 def _load_addon():
@@ -98,7 +101,6 @@ def main() -> None:
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "TailUI.bmanga"))
         assert "FINISHED" in result, result
 
-        from bmanga_dev_tail_ui.operators import layer_detail_op
         from bmanga_dev_tail_ui.utils import (
             balloon_curve_object,
             balloon_render_contract,
@@ -241,9 +243,22 @@ def main() -> None:
         assert [node.name for node in source_mat.node_tree.nodes] == source_nodes
 
         layout = _FakeLayout()
-        layer_detail_op._draw_balloon_detail(layout, entry, page)
-        # v0.6.275: しっぽ設定は専用ダイアログへ分離され、開くボタンだけが置かれる
-        assert "bmanga.balloon_tail_detail_open" in layout.ops
+        draw_actual_detail(
+            "bmanga_dev_tail_ui",
+            layout,
+            context,
+            entry,
+            "balloon",
+        )
+        # 共通詳細設定では各しっぽをインライン表示し、対象固定の操作だけを置く。
+        for operator_id in {
+            "bmanga.detail_tail_add",
+            "bmanga.detail_tail_remove",
+            "bmanga.detail_tail_preset_apply",
+        }:
+            assert operator_id in layout.ops, operator_id
+        for prop_name in {"line_type", "root_width_mm", "tip_width_mm", "sharp_corners"}:
+            assert prop_name in layout.props, prop_name
         for prop_name in {
             "fill_opacity",
             "fill_material_name",

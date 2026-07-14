@@ -137,6 +137,9 @@ class BMANGA_OT_balloon_regenerate_keep_edit(bpy.types.Operator):
     page_id: bpy.props.StringProperty(name="ページID", default="", options={"HIDDEN"})  # type: ignore[valid-type]
     balloon_id: bpy.props.StringProperty(name="フキダシID", default="", options={"HIDDEN"})  # type: ignore[valid-type]
 
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(self, event)
+
     def execute(self, context):
         page, entry = _find_balloon(context, self.page_id, self.balloon_id)
         if entry is None:
@@ -229,6 +232,9 @@ class BMANGA_OT_balloon_regenerate_discard_edit(bpy.types.Operator):
 
     page_id: bpy.props.StringProperty(name="ページID", default="", options={"HIDDEN"})  # type: ignore[valid-type]
     balloon_id: bpy.props.StringProperty(name="フキダシID", default="", options={"HIDDEN"})  # type: ignore[valid-type]
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(self, event)
 
     def execute(self, context):
         page, entry = _find_balloon(context, self.page_id, self.balloon_id)

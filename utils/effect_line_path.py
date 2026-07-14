@@ -772,9 +772,9 @@ def sync_from_base_path_object(scene: bpy.types.Scene, obj: bpy.types.Object | N
         from ..operators import effect_line_op
         from ..utils import layer_stack as layer_stack_utils
 
-        layer_key = str(obj.get(PROP_EFFECT_LAYER_KEY, "") or "")
-        layer = layer_stack_utils._find_gp_layer_by_key(getattr(controller.data, "layers", None), layer_key)
-        if layer is None:
+        effect_id = str(controller.get(on.PROP_ID, "") or "")
+        resolved_controller, layer = layer_stack_utils._find_effect_layer_by_key(effect_id)
+        if resolved_controller != controller or layer is None:
             return False
         bounds = effect_line_op.effect_layer_bounds(controller, layer)
         if bounds is None:

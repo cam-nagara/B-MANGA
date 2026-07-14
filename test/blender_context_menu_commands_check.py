@@ -72,9 +72,18 @@ def _create_work(work_dir: Path):
         parent_key=page_key,
     )
 
-    gp_obj = gp_utils.ensure_master_gpencil(bpy.context.scene)
-    gp_layer = gp_obj.data.layers.new("menu_gp")
-    gp_parent.set_parent_key(gp_layer, page_key)
+    from bmanga_dev.utils import gp_object_layer, layer_object_model
+
+    gp_obj = gp_object_layer.create_layer_gp_object(
+        scene=bpy.context.scene,
+        bmanga_id=layer_object_model.make_stable_id("gp"),
+        title="menu_gp",
+        z_index=210,
+        parent_kind="page",
+        parent_key=page_key,
+    )
+    gp_layer = layer_object_model.content_layer(gp_obj)
+    assert gp_layer is not None
     frame = gp_utils.ensure_active_frame(gp_layer)
     assert frame is not None and getattr(frame, "drawing", None) is not None
     assert gp_utils.add_stroke_to_drawing(

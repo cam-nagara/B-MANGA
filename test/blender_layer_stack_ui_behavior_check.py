@@ -55,13 +55,22 @@ def _gp_point_world_mm(obj, point) -> tuple[float, float]:
 
 
 def _add_test_gp_layer(context, parent_key: str):
-    from bmanga_dev.utils import gp_layer_parenting as gp_parent
+    from bmanga_dev.utils import gp_object_layer
     from bmanga_dev.utils import gpencil as gp_utils
+    from bmanga_dev.utils import layer_object_model
     from bmanga_dev.utils.geom import mm_to_m
 
-    obj = gp_utils.ensure_master_gpencil(context.scene)
-    layer = obj.data.layers.new("dnd_gp")
-    gp_parent.set_parent_key(layer, parent_key)
+    obj = gp_object_layer.create_layer_gp_object(
+        scene=context.scene,
+        bmanga_id=layer_object_model.make_stable_id("gp"),
+        title="dnd_gp",
+        z_index=210,
+        parent_kind="coma" if ":" in parent_key else "page",
+        parent_key=parent_key,
+    )
+    assert obj is not None
+    layer = layer_object_model.content_layer(obj)
+    assert layer is not None
     frame = gp_utils.ensure_active_frame(layer)
     assert frame is not None and getattr(frame, "drawing", None) is not None
     ok = gp_utils.add_stroke_to_drawing(
@@ -442,8 +451,10 @@ def main() -> None:
             if list(obj.users_collection) != [text_coll]:
                 raise AssertionError(f"text object collection mismatch: {obj.name}")
 
-        gp_uid = layer_stack_utils.target_uid("gp", layer_stack_utils._node_stack_key(gp_layer))
-        effect_uid = layer_stack_utils.target_uid("effect", layer_stack_utils._node_stack_key(effect_layer))
+        from bmanga_dev.utils import layer_object_model
+
+        gp_uid = layer_stack_utils.target_uid("gp", layer_object_model.stable_id(_gp_obj))
+        effect_uid = layer_stack_utils.target_uid("effect", layer_object_model.stable_id(_eff_obj))
         raster_uid = layer_stack_utils.target_uid("raster", raster.id)
         balloon_uid = layer_stack_utils.target_uid("balloon", f"{page_key}:{balloon.id}")
         text_a_uid = layer_stack_utils.target_uid("text", f"{page_key}:{text_a.id}")

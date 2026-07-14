@@ -1,0 +1,396 @@
+"""詳細設定から、開始時に固定した実対象へプリセットを適用する。
+
+一覧のアクティブ行、選択オブジェクト、各種 ``active_*_index`` は参照しない。
+ダイアログから渡された種別と永続 ID だけで対象を再解決し、同種の別レイヤーへ
+誤適用されることを防ぐ。しっぽは個別の明示入口を使うため本モジュールの対象外。
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import bpy
+from bpy.props import EnumProperty, StringProperty
+from bpy.types import Operator
+
+from ..utils import log
+
+
+_logger = log.get_logger(__name__)
+_EMPTY_PRESET = "__BMANGA_NO_PRESET__"
+_ENUM_CACHE: dict[str, list[tuple[str, str, str]]] = {}
+
+_EXPECTED_TARGET_KIND = {
+    "border": "coma",
+    "text": "text",
+    "effect_line": "effect",
+    "fill": "fill",
+    "gradient": "fill",
+    "image_path": "image_path",
+    "balloon": "balloon",
+}
+
+
+def _work_dir(context) -> Path | None:
+    scene = getattr(context, "scene", None)
+    work = getattr(scene, "bmanga_work", None) if scene is not None else None
+    value = str(getattr(work, "work_dir", "") or "").strip() if work is not None else ""
+    return Path(value) if value else None
+
+
+def _preset_type(value: object) -> str:
+    text = str(value or "").strip().lower()
+    aliases = {"effect": "effect_line", "solid_fill": "fill", "pattern_curve": "image_path"}
+    return aliases.get(text, text)
+
+
+def _list_presets(context, preset_type: str):
+    from ..io import (
+        balloon_presets,
+        border_presets,
+        effect_line_presets,
+        fill_presets,
+        gradient_presets,
+        image_path_presets,
+        text_presets,
+    )
+
+    work_dir = _work_dir(context)
+    callbacks = {
+        "border": lambda: border_presets.list_all_presets(work_dir),
+        "text": lambda: text_presets.list_all_presets(work_dir),
+        "effect_line": lambda: effect_line_presets.list_all_presets(work_dir),
+        "fill": lambda: fill_presets.list_all_presets(work_dir),
+        "gradient": lambda: gradient_presets.list_all_presets(work_dir),
+        "image_path": lambda: image_path_presets.list_all_presets(work_dir),
+        "balloon": lambda: balloon_presets.list_all_presets(work_dir),
+    }
+    callback = callbacks.get(preset_type)
+    return list(callback() if callback is not None else ())
+
+
+def _preset_enum_items(self, context):
+    preset_type = _preset_type(getattr(self, "preset_type", ""))
+    try:
+        presets = _list_presets(context, preset_type)
+        items = [
+            (str(item.name), str(item.name), str(getattr(item, "description", "") or ""))
+            for item in presets
+            if str(getattr(item, "name", "") or "").strip()
+        ]
+    except Exception:  # Blender のメニュー描画を壊さず実行時に改めて報告する
+        _logger.exception("detail preset enum build failed: %s", preset_type)
+        items = []
+    if not items:
+        items = [(_EMPTY_PRESET, "（プリセットなし）", "利用できるプリセットがありません")]
+    _ENUM_CACHE[preset_type] = items
+    return _ENUM_CACHE[preset_type]
+
+
+def _fixed_stable_id(target_id: str, stable_id: str) -> str:
+    first = str(target_id or "").strip()
+    second = str(stable_id or "").strip()
+    if first and second and first != second:
+        raise ValueError("詳細設定の対象IDが一致しません")
+    value = first or second
+    if not value:
+        raise ValueError("詳細設定の対象IDがありません")
+    return value
+
+
+def _resolve_fixed_target(context, *, preset_type: str, target_kind: str, target_id: str,
+                          stable_id: str, stack_uid: str):
+    from ..utils import detail_target_resolver
+
+    expected_kind = _EXPECTED_TARGET_KIND.get(preset_type)
+    actual_kind = str(target_kind or "").strip()
+    if expected_kind is None:
+        raise ValueError("このプリセット種別は詳細設定から適用できません")
+    if actual_kind != expected_kind:
+        raise ValueError("プリセットと詳細設定の対象種別が一致しません")
+    fixed_id = _fixed_stable_id(target_id, stable_id)
+    if detail_target_resolver.is_pointer_derived_uid(stack_uid):
+        raise ValueError("旧形式の対象識別子は使用できません")
+    target = detail_target_resolver.resolve_target_from_object(context, fixed_id, actual_kind)
+    _verify_stack_identity(context, target, stack_uid)
+    return target
+
+
+def _verify_stack_identity(context, target, stack_uid: str) -> None:
+    uid = str(stack_uid or "").strip()
+    if not uid:
+        return
+    from ..utils import detail_target_resolver
+    from ..utils.detail_dialog import DetailTargetNotFoundError
+
+    try:
+        stack_target = detail_target_resolver.resolve_target_from_stack(context, uid)
+    except DetailTargetNotFoundError:
+        return  # 一覧再構築後も永続IDで同じ対象を安全に解決できている
+    if stack_target.kind != target.kind or stack_target.stable_id != target.stable_id:
+        raise ValueError("詳細設定を開いた対象が変更されています")
+
+
+def _require_preset(preset, preset_name: str):
+    if preset is None:
+        raise LookupError(f"プリセットが見つかりません: {preset_name}")
+    return preset
+
+
+def _apply_border(context, target, name: str) -> str:
+    from ..io import border_presets
+    from ..utils import coma_blur_curve, coma_border_object
+
+    preset = _require_preset(border_presets.load_preset_by_name(name, _work_dir(context)), name)
+    border_presets.apply_preset_to_coma(preset, target.data)
+    border = getattr(target.data, "border", None)
+    if border is not None:
+        coma_border_object.on_coma_border_changed(border)
+        if str(getattr(border, "style", "") or "") == "brush":
+            coma_blur_curve.ensure_ui_curve_node(border)
+    return str(preset.name)
+
+
+def _apply_text(_context, target, name: str) -> str:
+    from ..io import text_presets
+    from ..utils import text_real_object
+
+    preset = _require_preset(text_presets.load_preset_by_name(name), name)
+    with text_real_object.suspend_auto_sync():
+        text_presets.apply_to_entry(target.data, preset.data)
+    text_real_object.on_text_entry_changed(target.data)
+    return str(preset.name)
+
+
+def _refresh_effect_curve_nodes(params) -> None:
+    from ..utils import effect_inout_curve
+
+    effect_inout_curve.ensure_ui_nodes(params)
+    effect_inout_curve.ensure_profile_node(params)
+    for fields, node_name, source_prop, label in (
+        (effect_inout_curve.WHITE_PROFILE_FIELDS, effect_inout_curve.WHITE_PROFILE_NODE_NAME,
+         effect_inout_curve.WHITE_PROFILE_SOURCE_PROP, "白線の線幅グラフ"),
+        (effect_inout_curve.BLACK_PROFILE_FIELDS, effect_inout_curve.BLACK_PROFILE_NODE_NAME,
+         effect_inout_curve.BLACK_PROFILE_SOURCE_PROP, "黒線の線幅グラフ"),
+    ):
+        if all(hasattr(params, attr) for attr in fields.values()):
+            effect_inout_curve.ensure_profile_node(
+                params, fields=fields, node_name=node_name, source_prop=source_prop, label=label
+            )
+
+
+def _apply_effect(context, target, name: str) -> str:
+    from ..io import effect_line_presets
+    from . import effect_line_op
+
+    preset = _require_preset(
+        effect_line_presets.load_preset_by_name(name, _work_dir(context)), name
+    )
+    effect_line_op._set_scene_params_syncing(context.scene, True)
+    try:
+        effect_line_presets.apply_preset_to_params(preset, target.params)
+    finally:
+        effect_line_op._set_scene_params_syncing(context.scene, False)
+    _refresh_effect_curve_nodes(target.params)
+    bounds = effect_line_op.effect_layer_bounds(target.object_ref, target.data)
+    if bounds is None:
+        raise RuntimeError("効果線の描画範囲を取得できません")
+    effect_line_op._write_effect_strokes(
+        context,
+        target.object_ref,
+        target.data,
+        bounds,
+        params_override=target.params,
+        propagate_link=False,
+    )
+    return str(preset.name)
+
+
+def _validate_fill_namespace(target, preset_type: str) -> None:
+    is_gradient = str(getattr(target.data, "fill_type", "solid") or "solid") == "gradient"
+    if preset_type == "gradient" and not is_gradient:
+        raise ValueError("ベタ塗りにはグラデーションプリセットを適用できません")
+    if preset_type == "fill" and is_gradient:
+        raise ValueError("グラデーションにはベタ塗りプリセットを適用できません")
+
+
+def _apply_fill(_context, target, name: str, preset_type: str) -> str:
+    from ..io import fill_presets, gradient_presets
+    from ..utils import fill_real_object
+
+    _validate_fill_namespace(target, preset_type)
+    module = gradient_presets if preset_type == "gradient" else fill_presets
+    preset = _require_preset(module.load_preset_by_name(name), name)
+    with fill_real_object.suspend_auto_sync():
+        module.apply_to_entry(target.data, preset.data)
+    fill_real_object.on_fill_entry_changed(target.data)
+    return str(preset.name)
+
+
+def _apply_image_path(context, target, name: str) -> str:
+    from ..io import image_path_presets
+    from ..utils import image_path_object
+
+    preset = _require_preset(
+        image_path_presets.load_preset_by_name(name, _work_dir(context)), name
+    )
+    with image_path_object.suspend_auto_sync():
+        image_path_presets.apply_preset_to_entry(preset, target.data)
+    image_path_object.on_image_path_entry_changed(target.data)
+    return str(preset.name)
+
+
+def _apply_balloon(_context, target, name: str) -> str:
+    from ..io import balloon_presets
+    from ..utils import balloon_curve_object
+
+    preset = _require_preset(balloon_presets.load_preset_by_name(name), name)
+    with balloon_curve_object.suspend_auto_sync():
+        target.data.custom_preset_name = str(preset.name)
+        target.data.shape = "custom"
+    balloon_curve_object.on_balloon_entry_changed(target.data)
+    return str(preset.name)
+
+
+def apply_preset_to_target(context, target, preset_type: str, preset_name: str) -> str:
+    """固定済み ``DetailTarget`` だけへプリセットを適用して名称を返す。"""
+
+    preset_type = _preset_type(preset_type)
+    callbacks = {
+        "border": lambda: _apply_border(context, target, preset_name),
+        "text": lambda: _apply_text(context, target, preset_name),
+        "effect_line": lambda: _apply_effect(context, target, preset_name),
+        "fill": lambda: _apply_fill(context, target, preset_name, preset_type),
+        "gradient": lambda: _apply_fill(context, target, preset_name, preset_type),
+        "image_path": lambda: _apply_image_path(context, target, preset_name),
+        "balloon": lambda: _apply_balloon(context, target, preset_name),
+    }
+    callback = callbacks.get(preset_type)
+    if callback is None:
+        raise ValueError("このプリセット種別は詳細設定から適用できません")
+    return callback()
+
+
+def _refresh_after_apply(context) -> None:
+    try:
+        from ..utils import layer_stack
+
+        layer_stack.tag_view3d_redraw(context)
+    except Exception:  # 再描画失敗で適用済みデータを破棄しない
+        _logger.exception("detail preset redraw failed")
+
+
+class BMANGA_OT_detail_preset_apply(Operator):
+    """詳細設定を開いた時に固定した対象へプリセットを即時適用する。"""
+
+    bl_idname = "bmanga.detail_preset_apply"
+    bl_label = "プリセットを適用"
+    bl_description = "この詳細設定の対象だけへプリセットを適用します"
+    bl_options = {"INTERNAL"}
+    bl_property = "preset_name"
+
+    preset_type: StringProperty(  # type: ignore[valid-type]
+        name="プリセット種別",
+        default="",
+        options={"HIDDEN"},
+    )
+    preset_name: EnumProperty(name="プリセット", items=_preset_enum_items)  # type: ignore[valid-type]
+    target_kind: StringProperty(  # type: ignore[valid-type]
+        name="対象種別",
+        default="",
+        options={"HIDDEN"},
+    )
+    target_id: StringProperty(  # type: ignore[valid-type]
+        name="対象ID",
+        default="",
+        options={"HIDDEN"},
+    )
+    stable_id: StringProperty(  # type: ignore[valid-type]
+        name="安定ID",
+        default="",
+        options={"HIDDEN"},
+    )
+    stack_uid: StringProperty(  # type: ignore[valid-type]
+        name="一覧UID",
+        default="",
+        options={"HIDDEN"},
+    )
+    session_token: StringProperty(name="詳細設定セッション", default="", options={"HIDDEN"})  # type: ignore[valid-type]
+
+    def execute(self, context):
+        preset_type = _preset_type(self.preset_type)
+        preset_name = str(self.preset_name or "").strip()
+        if not preset_name or preset_name == _EMPTY_PRESET:
+            self.report({"WARNING"}, "適用できるプリセットがありません")
+            return {"CANCELLED"}
+        try:
+            target = _resolve_fixed_target(
+                context,
+                preset_type=preset_type,
+                target_kind=self.target_kind,
+                target_id=self.target_id,
+                stable_id=self.stable_id,
+                stack_uid=self.stack_uid,
+            )
+            if self.session_token:
+                from . import detail_dialog_runtime
+
+                if not detail_dialog_runtime.preset_session_is_open(
+                    self.session_token, target
+                ):
+                    raise ValueError("詳細設定を開いた対象が変更されています")
+                applied_name = detail_dialog_runtime.execute_transactional_detail_action(
+                    context,
+                    self.session_token,
+                    self.bl_idname,
+                    target.kind,
+                    target.stable_id,
+                    lambda fixed_target: apply_preset_to_target(
+                        context,
+                        fixed_target,
+                        preset_type,
+                        preset_name,
+                    ),
+                )
+            else:
+                applied_name = apply_preset_to_target(
+                    context, target, preset_type, preset_name
+                )
+        except (LookupError, RuntimeError, ValueError, ReferenceError) as exc:
+            self.report({"WARNING"}, str(exc) or "詳細設定の対象へ適用できませんでした")
+            return {"CANCELLED"}
+        except Exception as exc:  # 予期しない失敗も別対象へのフォールバックはしない
+            _logger.exception("detail preset apply failed")
+            self.report({"ERROR"}, f"プリセットを適用できませんでした: {exc}")
+            return {"CANCELLED"}
+        if self.session_token:
+            detail_dialog_runtime.record_preset_selection(
+                self.session_token,
+                target,
+                applied_name,
+                preset_type=preset_type,
+            )
+        _refresh_after_apply(context)
+        self.report({"INFO"}, f"プリセットを適用しました: {applied_name}")
+        return {"FINISHED"}
+
+
+_CLASSES = (BMANGA_OT_detail_preset_apply,)
+
+
+def register() -> None:
+    for cls in _CLASSES:
+        bpy.utils.register_class(cls)
+
+
+def unregister() -> None:
+    for cls in reversed(_CLASSES):
+        bpy.utils.unregister_class(cls)
+
+
+__all__ = [
+    "BMANGA_OT_detail_preset_apply",
+    "apply_preset_to_target",
+    "register",
+    "unregister",
+]

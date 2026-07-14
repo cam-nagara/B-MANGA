@@ -31,7 +31,12 @@ def main() -> None:
     try:
         from bmanga_dev_outliner_order.core.work import get_work
         from bmanga_dev_outliner_order.io import schema
-        from bmanga_dev_outliner_order.utils import layer_object_sync, layer_stack, outliner_model
+        from bmanga_dev_outliner_order.utils import (
+            layer_object_sync,
+            layer_stack,
+            outliner_model,
+            page_file_scene,
+        )
 
         context = bpy.context
         work = get_work(context)
@@ -52,6 +57,9 @@ def main() -> None:
             coma.rect_height_mm = 90.0
             coma.z_order = page_index
 
+        # 作品一覧はプレビュー専用で outside だけを持つ。主要Collection順は
+        # 実レイヤーを持つページ編集シーンに切り替えて確認する。
+        assert page_file_scene.set_page_edit_state(context, "p0001")
         layer_object_sync.mirror_work_to_outliner(context.scene, work)
         root = outliner_model.ensure_root_collection(context.scene)
         names = [coll.name for coll in root.children]

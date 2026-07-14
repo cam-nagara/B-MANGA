@@ -356,7 +356,18 @@ def _ensure_gp_fill_material(obj) -> int:
     if obj is None or getattr(obj, "type", "") != "GREASEPENCIL":
         return 0
     name = "BManga_Mask_Fill"
-    mat = bpy.data.materials.get(name)
+    slots = getattr(getattr(obj, "data", None), "materials", None)
+    mat = None
+    # 別ページから同名材質を復元するとBlenderが ``.001`` を付ける。その
+    # 専用コピーを見つけず共有基準材を追加すると、マスク再生成のたびに
+    # スロットが増えるため、まず対象Object内の予約名系列を再利用する。
+    for candidate in slots or ():
+        candidate_name = str(getattr(candidate, "name", "") or "")
+        if candidate_name == name or candidate_name.startswith(f"{name}."):
+            mat = candidate
+            break
+    if mat is None:
+        mat = bpy.data.materials.get(name)
     if mat is None:
         mat = bpy.data.materials.new(name=name)
         try:
@@ -378,11 +389,11 @@ def _ensure_gp_fill_material(obj) -> int:
             pass
     # slot 確保
     try:
-        existing_names = [m.name for m in obj.data.materials if m is not None]
-        if mat.name not in existing_names:
-            obj.data.materials.append(mat)
-            existing_names.append(mat.name)
-        return existing_names.index(mat.name)
+        for index, existing in enumerate(slots or ()):
+            if existing is mat:
+                return index
+        obj.data.materials.append(mat)
+        return len(obj.data.materials) - 1
     except Exception:  # noqa: BLE001
         return 0
 

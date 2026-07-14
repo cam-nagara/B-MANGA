@@ -65,6 +65,19 @@ def mark_entry_counts_synced(scene=None) -> None:
         pass
 
 
+def _entry_targets_other_page(scene, entry) -> bool:
+    """現在のpage.blend外へ移送済みの実体をOutliner変更として扱わない。"""
+    from . import page_file_scene
+
+    current_page_id = page_file_scene.current_page_id(scene)
+    parent_kind = str(getattr(entry, "parent_kind", "") or "")
+    parent_key = str(getattr(entry, "parent_key", "") or "")
+    if not current_page_id or parent_kind not in {"page", "coma"} or not parent_key:
+        return False
+    target_page_id = parent_key.split(":", 1)[0]
+    return bool(target_page_id and target_page_id != current_page_id)
+
+
 def _writeback_raster_parent(scene, obj, new_kind: str, new_key: str) -> bool:
     """Outliner D&D を ``BMangaRasterLayer`` に書き戻す (Phase 3a).
 
@@ -90,6 +103,11 @@ def _writeback_raster_parent(scene, obj, new_kind: str, new_key: str) -> bool:
             entry = e
             break
     if entry is None:
+        return False
+    if _entry_targets_other_page(scene, entry):
+        # ページ間移送直後は旧page.blend内の表示Objectだけが一時的に残る。
+        # そのObjectの退避先を、移送済みentryへ逆流させない。
+        los.update_snapshot(obj)
         return False
     if new_kind == "folder":
         _logger.warning(
@@ -204,6 +222,9 @@ def _writeback_empty_layer_parent(
     else:  # text
         page, entry = elo.find_text_entry(scene, bid)
     if entry is None:
+        return False
+    if kind == "image" and _entry_targets_other_page(scene, entry):
+        los.update_snapshot(obj)
         return False
     new_pk, new_pkey, new_fk = _resolve_parent_kind_key_folder(new_kind, new_key)
     if not new_pk:
@@ -338,7 +359,7 @@ def _writeback_outliner_changes(scene) -> int:
         ok = False
         if kind == "raster":
             ok = _writeback_raster_parent(scene, obj, new_kind, new_key)
-        elif kind in {"effect", "effect_legacy", "gp"}:
+        elif kind in {"effect", "gp"}:
             ok = _writeback_effect_parent(scene, obj, new_kind, new_key)
         elif kind == "image_path":
             ok = _writeback_image_path_parent(scene, obj, new_kind, new_key)
@@ -360,7 +381,7 @@ def _scan_once() -> float | None:
 
     対応 kind:
         - raster: BMangaRasterLayer.parent_kind/parent_key を書戻し
-        - effect / effect_legacy / gp: Object custom property を書戻し
+        - effect / gp: Object custom property を書戻し
     """
     global _LAST_ENTRY_COUNTS
     if los.is_sync_in_progress():

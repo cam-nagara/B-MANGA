@@ -577,6 +577,26 @@ def delete_preset(work_dir: Path | None, name: str) -> None:
     _write_local_index(index)
 
 
+def move_preset(work_dir: Path | None, name: str, direction: str) -> list[str]:
+    name = name.strip()
+    order = _visible_order_names(work_dir)
+    if name not in order:
+        raise ValueError(f"プリセットが見つかりません: {name}")
+    index = order.index(name)
+    if direction == "UP":
+        new_index = max(0, index - 1)
+    elif direction == "DOWN":
+        new_index = min(len(order) - 1, index + 1)
+    else:
+        raise ValueError(f"不明な移動方向です: {direction}")
+    if new_index != index:
+        order.insert(new_index, order.pop(index))
+    preset_index = _read_local_index()
+    preset_index["order"] = order
+    _write_local_index(preset_index)
+    return order
+
+
 _FORBIDDEN = '<>:"/\\|?*'
 
 

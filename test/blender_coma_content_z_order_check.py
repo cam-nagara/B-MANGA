@@ -182,7 +182,7 @@ def main() -> None:
         balloon_uid = layer_stack_utils.target_uid("balloon", f"{page.id}:{balloon.id}")
         effect_uid = layer_stack_utils.target_uid(
             "effect",
-            layer_stack_utils._node_stack_key(effect_obj.data.layers[0]),
+            str(effect_obj.get("bmanga_id", "") or ""),
         )
         initial_uids = [layer_stack_utils.stack_item_uid(item) for item in stack]
         empty_rows = [

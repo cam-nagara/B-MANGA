@@ -8,11 +8,9 @@
 
 両方を自動検出して同じ方法で扱えるよう ``_gp_data_blocks()`` でラップ。
 
-Phase 2 以降は「ページごとに 1 つの GP オブジェクト」モデル:
-- ルート Collection ``B-MANGA`` の下に ページ Collection ``page_NNNN`` を持ち、
-  その中に GP オブジェクト ``page_NNNN_sketch`` (データ ``page_NNNN_sketch_data``)
-  を配置する。ページ Collection 自体の transform に grid offset (負の X) を
-  かけることで overview での全ページ配置を実現する。
+現行モデルは「1 GP Object = 1 B-MANGA 手描きレイヤー」。各Object内には
+実描画用の ``content`` レイヤーだけを置き、ページ／コマ／汎用フォルダーへの
+所属と一覧上の並びはObjectの安定IDと管理メタデータで扱う。
 """
 
 from __future__ import annotations
@@ -23,6 +21,9 @@ from typing import Iterable
 import bpy
 
 from ..utils import log
+from .gp_material_isolation import MATERIAL_OWNER_PROP
+from .gp_material_isolation import ensure_unique_object_materials
+from .gp_material_isolation import material_owner_id
 
 _logger = log.get_logger(__name__)
 
@@ -57,14 +58,6 @@ def page_collection_name(page_id: str) -> str:
     mirror 統一により ``p0001`` のシンプル名に統合 (2026-04-30)。
     """
     return str(page_id) if page_id else ""
-
-
-def page_gp_object_name(page_id: str) -> str:
-    return f"page_{page_id}_sketch"
-
-
-def page_gp_data_name(page_id: str) -> str:
-    return f"page_{page_id}_sketch_data"
 
 
 # ---------- GP v3 低レベル ----------
@@ -124,43 +117,48 @@ def ensure_default_stroke_material(
     if obj is None or obj.type != "GREASEPENCIL":
         return None
 
-    mat = bpy.data.materials.get(name)
-    if mat is None:
-        mat = bpy.data.materials.new(name=name)
-        # GP v3 ではマテリアル生成直後に ``grease_pencil`` サブ struct が
-        # 未初期化の場合があるので、旧 v2 互換 API の
-        # ``create_gpencil_data`` で初期化を促す。既に存在していれば no-op。
-        if getattr(mat, "grease_pencil", None) is None:
+    slots = getattr(getattr(obj, "data", None), "materials", None)
+    if slots is None:
+        return None
+    owner_id = material_owner_id(obj)
+    # 既にこの Object 用の既定材があれば再利用する。別 Object の基準名材を
+    # 毎回追加すると、再同期のたびにスロットが増えるためである。
+    for index, existing in enumerate(slots):
+        if existing is None:
+            continue
+        existing_owner = str(existing.get(MATERIAL_OWNER_PROP, "") or "")
+        existing_name = str(getattr(existing, "name", "") or "")
+        if existing_owner == owner_id or existing_name == name or existing_name.startswith(f"{name}."):
+            ensure_unique_object_materials(obj)
+            material = slots[index]
             try:
-                bpy.data.materials.create_gpencil_data(mat)
-            except (AttributeError, RuntimeError):
-                pass
-        gp_style = getattr(mat, "grease_pencil", None)
-        if gp_style is not None:
-            try:
-                gp_style.show_stroke = True
+                obj.active_material_index = index
             except Exception:  # noqa: BLE001
                 pass
-            try:
-                gp_style.color = color
-            except Exception:  # noqa: BLE001
-                pass
-            try:
-                gp_style.show_fill = False
-            except Exception:  # noqa: BLE001
-                pass
+            return material
 
-    # Object の material slot に追加 (未追加なら)
+    mat = bpy.data.materials.get(name)
+    created = mat is None
+    if created:
+        mat = bpy.data.materials.new(name=name)
+
+    # Object の material slot に追加し、共有されていた場合は対象 Object だけ
+    # 専用コピーへ差し替えてから色などの可変値へ触れる。
     try:
-        existing_names = [m.name for m in obj.data.materials if m is not None]
-        if mat.name not in existing_names:
-            obj.data.materials.append(mat)
-            existing_names.append(mat.name)
-        # active material slot をこのマテリアルに
-        try:
-            obj.active_material_index = existing_names.index(mat.name)
-        except ValueError:
-            pass
+        material_index = _material_slot_index(obj, mat)
+        ensure_unique_object_materials(obj)
+        slots = getattr(getattr(obj, "data", None), "materials", None)
+        if slots is None:
+            return None
+        if material_index < 0 or material_index >= len(slots):
+            return None
+        mat = slots[material_index]
+        gp_style = _ensure_gp_material_data(mat)
+        if gp_style is not None and created:
+            gp_style.show_stroke = True
+            gp_style.color = color
+            gp_style.show_fill = False
+        obj.active_material_index = material_index
     except Exception:  # noqa: BLE001
         _logger.exception("ensure_default_stroke_material: attach failed")
     return mat
@@ -255,9 +253,20 @@ def ensure_layer_material(
     if mat is None:
         mat = bpy.data.materials.new(name=mat_name)
         created = True
-        _store_layer_material_name(layer, mat.name)
-    else:
-        _store_layer_material_name(layer, mat.name)
+
+    material_index = _material_slot_index(obj, mat)
+    ensure_unique_object_materials(obj)
+    # ensure_unique_object_materials() が共有GPデータを複製した場合も、現在の
+    # Objectに属する内容レイヤーとMaterialへ参照を取り直す。
+    layer_name = str(getattr(layer, "name", "") or "")
+    current_layers = getattr(getattr(obj, "data", None), "layers", None)
+    if current_layers is not None:
+        layer = current_layers.get(layer_name) or getattr(current_layers, "active", None) or layer
+    slots = getattr(getattr(obj, "data", None), "materials", None)
+    if slots is None or material_index < 0 or material_index >= len(slots):
+        return None
+    mat = slots[material_index]
+    _store_layer_material_name(layer, mat.name)
 
     style_missing = getattr(mat, "grease_pencil", None) is None
     gp_style = _ensure_gp_material_data(mat)
@@ -284,7 +293,6 @@ def ensure_layer_material(
     except Exception:  # noqa: BLE001
         pass
 
-    material_index = _material_slot_index(obj, mat)
     if activate and material_index >= 0:
         try:
             obj.active_material_index = material_index
@@ -482,79 +490,11 @@ def ensure_page_collection(scene, page_id: str):
     return coll
 
 
-# ---------- master GP (作品全ページ共通の単一 GP) ----------
-#
-# 旧仕様: ページごとに page_NNNN_sketch GP を生成 → ストロークがどのページに
-# 属するか分かりにくい問題があった。
-# 新仕様: 作品全体で 1 つの ``bmanga_master_sketch`` GP を持つ。各レイヤーは
-# 全ページに横断的に存在する (CSP のレイヤーパネル感覚)。ストロークの
-# world 座標がそのままページ位置を表す。
-# 既存 .blend に残る page_NNNN_sketch は「残置」(削除も移行もしない)。
+# ---------- 移行元となる旧集約 GP の識別名 ----------
+# 通常処理では生成・取得せず、旧データの検出と安全な除去にだけ使う。
 
 MASTER_GP_OBJECT_NAME = "bmanga_master_sketch"
 MASTER_GP_DATA_NAME = "bmanga_master_sketch_data"
-
-
-def ensure_master_gpencil(scene, layer_name: str = "ネーム"):
-    """作品全体で唯一の master GP オブジェクトを取得/生成して返す.
-
-    - Object 名: ``bmanga_master_sketch``
-    - Data 名: ``bmanga_master_sketch_data``
-    - ルート Collection (B-MANGA) 直下にリンク
-    - location は (0, 0, GP_Z_LIFT_M) 固定 (用紙 overlay z=0 より +1mm 手前)
-    - 既定レイヤー + 現在フレーム + 黒線マテリアルを自動補完
-    """
-    from .page_grid import GP_Z_LIFT_M
-
-    root = ensure_root_collection(scene)
-    obj = bpy.data.objects.get(MASTER_GP_OBJECT_NAME)
-    if obj is None:
-        gp_data = ensure_gpencil(MASTER_GP_DATA_NAME)
-        obj = bpy.data.objects.new(MASTER_GP_OBJECT_NAME, gp_data)
-    # ルート Collection にリンク (他コレクションからは外す)
-    _relink_object_to_collection_only(scene, obj, root)
-    # location を固定 (Z リフトのみ)
-    try:
-        obj.location = (0.0, 0.0, GP_Z_LIFT_M)
-    except Exception:  # noqa: BLE001
-        pass
-    # 既定レイヤー + フレーム
-    layer = None
-    if len(obj.data.layers) == 0:
-        try:
-            layer = ensure_layer(obj.data, layer_name)
-        except Exception:  # noqa: BLE001
-            _logger.exception("ensure_master_gpencil: default layer create failed")
-    else:
-        layer = getattr(obj.data.layers, "active", None) or obj.data.layers[0]
-    if layer is not None and hasattr(layer, "frames"):
-        if len(layer.frames) == 0:
-            try:
-                frame_num = scene.frame_current if scene is not None else 1
-                ensure_active_frame(layer, frame_number=frame_num)
-            except Exception:  # noqa: BLE001
-                _logger.exception("ensure_master_gpencil: default frame create failed")
-    # レイヤー専用マテリアル
-    try:
-        layers = getattr(obj.data, "layers", None)
-        if layers is not None and len(layers) > 0:
-            for existing_layer in layers:
-                ensure_layer_material(
-                    obj,
-                    existing_layer,
-                    activate=(existing_layer == layer),
-                    assign_existing=True,
-                )
-        else:
-            ensure_default_stroke_material(obj)
-    except Exception:  # noqa: BLE001
-        _logger.exception("ensure_master_gpencil: layer material setup failed")
-    return obj
-
-
-def get_master_gpencil():
-    """既存の master GP オブジェクトを返す (無ければ None)."""
-    return bpy.data.objects.get(MASTER_GP_OBJECT_NAME)
 
 
 # ---------- 旧紙メッシュ互換 ----------
@@ -756,24 +696,6 @@ def get_page_paper(page_id: str):
     return bpy.data.objects.get(page_paper_object_name(page_id))
 
 
-def ensure_page_gpencil(scene, page_id: str, layer_name: str = "ネーム"):
-    """[新仕様] master GP のラッパー — ページ単位の GP は作らない.
-
-    旧仕様 (page_NNNN_sketch) は廃止。ストロークがどのページにあるかを
-    座標で判定する master GP 方式に統一。
-    この関数は既存呼び出し箇所の互換維持のために残し、内部で:
-      - ページ Collection を確保
-      - 旧仕様の紙メッシュがあれば削除
-      - master GP を ensure (作品で 1 つだけ)
-    を実行し、master GP オブジェクトを返す。
-    """
-    # ページ Collection は旧 page GP 互換の入れ物として残すが、紙メッシュは作らない。
-    ensure_page_collection(scene, page_id)
-    remove_page_paper(page_id)
-    # 新仕様: 全ページ共通の master GP を返す
-    return ensure_master_gpencil(scene, layer_name=layer_name)
-
-
 def _relink_object_to_collection_only(scene, obj, target_coll) -> None:
     """``obj`` を ``target_coll`` のみにリンクし、他の Collection からは外す.
 
@@ -802,56 +724,9 @@ def _relink_object_to_collection_only(scene, obj, target_coll) -> None:
             _logger.exception("link to %s failed", target_coll.name)
 
 
-def remove_page_gpencil(page_id: str) -> None:
-    """ページ GP オブジェクト / データ / Collection / 旧紙メッシュを完全削除.
-
-    データブロックは users=0 になった段階でクリーンアップ。
-    旧紙メッシュ (page_NNNN_paper) と紙メッシュデータも併せて削除する
-    (残すと .blend サイズが膨らみ、削除済みページのデータが幽霊として残る)。
-    """
-    obj_name = page_gp_object_name(page_id)
-    data_name = page_gp_data_name(page_id)
-    coll_name = page_collection_name(page_id)
-
-    # GP オブジェクト
-    obj = bpy.data.objects.get(obj_name)
-    if obj is not None:
-        try:
-            bpy.data.objects.remove(obj, do_unlink=True)
-        except Exception:  # noqa: BLE001
-            _logger.exception("remove GP object failed: %s", obj_name)
-
-    remove_page_paper(page_id)
-
-    # GP データブロック
-    try:
-        blocks = _gp_data_blocks()
-    except RuntimeError:
-        blocks = None
-    if blocks is not None:
-        gp_data = blocks.get(data_name)
-        if gp_data is not None and gp_data.users == 0:
-            try:
-                blocks.remove(gp_data)
-            except Exception:  # noqa: BLE001
-                _logger.exception("remove GP data failed: %s", data_name)
-
-    coll = bpy.data.collections.get(coll_name)
-    if coll is not None:
-        try:
-            bpy.data.collections.remove(coll)
-        except Exception:  # noqa: BLE001
-            _logger.exception("remove page collection failed: %s", coll_name)
-
-
 def get_page_collection(page_id: str):
     """既存の ``page_NNNN`` Collection を返す (無ければ None)."""
     return bpy.data.collections.get(page_collection_name(page_id))
-
-
-def get_page_gpencil(page_id: str):
-    """既存の ``page_NNNN_sketch`` GP オブジェクトを返す (無ければ None)."""
-    return bpy.data.objects.get(page_gp_object_name(page_id))
 
 
 # ---------- 見開き統合/解除用のリネーム・再リンクヘルパ ----------

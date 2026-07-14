@@ -12,6 +12,8 @@ from pathlib import Path
 
 from ..utils import json_io, log, paths
 from . import schema
+from .project_content_migration_lock import guard_path_write
+from .project_content_save_baseline import record_successful_tree_change
 
 _logger = log.get_logger(__name__)
 
@@ -108,14 +110,16 @@ def move_coma_files(
     paths.validate_coma_id(dst_coma_id)
     src_dir = paths.coma_dir(Path(work_dir), src_page_id, src_coma_id)
     dst_dir = paths.coma_dir(Path(work_dir), dst_page_id, dst_coma_id)
-    if not src_dir.exists():
-        return []
-    if dst_dir.exists():
-        raise FileExistsError(f"destination already exists: {dst_dir}")
-    dst_dir.parent.mkdir(parents=True, exist_ok=True)
-    shutil.move(str(src_dir), str(dst_dir))
-    moved = _rename_coma_artifacts(dst_dir, src_coma_id, dst_coma_id)
-    moved.append(dst_dir)
+    with guard_path_write(dst_dir):
+        if not src_dir.exists():
+            return []
+        if dst_dir.exists():
+            raise FileExistsError(f"destination already exists: {dst_dir}")
+        dst_dir.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(src_dir), str(dst_dir))
+        moved = _rename_coma_artifacts(dst_dir, src_coma_id, dst_coma_id)
+        moved.append(dst_dir)
+        record_successful_tree_change(src_dir, dst_dir)
     _logger.info(
         "coma moved: %s/%s -> %s/%s (%d paths)",
         src_page_id, src_coma_id, dst_page_id, dst_coma_id, len(moved),
@@ -137,14 +141,16 @@ def copy_coma_files(
     paths.validate_coma_id(dst_coma_id)
     src_dir = paths.coma_dir(Path(work_dir), src_page_id, src_coma_id)
     dst_dir = paths.coma_dir(Path(work_dir), dst_page_id, dst_coma_id)
-    if not src_dir.exists():
-        return []
-    if dst_dir.exists():
-        raise FileExistsError(f"destination already exists: {dst_dir}")
-    dst_dir.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(src_dir, dst_dir)
-    copied = _rename_coma_artifacts(dst_dir, src_coma_id, dst_coma_id)
-    copied.append(dst_dir)
+    with guard_path_write(dst_dir):
+        if not src_dir.exists():
+            return []
+        if dst_dir.exists():
+            raise FileExistsError(f"destination already exists: {dst_dir}")
+        dst_dir.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(src_dir, dst_dir)
+        copied = _rename_coma_artifacts(dst_dir, src_coma_id, dst_coma_id)
+        copied.append(dst_dir)
+        record_successful_tree_change(dst_dir)
     _logger.info(
         "coma copied: %s/%s -> %s/%s (%d paths)",
         src_page_id, src_coma_id, dst_page_id, dst_coma_id, len(copied),
@@ -156,8 +162,10 @@ def remove_coma_files(work_dir: Path, page_id: str, coma_id: str) -> int:
     paths.validate_page_id(page_id)
     paths.validate_coma_id(coma_id)
     coma_path = paths.coma_dir(Path(work_dir), page_id, coma_id)
-    if not coma_path.exists():
-        return 0
-    shutil.rmtree(coma_path)
+    with guard_path_write(coma_path):
+        if not coma_path.exists():
+            return 0
+        shutil.rmtree(coma_path)
+        record_successful_tree_change(coma_path)
     _logger.info("coma removed: %s/%s", page_id, coma_id)
     return 1

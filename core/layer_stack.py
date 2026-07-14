@@ -17,7 +17,6 @@ LAYER_KIND_ITEMS = (
     ("coma", "コマ", ""),
     ("coma_preview", "コマプレビュー", ""),
     ("gp", "グリースペンシル", ""),
-    ("gp_folder", "フォルダ", ""),
     ("layer_folder", "汎用フォルダ", ""),
     ("image", "画像", ""),
     ("image_path", "パターンカーブ", ""),
@@ -33,7 +32,6 @@ ACTIVE_LAYER_KIND_ITEMS = (
     ("page", "ページ", ""),
     ("coma", "コマ", ""),
     ("gp", "グリースペンシル", ""),
-    ("gp_folder", "フォルダ", ""),
     ("layer_folder", "汎用フォルダ", ""),
     ("image", "画像", ""),
     ("image_path", "パターンカーブ", ""),
@@ -171,7 +169,6 @@ def register() -> None:
         items=ACTIVE_LAYER_KIND_ITEMS,
         default="gp",
     )
-    bpy.types.Scene.bmanga_active_gp_folder_key = StringProperty(default="")
     bpy.types.Scene.bmanga_active_layer_folder_key = StringProperty(default="")
     bpy.types.Scene.bmanga_active_effect_layer_name = StringProperty(default="")
     bpy.types.Scene.bmanga_layer_stack_inline_edit_uid = StringProperty(default="")
@@ -185,7 +182,6 @@ def unregister() -> None:
         "bmanga_collapsed_balloon_group_keys",
         "bmanga_active_effect_layer_name",
         "bmanga_active_layer_folder_key",
-        "bmanga_active_gp_folder_key",
         "bmanga_active_layer_kind",
         "bmanga_active_layer_stack_visible_index",
         "bmanga_layer_stack_visible",

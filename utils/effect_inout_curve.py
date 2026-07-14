@@ -214,6 +214,37 @@ def ensure_profile_node(
     return _ensure_node(nt, node_name, label, display_points, mat, source_prop)
 
 
+def restore_ui_nodes_from_params(params) -> bool:
+    """キャンセル後の保存値を全編集グラフへ強制的に戻す。"""
+
+    if bpy is None or params is None:
+        return False
+    mat = bpy.data.materials.get(MATERIAL_NAME) or bpy.data.materials.new(MATERIAL_NAME)
+    mat.use_nodes = True
+    nt = mat.node_tree
+    if nt is None:
+        return False
+    specs = [
+        (IN_NODE_NAME, "入りカーブ", getattr(params, "in_easing_curve", DEFAULT_CURVE_TEXT), IN_SOURCE_PROP),
+        (OUT_NODE_NAME, "抜きカーブ", getattr(params, "out_easing_curve", DEFAULT_CURVE_TEXT), OUT_SOURCE_PROP),
+        (PROFILE_NODE_NAME, "線幅グラフ", flip_horizontal(profile_points_from_params(params)), PROFILE_SOURCE_PROP),
+    ]
+    for fields, node_name, source_prop, label in (
+        (WHITE_PROFILE_FIELDS, WHITE_PROFILE_NODE_NAME, WHITE_PROFILE_SOURCE_PROP, "白線幅グラフ"),
+        (BLACK_PROFILE_FIELDS, BLACK_PROFILE_NODE_NAME, BLACK_PROFILE_SOURCE_PROP, "黒線幅グラフ"),
+    ):
+        if all(hasattr(params, attr) for attr in fields.values()):
+            specs.append(
+                (node_name, label, flip_horizontal(profile_points_from_params(params, fields)), source_prop)
+            )
+    for node_name, label, stored_points, source_prop in specs:
+        node = _ensure_node(nt, node_name, label, stored_points, mat, source_prop)
+        normalized = parse_points(stored_points)
+        _apply_points_to_node(node, normalized)
+        mat[source_prop] = points_to_text(normalized)
+    return True
+
+
 def get_ui_nodes():
     if bpy is None:
         return None, None
@@ -316,6 +347,27 @@ def request_live_profile_sync(
         bpy.app.timers.register(_live_profile_sync_tick, first_interval=0.15)
     except Exception:  # noqa: BLE001
         _LIVE_PROFILE_RUNNING = False
+
+
+def release_live_profile_sync(params) -> None:
+    """指定した詳細設定対象の短周期同期を終了する。"""
+
+    if params is None:
+        return
+    for node_name, request in tuple(_LIVE_PROFILE_REQUESTS.items()):
+        if request[0] is params:
+            _LIVE_PROFILE_REQUESTS.pop(node_name, None)
+    if _LIVE_PROFILE_REQUESTS:
+        return
+    global _LIVE_PROFILE_RUNNING
+    _LIVE_PROFILE_RUNNING = False
+    if bpy is None:
+        return
+    try:
+        if bpy.app.timers.is_registered(_live_profile_sync_tick):
+            bpy.app.timers.unregister(_live_profile_sync_tick)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def sync_ui_nodes_to_params(params) -> bool:

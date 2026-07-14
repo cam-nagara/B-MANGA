@@ -8,7 +8,16 @@ from ..core.work import get_work
 from .layer_hierarchy import OUTSIDE_STACK_KEY, outside_child_key, page_stack_key, split_child_key
 
 LAYER_FOLDER_KIND = "layer_folder"
-FOLDER_CHILD_KINDS = {"image", "image_path", "raster", "fill", "balloon", "text"}
+FOLDER_CHILD_KINDS = {
+    "gp",
+    "effect",
+    "image",
+    "image_path",
+    "raster",
+    "fill",
+    "balloon",
+    "text",
+}
 FOLDER_CONTAINER_CHILD_KINDS = FOLDER_CHILD_KINDS | {LAYER_FOLDER_KIND}
 
 
@@ -143,6 +152,10 @@ def _entry_for_kind_key(context, kind: str, key: str):
     work = get_work(context)
     kind = str(kind or "")
     key = str(key or "")
+    if kind in {"gp", "effect"}:
+        from . import layer_object_model
+
+        return layer_object_model.find_layer_object(kind, key)
     if kind == "image":
         return _find_by_id(getattr(scene, "bmanga_image_layers", None), key)
     if kind == "image_path":
@@ -173,6 +186,10 @@ def target_folder_key(context, kind: str, key: str) -> str:
     entry = _entry_for_kind_key(context, kind, key)
     if entry is None:
         return ""
+    if kind in {"gp", "effect"}:
+        from . import layer_object_model
+
+        return layer_object_model.folder_id(entry)
     return str(getattr(entry, "folder_key", "") or "")
 
 
@@ -182,6 +199,13 @@ def _iter_entries_for_identity(context, kind: str, key: str, preferred_parent_ke
     kind = str(kind or "")
     key = str(key or "")
     preferred_parent_key = str(preferred_parent_key or "")
+    if kind in {"gp", "effect"}:
+        from . import layer_object_model
+
+        obj = layer_object_model.find_layer_object(kind, key)
+        if obj is not None:
+            yield obj
+        return
     if kind == "image":
         for entry in getattr(scene, "bmanga_image_layers", []) or []:
             if str(getattr(entry, "id", "") or "") == key:
@@ -242,6 +266,14 @@ def set_item_folder_key(context, item, folder_key_value: str, preferred_parent_k
     key = str(getattr(item, "key", "") or "")
     changed = False
     for entry in _iter_entries_for_identity(context, kind, key, preferred_parent_key):
+        if kind in {"gp", "effect"}:
+            from . import layer_object_model
+
+            old = layer_object_model.folder_id(entry)
+            if old != str(folder_key_value or ""):
+                layer_object_model.set_folder_id(entry, str(folder_key_value or ""))
+                changed = True
+            continue
         if not hasattr(entry, "folder_key"):
             continue
         if str(getattr(entry, "folder_key", "") or "") != str(folder_key_value or ""):
@@ -260,8 +292,14 @@ def assign_item_to_folder(context, item, destination_folder_key: str) -> bool:
     entry = _entry_for_kind_key(context, kind, str(getattr(item, "key", "") or ""))
     current_parent = OUTSIDE_STACK_KEY
     if entry is not None:
-        parent_kind = str(getattr(entry, "parent_kind", "") or "")
-        parent_key = str(getattr(entry, "parent_key", "") or "")
+        if kind in {"gp", "effect"}:
+            from . import layer_object_model
+
+            parent_key = layer_object_model.parent_key(entry)
+            parent_kind = "coma" if ":" in parent_key else ("page" if parent_key else "none")
+        else:
+            parent_kind = str(getattr(entry, "parent_kind", "") or "")
+            parent_key = str(getattr(entry, "parent_key", "") or "")
         if parent_kind != "none" and parent_key:
             current_parent = parent_key
     old_folder_key = target_folder_key(context, kind, str(getattr(item, "key", "") or ""))
@@ -324,12 +362,24 @@ def descendant_folder_keys(work, root_key: str) -> set[str]:
 def _iter_folder_member_entries(context, folder_keys: set[str]):
     scene = getattr(context, "scene", None)
     work = get_work(context)
+    from . import layer_object_model
+
+    for kind in ("gp", "effect"):
+        for obj in layer_object_model.iter_layer_objects(kind):
+            if layer_object_model.folder_id(obj) in folder_keys:
+                yield kind, obj
     for entry in getattr(scene, "bmanga_image_layers", []) or []:
         if str(getattr(entry, "folder_key", "") or "") in folder_keys:
             yield "image", entry
     for entry in getattr(scene, "bmanga_raster_layers", []) or []:
         if str(getattr(entry, "folder_key", "") or "") in folder_keys:
             yield "raster", entry
+    for entry in getattr(scene, "bmanga_image_path_layers", []) or []:
+        if str(getattr(entry, "folder_key", "") or "") in folder_keys:
+            yield "image_path", entry
+    for entry in getattr(scene, "bmanga_fill_layers", []) or []:
+        if str(getattr(entry, "folder_key", "") or "") in folder_keys:
+            yield "fill", entry
     for entry in getattr(work, "shared_balloons", []) or []:
         if str(getattr(entry, "folder_key", "") or "") in folder_keys:
             yield "balloon", entry
@@ -348,12 +398,24 @@ def _iter_folder_member_entries(context, folder_keys: set[str]):
 def _folder_member_move_specs(context, folder_keys: set[str]):
     scene = getattr(context, "scene", None)
     work = get_work(context)
+    from . import layer_object_model
+
+    for kind in ("gp", "effect"):
+        for obj in layer_object_model.iter_layer_objects(kind):
+            if layer_object_model.folder_id(obj) in folder_keys:
+                yield kind, layer_object_model.stable_id(obj)
     for entry in getattr(scene, "bmanga_image_layers", []) or []:
         if str(getattr(entry, "folder_key", "") or "") in folder_keys:
             yield "image", str(getattr(entry, "id", "") or "")
     for entry in getattr(scene, "bmanga_raster_layers", []) or []:
         if str(getattr(entry, "folder_key", "") or "") in folder_keys:
             yield "raster", str(getattr(entry, "id", "") or "")
+    for entry in getattr(scene, "bmanga_image_path_layers", []) or []:
+        if str(getattr(entry, "folder_key", "") or "") in folder_keys:
+            yield "image_path", str(getattr(entry, "id", "") or "")
+    for entry in getattr(scene, "bmanga_fill_layers", []) or []:
+        if str(getattr(entry, "folder_key", "") or "") in folder_keys:
+            yield "fill", str(getattr(entry, "id", "") or "")
 
     shared_balloon_ids = {
         str(getattr(entry, "id", "") or "")
@@ -427,6 +489,15 @@ def remove_folder_preserve_children(work, key: str) -> bool:
     for _kind, entry in list(_iter_entries_from_work(work)):
         if str(getattr(entry, "folder_key", "") or "") == key:
             entry.folder_key = ""
+    try:
+        from . import layer_object_model
+
+        for kind in ("gp", "effect"):
+            for obj in layer_object_model.iter_layer_objects(kind):
+                if layer_object_model.folder_id(obj) == key:
+                    layer_object_model.set_folder_id(obj, "")
+    except Exception:  # noqa: BLE001
+        pass
     coll.remove(idx)
     return True
 
@@ -437,6 +508,10 @@ def _iter_entries_from_work(work):
         yield "image", entry
     for entry in getattr(scene, "bmanga_raster_layers", []) or []:
         yield "raster", entry
+    for entry in getattr(scene, "bmanga_image_path_layers", []) or []:
+        yield "image_path", entry
+    for entry in getattr(scene, "bmanga_fill_layers", []) or []:
+        yield "fill", entry
     for entry in getattr(work, "shared_balloons", []) or []:
         yield "balloon", entry
     for entry in getattr(work, "shared_texts", []) or []:

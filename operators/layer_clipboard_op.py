@@ -14,7 +14,7 @@ from ..utils import layer_stack as layer_stack_utils
 
 _LAYER_CLIPBOARD_KEY = "bmanga_layer_clipboard_json"
 _TAIL_CLIPBOARD_KEY = "bmanga_balloon_tail_clipboard_json"
-_COPYABLE_KINDS = {"balloon", "text", "raster", "gp", "effect", "effect_legacy"}
+_COPYABLE_KINDS = {"balloon", "text", "raster", "gp", "effect"}
 
 
 def _active_stack_item(context, *, sync: bool = False):
@@ -28,10 +28,6 @@ def _active_stack_item(context, *, sync: bool = False):
     if 0 <= idx < len(stack):
         return stack[idx]
     return None
-
-
-def _normal_kind(kind: str) -> str:
-    return "effect" if kind == "effect_legacy" else str(kind or "")
 
 
 def _item_uid(item) -> str:
@@ -80,12 +76,12 @@ def has_tail_clipboard(context) -> bool:
 
 def active_item_copyable(context) -> bool:
     item = _active_stack_item(context)
-    return item is not None and _normal_kind(getattr(item, "kind", "")) in _COPYABLE_KINDS
+    return item is not None and str(getattr(item, "kind", "") or "") in _COPYABLE_KINDS
 
 
 def active_balloon_has_tails(context) -> bool:
     item = _active_stack_item(context)
-    if item is None or _normal_kind(getattr(item, "kind", "")) != "balloon":
+    if item is None or str(getattr(item, "kind", "") or "") != "balloon":
         return False
     resolved = layer_stack_utils.resolve_stack_item(context, item)
     entry = resolved.get("target") if resolved is not None else None
@@ -94,7 +90,7 @@ def active_balloon_has_tails(context) -> bool:
 
 def active_balloon_target(context):
     item = _active_stack_item(context)
-    if item is None or _normal_kind(getattr(item, "kind", "")) != "balloon":
+    if item is None or str(getattr(item, "kind", "") or "") != "balloon":
         return None, None
     resolved = layer_stack_utils.resolve_stack_item(context, item)
     if resolved is None:
@@ -210,7 +206,7 @@ class BMANGA_OT_layer_clipboard_copy(Operator):
         item = _active_stack_item(context, sync=True)
         if item is None:
             return {"CANCELLED"}
-        kind = _normal_kind(str(getattr(item, "kind", "") or ""))
+        kind = str(getattr(item, "kind", "") or "")
         payload = {
             "type": "layer",
             "version": 1,
@@ -244,7 +240,7 @@ class BMANGA_OT_layer_clipboard_paste(Operator):
         if not layer_stack_utils.select_stack_index(context, index):
             self.report({"WARNING"}, "コピー元のレイヤーを選択できません")
             return {"CANCELLED"}
-        kind = _normal_kind(str(getattr(item, "kind", "") or ""))
+        kind = str(getattr(item, "kind", "") or "")
         if kind == "raster":
             ok = duplicate_raster_item(context, item)
         else:

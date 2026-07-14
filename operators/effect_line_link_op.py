@@ -99,18 +99,23 @@ def _iter_effect_objects():
 def _linked_effect_targets(effect_op, source_obj, source_layer, link_id: str):
     source_key = effect_op._layer_meta_key(source_layer)
     for obj in _iter_effect_objects():
+        # 個別効果線ではレイヤー名ではなく制御Objectの永続IDが一覧・選択の
+        # キーになる。Objectごとに唯一のcontentレイヤーを現行契約で解決し、
+        # 旧集約構造用だった任意レイヤー名検索へ戻さない。
+        effect_id = str(obj.get(on.PROP_ID, "") or "")
+        peer_obj, peer_layer = layer_stack_utils._find_effect_layer_by_key(effect_id)
+        if peer_obj != obj or peer_layer is None:
+            continue
+        key = effect_op._layer_meta_key(peer_layer)
+        if obj == source_obj and key == source_key:
+            continue
         meta = effect_op._effect_meta(obj)
-        layers = getattr(getattr(obj, "data", None), "layers", None)
-        for key, entry in list(meta.items()):
-            if obj == source_obj and key == source_key:
-                continue
-            if not isinstance(entry, dict):
-                continue
-            if str(entry.get(LINK_ID_PROP, "") or "") != link_id:
-                continue
-            peer_layer = layer_stack_utils._find_gp_layer_by_key(layers, key)
-            if peer_layer is not None:
-                yield obj, peer_layer, entry
+        entry = meta.get(key)
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get(LINK_ID_PROP, "") or "") != link_id:
+            continue
+        yield obj, peer_layer, entry
 
 
 def propagate_linked_effect_strokes(
@@ -168,8 +173,11 @@ def _copy_effect_meta_between_objects(effect_op, source_obj, source_layer, dest_
     return copied
 
 
-def _effect_layer_uid(layer) -> str:
-    return layer_stack_utils.target_uid("effect", layer_stack_utils._node_stack_key(layer))
+def _effect_layer_uid(obj) -> str:
+    from ..utils import layer_object_model
+
+    stable_id = layer_object_model.stable_id(obj)
+    return layer_stack_utils.target_uid("effect", stable_id) if stable_id else ""
 
 
 def _duplicate_parent_key(source_obj, source_layer, ui_parent_key: str = "") -> str:
@@ -211,7 +219,7 @@ def duplicate_effect_entry(
     )
     if linked:
         _ensure_effect_link_pair(effect_line_op, source_obj, source_layer, dest_obj, dest_layer)
-        layer_links.link_uids(context, [_effect_layer_uid(source_layer), _effect_layer_uid(dest_layer)])
+        layer_links.link_uids(context, [_effect_layer_uid(source_obj), _effect_layer_uid(dest_obj)])
         copied = effect_line_op._effect_meta(dest_obj).get(effect_line_op._layer_meta_key(dest_layer), copied)
         if not isinstance(copied, dict):
             copied = {}

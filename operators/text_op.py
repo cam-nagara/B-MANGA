@@ -351,8 +351,6 @@ def _select_text_index(context, work, page, text_index: int) -> bool:
     scene = context.scene
     if hasattr(scene, "bmanga_active_layer_kind"):
         scene.bmanga_active_layer_kind = "text"
-    if hasattr(scene, "bmanga_active_gp_folder_key"):
-        scene.bmanga_active_gp_folder_key = ""
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     uid = layer_stack_utils.target_uid(
         "text",

@@ -1,12 +1,4 @@
-"""Grease Pencil パネル — master GP (作品全ページ共通) のレイヤー管理 UI.
-
-新仕様:
-- 作品全体で 1 つの master GP オブジェクト (bmanga_master_sketch)
-- 各レイヤーは複数ページに横断的に存在 (CSP のレイヤーパネル感覚)
-- 「ページ GP 一覧」は廃止 (master GP 1 つだけなので不要)
-- レイヤー行の種類アイコンから各種設定ダイアログを開く
-- マテリアルは内部実装として隠し、ユーザーにはレイヤー設定だけを見せる
-"""
+"""Grease Pencilと統合レイヤー一覧のUI。"""
 
 from __future__ import annotations
 
@@ -16,6 +8,7 @@ from bpy.types import Panel, UIList
 from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_work
 from ..utils import gpencil as gp_utils
+from ..utils import detail_target_resolver
 from ..utils import layer_display
 from ..utils import layer_links
 from ..utils import layer_stack as layer_stack_utils
@@ -34,9 +27,14 @@ _LAYER_STACK_DEFAULT_ROWS = 6
 _logger = log.get_logger(__name__)
 
 
-def _master_gp_object():
-    """master GP オブジェクト (なければ None)."""
-    return gp_utils.get_master_gpencil()
+def _selected_gp_object():
+    """選択中、または先頭の個別手描きObjectを返す。"""
+    from ..utils import layer_object_model
+
+    active = getattr(bpy.context, "active_object", None)
+    if layer_object_model.is_layer_object(active, "gp"):
+        return active
+    return next(iter(layer_object_model.iter_layer_objects("gp")), None)
 
 
 def _active_gp_layer_target(context):
@@ -181,7 +179,7 @@ def _draw_visibility_slot(row, item, target, index: int) -> None:
         _visibility_button(row, index, _balloon_group_hidden(item, target))
     elif item.kind in {"balloon", "text"} and hasattr(target, "visible"):
         _visibility_button(row, index, not bool(target.visible))
-    elif item.kind in {"gp", "gp_folder", "effect"} and hasattr(target, "hide"):
+    elif item.kind in {"gp", "effect"} and hasattr(target, "hide"):
         _visibility_button(row, index, _gp_hidden(target))
     else:
         _draw_square_label(row)
@@ -221,17 +219,6 @@ def _draw_hierarchy_slot(row, item, target, index: int) -> None:
             icon="DISCLOSURE_TRI_DOWN" if expanded else "DISCLOSURE_TRI_RIGHT",
         )
         op.index = index
-    elif item.kind == "gp_folder":
-        expanded = bool(getattr(target, "is_expanded", True))
-        cell = row.row(align=True)
-        cell.ui_units_x = 1.0
-        op = cell.operator(
-            "bmanga.layer_stack_toggle_expanded",
-            text="",
-            emboss=False,
-            icon="DISCLOSURE_TRI_DOWN" if expanded else "DISCLOSURE_TRI_RIGHT",
-        )
-        op.index = index
     elif item.kind == "layer_folder":
         expanded = bool(getattr(target, "expanded", True))
         cell = row.row(align=True)
@@ -258,7 +245,13 @@ def _draw_hierarchy_slot(row, item, target, index: int) -> None:
         return
 
 
-def _draw_type_icon(row, index: int, icon: str) -> None:
+def _draw_type_icon(row, index: int, icon: str, *, item=None, target=None) -> None:
+    uid = layer_stack_utils.stack_item_uid(item) if item is not None else ""
+    if not uid or not detail_target_resolver.can_open_actual_detail(
+        str(getattr(item, "kind", "") or ""), target
+    ):
+        _select_icon(row, index, icon)
+        return
     cell = row.row(align=True)
     cell.ui_units_x = 1.0
     cell.operator_context = "INVOKE_DEFAULT"
@@ -269,6 +262,7 @@ def _draw_type_icon(row, index: int, icon: str) -> None:
         emboss=False,
     )
     op.index = index
+    op.uid = uid
 
 
 def _editable_name_prop(item, target) -> str | None:
@@ -281,7 +275,7 @@ def _editable_name_prop(item, target) -> str | None:
         target, "title"
     ):
         return "title"
-    if kind in {"gp", "gp_folder", "effect"} and hasattr(target, "name"):
+    if kind in {"gp", "effect"} and hasattr(target, "name"):
         return "name"
     return None
 
@@ -327,7 +321,7 @@ def _select_name(row, index: int, text: str, item=None, target=None) -> None:
 
 
 def _select_icon_name(row, index: int, text: str, icon: str, item=None, target=None) -> None:
-    _draw_type_icon(row, index, icon)
+    _draw_type_icon(row, index, icon, item=item, target=target)
     _select_name(row, index, text, item=item, target=target)
 
 
@@ -449,10 +443,10 @@ def _draw_right_controls(row, controls, index: int) -> None:
 def _draw_stack_gp_row(row, controls, item, resolved, index: int) -> None:
     target = resolved.get("target") if resolved is not None else None
     if target is None:
-        _draw_type_icon(row, index, _kind_icon(item.kind))
+        _draw_type_icon(row, index, _kind_icon(item.kind), item=item, target=target)
         _select_name(row, index, item.label or item.name or item.key or "レイヤー", item=item)
         return
-    _draw_type_icon(row, index, _kind_icon(item.kind))
+    _draw_type_icon(row, index, _kind_icon(item.kind), item=item, target=target)
     name = item.label if item.kind == "effect" and item.label else target.name
     if not str(name or "").strip():
         name = item.label or item.name or item.key or "レイヤー"
@@ -482,7 +476,7 @@ def _draw_stack_coma_row(row, controls, item, resolved, index: int) -> None:
         _select_icon_name(row, index, item.label, _kind_icon(item.kind), item=item)
         return
     title = str(getattr(target, "title", "") or "").strip()
-    _draw_type_icon(row, index, "MOD_WIREFRAME")
+    _draw_type_icon(row, index, "MOD_WIREFRAME", item=item, target=target)
     _select_name(row, index, title or "コマ", item=item, target=target)
     number_cell = row.row(align=True)
     number_cell.ui_units_x = 1.8
@@ -497,39 +491,42 @@ def _draw_stack_data_row(row, controls, item, resolved, index: int) -> None:
         _select_name(row, index, item.label or "(ページ外)", item=item)
         return
     if item.kind == "coma_preview":
-        _draw_type_icon(row, index, _kind_icon(item.kind))
+        _draw_type_icon(row, index, _kind_icon(item.kind), item=item, target=target)
         _select_name(row, index, item.label or "コマプレビュー", item=item)
         return
     if target is None:
-        _draw_type_icon(row, index, _kind_icon(item.kind))
+        _draw_type_icon(row, index, _kind_icon(item.kind), item=item, target=target)
         _select_name(row, index, item.label or item.name or item.key or "レイヤー", item=item)
         return
     if item.kind == "layer_folder":
-        _draw_type_icon(row, index, "FILE_FOLDER")
+        _draw_type_icon(row, index, "FILE_FOLDER", item=item, target=target)
         _select_name(row, index, getattr(target, "title", "") or item.label, item=item, target=target)
+        controls["aux"] = "lock"
+        controls["lock_target"] = target
+        controls["lock_prop"] = "locked"
     elif item.kind == "balloon_group":
-        _draw_type_icon(row, index, "FILE_FOLDER")
+        _draw_type_icon(row, index, "FILE_FOLDER", item=item, target=target)
         _select_name(row, index, item.label or "フキダシ結合", item=item, target=target)
     elif item.kind == "image":
-        _draw_type_icon(row, index, "IMAGE_DATA")
+        _draw_type_icon(row, index, "IMAGE_DATA", item=item, target=target)
         _select_name(row, index, getattr(target, "title", "") or item.label, item=item, target=target)
         controls["aux"] = "lock"
         controls["lock_target"] = target
         controls["lock_prop"] = "locked"
     elif item.kind == "raster":
-        _draw_type_icon(row, index, "BRUSH_DATA")
+        _draw_type_icon(row, index, "BRUSH_DATA", item=item, target=target)
         _select_name(row, index, getattr(target, "title", "") or item.label, item=item, target=target)
         controls["aux"] = "lock"
         controls["lock_target"] = target
         controls["lock_prop"] = "locked"
     elif item.kind == "fill":
-        _draw_type_icon(row, index, "NODE_TEXTURE")
+        _draw_type_icon(row, index, "NODE_TEXTURE", item=item, target=target)
         _select_name(row, index, getattr(target, "title", "") or item.label, item=item, target=target)
         controls["aux"] = "lock"
         controls["lock_target"] = target
         controls["lock_prop"] = "locked"
     elif item.kind == "balloon":
-        _draw_type_icon(row, index, "MOD_FLUID")
+        _draw_type_icon(row, index, "MOD_FLUID", item=item, target=target)
         _select_name(
             row,
             index,
@@ -542,7 +539,7 @@ def _draw_stack_data_row(row, controls, item, resolved, index: int) -> None:
             target=target,
         )
     elif item.kind == "text":
-        _draw_type_icon(row, index, "FONT_DATA")
+        _draw_type_icon(row, index, "FONT_DATA", item=item, target=target)
         # レイヤー一覧では本文が長文だと行が崩れるため、表示だけ7文字に
         # 切り詰める (データの title/body 自体は変更しない)。
         _select_name(
@@ -555,7 +552,7 @@ def _draw_stack_data_row(row, controls, item, resolved, index: int) -> None:
     elif item.kind == "effect":
         _draw_stack_gp_row(row, controls, item, resolved, index)
     else:
-        _draw_type_icon(row, index, _kind_icon(item.kind))
+        _draw_type_icon(row, index, _kind_icon(item.kind), item=item, target=target)
         _select_name(row, index, item.label or item.name or item.key or "レイヤー", item=item, target=target)
 
 
@@ -630,7 +627,7 @@ class BMANGA_UL_layer_stack(UIList):
             _draw_stack_page_row(left, item, resolved, index, get_work(context))
         elif item.kind == "coma":
             _draw_stack_coma_row(left, controls, item, resolved, index)
-        elif item.kind in {"gp", "gp_folder", "effect"}:
+        elif item.kind in {"gp", "effect"}:
             _draw_stack_gp_row(left, controls, item, resolved, index)
         else:
             _draw_stack_data_row(left, controls, item, resolved, index)
@@ -683,10 +680,6 @@ class BMANGA_UL_layer_panel_pages(UIList):
         open_cell.ui_units_x = 1.0
         open_op = open_cell.operator("bmanga.open_page_file", text="", icon="FILE_BLEND")
         open_op.index = index
-
-
-def draw_stack_item_detail(layout, context, item, resolved, *, wide: bool = False) -> bool:
-    return layer_stack_detail_ui.draw_stack_item_detail(layout, context, item, resolved, wide=wide)
 
 
 def _draw_page_list_box(layout, context) -> None:
@@ -804,6 +797,12 @@ def _draw_layer_stack_context_menu(self, context) -> None:
     uid = layer_stack_utils.stack_item_uid(item)
     if not uid:
         return
+    resolved = layer_stack_utils.resolve_stack_item(context, item)
+    target = resolved.get("target") if resolved is not None else None
+    if not detail_target_resolver.can_open_actual_detail(
+        str(getattr(item, "kind", "") or ""), target
+    ):
+        return
     layout = self.layout
     layout.separator()
     op = layout.operator("bmanga.layer_stack_detail", text="詳細設定", icon="PREFERENCES")
@@ -841,7 +840,7 @@ def _draw_layer_stack_rows(layout, context, stack) -> None:
             _draw_stack_page_row(left, item, resolved, index, get_work(context))
         elif item.kind == "coma":
             _draw_stack_coma_row(left, controls, item, resolved, index)
-        elif item.kind in {"gp", "gp_folder", "effect"}:
+        elif item.kind in {"gp", "effect"}:
             _draw_stack_gp_row(left, controls, item, resolved, index)
         else:
             _draw_stack_data_row(left, controls, item, resolved, index)
@@ -899,7 +898,7 @@ class BMANGA_PT_layer_stack(Panel):
 
 
 class BMANGA_PT_gpencil(Panel):
-    """master GP のモード / 描画色管理 UI."""
+    """個別手描きレイヤーのモード / 描画色管理 UI."""
 
     bl_idname = "BMANGA_PT_gpencil"
     bl_label = "Grease Pencil"
@@ -930,16 +929,16 @@ class BMANGA_PT_gpencil(Panel):
             layout.label(text="作品を開いてください", icon="INFO")
             return
 
-        # master GP の確保ボタン
+        # 選択対象が無い時は個別の手描きレイヤーを作る。
         layout.operator(
             "bmanga.gpencil_master_ensure",
-            text="マスター GP を用意",
+            text="手描きレイヤーを用意",
             icon="OUTLINER_OB_GREASEPENCIL",
         )
 
-        obj = _master_gp_object()
+        obj = _selected_gp_object()
         if obj is None:
-            layout.label(text="(マスター GP が未生成です)", icon="INFO")
+            layout.label(text="手描きレイヤーがありません", icon="INFO")
             return
 
         row = layout.row(align=True)
@@ -974,21 +973,19 @@ class BMANGA_PT_gpencil(Panel):
 
 
 class BMANGA_OT_gpencil_master_ensure(bpy.types.Operator):
-    """master GP オブジェクトを ensure (生成 or 既存取得) して active 化."""
+    """個別の手描きレイヤーを選択し、無ければ追加する互換入口。"""
 
     bl_idname = "bmanga.gpencil_master_ensure"
-    bl_label = "マスター GP を用意"
+    bl_label = "手描きレイヤーを用意"
     bl_options = {"REGISTER"}
 
     def execute(self, context):
-        scene = context.scene
-        if scene is None:
-            return {"CANCELLED"}
-        try:
-            obj = gp_utils.ensure_master_gpencil(scene)
-        except Exception as exc:  # noqa: BLE001
-            self.report({"ERROR"}, f"master GP 生成失敗: {exc}")
-            return {"CANCELLED"}
+        obj, _layer = _active_gp_layer_target(context)
+        if obj is None:
+            result = bpy.ops.bmanga.layer_stack_add("EXEC_DEFAULT", kind="gp")
+            if "FINISHED" not in result:
+                return result
+            obj, _layer = _active_gp_layer_target(context)
         vl = context.view_layer
         if vl is not None and obj is not None:
             try:
@@ -1000,13 +997,7 @@ class BMANGA_OT_gpencil_master_ensure(bpy.types.Operator):
 
 
 class BMANGA_OT_gpencil_master_mode_set(bpy.types.Operator):
-    """master GP を必ず active 化してからツールを切り替える wrapper.
-
-    UI のモード切替ボタンは ``bpy.ops.object.mode_set`` を直接呼ぶと、
-    view_layer.objects.active が master GP でない場合に意図しない
-    オブジェクトのモードが切り替わる。この wrapper で必ず master GP を
-    active 化してから mode_set を呼ぶ。
-    """
+    """選択中の個別GP Objectをactiveにしてツールを切り替える。"""
 
     bl_idname = "bmanga.gpencil_master_mode_set"
     bl_label = "B-MANGAツール切替"
@@ -1047,12 +1038,9 @@ class BMANGA_OT_gpencil_master_mode_set(bpy.types.Operator):
                 self.report({"WARNING"}, "グリースペンシルレイヤーを選択してください")
                 return {"CANCELLED"}
         else:
-            obj = gp_utils.get_master_gpencil()
+            obj = getattr(context, "active_object", None)
         if obj is None and self.mode == _GP_OBJECT_MODE:
-            try:
-                obj = gp_utils.ensure_master_gpencil(context.scene)
-            except Exception:  # noqa: BLE001
-                return {"CANCELLED"}
+            obj, _layer = _active_gp_layer_target(context)
         vl = context.view_layer
         if vl is not None:
             try:

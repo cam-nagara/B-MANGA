@@ -307,6 +307,7 @@ class BMANGA_OT_set_linked_balloon_preset(Operator):
             self.report({"WARNING"}, "プリセット編集対象が見つかりません")
             return {"CANCELLED"}
         entry = None
+        owner_page = None
         if target_id:
             # text_id が明示されている場合は、全ページの texts と
             # work.shared_texts (ページ外へ出した共有テキスト) を横断して
@@ -316,7 +317,7 @@ class BMANGA_OT_set_linked_balloon_preset(Operator):
             # 見つからなければフォールバックせずに CANCELLED する。
             from ..utils import text_real_object
 
-            _owner_page, entry = text_real_object.find_text_entry(context.scene, target_id)
+            owner_page, entry = text_real_object.find_text_entry(context.scene, target_id)
             if entry is None:
                 self.report({"WARNING"}, "対象のテキストが見つかりません")
                 return {"CANCELLED"}
@@ -326,47 +327,20 @@ class BMANGA_OT_set_linked_balloon_preset(Operator):
             page = get_active_page(context)
             if page is not None and 0 <= page.active_text_index < len(page.texts):
                 entry = page.texts[page.active_text_index]
+                owner_page = page
         if entry is None:
             self.report({"ERROR"}, "テキストが選択されていません")
             return {"CANCELLED"}
-        entry.linked_balloon_preset = self.preset_name
-        self._apply_to_parent_balloon(work, entry)
+        from ..utils import text_balloon_link
+
+        text_balloon_link.apply_linked_balloon_preset(
+            work,
+            entry,
+            self.preset_name,
+            page=owner_page,
+            stable_id=target_id,
+        )
         return {"FINISHED"}
-
-    @staticmethod
-    def _find_balloon_by_id(work, bid: str):
-        """全ページの balloons と work.shared_balloons を横断して id で探す.
-
-        operators/layer_detail_op._find_balloon_entry と同じ探索範囲。
-        ページ外へ出したフキダシ (共有フキダシ) も対象にするため、
-        アクティブページの balloons だけを見てはならない。
-        """
-        if work is None or not bid:
-            return None
-        for page in getattr(work, "pages", []):
-            for b in getattr(page, "balloons", []):
-                if str(getattr(b, "id", "") or "") == bid:
-                    return b
-        for b in getattr(work, "shared_balloons", []):
-            if str(getattr(b, "id", "") or "") == bid:
-                return b
-        return None
-
-    def _apply_to_parent_balloon(self, work, entry) -> None:
-        bid = str(getattr(entry, "parent_balloon_id", "") or "")
-        if not bid:
-            return
-        balloon = self._find_balloon_by_id(work, bid)
-        if balloon is None:
-            return
-        name = self.preset_name
-        if name:
-            balloon.shape = "custom"
-            balloon.custom_preset_name = name
-        else:
-            if str(getattr(balloon, "shape", "") or "") == "none":
-                balloon.shape = "rect"
-                balloon.custom_preset_name = ""
 
 
 class BMANGA_MT_linked_balloon_preset(Menu):

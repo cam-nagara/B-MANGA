@@ -101,7 +101,7 @@ def _build_scene(context):
     from bmanga_dev_full_audit.operators import balloon_op
     from bmanga_dev_full_audit.operators import effect_line_op
     from bmanga_dev_full_audit.operators import text_op
-    from bmanga_dev_full_audit.utils import gp_layer_parenting
+    from bmanga_dev_full_audit.utils import gp_object_layer, layer_object_model
     from bmanga_dev_full_audit.utils import gpencil as gp_utils
     from bmanga_dev_full_audit.utils import layer_hierarchy
     from bmanga_dev_full_audit.utils import object_naming as on
@@ -160,9 +160,16 @@ def _build_scene(context):
     )
     assert not missing
 
-    gp_obj = gp_utils.ensure_master_gpencil(context.scene)
-    gp_layer = gp_obj.data.layers.new("詳細GP")
-    gp_layer_parenting.set_parent_key(gp_layer, page_key)
+    gp_obj = gp_object_layer.create_layer_gp_object(
+        scene=context.scene,
+        bmanga_id=layer_object_model.make_stable_id("gp"),
+        title="詳細GP",
+        z_index=210,
+        parent_kind="page",
+        parent_key=page_key,
+    )
+    gp_layer = layer_object_model.content_layer(gp_obj)
+    assert gp_layer is not None
     frame = gp_utils.ensure_active_frame(gp_layer)
     assert frame is not None and frame.drawing is not None
     gp_utils.add_stroke_to_drawing(

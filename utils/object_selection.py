@@ -34,22 +34,27 @@ def text_key(page, entry) -> str:
     return make_key("text", _page_id(page), getattr(entry, "id", ""))
 
 
-def effect_key(layer) -> str:
+def _stable_layer_object_id(value, kind: str) -> str:
+    """管理Objectまたはそのcontentレイヤーから永続IDを返す。"""
     try:
-        ptr = int(layer.as_pointer())
+        from . import layer_object_model
+
+        if layer_object_model.is_layer_object(value, kind):
+            return layer_object_model.stable_id(value)
+        for obj in layer_object_model.iter_layer_objects(kind):
+            if layer_object_model.content_layer(obj) == value:
+                return layer_object_model.stable_id(obj)
     except Exception:  # noqa: BLE001
-        ptr = 0
-    item_id = f"ptr_{ptr:x}" if ptr else str(getattr(layer, "name", "") or "")
-    return make_key("effect", "", item_id)
+        pass
+    return ""
 
 
-def gp_key(layer) -> str:
-    try:
-        ptr = int(layer.as_pointer())
-    except Exception:  # noqa: BLE001
-        ptr = 0
-    item_id = f"ptr_{ptr:x}" if ptr else str(getattr(layer, "name", "") or "")
-    return make_key("gp", "", item_id)
+def effect_key(target) -> str:
+    return make_key("effect", "", _stable_layer_object_id(target, "effect"))
+
+
+def gp_key(target) -> str:
+    return make_key("gp", "", _stable_layer_object_id(target, "gp"))
 
 
 def page_key(page) -> str:
@@ -286,13 +291,12 @@ def _sync_balloon_flags(context, keys: list[str]) -> None:
             if hasattr(entry, "selected"):
                 entry.selected = make_key("raster", "", getattr(entry, "id", "")) in key_set
         try:
-            from ..utils import gpencil as gp_utils
+            from ..utils import layer_object_model
 
-            obj = gp_utils.get_master_gpencil()
-            layers = getattr(getattr(obj, "data", None), "layers", None) if obj is not None else None
-            if layers is not None:
-                for layer in layers:
-                    if hasattr(layer, "select"):
-                        layer.select = gp_key(layer) in key_set
+            for obj in layer_object_model.iter_layer_objects():
+                obj.select_set(
+                    (gp_key(obj) if layer_object_model.layer_kind(obj) == "gp" else effect_key(obj))
+                    in key_set
+                )
         except Exception:  # noqa: BLE001
             pass

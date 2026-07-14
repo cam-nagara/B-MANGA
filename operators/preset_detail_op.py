@@ -1,15 +1,10 @@
-"""プリセット詳細設定ダイアログ.
-
-各プリセットタイプ用の専用ダイアログを持つのをやめ、各ツールが普段使っている
-詳細設定描画関数 (panels/coma_detail_panel.py・operators/layer_detail_op.py・
-panels/effect_line_panel.py・panels/layer_stack_detail_ui.py・
-operators/balloon_tail_detail_op.py) をそのまま共用する。
+"""共通描画APIを使うプリセット詳細設定ダイアログ。
 
 流れ:
   invoke  — プリセット JSON を読み込み、WindowManager 上のスクラッチ
             PropertyGroup (実コマ/実テキスト等とは無関係な入れ物) へ
             io の apply 関数で流し込む。
-  draw    — 説明編集欄 + 各ツールの詳細設定描画関数 (``preset_mode=True``)。
+  draw    — 説明編集欄 + 保存可能項目だけを共通の順序で描画。
   execute — スクラッチ PropertyGroup から io の snapshot/save 関数で
             同じプリセット名へ上書き保存する。
 
@@ -39,6 +34,20 @@ from ..core.fill_layer import BMangaFillLayer
 from ..core.image_path_layer import BMangaImagePathLayer
 from ..core.text_entry import BMangaTextEntry
 from ..utils import log
+from ..utils.detail_dialog import (
+    DetailContractError,
+    DetailMode,
+    current_column_count_for_target,
+    resolve_detail_layout,
+    resolve_preset_detail_target,
+)
+from ..utils.detail_dialog_state import (
+    begin_detail_session,
+    cancel_detail_session,
+    commit_detail_session,
+)
+from ..utils.detail_state_adapters import ACTUAL_DETAIL_STATE_REGISTRY
+from ..panels.detail_drawers import draw_detail_dialog
 
 _logger = log.get_logger(__name__)
 
@@ -128,18 +137,6 @@ def _load_border(context, preset_name: str) -> str | None:
     return str(preset.data.get("description", "") or "")
 
 
-def _draw_border(layout, context) -> None:
-    from ..panels import coma_detail_panel
-
-    scratch = context.window_manager.bmanga_preset_scratch_border
-    border_box = layout.box()
-    border_box.label(text="枠線")
-    coma_detail_panel.draw_coma_border_settings(border_box, context, scratch, preset_mode=True)
-    white_box = layout.box()
-    white_box.label(text="フチ")
-    coma_detail_panel.draw_coma_white_margin_settings(white_box, scratch)
-
-
 def _save_border(context, preset_name: str, description: str) -> None:
     from ..io import border_presets
 
@@ -167,13 +164,6 @@ def _load_text(context, preset_name: str) -> str | None:
     return str(preset.data.get("description", "") or "")
 
 
-def _draw_text(layout, context) -> None:
-    from . import layer_detail_op
-
-    scratch = context.window_manager.bmanga_preset_scratch_text
-    layer_detail_op._draw_text_detail(layout, context, scratch, preset_mode=True)
-
-
 def _save_text(context, preset_name: str, description: str) -> None:
     from ..io import text_presets
 
@@ -194,17 +184,6 @@ def _load_effect_line(context, preset_name: str) -> str | None:
     return str(preset.data.get("description", "") or "")
 
 
-def _draw_effect_line(layout, context) -> None:
-    from . import layer_detail_op
-    from ..panels import effect_line_panel
-
-    scratch = context.window_manager.bmanga_preset_scratch_effect_line
-    cols = layer_detail_op._equal_columns(layout, 2)
-    effect_line_panel.draw_effect_params(
-        cols[0], scratch, with_generate_button=False, columns=cols, preset_mode=True
-    )
-
-
 def _save_effect_line(context, preset_name: str, description: str) -> None:
     from ..io import effect_line_presets
 
@@ -223,13 +202,6 @@ def _load_fill(context, preset_name: str) -> str | None:
     scratch.fill_type = "solid"
     fill_presets.apply_to_entry(scratch, preset.data)
     return str(preset.data.get("description", "") or "")
-
-
-def _draw_fill(layout, context) -> None:
-    from ..panels import layer_stack_detail_ui
-
-    scratch = context.window_manager.bmanga_preset_scratch_fill
-    layer_stack_detail_ui._draw_fill_selected_settings(layout, context, scratch, preset_mode=True)
 
 
 def _save_fill(context, preset_name: str, description: str) -> None:
@@ -253,13 +225,6 @@ def _load_gradient(context, preset_name: str) -> str | None:
     return str(preset.data.get("description", "") or "")
 
 
-def _draw_gradient(layout, context) -> None:
-    from ..panels import layer_stack_detail_ui
-
-    scratch = context.window_manager.bmanga_preset_scratch_gradient
-    layer_stack_detail_ui._draw_fill_selected_settings(layout, context, scratch, preset_mode=True)
-
-
 def _save_gradient(context, preset_name: str, description: str) -> None:
     from ..io import gradient_presets
 
@@ -280,13 +245,6 @@ def _load_image_path(context, preset_name: str) -> str | None:
     return str(preset.data.get("description", "") or "")
 
 
-def _draw_image_path(layout, context) -> None:
-    from . import layer_detail_op
-
-    scratch = context.window_manager.bmanga_preset_scratch_image_path
-    layer_detail_op._draw_image_path_detail(layout, context, scratch, preset_mode=True)
-
-
 def _save_image_path(context, preset_name: str, description: str) -> None:
     from ..io import image_path_presets
 
@@ -305,13 +263,6 @@ def _load_tail(context, preset_name: str) -> str | None:
     scratch.points.clear()
     tail_presets.apply_preset_to_tail(preset, scratch)
     return str(preset.data.get("description", "") or "")
-
-
-def _draw_tail(layout, context) -> None:
-    from . import balloon_tail_detail_op
-
-    scratch = context.window_manager.bmanga_preset_scratch_tail
-    balloon_tail_detail_op._draw_tail_box(layout, context, None, None, scratch, 0, preset_mode=True)
 
 
 def _save_tail(context, preset_name: str, description: str) -> None:
@@ -343,7 +294,6 @@ def _save_balloon(preset_name: str, description: str, data: dict[str, Any]) -> N
 
 
 _LoaderFn = Callable[[Any, str], "str | None"]
-_DrawerFn = Callable[[Any, Any], None]
 _SaverFn = Callable[[Any, str, str], None]
 
 _LOADERS: dict[str, _LoaderFn] = {
@@ -355,15 +305,6 @@ _LOADERS: dict[str, _LoaderFn] = {
     "image_path": _load_image_path,
     "tail": _load_tail,
 }
-_DRAWERS: dict[str, _DrawerFn] = {
-    "border": _draw_border,
-    "text": _draw_text,
-    "effect_line": _draw_effect_line,
-    "fill": _draw_fill,
-    "gradient": _draw_gradient,
-    "image_path": _draw_image_path,
-    "tail": _draw_tail,
-}
 _SAVERS: dict[str, _SaverFn] = {
     "border": _save_border,
     "text": _save_text,
@@ -374,32 +315,154 @@ _SAVERS: dict[str, _SaverFn] = {
     "tail": _save_tail,
 }
 
-_DIALOG_WIDTH: dict[str, int] = {
-    "border": 320,
-    "balloon": 320,
-    "text": 340,
-    "effect_line": 560,
-    "fill": 300,
-    "gradient": 320,
-    "image_path": 340,
-    "tail": 300,
+
+_PRESET_SCRATCH_ATTRS = {
+    "border": "bmanga_preset_scratch_border",
+    "text": "bmanga_preset_scratch_text",
+    "effect_line": "bmanga_preset_scratch_effect_line",
+    "fill": "bmanga_preset_scratch_fill",
+    "gradient": "bmanga_preset_scratch_gradient",
+    "image_path": "bmanga_preset_scratch_image_path",
+    "tail": "bmanga_preset_scratch_tail",
 }
+
+
+def _available_dialog_width(context) -> int | None:
+    try:
+        width = int(context.window.width)
+    except (AttributeError, TypeError, ValueError):
+        width = 0
+    return width if width > 0 else None
+
+
+def _preset_target_data(context, preset_type: str, balloon_data: dict[str, Any]):
+    if preset_type == "balloon":
+        return balloon_data
+    attr = _PRESET_SCRATCH_ATTRS.get(preset_type)
+    if attr is None:
+        return None
+    return getattr(context.window_manager, attr, None)
+
+
+def _preset_target_is_alive(stable_id: str):
+    """プリセット編集対象は固定IDを持つ一時データとして生存判定する。"""
+
+    return lambda identity: identity.stable_id == stable_id
+
+
+def _prepare_preset_curve_ui(preset_type: str, target) -> None:
+    if preset_type == "effect_line":
+        from ..utils import effect_inout_curve
+
+        effect_inout_curve.restore_ui_nodes_from_params(target.params)
+    elif preset_type == "border":
+        from ..utils import coma_blur_curve
+
+        coma_blur_curve.restore_ui_curve_from_border(getattr(target.data, "border", None))
+
+
+def _sync_preset_curve_ui(preset_type: str, target) -> bool:
+    if preset_type == "effect_line":
+        from . import detail_dialog_runtime
+
+        return bool(detail_dialog_runtime._sync_curve_nodes(target.params))
+    if preset_type == "border":
+        from ..utils import coma_blur_curve
+
+        return bool(coma_blur_curve.sync_ui_curve_to_border(getattr(target.data, "border", None)))
+    return False
 
 
 class BMANGA_OT_preset_detail_edit(Operator):
     bl_idname = "bmanga.preset_detail_edit"
     bl_label = "プリセット詳細設定"
-    bl_options = {"REGISTER", "UNDO", "INTERNAL"}
+    bl_options = {"REGISTER", "INTERNAL"}
 
-    preset_type: StringProperty()  # type: ignore[valid-type]
-    preset_name: StringProperty()  # type: ignore[valid-type]
+    preset_type: StringProperty(options={"HIDDEN"})  # type: ignore[valid-type]
+    preset_name: StringProperty(options={"HIDDEN"})  # type: ignore[valid-type]
+    parent_session_token: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
+    parent_target_kind: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
+    parent_target_id: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
 
     description_text: StringProperty(name="説明")  # type: ignore[valid-type]
 
     _balloon_data: dict[str, Any] = {}
+    _detail_session: Any = None
+
+    def _open_detail_session(self, context):
+        data = _preset_target_data(context, self.preset_type, self._balloon_data)
+        if data is None:
+            raise RuntimeError(f"プリセット一時設定を取得できません: {self.preset_type}")
+        params = data if self.preset_type == "effect_line" else None
+        target = resolve_preset_detail_target(
+            self.preset_type,
+            self.preset_name,
+            data,
+            params=params,
+        )
+        _prepare_preset_curve_ui(self.preset_type, target)
+        available_width = _available_dialog_width(context)
+        fixed_layout = resolve_detail_layout(
+            target,
+            DetailMode.PRESET,
+            available_width=available_width,
+        )
+        self._detail_session = begin_detail_session(
+            target,
+            DetailMode.PRESET,
+            registry=ACTUAL_DETAIL_STATE_REGISTRY,
+            target_validator=_preset_target_is_alive(target.stable_id),
+            available_width=fixed_layout.available_width,
+            current_columns=fixed_layout.column_count,
+            section_columns=fixed_layout.section_columns,
+        )
+        from . import detail_dialog_runtime
+
+        try:
+            detail_dialog_runtime.register_preset_session(self._detail_session)
+        except Exception:
+            cancel_detail_session(self._detail_session)
+            self._detail_session = None
+            raise
+        return self._invoke_detail_dialog(context)
+
+    def _invoke_detail_dialog(self, context):
+        try:
+            result = context.window_manager.invoke_props_dialog(
+                self,
+                width=self._detail_session.layout.dialog_width,
+            )
+        except Exception as opening_error:  # noqa: BLE001
+            try:
+                self._restore_open_session()
+            except Exception as restore_error:  # noqa: BLE001
+                raise RuntimeError(
+                    f"開始失敗後に一時設定を復元できませんでした: {restore_error}"
+                ) from opening_error
+            raise
+        if "CANCELLED" in result:
+            self._restore_open_session()
+        return result
 
     def invoke(self, context, event):
+        self._detail_session = None
+        if not self._parent_session_is_valid():
+            self.report({"WARNING"}, "元の詳細設定を開き直してください")
+            return {"CANCELLED"}
         pt = self.preset_type
+        if str(self.parent_session_token or ""):
+            # Blenderは親のinvoke_props_dialog中に別のprops dialogを安全に
+            # 開けない。親画面では、既に表示中の現在設定を明示的に上書きする。
+            return self._overwrite_from_parent(context)
+        from . import detail_dialog_runtime
+
+        try:
+            # 同じ種別はWindowManager上の同じscratchを共有する。先に拒否し、
+            # 2画面目のloaderが1画面目の編集中値を上書きしないようにする。
+            detail_dialog_runtime.ensure_preset_type_available(pt)
+        except DetailContractError as exc:
+            self.report({"WARNING"}, str(exc))
+            return {"CANCELLED"}
         if pt == "balloon":
             data = _load_balloon(self.preset_name)
             if data is None:
@@ -407,7 +470,12 @@ class BMANGA_OT_preset_detail_edit(Operator):
                 return {"CANCELLED"}
             self._balloon_data = data
             self.description_text = str(data.get("description", "") or "")
-            return context.window_manager.invoke_props_dialog(self, width=_DIALOG_WIDTH.get(pt, 320))
+            try:
+                return self._open_detail_session(context)
+            except Exception:  # noqa: BLE001
+                _logger.exception("failed to open preset detail %s/%s", pt, self.preset_name)
+                self.report({"WARNING"}, "プリセット詳細設定を開けませんでした")
+                return {"CANCELLED"}
 
         loader = _LOADERS.get(pt)
         if loader is None:
@@ -422,22 +490,56 @@ class BMANGA_OT_preset_detail_edit(Operator):
             self.report({"WARNING"}, f"プリセットが見つかりません: {self.preset_name}")
             return {"CANCELLED"}
         self.description_text = description
-        return context.window_manager.invoke_props_dialog(self, width=_DIALOG_WIDTH.get(pt, 320))
+        try:
+            return self._open_detail_session(context)
+        except Exception:  # noqa: BLE001
+            _logger.exception("failed to open preset detail %s/%s", pt, self.preset_name)
+            self.report({"WARNING"}, "プリセット詳細設定を開けませんでした")
+            return {"CANCELLED"}
 
     def draw(self, context):
         layout = self.layout
-        layout.prop(self, "description_text")
-        layout.separator()
-        pt = self.preset_type
-        drawer = _DRAWERS.get(pt)
-        if drawer is None:
+        session = self._detail_session
+        if session is None:
+            layout.prop(self, "description_text")
+            layout.separator()
             layout.label(text="このプリセットタイプは詳細編集未対応です")
             return
-        drawer(layout, context)
+        draw_detail_dialog(
+            layout,
+            context,
+            session,
+            DetailMode.PRESET,
+            description_owner=self,
+        )
+
+    def check(self, context):
+        session = self._detail_session
+        if session is None:
+            return False
+        changed = _sync_preset_curve_ui(self.preset_type, session.target)
+        column_count = current_column_count_for_target(session.target, DetailMode.PRESET)
+        if column_count == session.layout.column_count:
+            return changed
+        session.set_current_columns(column_count)
+        return True
 
     def execute(self, context):
         pt = self.preset_type
         from ..panels import preset_list_ui
+
+        if not self._parent_session_is_valid():
+            self.report({"WARNING"}, "元の詳細設定を開き直してください")
+            self._release_failed_session()
+            return {"CANCELLED"}
+        # 親props dialog内ではBlenderがinvokeを省略してexecuteへ直接入る場合も
+        # あるため、こちらにも同じ独立即時経路を置く。
+        if str(self.parent_session_token or ""):
+            return self._overwrite_from_parent(context)
+        if self._detail_session is None:
+            self.report({"WARNING"}, "プリセット詳細設定を開き直してください")
+            return {"CANCELLED"}
+        _sync_preset_curve_ui(pt, self._detail_session.target)
 
         if pt == "balloon":
             try:
@@ -445,7 +547,10 @@ class BMANGA_OT_preset_detail_edit(Operator):
             except Exception:  # noqa: BLE001
                 _logger.exception("failed to save balloon preset description %s", self.preset_name)
                 self.report({"WARNING"}, f"プリセット「{self.preset_name}」の保存に失敗しました")
+                self._release_failed_session()
                 return {"CANCELLED"}
+            self._commit_open_session()
+            self._record_parent_action()
             preset_list_ui.refresh_preset_list(context, pt)
             self.report({"INFO"}, f"プリセット「{self.preset_name}」を保存しました")
             return {"FINISHED"}
@@ -453,16 +558,113 @@ class BMANGA_OT_preset_detail_edit(Operator):
         saver = _SAVERS.get(pt)
         if saver is None:
             self.report({"WARNING"}, f"未対応のプリセットタイプです: {pt}")
+            self._release_failed_session()
             return {"CANCELLED"}
         try:
             saver(context, self.preset_name, self.description_text)
         except Exception:  # noqa: BLE001
             _logger.exception("failed to save preset %s/%s", pt, self.preset_name)
             self.report({"WARNING"}, f"プリセット「{self.preset_name}」の保存に失敗しました")
+            self._release_failed_session()
             return {"CANCELLED"}
+        self._commit_open_session()
+        self._record_parent_action()
         preset_list_ui.refresh_preset_list(context, pt)
         self.report({"INFO"}, f"プリセット「{self.preset_name}」を保存しました")
         return {"FINISHED"}
+
+    def _overwrite_from_parent(self, context):
+        try:
+            from . import detail_preset_management_op
+            from ..panels import preset_list_ui
+
+            name = detail_preset_management_op.overwrite_selected_preset(context, self)
+            preset_list_ui.refresh_preset_list(context, self.preset_type)
+        except Exception as exc:  # noqa: BLE001
+            _logger.exception("failed to overwrite preset from parent detail")
+            self.report({"WARNING"}, str(exc) or "プリセットを保存できませんでした")
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"プリセット「{name}」を現在の設定で保存しました")
+        return {"FINISHED"}
+
+    def _parent_session_is_valid(self) -> bool:
+        if not str(self.parent_session_token or ""):
+            return True
+        from . import detail_dialog_runtime
+
+        return detail_dialog_runtime.detail_action_is_allowed(
+            self.parent_session_token,
+            self.bl_idname,
+            self.parent_target_kind,
+            self.parent_target_id,
+        )
+
+    def _record_parent_action(self) -> None:
+        if not str(self.parent_session_token or ""):
+            return
+        from . import detail_dialog_runtime
+
+        detail_dialog_runtime.record_detail_action(
+            self.parent_session_token,
+            self.bl_idname,
+            self.parent_target_kind,
+            self.parent_target_id,
+            self.preset_name,
+        )
+
+    def cancel(self, context):
+        try:
+            self._restore_open_session()
+        except Exception:  # noqa: BLE001
+            _logger.exception(
+                "failed to restore preset detail %s/%s",
+                self.preset_type,
+                self.preset_name,
+            )
+            self.report({"ERROR"}, "一時設定を元に戻せませんでした")
+
+    def _commit_open_session(self) -> None:
+        from . import detail_dialog_runtime
+
+        session = self._detail_session
+        if session is None:
+            raise RuntimeError("プリセット詳細設定を開き直してください")
+        self._detail_session = None
+        try:
+            commit_detail_session(session)
+        finally:
+            detail_dialog_runtime.unregister_preset_session(session)
+
+    def _release_failed_session(self) -> None:
+        try:
+            self._restore_open_session()
+        except Exception:  # noqa: BLE001
+            _logger.exception(
+                "failed to restore preset after operation failure %s/%s",
+                self.preset_type,
+                self.preset_name,
+            )
+
+    def _restore_open_session(self) -> None:
+        session = self._detail_session
+        self._detail_session = None
+        if session is None:
+            return
+        from . import detail_dialog_runtime
+        failure = None
+        try:
+            for _attempt in range(2):
+                try:
+                    cancel_detail_session(session)
+                    failure = None
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    failure = exc
+            if failure is not None:
+                raise failure
+            _prepare_preset_curve_ui(self.preset_type, session.target)
+        finally:
+            detail_dialog_runtime.unregister_preset_session(session)
 
 
 _CLASSES = (_BMangaPresetScratchComa, BMANGA_OT_preset_detail_edit)

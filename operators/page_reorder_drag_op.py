@@ -89,9 +89,7 @@ def _translate_layers_for_offset_changes(
         if abs(dx) <= 1.0e-6 and abs(dy) <= 1.0e-6:
             continue
         parent_keys = layer_stack_utils.gp_parent_keys_for_page(page)
-        layer_stack_utils.translate_gp_layers_for_parent_keys(
-            context, parent_keys, dx, dy
-        )
+        # 手描き点はObjectローカル座標。ページ移動はObject位置だけを更新する。
         layer_stack_utils.translate_effect_layers_for_parent_keys(
             context, parent_keys, dx, dy
         )

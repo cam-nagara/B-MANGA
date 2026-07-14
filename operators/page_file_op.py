@@ -137,6 +137,17 @@ def _finalize_page_scene(context, work, page_id: str) -> bool:
     except Exception:  # noqa: BLE001
         _logger.exception("page file: raster runtime setup failed")
     try:
+        from ..utils import cross_page_transfer
+
+        restored = cross_page_transfer.process_staged_imports(
+            context,
+            page_id=page_id,
+        )
+        if restored > 0:
+            _logger.info("page file: restored %d staged layers", restored)
+    except Exception:  # noqa: BLE001
+        _logger.exception("page file: staged layer restore failed")
+    try:
         from ..utils import layer_stack
 
         layer_stack.sync_layer_stack_after_data_change(context)
@@ -205,6 +216,15 @@ class BMANGA_OT_open_page_file(Operator):
         work = get_work(context)
         if work is None or not work.loaded or not work.work_dir:
             self.report({"ERROR"}, "作品が開かれていません")
+            return {"CANCELLED"}
+        from . import detail_data_migration_op
+
+        if detail_data_migration_op.work_requires_detail_migration(work):
+            self.report({"WARNING"}, "先に作品データの安全な更新を完了してください")
+            if not bpy.app.background:
+                bpy.ops.bmanga.detail_data_migrate(
+                    "INVOKE_DEFAULT", work_dir=str(work.work_dir)
+                )
             return {"CANCELLED"}
         if 0 <= int(self.index) < len(work.pages):
             work.active_page_index = int(self.index)

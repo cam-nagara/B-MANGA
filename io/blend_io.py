@@ -16,6 +16,10 @@ from pathlib import Path
 import bpy
 
 from ..utils import log, paths
+from .project_content_migration_lock import guard_path_write
+from .project_content_migration_model import MIGRATION_VERSION
+from .project_content_save_baseline import record_observed_read, record_successful_write
+from .project_content_version import assert_detail_version_matches
 
 _logger = log.get_logger(__name__)
 
@@ -29,19 +33,57 @@ def _suspend_keymap_visibility_updates(seconds: float = 4.0) -> None:
         pass
 
 
-def save_current_as(blend_path: Path) -> bool:
+def _memory_detail_data_version():
+    work = getattr(bpy.context.scene, "bmanga_work", None)
+    if work is None:
+        return None
+    return getattr(work, "detail_data_version", None)
+
+
+def save_current_as(
+    blend_path: Path,
+    *,
+    stamp_detail_version: bool = False,
+) -> bool:
     """現在の mainfile を指定パスに save_as_mainfile で保存する.
 
     親ディレクトリは自動生成。成功時 True、失敗時 False を返す。
     """
     blend_path = Path(blend_path)
-    blend_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        bpy.ops.wm.save_as_mainfile(
-            filepath=str(blend_path.resolve()),
-            check_existing=False,
-            compress=True,
-        )
+        with guard_path_write(blend_path) as work_root:
+            disk_version = None
+            if work_root is not None and (work_root / "work.json").is_file():
+                memory_version = _memory_detail_data_version()
+                if memory_version is None:
+                    raise RuntimeError("作品の版情報を確認できないため保存を停止しました")
+                disk_version = assert_detail_version_matches(work_root, memory_version)
+            if stamp_detail_version and disk_version != MIGRATION_VERSION:
+                raise RuntimeError(
+                    "作品データ移行が完了するまでページを保存できません"
+                )
+            if stamp_detail_version and blend_path.is_file():
+                from ..utils import layer_uid
+
+                if (
+                    layer_uid.scene_detail_data_version(bpy.context.scene)
+                    != layer_uid.CURRENT_DETAIL_DATA_VERSION
+                ):
+                    raise RuntimeError(
+                        "旧形式のページは作品データ移行が完了するまで保存できません"
+                    )
+            blend_path.parent.mkdir(parents=True, exist_ok=True)
+            if stamp_detail_version:
+                from ..utils import layer_uid
+
+                # ロックと世代照合の成功後、実保存の直前にだけ更新する。
+                layer_uid.stamp_scene_detail_data_version(bpy.context.scene)
+            bpy.ops.wm.save_as_mainfile(
+                filepath=str(blend_path.resolve()),
+                check_existing=False,
+                compress=True,
+            )
+            record_successful_write(blend_path)
         _logger.info("mainfile saved: %s", blend_path)
         return True
     except Exception as exc:  # noqa: BLE001
@@ -56,6 +98,9 @@ def open_mainfile(blend_path: Path) -> bool:
         _logger.warning("blend file missing: %s", blend_path)
         return False
     try:
+        # 明示的に開くファイルは、この画面が内容を観測してからメモリへ
+        # 読み込む。load_post前の保存処理でも未追跡扱いにならないようにする。
+        record_observed_read(blend_path)
         _suspend_keymap_visibility_updates()
         bpy.ops.wm.open_mainfile(filepath=str(blend_path.resolve()))
         _suspend_keymap_visibility_updates()
@@ -101,7 +146,10 @@ def work_blend_exists(work_dir: Path) -> bool:
 def save_page_blend(work_dir: Path, page_id: str) -> bool:
     if not paths.is_valid_page_id(page_id):
         return False
-    return save_current_as(paths.page_blend_path(Path(work_dir), page_id))
+    return save_current_as(
+        paths.page_blend_path(Path(work_dir), page_id),
+        stamp_detail_version=True,
+    )
 
 
 def open_page_blend(work_dir: Path, page_id: str) -> bool:

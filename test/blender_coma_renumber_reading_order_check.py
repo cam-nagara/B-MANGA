@@ -106,9 +106,17 @@ def _add_parented_entries(context, page, page_id: str) -> None:
     raster.parent_kind = "coma"
     raster.parent_key = f"{page_id}:c50"
 
-    gp_obj = gp_utils.ensure_master_gpencil(context.scene)
-    layer = gp_obj.data.layers.new("gp_read_order")
-    gp_parent.set_parent_key(layer, f"{page_id}:c30")
+    from bmanga_dev_coma_renumber.utils import gp_object_layer, layer_object_model
+
+    gp_obj = gp_object_layer.create_layer_gp_object(
+        scene=context.scene,
+        bmanga_id="gp_read_order",
+        title="gp_read_order",
+        z_index=210,
+        parent_kind="coma",
+        parent_key=f"{page_id}:c30",
+    )
+    assert layer_object_model.content_layer(gp_obj) is not None
 
     obj = bpy.data.objects.new("parent_key_probe", None)
     obj[on.PROP_MANAGED] = True
@@ -118,7 +126,7 @@ def _add_parented_entries(context, page, page_id: str) -> None:
 
 def _assert_parented_entries(context, page, page_id: str) -> None:
     from bmanga_dev_coma_renumber.utils import gp_layer_parenting as gp_parent
-    from bmanga_dev_coma_renumber.utils import gpencil as gp_utils
+    from bmanga_dev_coma_renumber.utils import layer_object_model
     from bmanga_dev_coma_renumber.utils import object_naming as on
 
     assert page.balloons[0].parent_key == f"{page_id}:c01"
@@ -129,9 +137,9 @@ def _assert_parented_entries(context, page, page_id: str) -> None:
     assert context.scene.bmanga_fill_layers[0].parent_key == f"{page_id}:c04"
     assert context.scene.bmanga_raster_layers[0].parent_key == f"{page_id}:c04"
 
-    gp_obj = gp_utils.get_master_gpencil()
-    layer = gp_obj.data.layers.get("gp_read_order")
-    assert gp_parent.parent_key(layer) == f"{page_id}:c03"
+    gp_obj = layer_object_model.find_layer_object("gp", "gp_read_order")
+    assert gp_obj is not None
+    assert layer_object_model.parent_key(gp_obj) == f"{page_id}:c03"
 
     obj = bpy.data.objects.get("parent_key_probe")
     assert str(obj.get(on.PROP_PARENT_KEY, "") or "") == f"{page_id}:c03"

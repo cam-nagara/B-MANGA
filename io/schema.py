@@ -22,13 +22,14 @@ from ..utils import (
     color_space,
     coma_blur_curve,
     free_transform,
+    layer_uid,
     percentage,
     view_settings,
     viewport_colors,
 )
 
 # ファイルフォーマットのバージョン (破壊的変更があったら繰り上げる)
-WORK_SCHEMA_VERSION = 8
+WORK_SCHEMA_VERSION = 9
 PAGES_SCHEMA_VERSION = 1
 PAGE_SCHEMA_VERSION = 3
 COMA_SCHEMA_VERSION = 3
@@ -756,6 +757,8 @@ def layer_folder_to_dict(entry) -> dict[str, Any]:
         "title": str(getattr(entry, "title", "") or ""),
         "parentKey": str(getattr(entry, "parent_key", "") or ""),
         "expanded": bool(getattr(entry, "expanded", True)),
+        "visible": bool(getattr(entry, "visible", True)),
+        "locked": bool(getattr(entry, "locked", False)),
     }
 
 
@@ -765,6 +768,10 @@ def layer_folder_from_dict(entry, data: dict[str, Any]) -> None:
     entry.title = str(data.get("title", "") or "フォルダ")
     entry.parent_key = str(data.get("parentKey", data.get("parent_key", "")) or "")
     entry.expanded = bool(data.get("expanded", True))
+    if hasattr(entry, "visible"):
+        entry.visible = bool(data.get("visible", True))
+    if hasattr(entry, "locked"):
+        entry.locked = bool(data.get("locked", False))
 
 
 # ---------- WorkData (root) ----------
@@ -902,6 +909,7 @@ def work_to_dict(work) -> dict[str, Any]:
     image_path_layers = getattr(scene, "bmanga_image_path_layers", None) if scene is not None else None
     return {
         "schemaVersion": WORK_SCHEMA_VERSION,
+        layer_uid.DETAIL_DATA_VERSION_KEY: layer_uid.detail_data_version_for_save(work),
         "balloonIdCounter": int(getattr(work, "balloon_id_counter", 0) or 0),
         "workInfo": work_info_to_dict(work.work_info),
         "nombre": nombre_to_dict(work.nombre),
@@ -962,6 +970,8 @@ def work_from_dict(work, data: dict[str, Any]) -> None:
     data = data or {}
     work_schema_version = _data_schema_version(data, 1)
     opacity_percent_schema = work_schema_version >= 5
+    if hasattr(work, "detail_data_version"):
+        work.detail_data_version = layer_uid.detail_data_version_from_mapping(data)
     if hasattr(work, "balloon_id_counter"):
         try:
             work.balloon_id_counter = max(0, int(data.get("balloonIdCounter", 0) or 0))

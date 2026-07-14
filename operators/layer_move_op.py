@@ -636,9 +636,7 @@ class BMANGA_OT_layer_move_tool(Operator):
                 and page_file_scene.current_page_id(context.scene) == str(getattr(target, "id", "") or "")
             ):
                 return True
-            layer_stack_utils.translate_gp_layers_for_parent_keys(
-                context, layer_stack_utils.gp_parent_keys_for_page(target), dx_mm, dy_mm
-            )
+            # 手描き点はObjectローカル座標。ページ移動はObject位置だけで行う。
             layer_stack_utils.translate_effect_layers_for_parent_keys(
                 context, layer_stack_utils.gp_parent_keys_for_page(target), dx_mm, dy_mm
             )

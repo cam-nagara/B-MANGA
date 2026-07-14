@@ -647,9 +647,9 @@ def _reference_is_stale(work_dir: Path, page, out: Path, *, include_work_blend: 
 
 def _has_master_gpencil() -> bool:
     try:
-        from . import gpencil as gp_utils
+        from . import layer_object_model
 
-        return gp_utils.get_master_gpencil() is not None
+        return next(iter(layer_object_model.iter_layer_objects("gp")), None) is not None
     except Exception:  # noqa: BLE001
         return False
 

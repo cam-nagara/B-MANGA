@@ -100,13 +100,20 @@ def _visible_stack_uids(context) -> list[str]:
 
 
 def _add_gp_layer(context, parent_key: str):
-    from bmanga_dev.utils import gp_layer_parenting as gp_parent
+    from bmanga_dev.utils import gp_object_layer, layer_object_model
     from bmanga_dev.utils import gpencil as gp_utils
     from bmanga_dev.utils.geom import mm_to_m
 
-    obj = gp_utils.ensure_master_gpencil(context.scene)
-    layer = obj.data.layers.new("partial_gp")
-    gp_parent.set_parent_key(layer, parent_key)
+    obj = gp_object_layer.create_layer_gp_object(
+        scene=context.scene,
+        bmanga_id=layer_object_model.make_stable_id("gp"),
+        title="partial_gp",
+        z_index=210,
+        parent_kind="coma" if ":" in parent_key else "page",
+        parent_key=parent_key,
+    )
+    layer = layer_object_model.content_layer(obj)
+    assert layer is not None
     frame = gp_utils.ensure_active_frame(layer)
     assert frame is not None and getattr(frame, "drawing", None) is not None
     assert gp_utils.add_stroke_to_drawing(
@@ -577,6 +584,7 @@ def main() -> None:
         from bmanga_dev.operators import text_op
         from bmanga_dev.utils import gp_layer_parenting as gp_parent
         from bmanga_dev.utils import layer_hierarchy
+        from bmanga_dev.utils import layer_object_model
         from bmanga_dev.utils import layer_object_sync
         from bmanga_dev.utils import layer_reparent
         from bmanga_dev.utils import layer_stack as layer_stack_utils
@@ -673,7 +681,7 @@ def main() -> None:
         _idx, gp_item = _stack_item(
             context,
             "gp",
-            layer_stack_utils._node_stack_key(gp_layer),
+            layer_object_model.stable_id(gp_obj),
         )
         assert layer_reparent.reparent_stack_item(
             context,
@@ -685,7 +693,7 @@ def main() -> None:
         _idx, effect_item = _stack_item(
             context,
             "effect",
-            layer_stack_utils._node_stack_key(effect_layer),
+            layer_object_model.stable_id(effect_obj),
         )
         assert layer_reparent.reparent_stack_item(
             context,

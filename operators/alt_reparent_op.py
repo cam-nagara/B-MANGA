@@ -354,7 +354,20 @@ class BMANGA_OT_alt_reparent_drag(Operator):
 
         unsupported = cross_page_transfer.unsupported_layer_kinds(items)
         if unsupported:
-            self.report({"WARNING"}, "レイヤーフォルダはページ間移動に対応していません (中身は個別に移動できます)")
+            labels = {
+                "image": "画像",
+                "raster": "ラスターペイント",
+                "fill": "塗り",
+                "layer_folder": "レイヤーフォルダー",
+            }
+            names = "・".join(sorted({labels.get(kind, "選択項目") for kind in unsupported}))
+            self.report(
+                {"WARNING"},
+                f"{names} はページ間移動にまだ対応していません。"
+                "選択を外して再実行してください",
+            )
+            _set_error_for_target(target)
+            return {"CANCELLED"}
 
         drop_xy = getattr(target, "world_xy_mm", None)
         changed = cross_page_transfer.transfer_layers_to_page(

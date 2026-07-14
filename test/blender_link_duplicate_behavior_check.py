@@ -94,9 +94,18 @@ def _assert_pair(value, expected, label: str) -> None:
 
 
 def _effect_key(layer) -> str:
-    from bmanga_dev_link_duplicate.utils import layer_stack
+    from bmanga_dev_link_duplicate.utils import layer_object_model
 
-    return layer_stack._node_stack_key(layer)
+    obj = next(
+        (
+            candidate
+            for candidate in layer_object_model.iter_layer_objects("effect")
+            if layer_object_model.content_layer(candidate) == layer
+        ),
+        None,
+    )
+    assert obj is not None
+    return layer_object_model.stable_id(obj)
 
 
 def _effect_uid(layer) -> str:

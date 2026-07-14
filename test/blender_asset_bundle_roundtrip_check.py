@@ -127,10 +127,10 @@ def _effect_objects():
 
 
 def _effect_uid(obj) -> str:
+    from bmanga_dev_asset_bundle.utils import layer_object_model
     from bmanga_dev_asset_bundle.utils import layer_stack as layer_stack_utils
 
-    layer = obj.data.layers[0]
-    return layer_stack_utils.target_uid("effect", layer_stack_utils._node_stack_key(layer))
+    return layer_stack_utils.target_uid("effect", layer_object_model.stable_id(obj))
 
 
 def _assert_linked(context, uid_a: str, uid_b: str, label: str) -> None:
@@ -225,6 +225,9 @@ def main() -> None:
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "AssetBundle.bmanga"))
         if "FINISHED" not in result:
             raise AssertionError(f"作品作成に失敗しました: {result}")
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        if "FINISHED" not in result:
+            raise AssertionError(f"ページを開けません: {result}")
 
         from bmanga_dev_asset_bundle.utils import layer_links
         from bmanga_dev_asset_bundle.utils import layer_stack as layer_stack_utils
@@ -241,7 +244,9 @@ def main() -> None:
         source_text.title = "名前変更テキスト"
         source_effect_a = _make_effect(context, page, 80.0, 40.0)
         source_effect_b = _make_effect(context, page, 126.0, 46.0)
-        source_effect_a[1].name = "名前変更効果線"
+        from bmanga_dev_asset_bundle.utils import layer_object_model
+
+        layer_object_model.set_display_title(source_effect_a[0], "名前変更効果線")
         source_balloon_b = _make_balloon(context, page, 72.0, 82.0)
         source_balloon_b.title = "リンク用フキダシ"
         source_lonely_text = _make_text(context, page, "ここへ落とす", 138.0, 110.0)

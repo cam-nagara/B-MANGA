@@ -118,7 +118,7 @@ class BMANGA_OT_free_transform_mode(Operator):
 
     @classmethod
     def poll(cls, context):
-        return _active_stack_kind(context) in {"balloon", "effect", "effect_legacy"}
+        return _active_stack_kind(context) in {"balloon", "effect"}
 
     def execute(self, context):
         from . import object_tool_selection
@@ -143,7 +143,7 @@ class BMANGA_OT_reset_free_transform(Operator):
 
     @classmethod
     def poll(cls, context):
-        return _active_stack_kind(context) in {"balloon", "text", "effect", "effect_legacy"}
+        return _active_stack_kind(context) in {"balloon", "text", "effect"}
 
     def execute(self, context):
         kind = _active_stack_kind(context)
@@ -185,13 +185,10 @@ class BMANGA_OT_reset_free_transform(Operator):
                 except Exception:  # noqa: BLE001
                     editing_same_text = False
                 text_real_object.set_text_object_preview_hidden(target, page=page, hidden=editing_same_text)
-        elif kind in {"effect", "effect_legacy"} and target is not None:
+        elif kind == "effect" and target is not None:
             from . import effect_line_op
 
             obj, layer, bounds = effect_line_op.active_effect_layer_bounds(context)
-            if obj is None or layer is None or bounds is None:
-                obj, layer = layer_stack_utils._find_effect_layer_by_key(getattr(target, "name", target))
-                bounds = effect_line_op.effect_layer_bounds(obj, layer)
             if obj is not None and layer is not None and bounds is not None:
                 meta = effect_line_op._effect_meta(obj)
                 key = effect_line_op._layer_meta_key(layer)

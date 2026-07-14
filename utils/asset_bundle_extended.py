@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import base64
+import binascii
+import hashlib
+import os
 from pathlib import Path
+import tempfile
+import zlib
 
 import bpy
 
@@ -12,6 +17,7 @@ from ..io import schema
 from . import gp_layer_parenting as gp_parent
 from . import gpencil as gp_utils
 from . import layer_stack as layer_stack_utils
+from . import log
 from . import object_naming as on
 from . import page_grid
 from .geom import m_to_mm, mm_to_m
@@ -19,6 +25,160 @@ from .layer_hierarchy import coma_stack_key, page_stack_key, split_child_key
 
 
 EXTENDED_LAYER_KINDS = {"coma", "raster", "gp"}
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+_logger = log.get_logger(__name__)
+
+
+def _decode_png_payload(png_b64: str) -> bytes:
+    try:
+        payload = base64.b64decode(png_b64.encode("ascii"), validate=True)
+    except (UnicodeEncodeError, binascii.Error) as exc:
+        raise ValueError("invalid raster base64 payload") from exc
+    _validate_png_bytes(payload)
+    return payload
+
+
+def _validate_png_bytes(payload: bytes) -> None:
+    """PNGの構造と全chunk CRCを検査する。"""
+    if not payload.startswith(_PNG_SIGNATURE):
+        raise ValueError("invalid PNG signature")
+    offset = len(_PNG_SIGNATURE)
+    seen_ihdr = False
+    seen_iend = False
+    while offset < len(payload):
+        if offset + 12 > len(payload):
+            raise ValueError("truncated PNG chunk")
+        length = int.from_bytes(payload[offset:offset + 4], "big")
+        chunk_type = payload[offset + 4:offset + 8]
+        data_start = offset + 8
+        data_end = data_start + length
+        crc_end = data_end + 4
+        if crc_end > len(payload):
+            raise ValueError("truncated PNG payload")
+        expected_crc = int.from_bytes(payload[data_end:crc_end], "big")
+        actual_crc = zlib.crc32(chunk_type + payload[data_start:data_end]) & 0xFFFFFFFF
+        if actual_crc != expected_crc:
+            raise ValueError("PNG CRC mismatch")
+        if not seen_ihdr:
+            if chunk_type != b"IHDR" or length != 13:
+                raise ValueError("PNG IHDR is missing")
+            seen_ihdr = True
+        if chunk_type == b"IEND":
+            if length != 0 or crc_end != len(payload):
+                raise ValueError("invalid PNG IEND")
+            seen_iend = True
+            break
+        offset = crc_end
+    if not seen_ihdr or not seen_iend:
+        raise ValueError("incomplete PNG")
+
+
+def _atomic_write_verified_bytes(path: Path, payload: bytes) -> str:
+    """同一フォルダー内でatomic writeし、再読込hashまで確認する。"""
+    from ..io.project_content_migration_lock import guard_path_write
+    from ..io.project_content_save_baseline import record_successful_write
+
+    _validate_png_bytes(payload)
+    expected_hash = hashlib.sha256(payload).hexdigest()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_symlink() or path.exists():
+        raise OSError("raster destination already exists or is a symbolic link")
+    with guard_path_write(path):
+        fd, temp_name = tempfile.mkstemp(
+            prefix=path.name + ".",
+            suffix=".tmp",
+            dir=str(path.parent),
+        )
+        temp_path = Path(temp_name)
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            reread = temp_path.read_bytes()
+            _validate_png_bytes(reread)
+            if hashlib.sha256(reread).hexdigest() != expected_hash:
+                raise OSError("temporary raster hash mismatch")
+            os.replace(temp_path, path)
+            final = path.read_bytes()
+            _validate_png_bytes(final)
+            if hashlib.sha256(final).hexdigest() != expected_hash:
+                raise OSError("final raster hash mismatch")
+            record_successful_write(path)
+        except BaseException:
+            path.unlink(missing_ok=True)
+            record_successful_write(path)
+            raise
+        finally:
+            temp_path.unlink(missing_ok=True)
+    return expected_hash
+
+
+def _remove_raster_entry(coll, raster) -> None:
+    for index, current in enumerate(coll):
+        if current == raster:
+            coll.remove(index)
+            return
+
+
+def remove_staged_raster(context, raster) -> bool:
+    """素材ステージが作ったラスター実体とPNGを検証付きで取り除く。"""
+    from ..io.project_content_migration_lock import guard_path_write
+    from ..io.project_content_save_baseline import record_successful_write
+
+    work = get_work(context)
+    coll = getattr(getattr(context, "scene", None), "bmanga_raster_layers", None)
+    if work is None or coll is None or raster is None:
+        return False
+    raster_id = str(getattr(raster, "id", "") or "")
+    image_name = str(getattr(raster, "image_name", "") or "")
+    path = Path(work.work_dir) / str(getattr(raster, "filepath_rel", "") or "")
+    try:
+        plane = on.find_object_by_bmanga_id(raster_id, kind="raster")
+        if plane is not None:
+            bpy.data.objects.remove(plane, do_unlink=True)
+        image = bpy.data.images.get(image_name)
+        if image is not None:
+            bpy.data.images.remove(image)
+        with guard_path_write(path):
+            path.unlink(missing_ok=True)
+            record_successful_write(path)
+        _remove_raster_entry(coll, raster)
+        return not path.exists() and on.find_object_by_bmanga_id(raster_id, kind="raster") is None
+    except Exception:  # noqa: BLE001
+        _logger.exception("staged raster removal failed: %s", raster_id)
+        return False
+
+
+def raster_payload_is_durable(context, raster, payload_entry: dict) -> bool:
+    """復元PNGがpayloadと同一で、再読込可能な状態かを返す。"""
+    work = get_work(context)
+    if work is None or raster is None or not getattr(work, "work_dir", ""):
+        return False
+    rel = str(getattr(raster, "filepath_rel", "") or "")
+    if not rel or Path(rel).is_absolute():
+        return False
+    root = Path(work.work_dir).resolve()
+    path = (root / rel).resolve(strict=False)
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    if path.is_symlink() or not path.is_file():
+        return False
+    try:
+        actual = path.read_bytes()
+        _validate_png_bytes(actual)
+        encoded = str(payload_entry.get("png_base64", "") or "")
+        if encoded:
+            expected = _decode_png_payload(encoded)
+            if hashlib.sha256(actual).digest() != hashlib.sha256(expected).digest():
+                return False
+    except (OSError, ValueError):
+        return False
+    image_name = str(getattr(raster, "image_name", "") or "")
+    image = bpy.data.images.get(image_name) if image_name else None
+    return image is not None
 
 
 def expand_asset_uids(context, stack, uids: list[str]) -> list[str]:
@@ -84,7 +244,15 @@ def preview_objects_for_entry(entry: dict) -> list[bpy.types.Object]:
     return objects
 
 
-def instantiate_coma(context, page, entry: dict, dx: float, dy: float):
+def instantiate_coma(
+    context,
+    page,
+    entry: dict,
+    dx: float,
+    dy: float,
+    *,
+    persist_sidecars: bool = True,
+):
     from ..io import coma_io, page_io
 
     work = get_work(context)
@@ -109,6 +277,8 @@ def instantiate_coma(context, page, entry: dict, dx: float, dy: float):
     except Exception:  # noqa: BLE001
         pass
     try:
+        if not persist_sidecars:
+            return panel
         work_dir = Path(work.work_dir)
         coma_io.save_coma_meta(work_dir, page.id, panel)
         page_io.save_page_json(work_dir, page)
@@ -120,12 +290,19 @@ def instantiate_coma(context, page, entry: dict, dx: float, dy: float):
 
 def instantiate_raster(context, page, entry: dict, parent_kind: str, parent_key: str):
     from ..operators import raster_layer_op
+    from ..io.project_content_migration_lock import guard_path_write
+    from ..io.project_content_save_baseline import record_successful_write
 
     work = get_work(context)
     coll = getattr(getattr(context, "scene", None), "bmanga_raster_layers", None)
     if work is None or coll is None or not getattr(work, "work_dir", ""):
         return None
     data = dict(entry.get("data") or {})
+    png_b64 = str(entry.get("png_base64", "") or "")
+    try:
+        png_payload = _decode_png_payload(png_b64) if png_b64 else None
+    except ValueError:
+        return None
     raster = coll.add()
     schema.raster_layer_from_dict(raster, data, opacity_percent=True)
     raster_id = raster_layer_op._allocate_raster_id(context.scene, Path(work.work_dir))
@@ -133,21 +310,41 @@ def instantiate_raster(context, page, entry: dict, parent_kind: str, parent_key:
     raster.image_name = raster_layer_op.raster_image_name(raster_id)
     raster.filepath_rel = raster_layer_op.raster_filepath_rel(raster_id)
     _set_entry_parent(raster, parent_kind, parent_key)
-    png_b64 = str(entry.get("png_base64", "") or "")
-    if png_b64:
+    path = Path(work.work_dir) / raster.filepath_rel
+    path_existed = path.exists()
+    try:
+        if png_payload is not None:
+            _atomic_write_verified_bytes(path, png_payload)
+        image = raster_layer_op.ensure_raster_image(context, raster, create_missing=True)
+        if image is None:
+            raise RuntimeError("raster image reload failed")
+        if png_payload is None:
+            raster_layer_op.save_raster_png(context, raster, force=True)
+            record_successful_write(path)
+            saved = path.read_bytes()
+            _validate_png_bytes(saved)
+        elif not raster_payload_is_durable(context, raster, entry):
+            raise RuntimeError("raster payload durability check failed")
+        raster_layer_op.ensure_raster_plane(context, raster)
+        context.scene.bmanga_active_raster_layer_index = len(coll) - 1
+        context.scene.bmanga_active_layer_kind = "raster"
+        return raster
+    except Exception:  # noqa: BLE001
+        plane = on.find_object_by_bmanga_id(raster_id, kind="raster")
+        if plane is not None:
+            bpy.data.objects.remove(plane, do_unlink=True)
+        image = bpy.data.images.get(raster.image_name)
+        if image is not None:
+            bpy.data.images.remove(image)
         try:
-            path = Path(work.work_dir) / raster.filepath_rel
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(base64.b64decode(png_b64.encode("ascii")))
+            if not path_existed:
+                with guard_path_write(path):
+                    path.unlink(missing_ok=True)
+                    record_successful_write(path)
         except Exception:  # noqa: BLE001
-            pass
-    image = raster_layer_op.ensure_raster_image(context, raster, create_missing=True)
-    if image is not None and not png_b64:
-        raster_layer_op.save_raster_png(context, raster, force=True)
-    raster_layer_op.ensure_raster_plane(context, raster)
-    context.scene.bmanga_active_raster_layer_index = len(coll) - 1
-    context.scene.bmanga_active_layer_kind = "raster"
-    return raster
+            _logger.exception("failed staged raster cleanup: %s", path)
+        _remove_raster_entry(coll, raster)
+        return None
 
 
 def instantiate_gp_layer(
@@ -159,15 +356,27 @@ def instantiate_gp_layer(
     parent_kind: str,
     parent_key: str,
 ):
-    obj = gp_utils.ensure_master_gpencil(context.scene)
-    layers = getattr(getattr(obj, "data", None), "layers", None)
-    if layers is None:
+    from . import gp_object_layer
+    from . import layer_object_model
+
+    title = str(entry.get("title", "") or "レイヤー")
+    bmanga_id = layer_object_model.make_stable_id("gp")
+    z_order = max(
+        (layer_object_model.z_index(candidate) for candidate in layer_object_model.iter_layer_objects("gp")),
+        default=200,
+    ) + 10
+    obj = gp_object_layer.create_layer_gp_object(
+        scene=context.scene,
+        bmanga_id=bmanga_id,
+        title=title,
+        z_index=z_order,
+        parent_kind=parent_kind,
+        parent_key="" if parent_kind == "none" else parent_key,
+    )
+    layer = layer_object_model.content_layer(obj)
+    if obj is None or layer is None:
         return None
-    name = _unique_gp_layer_name(layers, str(entry.get("title", "") or "レイヤー"))
-    layer = layers.new(name)
-    gp_parent.set_parent_key(layer, "" if parent_kind == "none" else parent_key)
     _apply_gp_material(obj, layer, entry.get("material") if isinstance(entry.get("material"), dict) else {})
-    dst_ox, dst_oy = _page_offset(context, page)
     for frame_data in entry.get("frames", []) or []:
         if not isinstance(frame_data, dict):
             continue
@@ -185,8 +394,8 @@ def instantiate_gp_layer(
             for point in stroke_data.get("points", []) or []:
                 if not isinstance(point, dict):
                     continue
-                x = float(point.get("x", 0.0) or 0.0) + dx + dst_ox
-                y = float(point.get("y", 0.0) or 0.0) + dy + dst_oy
+                x = float(point.get("x", 0.0) or 0.0) + dx
+                y = float(point.get("y", 0.0) or 0.0) + dy
                 z = float(point.get("z", 0.0) or 0.0)
                 points.append((mm_to_m(x), mm_to_m(y), z))
                 radii.append(float(point.get("radius", 0.01) or 0.01))
@@ -218,7 +427,9 @@ def new_uid_for_created(kind: str, page, obj) -> str:
     if kind == "raster":
         return layer_stack_utils.target_uid("raster", getattr(obj, "id", ""))
     if kind == "gp" and isinstance(obj, tuple):
-        return layer_stack_utils.target_uid("gp", layer_stack_utils._node_stack_key(obj[1]))
+        from . import layer_object_model
+
+        return layer_stack_utils.target_uid("gp", layer_object_model.stable_id(obj[0]))
     return ""
 
 
@@ -274,22 +485,22 @@ def _serialize_gp_layer(context, item) -> dict | None:
     layer = resolved.get("target") if resolved is not None else None
     if obj is None or layer is None:
         return None
-    parent_key = gp_parent.parent_key(layer) or str(getattr(item, "parent_key", "") or "")
-    source_page = _page_for_parent_key(context, parent_key)
-    source_ox, source_oy = _page_offset(context, source_page)
-    frames, bounds = _serialize_gp_frames(layer, source_ox, source_oy)
+    from . import layer_object_model
+
+    parent_key = layer_object_model.parent_key(obj) or str(getattr(item, "parent_key", "") or "")
+    frames, bounds = _serialize_gp_frames(layer)
     return {
         "kind": "gp",
-        "source_id": layer_stack_utils._node_stack_key(layer),
+        "source_id": layer_object_model.stable_id(obj),
         "source_parent_key": parent_key,
-        "title": str(getattr(layer, "name", "") or "レイヤー"),
+        "title": layer_object_model.display_title(obj) or "レイヤー",
         "bounds": bounds,
         "frames": frames,
         "material": _gp_material_payload(obj, layer),
     }
 
 
-def _serialize_gp_frames(layer, source_ox: float, source_oy: float):
+def _serialize_gp_frames(layer):
     frames = []
     bounds_points: list[tuple[float, float]] = []
     for frame in getattr(layer, "frames", []) or []:
@@ -307,8 +518,10 @@ def _serialize_gp_frames(layer, source_ox: float, source_oy: float):
                 pos = getattr(point, "position", None)
                 if pos is None:
                     continue
-                x = m_to_mm(float(pos[0])) - source_ox
-                y = m_to_mm(float(pos[1])) - source_oy
+                # 1 Object = 1 手描きレイヤーでは描画点はObjectローカル座標。
+                # ページ原点はObject.locationが担うため、ここで再度減算しない。
+                x = m_to_mm(float(pos[0]))
+                y = m_to_mm(float(pos[1]))
                 bounds_points.append((x, y))
                 stroke_payload["points"].append(
                     {

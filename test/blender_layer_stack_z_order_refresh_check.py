@@ -194,17 +194,17 @@ def _stack_uid_for_target(kind: str, key: str, obj) -> str:
     from bmanga_dev_z_order_refresh.utils import layer_stack
 
     if kind == "effect":
-        layers = getattr(getattr(obj, "data", None), "layers", None)
-        if layers is None:
+        from bmanga_dev_z_order_refresh.utils import layer_object_model
+
+        controller = obj if layer_object_model.is_layer_object(obj, "effect") else None
+        if controller is None:
             controller_id = str(obj.get("bmanga_effect_controller_id", "") or "")
-            controller = None
             if controller_id:
                 from bmanga_dev_z_order_refresh.utils import object_naming as on
 
                 controller = on.find_object_by_bmanga_id(controller_id, kind="effect")
-            layers = getattr(getattr(controller, "data", None), "layers", None) if controller is not None else None
-        assert layers is not None and len(layers) > 0
-        return layer_stack.target_uid("effect", layer_stack._node_stack_key(layers[0]))
+        assert controller is not None
+        return layer_stack.target_uid("effect", layer_object_model.stable_id(controller))
     return layer_stack.target_uid(kind, key)
 
 

@@ -222,9 +222,19 @@ def _text_uid(page, entry) -> str:
 
 
 def _effect_uid(layer) -> str:
+    from bmanga_dev_asset_thumbnail.utils import layer_object_model
     from bmanga_dev_asset_thumbnail.utils import layer_stack as layer_stack_utils
 
-    return layer_stack_utils.target_uid("effect", layer_stack_utils._node_stack_key(layer))
+    obj = next(
+        (
+            candidate
+            for candidate in layer_object_model.iter_layer_objects("effect")
+            if layer_object_model.content_layer(candidate) == layer
+        ),
+        None,
+    )
+    assert obj is not None
+    return layer_stack_utils.target_uid("effect", layer_object_model.stable_id(obj))
 
 
 def _select_objects(objects: list[bpy.types.Object]) -> None:

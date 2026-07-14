@@ -314,7 +314,7 @@ class BMANGA_OT_layer_stack_link_duplicate(Operator):
     @classmethod
     def poll(cls, context):
         item = layer_stack_utils.active_stack_item(context)
-        return str(getattr(item, "kind", "") or "") in {"balloon", "effect", "effect_legacy"}
+        return str(getattr(item, "kind", "") or "") in {"balloon", "effect"}
 
     def execute(self, context):
         item = _active_stack_item(context)
@@ -325,7 +325,7 @@ class BMANGA_OT_layer_stack_link_duplicate(Operator):
                 return {"FINISHED"}
             self.report({"ERROR"}, "リンク複製するフキダシが見つかりません")
             return {"CANCELLED"}
-        if kind in {"effect", "effect_legacy"}:
+        if kind == "effect":
             return bpy.ops.bmanga.effect_line_create_linked("EXEC_DEFAULT")
         return {"CANCELLED"}
 

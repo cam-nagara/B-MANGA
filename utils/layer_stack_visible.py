@@ -89,7 +89,7 @@ def _stack_item_page_key(item, context) -> str:
     if kind in {COMA_KIND, COMA_PREVIEW_KIND, "balloon", "balloon_group", "text"}:
         page_key, _child = split_child_key(key)
         return "" if page_key == OUTSIDE_STACK_KEY else page_key
-    if kind in {"raster", "image", "image_path", "gp", "gp_folder", "effect", "fill"}:
+    if kind in {"raster", "image", "image_path", "gp", "effect", "fill"}:
         page_key, _child = split_child_key(parent_key)
         return "" if page_key == OUTSIDE_STACK_KEY else page_key
     if kind == LAYER_FOLDER_KIND:

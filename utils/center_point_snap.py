@@ -35,15 +35,16 @@ def collect_page_center_points(
     page,
     *,
     exclude_balloon_ids: set | None = None,
+    exclude_effect_ids: set | None = None,
     exclude_effect_layer_names: set | None = None,
 ) -> list[tuple[float, float]]:
     """ページ上の全レイヤーの中心点を収集する。"""
     from ..utils import layer_stack as layer_stack_utils
-    from ..utils import gp_layer_parenting as gp_parent
+    from ..utils import layer_object_model
 
     centers: list[tuple[float, float]] = []
     exclude_balloon_ids = exclude_balloon_ids or set()
-    exclude_effect_layer_names = exclude_effect_layer_names or set()
+    excluded_effects = set(exclude_effect_ids or ()) | set(exclude_effect_layer_names or ())
     page_id = str(getattr(page, "id", "") or "")
 
     for entry in getattr(page, "balloons", []):
@@ -55,37 +56,18 @@ def collect_page_center_points(
             centers.append(c)
 
     for obj in layer_stack_utils._iter_effect_objects():
-        layers = getattr(getattr(obj, "data", None), "layers", None)
-        if layers is None:
+        stable_id = layer_object_model.stable_id(obj)
+        if stable_id in excluded_effects:
             continue
-        for layer in layers:
-            layer_name = str(getattr(layer, "name", "") or "")
-            if layer_name in exclude_effect_layer_names:
-                continue
-            parent_key = gp_parent.parent_key(layer)
-            if not parent_key:
-                from ..utils import object_naming as _on
-                parent_key = str(obj.get(_on.PROP_PARENT_KEY, "") or "")
-            if page_id and not parent_key.startswith(page_id):
-                continue
-            c = effect_center(obj, layer)
-            if c is not None:
-                centers.append(c)
-
-    legacy_obj = layer_stack_utils.get_effect_gp_object()
-    if legacy_obj is not None:
-        layers = getattr(getattr(legacy_obj, "data", None), "layers", None)
-        if layers is not None:
-            for layer in layers:
-                layer_name = str(getattr(layer, "name", "") or "")
-                if layer_name in exclude_effect_layer_names:
-                    continue
-                parent_key = gp_parent.parent_key(layer)
-                if not parent_key or (page_id and not parent_key.startswith(page_id)):
-                    continue
-                c = effect_center(legacy_obj, layer)
-                if c is not None:
-                    centers.append(c)
+        parent_key = layer_object_model.parent_key(obj)
+        if page_id and not parent_key.startswith(page_id):
+            continue
+        layer = layer_object_model.content_layer(obj)
+        if layer is None:
+            continue
+        c = effect_center(obj, layer)
+        if c is not None:
+            centers.append(c)
 
     return centers
 

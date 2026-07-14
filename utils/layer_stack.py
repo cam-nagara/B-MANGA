@@ -31,7 +31,6 @@ from .layer_hierarchy import (
 
 _logger = log.get_logger(__name__)
 
-EFFECT_GP_OBJECT_NAME = "BManga_EffectLines"
 PAGE_COMA_CHILD_KINDS = {"gp", "effect", "raster", "image", "image_path", "fill", "balloon", "text"}
 COMA_PREVIEW_KIND = "coma_preview"
 COMA_REORDER_KINDS = PAGE_COMA_CHILD_KINDS
@@ -40,44 +39,6 @@ _sync_scheduled = False
 _sync_should_apply_order = False
 _sync_order_moved_uid = ""
 _draw_stack_signatures: dict[int, tuple[str, ...]] = {}
-
-
-def _place_effect_gp_object(obj) -> None:
-    if obj is None:
-        return
-    try:
-        from .page_grid import GP_Z_LIFT_M
-
-        # 既に正しい位置なら何もしない (draw_handler や UIList draw 等の制限
-        # コンテキストから呼ばれた場合に "Writing to ID classes ... not allowed"
-        # を回避するため)
-        current = obj.location
-        if (
-            abs(float(current[0])) < 1.0e-9
-            and abs(float(current[1])) < 1.0e-9
-            and abs(float(current[2]) - GP_Z_LIFT_M) < 1.0e-9
-        ):
-            return
-        obj.location = (0.0, 0.0, GP_Z_LIFT_M)
-    except AttributeError:
-        # draw context での書き込み禁止エラーは無視 (次の通常コンテキスト時に
-        # ensure_effect_gp_object が再実行されて lift される)
-        pass
-    except Exception:  # noqa: BLE001
-        _logger.exception("effect GP location lift failed")
-
-
-def ensure_effect_gp_object(scene=None):
-    scene = scene or bpy.context.scene
-    root = gp_utils.ensure_root_collection(scene)
-    obj = gp_utils.ensure_gpencil_object(EFFECT_GP_OBJECT_NAME, link_to_collection=False)
-    try:
-        gp_utils._relink_object_to_collection_only(scene, obj, root)
-    except Exception:  # noqa: BLE001
-        _logger.exception("effect GP relink failed")
-    _place_effect_gp_object(obj)
-    return obj
-
 
 @dataclass(frozen=True)
 class LayerTarget:
@@ -126,6 +87,10 @@ def _stack_has_placeholder_rows(stack) -> bool:
 
 
 def target_uid(kind: str, key: str) -> str:
+    if str(kind or "") in {"gp", "effect", LAYER_FOLDER_KIND}:
+        from . import layer_uid
+
+        return layer_uid.make_managed_uid(str(kind), str(key))
     return f"{kind}:{key}"
 
 
@@ -188,14 +153,6 @@ def set_active_stack_index_silently(context, index: int) -> None:
             )
 
 
-def get_effect_gp_object():
-    obj = bpy.data.objects.get(EFFECT_GP_OBJECT_NAME)
-    if obj is not None and getattr(obj, "type", "") == "GREASEPENCIL":
-        _place_effect_gp_object(obj)
-        return obj
-    return None
-
-
 def _iter_effect_objects() -> list[bpy.types.Object]:
     """新設計の効果線 Object を返す。旧集約 Object は含めない。"""
     objects: list[bpy.types.Object] = []
@@ -216,30 +173,6 @@ def _effect_parent_key(obj, layer) -> str:
     return str(obj.get(on.PROP_PARENT_KEY, "") or "")
 
 
-def _node_stack_key(node) -> str:
-    try:
-        ptr = int(node.as_pointer())
-    except Exception:  # noqa: BLE001
-        ptr = 0
-    if ptr:
-        return f"ptr_{ptr:x}"
-    return str(getattr(node, "name", "") or "")
-
-
-def _ensure_node_stack_key(node, used: set[str], prefix: str) -> str:
-    key = _node_stack_key(node)
-    if key and key not in used:
-        used.add(key)
-        return key
-    i = 1
-    while True:
-        candidate = f"{prefix}_{i:04d}"
-        if candidate not in used:
-            used.add(candidate)
-            return candidate
-        i += 1
-
-
 def _ensure_unique_id(entry, used: set[str], prefix: str) -> str:
     key = str(getattr(entry, "id", "") or "").strip()
     if key and key not in used:
@@ -256,61 +189,6 @@ def _ensure_unique_id(entry, used: set[str], prefix: str) -> str:
             used.add(candidate)
             return candidate
         i += 1
-
-
-def _iter_gp_targets(obj, *, kind: str, depth: int = 0, parent_key: str = ""):
-    data = getattr(obj, "data", None)
-    used: set[str] = set()
-    nodes = getattr(data, "root_nodes", None)
-    if nodes is None:
-        layers = getattr(data, "layers", None)
-        if layers is None:
-            return
-        for layer in reversed(list(layers)):
-            key = _ensure_node_stack_key(layer, used, kind)
-            logical_parent_key = gp_parent.parent_key(layer)
-            if logical_parent_key:
-                yield LayerTarget(
-                    kind,
-                    key,
-                    layer.name,
-                    logical_parent_key,
-                    gp_parent.parent_depth(logical_parent_key),
-                )
-            else:
-                yield LayerTarget(kind, key, layer.name, parent_key, depth)
-        return
-    yield from _iter_gp_node_targets(
-        nodes, kind=kind, depth=depth, parent_key=parent_key, used=used
-    )
-
-
-def _iter_gp_node_targets(nodes, *, kind: str, depth: int, parent_key: str, used: set[str]):
-    for node in reversed(list(nodes)):
-        if gp_utils.is_layer_group(node):
-            group_key = _ensure_node_stack_key(node, used, "folder")
-            yield LayerTarget("gp_folder", group_key, node.name, parent_key, depth)
-            if bool(getattr(node, "is_expanded", True)):
-                yield from _iter_gp_node_targets(
-                    getattr(node, "children", []),
-                    kind=kind,
-                    depth=depth + 1,
-                    parent_key=group_key,
-                    used=used,
-                )
-        else:
-            key = _ensure_node_stack_key(node, used, kind)
-            logical_parent_key = gp_parent.parent_key(node)
-            if logical_parent_key:
-                yield LayerTarget(
-                    kind,
-                    key,
-                    node.name,
-                    logical_parent_key,
-                    gp_parent.parent_depth(logical_parent_key),
-                )
-            else:
-                yield LayerTarget(kind, key, node.name, parent_key, depth)
 
 
 def _coma_parent_key_matches(entry, page, coma_key: str, panel) -> bool:
@@ -516,21 +394,17 @@ def _collect_image_path_targets_for_page(page, panels_by_key: dict[str, object])
 
 
 def _retarget_root_subtree_to_outside(targets: list[LayerTarget]) -> list[LayerTarget]:
-    """GP/Effect の root 階層を UI 上の「ページ外」配下へ載せ替える."""
-    folder_keys = {target.key for target in targets if target.kind == "gp_folder"}
-    out: list[LayerTarget] = []
-    for target in targets:
-        parent_key = target.parent_key if target.parent_key in folder_keys else OUTSIDE_STACK_KEY
-        out.append(
-            LayerTarget(
-                target.kind,
-                target.key,
-                target.label,
-                parent_key,
-                int(target.depth) + 1,
-            )
+    """ページに属さない個別レイヤーを「ページ外」配下へ載せ替える."""
+    return [
+        LayerTarget(
+            target.kind,
+            target.key,
+            target.label,
+            OUTSIDE_STACK_KEY,
+            1,
         )
-    return out
+        for target in targets
+    ]
 
 
 
@@ -859,59 +733,54 @@ def _retarget_targets_to_layer_folders(context, targets: list[LayerTarget]) -> l
     return out
 
 
-def _partition_gp_targets(
-    obj,
-    work,
-    *,
-    kind: str = "gp",
-) -> tuple[list[LayerTarget], dict[str, list[LayerTarget]]]:
-    """``_iter_gp_targets`` を ``gp_targets_by_parent`` (page/coma 親) と
-    ``root_targets`` (それ以外: gp_folder, root レイヤー, gp_folder 配下レイヤー
-    含む) に分配する.
-
-    旧実装は gp_folder 配下のレイヤーから parent_key を stripping していたため、
-    sync_layer_stack 後に「folder 内にあるはずのレイヤーが root に parent_key=''
-    で並ぶ」状態になり、apply_stack_order が actual_parent_group との不一致を
-    検知してフォルダ外へ移動させる破壊的バグを誘発していた。folder 配下は
-    target.parent_key=folder_key を保持したまま root_targets へ入れ、後段の
-    ``_normalize_tree_order`` がフォルダ配下に正しくネストする。
-    """
+def _partition_effect_object_targets(work) -> tuple[list[LayerTarget], dict[str, list[LayerTarget]]]:
+    """個別管理オブジェクトの効果線を安定IDで一覧化する。"""
     root_targets: list[LayerTarget] = []
     targets_by_parent: dict[str, list[LayerTarget]] = {}
-    if obj is None:
-        return root_targets, targets_by_parent
-    for target in _iter_gp_targets(obj, kind=kind):
-        if target.kind == kind and gp_parent.parent_key_exists(work, target.parent_key):
-            targets_by_parent.setdefault(target.parent_key, []).append(target)
+    from . import layer_object_model
+
+    for obj in layer_object_model.iter_layer_objects("effect"):
+        key = layer_object_model.stable_id(obj)
+        if not key:
+            continue
+        parent_key = layer_object_model.parent_key(obj)
+        label = layer_object_model.display_title(obj)
+        target = LayerTarget(
+            "effect",
+            key,
+            label,
+            parent_key if parent_key else "",
+            gp_parent.parent_depth(parent_key) if parent_key else 0,
+        )
+        if parent_key and gp_parent.parent_key_exists(work, parent_key):
+            targets_by_parent.setdefault(parent_key, []).append(target)
         else:
             root_targets.append(target)
     return root_targets, targets_by_parent
 
 
-def _partition_effect_object_targets(work) -> tuple[list[LayerTarget], dict[str, list[LayerTarget]]]:
+def _partition_gp_object_targets(work) -> tuple[list[LayerTarget], dict[str, list[LayerTarget]]]:
+    """個別管理オブジェクトの手描きを安定IDで一覧化する。"""
     root_targets: list[LayerTarget] = []
     targets_by_parent: dict[str, list[LayerTarget]] = {}
-    for obj in _iter_effect_objects():
-        layers = getattr(getattr(obj, "data", None), "layers", None)
-        if layers is None:
+    from . import layer_object_model
+
+    for obj in layer_object_model.iter_layer_objects("gp"):
+        key = layer_object_model.stable_id(obj)
+        if not key:
             continue
-        used: set[str] = set()
-        for layer in reversed(list(layers)):
-            key = _ensure_node_stack_key(layer, used, "effect")
-            parent_key = _effect_parent_key(obj, layer)
-            label = str(getattr(layer, "name", "") or obj.get(on.PROP_TITLE, "") or obj.name)
-            if parent_key and gp_parent.parent_key_exists(work, parent_key):
-                targets_by_parent.setdefault(parent_key, []).append(
-                    LayerTarget(
-                        "effect",
-                        key,
-                        label,
-                        parent_key,
-                        gp_parent.parent_depth(parent_key),
-                    )
-                )
-            else:
-                root_targets.append(LayerTarget("effect", key, label))
+        parent_key = layer_object_model.parent_key(obj)
+        target = LayerTarget(
+            "gp",
+            key,
+            layer_object_model.display_title(obj),
+            parent_key if parent_key else "",
+            gp_parent.parent_depth(parent_key) if parent_key else 0,
+        )
+        if parent_key and gp_parent.parent_key_exists(work, parent_key):
+            targets_by_parent.setdefault(parent_key, []).append(target)
+        else:
+            root_targets.append(target)
     return root_targets, targets_by_parent
 
 
@@ -920,20 +789,8 @@ def collect_targets(context) -> list[LayerTarget]:
     scene = context.scene
     work = get_work(context)
     targets: list[LayerTarget] = []
-    gp_obj = gp_utils.get_master_gpencil()
-    gp_root_targets, gp_targets_by_parent = _partition_gp_targets(gp_obj, work)
-    effect_obj = get_effect_gp_object()
-    effect_root_targets, effect_targets_by_parent = _partition_gp_targets(
-        effect_obj,
-        work,
-        kind="effect",
-    )
-    effect_object_root_targets, effect_object_targets_by_parent = (
-        _partition_effect_object_targets(work)
-    )
-    effect_root_targets.extend(effect_object_root_targets)
-    for parent_key, children in effect_object_targets_by_parent.items():
-        effect_targets_by_parent.setdefault(parent_key, []).extend(children)
+    gp_root_targets, gp_targets_by_parent = _partition_gp_object_targets(work)
+    effect_root_targets, effect_targets_by_parent = _partition_effect_object_targets(work)
 
     if work is not None and getattr(work, "loaded", False):
         from . import page_range
@@ -1051,7 +908,7 @@ def _find_insert_index_for_target(stack, target: LayerTarget) -> int:
         parent_idx = -1
         last_child_idx = -1
         for i, item in enumerate(stack):
-            if item.key == target.parent_key and item.kind in {OUTSIDE_KIND, PAGE_KIND, COMA_KIND, "gp_folder", "balloon_group", LAYER_FOLDER_KIND}:
+            if item.key == target.parent_key and item.kind in {OUTSIDE_KIND, PAGE_KIND, COMA_KIND, "balloon_group", LAYER_FOLDER_KIND}:
                 parent_idx = i
                 last_child_idx = max(last_child_idx, i)
             elif getattr(item, "parent_key", "") == target.parent_key:
@@ -1116,14 +973,6 @@ def _normalize_tree_order(
         desired.append(uid)
         used.add(uid)
 
-    def _append_gp_subtree(parent_key: str) -> None:
-        for child in stack:
-            if getattr(child, "parent_key", "") != parent_key:
-                continue
-            _append_uid(child)
-            if child.kind == "gp_folder":
-                _append_gp_subtree(child.key)
-
     page_items = [item for item in stack if item.kind == PAGE_KIND]
     if page_key_order is not None:
         page_uid_order = [target_uid(PAGE_KIND, key) for key in page_key_order]
@@ -1139,7 +988,7 @@ def _normalize_tree_order(
                 continue
             _append_uid(child)
             kind = getattr(child, "kind", "")
-            if kind in {OUTSIDE_KIND, COMA_KIND, "balloon_group", "gp_folder", LAYER_FOLDER_KIND}:
+            if kind in {OUTSIDE_KIND, COMA_KIND, "balloon_group", LAYER_FOLDER_KIND}:
                 _append_subtree_in_stack_order(getattr(child, "key", ""))
 
     def _append_page_subtree(page_item) -> None:
@@ -1167,7 +1016,7 @@ def _normalize_tree_order(
                 ):
                     _append_uid(child)
                     kind = getattr(child, "kind", "")
-                    if kind in {"balloon_group", "gp_folder", LAYER_FOLDER_KIND}:
+                    if kind in {"balloon_group", LAYER_FOLDER_KIND}:
                         _append_subtree_in_stack_order(child.key)
         else:
             # デフォルト: スタック順を尊重。ページ直下の子(ページ直下 GP, コマ等)
@@ -1194,8 +1043,6 @@ def _normalize_tree_order(
             _append_page_subtree(item)
         elif not getattr(item, "parent_key", ""):
             _append_uid(item)
-            if item.kind == "gp_folder":
-                _append_gp_subtree(item.key)
 
     desired.extend(uid for uid in current if uid not in used)
     for target_index, uid in enumerate(desired):
@@ -1328,13 +1175,6 @@ def _same_move_scope(a, b) -> bool:
             and split_child_key(getattr(a, "key", ""))[0]
             == split_child_key(getattr(b, "key", ""))[0]
         )
-    if a_kind in {"gp", "gp_folder"} or b_kind in {"gp", "gp_folder"}:
-        return (
-            a_kind in {"gp", "gp_folder"}
-            and b_kind in {"gp", "gp_folder"}
-            and str(getattr(a, "parent_key", "") or "")
-            == str(getattr(b, "parent_key", "") or "")
-        )
     if a_kind == LAYER_FOLDER_KIND or b_kind == LAYER_FOLDER_KIND:
         return (
             a_kind == b_kind == LAYER_FOLDER_KIND
@@ -1416,13 +1256,11 @@ def _stack_subtree_end_index(stack, index: int) -> int:
 def _parent_item_allows_child(parent, child_kind: str) -> bool:
     parent_kind = getattr(parent, "kind", "")
     if parent_kind == OUTSIDE_KIND:
-        return child_kind in PAGE_COMA_CHILD_KINDS or child_kind in {COMA_KIND, "gp_folder", LAYER_FOLDER_KIND}
+        return child_kind in PAGE_COMA_CHILD_KINDS or child_kind in {COMA_KIND, LAYER_FOLDER_KIND}
     if parent_kind == PAGE_KIND:
         return child_kind in PAGE_COMA_CHILD_KINDS or child_kind in {COMA_KIND, LAYER_FOLDER_KIND}
     if parent_kind == COMA_KIND:
         return child_kind in PAGE_COMA_CHILD_KINDS or child_kind == LAYER_FOLDER_KIND
-    if parent_kind == "gp_folder":
-        return child_kind in {"gp", "gp_folder"}
     if parent_kind == LAYER_FOLDER_KIND:
         return child_kind in layer_folder_utils.FOLDER_CONTAINER_CHILD_KINDS
     return False
@@ -1433,7 +1271,7 @@ def _parent_key_exists_for_child(context, child_kind: str, parent_key: str) -> b
     if not parent_key:
         return True
     if parent_key == OUTSIDE_STACK_KEY:
-        return child_kind in PAGE_COMA_CHILD_KINDS or child_kind in {COMA_KIND, "gp_folder", LAYER_FOLDER_KIND}
+        return child_kind in PAGE_COMA_CHILD_KINDS or child_kind in {COMA_KIND, LAYER_FOLDER_KIND}
     if layer_folder_utils.is_folder_key(context, parent_key):
         return child_kind in layer_folder_utils.FOLDER_CONTAINER_CHILD_KINDS
     if child_kind == COMA_KIND:
@@ -1443,9 +1281,6 @@ def _parent_key_exists_for_child(context, child_kind: str, parent_key: str) -> b
         return True
     if child_kind in PAGE_COMA_CHILD_KINDS and gp_parent.parent_key_exists(work, parent_key):
         return True
-    if child_kind in {"gp", "gp_folder"}:
-        stack = getattr(getattr(context, "scene", None), "bmanga_layer_stack", None)
-        return bool(_find_stack_item(stack, "gp_folder", parent_key))
     return False
 
 
@@ -1464,26 +1299,10 @@ def _parent_key_from_flat_drop(stack, moved_index: int, child_kind: str) -> str:
     return ""
 
 
-def _is_stack_folder_descendant(stack, ancestor_key: str, candidate_key: str) -> bool:
-    key = candidate_key
-    guard = 0
-    while key and guard < 128:
-        if key == ancestor_key:
-            return True
-        folder = _find_stack_item(stack, "gp_folder", key)
-        if folder is None:
-            return False
-        key = str(getattr(folder, "parent_key", "") or "")
-        guard += 1
-    return False
-
-
 def _parent_key_one_level_up(stack, parent_key: str) -> str:
     parent = (
         _find_stack_item(stack, OUTSIDE_KIND, parent_key)
         or _find_stack_item(stack, LAYER_FOLDER_KIND, parent_key)
-        or
-        _find_stack_item(stack, "gp_folder", parent_key)
         or _find_stack_item(stack, COMA_KIND, parent_key)
         or _find_stack_item(stack, PAGE_KIND, parent_key)
     )
@@ -1510,7 +1329,7 @@ def _stack_item_page_key(item, context=None) -> str:
 
     - coma / balloon / text / balloon_group: 行 key が ``page_id:child_id`` 形式
     - raster / image / image_path: 永続化された ``parent_key`` のページプレフィックス
-    - gp / effect / gp_folder: ``parent_key`` のページプレフィックス
+    - gp / effect: ``parent_key`` のページプレフィックス
     """
     kind = getattr(item, "kind", "")
     key = str(getattr(item, "key", "") or "")
@@ -1522,7 +1341,7 @@ def _stack_item_page_key(item, context=None) -> str:
         if page_key == OUTSIDE_STACK_KEY:
             return ""
         return page_key
-    if kind in {"raster", "image", "image_path", "gp", "gp_folder", "effect"}:
+    if kind in {"raster", "image", "image_path", "gp", "effect"}:
         page_key, _ = split_child_key(parent_key)
         if page_key == OUTSIDE_STACK_KEY:
             return ""
@@ -1559,7 +1378,7 @@ def _apply_stack_drop_hint(context, moved_uid: str, *, nesting_delta: int = 0) -
     kind = getattr(item, "kind", "")
     if kind == COMA_PREVIEW_KIND:
         return False
-    if kind not in {COMA_KIND, "gp", "gp_folder", "effect", "raster", "image", "image_path", "balloon", "text", LAYER_FOLDER_KIND}:
+    if kind not in {COMA_KIND, "gp", "effect", "raster", "image", "image_path", "balloon", "text", LAYER_FOLDER_KIND}:
         return False
     parent_key = _drop_parent_from_nesting_delta(stack, item, moved_index, nesting_delta)
     old_parent_key = str(getattr(item, "parent_key", "") or "")
@@ -1591,37 +1410,29 @@ def _apply_stack_drop_hint(context, moved_uid: str, *, nesting_delta: int = 0) -
             )
             item.depth = int(getattr(parent, "depth", -1)) + 1 if parent is not None else 0
         return changed
-    if kind != "gp_folder":
-        try:
-            from . import layer_stack_dnd
+    try:
+        from . import layer_stack_dnd
 
-            if (
-                layer_stack_dnd.child_can_use_semantic_parent(kind)
-                and layer_stack_dnd.is_semantic_parent_key(context, parent_key)
-            ):
-                old_folder_key = old_parent_key if layer_folder_utils.is_folder_key(context, old_parent_key) else ""
-                folder_changed = False
-                if old_folder_key and layer_folder_utils.is_folder_child_kind(kind):
-                    folder_changed = layer_folder_utils.set_item_folder_key(context, item, "")
-                changed = layer_stack_dnd.apply_semantic_parent_drop(context, item, parent_key)
-                if old_folder_key and not changed and not folder_changed:
-                    layer_folder_utils.set_item_folder_key(context, item, old_folder_key)
-                return bool(changed or folder_changed)
-        except Exception:  # noqa: BLE001
-            _logger.exception("semantic layer stack D&D parent drop failed")
-            return False
-    # ここから下は gp_folder など、実コレクション移送を伴わない従来の親キー更新。
+        if (
+            layer_stack_dnd.child_can_use_semantic_parent(kind)
+            and layer_stack_dnd.is_semantic_parent_key(context, parent_key)
+        ):
+            old_folder_key = old_parent_key if layer_folder_utils.is_folder_key(context, old_parent_key) else ""
+            folder_changed = False
+            if old_folder_key and layer_folder_utils.is_folder_child_kind(kind):
+                folder_changed = layer_folder_utils.set_item_folder_key(context, item, "")
+            changed = layer_stack_dnd.apply_semantic_parent_drop(context, item, parent_key)
+            if old_folder_key and not changed and not folder_changed:
+                layer_folder_utils.set_item_folder_key(context, item, old_folder_key)
+            return bool(changed or folder_changed)
+    except Exception:  # noqa: BLE001
+        _logger.exception("semantic layer stack D&D parent drop failed")
+        return False
     # page/coma/outside への意味的な D&D は上で layer_reparent に委譲済み。
     # フォールバック経路ではページをまたぐ単純 parent_key 書き換えを拒否する。
     entry_page = _stack_item_page_key(item, context)
     target_page = _parent_key_page(parent_key)
     if entry_page and target_page and entry_page != target_page:
-        return False
-    if kind == "gp_folder":
-        item_key = str(getattr(item, "key", "") or "")
-        if parent_key == item_key or _is_stack_folder_descendant(stack, item_key, parent_key):
-            return False
-    if kind in {"effect", "raster", "balloon", "text"} and _find_stack_item(stack, "gp_folder", parent_key):
         return False
     # 旧バージョンでは Y-only ドラッグでの「深く入れる」(depth 増加) を抑止していたが、
     # CSP / Photoshop のレイヤーパネルでは Y-drag だけでフォルダ/コマに直接入れられるのが
@@ -1632,22 +1443,12 @@ def _apply_stack_drop_hint(context, moved_uid: str, *, nesting_delta: int = 0) -
     parent = None
     if parent_key:
         parent = (
-            _find_stack_item(stack, "gp_folder", parent_key)
-            or _find_stack_item(stack, LAYER_FOLDER_KIND, parent_key)
+            _find_stack_item(stack, LAYER_FOLDER_KIND, parent_key)
             or _find_stack_item(stack, OUTSIDE_KIND, parent_key)
             or _find_stack_item(stack, PAGE_KIND, parent_key)
             or _find_stack_item(stack, COMA_KIND, parent_key)
         )
     item.depth = int(getattr(parent, "depth", -1)) + 1 if parent is not None else 0
-    if kind in {"gp", "gp_folder"}:
-        obj = gp_utils.get_master_gpencil()
-        groups = getattr(getattr(obj, "data", None), "layer_groups", None) if obj is not None else None
-        group = _find_gp_group_by_key(groups, parent_key) if parent_key else None
-        if group is not None and hasattr(group, "is_expanded"):
-            try:
-                group.is_expanded = True
-            except Exception:  # noqa: BLE001
-                pass
     return True
 
 
@@ -1868,15 +1669,6 @@ def _active_key_from_scene(context) -> tuple[str, str] | None:
         idx = int(getattr(page, "active_coma_index", -1))
         if 0 <= idx < len(page.comas):
             return COMA_KIND, coma_stack_key(page, page.comas[idx])
-    if kind == "gp_folder":
-        key = str(getattr(scene, "bmanga_active_gp_folder_key", "") or "")
-        obj = gp_utils.get_master_gpencil()
-        groups = getattr(getattr(obj, "data", None), "layer_groups", None)
-        group = _find_gp_group_by_key(groups, key)
-        if group is not None:
-            key = _node_stack_key(group)
-            scene.bmanga_active_gp_folder_key = key
-            return "gp_folder", key
     if kind == LAYER_FOLDER_KIND:
         key = str(getattr(scene, "bmanga_active_layer_folder_key", "") or "")
         if layer_folder_utils.is_folder_key(context, key):
@@ -1912,18 +1704,17 @@ def _active_key_from_scene(context) -> tuple[str, str] | None:
     if kind == "effect":
         key = str(getattr(scene, "bmanga_active_effect_layer_name", "") or "")
         obj, layer = _find_effect_layer_by_key(key)
-        if layer is None:
-            obj = get_effect_gp_object()
-            layers = getattr(getattr(obj, "data", None), "layers", None)
-            layer = getattr(layers, "active", None) if layers is not None else None
-        if layer is not None:
-            return "effect", _node_stack_key(layer)
+        if obj is not None and layer is not None:
+            from . import layer_object_model
 
-    obj = gp_utils.get_master_gpencil()
-    layer = getattr(getattr(obj, "data", None), "layers", None)
-    active = getattr(layer, "active", None) if layer is not None else None
-    if active is not None:
-        return "gp", _node_stack_key(active)
+            return "effect", layer_object_model.stable_id(obj)
+
+    from . import layer_object_model
+
+    view_layer = getattr(context, "view_layer", None)
+    active_obj = getattr(getattr(view_layer, "objects", None), "active", None)
+    if layer_object_model.is_layer_object(active_obj, "gp"):
+        return "gp", layer_object_model.stable_id(active_obj)
     return None
 
 
@@ -1953,40 +1744,15 @@ def _find_by_id(coll, key: str):
     return -1, None
 
 
-def _find_gp_layer_by_key(layers, key: str):
-    if layers is None:
-        return None
-    for layer in layers:
-        if _node_stack_key(layer) == key or getattr(layer, "name", "") == key:
-            return layer
-    return None
-
-
 def _find_effect_layer_by_key(key: str):
-    """新設計の効果線 Object を優先して、(Object, Layer) を返す。"""
+    """効果線の永続IDから (制御Object, content Layer) を返す。"""
     key = str(key or "")
     if not key:
         return None, None
-    for obj in _iter_effect_objects():
-        layers = getattr(getattr(obj, "data", None), "layers", None)
-        layer = _find_gp_layer_by_key(layers, key)
-        if layer is not None:
-            return obj, layer
-    obj = get_effect_gp_object()
-    layers = getattr(getattr(obj, "data", None), "layers", None) if obj is not None else None
-    layer = _find_gp_layer_by_key(layers, key)
-    if layer is not None:
-        return obj, layer
-    return None, None
+    from . import layer_object_model
 
-
-def _find_gp_group_by_key(groups, key: str):
-    if groups is None:
-        return None
-    for group in groups:
-        if _node_stack_key(group) == key or getattr(group, "name", "") == key:
-            return group
-    return None
+    obj = layer_object_model.find_layer_object("effect", key)
+    return obj, layer_object_model.content_layer(obj)
 
 
 def gp_parent_keys_for_page(page) -> set[str]:
@@ -1999,10 +1765,18 @@ def gp_parent_key_for_coma(page, panel) -> str:
 
 def gp_layers_for_parent_keys(context, parent_keys: set[str]) -> list[object]:
     _ = context
-    obj = gp_utils.get_master_gpencil()
-    if obj is None or not parent_keys:
+    keys = {str(key or "") for key in parent_keys if str(key or "")}
+    if not keys:
         return []
-    return list(gp_parent.iter_layers_with_parent(obj, set(parent_keys)))
+    from . import layer_object_model
+
+    return [
+        layer
+        for obj in layer_object_model.iter_layer_objects("gp")
+        if layer_object_model.parent_key(obj) in keys
+        for layer in (layer_object_model.content_layer(obj),)
+        if layer is not None
+    ]
 
 
 def effect_layers_for_parent_keys(context, parent_keys: set[str]) -> list[object]:
@@ -2010,41 +1784,35 @@ def effect_layers_for_parent_keys(context, parent_keys: set[str]) -> list[object
     keys = {str(key or "") for key in parent_keys if str(key or "")}
     if not keys:
         return []
-    layers_out: list[object] = []
-    obj = get_effect_gp_object()
-    if obj is not None:
-        layers_out.extend(list(gp_parent.iter_layers_with_parent(obj, keys)))
-    for effect_obj in _iter_effect_objects():
-        layers = getattr(getattr(effect_obj, "data", None), "layers", None)
-        if layers is None:
-            continue
-        for layer in layers:
-            if _effect_parent_key(effect_obj, layer) in keys:
-                layers_out.append(layer)
-    return layers_out
+    from . import layer_object_model
+
+    return [
+        layer
+        for obj in layer_object_model.iter_layer_objects("effect")
+        if layer_object_model.parent_key(obj) in keys
+        for layer in (layer_object_model.content_layer(obj),)
+        if layer is not None
+    ]
 
 
 def _effect_layer_pairs_for_parent_keys(parent_keys: set[str]) -> list[tuple[object, object]]:
     keys = {str(key or "") for key in parent_keys if str(key or "")}
     if not keys:
         return []
-    pairs: list[tuple[object, object]] = []
-    obj = get_effect_gp_object()
-    if obj is not None:
-        for layer in gp_parent.iter_layers_with_parent(obj, keys):
-            pairs.append((obj, layer))
-    for effect_obj in _iter_effect_objects():
-        layers = getattr(getattr(effect_obj, "data", None), "layers", None)
-        if layers is None:
-            continue
-        for layer in layers:
-            if _effect_parent_key(effect_obj, layer) in keys:
-                pairs.append((effect_obj, layer))
-    return pairs
+    from . import layer_object_model
+
+    return [
+        (obj, layer)
+        for obj in layer_object_model.iter_layer_objects("effect")
+        if layer_object_model.parent_key(obj) in keys
+        for layer in (layer_object_model.content_layer(obj),)
+        if layer is not None
+    ]
 
 
-def _stamp_effect_object_parent(context, obj, parent_key: str) -> None:
-    if obj is None or str(obj.get(on.PROP_KIND, "") or "") != "effect":
+def _stamp_layer_object_parent(context, obj, parent_key: str) -> None:
+    kind = str(obj.get(on.PROP_KIND, "") or "") if obj is not None else ""
+    if kind not in {"gp", "effect"}:
         return
     parent_key = "" if parent_key == OUTSIDE_STACK_KEY else str(parent_key or "")
     parent_kind = "coma" if ":" in parent_key else ("page" if parent_key else "outside")
@@ -2053,7 +1821,7 @@ def _stamp_effect_object_parent(context, obj, parent_key: str) -> None:
 
         los.stamp_layer_object(
             obj,
-            kind="effect",
+            kind=kind,
             bmanga_id=str(obj.get(on.PROP_ID, "") or obj.name),
             title=str(obj.get(on.PROP_TITLE, "") or obj.name),
             z_index=int(obj.get(on.PROP_Z_INDEX, 0) or 0),
@@ -2063,22 +1831,24 @@ def _stamp_effect_object_parent(context, obj, parent_key: str) -> None:
             scene=getattr(context, "scene", None),
         )
     except Exception:  # noqa: BLE001
-        _logger.exception("effect object parent stamp failed: %s", getattr(obj, "name", ""))
+        _logger.exception("layer object parent stamp failed: %s", getattr(obj, "name", ""))
 
 
 def delete_gp_layers_for_parent_keys(context, parent_keys: set[str]) -> int:
-    obj = gp_utils.get_master_gpencil()
-    layers = getattr(getattr(obj, "data", None), "layers", None) if obj is not None else None
-    if layers is None or not parent_keys:
+    keys = {str(key or "") for key in parent_keys if str(key or "")}
+    if not keys:
         return 0
+    from . import layer_object_model
+
     removed = 0
-    for layer in list(gp_parent.iter_layers_with_parent(obj, set(parent_keys))):
+    for obj in list(layer_object_model.iter_layer_objects("gp")):
+        if layer_object_model.parent_key(obj) not in keys:
+            continue
         try:
-            gp_parent.set_parent_key(layer, "")
-            layers.remove(layer)
-            removed += 1
+            if layer_object_model.remove_layer_object(obj):
+                removed += 1
         except Exception:  # noqa: BLE001
-            _logger.exception("delete gp layer for parent failed: %s", getattr(layer, "name", ""))
+            _logger.exception("delete gp object for parent failed: %s", getattr(obj, "name", ""))
     if removed:
         tag_view3d_redraw(context)
     return removed
@@ -2101,34 +1871,51 @@ def delete_effect_layers_for_parent_keys(context, parent_keys: set[str]) -> int:
     return removed
 
 
-def reparent_gp_layers(context, old_parent_key: str, new_parent_key: str) -> int:
+def _reparent_layer_objects(
+    context,
+    kind: str,
+    old_parent_key: str,
+    new_parent_key: str,
+) -> int:
     work = get_work(context)
     if not old_parent_key or not gp_parent.parent_key_exists(work, new_parent_key):
         return 0
-    obj = gp_utils.get_master_gpencil()
-    if obj is None:
-        return 0
+    from . import layer_object_model
+
+    source_page_id, _source_child_id = split_child_key(old_parent_key)
+    target_page_id, _target_child_id = split_child_key(new_parent_key)
+    cross_page = bool(
+        source_page_id and target_page_id and source_page_id != target_page_id
+    )
     changed = 0
-    for layer in list(gp_parent.iter_layers_with_parent(obj, {old_parent_key})):
-        gp_parent.set_parent_key(layer, new_parent_key)
+    for obj in list(layer_object_model.iter_layer_objects(kind)):
+        if layer_object_model.parent_key(obj) != old_parent_key:
+            continue
+        if cross_page:
+            from . import cross_page_transfer
+
+            if cross_page_transfer.transfer_layer_object_to_parent(
+                context,
+                work,
+                obj,
+                new_parent_key,
+                folder_id="",
+            ):
+                changed += 1
+            continue
+        _stamp_layer_object_parent(context, obj, new_parent_key)
         changed += 1
     if changed:
         tag_view3d_redraw(context)
     return changed
+
+
+def reparent_gp_layers(context, old_parent_key: str, new_parent_key: str) -> int:
+    return _reparent_layer_objects(context, "gp", old_parent_key, new_parent_key)
 
 
 def reparent_effect_layers(context, old_parent_key: str, new_parent_key: str) -> int:
-    work = get_work(context)
-    if not old_parent_key or not gp_parent.parent_key_exists(work, new_parent_key):
-        return 0
-    changed = 0
-    for obj, layer in list(_effect_layer_pairs_for_parent_keys({old_parent_key})):
-        gp_parent.set_parent_key(layer, new_parent_key)
-        _stamp_effect_object_parent(context, obj, new_parent_key)
-        changed += 1
-    if changed:
-        tag_view3d_redraw(context)
-    return changed
+    return _reparent_layer_objects(context, "effect", old_parent_key, new_parent_key)
 
 
 def translate_gp_layers_for_parent_keys(context, parent_keys: set[str], dx_mm: float, dy_mm: float) -> int:
@@ -2381,15 +2168,17 @@ def resolve_stack_item(context, item):
         return {"kind": kind, "target": None, "object": None, "index": -1,
                 "page": target_page, "page_index": page_idx}
     if kind == "gp":
-        obj = gp_utils.get_master_gpencil()
-        layer = getattr(getattr(obj, "data", None), "layers", None)
-        target = _find_gp_layer_by_key(layer, key)
-        return {"kind": kind, "target": target, "object": obj, "index": -1}
-    if kind == "gp_folder":
-        obj = gp_utils.get_master_gpencil()
-        groups = getattr(getattr(obj, "data", None), "layer_groups", None)
-        target = _find_gp_group_by_key(groups, key)
-        return {"kind": kind, "target": target, "object": obj, "index": -1}
+        from . import layer_object_model
+
+        obj = layer_object_model.find_layer_object("gp", key)
+        target = layer_object_model.content_layer(obj)
+        return {
+            "kind": kind,
+            "target": target,
+            "object": obj,
+            "stable_id": key,
+            "index": -1,
+        }
     if kind == LAYER_FOLDER_KIND:
         if work is None:
             return None
@@ -2513,7 +2302,13 @@ def resolve_stack_item(context, item):
         }
     if kind == "effect":
         obj, target = _find_effect_layer_by_key(key)
-        return {"kind": kind, "target": target, "object": obj, "index": -1}
+        return {
+            "kind": kind,
+            "target": target,
+            "object": obj,
+            "stable_id": key,
+            "index": -1,
+        }
     return None
 
 
@@ -2543,6 +2338,12 @@ def is_item_selected(context, item) -> bool:
             if stack_item_uid(stack[idx]) == stack_item_uid(item):
                 return True
     resolved = resolve_stack_item(context, item)
+    if str(getattr(item, "kind", "") or "") in {"gp", "effect"}:
+        obj = _layer_item_selection_object(item, resolved)
+        try:
+            return bool(obj and obj.select_get())
+        except Exception:  # noqa: BLE001
+            return False
     target = resolved.get("target") if resolved is not None else None
     attr = _selection_attr_name(target)
     if not attr:
@@ -2551,6 +2352,18 @@ def is_item_selected(context, item) -> bool:
         return bool(getattr(target, attr))
     except Exception:  # noqa: BLE001
         return False
+
+
+def _layer_item_selection_object(item, resolved):
+    obj = resolved.get("object") if resolved is not None else None
+    if obj is None or str(getattr(item, "kind", "") or "") != "effect":
+        return obj
+    try:
+        from . import effect_line_object
+
+        return effect_line_object.find_effect_display_object(obj) or obj
+    except Exception:  # noqa: BLE001
+        return obj
 
 
 def set_item_selected(context, item, value: bool) -> bool:
@@ -2562,6 +2375,15 @@ def set_item_selected(context, item, value: bool) -> bool:
     if item is None:
         return False
     resolved = resolve_stack_item(context, item)
+    if str(getattr(item, "kind", "") or "") in {"gp", "effect"}:
+        obj = _layer_item_selection_object(item, resolved)
+        if obj is None:
+            return False
+        try:
+            obj.select_set(bool(value))
+            return True
+        except Exception:  # noqa: BLE001
+            return False
     target = resolved.get("target") if resolved is not None else None
     attr = _selection_attr_name(target)
     if not attr:
@@ -2656,9 +2478,9 @@ def _object_selection_key_for_stack_item(item, resolved) -> str:
     if kind == "fill":
         return object_selection.fill_key(target)
     if kind == "gp":
-        return object_selection.gp_key(target)
+        return object_selection.gp_key(resolved.get("object"))
     if kind == "effect":
-        return object_selection.effect_key(target)
+        return object_selection.effect_key(resolved.get("object"))
     return ""
 
 
@@ -2754,7 +2576,6 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
             scene.bmanga_current_coma_page_id = ""
         except Exception:  # noqa: BLE001
             pass
-        scene.bmanga_active_gp_folder_key = ""
         scene.bmanga_active_layer_kind = PAGE_KIND
         edge_selection.clear_selection(context)
     elif kind == COMA_KIND:
@@ -2763,7 +2584,6 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
         coma_idx = int(resolved.get("index", -1))
         target_page = resolved.get("page")
         if target_page is None:
-            scene.bmanga_active_gp_folder_key = ""
             scene.bmanga_active_layer_kind = COMA_KIND
             edge_selection.clear_selection(context)
             target = resolved.get("target")
@@ -2793,7 +2613,6 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
             scene.bmanga_overview_mode = True
         except Exception:  # noqa: BLE001
             pass
-        scene.bmanga_active_gp_folder_key = ""
         scene.bmanga_active_layer_kind = COMA_KIND
         edge_selection.set_selection(
             context,
@@ -2811,7 +2630,6 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
             if 0 <= coma_idx < len(target_page.comas):
                 target_page.active_coma_index = coma_idx
         _set_active_object(context, resolved.get("object"))
-        scene.bmanga_active_gp_folder_key = ""
         scene.bmanga_active_layer_kind = COMA_KIND
         edge_selection.clear_selection(context)
     elif kind == "gp":
@@ -2825,18 +2643,11 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
         except Exception:  # noqa: BLE001
             _logger.exception("select gp layer failed")
         scene.bmanga_active_layer_kind = "gp"
-        scene.bmanga_active_gp_folder_key = ""
-        edge_selection.clear_selection(context)
-    elif kind == "gp_folder":
-        _set_active_object(context, resolved.get("object"))
-        scene.bmanga_active_gp_folder_key = item.key
-        scene.bmanga_active_layer_kind = "gp_folder"
         edge_selection.clear_selection(context)
     elif kind == LAYER_FOLDER_KIND:
         folder_key = str(getattr(item, "key", "") or "")
         if hasattr(scene, "bmanga_active_layer_folder_key"):
             scene.bmanga_active_layer_folder_key = folder_key
-        scene.bmanga_active_gp_folder_key = ""
         scene.bmanga_active_layer_kind = LAYER_FOLDER_KIND
         work = get_work(context)
         semantic_parent = layer_folder_utils.semantic_parent_key_for_folder(work, folder_key)
@@ -2848,12 +2659,10 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
         edge_selection.clear_selection(context)
     elif kind == "image":
         scene.bmanga_active_image_layer_index = int(resolved.get("index", -1))
-        scene.bmanga_active_gp_folder_key = ""
         scene.bmanga_active_layer_kind = "image"
         edge_selection.clear_selection(context)
     elif kind == "image_path":
         scene.bmanga_active_image_path_layer_index = int(resolved.get("index", -1))
-        scene.bmanga_active_gp_folder_key = ""
         scene.bmanga_active_layer_kind = "image_path"
         edge_selection.clear_selection(context)
     elif kind == "raster":
@@ -2862,12 +2671,10 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
         if work is not None and 0 <= page_idx < len(work.pages):
             work.active_page_index = page_idx
         scene.bmanga_active_raster_layer_index = int(resolved.get("index", -1))
-        scene.bmanga_active_gp_folder_key = ""
         scene.bmanga_active_layer_kind = "raster"
         edge_selection.clear_selection(context)
     elif kind == "fill":
         scene.bmanga_active_fill_layer_index = int(resolved.get("index", -1))
-        scene.bmanga_active_gp_folder_key = ""
         scene.bmanga_active_layer_kind = "fill"
         edge_selection.clear_selection(context)
     elif kind == "balloon_group":
@@ -2890,7 +2697,6 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
                 first_selected = i
         if first_selected >= 0:
             target_page.active_balloon_index = first_selected
-        scene.bmanga_active_gp_folder_key = ""
         scene.bmanga_active_layer_kind = "balloon"
         edge_selection.clear_selection(context)
     elif kind == "balloon":
@@ -2903,7 +2709,6 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
                 target.selected = True
             except Exception:  # noqa: BLE001
                 pass
-            scene.bmanga_active_gp_folder_key = ""
             scene.bmanga_active_layer_kind = "balloon"
             edge_selection.clear_selection(context)
             if sync_object_selection:
@@ -2921,7 +2726,6 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
                 balloon.selected = i == target_page.active_balloon_index
             except Exception:  # noqa: BLE001
                 pass
-        scene.bmanga_active_gp_folder_key = ""
         scene.bmanga_active_layer_kind = "balloon"
         edge_selection.clear_selection(context)
     elif kind == "text":
@@ -2934,7 +2738,6 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
                 target.selected = True
             except Exception:  # noqa: BLE001
                 pass
-            scene.bmanga_active_gp_folder_key = ""
             scene.bmanga_active_layer_kind = "text"
             edge_selection.clear_selection(context)
             if sync_object_selection:
@@ -2947,12 +2750,19 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
         if work is not None and 0 <= page_idx < len(work.pages):
             work.active_page_index = page_idx
         target_page.active_text_index = int(resolved.get("index", -1))
-        scene.bmanga_active_gp_folder_key = ""
         scene.bmanga_active_layer_kind = "text"
         edge_selection.clear_selection(context)
     elif kind == "effect":
         obj = resolved.get("object")
         layer = resolved.get("target")
+        try:
+            from ..operators import effect_line_op
+
+            if not effect_line_op._set_active_effect_layer(context, obj, layer):
+                return False
+        except Exception:  # noqa: BLE001
+            _logger.exception("effect layer params restore failed")
+            return False
         active_obj = obj
         try:
             from . import effect_line_object as _elo
@@ -2963,19 +2773,6 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
         except Exception:  # noqa: BLE001
             active_obj = obj
         _set_active_object(context, active_obj)
-        try:
-            obj.data.layers.active = layer
-        except Exception:  # noqa: BLE001
-            pass
-        scene.bmanga_active_effect_layer_name = item.key
-        scene.bmanga_active_gp_folder_key = ""
-        scene.bmanga_active_layer_kind = "effect"
-        try:
-            from ..operators import effect_line_op
-
-            effect_line_op._load_layer_params_to_scene(context, obj, layer)
-        except Exception:  # noqa: BLE001
-            _logger.exception("effect layer params restore failed")
         edge_selection.clear_selection(context)
     try:
         from . import layer_links
@@ -3069,12 +2866,6 @@ def _apply_page_coma_orders(context, stack) -> None:
         from . import page_grid
     except Exception:  # noqa: BLE001
         page_grid = None
-    old_page_offsets = {}
-    if page_grid is not None:
-        old_page_offsets = {
-            page_stack_key(page): page_grid.page_total_offset_mm(work, context.scene, i)
-            for i, page in enumerate(work.pages)
-        }
     active_page_key = ""
     active_coma_key = ""
     active_idx = int(getattr(work, "active_page_index", -1))
@@ -3093,17 +2884,6 @@ def _apply_page_coma_orders(context, stack) -> None:
         page_range.update_page_range_visibility(work)
     except Exception:  # noqa: BLE001
         _logger.exception("page range update after stack order failed")
-    if page_grid is not None:
-        for i, page in enumerate(work.pages):
-            old = old_page_offsets.get(page_stack_key(page))
-            if old is None:
-                continue
-            new = page_grid.page_total_offset_mm(work, context.scene, i)
-            dx = new[0] - old[0]
-            dy = new[1] - old[1]
-            if abs(dx) > 1.0e-6 or abs(dy) > 1.0e-6:
-                translate_gp_layers_for_parent_keys(context, gp_parent_keys_for_page(page), dx, dy)
-
     for page in work.pages:
         page_key = page_stack_key(page)
         coma_keys = [
@@ -3255,141 +3035,39 @@ def _apply_simple_collection_orders(context, stack) -> None:
             _restore_active_collection_index(page, "active_text_index", page.texts, active_text)
 
 
-def _node_uid_for_stack(node, *, effect: bool) -> str:
-    if effect:
-        return target_uid("effect", _node_stack_key(node))
-    if gp_utils.is_layer_group(node):
-        return target_uid("gp_folder", _node_stack_key(node))
-    return target_uid("gp", _node_stack_key(node))
+def _apply_layer_object_parenting(context, stack, work, kind: str) -> None:
+    from . import layer_object_model
 
-
-def _siblings_for_parent(gp_data, parent_key: str):
-    if not parent_key:
-        return list(getattr(gp_data, "root_nodes", []))
-    groups = getattr(gp_data, "layer_groups", None)
-    group = _find_gp_group_by_key(groups, parent_key)
-    if group is None:
-        return []
-    return list(getattr(group, "children", []))
-
-
-def _move_gp_node(gp_data, node, direction: str) -> None:
-    try:
-        if gp_utils.is_layer_group(node):
-            gp_data.layer_groups.move(node, direction)
-        else:
-            gp_data.layers.move(node, direction)
-    except Exception:  # noqa: BLE001
-        _logger.exception("gp node move failed: %s %s", getattr(node, "name", ""), direction)
-
-
-def _gp_group_contains_key(group, key: str) -> bool:
-    if group is None or not key:
-        return False
-    for child in getattr(group, "children", []):
-        if gp_utils.is_layer_group(child):
-            child_key = _node_stack_key(child)
-            if child_key == key or _gp_group_contains_key(child, key):
-                return True
-    return False
-
-
-def _apply_gp_parenting(obj, stack, work) -> None:
-    gp_data = getattr(obj, "data", None)
-    if gp_data is None:
-        return
-    layers = getattr(gp_data, "layers", None)
-    groups = getattr(gp_data, "layer_groups", None)
-    if layers is None:
-        return
     for item in stack:
-        kind = getattr(item, "kind", "")
-        if kind not in {"gp", "gp_folder"}:
+        if getattr(item, "kind", "") != kind:
             continue
-        key = str(getattr(item, "key", "") or "")
-        node = (
-            _find_gp_group_by_key(groups, key)
-            if kind == "gp_folder"
-            else _find_gp_layer_by_key(layers, key)
+        obj = layer_object_model.find_layer_object(
+            kind,
+            str(getattr(item, "key", "") or ""),
         )
-        if node is None:
+        if obj is None:
             continue
         desired_parent_key = str(getattr(item, "parent_key", "") or "")
         ui_parent_key = desired_parent_key
+        folder_key = ""
+        if layer_folder_utils.is_folder_key(context, desired_parent_key):
+            folder_key = desired_parent_key
+            desired_parent_key = layer_folder_utils.semantic_parent_key_for_folder(
+                work,
+                folder_key,
+            )
         if desired_parent_key == OUTSIDE_STACK_KEY:
             desired_parent_key = ""
-        parent_group = _find_gp_group_by_key(groups, desired_parent_key) if desired_parent_key else None
-        logical_parent = kind == "gp" and gp_parent.parent_key_exists(work, desired_parent_key)
-        if desired_parent_key and parent_group is None and not logical_parent:
+        if desired_parent_key and not gp_parent.parent_key_exists(work, desired_parent_key):
             desired_parent_key = ""
             if ui_parent_key != OUTSIDE_STACK_KEY:
                 ui_parent_key = ""
-        native_parent_group = None if logical_parent else parent_group
-        native_parent_key = "" if native_parent_group is None else _node_stack_key(native_parent_group)
-        actual_parent = getattr(node, "parent_group", None)
-        actual_parent_key = _node_stack_key(actual_parent) if actual_parent is not None else ""
-        if kind == "gp_folder":
-            if logical_parent:
-                continue
-            if desired_parent_key == key or _gp_group_contains_key(node, desired_parent_key):
-                continue
-            if actual_parent_key == native_parent_key:
-                item.parent_key = ui_parent_key
-                continue
-            if not gp_utils.move_group_to_group(gp_data, node, native_parent_group):
-                continue
-            gp_parent.set_parent_key(node, "")
+        layer_object_model.set_folder_id(obj, folder_key)
+        _stamp_layer_object_parent(context, obj, desired_parent_key)
+        if folder_key:
+            item.parent_key = folder_key
         else:
-            gp_parent.set_parent_key(node, desired_parent_key if logical_parent else "")
-            if actual_parent_key == native_parent_key:
-                item.parent_key = ui_parent_key
-                continue
-            if not gp_utils.move_layer_to_group(gp_data, node, native_parent_group):
-                continue
-        item.parent_key = ui_parent_key
-
-
-def _apply_effect_parenting(obj, stack, work) -> None:
-    gp_data = getattr(obj, "data", None)
-    layers = getattr(gp_data, "layers", None) if gp_data is not None else None
-    if layers is None:
-        return
-    for item in stack:
-        if getattr(item, "kind", "") != "effect":
-            continue
-        node = _find_gp_layer_by_key(layers, str(getattr(item, "key", "") or ""))
-        if node is None:
-            continue
-        desired_parent_key = str(getattr(item, "parent_key", "") or "")
-        ui_parent_key = desired_parent_key
-        if desired_parent_key == OUTSIDE_STACK_KEY:
-            desired_parent_key = ""
-        if desired_parent_key and not gp_parent.parent_key_exists(work, desired_parent_key):
-            desired_parent_key = ""
-            if ui_parent_key != OUTSIDE_STACK_KEY:
-                ui_parent_key = ""
-        gp_parent.set_parent_key(node, desired_parent_key)
-        item.parent_key = ui_parent_key if ui_parent_key == OUTSIDE_STACK_KEY else desired_parent_key
-
-
-def _apply_effect_object_parenting(context, stack, work) -> None:
-    for item in stack:
-        if getattr(item, "kind", "") != "effect":
-            continue
-        obj, layer = _find_effect_layer_by_key(str(getattr(item, "key", "") or ""))
-        if obj is None or layer is None or str(obj.get(on.PROP_KIND, "") or "") != "effect":
-            continue
-        desired_parent_key = str(getattr(item, "parent_key", "") or "")
-        ui_parent_key = desired_parent_key
-        if desired_parent_key == OUTSIDE_STACK_KEY:
-            desired_parent_key = ""
-        if desired_parent_key and not gp_parent.parent_key_exists(work, desired_parent_key):
-            desired_parent_key = ""
-            if ui_parent_key != OUTSIDE_STACK_KEY:
-                ui_parent_key = ""
-        gp_parent.set_parent_key(layer, desired_parent_key)
-        _stamp_effect_object_parent(context, obj, desired_parent_key)
-        item.parent_key = ui_parent_key if ui_parent_key == OUTSIDE_STACK_KEY else desired_parent_key
+            item.parent_key = ui_parent_key if ui_parent_key == OUTSIDE_STACK_KEY else desired_parent_key
 
 
 def _apply_image_parenting(context, stack) -> None:
@@ -3541,64 +3219,14 @@ def _apply_text_parenting(context, stack) -> None:
             entry.parent_key = parent_key
 
 
-def _reorder_gp_parent(gp_data, parent_key: str, desired_front_uids: list[str], *, effect: bool):
-    siblings = _siblings_for_parent(gp_data, parent_key)
-    actual = [_node_uid_for_stack(node, effect=effect) for node in siblings]
-    desired_back = [uid for uid in reversed(desired_front_uids) if uid in actual]
-    desired_back.extend(uid for uid in actual if uid not in desired_back)
-    for target_index, uid in enumerate(desired_back):
-        guard = 0
-        while guard < 128:
-            siblings = _siblings_for_parent(gp_data, parent_key)
-            current_index = next(
-                (i for i, node in enumerate(siblings)
-                 if _node_uid_for_stack(node, effect=effect) == uid),
-                -1,
-            )
-            if current_index < 0 or current_index == target_index:
-                break
-            node = siblings[current_index]
-            _move_gp_node(gp_data, node, "DOWN" if current_index > target_index else "UP")
-            guard += 1
-
-
-def _apply_gp_order(obj, stack, *, effect: bool) -> None:
-    gp_data = getattr(obj, "data", None)
-    if gp_data is None:
-        return
-    groups = getattr(gp_data, "layer_groups", None)
-    by_parent: dict[str, list[str]] = {}
-    for item in stack:
-        if effect:
-            if item.kind != "effect":
-                continue
-            parent_key = str(getattr(item, "parent_key", "") or "")
-            native_parent_key = parent_key if _find_gp_group_by_key(groups, parent_key) else ""
-        elif item.kind not in {"gp", "gp_folder"}:
-            continue
-        else:
-            parent_key = str(getattr(item, "parent_key", "") or "")
-            native_parent_key = parent_key if _find_gp_group_by_key(groups, parent_key) else ""
-        by_parent.setdefault(native_parent_key, []).append(stack_item_uid(item))
-    for parent_key, uids in by_parent.items():
-        _reorder_gp_parent(gp_data, parent_key, uids, effect=effect)
-
-
 def apply_stack_order(context) -> None:
     stack = getattr(context.scene, "bmanga_layer_stack", None)
     if stack is None:
         return
     _apply_page_coma_orders(context, stack)
     _apply_simple_collection_orders(context, stack)
-    gp_obj = gp_utils.get_master_gpencil()
-    if gp_obj is not None:
-        _apply_gp_parenting(gp_obj, stack, get_work(context))
-        _apply_gp_order(gp_obj, stack, effect=False)
-    effect_obj = get_effect_gp_object()
-    if effect_obj is not None:
-        _apply_effect_parenting(effect_obj, stack, get_work(context))
-        _apply_gp_order(effect_obj, stack, effect=True)
-    _apply_effect_object_parenting(context, stack, get_work(context))
+    _apply_layer_object_parenting(context, stack, get_work(context), "gp")
+    _apply_layer_object_parenting(context, stack, get_work(context), "effect")
     _apply_image_parenting(context, stack)
     _apply_image_path_parenting(context, stack)
     _apply_raster_parenting(context, stack)
@@ -3651,16 +3279,10 @@ def delete_stack_index(context, index: int) -> bool:
             return False
     if kind == "gp":
         obj = resolved.get("object")
-        try:
-            gp_parent.set_parent_key(resolved["target"], "")
-            obj.data.layers.remove(resolved["target"])
-        except Exception:  # noqa: BLE001
+        from . import layer_object_model
+
+        if not layer_object_model.remove_layer_object(obj):
             return False
-    elif kind == "gp_folder":
-        obj = resolved.get("object")
-        if not gp_utils.remove_layer_group_preserve_children(obj.data, resolved["target"]):
-            return False
-        scene.bmanga_active_gp_folder_key = ""
     elif kind == LAYER_FOLDER_KIND:
         work = get_work(context)
         if work is None or not layer_folder_utils.remove_folder_preserve_children(work, item.key):
@@ -3796,7 +3418,6 @@ def delete_stack_index(context, index: int) -> bool:
         select_stack_index(context, idx)
     elif hasattr(scene, "bmanga_active_layer_kind"):
         scene.bmanga_active_layer_kind = "gp"
-        scene.bmanga_active_gp_folder_key = ""
     tag_view3d_redraw(context)
     return True
 
@@ -3834,8 +3455,6 @@ def schedule_layer_stack_sync(
         converged = False
         try:
             if _sync_should_apply_order:
-                if _sync_order_moved_uid:
-                    _apply_gp_folder_drop_hint(bpy.context, _sync_order_moved_uid)
                 apply_stack_order(bpy.context)
             scene = getattr(bpy.context, "scene", None)
             before_sig = _stack_signature(scene) if scene is not None else ()

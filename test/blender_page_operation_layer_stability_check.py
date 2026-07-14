@@ -91,23 +91,29 @@ def _write_test_image(path: Path) -> None:
 
 
 def _add_gp(context, work, page, local_xy: tuple[float, float]):
-    from bmanga_dev.utils import gp_layer_parenting as gp_parent
+    from bmanga_dev.utils import gp_object_layer, layer_object_model
     from bmanga_dev.utils import gpencil as gp_utils
     from bmanga_dev.utils.geom import mm_to_m
     from bmanga_dev.utils.layer_hierarchy import page_stack_key
 
     page_id = str(getattr(page, "id", "") or "")
-    ox, oy = _page_offset(context, work, page_id)
-    obj = gp_utils.ensure_master_gpencil(context.scene)
-    layer = obj.data.layers.new(f"stability_gp_{page_id}")
-    gp_parent.set_parent_key(layer, page_stack_key(page))
+    obj = gp_object_layer.create_layer_gp_object(
+        scene=context.scene,
+        bmanga_id=layer_object_model.make_stable_id("gp"),
+        title=f"stability_gp_{page_id}",
+        z_index=210,
+        parent_kind="page",
+        parent_key=page_stack_key(page),
+    )
+    layer = layer_object_model.content_layer(obj)
+    assert layer is not None
     frame = gp_utils.ensure_active_frame(layer)
     assert frame is not None and getattr(frame, "drawing", None) is not None
     ok = gp_utils.add_stroke_to_drawing(
         frame.drawing,
         [
-            (mm_to_m(ox + local_xy[0]), mm_to_m(oy + local_xy[1]), 0.0),
-            (mm_to_m(ox + local_xy[0] + 12.0), mm_to_m(oy + local_xy[1] + 6.0), 0.0),
+            (mm_to_m(local_xy[0]), mm_to_m(local_xy[1]), 0.0),
+            (mm_to_m(local_xy[0] + 12.0), mm_to_m(local_xy[1] + 6.0), 0.0),
         ],
     )
     assert ok
@@ -229,7 +235,7 @@ def _content_refs(content) -> dict:
     """ファイル切替後も追跡できるよう、実体への参照を ID/名前に落とす."""
     return {
         "page_id": content["page_id"],
-        "gp_layer": str(content["gp"][1].name),
+        "gp_id": str(content["gp"][0].get("bmanga_id", "") or ""),
         "balloon_id": str(content["balloon"][0].id),
         "text_id": str(content["text"][0].id),
         "image_id": str(content["image"][0].id),
@@ -249,16 +255,16 @@ def _snapshot_content(context, work, refs):
     """ページ編集シーン上で、各レイヤーの実体を ID から取り直して位置を採取する."""
     from bmanga_dev.operators import effect_line_op
     from bmanga_dev.utils import balloon_curve_object, effect_line_object
-    from bmanga_dev.utils import gpencil as gp_utils
+    from bmanga_dev.utils import layer_object_model
     from bmanga_dev.utils import object_naming as on
 
     page_id = refs["page_id"]
     page = _page_by_id(work, page_id)
 
-    gp_obj = gp_utils.get_master_gpencil()
+    gp_obj = layer_object_model.find_layer_object("gp", refs["gp_id"])
     assert gp_obj is not None, "下書きの実体がありません"
-    gp_layer = gp_obj.data.layers.get(refs["gp_layer"])
-    assert gp_layer is not None, f"下書きレイヤーがありません: {refs['gp_layer']}"
+    gp_layer = layer_object_model.content_layer(gp_obj)
+    assert gp_layer is not None, f"下書きレイヤーがありません: {refs['gp_id']}"
 
     balloon_entry = _entry_by_id(page.balloons, refs["balloon_id"])
     assert balloon_entry is not None, "フキダシのデータがありません"

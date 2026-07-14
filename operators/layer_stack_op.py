@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 import bpy
-from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty
+from bpy.props import EnumProperty, IntProperty, StringProperty
 from bpy.types import Menu, Operator
 from bpy_extras.io_utils import ImportHelper
 
@@ -23,15 +23,8 @@ from ..utils.layer_hierarchy import (
     split_child_key,
 )
 
-
 _INLINE_RENAME_DOUBLE_CLICK_SEC = 0.45
 _LAST_INLINE_RENAME_CLICK = {"index": -1, "uid": "", "time": 0.0}
-_DETAIL_DIALOG_DEFAULT_WIDTH = 360
-# 詳細設定ダイアログは右クリックの詳細設定 (layer_detail_op) と同じ
-# 2 列の縦長で開く (2026-07-12 ユーザー指定)
-_DETAIL_DIALOG_EFFECT_WIDTH = 560
-_DETAIL_DIALOG_BALLOON_WIDTH = 560
-
 
 _ADD_KIND_ITEMS = (
     ("page", "ページ", ""),
@@ -44,8 +37,7 @@ _ADD_KIND_ITEMS = (
     ("balloon", "フキダシ", ""),
     ("text", "テキスト", ""),
     ("effect", "効果線", ""),
-    ("gp_folder", "フォルダ", ""),
-    ("layer_folder", "汎用フォルダ", ""),
+    ("layer_folder", "フォルダ", ""),
 )
 
 _ADD_KIND_ICONS = {
@@ -60,10 +52,8 @@ _ADD_KIND_ICONS = {
     "balloon": "MOD_FLUID",
     "text": "FONT_DATA",
     "effect": "STROKE",
-    "gp_folder": "FILE_FOLDER",
     "layer_folder": "FILE_FOLDER",
 }
-
 
 def _active_stack_item(context):
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
@@ -74,20 +64,9 @@ def _active_stack_item(context):
         return stack[idx]
     return None
 
-
-def _detail_dialog_width_for_item(_context, item) -> int:
-    kind = str(getattr(item, "kind", "") or "") if item is not None else ""
-    if kind in {"effect", "effect_legacy"}:
-        return _DETAIL_DIALOG_EFFECT_WIDTH
-    if kind == "balloon":
-        return _DETAIL_DIALOG_BALLOON_WIDTH
-    return _DETAIL_DIALOG_DEFAULT_WIDTH
-
-
 def _active_stack_uid(context) -> str:
     item = _active_stack_item(context)
     return layer_stack_utils.stack_item_uid(item) if item is not None else ""
-
 
 def _selected_stack_uids(context, stack=None) -> set[str]:
     stack = stack if stack is not None else layer_stack_utils.sync_layer_stack(
@@ -102,7 +81,6 @@ def _selected_stack_uids(context, stack=None) -> set[str]:
         if layer_stack_utils.is_item_selected(context, item)
     }
 
-
 def _set_selected_stack_uids(context, uids: set[str], stack=None):
     stack = stack if stack is not None else layer_stack_utils.sync_layer_stack(
         context,
@@ -115,7 +93,6 @@ def _set_selected_stack_uids(context, uids: set[str], stack=None):
         if layer_stack_utils.stack_item_uid(item) in uids:
             layer_stack_utils.set_item_selected(context, item, True)
     return stack
-
 
 def _page_key_for_item(item, context=None) -> str:
     if item is None:
@@ -141,7 +118,6 @@ def _page_key_for_item(item, context=None) -> str:
         return page_key
     return ""
 
-
 def _placement_anchor_uid(context, kind: str) -> str:
     item = _active_stack_item(context)
     if item is None:
@@ -158,7 +134,6 @@ def _placement_anchor_uid(context, kind: str) -> str:
         return ""
     return layer_stack_utils.stack_item_uid(item)
 
-
 def _find_page(context, page_key: str):
     from ..core.work import get_work
 
@@ -170,7 +145,6 @@ def _find_page(context, page_key: str):
             return page, i
     return None, -1
 
-
 def _find_panel(context, coma_key: str):
     page_key, stem = split_child_key(coma_key)
     page, page_idx = _find_page(context, page_key)
@@ -180,7 +154,6 @@ def _find_panel(context, coma_key: str):
         if coma_stack_key(page, panel) == coma_key or getattr(panel, "coma_id", "") == stem:
             return page, panel, page_idx, i
     return page, None, page_idx, -1
-
 
 def _active_or_anchor_page(context, anchor_uid: str):
     from ..core.work import get_active_page, get_work
@@ -203,7 +176,6 @@ def _active_or_anchor_page(context, anchor_uid: str):
     work = get_work(context)
     return work, get_active_page(context)
 
-
 def _coma_bounds(panel) -> tuple[float, float, float, float] | None:
     from ..utils.layer_hierarchy import coma_polygon
 
@@ -213,7 +185,6 @@ def _coma_bounds(panel) -> tuple[float, float, float, float] | None:
     xs = [p[0] for p in points]
     ys = [p[1] for p in points]
     return min(xs), min(ys), max(xs), max(ys)
-
 
 def _default_rect_for_parent(context, work, page, parent_key: str, width: float, height: float):
     if parent_key and ":" in parent_key:
@@ -230,13 +201,12 @@ def _default_rect_for_parent(context, work, page, parent_key: str, width: float,
     canvas_h = float(getattr(paper, "canvas_height_mm", 297.0))
     return max(0.0, canvas_w - width - 5.0), max(0.0, canvas_h - height - 5.0)
 
-
 def _parent_key_for_new_item(context, anchor_uid: str, kind: str) -> str:
     """新規レイヤー追加時の親キーを、レイヤーリスト上で選択中の行から推定する.
 
     CSP / Photoshop のレイヤーパネルと同じ感覚にする:
     - Page / Coma 選択中: そのページ/コマの中に追加 (返り値 = 行の key)
-    - gp_folder 選択中: フォルダの中に追加 (返り値 = フォルダの key)
+    - フォルダ選択中: フォルダの中に追加 (返り値 = フォルダの key)
     - 他レイヤー選択中: その兄弟として追加 (返り値 = 行の parent_key)
     """
     stack = getattr(context.scene, "bmanga_layer_stack", None)
@@ -261,11 +231,8 @@ def _parent_key_for_new_item(context, anchor_uid: str, kind: str) -> str:
             work, str(getattr(item, "parent_key", "") or "")
         ):
             return str(getattr(item, "parent_key", "") or "")
-        # gp_folder 行を選択中: フォルダの中へ
-        if kind in {"gp", "gp_folder"} and item.kind == "gp_folder":
-            return str(getattr(item, "key", "") or "")
         # 同種レイヤー選択中: 兄弟として
-        if kind in {"gp", "gp_folder"} and item.kind == "gp":
+        if kind == "gp" and item.kind == "gp":
             return str(getattr(item, "parent_key", "") or "")
         if kind in {"effect", "raster", "fill", "balloon", "text"} and item.kind in {"effect", "raster", "fill", "balloon", "text"}:
             return str(getattr(item, "parent_key", "") or "")
@@ -273,7 +240,6 @@ def _parent_key_for_new_item(context, anchor_uid: str, kind: str) -> str:
             return str(getattr(item, "parent_key", "") or "")
         return ""
     return ""
-
 
 def _folder_key_for_anchor_item(context, item) -> str:
     if item is None:
@@ -285,7 +251,6 @@ def _folder_key_for_anchor_item(context, item) -> str:
         return parent_key
     return ""
 
-
 def _folder_key_for_anchor(context, anchor_uid: str) -> str:
     stack = getattr(context.scene, "bmanga_layer_stack", None)
     if stack is None or not anchor_uid:
@@ -294,7 +259,6 @@ def _folder_key_for_anchor(context, anchor_uid: str) -> str:
         if layer_stack_utils.stack_item_uid(item) == anchor_uid:
             return _folder_key_for_anchor_item(context, item)
     return ""
-
 
 def _parent_key_for_new_layer_folder(context, anchor_uid: str) -> str:
     stack = getattr(context.scene, "bmanga_layer_stack", None)
@@ -308,7 +272,6 @@ def _parent_key_for_new_layer_folder(context, anchor_uid: str) -> str:
         parent_key = str(getattr(item, "parent_key", "") or "")
         return parent_key or OUTSIDE_STACK_KEY
     return OUTSIDE_STACK_KEY
-
 
 def _place_new_item(context, new_uid: str, anchor_uid: str) -> bool:
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
@@ -337,7 +300,6 @@ def _place_new_item(context, new_uid: str, anchor_uid: str) -> bool:
             return True
     return False
 
-
 def _unique_name(existing: set[str], base: str) -> str:
     if base not in existing:
         return base
@@ -348,7 +310,6 @@ def _unique_name(existing: set[str], base: str) -> str:
             return candidate
         i += 1
 
-
 def _unique_shared_id(coll, prefix: str) -> str:
     used = {str(getattr(entry, "id", "") or "") for entry in coll or []}
     i = 1
@@ -357,7 +318,6 @@ def _unique_shared_id(coll, prefix: str) -> str:
         if candidate not in used:
             return candidate
         i += 1
-
 
 def _copy_image_entry(src, dst) -> None:
     for attr in (
@@ -371,7 +331,6 @@ def _copy_image_entry(src, dst) -> None:
         except Exception:  # noqa: BLE001
             pass
 
-
 def _active_row_in_visible_subtree(stack, active_index: int, parent_index: int) -> bool:
     if active_index <= parent_index or not (0 <= active_index < len(stack)):
         return False
@@ -384,7 +343,6 @@ def _active_row_in_visible_subtree(stack, active_index: int, parent_index: int) 
             return True
     return False
 
-
 def _select_stack_uid(context, uid: str) -> bool:
     stack = getattr(context.scene, "bmanga_layer_stack", None)
     if stack is None or not uid:
@@ -393,7 +351,6 @@ def _select_stack_uid(context, uid: str) -> bool:
         if layer_stack_utils.stack_item_uid(item) == uid:
             return layer_stack_utils.select_stack_index(context, i)
     return False
-
 
 def _editable_name_prop_for_item(context, item) -> str | None:
     if item is None:
@@ -409,10 +366,9 @@ def _editable_name_prop_for_item(context, item) -> str | None:
         target, "title"
     ):
         return "title"
-    if kind in {"gp", "gp_folder", "effect"} and hasattr(target, "name"):
+    if kind in {"gp", "effect"} and hasattr(target, "name"):
         return "name"
     return None
-
 
 def _remember_inline_rename_click(index: int, uid: str) -> bool:
     now = time.monotonic()
@@ -427,7 +383,6 @@ def _remember_inline_rename_click(index: int, uid: str) -> bool:
         and previous_uid == str(uid or "")
         and 0.0 <= now - previous_time <= _INLINE_RENAME_DOUBLE_CLICK_SEC
     )
-
 
 def _should_begin_inline_rename(context, item, index: int, event) -> bool:
     if _editable_name_prop_for_item(context, item) is None:
@@ -447,14 +402,12 @@ def _should_begin_inline_rename(context, item, index: int, event) -> bool:
         return False
     return _remember_inline_rename_click(index, uid)
 
-
 def _begin_inline_rename(context, item, index: int) -> None:
     context.scene.bmanga_layer_stack_inline_edit_uid = layer_stack_utils.stack_item_uid(item)
     layer_stack_utils.clear_all_selection(context)
     layer_stack_utils.set_item_selected(context, item, True)
     layer_stack_utils.select_stack_index(context, index)
     layer_stack_utils.tag_view3d_redraw(context)
-
 
 class BMANGA_OT_layer_stack_select(Operator):
     bl_idname = "bmanga.layer_stack_select"
@@ -784,8 +737,6 @@ class BMANGA_OT_layer_stack_add(Operator, ImportHelper):
             return self._add_text(context, anchor_uid)
         if self.kind == "effect":
             return self._add_effect(context, anchor_uid)
-        if self.kind == "gp_folder":
-            return self._add_gp_folder(context, anchor_uid)
         if self.kind == "layer_folder":
             return self._add_layer_folder(context, anchor_uid)
         return ""
@@ -793,8 +744,7 @@ class BMANGA_OT_layer_stack_add(Operator, ImportHelper):
     def _add_page(self, context) -> str:
         from ..core.work import get_work
         from ..io import page_io, work_io
-        from ..utils import gpencil as gp_utils
-        from ..utils import page_grid, page_range
+        from ..utils import gp_object_layer, page_grid, page_range
         from .coma_op import create_basic_frame_coma
 
         work = get_work(context)
@@ -805,7 +755,7 @@ class BMANGA_OT_layer_stack_add(Operator, ImportHelper):
         entry = page_io.register_new_page(work)
         page_io.ensure_page_dir(work_dir, entry.id)
         create_basic_frame_coma(work, entry, work_dir)
-        gp_utils.ensure_page_gpencil(context.scene, entry.id)
+        gp_object_layer.ensure_default_page_layer(context.scene, entry.id)
         page_grid.apply_page_collection_transforms(context, work)
         page_io.save_pages_json(work_dir, work)
         page_range.sync_end_number_to_page_count(work)
@@ -829,48 +779,54 @@ class BMANGA_OT_layer_stack_add(Operator, ImportHelper):
         return layer_stack_utils.target_uid(COMA_KIND, coma_stack_key(page, entry))
 
     def _add_gp_layer(self, context, anchor_uid: str) -> str:
-        from ..utils import gpencil as gp_utils
-        from ..utils import gp_layer_parenting as gp_parent
-        from ..core.work import get_work
+        from ..utils import gp_object_layer
+        from ..utils import layer_object_model
 
-        obj = gp_utils.ensure_master_gpencil(context.scene)
-        gp_data = obj.data
         parent_key = _parent_key_for_new_item(context, anchor_uid, "gp")
-        groups = getattr(gp_data, "layer_groups", None)
-        parent = layer_stack_utils._find_gp_group_by_key(groups, parent_key)
-        logical_parent = gp_parent.parent_key_exists(get_work(context), parent_key)
-        existing = {layer.name for layer in gp_data.layers}
-        layer = gp_data.layers.new(_unique_name(existing, "レイヤー"))
-        if parent is not None:
-            gp_utils.move_layer_to_group(gp_data, layer, parent)
-        elif logical_parent:
-            gp_parent.set_parent_key(layer, parent_key)
-        gp_data.layers.active = layer
-        gp_utils.ensure_active_frame(layer)
-        gp_utils.ensure_layer_material(obj, layer, activate=True, assign_existing=True)
+        folder_key = _folder_key_for_anchor(context, anchor_uid)
+        existing = {
+            layer_object_model.display_title(obj)
+            for obj in layer_object_model.iter_layer_objects("gp")
+        }
+        title = _unique_name(existing, "レイヤー")
+        z_order = max(
+            (
+                layer_object_model.z_index(obj)
+                for obj in layer_object_model.iter_layer_objects("gp")
+                if layer_object_model.parent_key(obj) == parent_key
+            ),
+            default=200,
+        ) + 10
+        bmanga_id = layer_object_model.make_stable_id("gp")
+        obj = gp_object_layer.create_layer_gp_object(
+            scene=context.scene,
+            bmanga_id=bmanga_id,
+            title=title,
+            z_index=z_order,
+            parent_kind="coma" if ":" in parent_key else ("page" if parent_key else "outside"),
+            parent_key=parent_key,
+            folder_id=folder_key,
+        )
+        if obj is None:
+            return ""
+        layer = layer_object_model.content_layer(obj)
+        if layer is not None:
+            try:
+                from ..utils import gpencil as gp_utils
+
+                obj.data.layers.active = layer
+                gp_utils.ensure_active_frame(layer)
+                gp_utils.ensure_layer_material(obj, layer, activate=True, assign_existing=True)
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            context.view_layer.objects.active = obj
+            obj.select_set(True)
+        except Exception:  # noqa: BLE001
+            pass
         context.scene.bmanga_active_layer_kind = "gp"
         layer_stack_utils.sync_layer_stack_after_data_change(context)
-        return layer_stack_utils.target_uid("gp", layer_stack_utils._node_stack_key(layer))
-
-    def _add_gp_folder(self, context, anchor_uid: str) -> str:
-        from ..utils import gpencil as gp_utils
-
-        obj = gp_utils.ensure_master_gpencil(context.scene)
-        gp_data = obj.data
-        groups = getattr(gp_data, "layer_groups", None)
-        if groups is None:
-            self.report({"ERROR"}, "この Blender ではフォルダを作成できません")
-            return ""
-        group = groups.new(gp_utils.unique_layer_group_name(gp_data))
-        parent_key = _parent_key_for_new_item(context, anchor_uid, "gp_folder")
-        parent = layer_stack_utils._find_gp_group_by_key(groups, parent_key)
-        if parent is not None:
-            gp_utils.move_group_to_group(gp_data, group, parent)
-        group.is_expanded = True
-        context.scene.bmanga_active_layer_kind = "gp_folder"
-        context.scene.bmanga_active_gp_folder_key = layer_stack_utils._node_stack_key(group)
-        layer_stack_utils.sync_layer_stack_after_data_change(context)
-        return layer_stack_utils.target_uid("gp_folder", layer_stack_utils._node_stack_key(group))
+        return layer_stack_utils.target_uid("gp", bmanga_id)
 
     def _add_layer_folder(self, context, anchor_uid: str) -> str:
         from ..core.work import get_work
@@ -1146,10 +1102,12 @@ class BMANGA_OT_layer_stack_add(Operator, ImportHelper):
 
     def _add_effect(self, context, anchor_uid: str) -> str:
         from .effect_line_op import _create_effect_layer
+        from ..utils import layer_object_model
 
         parent_key = _parent_key_for_new_item(context, anchor_uid, "effect")
-        _obj, layer = _create_effect_layer(context, parent_key=parent_key)
-        return layer_stack_utils.target_uid("effect", layer_stack_utils._node_stack_key(layer))
+        obj, _layer = _create_effect_layer(context, parent_key=parent_key)
+        stable_id = layer_object_model.stable_id(obj)
+        return layer_stack_utils.target_uid("effect", stable_id) if stable_id else ""
 
 
 class BMANGA_OT_layer_stack_duplicate(Operator):
@@ -1199,8 +1157,6 @@ class BMANGA_OT_layer_stack_duplicate(Operator):
             return "FINISHED" in getattr(bpy.ops.bmanga, op_name)("EXEC_DEFAULT")
         if item.kind in {"gp", "effect"}:
             return self._duplicate_gp_layer(context, item)
-        if item.kind == "gp_folder":
-            return self._duplicate_gp_folder(context, item)
         if item.kind == "layer_folder":
             return self._duplicate_layer_folder(context, item)
         if item.kind == "image":
@@ -1239,40 +1195,35 @@ class BMANGA_OT_layer_stack_duplicate(Operator):
                     ui_parent_key=parent_key,
                 )
                 return dest_layer is not None
-            result = bpy.ops.grease_pencil.layer_duplicate("EXEC_DEFAULT", empty_keyframes=False)
-            if "FINISHED" not in result:
+            resolved = layer_stack_utils.resolve_stack_item(context, item)
+            source_obj = resolved.get("object") if resolved is not None else None
+            if source_obj is None:
                 return False
-            if item.kind == "gp" and parent_key:
-                from ..core.work import get_work
-                from ..utils import gp_layer_parenting as gp_parent
-                from ..utils import gpencil as gp_utils
+            from ..utils import layer_object_model
 
-                layer = getattr(getattr(gp_utils.get_master_gpencil(), "data", None), "layers", None)
-                active = getattr(layer, "active", None) if layer is not None else None
-                if active is not None and gp_parent.parent_key_exists(get_work(context), parent_key):
-                    gp_parent.set_parent_key(active, parent_key)
+            title = _unique_name(
+                {
+                    layer_object_model.display_title(obj)
+                    for obj in layer_object_model.iter_layer_objects("gp")
+                },
+                f"{layer_object_model.display_title(source_obj)} 複製",
+            )
+            duplicate = layer_object_model.duplicate_gp_object(
+                source_obj,
+                bmanga_id=layer_object_model.make_stable_id("gp"),
+                title=title,
+                z_order=layer_object_model.z_index(source_obj) + 1,
+            )
+            if duplicate is None:
+                return False
+            try:
+                context.view_layer.objects.active = duplicate
+                duplicate.select_set(True)
+            except Exception:  # noqa: BLE001
+                pass
             return True
         except Exception:  # noqa: BLE001
             return False
-
-    def _duplicate_gp_folder(self, context, item) -> bool:
-        resolved = layer_stack_utils.resolve_stack_item(context, item)
-        target = resolved.get("target") if resolved is not None else None
-        obj = resolved.get("object") if resolved is not None else None
-        if target is None or obj is None:
-            return False
-        groups = getattr(obj.data, "layer_groups", None)
-        if groups is None:
-            return False
-        from ..utils import gpencil as gp_utils
-
-        group = groups.new(gp_utils.unique_layer_group_name(obj.data, target.name))
-        parent = getattr(target, "parent_group", None)
-        if parent is not None:
-            gp_utils.move_group_to_group(obj.data, group, parent)
-        context.scene.bmanga_active_layer_kind = "gp_folder"
-        context.scene.bmanga_active_gp_folder_key = layer_stack_utils._node_stack_key(group)
-        return True
 
     def _duplicate_layer_folder(self, context, item) -> bool:
         from ..core.work import get_work
@@ -1291,6 +1242,8 @@ class BMANGA_OT_layer_stack_duplicate(Operator):
         )
         dst.parent_key = str(getattr(src, "parent_key", "") or OUTSIDE_STACK_KEY)
         dst.expanded = bool(getattr(src, "expanded", True))
+        dst.visible = bool(getattr(src, "visible", True))
+        dst.locked = bool(getattr(src, "locked", False))
         context.scene.bmanga_active_layer_kind = "layer_folder"
         if hasattr(context.scene, "bmanga_active_layer_folder_key"):
             context.scene.bmanga_active_layer_folder_key = dst.id
@@ -1406,30 +1359,19 @@ class BMANGA_OT_layer_stack_toggle_visibility(Operator):
                     pass
         elif item.kind in {PAGE_KIND, COMA_KIND} and hasattr(target, "visible"):
             target.visible = not bool(target.visible)
-        elif item.kind in {"image", "image_path", "raster", "fill"} and hasattr(target, "visible"):
+        elif item.kind in {"layer_folder", "image", "image_path", "raster", "fill"} and hasattr(target, "visible"):
             target.visible = not bool(target.visible)
         elif item.kind in {"balloon", "text"} and hasattr(target, "visible"):
             target.visible = not bool(target.visible)
-        elif item.kind in {"gp", "gp_folder", "effect"} and hasattr(target, "hide"):
-            target.hide = not bool(target.hide)
-            if item.kind == "effect":
-                try:
-                    from ..utils import effect_line_object as _elo
-                    from ..utils import effect_line_path as _elp
+        elif item.kind in {"gp", "effect"}:
+            from ..utils import layer_object_model
 
-                    display = _elo.find_effect_display_object(resolved.get("object"))
-                    if display is not None:
-                        display.hide_viewport = bool(target.hide)
-                    image = _elp.find_effect_line_image_object(resolved.get("object"))
-                    if image is not None:
-                        image.hide_viewport = bool(target.hide)
-                        image.hide_render = bool(target.hide)
-                    source = _elp.find_effect_base_path_object(resolved.get("object"))
-                    if source is not None:
-                        source.hide_viewport = bool(target.hide)
-                        source.hide_select = bool(target.hide)
-                except Exception:  # noqa: BLE001
-                    pass
+            obj = resolved.get("object") if resolved is not None else None
+            if not layer_object_model.set_user_visible(
+                obj,
+                not layer_object_model.user_visible(obj),
+            ):
+                return {"CANCELLED"}
         else:
             return {"CANCELLED"}
         layer_stack_utils.tag_view3d_redraw(context)
@@ -1472,10 +1414,6 @@ class BMANGA_OT_layer_stack_toggle_expanded(Operator):
 
             was_expanded = not layer_stack_visible.is_balloon_group_collapsed(context, item.key)
             layer_stack_visible.set_balloon_group_collapsed(context, item.key, was_expanded)
-            active_will_be_hidden = active_will_be_hidden and was_expanded
-        elif item.kind == "gp_folder" and hasattr(target, "is_expanded"):
-            was_expanded = bool(target.is_expanded)
-            target.is_expanded = not was_expanded
             active_will_be_hidden = active_will_be_hidden and was_expanded
         elif item.kind == "layer_folder" and hasattr(target, "expanded"):
             was_expanded = bool(target.expanded)
@@ -1532,251 +1470,6 @@ class BMANGA_OT_layer_stack_enter_coma(Operator):
         return bpy.ops.bmanga.enter_coma_mode("EXEC_DEFAULT")
 
 
-class BMANGA_OT_layer_stack_detail(Operator):
-    bl_idname = "bmanga.layer_stack_detail"
-    bl_label = "詳細設定"
-    bl_options = {"REGISTER"}
-
-    index: IntProperty(default=-1)  # type: ignore[valid-type]
-    uid: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
-    preserve_edge_selection: BoolProperty(default=False, options={"HIDDEN"})  # type: ignore[valid-type]
-    offset_from_selection: BoolProperty(default=False, options={"HIDDEN"})  # type: ignore[valid-type]
-
-    @classmethod
-    def poll(cls, context):
-        return getattr(context.scene, "bmanga_layer_stack", None) is not None
-
-    def invoke(self, context, event):
-        stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
-        index = int(self.index)
-        if stack is not None and not (0 <= index < len(stack)) and self.uid:
-            uid = str(self.uid)
-            for i, item in enumerate(stack):
-                if layer_stack_utils.stack_item_uid(item) == uid:
-                    index = i
-                    break
-        if stack is None or not (0 <= index < len(stack)):
-            self.report({"ERROR"}, "詳細設定を開くレイヤーが見つかりません")
-            return {"CANCELLED"}
-        edge_state = self._capture_edge_selection(context)
-        self.index = index
-        self.uid = layer_stack_utils.stack_item_uid(stack[index])
-        layer_stack_utils.select_stack_index(context, index)
-        self._restore_edge_selection_if_needed(context, stack[index], edge_state)
-        self._ensure_coma_detail_material(context, stack[index])
-        self._ensure_effect_detail_curve(context, stack[index])
-        layer_stack_utils.tag_view3d_redraw(context)
-        self._offset_cursor_for_selection_popup(context, event)
-        width = _detail_dialog_width_for_item(context, stack[index])
-        return context.window_manager.invoke_props_dialog(self, width=width)
-
-    def execute(self, context):
-        self._sync_coma_detail_curve(context)
-        self._sync_effect_detail_curve(context)
-        layer_stack_utils.sync_layer_stack_after_data_change(context)
-        layer_stack_utils.tag_view3d_redraw(context)
-        return {"FINISHED"}
-
-    def check(self, context):
-        self._sync_coma_detail_curve(context)
-        self._sync_effect_detail_curve(context)
-        layer_stack_utils.sync_layer_stack_after_data_change(context)
-        layer_stack_utils.tag_view3d_redraw(context)
-        return True
-
-    def draw(self, context):
-        layout = self.layout
-        stack = getattr(context.scene, "bmanga_layer_stack", None)
-        if stack is None:
-            layout.label(text="レイヤー一覧が未初期化です", icon="ERROR")
-            return
-        item = self._resolve_item(stack)
-        if item is None:
-            layout.label(text="レイヤーが見つかりません", icon="ERROR")
-            return
-        resolved = layer_stack_utils.resolve_stack_item(context, item)
-        try:
-            from ..panels import gpencil_panel
-
-            if not gpencil_panel.draw_stack_item_detail(layout, context, item, resolved, wide=True):
-                layout.label(text="このレイヤーの詳細を表示できません", icon="ERROR")
-        except Exception as exc:  # noqa: BLE001
-            layout.label(text="詳細設定を描画できません", icon="ERROR")
-            layout.label(text=str(exc)[:80])
-        layer_stack_utils.tag_view3d_redraw(context)
-
-    def _offset_cursor_for_selection_popup(self, context, event) -> None:
-        if not bool(getattr(self, "offset_from_selection", False)):
-            return
-        from ..utils import detail_popup
-
-        detail_popup.position_dialog_cursor(context, event, key="layer_detail", offset_x=360)
-
-    def _resolve_item(self, stack):
-        if self.uid:
-            for item in stack:
-                if layer_stack_utils.stack_item_uid(item) == self.uid:
-                    return item
-        if 0 <= self.index < len(stack):
-            return stack[self.index]
-        return None
-
-    def _sync_coma_detail_curve(self, context) -> None:
-        stack = getattr(context.scene, "bmanga_layer_stack", None)
-        if stack is None:
-            return
-        item = self._resolve_item(stack)
-        if item is None or item.kind != COMA_KIND:
-            return
-        resolved = layer_stack_utils.resolve_stack_item(context, item)
-        coma = resolved.get("target") if resolved else None
-        if coma is None:
-            return
-        try:
-            from ..utils import coma_blur_curve
-
-            coma_blur_curve.sync_active_coma_curve_to_border(coma)
-            border = getattr(coma, "border", None)
-            if str(getattr(border, "style", "solid") or "solid") == "brush":
-                coma_blur_curve.ensure_ui_curve_node(border)
-        except Exception:  # noqa: BLE001
-            pass
-
-    def _sync_effect_detail_curve(self, context) -> None:
-        stack = getattr(context.scene, "bmanga_layer_stack", None)
-        if stack is None:
-            return
-        item = self._resolve_item(stack)
-        if item is None:
-            return
-        params = self._effect_curve_params_for_item(context, item)
-        if params is None:
-            return
-        try:
-            from ..utils import effect_inout_curve
-
-            curve_changed = effect_inout_curve.sync_ui_nodes_to_params(params)
-            curve_changed |= effect_inout_curve.sync_profile_node_bidirectional(params)
-            # 白抜き線の白線・黒線グラフも数値へ確定する
-            curve_changed |= effect_inout_curve.sync_active_profile_nodes_to_params(params)
-            if curve_changed:
-                if item.kind in {"effect", "effect_legacy"}:
-                    from ..operators import effect_line_op
-
-                    effect_line_op.on_effect_params_changed(context, params)
-        except Exception:  # noqa: BLE001
-            pass
-
-    def _ensure_effect_detail_curve(self, context, item) -> None:
-        params = self._effect_curve_params_for_item(context, item)
-        if params is None:
-            return
-        try:
-            from ..utils import balloon_shapes, effect_inout_curve
-
-            effect_inout_curve.ensure_ui_nodes(params)
-            effect_inout_curve.ensure_profile_node(params)
-            is_white_outline = (
-                str(getattr(params, "effect_type", "") or "") == "white_outline"
-                or balloon_shapes.normalize_line_style(
-                    str(getattr(params, "line_style", "") or "")
-                )
-                == "white_outline"
-            )
-            if is_white_outline:
-                effect_inout_curve.ensure_profile_node(
-                    params,
-                    fields=effect_inout_curve.WHITE_PROFILE_FIELDS,
-                    node_name=effect_inout_curve.WHITE_PROFILE_NODE_NAME,
-                    source_prop=effect_inout_curve.WHITE_PROFILE_SOURCE_PROP,
-                )
-                effect_inout_curve.ensure_profile_node(
-                    params,
-                    fields=effect_inout_curve.BLACK_PROFILE_FIELDS,
-                    node_name=effect_inout_curve.BLACK_PROFILE_NODE_NAME,
-                    source_prop=effect_inout_curve.BLACK_PROFILE_SOURCE_PROP,
-                )
-        except Exception:  # noqa: BLE001
-            pass
-
-    def _effect_curve_params_for_item(self, context, item):
-        if item is None:
-            return None
-        if item.kind in {"effect", "effect_legacy"}:
-            return getattr(context.scene, "bmanga_effect_line_params", None)
-        if item.kind != "balloon":
-            return None
-        resolved = layer_stack_utils.resolve_stack_item(context, item)
-        entry = resolved.get("target") if resolved else None
-        if entry is None:
-            return None
-        try:
-            from ..utils import balloon_shapes
-
-            if balloon_shapes.normalize_line_style(getattr(entry, "line_style", "")) in {"uni_flash", "white_outline"}:
-                return entry
-        except Exception:  # noqa: BLE001
-            return None
-        return None
-
-    def _ensure_coma_detail_material(self, context, item) -> None:
-        if item is None or item.kind != COMA_KIND:
-            return
-        resolved = layer_stack_utils.resolve_stack_item(context, item)
-        coma = resolved.get("target") if resolved else None
-        page = resolved.get("page") if resolved else None
-        if coma is None or str(getattr(getattr(coma, "border", None), "style", "solid") or "solid") != "brush":
-            return
-        try:
-            from ..core.work import get_work
-            from ..utils import coma_blur_curve, coma_border_object, page_file_scene
-
-            if page_file_scene.is_current_page_edit_scene(context.scene, getattr(page, "id", "")):
-                coma_border_object.ensure_coma_border_object(context.scene, get_work(context), page, coma)
-            coma_blur_curve.ensure_ui_curve_node(coma.border)
-        except Exception:  # noqa: BLE001
-            pass
-
-    def _capture_edge_selection(self, context) -> tuple[str, int, int, int, int]:
-        wm = getattr(context, "window_manager", None)
-        if wm is None:
-            return ("none", -1, -1, -1, -1)
-        return (
-            str(getattr(wm, "bmanga_edge_select_kind", "none") or "none"),
-            int(getattr(wm, "bmanga_edge_select_page", -1)),
-            int(getattr(wm, "bmanga_edge_select_coma", -1)),
-            int(getattr(wm, "bmanga_edge_select_edge", -1)),
-            int(getattr(wm, "bmanga_edge_select_vertex", -1)),
-        )
-
-    def _restore_edge_selection_if_needed(self, context, item, edge_state) -> None:
-        if not bool(getattr(self, "preserve_edge_selection", False)):
-            return
-        if item.kind != COMA_KIND:
-            return
-        kind, page_index, coma_index, edge_index, vertex_index = edge_state
-        if kind not in {"edge", "vertex", "border"}:
-            return
-        resolved = layer_stack_utils.resolve_stack_item(context, item)
-        if resolved is None:
-            return
-        if (
-            int(resolved.get("page_index", -2)) != page_index
-            or int(resolved.get("index", -2)) != coma_index
-        ):
-            return
-        from ..utils import edge_selection
-
-        edge_selection.set_selection(
-            context,
-            kind,
-            page_index=page_index,
-            coma_index=coma_index,
-            edge_index=edge_index,
-            vertex_index=vertex_index,
-        )
-
-
 _CLASSES = (
     BMANGA_OT_layer_stack_select,
     BMANGA_OT_layer_stack_multi_select,
@@ -1790,7 +1483,6 @@ _CLASSES = (
     BMANGA_OT_layer_stack_toggle_expanded,
     BMANGA_OT_layer_stack_delete,
     BMANGA_OT_layer_stack_enter_coma,
-    BMANGA_OT_layer_stack_detail,
 )
 
 

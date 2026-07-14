@@ -1715,6 +1715,8 @@ def _render_gp_object_layers(
         split_child_key = None
     current_page_key = page_stack_key(page) if page_stack_key is not None else ""
     for layer in layers:
+        if str(getattr(layer, "name", "") or "") == "__bmanga_mask":
+            continue
         parent_key = object_parent_key
         if gp_parent is not None:
             parent_key = gp_parent.parent_key(layer) or parent_key
@@ -1790,7 +1792,7 @@ def _render_gp_object_layers(
                 )
         out.append(
             ExportLayer(
-                str(getattr(layer, "name", "layer")),
+                str(obj.get("bmanga_title", "") or getattr(layer, "name", "レイヤー")),
                 canvas.image,
                 canvas.left,
                 canvas.top,
@@ -1810,53 +1812,18 @@ def _render_gp_object_layers(
 
 def _gp_layers(work, page, canvas_size: tuple[int, int], dpi: int) -> list[ExportLayer]:
     try:
-        import bpy
-
-        from ..utils import gpencil as gp_utils
+        from ..utils import layer_object_model
     except Exception:  # pragma: no cover - bpy unavailable outside Blender
         return []
     out: list[ExportLayer] = []
-    master = gp_utils.get_master_gpencil()
     page_offset_mm = _resolve_page_offset_mm(work, page)
-    if master is not None:
-        out.extend(
-            _render_gp_object_layers(
-                master,
-                work,
-                page,
-                canvas_size,
-                dpi,
-                group_root="master",
-                page_offset_mm=page_offset_mm,
-            )
-        )
-    # 新設計: 各 effect_line は独立した GP Object として該当 page/coma の
-    # Collection 配下に配置されている。 bmanga_kind="effect" + bmanga_parent_key
-    # が現ページに属する Object を全て出力する。
     page_id = str(getattr(page, "id", "") or "")
-    for obj in bpy.data.objects:
-        if obj is master:
+    for obj in layer_object_model.iter_layer_objects():
+        parent_key = layer_object_model.parent_key(obj)
+        obj_page_id = parent_key.split(":", 1)[0] if parent_key else ""
+        if obj_page_id != page_id:
             continue
-        if getattr(obj, "type", "") != "GREASEPENCIL":
-            continue
-        try:
-            if str(obj.get("bmanga_kind", "") or "") != "effect":
-                continue
-        except Exception:  # noqa: BLE001
-            continue
-        # parent_key は "<page_id>:<coma_id>" or "<page_id>" 形式
-        try:
-            parent_key = str(obj.get("bmanga_parent_key", "") or "")
-        except Exception:  # noqa: BLE001
-            parent_key = ""
-        if parent_key:
-            obj_page_id = parent_key.split(":", 1)[0] if ":" in parent_key else parent_key
-            if obj_page_id and obj_page_id != page_id:
-                continue
-        else:
-            # parent_key が無い場合は active ページにのみ出す (古い entry の互換)
-            if not _is_active_page(work, page):
-                continue
+        group_root = "effects" if layer_object_model.layer_kind(obj) == "effect" else "gp"
         out.extend(
             _render_gp_object_layers(
                 obj,
@@ -1864,29 +1831,8 @@ def _gp_layers(work, page, canvas_size: tuple[int, int], dpi: int) -> list[Expor
                 page,
                 canvas_size,
                 dpi,
-                group_root="effects",
+                group_root=group_root,
                 page_offset_mm=page_offset_mm,
-            )
-        )
-
-    # 旧設計の集約 GP Object (BManga_EffectLines) は新設計移行後、 mirror で
-    # hide されるが、 過去 file 互換のためここでは active page のみ出力する
-    # (新設計の Object に移行済みの場合は中身が空になっているはず)。
-    legacy_effect_obj = bpy.data.objects.get("BManga_EffectLines")
-    if (
-        legacy_effect_obj is not None
-        and legacy_effect_obj is not master
-        and _is_active_page(work, page)
-    ):
-        out.extend(
-            _render_gp_object_layers(
-                legacy_effect_obj,
-                work,
-                page,
-                canvas_size,
-                dpi,
-                group_root="effects_legacy",
-                page_offset_mm=(0.0, 0.0),
             )
         )
     return out

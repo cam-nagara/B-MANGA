@@ -14,6 +14,8 @@ from pathlib import Path
 
 from ..utils import json_io, log, paths
 from . import schema
+from .project_content_migration_lock import guard_path_write
+from .project_content_save_baseline import record_successful_tree_change
 
 _logger = log.get_logger(__name__)
 
@@ -32,16 +34,17 @@ def save_page_json(work_dir: Path, page_entry) -> Path:
 
     paths.validate_page_id(page_entry.id)
     out = paths.page_meta_path(Path(work_dir), page_entry.id)
-    out.parent.mkdir(parents=True, exist_ok=True)
     data = schema.page_to_dict(page_entry)
     digest = hashlib.md5(
         _json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
     key = str(out)
-    if _LAST_WRITTEN_PAGE_JSON.get(key) == digest and out.is_file():
-        return out
-    json_io.write_json(out, data)
-    _LAST_WRITTEN_PAGE_JSON[key] = digest
+    with guard_path_write(out):
+        if _LAST_WRITTEN_PAGE_JSON.get(key) == digest and out.is_file():
+            return out
+        out.parent.mkdir(parents=True, exist_ok=True)
+        json_io.write_json(out, data)
+        _LAST_WRITTEN_PAGE_JSON[key] = digest
     return out
 
 
@@ -108,7 +111,8 @@ def ensure_page_dir(work_dir: Path, page_id: str) -> Path:
     """pNNNN/ ディレクトリを用意."""
     paths.validate_page_id(page_id)
     page_path = paths.page_dir(Path(work_dir), page_id)
-    page_path.mkdir(parents=True, exist_ok=True)
+    with guard_path_write(page_path):
+        page_path.mkdir(parents=True, exist_ok=True)
     return page_path
 
 
@@ -116,9 +120,11 @@ def remove_page_dir(work_dir: Path, page_id: str) -> None:
     """pNNNN/ をまるごと削除 (コマ含む)."""
     paths.validate_page_id(page_id)
     page_path = paths.page_dir(Path(work_dir), page_id)
-    if page_path.exists():
-        shutil.rmtree(page_path)
-        _logger.info("page dir removed: %s", page_path)
+    with guard_path_write(page_path):
+        if page_path.exists():
+            shutil.rmtree(page_path)
+            record_successful_tree_change(page_path)
+            _logger.info("page dir removed: %s", page_path)
 
 
 def copy_page_dir(work_dir: Path, src_id: str, dst_id: str) -> None:
@@ -127,11 +133,13 @@ def copy_page_dir(work_dir: Path, src_id: str, dst_id: str) -> None:
     paths.validate_page_id(dst_id)
     src = paths.page_dir(Path(work_dir), src_id)
     dst = paths.page_dir(Path(work_dir), dst_id)
-    if not src.exists():
-        raise FileNotFoundError(f"source page dir missing: {src}")
-    if dst.exists():
-        raise FileExistsError(f"destination already exists: {dst}")
-    shutil.copytree(src, dst)
+    with guard_path_write(dst):
+        if not src.exists():
+            raise FileNotFoundError(f"source page dir missing: {src}")
+        if dst.exists():
+            raise FileExistsError(f"destination already exists: {dst}")
+        shutil.copytree(src, dst)
+        record_successful_tree_change(dst)
     _logger.info("page dir copied: %s -> %s", src, dst)
 
 
@@ -141,11 +149,13 @@ def rename_page_dir(work_dir: Path, old_id: str, new_id: str) -> None:
     paths.validate_page_id(new_id)
     src = paths.page_dir(Path(work_dir), old_id)
     dst = paths.page_dir(Path(work_dir), new_id)
-    if not src.exists():
-        raise FileNotFoundError(f"source page dir missing: {src}")
-    if dst.exists():
-        raise FileExistsError(f"destination already exists: {dst}")
-    src.rename(dst)
+    with guard_path_write(dst):
+        if not src.exists():
+            raise FileNotFoundError(f"source page dir missing: {src}")
+        if dst.exists():
+            raise FileExistsError(f"destination already exists: {dst}")
+        src.rename(dst)
+        record_successful_tree_change(src, dst)
     _logger.info("page dir renamed: %s -> %s", src, dst)
 
 

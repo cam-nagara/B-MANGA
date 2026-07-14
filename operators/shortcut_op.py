@@ -509,6 +509,75 @@ def _gp_paste_clipboard(context) -> bool:
     return False
 
 
+def _create_gp_object_for_paste(context, source_obj):
+    """切り取った線を受ける個別の手描きレイヤーを作る。"""
+    from ..utils import gp_object_layer, layer_object_model
+
+    if not layer_object_model.is_layer_object(source_obj, "gp"):
+        return None
+    parent_key = layer_object_model.parent_key(source_obj)
+    folder_id = layer_object_model.folder_id(source_obj)
+    obj = gp_object_layer.create_layer_gp_object(
+        scene=context.scene,
+        bmanga_id=layer_object_model.make_stable_id("gp"),
+        title="貼り付け",
+        z_index=layer_object_model.z_index(source_obj) + 1,
+        parent_kind=(
+            "folder"
+            if folder_id
+            else ("coma" if ":" in parent_key else ("page" if parent_key else "outside"))
+        ),
+        parent_key=parent_key,
+        folder_id=folder_id,
+    )
+    if obj is None:
+        return None
+    source_materials = getattr(getattr(source_obj, "data", None), "materials", None)
+    target_materials = getattr(getattr(obj, "data", None), "materials", None)
+    if source_materials is not None and target_materials is not None:
+        try:
+            target_materials.clear()
+            for material in source_materials:
+                target_materials.append(material)
+            gp_utils.ensure_unique_object_materials(obj)
+        except Exception:  # noqa: BLE001
+            _logger.exception("paste_to_new_layer: material copy failed")
+    layer = layer_object_model.content_layer(obj)
+    if layer is not None:
+        obj.data.layers.active = layer
+        gp_utils.ensure_active_frame(layer, frame_number=context.scene.frame_current)
+        gp_utils.ensure_layer_material(obj, layer, activate=True, assign_existing=True)
+    return obj
+
+
+def _activate_gp_object_for_paste(context, obj, mode: str) -> bool:
+    try:
+        if getattr(context.object, "mode", "OBJECT") != "OBJECT":
+            bpy.ops.object.mode_set(mode="OBJECT")
+        for candidate in tuple(getattr(context, "selected_objects", ()) or ()):
+            candidate.select_set(False)
+        obj.select_set(True)
+        context.view_layer.objects.active = obj
+        if mode != "OBJECT":
+            bpy.ops.object.mode_set(mode=mode)
+        return True
+    except Exception:  # noqa: BLE001
+        _logger.exception("paste_to_new_layer: target activation failed")
+        return False
+
+
+def _discard_failed_paste_target(context, target_obj, source_obj, source_mode: str) -> None:
+    from ..utils import layer_object_model
+
+    try:
+        if getattr(context.object, "mode", "OBJECT") != "OBJECT":
+            bpy.ops.object.mode_set(mode="OBJECT")
+    except Exception:  # noqa: BLE001
+        pass
+    layer_object_model.remove_layer_object(target_obj)
+    _activate_gp_object_for_paste(context, source_obj, source_mode)
+
+
 class BMANGA_OT_gp_cut_to_new_layer(Operator):
     """Ctrl+X 上書き: 選択 GP ストロークを切り取り、次の Paste で新レイヤー化フラグを立てる.
 
@@ -562,47 +631,42 @@ class BMANGA_OT_gp_paste_to_new_layer(Operator):
             return {"PASS_THROUGH"}
         scene = context.scene
         global _PASTE_TO_NEW_LAYER_FLAG
+        source_obj = None
+        source_mode = "OBJECT"
+        target_obj = None
         if _PASTE_TO_NEW_LAYER_FLAG:
-            # 新規レイヤーを作成して active に
-            try:
-                gp_data = obj.data
-                layers = getattr(gp_data, "layers", None)
-                if layers is not None:
-                    active_layer = getattr(layers, "active", None)
-                    parent_group = getattr(active_layer, "parent_group", None)
-                    new_layer = layers.new(name="Pasted")
-                    try:
-                        layers.active = new_layer
-                    except Exception:  # noqa: BLE001
-                        pass
-                    if parent_group is not None:
-                        try:
-                            from ..utils import gpencil as gp_utils
-                            gp_utils.move_layer_to_group(gp_data, new_layer, parent_group)
-                        except Exception:  # noqa: BLE001
-                            pass
-                    # 新レイヤーに現在フレームの空フレームを補充
-                    try:
-                        from ..utils import gpencil as gp_utils
-                        gp_utils.ensure_active_frame(
-                            new_layer,
-                            frame_number=scene.frame_current if scene else 1,
-                        )
-                        gp_utils.ensure_layer_material(
-                            obj,
-                            new_layer,
-                            activate=True,
-                            assign_existing=True,
-                        )
-                    except Exception:  # noqa: BLE001
-                        pass
-            except Exception:  # noqa: BLE001
-                _logger.exception("paste_to_new_layer: layer create failed")
-            _PASTE_TO_NEW_LAYER_FLAG = False
+            source_obj = obj
+            source_mode = str(getattr(source_obj, "mode", "OBJECT") or "OBJECT")
+            target_obj = _create_gp_object_for_paste(context, source_obj)
+            if target_obj is None or not _activate_gp_object_for_paste(
+                context,
+                target_obj,
+                source_mode,
+            ):
+                if target_obj is not None:
+                    _discard_failed_paste_target(
+                        context,
+                        target_obj,
+                        source_obj,
+                        source_mode,
+                    )
+                self.report({"ERROR"}, "貼り付け先の手描きレイヤーを作成できません")
+                return {"CANCELLED"}
+            obj = target_obj
         ok = _gp_paste_clipboard(context)
         if not ok:
+            if source_obj is not None and target_obj is not None:
+                _discard_failed_paste_target(
+                    context,
+                    target_obj,
+                    source_obj,
+                    source_mode,
+                )
             self.report({"WARNING"}, "Paste 失敗 (クリップボード空?)")
             return {"CANCELLED"}
+        _PASTE_TO_NEW_LAYER_FLAG = False
+        scene.bmanga_active_layer_kind = "gp"
+        layer_stack_utils.sync_layer_stack_after_data_change(context)
         return {"FINISHED"}
 
 

@@ -576,8 +576,6 @@ def _select_balloon_index(context, work, page, index: int, *, mode: str = "singl
                 break
     if hasattr(context.scene, "bmanga_active_layer_kind"):
         context.scene.bmanga_active_layer_kind = "balloon"
-    if hasattr(context.scene, "bmanga_active_gp_folder_key"):
-        context.scene.bmanga_active_gp_folder_key = ""
     _sync_active_balloon_stack_item(context, page, entry)
     _set_balloon_object_selection(context, page, entry, mode=mode)
     return True

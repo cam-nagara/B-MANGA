@@ -14,6 +14,14 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "test"))
+
+from detail_dialog_public_test_support import (  # noqa: E402
+    close_actual_session,
+    draw_all_actual_entry_points,
+    open_actual_session,
+    sync_actual_session,
+)
 MOD_NAME = "bmanga_dev_effect_line_detail_graph"
 
 
@@ -53,6 +61,7 @@ class _Layout:
         self.props_by_column = {} if props_by_column is None else props_by_column
         self.column_name = column_name
         self.enabled = True
+        self.active = True
 
     def _child(self, column_name: str | None = None):
         return _Layout(
@@ -106,8 +115,15 @@ class _Layout:
         self.ops.append(str(op_id))
         return _Op(str(op_id))
 
+    def operator_menu_enum(self, op_id: str, _prop: str, **_kwargs):
+        self.ops.append(str(op_id))
+        return _Op(str(op_id))
+
     def template_curve_mapping(self, *_args, **_kwargs):
         self.labels.append("線幅グラフ")
+        return None
+
+    def template_list(self, *_args, **_kwargs):
         return None
 
 
@@ -186,10 +202,211 @@ def _create_test_effect(context, scene, page, effect_line_op, page_stack_key):
     )
 
 
-def _assert_detail_layout(layer_detail_op, effect_line_op, context, scene, obj) -> None:
+def _draw_session(context, session, layout=None):
+    target_layout = layout or _Layout()
+    _sub("operators.detail_dialog_runtime").draw_actual_session(
+        target_layout, context, session
+    )
+    return target_layout
+
+
+def _draw_fingerprint(effect_inout_curve, state_adapters, params):
+    material = bpy.data.materials.get(effect_inout_curve.MATERIAL_NAME)
+    node_tree = getattr(material, "node_tree", None) if material is not None else None
+    curve_nodes = []
+    if node_tree is not None:
+        for node in sorted(node_tree.nodes, key=lambda item: item.name):
+            if node.bl_idname == "ShaderNodeFloatCurve":
+                curve_nodes.append(
+                    (node.name, effect_inout_curve.read_node_points(node))
+                )
+    source_props = tuple(
+        (name, str(material.get(name, "") or ""))
+        for name in (
+            effect_inout_curve.IN_SOURCE_PROP,
+            effect_inout_curve.OUT_SOURCE_PROP,
+            effect_inout_curve.PROFILE_SOURCE_PROP,
+            effect_inout_curve.WHITE_PROFILE_SOURCE_PROP,
+            effect_inout_curve.BLACK_PROFILE_SOURCE_PROP,
+        )
+        if material is not None
+    )
+    requests = tuple(
+        sorted(
+            (
+                name,
+                tuple(sorted(request[1].items())),
+                request[2],
+            )
+            for name, request in effect_inout_curve._LIVE_PROFILE_REQUESTS.items()
+        )
+    )
+    timer_registered = bpy.app.timers.is_registered(
+        effect_inout_curve._live_profile_sync_tick
+    )
+    return (
+        state_adapters.snapshot_rna_state(params),
+        tuple(sorted((obj.name, obj.type) for obj in bpy.data.objects)),
+        tuple(sorted(material.name for material in bpy.data.materials)),
+        tuple(curve_nodes),
+        source_props,
+        requests,
+        bool(effect_inout_curve._LIVE_PROFILE_RUNNING),
+        bool(timer_registered),
+    )
+
+
+def _assert_repeated_draw_is_read_only(
+    context,
+    session,
+    params,
+    effect_inout_curve,
+    state_adapters,
+    label: str,
+) -> None:
+    before = _draw_fingerprint(effect_inout_curve, state_adapters, params)
+    for _index in range(3):
+        _draw_session(context, session, _Layout())
+    after = _draw_fingerprint(effect_inout_curve, state_adapters, params)
+    assert after == before, f"{label}は再描画だけで設定またはBlenderデータを変更しました"
+
+
+def _assert_balloon_and_image_path_draw_are_read_only(
+    context,
+    page,
+    effect_inout_curve,
+    state_adapters,
+) -> None:
+    contract = _sub("utils.detail_dialog")
+    runtime = _sub("operators.detail_dialog_runtime")
+
+    balloon = page.balloons.add()
+    balloon.id = "detail_draw_balloon"
+    balloon.title = "描画無副作用"
+    balloon.shape = "ellipse"
+    balloon.line_style = "uni_flash"
+    balloon.in_percent = 33.0
+    balloon.out_percent = 19.0
+    balloon.in_start_percent = 47.0
+    balloon.out_start_percent = 21.0
+    balloon_opening = (
+        float(balloon.in_percent),
+        float(balloon.out_percent),
+        float(balloon.in_start_percent),
+        float(balloon.out_start_percent),
+    )
+    balloon_target = contract.DetailTarget(
+        kind="balloon",
+        stable_id=f"{page.id}:{balloon.id}",
+        stack_uid=None,
+        data=balloon,
+        object_ref=None,
+        params={"page": page, "page_id": str(page.id)},
+    )
+    balloon_session = runtime.begin_actual_session(
+        context,
+        balloon_target,
+        target_validator=lambda identity: identity.stable_id == balloon_target.stable_id,
+    )
+    try:
+        balloon_node = effect_inout_curve.get_profile_node()
+        assert balloon_node is not None, "フキダシ開始時に線幅グラフが準備されていません"
+        balloon_points = effect_inout_curve.read_node_points(balloon_node)
+        _assert_point(balloon_points, 0.0, 0.19, "フキダシの抜きが開始時グラフへ反映されていません")
+        _assert_point(balloon_points, 0.21, 1.0, "フキダシの内端側位置が開始時グラフへ反映されていません")
+        _assert_point(balloon_points, 0.53, 1.0, "フキダシの外端側位置が開始時グラフへ反映されていません")
+        _assert_point(balloon_points, 1.0, 0.33, "フキダシの入りが開始時グラフへ反映されていません")
+        _assert_repeated_draw_is_read_only(
+            context,
+            balloon_session,
+            balloon,
+            effect_inout_curve,
+            state_adapters,
+            "フキダシ詳細設定",
+        )
+        effect_inout_curve._apply_points_to_node(
+            balloon_node,
+            ((0.0, 0.2), (0.35, 1.0), (0.65, 1.0), (1.0, 0.4)),
+        )
+        runtime.sync_actual_session(context, balloon_session)
+        _assert_close(balloon.in_percent, 40.0, "フキダシのグラフ変更が入りへ同期されていません")
+        _assert_close(balloon.out_percent, 20.0, "フキダシのグラフ変更が抜きへ同期されていません")
+        _assert_close(balloon.in_start_percent, 35.0, "フキダシのグラフ変更が外端側位置へ同期されていません")
+        _assert_close(balloon.out_start_percent, 35.0, "フキダシのグラフ変更が内端側位置へ同期されていません")
+    finally:
+        runtime.cancel_actual_session(context, balloon_session)
+    assert (
+        float(balloon.in_percent),
+        float(balloon.out_percent),
+        float(balloon.in_start_percent),
+        float(balloon.out_start_percent),
+    ) == balloon_opening, "フキダシのキャンセルで開始時グラフ値へ戻りませんでした"
+
+    image_path = context.scene.bmanga_image_path_layers.add()
+    image_path.id = "detail_draw_image_path"
+    image_path.title = "描画無副作用"
+    image_path.in_percent = 61.0
+    image_path.out_percent = 27.0
+    image_path.in_start_percent = 42.0
+    image_path.out_start_percent = 18.0
+    image_opening = (
+        float(image_path.in_percent),
+        float(image_path.out_percent),
+        float(image_path.in_start_percent),
+        float(image_path.out_start_percent),
+    )
+    image_target = contract.DetailTarget(
+        kind="image_path",
+        stable_id=str(image_path.id),
+        stack_uid=None,
+        data=image_path,
+        object_ref=None,
+        params=image_path,
+    )
+    image_session = runtime.begin_actual_session(
+        context,
+        image_target,
+        target_validator=lambda identity: identity.stable_id == image_target.stable_id,
+    )
+    try:
+        image_node = effect_inout_curve.get_profile_node()
+        assert image_node is not None, "パターンカーブ開始時に線幅グラフが準備されていません"
+        image_points = effect_inout_curve.read_node_points(image_node)
+        _assert_point(image_points, 0.0, 0.27, "パターンカーブの抜きが開始時グラフへ反映されていません")
+        _assert_point(image_points, 0.18, 1.0, "パターンカーブの内端側位置が開始時グラフへ反映されていません")
+        _assert_point(image_points, 0.58, 1.0, "パターンカーブの外端側位置が開始時グラフへ反映されていません")
+        _assert_point(image_points, 1.0, 0.61, "パターンカーブの入りが開始時グラフへ反映されていません")
+        _assert_repeated_draw_is_read_only(
+            context,
+            image_session,
+            image_path,
+            effect_inout_curve,
+            state_adapters,
+            "パターンカーブ詳細設定",
+        )
+        effect_inout_curve._apply_points_to_node(
+            image_node,
+            ((0.0, 0.15), (0.3, 1.0), (0.55, 1.0), (1.0, 0.45)),
+        )
+        runtime.sync_actual_session(context, image_session)
+        _assert_close(image_path.in_percent, 45.0, "パターンカーブのグラフ変更が入りへ同期されていません")
+        _assert_close(image_path.out_percent, 15.0, "パターンカーブのグラフ変更が抜きへ同期されていません")
+        _assert_close(image_path.in_start_percent, 45.0, "パターンカーブのグラフ変更が入り側位置へ同期されていません")
+        _assert_close(image_path.out_start_percent, 30.0, "パターンカーブのグラフ変更が抜き側位置へ同期されていません")
+    finally:
+        runtime.cancel_actual_session(context, image_session)
+    assert (
+        float(image_path.in_percent),
+        float(image_path.out_percent),
+        float(image_path.in_start_percent),
+        float(image_path.out_start_percent),
+    ) == image_opening, "パターンカーブのキャンセルで開始時グラフ値へ戻りませんでした"
+
+
+def _assert_detail_layout(effect_line_op, context, scene, session) -> None:
     layout = _Layout()
-    layer_detail_op._draw_effect_detail(layout, context, obj, load_from_layer=True)
-    assert 2 in layout.grid_columns, f"効果線詳細設定が2列で描画されていません: {layout.grid_columns}"
+    _draw_session(context, session, layout)
+    assert 3 in layout.grid_columns, f"集中線の詳細設定が3列で描画されていません: {layout.grid_columns}"
     assert scene.bmanga_active_layer_kind == "effect", "効果線詳細設定の編集対象が選択されていません"
     assert scene.bmanga_active_effect_layer_name, "効果線詳細設定の対象レイヤー名が設定されていません"
 
@@ -197,8 +414,9 @@ def _assert_detail_layout(layer_detail_op, effect_line_op, context, scene, obj) 
         p.effect_type = "white_outline"
 
     _set_params_silently(scene, effect_line_op, white_outline_values)
+    sync_actual_session(MOD_NAME, context, session)
     layout = _Layout()
-    layer_detail_op._draw_effect_detail(layout, context, obj, load_from_layer=False)
+    _draw_session(context, session, layout)
     assert "white_outline_count" in layout.props_by_column.get("col1", ()), (
         "白抜き線の基本設定が線列に分割されていません"
     )
@@ -213,14 +431,14 @@ def _assert_detail_layout(layer_detail_op, effect_line_op, context, scene, obj) 
     assert "white_outline_white_brush_mm" in layout.props_by_column.get("col1", ()), (
         "白線設定が設定列にありません"
     )
-    assert "white_outline_black_direction" in layout.props_by_column.get("col1", ()), (
-        "黒線設定が設定列にありません"
+    assert "white_outline_black_direction" in layout.props_by_column.get("col2", ()), (
+        "黒線設定が3列目にありません"
     )
     for prop_name in (
         "white_outline_black_in_percent",
         "white_outline_black_out_percent",
     ):
-        assert prop_name in layout.props_by_column.get("col1", ()), (
+        assert prop_name in layout.props_by_column.get("col2", ()), (
             f"黒線入り抜き設定が設定列にありません: {prop_name}"
         )
     for prop_name in (
@@ -234,49 +452,43 @@ def _assert_detail_layout(layer_detail_op, effect_line_op, context, scene, obj) 
             f"線幅グラフに統合した範囲設定が表示されています: {prop_name}"
         )
     assert layout.labels.count("線幅グラフ") >= 3, "主線・黒線・白線の線幅グラフが揃っていません"
-    assert "line_image_source" in layout.props_by_column.get("col1", ()), (
-        "パス線設定が設定列にありません"
+    assert "line_image_source" in layout.props_by_column.get("col2", ()), (
+        "パス線設定が3列目にありません"
     )
     assert "line_color" in layout.props_by_column.get("col1", ()), (
         "白抜き線の線色が設定列にありません"
     )
 
 
-def _assert_layer_stack_dialog_layout(
-    layer_stack_detail_ui,
-    layer_stack_op,
-    layer_stack_utils,
+def _assert_all_entry_layouts_match(
     effect_line_op,
     context,
     scene,
-    layer,
+    session,
 ) -> None:
-    stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
-    uid = layer_stack_utils.target_uid("effect", layer_stack_utils._node_stack_key(layer))
-    item = next((candidate for candidate in stack if layer_stack_utils.stack_item_uid(candidate) == uid), None)
-    assert item is not None, "レイヤーリスト上の効果線行が見つかりません"
-    assert layer_stack_op._detail_dialog_width_for_item(context, item) == 560
-    resolved = layer_stack_utils.resolve_stack_item(context, item)
-
     def focus_values(p):
         p.effect_type = "focus"
 
     _set_params_silently(scene, effect_line_op, focus_values)
-    layout = _Layout()
-    layer_stack_detail_ui.draw_stack_item_detail(layout, context, item, resolved, wide=True)
-    assert 2 in layout.grid_columns, f"レイヤーリスト詳細の効果線設定が2列で描画されていません: {layout.grid_columns}"
-    assert "effect_type" in layout.props_by_column.get("col0", ()), "種類が1列目にありません"
-    assert "brush_size_mm" in layout.props_by_column.get("col1", ()), "線設定が2列目にありません"
-    assert "in_percent" in layout.props_by_column.get("col1", ()), "入り抜きが2列目にありません"
-    assert "line_color" in layout.props_by_column.get("col1", ()), "色設定が2列目にありません"
-    assert "line_image_source" in layout.props_by_column.get("col1", ()), "パス線設定が2列目にありません"
+    sync_actual_session(MOD_NAME, context, session)
+    layouts = draw_all_actual_entry_points(MOD_NAME, context, session, _Layout)
+    assert layouts[0].props == layouts[1].props == layouts[2].props, (
+        "共通描画・右クリック・レイヤー一覧で効果線の表示項目が一致しません"
+    )
+    assert all(3 in layout.grid_columns for layout in layouts), (
+        "いずれかの入口で集中線の3列表示が使われていません"
+    )
+    assert all(layout.props_by_column == layouts[0].props_by_column for layout in layouts[1:]), (
+        "入口ごとに等幅列への項目配置が異なります"
+    )
+    assert "effect_type" in layouts[0].props_by_column.get("col0", ()), "種類が1列目にありません"
+    assert "brush_size_mm" in layouts[0].props, "線設定が共通詳細にありません"
+    assert "in_percent" in layouts[0].props, "入り抜きが共通詳細にありません"
+    assert "line_color" in layouts[0].props, "色設定が共通詳細にありません"
+    assert "line_image_source" in layouts[0].props, "パス線設定が共通詳細にありません"
 
-    layout = _Layout()
-    layer_stack_detail_ui.draw_stack_item_detail(layout, context, item, resolved, wide=False)
-    assert 2 not in layout.grid_columns, "サイドバー内の詳細表示までダイアログ用2列になっています"
 
-
-def _assert_graph_numeric_to_curve(layer_detail_op, effect_line_op, effect_inout_curve, context, scene, obj):
+def _assert_graph_numeric_to_curve(effect_line_op, effect_inout_curve, context, scene, session):
     def numeric_values(p):
         p.effect_type = "focus"
         p.in_percent = 30.0
@@ -287,8 +499,9 @@ def _assert_graph_numeric_to_curve(layer_detail_op, effect_line_op, effect_inout
         p.out_easing_curve = effect_inout_curve.DEFAULT_CURVE_TEXT
 
     _set_params_silently(scene, effect_line_op, numeric_values)
+    sync_actual_session(MOD_NAME, context, session)
     layout = _Layout()
-    layer_detail_op._draw_effect_detail(layout, context, obj, load_from_layer=False)
+    _draw_session(context, session, layout)
     node = effect_inout_curve.get_profile_node()
     assert node is not None, "効果線詳細設定に線幅グラフが作成されていません"
     points = effect_inout_curve.read_node_points(node)
@@ -299,12 +512,12 @@ def _assert_graph_numeric_to_curve(layer_detail_op, effect_line_op, effect_inout
     return node
 
 
-def _assert_graph_curve_to_numeric(layer_detail_op, effect_inout_curve, context, obj, params, node) -> None:
+def _assert_graph_curve_to_numeric(effect_inout_curve, context, session, params, node) -> None:
     effect_inout_curve._apply_points_to_node(
         node,
         ((0.0, 0.2), (0.2, 0.65), (0.35, 1.0), (0.65, 1.0), (0.85, 0.7), (1.0, 0.4)),
     )
-    assert layer_detail_op._sync_detail_profile_curve(context, "effect", obj.get("bmanga_id", ""))
+    sync_actual_session(MOD_NAME, context, session)
     _assert_close(params.in_percent, 40.0, "線幅グラフの外端が入り(%)へ反映されていません")
     _assert_close(params.out_percent, 20.0, "線幅グラフの内端が抜き(%)へ反映されていません")
     _assert_close(params.in_start_percent, 35.0, "線幅グラフの山位置が入り始点(%)へ反映されていません")
@@ -327,7 +540,7 @@ def _assert_graph_live_sync(effect_inout_curve, effect_line_op, params, obj, lay
     _assert_close(saved["out_percent"], 15.0, "同期タイマー後の抜き(%)が効果線へ保存されていません")
 
 
-def _assert_white_black_graphs(layer_detail_op, effect_inout_curve, context, obj, params) -> None:
+def _assert_white_black_graphs(effect_inout_curve, context, session, params) -> None:
     params.effect_type = "white_outline"
     params.white_outline_white_in_percent = 30.0
     params.white_outline_white_out_percent = 20.0
@@ -339,8 +552,9 @@ def _assert_white_black_graphs(layer_detail_op, effect_inout_curve, context, obj
     params.white_outline_black_inout_range_mode = "percent"
     params.white_outline_black_in_range_percent = 30.0
     params.white_outline_black_out_range_percent = 20.0
+    sync_actual_session(MOD_NAME, context, session)
     layout = _Layout()
-    layer_detail_op._draw_effect_detail(layout, context, obj, load_from_layer=False)
+    _draw_session(context, session, layout)
     assert "in_start_percent" not in layout.props
     assert "out_start_percent" not in layout.props
     white = effect_inout_curve.get_profile_node(effect_inout_curve.WHITE_PROFILE_NODE_NAME)
@@ -362,7 +576,7 @@ def _assert_white_black_graphs(layer_detail_op, effect_inout_curve, context, obj
     effect_inout_curve._apply_points_to_node(
         black, ((0.0, 0.25), (0.10, 1.0), (0.65, 1.0), (1.0, 0.55))
     )
-    assert effect_inout_curve.sync_all_profile_nodes_to_params(params)
+    sync_actual_session(MOD_NAME, context, session)
     _assert_close(params.white_outline_white_in_percent, 45.0, "白線グラフ外端")
     _assert_close(params.white_outline_white_out_percent, 15.0, "白線グラフ内端")
     _assert_close(params.white_outline_white_in_range_percent, 20.0, "白線グラフ外端側範囲")
@@ -374,17 +588,15 @@ def _assert_white_black_graphs(layer_detail_op, effect_inout_curve, context, obj
 
 
 def _assert_graph_saved_and_generated(
-    layer_detail_op,
     effect_line_op,
     effect_line_gen,
     context,
+    session,
     params,
     obj,
     layer,
-    bmanga_id: str,
 ) -> None:
-    layer_detail_op._sync_detail_profile_curve(context, "effect", bmanga_id)
-    assert layer_detail_op._apply_effect_detail_params_to_layer(context, obj, layer)
+    sync_actual_session(MOD_NAME, context, session)
     saved = effect_line_op._layer_params_data(obj, layer)
     _assert_close(saved["in_percent"], 40.0, "入り(%)が効果線レイヤーへ保存されていません")
     _assert_close(saved["out_percent"], 20.0, "抜き(%)が効果線レイヤーへ保存されていません")
@@ -416,12 +628,9 @@ def main() -> None:
 
         effect_line_gen = _sub("operators.effect_line_gen")
         effect_line_op = _sub("operators.effect_line_op")
-        layer_stack_op = _sub("operators.layer_stack_op")
-        layer_stack_detail_ui = _sub("panels.layer_stack_detail_ui")
-        layer_detail_op = _sub("operators.layer_detail_op")
         get_work = _sub("core.work").get_work
         effect_inout_curve = _sub("utils.effect_inout_curve")
-        layer_stack_utils = _sub("utils.layer_stack")
+        state_adapters = _sub("utils.detail_state_adapters")
         object_naming = _sub("utils.object_naming")
         page_stack_key = _sub("utils.layer_hierarchy").page_stack_key
 
@@ -435,39 +644,55 @@ def main() -> None:
         obj, layer = _create_test_effect(context, scene, page, effect_line_op, page_stack_key)
         assert obj is not None and layer is not None
         bmanga_id = object_naming.get_bmanga_id(obj)
-        assert layer_detail_op._detail_dialog_width_for_kind(context, "effect", bmanga_id) == 560
+        session = open_actual_session(MOD_NAME, context, obj)
+        assert session.target.stable_id == bmanga_id
+        assert session.layout.max_columns == 3
+        fixed_width = session.layout.dialog_width
 
-        _assert_detail_layout(layer_detail_op, effect_line_op, context, scene, obj)
-        _assert_layer_stack_dialog_layout(
-            layer_stack_detail_ui,
-            layer_stack_op,
-            layer_stack_utils,
+        _assert_repeated_draw_is_read_only(
+            context,
+            session,
+            params,
+            effect_inout_curve,
+            state_adapters,
+            "効果線詳細設定",
+        )
+
+        _assert_detail_layout(effect_line_op, context, scene, session)
+        assert session.layout.dialog_width == fixed_width, "種類変更で固定最大幅が変化しました"
+        _assert_all_entry_layouts_match(
             effect_line_op,
             context,
             scene,
-            layer,
+            session,
         )
         node = _assert_graph_numeric_to_curve(
-            layer_detail_op,
             effect_line_op,
             effect_inout_curve,
             context,
             scene,
-            obj,
+            session,
         )
-        _assert_graph_curve_to_numeric(layer_detail_op, effect_inout_curve, context, obj, params, node)
+        _assert_graph_curve_to_numeric(effect_inout_curve, context, session, params, node)
         _assert_graph_saved_and_generated(
-            layer_detail_op,
             effect_line_op,
             effect_line_gen,
             context,
+            session,
             params,
             obj,
             layer,
-            bmanga_id,
         )
         _assert_graph_live_sync(effect_inout_curve, effect_line_op, params, obj, layer, node)
-        _assert_white_black_graphs(layer_detail_op, effect_inout_curve, context, obj, params)
+        _assert_white_black_graphs(effect_inout_curve, context, session, params)
+        assert session.layout.dialog_width == fixed_width, "編集途中で固定最大幅が変化しました"
+        close_actual_session(MOD_NAME, context, session)
+        _assert_balloon_and_image_path_draw_are_read_only(
+            context,
+            page,
+            effect_inout_curve,
+            state_adapters,
+        )
     finally:
         if mod is not None:
             try:

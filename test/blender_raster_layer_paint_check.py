@@ -167,6 +167,51 @@ def main() -> None:
         assert result == {"FINISHED"}, result
         assert obj.mode == "OBJECT"
 
+        from bmanga_dev.operators import detail_dialog_runtime
+        from bmanga_dev.utils import detail_dialog
+
+        target = detail_dialog.DetailTarget(
+            "raster",
+            str(entry.id),
+            None,
+            entry,
+            object_ref=obj,
+        )
+        session = detail_dialog_runtime.begin_actual_session(
+            bpy.context,
+            target,
+            target_validator=lambda identity: identity.stable_id == str(entry.id),
+        )
+        result = bpy.ops.bmanga.detail_raster_paint_enter(
+            "EXEC_DEFAULT",
+            session_token=session.token,
+            target_id=target.stable_id,
+        )
+        assert result == {"FINISHED"}, result
+        assert obj.mode == "TEXTURE_PAINT"
+        assert detail_dialog_runtime.detail_action_session_is_open(
+            session.token, "raster", target.stable_id
+        ), "ペイント開始で親の詳細設定セッションを閉じてはいけません"
+        assert [item.spec.action_id for item in session.independent_actions] == [
+            "bmanga.detail_raster_paint_enter"
+        ]
+        assert bpy.ops.bmanga.raster_layer_paint_exit() == {"FINISHED"}
+        result = bpy.ops.bmanga.detail_raster_save_png(
+            "EXEC_DEFAULT",
+            force=True,
+            session_token=session.token,
+            target_id=target.stable_id,
+        )
+        assert result == {"FINISHED"}, result
+        assert detail_dialog_runtime.detail_action_session_is_open(
+            session.token, "raster", target.stable_id
+        ), "PNG保存で親の詳細設定セッションを閉じてはいけません"
+        assert [item.spec.action_id for item in session.independent_actions] == [
+            "bmanga.detail_raster_paint_enter",
+            "bmanga.detail_raster_save_png",
+        ]
+        detail_dialog_runtime.cancel_actual_session(bpy.context, session)
+
         result = bpy.ops.bmanga.raster_layer_mode_set(mode="TEXTURE_PAINT")
         assert result == {"FINISHED"}, result
         assert bpy.context.object is obj

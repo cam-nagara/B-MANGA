@@ -1,18 +1,8 @@
-"""Grease Pencil v3 関連 Operator (ネーム作画用, Phase 2 ページ単位化).
+"""Grease Pencil v3 関連 Operator。
 
-Phase 2 以降は「1 ページ = 1 GP オブジェクト (``page_NNNN_sketch``)」で、
-overview 上で全ページの GP が grid 配置される。オペレータは以下の導線:
-
-- ``bmanga.gpencil_page_ensure``: アクティブページの GP を確保 (必要なら生成)
-  し、view_layer.objects.active をその GP に設定。描画モードには入らない
-  (ユーザーが任意で Blender 標準の mode_set を使う)。
-- ``bmanga.gpencil_follow_cursor``: マウス位置 → アクティブページ/GP を自動
-  切替するタイマー watcher の ON/OFF をトグル。
-- ``bmanga.gpencil_layer_add`` / ``bmanga.gpencil_layer_remove`` /
-  ``bmanga.gpencil_layer_select``: master GP のレイヤー操作。
-
-``bmanga.gpencil_setup`` (1 つのグローバル GP を作る旧オペレータ) は廃止し、
-page_ensure にリネーム・改変した。
+通常経路では「1 GP Object = 1 B-MANGAレイヤー」を正本にする。古い専用
+オペレーターIDは既存キーマップ互換の薄い転送として残すが、内部レイヤーや
+マスターGPは新規生成しない。
 """
 
 from __future__ import annotations
@@ -23,7 +13,7 @@ from bpy.types import Operator
 
 from ..core.work import get_active_page, get_work
 from ..utils import gpencil as gp_utils
-from ..utils import geom, layer_stack as layer_stack_utils, log, page_grid
+from ..utils import geom, layer_object_model, layer_stack as layer_stack_utils, log, page_grid
 from . import object_rotation_gp  # noqa: F401 (import時にgp回転ハンドラーを登録)
 
 _logger = log.get_logger(__name__)
@@ -40,10 +30,34 @@ def _active_gp_object(context):
 
 
 def _target_gp_object(context):
-    obj = gp_utils.get_master_gpencil()
-    if obj is not None:
+    obj = _active_gp_object(context)
+    if layer_object_model.is_layer_object(obj, "gp"):
         return obj
-    return _active_gp_object(context)
+    item = layer_stack_utils.active_stack_item(context)
+    if item is None or str(getattr(item, "kind", "") or "") != "gp":
+        return None
+    resolved = layer_stack_utils.resolve_stack_item(context, item)
+    candidate = resolved.get("object") if resolved is not None else None
+    return candidate if layer_object_model.is_layer_object(candidate, "gp") else None
+
+
+def _create_gp_for_active_page(context, title: str = "レイヤー"):
+    from ..utils import gp_object_layer
+    from ..utils.layer_hierarchy import page_stack_key
+
+    page = get_active_page(context)
+    if page is None:
+        return None
+    parent_key = page_stack_key(page)
+    bmanga_id = layer_object_model.make_stable_id("gp")
+    return gp_object_layer.create_layer_gp_object(
+        scene=context.scene,
+        bmanga_id=bmanga_id,
+        title=title,
+        z_index=210,
+        parent_kind="page",
+        parent_key=parent_key,
+    )
 
 
 def _set_view_layer_active(context, obj) -> None:
@@ -91,7 +105,14 @@ class BMANGA_OT_gpencil_page_ensure(Operator):
             self.report({"ERROR"}, "ページが選択されていません")
             return {"CANCELLED"}
         try:
-            obj = gp_utils.ensure_page_gpencil(context.scene, page.id)
+            candidates = [
+                obj
+                for obj in layer_object_model.iter_layer_objects("gp")
+                if layer_object_model.parent_key(obj).split(":", 1)[0] == page.id
+            ]
+            obj = candidates[0] if candidates else _create_gp_for_active_page(context)
+            if obj is None:
+                raise RuntimeError("手描きレイヤーを作成できませんでした")
             work = get_work(context)
             if work is not None:
                 page_grid.apply_page_collection_transforms(context, work)
@@ -100,12 +121,12 @@ class BMANGA_OT_gpencil_page_ensure(Operator):
             self.report({"ERROR"}, f"GP 作成失敗: {exc}")
             return {"CANCELLED"}
         _set_view_layer_active(context, obj)
-        self.report({"INFO"}, f"ページ GP を用意: {obj.name}")
+        self.report({"INFO"}, "手描きレイヤーを選択しました")
         return {"FINISHED"}
 
 
 class BMANGA_OT_gpencil_layer_add(Operator):
-    """アクティブ GP v3 にレイヤーを追加."""
+    """個別の手描きレイヤーを追加する互換入口。"""
 
     bl_idname = "bmanga.gpencil_layer_add"
     bl_label = "レイヤー追加"
@@ -115,46 +136,17 @@ class BMANGA_OT_gpencil_layer_add(Operator):
 
     @classmethod
     def poll(cls, context):
-        return _target_gp_object(context) is not None
+        work = get_work(context)
+        return bool(work is not None and work.loaded and get_active_page(context) is not None)
 
     def execute(self, context):
+        result = bpy.ops.bmanga.layer_stack_add("EXEC_DEFAULT", kind="gp")
+        if "FINISHED" not in result:
+            return result
         obj = _target_gp_object(context)
-        if obj is None:
-            return {"CANCELLED"}
-        _set_view_layer_active(context, obj)
-        if hasattr(context.scene, "bmanga_active_layer_kind"):
-            context.scene.bmanga_active_layer_kind = "gp"
-        gp_data = obj.data
-        current_layer = getattr(gp_data.layers, "active", None)
-        parent_group = getattr(current_layer, "parent_group", None)
-        base = self.layer_name.strip() or "レイヤー"
-        existing = {layer.name for layer in gp_data.layers}
-        # 最初はサフィックスなしで試し、衝突したら .001, .002, ... と採番
-        name = base
-        i = 0
-        while name in existing:
-            i += 1
-            name = f"{base}.{i:03d}"
-        try:
-            layer = gp_data.layers.new(name)
-        except Exception as exc:  # noqa: BLE001
-            _logger.exception("layers.new failed")
-            self.report({"ERROR"}, f"レイヤー追加失敗: {exc}")
-            return {"CANCELLED"}
-        # アクティブ化 (API 差異に備えて try)
-        try:
-            gp_data.layers.active = layer
-        except Exception:  # noqa: BLE001
-            pass
-        if parent_group is not None:
-            gp_utils.move_layer_to_group(gp_data, layer, parent_group)
-        try:
-            gp_utils.ensure_active_frame(layer)
-            gp_utils.ensure_layer_material(obj, layer, activate=True, assign_existing=True)
-        except Exception:  # noqa: BLE001
-            _logger.exception("layer material setup failed")
-        layer_stack_utils.sync_layer_stack_after_data_change(context)
-        return {"FINISHED"}
+        if obj is not None and self.layer_name.strip():
+            layer_object_model.set_display_title(obj, self.layer_name.strip())
+        return result
 
 
 class BMANGA_OT_gpencil_layer_remove(Operator):
@@ -169,7 +161,7 @@ class BMANGA_OT_gpencil_layer_remove(Operator):
         obj = _target_gp_object(context)
         if obj is None:
             return False
-        return getattr(obj.data.layers, "active", None) is not None
+        return layer_object_model.is_layer_object(obj, "gp")
 
     def invoke(self, context, event):
         return context.window_manager.invoke_confirm(self, event)
@@ -181,46 +173,40 @@ class BMANGA_OT_gpencil_layer_remove(Operator):
         _set_view_layer_active(context, obj)
         if hasattr(context.scene, "bmanga_active_layer_kind"):
             context.scene.bmanga_active_layer_kind = "gp"
-        gp_data = obj.data
-        layer = getattr(gp_data.layers, "active", None)
-        if layer is None:
+        if not layer_object_model.remove_layer_object(obj):
+            self.report({"ERROR"}, "手描きレイヤーを削除できませんでした")
             return {"CANCELLED"}
-        try:
-            gp_data.layers.remove(layer)
-        except Exception as exc:  # noqa: BLE001
-            _logger.exception("layers.remove failed")
-            self.report({"ERROR"}, f"レイヤー削除失敗: {exc}")
-            return {"CANCELLED"}
-        if len(gp_data.layers) > 0 and getattr(gp_data.layers, "active", None) is None:
-            try:
-                gp_data.layers.active = gp_data.layers[0]
-            except Exception:  # noqa: BLE001
-                pass
-        try:
-            gp_utils.ensure_active_layer_material(obj, activate=True)
-        except Exception:  # noqa: BLE001
-            _logger.exception("active layer material refresh failed")
         layer_stack_utils.sync_layer_stack_after_data_change(context)
         return {"FINISHED"}
 
 
 class BMANGA_OT_gpencil_layer_select(Operator):
-    """名前指定で GP レイヤーをアクティブ化."""
+    """安定IDまたは表示名で個別の手描きレイヤーを選択。"""
 
     bl_idname = "bmanga.gpencil_layer_select"
     bl_label = "レイヤー選択"
     bl_options = {"REGISTER"}
 
     layer_name: StringProperty(default="")  # type: ignore[valid-type]
+    stable_id: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
 
     def execute(self, context):
-        obj = _target_gp_object(context)
+        obj = layer_object_model.find_layer_object("gp", self.stable_id)
+        if obj is None and self.layer_name:
+            obj = next(
+                (
+                    candidate
+                    for candidate in layer_object_model.iter_layer_objects("gp")
+                    if layer_object_model.display_title(candidate) == self.layer_name
+                ),
+                None,
+            )
         if obj is None:
             return {"CANCELLED"}
         _set_view_layer_active(context, obj)
         if hasattr(context.scene, "bmanga_active_layer_kind"):
             context.scene.bmanga_active_layer_kind = "gp"
-        layer = obj.data.layers.get(self.layer_name)
+        layer = layer_object_model.content_layer(obj)
         if layer is None:
             return {"CANCELLED"}
         try:
@@ -237,7 +223,7 @@ class BMANGA_OT_gpencil_layer_select(Operator):
 
 
 class BMANGA_OT_gpencil_folder_add(Operator):
-    """Grease Pencil レイヤーフォルダを追加."""
+    """汎用レイヤーフォルダーを追加する互換入口。"""
 
     bl_idname = "bmanga.gpencil_folder_add"
     bl_label = "レイヤーフォルダ追加"
@@ -247,44 +233,15 @@ class BMANGA_OT_gpencil_folder_add(Operator):
 
     @classmethod
     def poll(cls, context):
-        obj = _target_gp_object(context)
-        if obj is None:
-            return False
-        return getattr(obj.data, "layer_groups", None) is not None
+        work = get_work(context)
+        return bool(work is not None and work.loaded)
 
     def execute(self, context):
-        obj = _target_gp_object(context)
-        if obj is None:
-            return {"CANCELLED"}
-        _set_view_layer_active(context, obj)
-        gp_data = obj.data
-        groups = getattr(gp_data, "layer_groups", None)
-        if groups is None:
-            self.report({"ERROR"}, "この Blender では GP レイヤーフォルダを使えません")
-            return {"CANCELLED"}
-        try:
-            group = groups.new(gp_utils.unique_layer_group_name(gp_data))
-        except Exception as exc:  # noqa: BLE001
-            _logger.exception("layer group create failed")
-            self.report({"ERROR"}, f"フォルダ追加失敗: {exc}")
-            return {"CANCELLED"}
-        parent = groups.get(self.parent_folder_name) if self.parent_folder_name else None
-        if parent is not None:
-            gp_utils.move_group_to_group(gp_data, group, parent)
-        try:
-            group.is_expanded = True
-        except Exception:  # noqa: BLE001
-            pass
-        if hasattr(context.scene, "bmanga_active_layer_kind"):
-            context.scene.bmanga_active_layer_kind = "gp_folder"
-        if hasattr(context.scene, "bmanga_active_gp_folder_key"):
-            context.scene.bmanga_active_gp_folder_key = group.name
-        layer_stack_utils.sync_layer_stack_after_data_change(context)
-        return {"FINISHED"}
+        return bpy.ops.bmanga.layer_stack_add("EXEC_DEFAULT", kind="layer_folder")
 
 
 class BMANGA_OT_gpencil_folder_remove(Operator):
-    """Grease Pencil レイヤーフォルダを削除し、中身は親階層へ出す."""
+    """選択中の汎用レイヤーフォルダーを削除する互換入口。"""
 
     bl_idname = "bmanga.gpencil_folder_remove"
     bl_label = "レイヤーフォルダ削除"
@@ -294,38 +251,18 @@ class BMANGA_OT_gpencil_folder_remove(Operator):
 
     @classmethod
     def poll(cls, context):
-        obj = _target_gp_object(context)
-        if obj is None:
-            return False
-        groups = getattr(obj.data, "layer_groups", None)
-        return groups is not None and len(groups) > 0
+        item = layer_stack_utils.active_stack_item(context)
+        return item is not None and getattr(item, "kind", "") == "layer_folder"
 
     def invoke(self, context, event):
         return context.window_manager.invoke_confirm(self, event)
 
     def execute(self, context):
-        obj = _target_gp_object(context)
-        if obj is None:
-            return {"CANCELLED"}
-        _set_view_layer_active(context, obj)
-        gp_data = obj.data
-        groups = getattr(gp_data, "layer_groups", None)
-        group = groups.get(self.folder_name) if groups is not None else None
-        if group is None:
-            return {"CANCELLED"}
-        if not gp_utils.remove_layer_group_preserve_children(gp_data, group):
-            self.report({"ERROR"}, "フォルダ削除失敗")
-            return {"CANCELLED"}
-        if hasattr(context.scene, "bmanga_active_layer_kind"):
-            context.scene.bmanga_active_layer_kind = "gp"
-        if hasattr(context.scene, "bmanga_active_gp_folder_key"):
-            context.scene.bmanga_active_gp_folder_key = ""
-        layer_stack_utils.sync_layer_stack_after_data_change(context)
-        return {"FINISHED"}
+        return bpy.ops.bmanga.layer_stack_delete("EXEC_DEFAULT")
 
 
 class BMANGA_OT_gpencil_layer_move_to_folder(Operator):
-    """GP レイヤーを指定フォルダへ移動する。folder_name 空欄ならルートへ戻す."""
+    """個別の手描きレイヤーを汎用フォルダーへ移す互換入口。"""
 
     bl_idname = "bmanga.gpencil_layer_move_to_folder"
     bl_label = "レイヤーをフォルダへ移動"
@@ -333,35 +270,24 @@ class BMANGA_OT_gpencil_layer_move_to_folder(Operator):
 
     layer_name: StringProperty(default="")  # type: ignore[valid-type]
     folder_name: StringProperty(default="")  # type: ignore[valid-type]
+    stable_id: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
+    folder_id: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
 
     @classmethod
     def poll(cls, context):
-        obj = _target_gp_object(context)
-        if obj is None:
-            return False
-        return getattr(obj.data, "layers", None) is not None
+        return _target_gp_object(context) is not None
 
     def execute(self, context):
-        obj = _target_gp_object(context)
+        from ..utils import layer_folder
+
+        obj = layer_object_model.find_layer_object("gp", self.stable_id) or _target_gp_object(context)
         if obj is None:
             return {"CANCELLED"}
-        _set_view_layer_active(context, obj)
-        gp_data = obj.data
-        layers = getattr(gp_data, "layers", None)
-        groups = getattr(gp_data, "layer_groups", None)
-        if layers is None:
+        folder_key = self.folder_id or self.folder_name
+        if folder_key and layer_folder.find_folder(get_work(context), folder_key) is None:
+            self.report({"ERROR"}, "移動先フォルダーが見つかりません")
             return {"CANCELLED"}
-        layer = layers.get(self.layer_name)
-        if layer is None:
-            return {"CANCELLED"}
-        group = groups.get(self.folder_name) if groups is not None and self.folder_name else None
-        if not gp_utils.move_layer_to_group(gp_data, layer, group):
-            self.report({"ERROR"}, "レイヤー移動失敗")
-            return {"CANCELLED"}
-        try:
-            layers.active = layer
-        except Exception:  # noqa: BLE001
-            pass
+        layer_object_model.set_folder_id(obj, folder_key)
         layer_stack_utils.sync_layer_stack_after_data_change(context)
         return {"FINISHED"}
 

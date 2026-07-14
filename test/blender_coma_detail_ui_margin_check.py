@@ -12,6 +12,9 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "test"))
+
+from detail_dialog_public_test_support import draw_actual_detail  # noqa: E402
 
 
 class _RecordingLayout:
@@ -32,6 +35,12 @@ class _RecordingLayout:
     def box(self):
         return self
 
+    def split(self, **_kwargs):
+        return self
+
+    def grid_flow(self, **_kwargs):
+        return self
+
     def label(self, text: str = "", **_kwargs) -> None:
         self.records.append(("label", "", text))
 
@@ -39,6 +48,10 @@ class _RecordingLayout:
         self.records.append(("prop", prop_name, text))
 
     def operator(self, _op_id: str, text: str = "", **_kwargs):
+        self.records.append(("operator", "", text))
+        return type("_Op", (), {})()
+
+    def operator_menu_enum(self, _op_id: str, _prop: str, text: str = "", **_kwargs):
         self.records.append(("operator", "", text))
         return type("_Op", (), {})()
 
@@ -88,16 +101,22 @@ def _make_coma(page):
 
 
 def _assert_detail_ui(context, coma) -> None:
-    from bmanga_dev_coma_detail_margin.panels import layer_stack_detail_ui
-
     records: list[tuple[str, str, str]] = []
     layout = _RecordingLayout(records)
-    layer_stack_detail_ui._draw_coma_selected_settings(layout, context, coma)
+    session = draw_actual_detail(
+        "bmanga_dev_coma_detail_margin",
+        layout,
+        context,
+        coma,
+        "coma",
+    )
+    assert session.target.stable_id == coma.id
+    assert session.layout.max_columns == 2
 
     texts = {text for _kind, _prop, text in records if text}
     props = {prop for kind, prop, _text in records if kind == "prop"}
 
-    removed_exact = {"表示名", "表示", "白フチ"}
+    removed_exact = {"白フチ"}
     removed_fragments = {
         "空のときは作品/プリファレンスの設定が使われる",
         "形状:",
@@ -113,8 +132,9 @@ def _assert_detail_ui(context, coma) -> None:
         assert text not in texts, f"削除対象の文言が残っています: {text}"
     for text in removed_fragments:
         assert text not in joined, f"削除対象の文言が残っています: {text}"
-    assert "title" not in props, "表示名の入力欄が残っています"
-    assert ("prop", "visible", "表示") not in records, "表示チェックボックスが残っています"
+    assert "title" in props, "共通ヘッダーの表示名がありません"
+    if hasattr(coma, "visible"):
+        assert ("prop", "visible", "表示") in records, "共通ヘッダーの表示がありません"
     assert "coma_gap_vertical_mm" not in props
     assert "coma_gap_horizontal_mm" not in props
     assert "overlap_clipping" not in props

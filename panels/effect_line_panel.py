@@ -71,27 +71,11 @@ def _profile_identifiers(profile_key: str) -> tuple[str, str]:
 
 
 def _inout_profile_node_for_draw(params, *, fields=None, profile_key: str = "main"):
-    node_name, source_prop = _profile_identifiers(profile_key)
-    # ノード生成は draw 中の ID 書き込み禁止で失敗し得るため、タイマー同期の
-    # 登録を先に単独で行う。タイマー側 (書き込み可能) が未作成ノードを作る。
-    try:
-        effect_inout_curve.request_live_profile_sync(
-            params, fields=fields, node_name=node_name, source_prop=source_prop
-        )
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        effect_inout_curve.sync_profile_node_bidirectional(
-            params, fields=fields, node_name=node_name, source_prop=source_prop
-        )
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        return effect_inout_curve.ensure_profile_node(
-            params, fields=fields, node_name=node_name, source_prop=source_prop
-        )
-    except Exception:  # noqa: BLE001
-        return effect_inout_curve.get_profile_node(node_name)
+    del params, fields
+    node_name, _source_prop = _profile_identifiers(profile_key)
+    # draw() は Blender ID、設定値、タイマーへ一切書き込まない。
+    # ノード準備と短周期同期は詳細設定ランタイムの開始／更新処理が担う。
+    return effect_inout_curve.get_profile_node(node_name)
 
 
 def draw_inout_curve_mapping(
@@ -117,17 +101,25 @@ def draw_effect_line_preset_management(layout, context) -> None:
     preset_management_ui.draw_effect_line_preset_management(layout, context)
 
 
-def draw_effect_path_settings(layout, params, *, preset_mode: bool = False) -> None:
+def draw_effect_path_settings(
+    layout,
+    params,
+    *,
+    preset_mode: bool = False,
+    allow_path_edit: bool = True,
+) -> None:
     path_box = layout.box()
     path_box.label(text="パス")
     row = path_box.row(align=True)
     row.prop(params, "base_path_enabled", text="基準パス")
-    if not preset_mode:
+    if not preset_mode and allow_path_edit:
         # 編集ボタンは選択中の実効果線オブジェクトを操作するモーダル操作の
         # ため、実オブジェクトを持たないプリセット編集では出さない。
         edit = row.row(align=True)
         edit.enabled = bool(getattr(params, "base_path_enabled", False))
         edit.operator("bmanga.effect_line_base_path_edit", text="編集", icon="CURVE_BEZCURVE")
+    elif not preset_mode:
+        row.label(text="基準パスの編集は効果線ツールから行います", icon="INFO")
 
     image_box = layout.box()
     image_box.label(text="パス線")
@@ -192,6 +184,7 @@ def draw_effect_params(
     show_rotation: bool = True,
     show_opacity: bool = True,
     show_path_settings: bool = True,
+    allow_path_edit: bool = True,
     columns=None,
     preset_mode: bool = False,
 ) -> None:
@@ -251,7 +244,12 @@ def draw_effect_params(
             preset_mode=preset_mode,
         )
         if show_path_settings:
-            draw_effect_path_settings(_col(path_col), params, preset_mode=preset_mode)
+            draw_effect_path_settings(
+                _col(path_col),
+                params,
+                preset_mode=preset_mode,
+                allow_path_edit=allow_path_edit,
+            )
         if generate_button:
             _col(0).operator("bmanga.effect_line_generate", icon="STROKE")
         return
@@ -319,7 +317,12 @@ def draw_effect_params(
     if not preset_mode:
         draw_inout_curve_mapping(box, params)
     if show_path_settings:
-        draw_effect_path_settings(_col(path_col), params, preset_mode=preset_mode)
+        draw_effect_path_settings(
+            _col(path_col),
+            params,
+            preset_mode=preset_mode,
+            allow_path_edit=allow_path_edit,
+        )
 
     box = _col(side_col).box()
     box.label(text="色")

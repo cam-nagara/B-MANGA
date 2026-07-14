@@ -78,13 +78,8 @@ class BMANGA_PT_tools(Panel):
     def draw(self, context):
         layout = self.layout
         layout.prop(context.scene, "bmanga_interaction_enabled", text="B-MANGAショートカットキー")
-        obj = None
-        try:
-            from ..utils import gpencil as gp_utils
-
-            obj = gp_utils.get_master_gpencil()
-        except Exception:  # noqa: BLE001
-            obj = None
+        view_objects = getattr(getattr(context, "view_layer", None), "objects", None)
+        obj = getattr(view_objects, "active", None) if view_objects is not None else None
         mode = getattr(obj, "mode", "") if obj is not None else ""
         active_stack_kind = _active_stack_kind(context)
         gp_layer_active = (

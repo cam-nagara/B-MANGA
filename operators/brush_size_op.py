@@ -119,12 +119,7 @@ def _active_gp_object(context):
     obj = getattr(context, "active_object", None)
     if obj is not None and getattr(obj, "type", "") == "GREASEPENCIL":
         return obj
-    try:
-        from ..utils import gpencil as gp_utils
-
-        return gp_utils.get_master_gpencil()
-    except Exception:  # noqa: BLE001
-        return None
+    return None
 
 
 def _is_gp_paint_context(context) -> bool:

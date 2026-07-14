@@ -14,7 +14,7 @@ from ..core.work import get_work
 from ..core.work_info import suppress_page_number_range_update
 from ..io import blend_io, page_io, presets, work_io
 from ..utils import gpencil as gp_utils
-from ..utils import color_space, log, page_grid, page_range, paths, view_settings
+from ..utils import color_space, layer_object_model, log, page_grid, page_range, paths, view_settings
 
 _logger = log.get_logger(__name__)
 
@@ -176,6 +176,7 @@ class BMANGA_OT_work_new(Operator, ExportHelper):
             context.scene.bmanga_active_raster_layer_index = -1
         # 前作品の page_pNNNN Collection / GP を掃除 (orphan 防止)
         try:
+            layer_object_model.remove_all_layer_objects()
             gp_utils.remove_all_page_gpencils()
         except Exception:  # noqa: BLE001
             _logger.exception("work_new: orphan page collection cleanup failed")
@@ -386,6 +387,12 @@ class BMANGA_OT_work_open(Operator, ImportHelper):
             except Exception:  # noqa: BLE001
                 _logger.exception("work_open: raster runtime setup failed")
             _schedule_layer_stack_sync(context)
+            try:
+                from . import detail_data_migration_op
+
+                detail_data_migration_op.schedule_migration_prompt(context)
+            except Exception:  # noqa: BLE001
+                _logger.exception("work_open: detail data migration prompt failed")
         except FileNotFoundError as exc:
             _logger.exception("work_open: missing file")
             work.loaded = False
@@ -656,6 +663,7 @@ class BMANGA_OT_work_close(Operator):
         if hasattr(context.scene, "bmanga_active_raster_layer_index"):
             context.scene.bmanga_active_raster_layer_index = -1
         try:
+            layer_object_model.remove_all_layer_objects()
             gp_utils.remove_all_page_gpencils()
         except Exception:  # noqa: BLE001
             _logger.exception("work_close: page collection cleanup failed")

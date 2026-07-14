@@ -5,7 +5,7 @@
 を直接指定するスタイルなので、より単純な API を提供する。
 
 フェーズ A/B 範囲:
-- 末端レイヤー (gp / gp_folder / effect / balloon / text / image / raster) の親変更
+- 末端レイヤー (gp / effect / balloon / text / image / raster) の親変更
 - コマの別ページ移動 (既存 ``BMANGA_OT_coma_move_to_page`` を呼び出すか、共通化)
 - 「ページ外」(parent_kind="none") への昇格/復帰
 
@@ -266,7 +266,7 @@ def reparent_stack_item(
         return _reparent_image_path(context, item, target, new_parent_key, new_world_xy_mm)
     if kind == "raster":
         return _reparent_raster(context, item, target, new_parent_key)
-    if kind in {"gp", "gp_folder", "effect"}:
+    if kind in {"gp", "effect"}:
         return _reparent_gp_node(context, item, target, new_parent_key)
     if kind == COMA_KIND:
         return _reparent_coma(context, item, target)
@@ -987,13 +987,56 @@ def _reparent_raster(context, item, target: ClickTarget, new_parent_key: str) ->
 
 
 def _reparent_gp_node(context, item, target: ClickTarget, new_parent_key: str) -> bool:
-    """GP layer / group / effect レイヤーの親キーを書き換える."""
+    """個別GP／効果線管理Objectの親を安定IDのまま変更する。"""
     resolved = layer_stack_utils.resolve_stack_item(context, item)
-    node = resolved.get("target") if resolved is not None else None
-    if node is None:
+    obj = resolved.get("object") if resolved is not None else None
+    if obj is None:
         return False
     actual_parent_key = "" if target.kind == "outside" else new_parent_key
-    gp_parent.set_parent_key(node, actual_parent_key)
+    from . import layer_object_model
+    from . import layer_object_sync
+
+    kind = layer_object_model.layer_kind(obj)
+    if kind not in {"gp", "effect"}:
+        return False
+    source_page_id, _source_child_id = split_child_key(
+        layer_object_model.parent_key(obj)
+    )
+    target_page_id, _target_child_id = split_child_key(actual_parent_key)
+    if (
+        target.kind != "outside"
+        and source_page_id
+        and target_page_id
+        and source_page_id != target_page_id
+    ):
+        from ..core.work import get_work
+        from . import cross_page_transfer
+
+        work = get_work(context)
+        if work is None or not cross_page_transfer.transfer_layer_object_to_parent(
+            context,
+            work,
+            obj,
+            actual_parent_key,
+        ):
+            return False
+        item.parent_key = new_parent_key
+        return True
+    layer_object_sync.stamp_layer_object(
+        obj,
+        kind=kind,
+        bmanga_id=layer_object_model.stable_id(obj),
+        title=layer_object_model.display_title(obj),
+        z_index=layer_object_model.z_index(obj),
+        parent_kind=(
+            "outside"
+            if target.kind == "outside"
+            else ("coma" if target.kind == "coma" else "page")
+        ),
+        parent_key=actual_parent_key,
+        folder_id=layer_object_model.folder_id(obj),
+        scene=getattr(context, "scene", None),
+    )
     item.parent_key = OUTSIDE_STACK_KEY if target.kind == "outside" else new_parent_key
     return True
 

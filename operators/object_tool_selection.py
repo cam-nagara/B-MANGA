@@ -15,6 +15,7 @@ from ..utils import (
     empty_layer_object,
     free_transform,
     gp_layer_parenting as gp_parent,
+    layer_object_model,
     layer_stack as layer_stack_utils,
     object_naming as on,
     object_selection,
@@ -139,23 +140,13 @@ def find_fill_by_key(context, item_id: str):
 
 
 def find_gp_layer(key: str):
-    obj = layer_stack_utils.gp_utils.get_master_gpencil()
-    layers = getattr(getattr(obj, "data", None), "layers", None) if obj is not None else None
-    return obj, layer_stack_utils._find_gp_layer_by_key(layers, key)
+    obj = layer_object_model.find_layer_object("gp", key)
+    return obj, layer_object_model.content_layer(obj)
 
 
 def find_effect_layer(key: str):
-    obj, layer = layer_stack_utils._find_effect_layer_by_key(key)
-    if layer is not None:
-        return obj, layer
-    obj = layer_stack_utils.get_effect_gp_object()
-    layers = getattr(getattr(obj, "data", None), "layers", None) if obj is not None else None
-    if layers is None:
-        return obj, None
-    for candidate in layers:
-        if str(getattr(candidate, "name", "") or "") == str(key or ""):
-            return obj, candidate
-    return obj, None
+    obj = layer_object_model.find_layer_object("effect", key)
+    return obj, layer_object_model.content_layer(obj)
 
 
 def _page_for_image_entry(work, entry):
@@ -593,6 +584,21 @@ def gp_layer_world_rect(context, work, layer) -> Rect | None:
     return Rect(rect.x + ox, rect.y + oy, rect.width, rect.height)
 
 
+def gp_object_world_rect(obj, layer) -> Rect | None:
+    xs: list[float] = []
+    ys: list[float] = []
+    for point in gp_parent.iter_points(layer):
+        try:
+            world = obj.matrix_world @ point.position
+            xs.append(float(world.x) * 1000.0)
+            ys.append(float(world.y) * 1000.0)
+        except Exception:  # noqa: BLE001
+            continue
+    if not xs or not ys:
+        return object_world_rect_mm(obj)
+    return Rect(min(xs), min(ys), max(0.1, max(xs) - min(xs)), max(0.1, max(ys) - min(ys)))
+
+
 def hit_image_at_world(context, x_mm: float, y_mm: float) -> dict | None:
     work = get_work(context)
     scene = getattr(context, "scene", None)
@@ -623,24 +629,22 @@ def hit_image_at_world(context, x_mm: float, y_mm: float) -> dict | None:
 
 
 def hit_gp_at_world(context, x_mm: float, y_mm: float) -> dict | None:
-    work = get_work(context)
-    obj = layer_stack_utils.gp_utils.get_master_gpencil()
-    layers = getattr(getattr(obj, "data", None), "layers", None) if obj is not None else None
-    if work is None or layers is None:
+    if get_work(context) is None:
         return None
-    for layer in reversed(list(layers)):
-        if bool(getattr(layer, "hide", False)) or bool(getattr(layer, "lock", False)):
+    for obj in layer_object_model.iter_layer_objects("gp"):
+        layer = layer_object_model.content_layer(obj)
+        if layer is None or not layer_object_model.user_visible(obj) or layer_object_model.user_locked(obj):
             continue
-        rect = gp_layer_world_rect(context, work, layer)
+        rect = gp_object_world_rect(obj, layer)
         if rect is None:
             continue
         part = hit_part_for_rect(rect, x_mm, y_mm)
         if part:
             return {
                 "kind": "gp",
-                "layer_key": layer_stack_utils._node_stack_key(layer),
+                "layer_key": layer_object_model.stable_id(obj),
                 "part": "move" if part == "body" else part,
-                "key": object_selection.gp_key(layer),
+                "key": object_selection.gp_key(obj),
                 "world": (float(x_mm), float(y_mm)),
             }
     return None
@@ -928,22 +932,16 @@ def selection_bounds_for_key(context, key: str) -> Rect | None:
         _idx, entry = find_fill_by_key(context, item_id)
         return fill_world_rect(context, work, entry) if entry is not None else None
     if kind == "gp":
-        _obj, layer = find_gp_layer(item_id)
-        return gp_layer_world_rect(context, work, layer) if layer is not None else None
+        obj, layer = find_gp_layer(item_id)
+        return gp_object_world_rect(obj, layer) if obj is not None and layer is not None else None
     return None
 
 
 def _iter_effect_layers_for_selection():
     for obj in layer_stack_utils._iter_effect_objects():
-        layers = getattr(getattr(obj, "data", None), "layers", None)
-        if layers is None:
-            continue
-        for layer in reversed(list(layers)):
+        layer = layer_object_model.content_layer(obj)
+        if layer is not None:
             yield layer
-    obj = layer_stack_utils.get_effect_gp_object()
-    layers = getattr(getattr(obj, "data", None), "layers", None) if obj is not None else None
-    if layers is not None:
-        yield from reversed(list(layers))
 
 
 def _iter_rect_select_candidates(context):
@@ -1059,24 +1057,21 @@ def _iter_rect_select_candidates(context):
         if rect is None:
             continue
         yield {"key": key, "rect": rect, "hit": {"kind": "image_path", "part": "move", "key": key}}
-    obj = layer_stack_utils.gp_utils.get_master_gpencil()
-    layers = getattr(getattr(obj, "data", None), "layers", None) if obj is not None else None
-    if layers is not None:
-        for layer in reversed(list(layers)):
-            key = object_selection.gp_key(layer)
-            rect = selection_bounds_for_key(context, key)
-            if rect is None:
-                continue
-            yield {
+    for obj in layer_object_model.iter_layer_objects("gp"):
+        key = object_selection.gp_key(obj)
+        rect = selection_bounds_for_key(context, key)
+        if rect is None:
+            continue
+        yield {
+            "key": key,
+            "rect": rect,
+            "hit": {
+                "kind": "gp",
+                "layer_key": layer_object_model.stable_id(obj),
+                "part": "move",
                 "key": key,
-                "rect": rect,
-                "hit": {
-                    "kind": "gp",
-                    "layer_key": layer_stack_utils._node_stack_key(layer),
-                    "part": "move",
-                    "key": key,
-                },
-            }
+            },
+        }
     for entry in reversed(list(getattr(scene, "bmanga_raster_layers", []) or [])):
         if not bool(getattr(entry, "visible", True)):
             continue
@@ -1178,7 +1173,7 @@ def active_selection_key(context) -> str:
         return ""
     kind = str(getattr(item, "kind", "") or "")
     if kind == "gp":
-        return object_selection.gp_key(target)
+        return object_selection.gp_key(resolved.get("object") or target)
     if kind == "image":
         return object_selection.image_key(target)
     if kind == "image_path":
@@ -1186,7 +1181,7 @@ def active_selection_key(context) -> str:
     if kind == "raster":
         return object_selection.raster_key(target)
     if kind == "effect":
-        return object_selection.effect_key(target)
+        return object_selection.effect_key(resolved.get("object") or target)
     if kind == "fill":
         return object_selection.fill_key(target)
     if kind == "balloon":

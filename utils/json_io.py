@@ -14,6 +14,7 @@ import json
 import os
 import tempfile
 import time
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +28,9 @@ def read_json(path: str | os.PathLike) -> Any:
     if raw.startswith(b"\xef\xbb\xbf"):
         raw = raw[3:]
     text = raw.decode("utf-8")
-    return json.loads(text)
+    value = json.loads(text)
+    _record_observed_read(p)
+    return value
 
 
 def write_json(path: str | os.PathLike, data: Any, *, indent: int = 2) -> None:
@@ -42,6 +45,42 @@ def write_json(path: str | os.PathLike, data: Any, *, indent: int = 2) -> None:
     対象 OSError は (PermissionError, OSError errno=13/32) を含む。
     """
     p = Path(path)
+    with _path_write_guard(p):
+        _write_json_unlocked(p, data, indent=indent)
+        _record_successful_write(p)
+
+
+def _path_write_guard(path: Path):
+    try:
+        from ..io.project_content_migration_lock import guard_path_write
+    except (ImportError, ValueError):
+        if __package__:
+            raise
+        return nullcontext()
+    return guard_path_write(path)
+
+
+def _record_successful_write(path: Path) -> None:
+    try:
+        from ..io.project_content_save_baseline import record_successful_write
+    except (ImportError, ValueError):
+        if __package__:
+            raise
+        return
+    record_successful_write(path)
+
+
+def _record_observed_read(path: Path) -> None:
+    try:
+        from ..io.project_content_save_baseline import record_observed_read
+    except (ImportError, ValueError):
+        if __package__:
+            raise
+        return
+    record_observed_read(path)
+
+
+def _write_json_unlocked(p: Path, data: Any, *, indent: int) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     # delete=False で自分で削除/rename を管理
     fd, tmp_path = tempfile.mkstemp(

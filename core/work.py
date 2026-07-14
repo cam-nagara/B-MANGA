@@ -19,7 +19,7 @@ from bpy.props import (
     StringProperty,
 )
 
-from ..utils import log
+from ..utils import layer_uid, log
 from .balloon import BMangaBalloonEntry
 from .coma import BMangaComaEntry
 from .layer_folder import BMangaLayerFolder
@@ -72,6 +72,13 @@ class BMangaWorkData(bpy.types.PropertyGroup):
     loaded: BoolProperty(  # type: ignore[valid-type]
         name="作品ロード済み",
         default=False,
+    )
+    detail_data_version: IntProperty(  # type: ignore[valid-type]
+        name="作品詳細データ形式版",
+        description="手描き・効果線・レイヤーリンクを含む作品詳細データの形式版",
+        default=layer_uid.CURRENT_DETAIL_DATA_VERSION,
+        min=0,
+        options={"HIDDEN"},
     )
     work_dir: StringProperty(  # type: ignore[valid-type]
         name="作品ディレクトリ",

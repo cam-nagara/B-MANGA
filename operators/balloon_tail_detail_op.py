@@ -271,7 +271,7 @@ class BMANGA_OT_balloon_tail_detail_open(Operator):
     bl_idname = "bmanga.balloon_tail_detail_open"
     bl_label = "しっぽの詳細設定"
     bl_description = "しっぽの形状・線種・プリセットを編集します"
-    bl_options = {"REGISTER"}
+    bl_options = {"REGISTER", "UNDO"}
 
     page_id: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
     balloon_id: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
@@ -281,15 +281,41 @@ class BMANGA_OT_balloon_tail_detail_open(Operator):
         if entry is None:
             self.report({"WARNING"}, "フキダシが見つかりません")
             return {"CANCELLED"}
-        del page
-        return context.window_manager.invoke_props_dialog(self, width=300)
+        try:
+            from ..utils.detail_dialog import DetailTarget
+            from . import detail_dialog_runtime
+
+            target = DetailTarget(
+                "balloon_tail",
+                f"{self.page_id}:{self.balloon_id}:tails",
+                None,
+                entry,
+                params={"page": page},
+            )
+            fixed_id = target.stable_id
+
+            def _target_is_alive(identity):
+                _page, current = _find_balloon(context, self.page_id, self.balloon_id)
+                return current is not None and identity.stable_id == fixed_id
+
+            self._detail_session = detail_dialog_runtime.begin_actual_session(
+                context, target, target_validator=_target_is_alive
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.report({"WARNING"}, f"しっぽの詳細設定を開けません: {exc}")
+            return {"CANCELLED"}
+        return context.window_manager.invoke_props_dialog(
+            self, width=self._detail_session.layout.dialog_width
+        )
 
     def draw(self, context):
         layout = self.layout
-        page, entry = _find_balloon(context, self.page_id, self.balloon_id)
-        if entry is None:
+        session = getattr(self, "_detail_session", None)
+        if session is None:
             layout.label(text="フキダシが見つかりません", icon="ERROR")
             return
+        entry = session.target.data
+        page = session.target.params.get("page")
         title = str(getattr(entry, "title", "") or getattr(entry, "id", "") or "フキダシ")
         layout.label(text=f"{title} のしっぽ", icon="MOD_FLUID")
         add = layout.operator("bmanga.balloon_tail_add_target", text="しっぽを追加", icon="ADD")
@@ -302,6 +328,7 @@ class BMANGA_OT_balloon_tail_detail_open(Operator):
             _draw_tail_box(layout, context, page, entry, tail, i)
         note = layout.box()
         note.label(text="線の色・太さ・下地はフキダシの設定に従います", icon="INFO")
+        note.label(text="プリセットの保存・削除は即時確定します", icon="INFO")
         layout.operator_menu_enum(
             BMANGA_OT_balloon_tail_preset_delete.bl_idname,
             "preset_name",
@@ -309,8 +336,38 @@ class BMANGA_OT_balloon_tail_detail_open(Operator):
             icon="TRASH",
         )
 
-    def execute(self, _context):
+    def check(self, context):
+        session = getattr(self, "_detail_session", None)
+        if session is None:
+            return False
+        try:
+            from . import detail_dialog_runtime
+
+            detail_dialog_runtime.sync_actual_session(context, session)
+        except Exception as exc:  # noqa: BLE001
+            self.report({"ERROR"}, f"しっぽ設定の反映を中止しました: {exc}")
+            return False
+        return True
+
+    def execute(self, context):
+        session = getattr(self, "_detail_session", None)
+        if session is None:
+            return {"CANCELLED"}
+        from . import detail_dialog_runtime
+
+        detail_dialog_runtime.commit_actual_session(context, session)
         return {"FINISHED"}
+
+    def cancel(self, context):
+        session = getattr(self, "_detail_session", None)
+        if session is None:
+            return
+        try:
+            from . import detail_dialog_runtime
+
+            detail_dialog_runtime.cancel_actual_session(context, session)
+        except Exception as exc:  # noqa: BLE001
+            self.report({"ERROR"}, f"しっぽ設定を元に戻せませんでした: {exc}")
 
 
 _CLASSES = (

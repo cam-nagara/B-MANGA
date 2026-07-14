@@ -16,6 +16,14 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "test"))
+
+from detail_dialog_public_test_support import (  # noqa: E402
+    close_actual_session,
+    draw_actual_detail,
+    open_actual_session,
+    sync_actual_session,
+)
 OUT_DIR = Path(
     os.environ.get("BMANGA_UI_INVENTORY_OUT", "")
     or tempfile.mkdtemp(prefix="bmanga_ui_inventory_")
@@ -207,10 +215,11 @@ def _raster_obj_for(entry):
 
 def _build_scene(context):
     from bmanga_dev_ui_inventory.operators import balloon_op, effect_line_op, text_op
-    from bmanga_dev_ui_inventory.utils import gp_layer_parenting
+    from bmanga_dev_ui_inventory.utils import gp_object_layer, layer_object_model
     from bmanga_dev_ui_inventory.utils import gpencil as gp_utils
     from bmanga_dev_ui_inventory.utils import layer_hierarchy, layer_stack
     from bmanga_dev_ui_inventory.utils import object_naming as on
+    from bmanga_dev_ui_inventory.utils import text_real_object
     from bmanga_dev_ui_inventory.utils.geom import mm_to_m
 
     work = context.scene.bmanga_work
@@ -275,9 +284,16 @@ def _build_scene(context):
     text.stroke_enabled = True
     text.parent_balloon_id = balloon.id
 
-    gp_obj = gp_utils.ensure_master_gpencil(context.scene)
-    gp_layer = gp_obj.data.layers.new("詳細GP")
-    gp_layer_parenting.set_parent_key(gp_layer, page_key)
+    gp_obj = gp_object_layer.create_layer_gp_object(
+        scene=context.scene,
+        bmanga_id=layer_object_model.make_stable_id("gp"),
+        title="詳細GP",
+        z_index=210,
+        parent_kind="page",
+        parent_key=page_key,
+    )
+    gp_layer = layer_object_model.content_layer(gp_obj)
+    assert gp_layer is not None
     frame = gp_utils.ensure_active_frame(gp_layer)
     assert frame is not None and frame.drawing is not None
     gp_utils.add_stroke_to_drawing(
@@ -298,6 +314,10 @@ def _build_scene(context):
     effect_obj[on.PROP_KIND] = "effect"
 
     layer_stack.sync_layer_stack_after_data_change(context)
+    text_stable_id = text_real_object.text_object_bmanga_id(page, text)
+    text_obj = on.find_object_by_bmanga_id(text_stable_id, kind="text")
+    assert text_stable_id == f"{page.id}:{text.id}"
+    assert text_obj is not None, "右クリック対象となるテキスト実体が作成されていません"
 
     return {
         "work": work,
@@ -309,6 +329,8 @@ def _build_scene(context):
         "raster_obj": raster_obj,
         "balloon": balloon,
         "text": text,
+        "text_stable_id": text_stable_id,
+        "text_obj": text_obj,
         "gp_obj": gp_obj,
         "gp_layer": gp_layer,
         "effect_obj": effect_obj,
@@ -457,27 +479,32 @@ def _stack_item(kind: str, label: str = ""):
 
 
 def _collect_layer_stack_details(records: list[dict[str, Any]], context, targets) -> None:
-    from bmanga_dev_ui_inventory.panels import gpencil_panel
+    from bmanga_dev_ui_inventory.operators import detail_dialog_runtime
 
     pairs = (
-        ("ページ", "page", targets["page"], None),
-        ("コマ", "coma", targets["coma"], None),
-        ("汎用フォルダ", "layer_folder", targets["folder"], None),
-        ("GP", "gp", targets["gp_layer"], targets["gp_obj"]),
-        ("画像", "image", targets["image"], None),
-        ("ラスター", "raster", targets["raster"], None),
-        ("テキスト", "text", targets["text"], None),
+        ("ページ", "page", targets["page"]),
+        ("コマ", "coma", targets["coma"]),
+        ("汎用フォルダ", "layer_folder", targets["folder"]),
+        ("GP", "", targets["gp_obj"]),
+        ("画像", "image", targets["image"]),
+        ("ラスター", "raster", targets["raster"]),
+        # 一覧入口はページIDを含む固定IDを渡す。ページ内IDだけでは、別ページの
+        # 同名テキストを安全に区別できないため詳細対象resolverが拒否する。
+        ("テキスト", "text", targets["text_stable_id"]),
     )
-    for label, kind, target, obj in pairs:
-        item = _stack_item(kind, label)
-        resolved = {"target": target, "object": obj}
+
+    def _draw_public(layout, target, kind):
+        draw_actual_detail(
+            "bmanga_dev_ui_inventory", layout, context, target, kind
+        )
+
+    for label, kind, target in pairs:
         _collect_draw(
             records,
             f"レイヤー詳細 / {label}",
-            gpencil_panel.draw_stack_item_detail,
-            context,
-            item,
-            resolved,
+            _draw_public,
+            target,
+            kind,
         )
 
     balloon = targets["balloon"]
@@ -485,18 +512,18 @@ def _collect_layer_stack_details(records: list[dict[str, Any]], context, targets
         balloon.shape = shape
         if shape == "custom":
             balloon.custom_preset_name = "監査カスタム"
-        item = _stack_item("balloon", f"フキダシ {shape}")
-        resolved = {"target": balloon, "object": None}
         _collect_draw(
             records,
             f"レイヤー詳細 / フキダシ / {shape}",
-            gpencil_panel.draw_stack_item_detail,
-            context,
-            item,
-            resolved,
+            _draw_public,
+            balloon,
+            "balloon",
         )
 
-    params = context.scene.bmanga_effect_line_params
+    session = open_actual_session(
+        "bmanga_dev_ui_inventory", context, targets["effect_obj"]
+    )
+    params = session.target.params
     for effect_type in ("focus", "speed", "beta_flash", "white_outline"):
         params.effect_type = effect_type
         params.start_to_coma_frame = True
@@ -511,20 +538,19 @@ def _collect_layer_stack_details(records: list[dict[str, Any]], context, targets
         params.fill_base_shape = True
         params.white_outline_width_jitter_enabled = True
         params.white_outline_length_jitter_enabled = True
-        item = _stack_item("effect", f"効果線 {effect_type}")
-        resolved = {"target": targets["effect_layer"], "object": targets["effect_obj"]}
+        sync_actual_session("bmanga_dev_ui_inventory", context, session)
         _collect_draw(
             records,
             f"レイヤー詳細 / 効果線 / {effect_type}",
-            gpencil_panel.draw_stack_item_detail,
+            detail_dialog_runtime.draw_actual_session,
             context,
-            item,
-            resolved,
+            session,
         )
+    close_actual_session("bmanga_dev_ui_inventory", context, session)
 
 
 def _collect_right_click_details(records: list[dict[str, Any]], context, targets) -> None:
-    from bmanga_dev_ui_inventory.operators import layer_detail_op
+    from bmanga_dev_ui_inventory.operators import detail_dialog_runtime
     from bmanga_dev_ui_inventory.utils import gpencil as gp_utils
     from bmanga_dev_ui_inventory.utils import object_naming as on
 
@@ -539,34 +565,52 @@ def _collect_right_click_details(records: list[dict[str, Any]], context, targets
         obj[on.PROP_ID] = name
         obj[on.PROP_TITLE] = name
         obj[on.PROP_Z_INDEX] = 1000
+        obj[on.PROP_MANAGED] = True
         return obj
 
     gp_obj = _audit_gp_object("ui_inventory_gp_detail", "gp")
-    effect_obj = _audit_gp_object("ui_inventory_effect_detail", "effect")
 
     groups = (
-        ("右クリック詳細設定 / 画像", layer_detail_op._draw_image_detail, targets["image"]),
-        ("右クリック詳細設定 / ラスター", layer_detail_op._draw_raster_detail, targets["raster"]),
-        ("右クリック詳細設定 / フキダシ", layer_detail_op._draw_balloon_detail, targets["balloon"]),
-        ("右クリック詳細設定 / テキスト", layer_detail_op._draw_text_detail, targets["text"]),
-        ("右クリック詳細設定 / GP", layer_detail_op._draw_gp_detail, gp_obj),
+        ("右クリック詳細設定 / 画像", targets["image"], "image"),
+        ("右クリック詳細設定 / ラスター", targets["raster"], "raster"),
+        ("右クリック詳細設定 / フキダシ", targets["balloon"], "balloon"),
+        # 右クリック入口は画面上の管理Objectから同じ固定IDへ解決する。
+        ("右クリック詳細設定 / テキスト", targets["text_obj"], ""),
+        ("右クリック詳細設定 / GP", gp_obj, ""),
     )
     targets["balloon"].shape = "cloud"
-    for group, fn, target in groups:
-        _collect_draw(records, group, fn, target)
 
-    params = context.scene.bmanga_effect_line_params
+    def _draw_public(layout, target, kind):
+        draw_actual_detail(
+            "bmanga_dev_ui_inventory", layout, context, target, kind
+        )
+
+    for group, target, kind in groups:
+        _collect_draw(
+            records,
+            group,
+            _draw_public,
+            target,
+            kind,
+        )
+
+    session = open_actual_session(
+        "bmanga_dev_ui_inventory", context, targets["effect_obj"]
+    )
+    params = session.target.params
     for effect_type in ("focus", "speed", "beta_flash", "white_outline"):
         params.effect_type = effect_type
         params.start_to_coma_frame = True
         params.spacing_mode = "distance"
+        sync_actual_session("bmanga_dev_ui_inventory", context, session)
         _collect_draw(
             records,
             f"右クリック詳細設定 / 効果線 / {effect_type}",
-            layer_detail_op._draw_effect_detail,
+            detail_dialog_runtime.draw_actual_session,
             context,
-            effect_obj,
+            session,
         )
+    close_actual_session("bmanga_dev_ui_inventory", context, session)
 
 
 def _collect_legacy_status(records: list[dict[str, Any]]) -> None:
@@ -616,7 +660,9 @@ def _required_labels_missing(records: list[dict[str, Any]]) -> list[str]:
         "内端形状",
         "白抜き線",
         "流線",
-        "選択中: 監査フォルダ (汎用フォルダ)",
+        # 統合後の共通ヘッダーは「種別 + 編集可能な表示名」であり、旧入口固有の
+        # 「選択中: 名前 (内部種別)」メタ表示は廃止済み。本文の存在を確認する。
+        "フォルダー設定",
     )
     return [label for label in required if label not in texts]
 
