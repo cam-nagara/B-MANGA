@@ -934,7 +934,14 @@ def _dynamic_base(width: float, height: float, opts: _DynamicOpts, *, fluffy: bo
     return cx, cy, rx, ry, eff_h
 
 
-def _bump_sequence(rx: float, ry: float, opts: _DynamicOpts, *, min_slots: int):
+def _bump_sequence(
+    rx: float,
+    ry: float,
+    opts: _DynamicOpts,
+    *,
+    min_slots: int,
+    effective_sub_width_percent: float | None = None,
+):
     perimeter = _base_perimeter(
         rx,
         ry,
@@ -942,7 +949,10 @@ def _bump_sequence(rx: float, ry: float, opts: _DynamicOpts, *, min_slots: int):
         getattr(opts, "base_corner_radius_mm", 0.0),
     )
     sub_enabled = opts.sub_w > 0.0 or opts.sub_h > 0.0
-    sub_w_ratio = (opts.sub_w if opts.sub_w > 0.0 else 50.0) / 100.0
+    sub_width_percent = opts.sub_w if opts.sub_w > 0.0 else 50.0
+    if effective_sub_width_percent is not None:
+        sub_width_percent = max(0.0, min(100.0, float(effective_sub_width_percent)))
+    sub_w_ratio = sub_width_percent / 100.0
     sub_h_ratio = (opts.sub_h if opts.sub_h > 0.0 else 50.0) / 100.0
     slot_width = opts.bump_w * (1.0 + sub_w_ratio) if sub_enabled else opts.bump_w
     slots = max(3 if sub_enabled else min_slots, round(perimeter / max(0.001, slot_width)))
@@ -955,12 +965,20 @@ def _bump_sequence(rx: float, ry: float, opts: _DynamicOpts, *, min_slots: int):
     return sub_enabled, sub_h_ratio, bumps, main_angle, sub_angle, base_angle
 
 
-def _bump_segments(rx: float, ry: float, opts: _DynamicOpts, *, min_slots: int):
+def _bump_segments(
+    rx: float,
+    ry: float,
+    opts: _DynamicOpts,
+    *,
+    min_slots: int,
+    effective_sub_width_percent: float | None = None,
+):
     sub_enabled, sub_h_ratio, bumps, main_angle, sub_angle, base_angle = _bump_sequence(
         rx,
         ry,
         opts,
         min_slots=min_slots,
+        effective_sub_width_percent=effective_sub_width_percent,
     )
     segments: list[tuple[bool, float, float]] = []
     total_span = 0.0
@@ -979,6 +997,26 @@ def _bump_segments(rx: float, ry: float, opts: _DynamicOpts, *, min_slots: int):
         return base_angle, []
     scale = (2.0 * math.pi) / total_span
     return base_angle, [(is_sub, span * scale, h_mul) for is_sub, span, h_mul in segments]
+
+
+def _quality_sub_width_percent(opts: _DynamicOpts) -> float:
+    """多重線で輪にならない、縦横比を保った小山幅を返す."""
+
+    sub_width = opts.sub_w if opts.sub_w > 0.0 else 50.0
+    sub_height = opts.sub_h if opts.sub_h > 0.0 else 50.0
+    return max(sub_width, sub_height)
+
+
+def _thorn_bump_segments(rx: float, ry: float, opts: _DynamicOpts, *, min_slots: int):
+    """細長すぎる小山を避けたトゲ用の山列を返す."""
+
+    return _bump_segments(
+        rx,
+        ry,
+        opts,
+        min_slots=min_slots,
+        effective_sub_width_percent=_quality_sub_width_percent(opts),
+    )
 
 
 def _sample_cubic(
@@ -1314,7 +1352,7 @@ def _outline_thorn_with_corners(
         return _outline_ellipse(rect), []
     cx, cy, rx, ry, eff_h = base
     base_kind = getattr(opts, "base_kind", "ellipse")
-    angle, segments = _bump_segments(rx, ry, opts, min_slots=6)
+    angle, segments = _thorn_bump_segments(rx, ry, opts, min_slots=6)
     if not segments:
         return _outline_ellipse(rect), []
 
@@ -1419,7 +1457,7 @@ def _thorn_curve_peaks_valleys(
         return None
     cx, cy, rx, ry, eff_h = base
     base_kind = getattr(opts, "base_kind", "ellipse")
-    angle, segments = _bump_segments(rx, ry, opts, min_slots=6)
+    angle, segments = _thorn_bump_segments(rx, ry, opts, min_slots=6)
     if not segments:
         return None
     peaks: list[tuple[float, float]] = []
@@ -1543,86 +1581,47 @@ def _bezier_thorn_curve(rect: Rect, opts: _DynamicOpts) -> list[BezierAnchor] | 
     return [_local_anchor_to_rect(rect, a) for a in anchors]
 
 
-def _fluffy_raw_points(rect: Rect, opts: _DynamicOpts, *, samples_per_bump: int) -> list[tuple[float, float]] | None:
-    base = _dynamic_base(rect.width, rect.height, opts, fluffy=True)
-    if base is None:
-        return None
-    cx, cy, rx_base, ry_base, eff_h = base
-    base_kind = getattr(opts, "base_kind", "ellipse")
-    base_radius = getattr(opts, "base_corner_radius_mm", 0.0)
-    amp = eff_h * 0.5
-    perimeter = _base_perimeter(rx_base, ry_base, base_kind, base_radius)
-    width_factor = _jitter_factor(opts.bump_w_jitter, opts.rng, min_factor=0.5)
-    num_bumps = max(6, round(perimeter / max(0.001, opts.bump_w * width_factor)))
-    # ズラし量 100% = 全周 1 周 (= 2π)。
-    base_angle = -math.pi * 0.5 + opts.offset * 2.0 * math.pi
-    sub_enabled = opts.sub_w > 0.0 or opts.sub_h > 0.0
-    sub_w_ratio = (opts.sub_w if opts.sub_w > 0.0 else 50.0) / 100.0
-    sub_width_factor = _jitter_factor(opts.sub_w_jitter, opts.rng, min_factor=0.5)
-    sub_freq = (
-        max(1, min(num_bumps * 4, round(num_bumps / max(0.1, sub_w_ratio) / sub_width_factor)))
-        if sub_enabled
-        else 0
-    )
-    sub_amp_ratio = ((opts.sub_h if opts.sub_h > 0.0 else 50.0) / 100.0) * 0.4 if sub_enabled else 0.0
-    steps = max(8, num_bumps * max(2, int(samples_per_bump)), sub_freq * 2 if sub_enabled else 0)
-    main_width = [_jitter_factor(opts.bump_w_jitter, opts.rng, min_factor=0.5) for _i in range(num_bumps)]
-    main_height = [
-        _jitter_factor(opts.bump_h_jitter, opts.rng, min_factor=0.2) * _height_factor_for_width(main_width[i])
-        for i in range(num_bumps)
-    ]
-    sub_width = [_jitter_factor(opts.sub_w_jitter, opts.rng, min_factor=0.5) for _i in range(max(1, sub_freq))]
-    sub_height = [
-        _jitter_factor(opts.sub_h_jitter, opts.rng, min_factor=0.2) * _height_factor_for_width(sub_width[i])
-        for i in range(max(1, sub_freq))
-    ]
+def _fluffy_base_anchors(rect: Rect, opts: _DynamicOpts) -> list[BezierAnchor] | None:
+    from . import balloon_fluffy_shape
 
-    raw: list[tuple[float, float]] = []
-    for i in range(steps):
-        t = base_angle + (i / steps) * 2.0 * math.pi
-        phase = t - base_angle
-        main_idx = int(((phase % (2.0 * math.pi)) / (2.0 * math.pi)) * num_bumps) % num_bumps
-        wave = math.cos(num_bumps * phase) * main_height[main_idx]
-        if sub_freq > 0:
-            sub_idx = int(((phase % (2.0 * math.pi)) / (2.0 * math.pi)) * sub_freq) % len(sub_height)
-            wave += sub_amp_ratio * math.cos(sub_freq * phase) * sub_height[sub_idx]
-        bx, by = _base_position(t, cx, cy, rx_base, ry_base, base_kind=base_kind, base_radius=base_radius)
-        nx, ny = _base_outward_normal(t, rx_base, ry_base, base_kind=base_kind, base_radius=base_radius)
-        raw.append((bx + amp * wave * nx, by + amp * wave * ny))
-    return raw
+    return balloon_fluffy_shape.base_anchors(rect, opts)
+
+
+def _fluffy_local_anchors(
+    rect: Rect, opts: _DynamicOpts, *, allow_rect_radius_fallback: bool = True
+) -> list[BezierAnchor] | None:
+    from . import balloon_fluffy_shape
+
+    return balloon_fluffy_shape.local_anchors(
+        rect,
+        opts,
+        allow_rect_radius_fallback=allow_rect_radius_fallback,
+    )
 
 
 def _outline_fluffy(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]:
-    raw = _fluffy_raw_points(rect, opts, samples_per_bump=10)
-    if raw is None:
+    anchors = _fluffy_local_anchors(rect, opts)
+    if not anchors:
         return _outline_ellipse(rect)
-
-    pts: list[tuple[float, float]] = [raw[0]]
-    n = len(raw)
-    for i in range(n):
-        p0 = raw[(i - 1 + n) % n]
-        p1 = raw[i]
-        p2 = raw[(i + 1) % n]
-        p3 = raw[(i + 2) % n]
-        c1 = (p1[0] + (p2[0] - p0[0]) / 6.0, p1[1] + (p2[1] - p0[1]) / 6.0)
-        c2 = (p2[0] - (p3[0] - p1[0]) / 6.0, p2[1] - (p3[1] - p1[1]) / 6.0)
-        pts.extend(_sample_cubic(p1, c1, c2, p2, steps=4))
+    pts = [anchors[0].co]
+    for i, anchor in enumerate(anchors):
+        next_anchor = anchors[(i + 1) % len(anchors)]
+        pts.extend(
+            _sample_cubic(
+                anchor.co,
+                anchor.handle_right or anchor.co,
+                next_anchor.handle_left or next_anchor.co,
+                next_anchor.co,
+                # 最終 Bézier 1区間につき10点。承認形状は約520点となり、
+                # 効果線を過密化せず実体曲線と同じ輪郭を使える。
+                steps=10,
+            )
+        )
     return _local_to_rect(rect, pts)
 
 
 def _bezier_fluffy(rect: Rect, opts: _DynamicOpts) -> list[BezierAnchor] | None:
-    raw = _fluffy_raw_points(rect, opts, samples_per_bump=4)
-    if raw is None:
+    anchors = _fluffy_local_anchors(rect, opts)
+    if not anchors:
         return _bezier_ellipse(rect)
-    if len(raw) < 3:
-        return _bezier_ellipse(rect)
-    anchors: list[BezierAnchor] = []
-    n = len(raw)
-    for i, co in enumerate(raw):
-        prev_pt = raw[(i - 1) % n]
-        next_pt = raw[(i + 1) % n]
-        tangent = ((next_pt[0] - prev_pt[0]) / 6.0, (next_pt[1] - prev_pt[1]) / 6.0)
-        handle_left = (co[0] - tangent[0], co[1] - tangent[1])
-        handle_right = (co[0] + tangent[0], co[1] + tangent[1])
-        anchors.append(_local_anchor_to_rect(rect, BezierAnchor(co, handle_left, handle_right)))
-    return anchors
+    return [_local_anchor_to_rect(rect, anchor) for anchor in anchors]

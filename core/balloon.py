@@ -314,6 +314,13 @@ def apply_balloon_shape_defaults(entry, *, force: bool = False) -> None:
 
 
 def _on_balloon_shape_changed(_self, context) -> None:
+    # トゲ形状は曲線・直線とも、先端と多重線を丸めない状態を初期値にする。
+    # 共有プロパティ自体の既定値は False のままにし、トゲ以外へ切り替えた
+    # ときはユーザーが明示した値を上書きしない。
+    shape = str(getattr(_self, "shape", "") or "")
+    shape_params = getattr(_self, "shape_params", None)
+    if shape_params is not None and shape in {"thorn", "thorn-curve"}:
+        shape_params.cloud_valley_sharp = True
     _on_balloon_entry_changed(_self, context)
 
 

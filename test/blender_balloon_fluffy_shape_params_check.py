@@ -73,7 +73,9 @@ def main() -> None:
     params.cloud_sub_width_ratio = 45.0
     params.cloud_sub_height_ratio = 90.0
     sub_sig = _signature(balloon_shapes.bezier_loop_for_entry(entry, rect))
-    if len(sub_sig) <= len(base_sig) or sub_sig == base_sig:
+    # De Casteljau 分割では小山設定を変えてもアンカー数は一定なので、
+    # アンカー数ではなく輪郭自体が変わることを確認する。
+    if sub_sig == base_sig:
         raise AssertionError("小山の設定が、もやもやフキダシの表示用曲線へ反映されていません")
 
     params.cloud_bump_width_jitter = 0.8
