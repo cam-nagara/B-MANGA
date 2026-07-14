@@ -25,6 +25,7 @@ import bpy
 from . import object_preserve
 
 from . import balloon_tail_boolean
+from . import balloon_thorn_curve_stroke
 from . import free_transform
 from . import balloon_shapes
 from . import line_pattern
@@ -3037,11 +3038,11 @@ def ensure_balloon_line_mesh(
         mesh = bpy.data.meshes.new(mesh_name)
 
     # 主線は全形状で「外側アライメント + Shapely buffer + earcut」方式に統一。
-    samples = _body_samples_for_line_mesh(entry, body_object)
-    if len(samples) < 3:
+    body_samples = _body_samples_for_line_mesh(entry, body_object)
+    if len(body_samples) < 3:
         remove_balloon_line_mesh(balloon_id)
         return None
-    samples, tails_merged = _outline_samples_with_tails(entry, samples)
+    samples, tails_merged = _outline_samples_with_tails(entry, body_samples)
     valley_sharp = _valley_sharp_for_entry(entry)
     # 山頂が丸い形状 (雲/フワフワ) は、 外側へ広げた均一バンドの山頂を round join で
     # 丸める。 トゲ/トゲ曲線は山頂が尖る形状なので従来通り mitre のまま。
@@ -3100,6 +3101,9 @@ def ensure_balloon_line_mesh(
         if not sub_polys:
             remove_balloon_line_mesh(balloon_id)
             return None
+        sub_polys = _curve_thorn_peak_polygons(
+            entry, valley_sharp, sub_polys, body_samples
+        )
         _build_band_mesh_from_polygons(mesh, sub_polys, LINE_Z_OFFSET_M)
     else:
         union_result = _stroke_band_outside_union(
@@ -3125,6 +3129,9 @@ def ensure_balloon_line_mesh(
                     sharp_tails,
                     add_bend_mitre=not valley_sharp,
                 )
+        rings = _curve_thorn_peak_polygons(
+            entry, valley_sharp, rings, body_samples
+        )
         _build_band_mesh_from_polygons(mesh, rings, LINE_Z_OFFSET_M)
 
     _apply_ribbon_uv(mesh, entry, [samples], line_width_m)
@@ -3146,6 +3153,20 @@ def ensure_balloon_line_mesh(
 def _valley_sharp_for_entry(entry) -> bool:
     sp = getattr(entry, "shape_params", None)
     return bool(getattr(sp, "cloud_valley_sharp", False))
+
+
+def _curve_thorn_peak_polygons(
+    entry, sharp: bool, polygons, reference_outline, *, curve_holes: bool = False
+):
+    """トゲ曲線＋尖角だけ、現行先端を保った曲線キャップへ置換する。"""
+    shape = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
+    if not sharp or shape != "thorn-curve":
+        return list(polygons)
+    return balloon_thorn_curve_stroke.curve_thorn_peak_band_polygons(
+        polygons,
+        [(float(point[0]), float(point[1])) for point in reference_outline],
+        curve_holes=curve_holes,
+    )
 
 
 def _line_dynamic_width_params(entry) -> tuple[bool, float, float, bool]:
@@ -3347,11 +3368,11 @@ def ensure_balloon_outer_edge_mesh(
         )
     line_style = str(getattr(entry, "line_style", "") or "")
     line_width_mm = 0.0 if line_style == "none" else scaled_entry_width_mm(entry, "line_width_mm", 0.3)
-    samples = _body_samples_for_line_mesh(entry, body_object)
-    if len(samples) < 3:
+    body_samples = _body_samples_for_line_mesh(entry, body_object)
+    if len(body_samples) < 3:
         remove_balloon_outer_edge_mesh(balloon_id)
         return None
-    samples, _tails_merged = _outline_samples_with_tails(entry, samples)
+    samples, _tails_merged = _outline_samples_with_tails(entry, body_samples)
 
     valley_sharp = _valley_sharp_for_entry(entry)
     line_width_m = line_width_mm * 0.001
@@ -3384,6 +3405,9 @@ def ensure_balloon_outer_edge_mesh(
     if not polys:
         remove_balloon_outer_edge_mesh(balloon_id)
         return None
+    polys = _curve_thorn_peak_polygons(
+        entry, valley_sharp, polys, body_samples, curve_holes=True
+    )
 
     mesh_name = _outer_edge_mesh_data_name(balloon_id)
     mesh = bpy.data.meshes.get(mesh_name)
@@ -3585,11 +3609,11 @@ def ensure_balloon_multi_line_mesh(
     else:
         sides = ("outside",)
 
-    samples = _body_samples_for_line_mesh(entry, body_object)
-    if len(samples) < 3:
+    body_samples = _body_samples_for_line_mesh(entry, body_object)
+    if len(body_samples) < 3:
         remove_balloon_multi_line_mesh(balloon_id)
         return None
-    samples, _tails_merged = _outline_samples_with_tails(entry, samples)
+    samples, _tails_merged = _outline_samples_with_tails(entry, body_samples)
 
     body_poly = _build_body_polygon(samples)
     if body_poly is None:
@@ -3706,6 +3730,9 @@ def ensure_balloon_multi_line_mesh(
     if not polygons:
         remove_balloon_multi_line_mesh(balloon_id)
         return None
+    polygons = _curve_thorn_peak_polygons(
+        entry, valley_sharp, polygons, body_samples
+    )
 
     mesh_name = _multi_line_mesh_data_name(balloon_id)
     mesh = bpy.data.meshes.get(mesh_name)

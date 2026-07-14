@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Sequence
 
+from . import balloon_thorn_curve_stroke
 from . import python_deps
 
 
@@ -112,10 +113,15 @@ def mitre_band_polygons(
     inner_offset: float,
     *,
     sharp: bool = True,
+    curve_thorn_peaks: bool = False,
+    curve_reference_points: Sequence[tuple[float, float]] | None = None,
+    curve_thorn_holes: bool = False,
 ):
     """輪郭から outer_offset / inner_offset (符号付き) のオフセット帯を返す。
 
     sharp=True で mitre join (角が尖る)、False で round join (角が丸い)。
+    curve_thorn_peaks=True なら、mitre先端を保ったまま外周だけを曲線化する。
+    curve_thorn_holes=True は外側フチの共有内周にも同じ曲線を適用する。
     「角を尖らせる」やフチをページ出力・サムネイルへ正確に反映するために使う。
     戻り値: [(outer_ring, holes), ...] (失敗時は空リスト)
     """
@@ -154,6 +160,10 @@ def mitre_band_polygons(
             if len(ring) >= 3:
                 holes.append(ring)
         out.append((outer_ring, holes))
+    if sharp and curve_thorn_peaks and curve_reference_points:
+        return balloon_thorn_curve_stroke.curve_thorn_peak_band_polygons(
+            out, curve_reference_points, curve_holes=curve_thorn_holes
+        )
     return out
 
 

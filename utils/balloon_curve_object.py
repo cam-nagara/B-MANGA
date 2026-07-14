@@ -1446,6 +1446,7 @@ def _band_geometry_signature(entry, obj) -> str:
     try:
         h = hashlib.md5(_geometry_key_for_entry(entry).encode("utf-8"))
         extra = (
+            "thorn_curve_stroke_v2",
             round(float(getattr(entry, "fill_blur_amount", 0.0) or 0.0), 4),
             str(getattr(entry, "fill_blur_axis", "inside") or "inside"),
             str(getattr(entry, "line_shape_kind", "") or ""),

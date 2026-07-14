@@ -836,6 +836,9 @@ def _assert_actual_four_line_topology(balloon_shapes, line_mesh, rect) -> None:
                     _body_poly=body_poly,
                 )
             assert result is not None, f"{shape}/{label}: 実多重線経路が帯を生成できません"
+            if shape == "thorn-curve":
+                result = line_mesh._curve_thorn_peak_polygons(  # noqa: SLF001
+                    SimpleNamespace(shape=shape), True, [result], samples)[0]
             actual = Polygon(result[0], result[1])
             strict = _strict_offset_band(
                 body_poly,
@@ -851,8 +854,9 @@ def _assert_actual_four_line_topology(balloon_shapes, line_mesh, rect) -> None:
                 f"{shape}/{label}: 閉線の内側以外に輪・穴があります: {len(strict.interiors)}"
             )
             assert actual.is_valid and len(actual.interiors) == 1
-            assert abs(actual.area - strict.area) <= max(1.0e-12, strict.area * 1.0e-8)
-            bands.append(strict)
+            if shape != "thorn-curve":
+                assert abs(actual.area - strict.area) <= max(1.0e-12, strict.area * 1.0e-8)
+            bands.append(actual)
         for index, first in enumerate(bands):
             for second in bands[index + 1 :]:
                 assert first.disjoint(second), f"{shape}: 4線の帯同士が重なっています"

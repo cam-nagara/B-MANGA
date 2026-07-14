@@ -271,8 +271,15 @@ def _split_ellipse_outlines_by_body(
         return [], polys
 
 
-def _draw_multi_ring_bands(canvas, outline, entry, color, *, sharp: bool) -> None:
-    """多重線のリングを、画面のメッシュと同じオフセット帯で描く.
+def _multi_ring_band_polygons(
+    outline,
+    entry,
+    *,
+    sharp: bool,
+    curve_thorn_peaks: bool = False,
+    curve_reference_points=None,
+) -> list[list]:
+    """多重線の各リングを、画面のメッシュと同じ帯のまとまりで返す.
 
     本体の線の外側 (または内側) に「隙間 = 間隔」で帯を順に並べる。
     幅スケール・間隔スケール・方向 (外側/内側/両方向) に対応する。
@@ -292,6 +299,7 @@ def _draw_multi_ring_bands(canvas, outline, entry, color, *, sharp: bool) -> Non
         sides = ("outside",)
     running_outside = line_w_mm
     running_inside = 0.0
+    band_groups = []
     for ring_index in range(1, count + 1):
         ring_w = ring_w_base * (width_scale ** max(0, ring_index - 1))
         spacing = spacing_base * (spacing_scale ** max(0, ring_index - 1))
@@ -300,13 +308,23 @@ def _draw_multi_ring_bands(canvas, outline, entry, color, *, sharp: bool) -> Non
         for side in sides:
             if side == "inside":
                 inner = running_inside + spacing
-                band = _mitre_band_polygons_mm(outline, -inner, -(inner + ring_w), sharp=sharp)
+                band = _mitre_band_polygons_mm(
+                    outline, -inner, -(inner + ring_w), sharp=sharp,
+                    curve_thorn_peaks=curve_thorn_peaks,
+                    curve_reference_points=curve_reference_points,
+                )
                 running_inside = inner + ring_w
             else:
                 inner = running_outside + spacing
-                band = _mitre_band_polygons_mm(outline, inner + ring_w, inner, sharp=sharp)
+                band = _mitre_band_polygons_mm(
+                    outline, inner + ring_w, inner, sharp=sharp,
+                    curve_thorn_peaks=curve_thorn_peaks,
+                    curve_reference_points=curve_reference_points,
+                )
                 running_outside = inner + ring_w
-            _composite_patches_px(canvas, band, color)
+            if band:
+                band_groups.append(band)
+    return band_groups
 
 
 def _patches_mask_px(canvas, patches):
@@ -493,7 +511,16 @@ def _line_material_ribbon_image(entry, canvas, outline_mm, band_rings, line_w_mm
     return ep.Image.fromarray(out_arr, "RGBA")
 
 
-def _mitre_band_polygons_mm(outline, outer_off_mm: float, inner_off_mm: float, *, sharp: bool = True):
+def _mitre_band_polygons_mm(
+    outline,
+    outer_off_mm: float,
+    inner_off_mm: float,
+    *,
+    sharp: bool = True,
+    curve_thorn_peaks: bool = False,
+    curve_reference_points=None,
+    curve_thorn_holes: bool = False,
+):
     """輪郭のオフセット帯 (mm 座標) を返す。sharp=True で角が尖る."""
     if len(outline) < 3:
         return []
@@ -501,7 +528,13 @@ def _mitre_band_polygons_mm(outline, outer_off_mm: float, inner_off_mm: float, *
         from ..utils import balloon_tail_boolean
 
         return balloon_tail_boolean.mitre_band_polygons(
-            list(outline), float(outer_off_mm), float(inner_off_mm), sharp=sharp
+            list(outline),
+            float(outer_off_mm),
+            float(inner_off_mm),
+            sharp=sharp,
+            curve_thorn_peaks=curve_thorn_peaks,
+            curve_reference_points=curve_reference_points,
+            curve_thorn_holes=curve_thorn_holes,
         )
     except Exception:  # noqa: BLE001
         return []
@@ -1072,6 +1105,7 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
     fill_outline = _apply_entry_free_transform(entry, fill_outline, rect)
     outline = _apply_balloon_transforms(outline, rect, flip_h, flip_v, rotation_deg)
     fill_outline = _apply_balloon_transforms(fill_outline, rect, flip_h, flip_v, rotation_deg)
+    thorn_curve_reference = list(outline)
     tail_outlines = []
     sharp_tail_regions: list[list[tuple[float, float]]] = []
     sharp_tail_infos: list[tuple[list, list, list]] = []
@@ -1137,12 +1171,100 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
         all_pts.extend(flash_pts)
         if flash_radii:
             flash_pad_mm = max(flash_pad_mm, max(flash_radii))
+    line_style = getattr(entry, "line_style", "solid")
+    line_w_mm = (
+        0.0
+        if str(line_style or "") == "none"
+        else _scaled_width_mm(entry, "line_width_mm", 0.3)
+    )
+    outer_enabled = bool(getattr(entry, "outer_white_margin_enabled", False))
+    inner_enabled = bool(getattr(entry, "inner_white_margin_enabled", False))
+    outer_w_mm = (
+        _scaled_width_mm(entry, "outer_white_margin_width_mm", 0.0)
+        if outer_enabled
+        else 0.0
+    )
+    inner_w_mm = (
+        _scaled_width_mm(entry, "inner_white_margin_width_mm", 0.0)
+        if inner_enabled
+        else 0.0
+    )
+    body_sharp = _body_sharp_corners(entry)
+    curve_thorn_peaks = (
+        body_sharp
+        and balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
+        == "thorn-curve"
+    )
+    band_line_styles = {"solid", "double", "material"}
+    outer_band_rings = []
+    inner_band_rings = []
+    multi_band_groups = []
+    main_band_rings = []
+    if line_w_mm > 1.0e-6 and not is_flash:
+        if outer_enabled and outer_w_mm > 1.0e-6:
+            outer_band_rings = _mitre_band_polygons_mm(
+                outline,
+                line_w_mm + outer_w_mm,
+                line_w_mm,
+                sharp=body_sharp,
+                curve_thorn_peaks=curve_thorn_peaks,
+                curve_reference_points=thorn_curve_reference,
+                curve_thorn_holes=True,
+            )
+        if inner_enabled and inner_w_mm > 1.0e-6:
+            inner_band_rings = _mitre_band_polygons_mm(
+                outline,
+                0.0,
+                -inner_w_mm,
+                sharp=body_sharp,
+                curve_thorn_peaks=curve_thorn_peaks,
+                curve_reference_points=thorn_curve_reference,
+            )
+        if str(line_style or "") in band_line_styles:
+            if str(line_style or "") == "double":
+                multi_band_groups = _multi_ring_band_polygons(
+                    outline,
+                    entry,
+                    sharp=body_sharp,
+                    curve_thorn_peaks=curve_thorn_peaks,
+                    curve_reference_points=thorn_curve_reference,
+                )
+            main_band_rings = _mitre_band_polygons_mm(
+                outline,
+                line_w_mm,
+                0.0,
+                sharp=body_sharp,
+                curve_thorn_peaks=curve_thorn_peaks,
+                curve_reference_points=thorn_curve_reference,
+            )
+            if merged_outline is not None and sharp_tail_infos:
+                try:
+                    from ..utils import balloon_tail_boolean
+
+                    main_band_rings = balloon_tail_boolean.apply_sharp_tail_tips(
+                        main_band_rings,
+                        list(outline),
+                        line_w_mm,
+                        sharp_tail_infos,
+                        add_bend_mitre=not body_sharp,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+        # 尖角は線幅より大きく張り出すため、固定padでは切れる。実際に描く
+        # 主線・フチ・多重線の全頂点をbboxへ含め、ページ端でも先端を欠かさない。
+        for patches in (outer_band_rings, inner_band_rings, main_band_rings):
+            for outer, holes in patches:
+                all_pts.extend(outer)
+                for hole in holes:
+                    all_pts.extend(hole)
+        for patches in multi_band_groups:
+            for outer, holes in patches:
+                all_pts.extend(outer)
+                for hole in holes:
+                    all_pts.extend(hole)
     bbox = ep._points_bbox(all_pts)
     if bbox is None:
         return None
-    line_style = getattr(entry, "line_style", "solid")
-    line_w_mm = 0.0 if str(line_style or "") == "none" else _scaled_width_mm(entry, "line_width_mm", 0.3)
-    outer_w_mm = _scaled_width_mm(entry, "outer_white_margin_width_mm", 0.0) if bool(getattr(entry, "outer_white_margin_enabled", False)) else 0.0
     blur = max(0.0, min(1.0, float(getattr(entry, "fill_blur_amount", 0.0) or 0.0)))
     blur_pad = line_w_mm * (0.65 + 3.35 * blur) if blur > 0.0 else 0.0
     pad_mm = max(2.0, line_w_mm * 4.0 + outer_w_mm * 2.0 + blur_pad, flash_pad_mm + 1.0)
@@ -1181,9 +1303,6 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
         _draw_inner_white_loop(canvas, line_clip_mask, outline_px, flash_white_color, flash_white_width_px, "solid")
     # 実線・多重線の主線とフチは、画面のメッシュと同じ「輪郭の外側に乗る」
     # オフセット帯で描く。「角を尖らせる」ON なら mitre join で角まで尖らせる。
-    inner_w_mm = _scaled_width_mm(entry, "inner_white_margin_width_mm", 0.0)
-    body_sharp = _body_sharp_corners(entry)
-    band_line_styles = {"solid", "double", "material"}
     line_material_mapping = str(getattr(entry, "line_material_mapping", "tile") or "tile")
     _tile_fill_cache: list = []
 
@@ -1200,21 +1319,19 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
         if not _tile_fill_cache:
             _tile_fill_cache.append(_line_material_fill_image(entry, canvas.image.size))
         return _tile_fill_cache[0]
-    if draw_line and not is_flash and bool(getattr(entry, "outer_white_margin_enabled", False)):
+    if draw_line and not is_flash and outer_band_rings:
         # 外フチ: 線の外側にだけ付く帯 (画面のメッシュと同じ付き方)。
         # 「角を尖らせる」ON のときは mitre join で角まで尖らせる。
         _composite_patches_px(
             canvas,
-            _mitre_band_polygons_mm(
-                outline, line_w_mm + outer_w_mm, line_w_mm, sharp=body_sharp
-            ),
+            outer_band_rings,
             outer_color,
         )
-    if draw_line and not is_flash and bool(getattr(entry, "inner_white_margin_enabled", False)):
+    if draw_line and not is_flash and inner_band_rings:
         # 内フチ: 本体の内側に付く帯
         _composite_patches_px(
             canvas,
-            _mitre_band_polygons_mm(outline, 0.0, -inner_w_mm, sharp=body_sharp),
+            inner_band_rings,
             inner_color,
             clip_mask=line_clip_mask,
         )
@@ -1226,23 +1343,11 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
         elif str(line_style or "") == "image":
             _draw_image_line_loop(canvas, outline_px, entry, line_width_px, dpi)
         elif str(line_style or "") in band_line_styles:
-            if str(line_style or "") == "double":
-                _draw_multi_ring_bands(canvas, outline, entry, line_color, sharp=body_sharp)
-            band_rings = _mitre_band_polygons_mm(outline, line_w_mm, 0.0, sharp=body_sharp)
-            # 「角を尖らせる」しっぽ: 折れ角を尖らせ、先端をペンの抜きのように絞る
-            if merged_outline is not None and sharp_tail_infos:
-                try:
-                    from ..utils import balloon_tail_boolean
-
-                    band_rings = balloon_tail_boolean.apply_sharp_tail_tips(
-                        band_rings,
-                        list(outline),
-                        line_w_mm,
-                        sharp_tail_infos,
-                        add_bend_mitre=not body_sharp,
-                    )
-                except Exception:  # noqa: BLE001
-                    pass
+            # 入れ子のリングを一つの一時画像へ描くと、外側リングの穴が
+            # 先に描いた内側リングを消す。リングごとに個別合成して残す。
+            for band_rings in multi_band_groups:
+                _composite_patches_px(canvas, band_rings, line_color)
+            band_rings = main_band_rings
             _composite_patches_px(
                 canvas, band_rings, line_color, fill_image=_line_band_fill_for(outline, band_rings)
             )
