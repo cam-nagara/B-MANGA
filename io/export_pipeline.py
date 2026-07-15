@@ -1052,9 +1052,22 @@ def _render_text_layer(entry, canvas_height_px: int, dpi: int) -> ExportLayer | 
     if canvas is None:
         return None
     from ..typography import export_renderer, layout as text_layout
+    from ..utils import text_layout_bounds
 
     font_path = _resolve_font_path(str(getattr(entry, "font", "")))
-    result = text_layout.typeset(entry, pad_mm, pad_mm, float(entry.width_mm), float(entry.height_mm))
+    # ビューポート実体 (utils/text_real_object.py) と同じ内側余白を使う。
+    # 書き出し/ページプレビューだけ旧来の枠全体で組版すると、文字の位置が
+    # 実体表示に対して斜めへずれる。
+    inner = text_layout_bounds.text_inner_rect(
+        Rect(0.0, 0.0, float(entry.width_mm), float(entry.height_mm))
+    )
+    result = text_layout.typeset(
+        entry,
+        pad_mm + inner.x,
+        pad_mm + inner.y,
+        inner.width,
+        inner.height,
+    )
     ruby_placements = text_ruby.compute_for_entry(result.placements, entry)
     stroke_width_px = 0
     stroke_color = (255, 255, 255, 255)

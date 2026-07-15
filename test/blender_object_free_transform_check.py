@@ -75,8 +75,11 @@ def main() -> None:
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "FreeTransform.bmanga"))
         if "FINISHED" not in result:
             raise AssertionError("作品作成に失敗しました")
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        if "FINISHED" not in result:
+            raise AssertionError("ページファイルを開けません")
 
-        from bmanga_dev_free_transform_check.operators import effect_line_op
+        from bmanga_dev_free_transform_check.operators import effect_line_op, object_tool_selection
         from bmanga_dev_free_transform_check.utils import (
             balloon_curve_object,
             effect_line_object,
@@ -131,11 +134,22 @@ def main() -> None:
         )
         if effect_obj is None or effect_layer is None:
             raise AssertionError("効果線を作成できません")
+        effect_id = str(getattr(scene, "bmanga_active_effect_layer_name", "") or "")
+        effect_obj, effect_layer = object_tool_selection.find_effect_layer(effect_id)
+        if effect_obj is None or effect_layer is None:
+            raise AssertionError("作成後の効果線を安定IDから再取得できません")
         display = effect_line_object.find_effect_display_object(effect_obj)
         if display is None or len(display.data.vertices) == 0:
             raise AssertionError("効果線の表示メッシュが作成されていません")
         before_effect = _mesh_xy_bounds(display)
-        _apply_free_drag(bpy.context, object_selection.effect_key(effect_layer), 13.0, 8.0)
+        effect_key = object_selection.effect_key(effect_layer)
+        _apply_free_drag(bpy.context, effect_key, 13.0, 8.0)
+        _kind, _page_id, effect_id = object_selection.parse_key(effect_key)
+        # 効果線の同期はコントローラー自体を再生成するため、ドラッグ前の
+        # StructRNA参照を保持せず、安定IDから現在の実体を取り直す。
+        effect_obj, effect_layer = object_tool_selection.find_effect_layer(effect_id)
+        if effect_obj is None or effect_layer is None:
+            raise AssertionError("自由変形後の効果線を安定IDから再取得できません")
         display = effect_line_object.find_effect_display_object(effect_obj)
         after_effect = _mesh_xy_bounds(display)
         payload = free_transform.effect_payload_for_layer(effect_obj, effect_layer)

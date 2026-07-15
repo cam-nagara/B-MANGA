@@ -105,7 +105,10 @@ def _expanded_quad_for_hit(quad: dict[str, tuple[float, float]]) -> dict[str, tu
 
 def _hit_for_selected_key(context, key: str, x_mm: float, y_mm: float, *, force: bool = False) -> dict | None:
     kind, page_id, item_id = object_selection.parse_key(key)
-    if kind not in {"balloon", "effect"}:
+    # テキストは自由変形の操作対象ではないが、プリセット等から既存の
+    # 自由変形値を持つ場合はクアッド状の選択ハンドルが描画される。その
+    # 見えている座標もヒット対象へ含め、背面オブジェクトへ抜けさせない。
+    if kind not in {"balloon", "text", "effect"}:
         return None
     quad = _quad_for_key(context, key, force=force)
     if not quad:

@@ -39,18 +39,22 @@ def _load_addon():
 
 
 def _view3d_context():
-    window = next(iter(bpy.context.window_manager.windows), None)
-    screen = getattr(window, "screen", None)
-    if window is None or screen is None:
-        return None
-    for area in screen.areas:
-        if area.type != "VIEW_3D":
+    windows = list(bpy.context.window_manager.windows)
+    current = getattr(bpy.context, "window", None)
+    if current is not None:
+        windows = [current, *[window for window in windows if window != current]]
+    for window in windows:
+        screen = getattr(window, "screen", None)
+        if screen is None:
             continue
-        region = next((r for r in area.regions if r.type == "WINDOW"), None)
-        space = area.spaces.active
-        rv3d = getattr(space, "region_3d", None)
-        if region is not None and rv3d is not None:
-            return window, screen, area, region, space, rv3d
+        for area in screen.areas:
+            if area.type != "VIEW_3D":
+                continue
+            region = next((r for r in area.regions if r.type == "WINDOW"), None)
+            space = area.spaces.active
+            rv3d = getattr(space, "region_3d", None)
+            if region is not None and rv3d is not None:
+                return window, screen, area, region, space, rv3d
     return None
 
 
@@ -87,6 +91,11 @@ def _press_event_for_page(page_index: int):
             bpy.ops.view3d.view_axis(type="TOP", align_active=False)
         except Exception:
             pass
+        # page.blend読込後はB-MANGAサイドバーが自動表示される。WINDOW regionと
+        # UI regionが重なる座標をイベントにすると、実装どおりUI操作として
+        # 除外されるため、このページプレビュー試験では本文領域を確保する。
+        space.show_region_ui = False
+        space.show_region_toolbar = False
         rv3d.view_perspective = "ORTHO"
         rv3d.view_location = Vector((geom.mm_to_m(center_x), geom.mm_to_m(center_y), 0.0))
         rv3d.view_distance = 1.0
@@ -116,8 +125,9 @@ def _press_event_for_page(page_index: int):
 
 
 def _check_object_tool_manual_page_open(event) -> None:
-    """常駐オブジェクトツールの連続クリックがページファイル判定を優先すること."""
+    """通常オブジェクトヒットが重なってもページファイル判定を優先すること."""
     object_tool_op = _submodule("operators.object_tool_op")
+    object_selection = _submodule("utils.object_selection")
 
     tool = SimpleNamespace()
     for name in (
@@ -133,10 +143,23 @@ def _check_object_tool_manual_page_open(event) -> None:
     opened = []
     tool._try_open_page_file_from_event = lambda _ctx, _event: opened.append(True) or True
     tool._try_enter_coma_from_hit = lambda _ctx, _hit: False
-    tool._hit_object = lambda _ctx, _event: None
+    # 実画面ではプレビューと同じ位置にページ本体やレイヤーがあり、通常
+    # ヒットも同時に成立する。None固定ではクリック履歴キーの競合を再現できない。
+    work = bpy.context.scene.bmanga_work
+    underlying_index = min(1, len(work.pages) - 1)
+    underlying_page = work.pages[underlying_index]
+    tool._hit_object = lambda _ctx, _event: {
+        "kind": "page",
+        "page": underlying_index,
+        "part": "body",
+        "key": object_selection.page_key(underlying_page),
+    }
     tool._selected_move_hit_from_event = lambda _ctx, _event: None
     tool._try_start_layer_drag = lambda _ctx, _event: False
     tool._start_marquee_select = lambda _ctx, _event, _mode: True
+    tool._activate_hit = lambda _ctx, _hit, *, mode: None
+    tool._start_point_for_hit = lambda _ctx, _event, _hit: (0.0, 0.0)
+    tool._start_object_drag = lambda _ctx, _hit, _x, _y: None
 
     original_extend = object_tool_op.coma_edge_move_op.extend_selected_handle_at_event
     object_tool_op.coma_edge_move_op.extend_selected_handle_at_event = (
@@ -149,6 +172,48 @@ def _check_object_tool_manual_page_open(event) -> None:
         r2 = tool._handle_left_press(bpy.context, event)
         assert r2 == {"FINISHED"}, r2
         assert opened, "オブジェクトツールの連続クリックでページファイルを開けません"
+    finally:
+        object_tool_op.coma_edge_move_op.extend_selected_handle_at_event = original_extend
+
+
+def _check_visible_handle_suppresses_page_open(event) -> None:
+    """表示ハンドル上ではページを開く連続クリック履歴を作らないこと."""
+    object_tool_op = _submodule("operators.object_tool_op")
+
+    tool = SimpleNamespace()
+    for name in (
+        "_clear_click_state",
+        "_is_manual_coma_double_click",
+        "_remember_coma_click",
+        "_handle_left_press",
+    ):
+        setattr(tool, name, MethodType(getattr(object_tool_op.BMANGA_OT_object_tool, name), tool))
+    tool._clear_click_state()
+    opened = []
+    tool._try_open_page_file_from_event = lambda _ctx, _event: opened.append(True) or True
+    tool._try_enter_coma_from_hit = lambda _ctx, _hit: False
+    tool._try_enter_text_edit_from_hit = lambda _ctx, _hit: False
+    tool._page_open_hit_from_event = lambda _ctx, _event: {
+        "kind": "page_file", "page": 1, "key": "page_file:1",
+    }
+    tool._coma_open_hit_from_hit = lambda _hit: None
+    tool._hit_object = lambda _ctx, _event: {
+        "kind": "image",
+        "key": "image||visible_handle",
+        "part": "top_right",
+        "visible_selection_handle": True,
+    }
+    tool._activate_hit = lambda _ctx, _hit, *, mode: None
+    tool._start_point_for_hit = lambda _ctx, _event, _hit: (0.0, 0.0)
+    tool._start_object_drag = lambda _ctx, _hit, _x, _y: None
+
+    original_extend = object_tool_op.coma_edge_move_op.extend_selected_handle_at_event
+    object_tool_op.coma_edge_move_op.extend_selected_handle_at_event = lambda _ctx, _event: False
+    try:
+        assert tool._handle_left_press(bpy.context, event) == {"RUNNING_MODAL"}
+        assert tool._handle_left_press(bpy.context, event) == {"RUNNING_MODAL"}
+        assert not opened, "表示ハンドル上の連続クリックでページファイルを開いています"
+        assert not tool._last_click_key, "表示ハンドル上のクリックがページ遷移履歴に残っています"
     finally:
         object_tool_op.coma_edge_move_op.extend_selected_handle_at_event = original_extend
 
@@ -223,8 +288,41 @@ def _start_check(temp_root: Path) -> None:
     _check_spread_right_half_hit()
     event = _press_event_for_page(1)
     _check_object_tool_manual_page_open(event)
+    _check_visible_handle_suppresses_page_open(event)
     _check_pick_viewport_manual_open(event, 1)
 
+    # ページファイル内の「ページ一覧プレビュー」でも同じ経路を通る。
+    # p0001を開き、隣のp0002プレビューを対象に実座標から再検証する。
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+    assert result == {"FINISHED"}, result
+    event = _press_event_for_page(1)
+    mode_op = _submodule("operators.mode_op")
+    page_file_scene = _submodule("utils.page_file_scene")
+    page_preview_object = _submodule("utils.page_preview_object")
+    coma_picker = _submodule("operators.coma_picker")
+    view = _view3d_context()
+    assert view is not None
+    window, screen, area, region, space, rv3d = view
+    with bpy.context.temp_override(
+        window=window,
+        screen=screen,
+        area=area,
+        region=region,
+        space_data=space,
+        region_data=rv3d,
+    ):
+        role = page_file_scene.current_role(bpy.context)
+        page_hit = mode_op.page_file_index_from_viewport_event(bpy.context, event)
+        world_xy = coma_picker._event_world_mm(bpy.context, event)  # noqa: SLF001
+        rects = page_preview_object.preview_rects_mm(
+            bpy.context.scene, bpy.context.scene.bmanga_work,
+        )
+        assert page_hit == 1, (
+            "ページファイル内のp0002プレビューを判定できません: "
+            f"role={role!r} hit={page_hit!r} world={world_xy!r} rects={rects!r}"
+        )
+        _check_object_tool_manual_page_open(event)
+        _check_pick_viewport_manual_open(event, 1)
 
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)

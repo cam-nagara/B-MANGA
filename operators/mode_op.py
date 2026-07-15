@@ -779,7 +779,9 @@ class BMANGA_OT_exit_coma_mode(Operator):
                 expected_panel = paths.coma_blend_path(work_dir, page_id, stem).resolve()
                 _auto_render_thumb_before_return(context, work)
                 if cur is not None and cur == expected_panel:
-                    blend_io.save_current_as(expected_panel)
+                    if not blend_io.save_current_as(expected_panel):
+                        self.report({"ERROR"}, "コマファイルを保存できなかったため移動を中止しました")
+                        return {"CANCELLED"}
                 # メタデータを JSON へ書き出してから戻り先 blend を開く。
                 # enter_coma_mode と同様、load_post で古い JSON に巻き戻るのを防ぐ。
                 page = _find_page_by_id(work, page_id)
@@ -787,11 +789,11 @@ class BMANGA_OT_exit_coma_mode(Operator):
                 # ページ用blendがあればページ編集へ戻る。無い場合だけページ一覧へ戻る。
                 if blend_io.page_blend_exists(work_dir, page_id):
                     _suspend_keymap_visibility_updates()
-                    blend_io.open_page_blend(work_dir, page_id)
+                    target_opened = blend_io.open_page_blend(work_dir, page_id)
                     _suspend_keymap_visibility_updates()
                 elif blend_io.work_blend_exists(work_dir):
                     _suspend_keymap_visibility_updates()
-                    blend_io.open_work_blend(work_dir)
+                    target_opened = blend_io.open_work_blend(work_dir)
                     _suspend_keymap_visibility_updates()
                 else:
                     _logger.error(
@@ -803,6 +805,9 @@ class BMANGA_OT_exit_coma_mode(Operator):
                         {"ERROR"},
                         "戻り先のblendファイルが見つかりません. 作品フォルダの整合性を確認してください",
                     )
+                    return {"CANCELLED"}
+                if not target_opened:
+                    self.report({"ERROR"}, "戻り先のblendファイルを開けませんでした")
                     return {"CANCELLED"}
             except Exception as exc:  # noqa: BLE001
                 _logger.exception("exit_coma_mode blend switch failed")
@@ -851,6 +856,13 @@ class BMANGA_OT_exit_coma_mode_safe(Operator):
     bl_idname = "bmanga.exit_coma_mode_safe"
     bl_label = "ページに戻る"
 
+    to_work: BoolProperty(  # type: ignore[valid-type]
+        name="作品ファイルへ戻る",
+        description="ページファイルを経由せず作品ファイルへ戻ります",
+        default=False,
+        options={"HIDDEN"},
+    )
+
     @classmethod
     def poll(cls, context):
         if get_mode(context) == MODE_COMA:
@@ -861,7 +873,7 @@ class BMANGA_OT_exit_coma_mode_safe(Operator):
     def execute(self, context):
         # 1) 通常パス: ``exit_coma_mode`` の poll が通るならそれに委譲
         try:
-            if BMANGA_OT_exit_coma_mode.poll(context):
+            if not self.to_work and BMANGA_OT_exit_coma_mode.poll(context):
                 return bpy.ops.bmanga.exit_coma_mode("EXEC_DEFAULT")
         except Exception:  # noqa: BLE001
             _logger.exception("exit_coma_mode_safe: 通常パス失敗")
@@ -882,13 +894,28 @@ class BMANGA_OT_exit_coma_mode_safe(Operator):
             try:
                 cur = blend_io.current_mainfile_path()
                 expected_panel = paths.coma_blend_path(work_dir, page_id, coma_id).resolve()
-                _auto_render_thumb_before_return(context, get_work(context))
+                work = get_work(context)
+                _auto_render_thumb_before_return(context, work)
                 if cur is not None and cur == expected_panel:
-                    blend_io.save_current_as(expected_panel)
-            except Exception:  # noqa: BLE001
-                _logger.exception("exit_coma_mode_safe: cNN.blend 保存失敗 (続行)")
+                    if not blend_io.save_current_as(expected_panel):
+                        self.report({"ERROR"}, "コマファイルを保存できなかったため移動を中止しました")
+                        return {"CANCELLED"}
+                page = _find_page_by_id(work, page_id) if work is not None else None
+                _save_current_work_metadata(work, page)
+            except Exception as exc:  # noqa: BLE001
+                _logger.exception("exit_coma_mode_safe: cNN.blend 保存失敗")
+                self.report({"ERROR"}, f"コマファイルを保存できなかったため移動を中止しました: {exc}")
+                return {"CANCELLED"}
 
-            if blend_io.page_blend_exists(work_dir, page_id):
+            if self.to_work:
+                if not blend_io.work_blend_exists(work_dir):
+                    self.report(
+                        {"ERROR"},
+                        f"作品ファイルが見つかりません: {paths.work_blend_path(work_dir)}",
+                    )
+                    return {"CANCELLED"}
+                target_opened = blend_io.open_work_blend(work_dir)
+            elif blend_io.page_blend_exists(work_dir, page_id):
                 target_opened = blend_io.open_page_blend(work_dir, page_id)
             elif blend_io.work_blend_exists(work_dir):
                 target_opened = blend_io.open_work_blend(work_dir)
@@ -910,7 +937,7 @@ class BMANGA_OT_exit_coma_mode_safe(Operator):
                 ctx.scene.bmanga_current_coma_page_id = ""
             except Exception:  # noqa: BLE001
                 pass
-            self.report({"INFO"}, "戻りました")
+            self.report({"INFO"}, "作品ファイルに戻りました" if self.to_work else "戻りました")
             return {"FINISHED"}
         except Exception as exc:  # noqa: BLE001
             _logger.exception("exit_coma_mode_safe: work.blend 切替失敗")

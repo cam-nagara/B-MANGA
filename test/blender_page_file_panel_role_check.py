@@ -190,6 +190,7 @@ def main() -> None:
             work_panel,
         )
         import bmanga_dev_page_panel_role.panels as panels_pkg
+        from bmanga_dev_page_panel_role.operators import mode_op
         from bmanga_dev_page_panel_role.utils import page_file_scene
 
         context = bpy.context
@@ -199,6 +200,9 @@ def main() -> None:
 
         role, _page_id, _coma_id = page_file_scene.current_role(context)
         assert role == page_file_scene.ROLE_WORK
+        title = work_panel._work_title(context.scene.bmanga_work)  # noqa: SLF001
+        transition_records = _draw_records(work_panel.BMANGA_PT_coma_return, context)
+        _assert_present(transition_records, title)
         assert work_panel.BMANGA_PT_work.poll(context)
         assert paper_panel.BMANGA_PT_paper.poll(context)
         assert not tool_panel.BMANGA_PT_tools.poll(context)
@@ -242,8 +246,8 @@ def main() -> None:
             "show_trim_marks",
         )
         work_view_records = _draw_records(view_panel.BMANGA_PT_view, context)
-        _assert_present(work_view_records, "全ページ", "前後ページ", "列数", "横間隔mm", "縦間隔mm")
-        _assert_absent(work_view_records, "前後ページ数")
+        _assert_present(work_view_records, "全ページを一覧", "列数", "横間隔mm", "縦間隔mm")
+        _assert_absent(work_view_records, "全ページ", "前後ページ", "前後ページ数")
         assert gpencil_panel.BMANGA_PT_page_list.poll(context)
         assert not gpencil_panel.BMANGA_PT_layer_stack.poll(context)
         page_list_records = _draw_records(gpencil_panel.BMANGA_PT_page_list, context)
@@ -291,13 +295,18 @@ def main() -> None:
         assert not work_panel.BMANGA_PT_work.poll(context)
         assert not paper_panel.BMANGA_PT_paper.poll(context)
         transition_records = _draw_records(work_panel.BMANGA_PT_coma_return, context)
-        _assert_present(transition_records, "作品ファイルに戻る", "保存フォルダを開く")
+        _assert_present(
+            transition_records,
+            f"{title} p0001",
+            "作品ファイルに戻る",
+            "保存フォルダを開く",
+        )
         _assert_absent(transition_records, "ページ一覧ビュー", "フィット")
         _assert_absent(transition_records, "作品情報", "ページ数", "コマ用blendファイル (この作品のみ)")
         view_records = _draw_records(view_panel.BMANGA_PT_view, context)
         _assert_present(
             view_records,
-            "ページ一覧表示",
+            "ページ一覧",
             "全ページ",
             "前後ページ",
             "列数",
@@ -339,7 +348,13 @@ def main() -> None:
         assert work_panel.BMANGA_PT_coma_return.poll(context)
         assert not paper_panel.BMANGA_PT_paper.poll(context)
         transition_records = _draw_records(work_panel.BMANGA_PT_coma_return, context)
-        _assert_present(transition_records, "ページに戻る", "保存フォルダを開く")
+        _assert_present(
+            transition_records,
+            f"{title} p0001 コマ01",
+            "ページに戻る",
+            "作品に戻る",
+            "保存フォルダを開く",
+        )
         _assert_absent(
             transition_records,
             "ページ一覧ビュー",
@@ -353,13 +368,13 @@ def main() -> None:
             view_records,
             "作品情報",
             "用紙ガイド",
-            "ページ一覧表示",
+            "ページ一覧",
             "全ページ",
             "前後ページ",
             "列数",
             "横間隔mm",
             "縦間隔mm",
-            "ページ一覧不透明度",
+            "name_bg_images_opacity",
             "コマ内レイヤー",
             "サブディビジョンサーフェス",
         )
@@ -375,6 +390,64 @@ def main() -> None:
             "フィット",
             "専用ワークスペース",
         )
+
+        # 保存失敗時に作品ファイルを開いてしまうと、コマ側の変更が失われる。
+        # 直接「作品に戻る」経路も、保存成功を確認するまで現在ファイルに留まる。
+        coma_filepath = str(bpy.data.filepath)
+        opened_targets = []
+
+        def _call_direct_work_return():
+            try:
+                return bpy.ops.bmanga.exit_coma_mode_safe(to_work=True)
+            except RuntimeError:
+                # bpy.ops は report(ERROR) + CANCELLED を Python 呼び出し側へ
+                # RuntimeError として返す。UI上ではキャンセルとして扱われる。
+                return {"CANCELLED"}
+
+        original_save_current_as = mode_op.blend_io.save_current_as
+        original_open_work_blend = mode_op.blend_io.open_work_blend
+        mode_op.blend_io.save_current_as = lambda _path, **_kwargs: False
+        mode_op.blend_io.open_work_blend = lambda _path: opened_targets.append(True) or True
+        try:
+            result = _call_direct_work_return()
+            assert result == {"CANCELLED"}, result
+            assert not opened_targets, "コマ保存失敗後に作品ファイルを開いています"
+            assert str(bpy.data.filepath) == coma_filepath, "コマ保存失敗後に現在ファイルが変わっています"
+        finally:
+            mode_op.blend_io.save_current_as = original_save_current_as
+            mode_op.blend_io.open_work_blend = original_open_work_blend
+
+        original_work_blend_exists = mode_op.blend_io.work_blend_exists
+        original_open_page_blend = mode_op.blend_io.open_page_blend
+        mode_op.blend_io.save_current_as = lambda _path, **_kwargs: True
+        mode_op.blend_io.work_blend_exists = lambda _path: False
+        mode_op.blend_io.open_page_blend = lambda *_args: opened_targets.append("page") or True
+        try:
+            result = _call_direct_work_return()
+            assert result == {"CANCELLED"}, result
+            assert "page" not in opened_targets, "作品ファイル欠落時にページへ誤遷移しています"
+        finally:
+            mode_op.blend_io.save_current_as = original_save_current_as
+            mode_op.blend_io.work_blend_exists = original_work_blend_exists
+            mode_op.blend_io.open_page_blend = original_open_page_blend
+
+        mode_op.blend_io.save_current_as = lambda _path, **_kwargs: True
+        mode_op.blend_io.open_work_blend = lambda _path: False
+        try:
+            result = _call_direct_work_return()
+            assert result == {"CANCELLED"}, result
+            assert str(bpy.data.filepath) == coma_filepath, "作品ファイルを開けない時に現在ファイルが変わっています"
+        finally:
+            mode_op.blend_io.save_current_as = original_save_current_as
+            mode_op.blend_io.open_work_blend = original_open_work_blend
+
+        result = bpy.ops.bmanga.exit_coma_mode_safe(to_work=True)
+        assert result == {"FINISHED"}, result
+        context = bpy.context
+        role, _page_id, _coma_id = page_file_scene.current_role(context)
+        assert role == page_file_scene.ROLE_WORK
+        transition_records = _draw_records(work_panel.BMANGA_PT_coma_return, context)
+        _assert_present(transition_records, title)
         print("BMANGA_PAGE_FILE_PANEL_ROLE_OK")
     finally:
         if mod is not None:

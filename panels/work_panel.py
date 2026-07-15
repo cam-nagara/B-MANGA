@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import bpy
 from bpy.types import Panel
 
@@ -17,6 +19,35 @@ _ROLE_LABELS = {
     "page": ("ページファイル", "FILE"),
     "coma": ("コマファイル", "OUTLINER_OB_CAMERA"),
 }
+
+
+def _work_title(work) -> str:
+    info = getattr(work, "work_info", None)
+    title = str(getattr(info, "work_name", "") or "").strip()
+    if title:
+        return title
+    work_dir = str(getattr(work, "work_dir", "") or "")
+    if work_dir:
+        return Path(work_dir).stem
+    return "作品名未設定"
+
+
+def _file_identity_text(work, role: str, page_id: str, coma_id: str) -> str:
+    """ファイル遷移パネルへ表示する作品・ページ・コマ識別行を返す."""
+    title = _work_title(work)
+    if role == page_file_scene.ROLE_WORK:
+        return title
+    page_number = ""
+    if str(page_id or "").startswith("p") and str(page_id)[1:].isdigit():
+        page_number = f"p{int(str(page_id)[1:]):04d}"
+    if role == page_file_scene.ROLE_PAGE:
+        return f"{title} {page_number}".strip()
+    if role == page_file_scene.ROLE_COMA:
+        coma_number = ""
+        if str(coma_id or "").startswith("c") and str(coma_id)[1:].isdigit():
+            coma_number = f"コマ{int(str(coma_id)[1:]):02d}"
+        return " ".join(part for part in (title, page_number, coma_number) if part)
+    return title
 
 
 def _page_file_nav_specs(work) -> tuple[tuple[str, str], tuple[str, str]]:
@@ -123,19 +154,30 @@ class BMANGA_PT_coma_return(Panel):
         shortcut_visibility.mark_bmanga_panel_drawn(context)
         layout = self.layout
 
-        role, _pid, _cid = page_file_scene.current_role(context)
+        work = get_work(context)
+        role, page_id, coma_id = page_file_scene.current_role(context)
         label, icon = _ROLE_LABELS.get(role, ("不明", "QUESTION"))
         row = layout.row()
         row.alignment = "CENTER"
-        row.label(text=label, icon=icon)
+        row.label(
+            text=_file_identity_text(work, role, page_id, coma_id) if work is not None else label,
+            icon=icon,
+        )
         layout.separator(factor=0.5)
 
         if get_mode(context) == MODE_COMA or shortcut_visibility.current_blend_is_coma_blend():
-            layout.operator(
+            row = layout.row(align=True)
+            row.operator(
                 "bmanga.exit_coma_mode_safe",
                 text="ページに戻る",
                 icon="BACK",
             )
+            to_work = row.operator(
+                "bmanga.exit_coma_mode_safe",
+                text="作品に戻る",
+                icon="HOME",
+            )
+            to_work.to_work = True
             op = layout.operator("bmanga.open_current_folder", text="保存フォルダを開く", icon="FILEBROWSER")
             op.target = "COMA"
             return

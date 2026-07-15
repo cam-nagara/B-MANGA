@@ -41,7 +41,9 @@ def import_document(context, work, document: ScenarioDocument) -> dict[str, int]
     original_active = int(getattr(work, "active_page_index", -1))
     added_pages, new_page_ids = _ensure_page_count(work, work_dir, len(document.pages))
     balloon_by_name = {p.name: p for p in balloon_presets.list_all_presets(work_dir)}
-    text_by_name = {p.name: p for p in text_presets.list_all_presets(work_dir)}
+    ordered_text_presets = text_presets.list_all_presets(work_dir)
+    text_by_name = {p.name: p for p in ordered_text_presets}
+    first_text_preset = ordered_text_presets[0] if ordered_text_presets else None
     result = {"pagesAdded": added_pages, "created": 0, "updated": 0, "ignored": 0}
     # 今回の取込で新規作成した (フキダシ, テキスト) ペアだけを記録する。
     # 既存ペア (更新のみ) は含めない — 手動で並び替えた順序を尊重するため。
@@ -59,6 +61,7 @@ def import_document(context, work, document: ScenarioDocument) -> dict[str, int]
                 if not row.body:
                     result["ignored"] += 1
                     continue
+                exact_text_preset = text_by_name.get(row.type_name)
                 created, pair_new, balloon_id, text_id = _upsert_row(
                     work,
                     page,
@@ -66,7 +69,8 @@ def import_document(context, work, document: ScenarioDocument) -> dict[str, int]
                     row,
                     row_index,
                     balloon_by_name,
-                    text_by_name.get(row.type_name),
+                    exact_text_preset or first_text_preset,
+                    exact_text_preset is not None,
                     _merged_ruby_presentation(document.presentation, row.presentation) if apply_presentation else None,
                 )
                 result["created" if created else "updated"] += 1
@@ -123,21 +127,21 @@ def _ensure_page_count(work, work_dir: Path, required: int) -> tuple[int, set[st
 
 def _upsert_row(
     work, page, document_id: str, row: ScenarioRow, ordinal: int, balloon_by_name: dict, text_preset,
-    ruby_presentation: dict | None = None,
+    text_preset_exact_match: bool, ruby_presentation: dict | None = None,
 ) -> tuple[bool, bool, str, str]:
     balloon = _find_source(page.balloons, document_id, row.row_id)
     text = _find_source(page.texts, document_id, row.row_id)
     balloon_existed = balloon is not None
     text_new = text is None
     # previous_type は _stamp_source (直後に meldex_type を row.type_name で
-    # 上書きする) より前に読み取る。text_new のときは比較対象が無いので空文字
-    # とし、type_changed を常に False にする。
+    # 上書きする) より前に読み取る。空タイプも正規の値なので、既存行の
+    # 空→名前付き変更を見落とさない。
     previous_type = str(getattr(text, "meldex_type", "") or "") if not text_new else ""
     if text_new:
         text = page.texts.add()
         text.id = _allocate_id(page.texts, "text")
     _stamp_source(text, document_id, row)
-    type_changed = bool(previous_type) and previous_type != row.type_name
+    type_changed = not text_new and previous_type != row.type_name
     if text_new or type_changed:
         text_presets.reset_entry_to_defaults(text)
         if text_preset is not None:
@@ -174,7 +178,7 @@ def _upsert_row(
     #   - テキストプリセットが一致しない行は、従来通り row.type_name で
     #     フキダシプリセットを独立にマッチングする。
     linked = str(getattr(text, "linked_balloon_preset", "") or "")
-    skip_balloon = text_preset is not None and not linked
+    skip_balloon = text_preset_exact_match and not linked
 
     if skip_balloon and not balloon_existed:
         text.parent_balloon_id = ""

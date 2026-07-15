@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -165,6 +166,7 @@ def main() -> None:
         from bmanga_dev.ui import overlay_effect_line, overlay_visibility
         from bmanga_dev.utils import balloon_shapes
         from bmanga_dev.utils import free_transform
+        from bmanga_dev.utils import image_path_object
         from bmanga_dev.utils import layer_stack as layer_stack_utils
         from bmanga_dev.utils import object_naming as on
         from bmanga_dev.utils import effect_line_object
@@ -172,7 +174,15 @@ def main() -> None:
         from bmanga_dev.utils import text_real_object
         from bmanga_dev.utils.geom import Rect
         from bmanga_dev.utils.layer_hierarchy import coma_stack_key, page_stack_key
-        from bmanga_dev.operators import effect_line_gen, object_tool_op, object_tool_selection, page_op
+        from bmanga_dev.operators import (
+            effect_line_gen,
+            handle_intercept,
+            object_handle_priority,
+            object_tool_free_transform,
+            object_tool_op,
+            object_tool_selection,
+            page_op,
+        )
 
         context = bpy.context
         work = context.scene.bmanga_work
@@ -245,10 +255,41 @@ def main() -> None:
         balloon = _add_balloon(page, coma_key)
         page_balloon = _add_page_balloon(page, page_stack_key(page))
         text = _add_text(page, coma_key)
+        image_path = context.scene.bmanga_image_path_layers.add()
+        image_path.id = "object_tool_image_path"
+        image_path.title = "画像パス"
+        image_path.parent_kind = "coma"
+        image_path.parent_key = coma_key
+        image_path.content_source = "shape"
+        image_path.path_points_json = json.dumps([[74.0, 58.0], [94.0, 72.0]])
+        image_path.brush_size_mm = 8.0
+        if image_path_object.ensure_image_path_object(
+            scene=context.scene, entry=image_path, page=page,
+        ) is None:
+            raise AssertionError("画像パスの実体を作成できません")
+        fill = context.scene.bmanga_fill_layers.add()
+        fill.id = "object_tool_fill"
+        fill.title = "囲い塗り"
+        fill.parent_kind = "coma"
+        fill.parent_key = coma_key
+        fill.use_region = True
+        fill.region_x_mm = 48.0
+        fill.region_y_mm = 52.0
+        fill.region_width_mm = 22.0
+        fill.region_height_mm = 18.0
+        full_fill = context.scene.bmanga_fill_layers.add()
+        full_fill.id = "object_tool_full_fill"
+        full_fill.title = "全面塗り"
+        full_fill.parent_kind = "page"
+        full_fill.parent_key = page_stack_key(page)
+        full_fill.use_region = False
         layer_stack_utils.sync_layer_stack_after_data_change(context)
 
         visible_kinds = set(_visible_stack_kinds(context))
-        expected_kinds = {"coma", "gp", "effect", "raster", "image", "balloon", "text"}
+        expected_kinds = {
+            "coma", "gp", "effect", "raster", "image", "image_path",
+            "balloon", "text",
+        }
         missing = expected_kinds - visible_kinds
         if missing:
             raise AssertionError(f"レイヤーリスト表示不足: {sorted(missing)} / visible={sorted(visible_kinds)}")
@@ -310,7 +351,125 @@ def main() -> None:
             object_selection.balloon_key(page, balloon),
             page_balloon_key,
             object_selection.text_key(page, text),
+            object_selection.image_path_key(image_path),
+            object_selection.fill_key(fill),
         ]
+        expected_handle_kinds = {
+            "balloon", "text", "effect", "image", "image_path", "raster", "fill", "gp",
+        }
+        if object_handle_priority._HANDLE_KINDS != expected_handle_kinds:  # noqa: SLF001
+            raise AssertionError(
+                "選択枠を描画するオブジェクト種別と最優先ハンドル種別が一致しません: "
+                f"{sorted(object_handle_priority._HANDLE_KINDS)!r}"  # noqa: SLF001
+            )
+
+        # 選択中オブジェクトの表示ハンドルは、通常のレイヤー/コマ判定より前に
+        # 共通入口で拾われることを、実際に作成済みの全種別で確認する。
+        for key in keys:
+            object_selection.set_keys(context, [key])
+            bounds = object_tool_selection.selection_bounds_for_key(context, key)
+            if bounds is None:
+                raise AssertionError(f"優先ハンドル検証用の選択枠がありません: {key}")
+            handle_rect = object_tool_selection.handle_rect_for_bounds(bounds)
+            point = (float(handle_rect.x2), float(handle_rect.y2))
+            event = SimpleNamespace(ctrl=False)
+            hit = object_handle_priority.hit_visible_selected_handle(
+                context,
+                event,
+                lambda _ctx, _event, p=point: p,
+            )
+            if (
+                hit is None
+                or not object_handle_priority.is_visible_handle_hit(hit)
+                or str(hit.get("key", "")) != key
+            ):
+                raise AssertionError(f"表示ハンドルが最優先入口で拾われません: key={key!r} hit={hit!r}")
+
+        # 旧データ等で自由変形クアッドを持つテキストも、見えている角は背面へ
+        # 抜けない。ただしテキストの既存契約どおり、角ドラッグは移動として扱う。
+        text_key = object_selection.text_key(page, text)
+        free_transform.set_entry_offsets(
+            text,
+            {
+                free_transform.BOTTOM_LEFT: (-1.0, -1.0),
+                free_transform.BOTTOM_RIGHT: (1.0, -1.0),
+                free_transform.TOP_RIGHT: (1.0, 1.0),
+                free_transform.TOP_LEFT: (-1.0, 1.0),
+            },
+            enabled=True,
+        )
+        object_selection.set_keys(context, [text_key])
+        text_quad = object_tool_free_transform._quad_for_key(context, text_key)  # noqa: SLF001
+        assert text_quad is not None
+        text_corner = object_tool_free_transform._expanded_quad_for_hit(text_quad)[  # noqa: SLF001
+            free_transform.TOP_RIGHT
+        ]
+        text_handle_hit = object_handle_priority.hit_visible_selected_handle(
+            context,
+            SimpleNamespace(ctrl=False),
+            lambda _ctx, _event: text_corner,
+        )
+        if text_handle_hit is None or str(text_handle_hit.get("kind", "")) != "text":
+            raise AssertionError(f"変形済みテキストの表示角を取得できません: {text_handle_hit!r}")
+        resolved_text_hit = object_handle_priority.resolved_drag_hit(
+            context, SimpleNamespace(ctrl=False), text_handle_hit,
+        )
+        if str(resolved_text_hit.get("part", "")) != "move":
+            raise AssertionError(f"テキストの表示角が自由変形へ誤変換されます: {resolved_text_hit!r}")
+        free_transform.set_entry_offsets(text, {}, enabled=False)
+
+        # オブジェクトツール以外のモーダルツールでも、画像の右上ハンドルを
+        # 押した時は現在のツールを終了せず、背面へ通さず同じリサイズ処理を使う。
+        image_key = object_selection.image_key(image)
+        object_selection.set_keys(context, [image_key])
+        image_bounds = object_tool_selection.selection_bounds_for_key(context, image_key)
+        assert image_bounds is not None
+        image_handle = object_tool_selection.handle_rect_for_bounds(image_bounds)
+        world_point = [float(image_handle.x2), float(image_handle.y2)]
+        before_image_size = (float(image.width_mm), float(image.height_mm))
+        original_world_fn = object_tool_op._event_world_xy_mm  # noqa: SLF001
+        original_hit_object = object_tool_op.hit_object_at_event
+        original_extend = handle_intercept.coma_edge_move_op.extend_selected_handle_at_event
+        object_tool_op._event_world_xy_mm = lambda _ctx, _event: tuple(world_point)  # noqa: SLF001
+        # background実行にはイベント配下のVIEW_3D regionが無いので、ここでは
+        # 直前に全種別で検証した共通優先判定へ実イベント入口だけを差し替える。
+        object_tool_op.hit_object_at_event = lambda ctx, event: (
+            object_handle_priority.hit_visible_selected_handle(
+                ctx, event, object_tool_op._event_world_xy_mm,  # noqa: SLF001
+            )
+        )
+        # 同一点でコマ枠ハンドルもヒットする状況を作り、現在表示されている
+        # 画像ハンドルの方が先に処理されることを確認する。
+        handle_intercept.coma_edge_move_op.extend_selected_handle_at_event = lambda _ctx, _event: True
+        modal_owner = SimpleNamespace()
+        try:
+            press = SimpleNamespace(
+                type="LEFTMOUSE", value="PRESS", ctrl=False, shift=False, alt=False,
+                mouse_x=0, mouse_y=0,
+            )
+            if not handle_intercept.try_intercept_press(context, press, modal_owner):
+                raise AssertionError("他ツール使用中に表示中の画像ハンドルを優先取得できません")
+            world_point[0] += 8.0
+            world_point[1] += 5.0
+            move = SimpleNamespace(type="MOUSEMOVE", value="NOTHING", mouse_x=0, mouse_y=0)
+            if not handle_intercept.update_drag(context, move, modal_owner):
+                raise AssertionError("他ツール使用中の共通ハンドルドラッグを更新できません")
+            release = SimpleNamespace(type="LEFTMOUSE", value="RELEASE", mouse_x=0, mouse_y=0)
+            if not handle_intercept.finish_drag(context, release, modal_owner):
+                raise AssertionError("他ツール使用中の共通ハンドルドラッグを完了できません")
+        finally:
+            object_tool_op._event_world_xy_mm = original_world_fn  # noqa: SLF001
+            object_tool_op.hit_object_at_event = original_hit_object
+            handle_intercept.coma_edge_move_op.extend_selected_handle_at_event = original_extend
+        if (
+            float(image.width_mm) <= before_image_size[0] + 7.0
+            or float(image.height_mm) <= before_image_size[1] + 4.0
+        ):
+            raise AssertionError(
+                "他ツール使用中の表示ハンドル操作が画像リサイズへ反映されません: "
+                f"before={before_image_size!r} after={(image.width_mm, image.height_mm)!r}"
+            )
+
         for key in keys:
             bounds = object_tool_selection.selection_bounds_for_key(context, key)
             if bounds is None or bounds.width <= 0.0 or bounds.height <= 0.0:
@@ -370,6 +529,16 @@ def main() -> None:
         page_bounds = object_tool_selection.selection_bounds_for_key(context, page_key)
         if page_bounds is None or page_bounds.width <= 0.0 or page_bounds.height <= 0.0:
             raise AssertionError("ページの選択枠の範囲が取れません")
+        if overlay_ui._selection_handles_are_actionable(context, page_key):  # noqa: SLF001
+            raise AssertionError("移動不能なページに操作ハンドルが表示されます")
+        if overlay_ui._selection_handles_are_actionable(  # noqa: SLF001
+            context, object_selection.fill_key(full_fill),
+        ):
+            raise AssertionError("移動不能な全面塗りに操作ハンドルが表示されます")
+        if not overlay_ui._selection_handles_are_actionable(  # noqa: SLF001
+            context, object_selection.fill_key(fill),
+        ):
+            raise AssertionError("操作可能な囲い塗りのハンドルが非表示です")
         object_tool_selection.sync_outliner_selection_for_keys(context, [page_key])
         if int(getattr(work, "active_page_index", -1)) != 0:
             raise AssertionError("ページ選択が同期しません")

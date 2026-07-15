@@ -23,6 +23,7 @@ from . import (
     coma_modal_state,
     coma_picker,
     object_rotation,
+    object_handle_priority,
     object_tool_balloon_tail,
     object_tool_free_transform,
     object_tool_selection,
@@ -45,6 +46,7 @@ class _DragSession:
         "prev_x",
         "prev_y",
         "move_session",
+        "shared_handle_drag",
     )
 
     def __init__(self, kind: str, action: str) -> None:
@@ -59,6 +61,7 @@ class _DragSession:
         self.prev_x: float = 0.0
         self.prev_y: float = 0.0
         self.move_session = None
+        self.shared_handle_drag = None
 
 
 def is_dragging(operator) -> bool:
@@ -77,6 +80,23 @@ def try_intercept_press(context, event, operator) -> bool:
     work = get_work(context)
     if work is None:
         return False
+
+    # 選択枠として現在見えているハンドルを、しっぽ・コマ枠・背面の
+    # オブジェクトを含む全判定より先に処理する。
+    initial_hit = object_tool_op.hit_object_at_event(context, event)
+    if object_handle_priority.is_visible_handle_hit(initial_hit):
+        shared_drag = object_handle_priority.begin_shared_handle_drag(
+            context,
+            event,
+            initial_hit,
+            object_tool_op._event_world_xy_mm,
+        )
+        if shared_drag is not None:
+            session = _DragSession("visible_handle", "")
+            session.shared_handle_drag = shared_drag
+            setattr(operator, _ATTR, session)
+        # スナップショットを作れない対象でも背面へクリックを通さない。
+        return True
 
     # フキダシしっぽポイント (Ctrl なしでも選択中のものは掴める)
     if not bool(getattr(event, "ctrl", False)):
@@ -117,7 +137,7 @@ def try_intercept_press(context, event, operator) -> bool:
                 return True
 
     # 選択済みオブジェクトの body/edge ドラッグ (移動)
-    hit = object_tool_op.hit_object_at_event(context, event)
+    hit = initial_hit
     if hit is not None:
         part = str(hit.get("part", "") or "")
         if part in free_transform.CORNER_PARTS:
@@ -201,6 +221,12 @@ def update_drag(context, event, operator) -> bool:
     session: _DragSession | None = getattr(operator, _ATTR, None)
     if session is None:
         return False
+
+    if session.kind == "visible_handle":
+        if session.shared_handle_drag is not None:
+            session.shared_handle_drag.update(context, event)
+            session.moved = session.shared_handle_drag.moved
+        return True
 
     from . import object_tool_op
     coords = object_tool_op._event_world_xy_mm(context, event)
@@ -298,6 +324,11 @@ def finish_drag(context, event, operator) -> bool:
     session: _DragSession | None = getattr(operator, _ATTR, None)
     if session is None:
         return False
+    if session.kind == "visible_handle":
+        if session.shared_handle_drag is not None:
+            session.shared_handle_drag.finish(context)
+        setattr(operator, _ATTR, None)
+        return True
     moved = getattr(session, "moved", False)
     if session.kind == "move":
         if session.move_session is not None:
@@ -323,6 +354,11 @@ def cancel_drag(context, operator) -> None:
     """ESC などでドラッグをキャンセル。"""
     session: _DragSession | None = getattr(operator, _ATTR, None)
     if session is None:
+        return
+    if session.kind == "visible_handle":
+        if session.shared_handle_drag is not None:
+            session.shared_handle_drag.cancel(context)
+        setattr(operator, _ATTR, None)
         return
     if session.kind == "move":
         if session.move_session is not None:

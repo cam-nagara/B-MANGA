@@ -37,6 +37,7 @@ from .alt_reparent_op import (
 from . import (
     balloon_op,
     object_tool_free_transform,
+    object_handle_priority,
     object_rotation,
     object_tool_balloon_tail,
     effect_line_op,
@@ -346,9 +347,11 @@ def hit_object_at_event(context, event) -> dict | None:
             return True
         return object_tool_selection.hit_visible_at_world(context, hit, world_x_mm, world_y_mm)
 
-    transformed = object_tool_free_transform.hit_transformed_handle_at_event(context, event, _event_world_xy_mm)
-    if _hit_visible(transformed):
-        return transformed
+    selected_handle = object_handle_priority.hit_visible_selected_handle(
+        context, event, _event_world_xy_mm,
+    )
+    if _hit_visible(selected_handle):
+        return selected_handle
     # 選択中/アクティブなコマの辺/頂点はレイヤーオブジェクトより先にチェック
     # （ハンドルが描画されているのに背面オブジェクトに負けるのを防ぐ）
     active_coma_edge = _pick_selected_coma_edge_or_vertex(
@@ -950,10 +953,16 @@ class BMANGA_OT_object_tool(Operator):
         mode = _selection_mode(event)
         if mode != "single":
             self._clear_click_state()
-        if event.value == "DOUBLE_CLICK" and mode == "single":
+        initial_hit = None
+        priority_handle_hit = None
+        if mode == "single":
+            initial_hit = self._hit_object(context, event)
+            if object_handle_priority.is_visible_handle_hit(initial_hit):
+                priority_handle_hit = initial_hit
+        if event.value == "DOUBLE_CLICK" and mode == "single" and priority_handle_hit is None:
             if self._try_open_page_file_from_event(context, event):
                 return {"FINISHED"}
-            hit = self._hit_object(context, event)
+            hit = initial_hit
             if self._try_enter_text_edit_from_hit(context, hit):
                 return {"FINISHED"}
             coma_hit = self._coma_open_hit_from_hit(hit)
@@ -962,6 +971,7 @@ class BMANGA_OT_object_tool(Operator):
         if (
             event.value == "PRESS"
             and mode == "single"
+            and priority_handle_hit is None
             and coma_edge_move_op.extend_selected_handle_at_event(context, event)
         ):
             self._clear_click_state()
@@ -971,6 +981,7 @@ class BMANGA_OT_object_tool(Operator):
         # クリックを専有するため、ここで Alt を解釈する必要がある。
         if (
             event.value == "PRESS"
+            and priority_handle_hit is None
             and bool(getattr(event, "alt", False))
             and not bool(getattr(event, "ctrl", False))
             and _reparent_has_targets(context)
@@ -981,37 +992,47 @@ class BMANGA_OT_object_tool(Operator):
                 return {"RUNNING_MODAL"}
             if self._start_reparent_drag(context, event):
                 return {"RUNNING_MODAL"}
-        if event.value == "PRESS" and bool(getattr(event, "ctrl", False)):
+        if event.value == "PRESS" and priority_handle_hit is None and bool(getattr(event, "ctrl", False)):
             if object_tool_balloon_tail.handle_ctrl_press(self, context, event):
                 self._clear_click_state()
                 return {"RUNNING_MODAL"}
-        if event.value == "PRESS" and not bool(getattr(event, "ctrl", False)):
+        if event.value == "PRESS" and priority_handle_hit is None and not bool(getattr(event, "ctrl", False)):
             object_tool_balloon_tail.clear_pending(self)
             # 選択中フキダシの既存しっぽポイントは Ctrl 無しでもつかめる
             if mode == "single" and object_tool_balloon_tail.handle_plain_press(self, context, event):
                 self._clear_click_state()
                 return {"RUNNING_MODAL"}
-        hit = self._hit_object(context, event)
+        hit = initial_hit if mode == "single" else self._hit_object(context, event)
         if event.value == "PRESS" and mode == "single":
-            # Blender の DOUBLE_CLICK はモーダル実行中に届かないため、
-            # ページファイルを開く判定もコマと同じ自前連続クリック検出で行う。
-            # ページ一覧 (全ページ表示) ではページ判定をコマ判定より優先する。
-            if hit is not None and self._is_manual_coma_double_click(event, hit):
-                if str(hit.get("kind", "") or "") == "text":
-                    self._clear_click_state()
-                    if self._try_enter_text_edit_from_hit(context, hit):
-                        return {"FINISHED"}
-            open_hit = self._page_open_hit_from_event(context, event)
-            if open_hit is None:
-                open_hit = self._coma_open_hit_from_hit(hit)
-            if self._is_manual_coma_double_click(event, open_hit):
+            if object_handle_priority.is_visible_handle_hit(hit):
+                # 表示中ハンドルはページ/コマを開く連続クリック履歴より上位。
+                # 同じ座標にページプレビューが重なっていても、2回目の押下で
+                # ファイル遷移せず、そのハンドルを継続して操作できる。
                 self._clear_click_state()
-                if str(open_hit.get("kind", "") or "") == "page_file":
-                    if self._try_open_page_file_from_event(context, event):
+            else:
+                # Blender の DOUBLE_CLICK はモーダル実行中に届かないため、
+                # ページファイルを開く判定もコマと同じ自前連続クリック検出で行う。
+                # ページ一覧 (全ページ表示) ではページ判定をコマ判定より優先する。
+                if hit is not None and self._is_manual_coma_double_click(event, hit):
+                    if str(hit.get("kind", "") or "") == "text":
+                        self._clear_click_state()
+                        if self._try_enter_text_edit_from_hit(context, hit):
+                            return {"FINISHED"}
+                open_hit = self._page_open_hit_from_event(context, event)
+                if open_hit is None:
+                    open_hit = self._coma_open_hit_from_hit(hit)
+                if self._is_manual_coma_double_click(event, open_hit):
+                    self._clear_click_state()
+                    if str(open_hit.get("kind", "") or "") == "page_file":
+                        if self._try_open_page_file_from_event(context, event):
+                            return {"FINISHED"}
+                    elif self._try_enter_coma_from_hit(context, open_hit):
                         return {"FINISHED"}
-                elif self._try_enter_coma_from_hit(context, open_hit):
-                    return {"FINISHED"}
-            self._remember_coma_click(event, hit or open_hit)
+                # ページファイルを開ける位置では、紙面/プレビュー実体への通常ヒット
+                # より page_file キーをクリック履歴へ優先して保存する。逆順だと
+                # 1回目=page、2回目=page_file となり、同じページ上の連続クリックでも
+                # ダブルクリックとして成立しない。
+                self._remember_coma_click(event, open_hit or hit)
         if event.value == "PRESS" and mode == "single":
             # 回転リングの判定は「hit が None の時だけ」ではなく常に行う。
             # コマ/ページは矩形内部全体でヒットを返すため、hit is None
@@ -1052,15 +1073,18 @@ class BMANGA_OT_object_tool(Operator):
             return {"RUNNING_MODAL"}
         if event.value == "DOUBLE_CLICK" and mode == "single" and self._try_enter_coma_from_hit(context, hit):
             return {"FINISHED"}
-        free_action = object_tool_free_transform.free_action_for_hit(
-            hit,
-            ctrl=event.value == "PRESS" and bool(getattr(event, "ctrl", False)),
-            context=context if event.value == "PRESS" else None,
-        )
-        if free_action:
-            mode = "single"
-            hit = dict(hit)
-            hit["part"] = free_action
+        if object_handle_priority.is_visible_handle_hit(hit):
+            hit = object_handle_priority.resolved_drag_hit(context, event, hit)
+        else:
+            free_action = object_tool_free_transform.free_action_for_hit(
+                hit,
+                ctrl=event.value == "PRESS" and bool(getattr(event, "ctrl", False)),
+                context=context if event.value == "PRESS" else None,
+            )
+            if free_action:
+                mode = "single"
+                hit = dict(hit)
+                hit["part"] = free_action
         self._activate_hit(context, hit, mode=mode)
         if mode in {"toggle", "add"}:
             return {"RUNNING_MODAL"}

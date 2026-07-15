@@ -60,10 +60,16 @@ def main() -> None:
         manual = work.pages[0].balloons.add()
         manual.id = "manual-balloon"
         balloon_presets.list_all_presets = lambda _path: [SimpleNamespace(name="会話", data={})]
+        first_font = r"C:\Windows\Fonts\YuGothM.ttc"
+        dialogue_font = r"C:\Windows\Fonts\msgothic.ttc"
         text_presets.list_all_presets = lambda _path: [
             SimpleNamespace(
+                name="先頭既定",
+                data={"font": first_font, "font_bold": False, "writing_mode": "vertical", "linked_balloon_preset": ""},
+            ),
+            SimpleNamespace(
                 name="会話",
-                data={"font_bold": True, "writing_mode": "horizontal", "linked_balloon_preset": "会話"},
+                data={"font": dialogue_font, "font_bold": True, "writing_mode": "horizontal", "linked_balloon_preset": "会話"},
             )
         ]
 
@@ -89,7 +95,12 @@ def main() -> None:
         text = next(item for item in work.pages[0].texts if item.meldex_source_row_id == "r1")
         assert text.body == "東京\nです"
         assert text.font_bold and text.writing_mode == "horizontal"
+        assert text.font == dialogue_font, "完全一致プリセットのフォントを適用する"
         assert len(text.ruby_spans) == 1 and text.ruby_spans[0].ruby_text == "とうきょう"
+        fallback_text = next(item for item in work.pages[0].texts if item.meldex_source_row_id == "r2")
+        assert fallback_text.font == first_font and fallback_text.writing_mode == "vertical", (
+            "完全一致しないタイプにはリスト先頭のテキストプリセットをフォント込みで適用する"
+        )
         balloon = next(item for item in imported if item.meldex_source_row_id == "r1")
         assert balloon.width_mm > text.width_mm and balloon.height_mm > text.height_mm
         all_imported_ids = [item.id for page in work.pages for item in page.balloons if item.meldex_source_row_id]
@@ -100,11 +111,17 @@ def main() -> None:
         balloon.fill_color = (0.2, 0.3, 0.4, 1.0)
         changed = _payload()
         changed["pages"][0]["rows"][0]["type"] = "未登録"
+        changed["pages"][1]["rows"][0]["type"] = "会話"
         second = meldex_scenario_import.import_payload(bpy.context, work, changed)
         assert second["created"] == 0 and second["updated"] == 4
         assert counts == [(len(page.balloons), len(page.texts), len(page.comas)) for page in work.pages]
         text = next(item for item in work.pages[0].texts if item.meldex_source_row_id == "r1")
-        assert not text.font_bold and text.writing_mode == "horizontal", "未登録タイプは新規既定の横書きへ戻す"
+        assert not text.font_bold and text.writing_mode == "vertical", "未登録タイプは先頭プリセットへ切り替える"
+        assert text.font == first_font, "タイプ変更時も先頭プリセットのフォントを適用する"
+        formerly_blank = next(item for item in work.pages[1].texts if item.meldex_source_row_id == "r3")
+        assert formerly_blank.font == dialogue_font and formerly_blank.font_bold, (
+            "空タイプから完全一致タイプへ変えた時も一致プリセットを適用する"
+        )
         balloon = next(item for item in work.pages[0].balloons if item.meldex_source_row_id == "r1")
         assert balloon.shape == "ellipse" and not balloon.custom_preset_name
         assert abs(balloon.line_width_mm - 0.3) < 1.0e-6 and tuple(balloon.fill_color) == (1.0, 1.0, 1.0, 1.0)

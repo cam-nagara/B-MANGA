@@ -318,6 +318,24 @@ def _free_transform_quad_for_key(context, key: str, rect: Rect):
     return None
 
 
+def _selection_handles_are_actionable(context, key: str) -> bool:
+    """実際にドラッグ操作を持つ選択枠だけへハンドルを表示する."""
+    kind, _page_id, item_id = object_selection.parse_key(key)
+    if kind == "page":
+        # ページ位置は一覧グリッドが管理し、オブジェクトドラッグ対象ではない。
+        return False
+    if kind == "fill":
+        try:
+            from ..operators import object_tool_selection
+
+            _index, entry = object_tool_selection.find_fill_by_key(context, item_id)
+        except Exception:  # noqa: BLE001
+            entry = None
+        # 親全体を覆う塗りは移動/リサイズ不能。範囲指定の塗りだけ操作できる。
+        return bool(entry is not None and getattr(entry, "use_region", False))
+    return True
+
+
 def _balloon_flash_center_xy(entry, rect: Rect) -> tuple[float, float] | None:
     if entry is None or not balloon_shapes.is_flash_line_style(getattr(entry, "line_style", "")):
         return None
@@ -361,9 +379,10 @@ def _draw_object_tool_layer_bounds(context) -> None:
             display_rect = object_tool_selection.handle_rect_for_bounds(rect)
             _draw_rect_outline(display_rect, viewport_colors.SELECTION, width_mm=0.50)
             handle_rects = _selection_handle_rects(display_rect)
-        for handle in handle_rects:
-            _draw_rect_fill(handle, viewport_colors.HANDLE_FILL)
-            _draw_rect_outline(handle, viewport_colors.HANDLE_OUTLINE, width_mm=0.25)
+        if _selection_handles_are_actionable(context, key):
+            for handle in handle_rects:
+                _draw_rect_fill(handle, viewport_colors.HANDLE_FILL)
+                _draw_rect_outline(handle, viewport_colors.HANDLE_OUTLINE, width_mm=0.25)
         if kind == "balloon":
             _kind, page_id, item_id = object_selection.parse_key(key)
             try:
