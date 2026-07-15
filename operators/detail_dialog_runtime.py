@@ -130,6 +130,13 @@ def begin_actual_session(context, target, *, target_validator=None):
             preset_type=_preset_type_for_target(target),
             preset_selection=initial_preset_selection_for_target(context, target),
         )
+        mark_preset_settings_saved(
+            context,
+            session.token,
+            target,
+            session.preset_type,
+            session=session,
+        )
     except Exception as prepare_error:
         _release_curve_sync(target)
         try:
@@ -193,6 +200,68 @@ def _preset_type_for_target(target) -> str | None:
     # 実レイヤーはダイアログ開始時のnamespaceではなく、画面で現在選ばれている
     # タイプを正とする。gradientからsolidへ変えた後も旧カテゴリへ保存しない。
     return "gradient" if fill_type == "gradient" else "fill"
+
+
+def _sync_preset_guard_state(target) -> None:
+    """グラフUI上の編集値も、切替前の変更検知へ取り込む。"""
+
+    if target.kind == "coma":
+        _sync_coma_curve(target.data)
+    params = _curve_params(target)
+    if params is not None:
+        _sync_curve_nodes(params)
+
+
+def preset_switch_requires_confirmation(
+    context,
+    session_token: str,
+    target,
+    preset_type: str,
+) -> bool:
+    """最後の適用／保存後に、プリセット保存対象値が変わったかを返す。"""
+
+    session = _OPEN_ACTUAL_SESSIONS.get(str(session_token or ""))
+    if session is None:
+        raise detail_dialog.DetailTargetNotFoundError(str(target.stable_id or ""))
+    if session.target.kind != target.kind or session.target.stable_id != target.stable_id:
+        raise detail_dialog.DetailTargetNotFoundError(str(target.stable_id or ""))
+    from ..utils import detail_preset_change_guard
+
+    _sync_preset_guard_state(target)
+    current = detail_preset_change_guard.capture_preset_settings(target, preset_type)
+    baseline = session.preset_baseline
+    return baseline is not None and detail_preset_change_guard.preset_settings_changed(
+        baseline,
+        current,
+    )
+
+
+def mark_preset_settings_saved(
+    context,
+    session_token: str,
+    target,
+    preset_type: str | None,
+    *,
+    session=None,
+) -> bool:
+    """ダイアログ開始・プリセット適用・現在値保存後の比較基準を更新する。"""
+
+    active = session or _OPEN_ACTUAL_SESSIONS.get(str(session_token or ""))
+    if active is None:
+        return False
+    if active.target.kind != target.kind or active.target.stable_id != target.stable_id:
+        return False
+    kind = str(preset_type or "").strip()
+    if not kind:
+        active.set_preset_baseline(None)
+        return False
+    from ..utils import detail_preset_change_guard
+
+    _sync_preset_guard_state(target)
+    active.set_preset_baseline(
+        detail_preset_change_guard.capture_preset_settings(target, kind)
+    )
+    return True
 
 
 def sync_actual_session(context, session) -> None:
@@ -926,6 +995,8 @@ __all__ = [
     "execute_independent_detail_action",
     "execute_transactional_detail_action",
     "initial_preset_selection_for_target",
+    "mark_preset_settings_saved",
+    "preset_switch_requires_confirmation",
     "ensure_preset_type_available",
     "prepare_actual_target",
     "preset_session_is_open",

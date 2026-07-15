@@ -92,14 +92,16 @@ class BMANGA_UL_detail_linked_balloon_presets(UIList):
 
 def _invoke_detail_preset_apply(item):
     return bpy.ops.bmanga.detail_preset_apply(
-        "EXEC_DEFAULT",
+        "INVOKE_DEFAULT",
         preset_type=str(item.preset_type),
         preset_name=str(item.identifier),
+        preset_label=str(item.name or item.identifier),
         target_kind=str(item.target_kind),
         target_id=str(item.target_id),
         stable_id=str(item.target_id),
         stack_uid=str(item.stack_uid),
         session_token=str(item.session_token),
+        confirm_unsaved_changes=True,
     )
 
 
@@ -247,6 +249,7 @@ def sync_detail_preset_list(owner, context, session, preset_type: str) -> int:
         entries,
     )
     if getattr(owner, "_detail_preset_list_signature", None) == signature:
+        _restore_applied_preset_index(owner)
         return len(collection)
 
     collection.clear()
@@ -273,6 +276,25 @@ def sync_detail_preset_list(owner, context, session, preset_type: str) -> int:
         owner._detail_preset_list_syncing = False
     owner._detail_preset_list_signature = signature
     return len(entries)
+
+
+def _restore_applied_preset_index(owner) -> None:
+    """確認待ち／取消中は、UIListの選択表示を適用中の行へ戻す。"""
+
+    collection = getattr(owner, "detail_preset_items", None)
+    if collection is None:
+        return
+    selected_index = next(
+        (index for index, item in enumerate(collection) if bool(item.is_selected)),
+        -1,
+    )
+    if int(getattr(owner, "detail_preset_index", -1)) == selected_index:
+        return
+    owner._detail_preset_list_syncing = True
+    try:
+        owner.detail_preset_index = selected_index
+    finally:
+        owner._detail_preset_list_syncing = False
 
 
 def sync_detail_linked_balloon_preset_list(owner, context, session) -> int:
@@ -580,6 +602,61 @@ class BMANGA_OT_detail_preset_apply(Operator):
         options={"HIDDEN"},
     )
     session_token: StringProperty(name="詳細設定セッション", default="", options={"HIDDEN"})  # type: ignore[valid-type]
+    preset_label: StringProperty(name="表示名", default="", options={"HIDDEN"})  # type: ignore[valid-type]
+    confirm_unsaved_changes: BoolProperty(  # type: ignore[valid-type]
+        name="未保存設定を確認",
+        default=False,
+        options={"HIDDEN"},
+    )
+
+    def _fixed_target(self, context, preset_type: str):
+        target = _resolve_fixed_target(
+            context,
+            preset_type=preset_type,
+            target_kind=self.target_kind,
+            target_id=self.target_id,
+            stable_id=self.stable_id,
+            stack_uid=self.stack_uid,
+        )
+        if self.session_token:
+            from . import detail_dialog_runtime
+
+            if not detail_dialog_runtime.preset_session_is_open(
+                self.session_token, target
+            ):
+                raise ValueError("詳細設定を開いた対象が変更されています")
+        return target
+
+    def invoke(self, context, event):
+        if not self.confirm_unsaved_changes or not self.session_token:
+            return self.execute(context)
+        try:
+            preset_type = _preset_type(self.preset_type)
+            target = self._fixed_target(context, preset_type)
+            from . import detail_dialog_runtime
+
+            if not detail_dialog_runtime.preset_switch_requires_confirmation(
+                context,
+                self.session_token,
+                target,
+                preset_type,
+            ):
+                return self.execute(context)
+        except (LookupError, RuntimeError, ValueError, ReferenceError) as exc:
+            self.report({"WARNING"}, str(exc) or "プリセットを切り替えられません")
+            return {"CANCELLED"}
+        label = str(self.preset_label or self.preset_name or "選択プリセット")
+        return context.window_manager.invoke_confirm(
+            self,
+            event,
+            title="プリセットの切り替え確認",
+            message=(
+                "現在の設定はプリセットに保存されていません。"
+                f"保存せずに「{label}」へ切り替えますか？"
+            ),
+            confirm_text="保存せずに切り替える",
+            icon="QUESTION",
+        )
 
     def execute(self, context):
         preset_type = _preset_type(self.preset_type)
@@ -588,21 +665,10 @@ class BMANGA_OT_detail_preset_apply(Operator):
             self.report({"WARNING"}, "適用できるプリセットがありません")
             return {"CANCELLED"}
         try:
-            target = _resolve_fixed_target(
-                context,
-                preset_type=preset_type,
-                target_kind=self.target_kind,
-                target_id=self.target_id,
-                stable_id=self.stable_id,
-                stack_uid=self.stack_uid,
-            )
+            target = self._fixed_target(context, preset_type)
             if self.session_token:
                 from . import detail_dialog_runtime
 
-                if not detail_dialog_runtime.preset_session_is_open(
-                    self.session_token, target
-                ):
-                    raise ValueError("詳細設定を開いた対象が変更されています")
                 applied_name = detail_dialog_runtime.execute_transactional_detail_action(
                     context,
                     self.session_token,
@@ -634,6 +700,19 @@ class BMANGA_OT_detail_preset_apply(Operator):
                 applied_name,
                 preset_type=preset_type,
             )
+            try:
+                detail_dialog_runtime.mark_preset_settings_saved(
+                    context,
+                    self.session_token,
+                    target,
+                    preset_type,
+                )
+            except Exception:  # 適用済みデータは維持し、次回は安全側の再確認に倒す
+                _logger.exception("failed to update preset switch baseline")
+                self.report(
+                    {"WARNING"},
+                    "プリセットは適用しましたが、変更検知を更新できませんでした",
+                )
         _refresh_after_apply(context)
         self.report({"INFO"}, f"プリセットを適用しました: {applied_name}")
         return {"FINISHED"}

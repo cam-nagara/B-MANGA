@@ -12,6 +12,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import bpy
 
@@ -213,6 +214,102 @@ def _check_effect(context) -> None:
     assert abs(float(second_data["brush_size_mm"]) - 0.61) < 1e-5, "別の効果線が変更された"
 
 
+def _check_unsaved_switch_baseline(context, page) -> None:
+    from bmanga_dev_detail_preset_apply.operators import (
+        detail_dialog_runtime,
+        detail_preset_apply_op,
+        detail_preset_management_op,
+    )
+    from bmanga_dev_detail_preset_apply.utils.detail_dialog import DetailTarget
+
+    entry = page.texts.add()
+    entry.id = "preset_guard_text"
+    entry.line_height = 1.0
+    target = DetailTarget(
+        kind="text",
+        stable_id=f"{page.id}:{entry.id}",
+        stack_uid=f"text:{page.id}:{entry.id}",
+        data=entry,
+        params=entry,
+    )
+    session = detail_dialog_runtime.begin_actual_session(
+        context,
+        target,
+        target_validator=lambda identity: identity.stable_id == target.stable_id,
+    )
+    try:
+        assert not detail_dialog_runtime.preset_switch_requires_confirmation(
+            context,
+            session.token,
+            target,
+            "text",
+        )
+        entry.line_height = 1.75
+        assert detail_dialog_runtime.preset_switch_requires_confirmation(
+            context,
+            session.token,
+            target,
+            "text",
+        )
+        entry.line_height = 1.0
+        assert not detail_dialog_runtime.preset_switch_requires_confirmation(
+            context,
+            session.token,
+            target,
+            "text",
+        ), "元の設定へ戻したのに未保存扱いです"
+
+        entry.line_height = 1.5
+        operator = SimpleNamespace(
+            preset_type="text",
+            preset_name="固定テキスト",
+            session_token=session.token,
+            bl_idname="bmanga.detail_preset_apply",
+            _fixed_target=lambda _context, _preset_type: target,
+            report=lambda *_args: None,
+        )
+        assert detail_preset_apply_op.BMANGA_OT_detail_preset_apply.execute(
+            operator,
+            context,
+        ) == {"FINISHED"}
+        assert abs(entry.line_height - 2.25) < 1e-5
+        assert not detail_dialog_runtime.preset_switch_requires_confirmation(
+            context,
+            session.token,
+            target,
+            "text",
+        ), "プリセット適用直後も未保存扱いです"
+
+        entry.line_height = 2.0
+        assert detail_dialog_runtime.preset_switch_requires_confirmation(
+            context,
+            session.token,
+            target,
+            "text",
+        )
+        save_operator = SimpleNamespace(
+            preset_type="text",
+            preset_name="固定テキスト",
+            session_token=session.token,
+            target_kind=target.kind,
+            target_id=target.stable_id,
+            bl_idname="bmanga.preset_detail_edit",
+            report=lambda *_args: None,
+        )
+        assert detail_preset_management_op.overwrite_selected_preset(
+            context,
+            save_operator,
+        ) == "固定テキスト"
+        assert not detail_dialog_runtime.preset_switch_requires_confirmation(
+            context,
+            session.token,
+            target,
+            "text",
+        ), "現在設定のプリセット保存後も未保存扱いです"
+    finally:
+        detail_dialog_runtime.cancel_actual_session(context, session)
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_detail_preset_apply_"))
     os.environ["BMANGA_USER_CONFIG_DIR"] = str(temp_root / "config")
@@ -231,6 +328,7 @@ def main() -> None:
         _check_balloon(context, page, temp_root)
         _check_border(context, page, Path(work.work_dir))
         _check_effect(context)
+        _check_unsaved_switch_baseline(context, page)
         before = context.scene.bmanga_fill_layers[1].opacity
         assert _apply("fill", "固定ベタ", "fill", "missing-id") == {"CANCELLED"}
         assert context.scene.bmanga_fill_layers[1].opacity == before

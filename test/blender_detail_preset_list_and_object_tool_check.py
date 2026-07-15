@@ -131,6 +131,17 @@ def _assert_all_preset_lists(context) -> dict[str, list[str]]:
         expected_index = 1 if preset_type == "balloon" else 0
         assert owner.detail_preset_items[expected_index].is_selected
         assert owner.detail_preset_index == expected_index
+        if len(actual) > 1:
+            owner.detail_preset_index = (expected_index + 1) % len(actual)
+            assert apply_op.sync_detail_preset_list(
+                owner,
+                context,
+                session,
+                preset_type,
+            ) == len(actual)
+            assert owner.detail_preset_index == expected_index, (
+                f"{preset_type}: 確認待ち／取消時に元の選択行へ戻りません"
+            )
         result[preset_type] = actual
     assert result["balloon"][:6] == [
         "shape:rect",
@@ -214,6 +225,139 @@ def _assert_list_selection_callbacks() -> None:
     finally:
         apply_op._invoke_detail_preset_apply = original_apply  # noqa: SLF001
         apply_op._invoke_detail_linked_balloon_set = original_linked  # noqa: SLF001
+
+
+def _assert_unsaved_switch_confirmation_contract() -> None:
+    apply_op = _sub("operators.detail_preset_apply_op")
+    runtime = _sub("operators.detail_dialog_runtime")
+    original_guard = runtime.preset_switch_requires_confirmation
+    calls: list[tuple[object, object, dict]] = []
+    executed: list[bool] = []
+
+    class _WindowManager:
+        def invoke_confirm(self, operator, event, **kwargs):
+            calls.append((operator, event, kwargs))
+            return {"RUNNING_MODAL"}
+
+    target = SimpleNamespace(kind="text", stable_id="text-target")
+    operator = SimpleNamespace(
+        confirm_unsaved_changes=True,
+        session_token="text-session",
+        preset_type="text",
+        preset_name="横書き",
+        preset_label="横書き",
+        _fixed_target=lambda _context, _preset_type: target,
+        execute=lambda _context: executed.append(True) or {"FINISHED"},
+        report=lambda *_args: None,
+    )
+    context = SimpleNamespace(window_manager=_WindowManager())
+    event = SimpleNamespace(type="LEFTMOUSE")
+    try:
+        runtime.preset_switch_requires_confirmation = lambda *_args: True
+        result = apply_op.BMANGA_OT_detail_preset_apply.invoke(operator, context, event)
+        assert result == {"RUNNING_MODAL"}
+        assert not executed
+        assert len(calls) == 1
+        kwargs = calls[0][2]
+        assert kwargs["title"] == "プリセットの切り替え確認"
+        assert "現在の設定はプリセットに保存されていません" in kwargs["message"]
+        assert "横書き" in kwargs["message"]
+        assert kwargs["confirm_text"] == "保存せずに切り替える"
+        assert kwargs["icon"] == "QUESTION"
+
+        calls.clear()
+        runtime.preset_switch_requires_confirmation = lambda *_args: False
+        result = apply_op.BMANGA_OT_detail_preset_apply.invoke(operator, context, event)
+        assert result == {"FINISHED"}
+        assert executed == [True]
+        assert not calls, "未変更なのに確認ダイアログを表示しています"
+    finally:
+        runtime.preset_switch_requires_confirmation = original_guard
+
+
+def _assert_preset_setting_change_snapshots(context) -> None:
+    guard = _sub("utils.detail_preset_change_guard")
+    effect_line_op = _sub("operators.effect_line_op")
+    work = context.scene.bmanga_work
+    page = work.pages[0]
+
+    coma = page.comas.add()
+    coma.id = coma.coma_id = "guard_coma"
+    text_entry = page.texts.add()
+    text_entry.id = "guard_text"
+    fill_entry = context.scene.bmanga_fill_layers.add()
+    fill_entry.id = "guard_fill"
+    gradient_entry = context.scene.bmanga_fill_layers.add()
+    gradient_entry.id = "guard_gradient"
+    gradient_entry.fill_type = "gradient"
+    image_path = context.scene.bmanga_image_path_layers.add()
+    image_path.id = "guard_image_path"
+    balloon = page.balloons.add()
+    balloon.id = "guard_balloon"
+    params = context.scene.bmanga_effect_line_params
+
+    cases = (
+        ("border", SimpleNamespace(data=coma, params=coma), coma.border, "width_mm"),
+        ("text", SimpleNamespace(data=text_entry, params=text_entry), text_entry, "line_height"),
+        ("fill", SimpleNamespace(data=fill_entry, params=fill_entry), fill_entry, "opacity"),
+        (
+            "gradient",
+            SimpleNamespace(data=gradient_entry, params=gradient_entry),
+            gradient_entry,
+            "opacity",
+        ),
+        (
+            "image_path",
+            SimpleNamespace(data=image_path, params=image_path),
+            image_path,
+            "opacity",
+        ),
+        ("balloon", SimpleNamespace(data=balloon, params=balloon), balloon, "shape"),
+    )
+    for preset_type, target, owner, attribute in cases:
+        baseline = guard.capture_preset_settings(target, preset_type)
+        original = getattr(owner, attribute)
+        changed = "rect" if attribute == "shape" and original != "rect" else (
+            "ellipse"
+            if attribute == "shape"
+            else float(original) + (-2.0 if float(original) >= 99.0 else 2.0)
+        )
+        setattr(owner, attribute, changed)
+        current = guard.capture_preset_settings(target, preset_type)
+        assert guard.preset_settings_changed(baseline, current), preset_type
+        setattr(owner, attribute, original)
+        assert not guard.preset_settings_changed(
+            baseline,
+            guard.capture_preset_settings(target, preset_type),
+        ), f"{preset_type}: 元の値へ戻しても変更扱いです"
+
+    effect_line_op._set_scene_params_syncing(context.scene, True)
+    try:
+        baseline = guard.capture_preset_settings(
+            SimpleNamespace(data=params, params=params),
+            "effect_line",
+        )
+        original = params.brush_size_mm
+        params.brush_size_mm = original + 0.125
+        current = guard.capture_preset_settings(
+            SimpleNamespace(data=params, params=params),
+            "effect_line",
+        )
+        assert guard.preset_settings_changed(baseline, current)
+        params.brush_size_mm = original
+    finally:
+        effect_line_op._set_scene_params_syncing(context.scene, False)
+
+    # 本文や配置など、プリセットが上書きしない値だけでは確認を出さない。
+    text_target = SimpleNamespace(data=text_entry, params=text_entry)
+    baseline = guard.capture_preset_settings(text_target, "text")
+    original_x = text_entry.x_mm
+    text_entry.x_mm = original_x + 10.0
+    assert not guard.preset_settings_changed(
+        baseline,
+        guard.capture_preset_settings(text_target, "text"),
+    )
+    text_entry.x_mm = original_x
 
 
 def _assert_sidebar_style_layout(context) -> None:
@@ -352,6 +496,8 @@ def main() -> None:
         preset_names = _assert_all_preset_lists(context)
         linked_balloon_names = _assert_linked_balloon_preset_list(context)
         _assert_list_selection_callbacks()
+        _assert_unsaved_switch_confirmation_contract()
+        _assert_preset_setting_change_snapshots(context)
         _assert_sidebar_style_layout(context)
         apply_op = _sub("operators.detail_preset_apply_op")
         work = context.scene.bmanga_work
@@ -375,6 +521,9 @@ def main() -> None:
                 assert "detail_preset_index" in properties
             assert "detail_linked_balloon_items" in properties
             assert "detail_linked_balloon_index" in properties
+        apply_properties = bpy.ops.bmanga.detail_preset_apply.get_rna_type().properties
+        assert "confirm_unsaved_changes" in apply_properties
+        assert "preset_label" in apply_properties
         summary = ", ".join(f"{key}={len(value)}" for key, value in preset_names.items())
         print(
             "BMANGA_DETAIL_PRESET_LIST_OBJECT_TOOL_OK: "

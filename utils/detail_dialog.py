@@ -573,6 +573,7 @@ class DetailSession:
         "_layout",
         "_preset_type",
         "_preset_selection",
+        "_preset_baseline",
         "_status",
         "_target_validator",
         "_restore_error",
@@ -613,6 +614,7 @@ class DetailSession:
         self._layout = layout
         self._preset_type = None if preset_type is None else str(preset_type)
         self._preset_selection = preset_selection
+        self._preset_baseline = None
         self._status = DetailSessionStatus.OPEN
         self._target_validator = target_validator
         self._restore_error: BaseException | None = None
@@ -646,6 +648,10 @@ class DetailSession:
     @property
     def preset_type(self) -> str | None:
         return self._preset_type
+
+    @property
+    def preset_baseline(self):
+        return self._preset_baseline
 
     @property
     def status(self) -> DetailSessionStatus:
@@ -683,6 +689,13 @@ class DetailSession:
         self.validate_target()
         self._preset_type = None if preset_type is None else str(preset_type)
         self._preset_selection = None if preset_name is None else str(preset_name)
+
+    def set_preset_baseline(self, baseline) -> None:
+        """最後に適用・保存したプリセット設定を切替確認の比較基準にする。"""
+
+        self.require_open()
+        self.validate_target()
+        self._preset_baseline = baseline
 
     def replace_opening_snapshot(self, snapshot: DetailSnapshotProtocol) -> None:
         """独立即時操作で確定した最小状態だけをキャンセル基準へ反映する。"""
@@ -742,6 +755,7 @@ class DetailSession:
             raise DetailSessionClosedError(f"detail session is {self._status.value}")
         self._status = DetailSessionStatus.CANCELLED
         self._opening_snapshot = None
+        self._preset_baseline = None
         self._restore_error = None
 
     def mark_restore_failed(self, error: BaseException) -> None:
@@ -758,6 +772,7 @@ class DetailSession:
         self.require_open()
         self._status = status
         self._opening_snapshot = None
+        self._preset_baseline = None
         self._restore_error = None
 
 

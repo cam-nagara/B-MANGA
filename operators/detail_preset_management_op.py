@@ -10,6 +10,10 @@ from bpy.props import CollectionProperty, StringProperty
 from bpy.types import Operator, PropertyGroup
 
 from ..core.work import get_work
+from ..utils import log
+
+
+_logger = log.get_logger(__name__)
 
 
 _EXPECTED_KIND = {
@@ -141,6 +145,27 @@ def _record_result(self, selected_name: str | None) -> None:
     )
 
 
+def _mark_current_settings_saved(context, operator, target, preset_type: str) -> None:
+    """追加／上書き後は、現在値を切替確認の新しい基準にする。"""
+
+    from . import detail_dialog_runtime
+
+    session_token, _target_kind, _target_id = _fixed_identity(operator)
+    try:
+        detail_dialog_runtime.mark_preset_settings_saved(
+            context,
+            session_token,
+            target,
+            preset_type,
+        )
+    except Exception:  # 保存自体は成功済みなので、データを巻き戻さない
+        _logger.exception("failed to update saved preset baseline")
+        operator.report(
+            {"WARNING"},
+            "プリセットは保存しましたが、変更検知を更新できませんでした",
+        )
+
+
 def _reconcile_saved_reference(
     operator,
     old_name: str,
@@ -253,6 +278,7 @@ def overwrite_selected_preset(context, operator) -> str:
     description = str(data.get("description", "") or "") if isinstance(data, dict) else ""
     _save_new_preset(context, preset_type, target, name, description)
     _record_result(operator, name)
+    _mark_current_settings_saved(context, operator, target, preset_type)
     return name
 
 
@@ -330,6 +356,7 @@ class BMANGA_OT_detail_preset_add(Operator):
             )
             _save_new_preset(context, preset_type, target, name, self.description)
             _record_result(self, name)
+            _mark_current_settings_saved(context, self, target, preset_type)
         except (LookupError, OSError, ValueError) as exc:
             self.report({"WARNING"}, str(exc))
             return {"CANCELLED"}
