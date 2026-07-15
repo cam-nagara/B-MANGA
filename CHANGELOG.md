@@ -3,6 +3,23 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.2 を対象としています。
 
+## 2026-07-16 — 書き出し重ね順・保存復旧・コマ下絵の未コミット修正を検証して反映 (B-MANGA v0.6.515)
+
+### 経緯
+
+- 2026-07-15〜16 のセッションで作成されたままコミットされていなかった修正3群 (11ファイル・約460行) を、参照整合・構文・実機テストで検証してからコミットした。
+
+### 修正
+
+- 書き出し重ね順: レイヤー一覧の「コマ3D (プレビュー) 境界」を PNG/PSD 書き出しの合成順にも反映するようにした。フォルダ・フキダシグループ内のレイヤーも境界判定に含める。レイヤー一覧のコマ3D表示切替が3D実体オブジェクトまで非表示にしないよう修正。
+- 保存復旧: 物理復元後に同じ画面から再保存できるよう保存基準を復元後状態へ戻す。復旧の自動再読込は別ファイルへ移動済みの画面では行わず、一時的な読込失敗は再試行する。rename 失敗後に残る部分コピー (.native-copying) を24時間経過後に掃除し、作品を開く入口でも中断保存を先に復旧する。
+- コマ編集カメラの下絵: ページ下絵をコマ3Dの前面/背面へ分割して合成し、見開きページの内容幅に対応した。下絵の生成に失敗した場合、古い B-MANGA 下絵を現在の3Dへ重ねたまま残さない (ユーザーが追加した下絵は残す)。
+
+### 検証 (Blender 5.1.2 実機)
+
+- 合格: `blender_native_save_reload_fallback_check` / `blender_native_stale_save_guard_check` / `blender_layer_stack_z_order_refresh_check` / `blender_layer_stack_idempotent_check` / `blender_page_export_range_scale_check` / `blender_coma_camera_roundtrip_check` / `blender_overview_camera_check` / `test_native_save_guard_recovery` (純Python)
+- `blender_page_overlay_fill_psd_layers_check` は変更適用前の HEAD でも同一箇所で失敗する既存問題であることを worktree 比較で確認 (AGENT_INBOX へ記録)
+
 ## 2026-07-16 — 編集モード等で標準ショートカットが効かなくなる事故を自己修復 (B-MANGA v0.6.514)
 
 ### 症状

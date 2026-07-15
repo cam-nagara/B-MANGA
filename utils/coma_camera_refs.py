@@ -95,41 +95,24 @@ def reference_dir(work_dir: Path) -> Path:
 
 
 def _collect_existing_reference_images(work, current_page_id: str, coma_id: str) -> list[ReferenceImage]:
-    """Pillow が無い環境でも、既存PNGやコマプレビューを下絵として拾う."""
+    """Pillow が無い環境では、既存の安全なコマ抜きページだけを拾う."""
     work_dir = Path(getattr(work, "work_dir", "") or "")
     ref_dir = reference_dir(work_dir)
     refs: list[ReferenceImage] = []
     page_count, render_side, _width_mm, _height_mm = _reference_frame_info(work, current_page_id, coma_id)
     masked_page = _koma_ref_path(ref_dir, current_page_id, coma_id)
-    legacy_crop = ref_dir / f"{KOMA_REF_PREFIX}_{current_page_id}_{coma_id}.png"
-    crop = masked_page if masked_page.is_file() else legacy_crop
-    if crop.is_file():
-        is_full_mask = (crop == masked_page)
+    if masked_page.is_file():
         refs.insert(
             0,
             ReferenceImage(
-                crop,
+                masked_page,
                 f"{KOMA_REF_PREFIX}_{current_page_id}_{coma_id}",
-                "own_page" if is_full_mask else "koma",
+                "own_page",
                 current_page_id,
                 visible=True,
-                full_page_mask=is_full_mask,
+                full_page_mask=True,
                 page_count=page_count,
                 render_side=render_side,
-            ),
-        )
-        return refs
-    panel = _resolve_coma(work, current_page_id, coma_id)
-    source = coma_preview.coma_preview_source_path(work_dir, current_page_id, panel)
-    if source is not None and source.is_file():
-        refs.insert(
-            0,
-            ReferenceImage(
-                source,
-                f"{KOMA_REF_PREFIX}_{current_page_id}_{coma_id}",
-                "koma",
-                current_page_id,
-                visible=True,
             ),
         )
     return refs
@@ -399,14 +382,17 @@ def _render_page_reference_from_work_blend(
         with bpy.data.libraries.load(str(work_blend.resolve()), link=False) as (data_from, data_to):
             data_to.scenes = list(getattr(data_from, "scenes", []) or [])
         loaded_scenes = _new_bpy_ids(bpy.data.scenes, before["scenes"])
-        scene, loaded_work, loaded_page = _loaded_page_scene(loaded_scenes, work_dir, page_id)
-        if scene is None or loaded_work is None or loaded_page is None:
+        scene = _first_loaded_work_scene(loaded_scenes)
+        if scene is None:
             return False
         window = getattr(bpy.context, "window", None)
         if window is not None:
             window.scene = scene
         try:
             with bpy.context.temp_override(scene=scene):
+                _scene, loaded_work, loaded_page = _loaded_page_scene((scene,), work_dir, page_id)
+                if loaded_work is None or loaded_page is None:
+                    return False
                 return _render_page_reference_in_scene(
                     loaded_work,
                     loaded_page,
@@ -435,7 +421,9 @@ def _render_page_reference_from_work_blend(
         _remove_new_bpy_ids(bpy, before)
 
 
-def ensure_page_content_overlay(work, page, out: Path, target_size: tuple[int, int]) -> Path | None:
+def ensure_page_content_overlay(
+    work, page, out: Path, target_size: tuple[int, int], *, side: str = "front",
+) -> Path | None:
     """紙面背景とコマ3Dを除いたページ作画要素の透明画像を返す."""
     work_dir_text = str(getattr(work, "work_dir", "") or "").strip()
     page_id = str(getattr(page, "id", "") or "")
@@ -456,32 +444,37 @@ def ensure_page_content_overlay(work, page, out: Path, target_size: tuple[int, i
     rendered = False
     if page_blend.is_file() and not _current_mainfile_is(page_blend):
         rendered = _render_page_content_overlay_from_blend(
-            page_blend, work_dir, page_id, out, target_size,
+            page_blend, work_dir, page_id, out, target_size, side=side,
         )
     if not rendered:
-        rendered = _render_page_content_overlay_in_scene(work, page, out, target_size)
+        rendered = _render_page_content_overlay_in_scene(work, page, out, target_size, side=side)
     return out if rendered and out.is_file() else None
 
 
-def _render_page_content_overlay_in_scene(work, page, out: Path, target_size: tuple[int, int]) -> bool:
+def _render_page_content_overlay_in_scene(
+    work, page, out: Path, target_size: tuple[int, int], *, side: str = "front",
+) -> bool:
     """現在のsceneからページ作画要素だけを透明PNGへ描画する."""
     Image = export_pipeline.Image
     ImageChops = export_pipeline.ImageChops
     if Image is None:
         return False
     paper = getattr(work, "paper", None)
-    width_mm = max(1.0, float(getattr(paper, "canvas_width_mm", 182.0) or 182.0))
+    canvas_width_mm = max(1.0, float(getattr(paper, "canvas_width_mm", 182.0) or 182.0))
+    finish_width_mm = float(getattr(paper, "finish_width_mm", 0.0) or 0.0)
+    width_mm = page_grid.spread_content_width_mm(page, canvas_width_mm, finish_width_mm)
     height_mm = max(1.0, float(getattr(paper, "canvas_height_mm", 257.0) or 257.0))
     width_px, height_px = max(1, int(target_size[0])), max(1, int(target_size[1]))
     dpi = max(8, int(round(max(width_px / width_mm, height_px / height_mm) * 25.4)))
     options = export_pipeline.ExportOptions(
-        area="canvas", dpi_override=dpi, include_border=True,
-        include_white_margin=True, include_nombre=False, include_work_info=False,
-        include_tombo=False, include_paper_color=False, include_coma_previews=False,
+        area="canvas", dpi_override=dpi, include_border=(side != "back"),
+        include_white_margin=(side != "back"), include_nombre=False, include_work_info=False,
+        include_tombo=False, include_paper_color=False, include_coma_backgrounds=False,
+        include_coma_previews=False, coma_preview_side=side,
     )
     layers = [
         layer for layer in export_pipeline.build_page_layers(work, page, options)
-        if str(getattr(layer, "name", "") or "") not in {"paper", "background", "render"}
+        if tuple(getattr(layer, "group_path", ()) or ()) != ("paper",)
     ]
     size = export_pipeline._page_canvas_size_px(work, page, options)
     masks = export_pipeline._coma_group_masks(work, page, options)
@@ -503,6 +496,8 @@ def _render_page_content_overlay_from_blend(
     page_id: str,
     out: Path,
     target_size: tuple[int, int],
+    *,
+    side: str = "front",
 ) -> bool:
     """ページblendを一時読込し、保存済み実体を含む透明作画画像を生成する."""
     try:
@@ -515,15 +510,18 @@ def _render_page_content_overlay_from_blend(
         with bpy.data.libraries.load(str(page_blend.resolve()), link=False) as (data_from, data_to):
             data_to.scenes = list(getattr(data_from, "scenes", []) or [])
         loaded_scenes = _new_bpy_ids(bpy.data.scenes, before["scenes"])
-        scene, loaded_work, loaded_page = _loaded_page_scene(loaded_scenes, work_dir, page_id)
-        if scene is None or loaded_work is None or loaded_page is None:
+        scene = _first_loaded_work_scene(loaded_scenes)
+        if scene is None:
             return False
         window = getattr(bpy.context, "window", None)
         if window is not None:
             window.scene = scene
         with bpy.context.temp_override(scene=scene):
+            _scene, loaded_work, loaded_page = _loaded_page_scene((scene,), work_dir, page_id)
+            if loaded_work is None or loaded_page is None:
+                return False
             return _render_page_content_overlay_in_scene(
-                loaded_work, loaded_page, out, target_size,
+                loaded_work, loaded_page, out, target_size, side=side,
             )
     except Exception:  # noqa: BLE001
         _logger.exception("panel camera page content overlay render failed: %s", page_id)
@@ -536,6 +534,13 @@ def _render_page_content_overlay_from_blend(
         except Exception:  # noqa: BLE001
             pass
         _remove_new_bpy_ids(bpy, before)
+
+
+def _first_loaded_work_scene(loaded_scenes):
+    for scene in loaded_scenes:
+        if getattr(scene, "bmanga_work", None) is not None:
+            return scene
+    return None
 
 
 def _loaded_page_scene(loaded_scenes, work_dir: Path, page_id: str):

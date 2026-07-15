@@ -11,7 +11,7 @@ import bpy
 from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_work
 from ..io import export_pipeline
-from . import log, page_browser, paths, percentage
+from . import log, page_browser, page_grid, paths, percentage
 from .geom import mm_to_px
 from .coma_camera_constants import (
     DEFAULT_CAMERA_DISTANCE,
@@ -295,8 +295,13 @@ def ensure_default_resolution_settings(scene) -> None:
 def configure_camera_backgrounds(scene, camera, refs: Iterable[ReferenceImage], page_id: str, coma_id: str) -> None:
     ensure_opacity_percent_units(scene)
     ref_list = list(refs)
+    data = getattr(camera, "data", None)
+    if data is None:
+        return
+    _clear_managed_backgrounds(data)
     if not ref_list:
-        # 下絵生成に失敗した場合でも、既存のカメラ下絵を消さない。
+        # 生成失敗時に古いB-MANGA下絵を残すと、現在コマの旧3D画像を
+        # 現在の3Dの前へ重ねてしまう。ユーザーが追加した非管理下絵は残す。
         return
     settings = getattr(scene, "bmanga_coma_camera_settings", None)
     name_visible = bool(getattr(settings, "name_visible", False))
@@ -309,10 +314,6 @@ def configure_camera_backgrounds(scene, camera, refs: Iterable[ReferenceImage], 
     scale = float(getattr(settings, "bg_images_scale", 1.0))
     koma_depth_back = bool(getattr(settings, "koma_depth", False))
 
-    data = getattr(camera, "data", None)
-    if data is None:
-        return
-    _clear_managed_backgrounds(data)
     for ref in ref_list:
         img = _load_reference_image(ref.path, ref.label)
         if img is None:
@@ -1328,15 +1329,33 @@ def _add_page_overview_backgrounds(scene, work) -> None:
 
     coma_id = str(getattr(scene, "bmanga_current_coma_id", "") or "")
     coma_panel = _resolve_coma(work, current_page_id, coma_id)
+    current_page = next(
+        (
+            candidate
+            for candidate in getattr(work, "pages", [])
+            if str(getattr(candidate, "id", "") or "") == current_page_id
+        ),
+        None,
+    )
+    finish_w_mm = float(getattr(paper, "finish_width_mm", 0.0) or 0.0) if paper else 0.0
+    content_w_mm = page_grid.spread_content_width_mm(current_page, canvas_w_mm, finish_w_mm)
+    page_count = 2 if bool(getattr(current_page, "spread", False)) else 1
+    render_side = (
+        _reference_frame_info(work, current_page_id, coma_id)[1]
+        if page_count >= 2
+        else "full"
+    )
 
     for page_id, (idx, x0, y0, x1, y1) in rects.items():
         if page_id == current_page_id:
             _add_own_page_backgrounds(
                 cam_data, work, page_id, coma_id, coma_panel,
-                canvas_w_mm, canvas_h_mm, user_scale,
+                content_w_mm, canvas_h_mm, user_scale,
                 own_page_alpha, own_page_visible,
                 koma_alpha, koma_visible,
                 "BACK" if koma_depth_back else "FRONT",
+                page_count=page_count,
+                render_side=render_side,
             )
             continue
         png_path = page_preview_object._preview_png_path(work, page_id)
@@ -1379,6 +1398,9 @@ def _add_own_page_backgrounds(
     own_page_alpha, own_page_visible,
     koma_alpha, koma_visible,
     depth,
+    *,
+    page_count=1,
+    render_side="full",
 ) -> None:
     """現在ページをコマ領域の外側画像と内側レイヤーに分けて追加."""
     from . import page_preview_object
@@ -1387,17 +1409,14 @@ def _add_own_page_backgrounds(
     if png_path is None or not png_path.is_file():
         return
     if not export_pipeline.has_pillow():
-        _add_own_page_fallback(cam_data, png_path, page_id, user_scale, own_page_alpha, own_page_visible, depth)
         return
     Image = export_pipeline.Image
     if Image is None:
-        _add_own_page_fallback(cam_data, png_path, page_id, user_scale, own_page_alpha, own_page_visible, depth)
         return
     try:
         with Image.open(str(png_path)) as opened:
             src = opened.convert("RGBA")
     except Exception:  # noqa: BLE001
-        _add_own_page_fallback(cam_data, png_path, page_id, user_scale, own_page_alpha, own_page_visible, depth)
         return
     work_dir = Path(str(getattr(work, "work_dir", "") or ""))
     cache_dir = paths.assets_dir(work_dir) / "_coma_bg_cache"
@@ -1413,44 +1432,48 @@ def _add_own_page_backgrounds(
              if str(getattr(candidate, "id", "") or "") == page_id),
             None,
         )
-        overlay_path = cache_dir / f"page_content_{page_id}.png"
-        content_source_path = (
-            ensure_page_content_overlay(work, page, overlay_path, src.size)
-            if page is not None else None
-        )
-        content = None
-        if content_source_path is not None:
+        contents = []
+        for side in ("back", "front"):
+            overlay_path = cache_dir / f"page_content_{side}_{page_id}.png"
+            content_source_path = (
+                ensure_page_content_overlay(work, page, overlay_path, src.size, side=side)
+                if page is not None else None
+            )
+            if content_source_path is None:
+                continue
             try:
                 with Image.open(str(content_source_path)) as opened:
                     content = coma_own_page_mask.extract_current_coma_content(
                         opened.convert("RGBA"), coma_panel, canvas_w_mm, canvas_h_mm,
                     )
+                if content is not None:
+                    contents.append((side, content))
             except Exception:  # noqa: BLE001
-                _logger.exception("page content overlay load failed: %s", page_id)
+                _logger.exception("page content overlay load failed: %s (%s)", page_id, side)
         if outside is not None:
             outside_path = cache_dir / f"own_page_{page_id}_{coma_id}.png"
             outside.save(str(outside_path))
             _load_overview_bg(
                 cam_data, outside_path, page_id, "own_page",
                 user_scale, own_page_alpha, own_page_visible, depth=depth,
+                page_count=page_count, render_side=render_side,
             )
-            if content is not None:
-                content_path = cache_dir / f"koma_content_{page_id}_{coma_id}.png"
+            for side, content in contents:
+                content_path = cache_dir / f"koma_content_{side}_{page_id}_{coma_id}.png"
                 content.save(str(content_path))
                 _load_overview_bg(
                     cam_data, content_path, page_id, "koma",
-                    user_scale, koma_alpha, koma_visible, depth=depth,
+                    user_scale, koma_alpha, koma_visible,
+                    depth=("BACK" if side == "back" else depth),
+                    page_count=page_count, render_side=render_side,
                 )
             return
-    _add_own_page_fallback(cam_data, png_path, page_id, user_scale, own_page_alpha, own_page_visible, depth)
 
 
-def _add_own_page_fallback(cam_data, png_path, page_id, user_scale, alpha, visible, depth) -> None:
-    """コマ座標が取得できない時はフル画像をそのまま追加."""
-    _load_overview_bg(cam_data, png_path, page_id, "own_page", user_scale, alpha, visible, depth=depth)
-
-
-def _load_overview_bg(cam_data, png_path, page_id, kind, scale, alpha, visible, *, depth="FRONT") -> None:
+def _load_overview_bg(
+    cam_data, png_path, page_id, kind, scale, alpha, visible, *,
+    depth="FRONT", page_count=1, render_side="full",
+) -> None:
     """カメラ下絵として画像を追加するユーティリティ."""
     try:
         img = bpy.data.images.load(str(Path(png_path).resolve()), check_existing=True)
@@ -1461,14 +1484,17 @@ def _load_overview_bg(cam_data, png_path, page_id, kind, scale, alpha, visible, 
         img[_PAGE_OVERVIEW_BG_PROP] = True
         img["bmanga_kind"] = kind
         img["bmanga_page_id"] = page_id
+        img["bmanga_page_count"] = int(page_count)
+        img["bmanga_render_side"] = str(render_side)
     except Exception:  # noqa: BLE001
         pass
     bg = cam_data.background_images.new()
     bg.image = img
+    fitted_scale, fitted_offset = _background_scale_offset_for_image(img, scale)
     _set_bg_attr(bg, "alpha", float(alpha))
-    _set_bg_attr(bg, "scale", float(scale))
+    _set_bg_attr(bg, "scale", float(fitted_scale))
     _set_bg_attr(bg, "rotation", 0.0)
-    _set_bg_attr(bg, "offset", (0.0, 0.0))
+    _set_bg_attr(bg, "offset", fitted_offset)
     _set_bg_attr(bg, "display_depth", depth)
     _set_bg_attr(bg, "frame_method", "FIT")
     _set_bg_attr(bg, "show_background_image", bool(visible))
