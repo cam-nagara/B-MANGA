@@ -33,7 +33,7 @@ _logger = log.get_logger(__name__)
 
 PAGE_COMA_CHILD_KINDS = {"gp", "effect", "raster", "image", "image_path", "fill", "balloon", "text"}
 COMA_PREVIEW_KIND = "coma_preview"
-COMA_REORDER_KINDS = PAGE_COMA_CHILD_KINDS
+COMA_REORDER_KINDS = PAGE_COMA_CHILD_KINDS | {COMA_PREVIEW_KIND}
 LAYER_FOLDER_KIND = layer_folder_utils.LAYER_FOLDER_KIND
 _sync_scheduled = False
 _sync_should_apply_order = False
@@ -844,6 +844,15 @@ def collect_targets(context) -> list[LayerTarget]:
                 targets.extend(
                     _collect_page_layer_targets(
                         page, {key: panel}, include_page_children=False
+                    )
+                )
+                targets.append(
+                    LayerTarget(
+                        COMA_PREVIEW_KIND,
+                        coma_preview_key(key),
+                        "コマプレビュー",
+                        key,
+                        2,
                     )
                 )
 

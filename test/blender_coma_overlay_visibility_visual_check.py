@@ -105,24 +105,32 @@ def _assert_visible(scene, label: str, *, own: bool, koma: bool, name: bool) -> 
     return counts
 
 
-def _add_dummy_koma_background(scene, page_id: str, coma_id: str) -> None:
-    camera = scene.camera
-    if camera is None or getattr(camera, "type", "") != "CAMERA":
-        raise AssertionError("コマファイルのカメラがありません")
-    cam_data = camera.data
-    image = bpy.data.images.new("BManga_コマ内レイヤー_表示検査", width=32, height=32, alpha=True)
-    image["bmanga_kind"] = "koma"
-    image["bmanga_page_id"] = page_id
-    image["bmanga_coma_id"] = coma_id
-    image["_bmanga_coma_camera_ref"] = True
-    bg = cam_data.background_images.new()
-    bg.image = image
-    bg.alpha = 1.0
-    bg.scale = 0.55
-    bg.offset = (0.0, 0.0)
-    bg.display_depth = "FRONT"
-    bg.frame_method = "FIT"
-    bg.show_background_image = True
+def _assert_koma_overlay_is_content_only(scene) -> dict[str, float | str]:
+    """The current-coma overlay must not be an opaque stale 3D page preview."""
+    from PIL import Image
+
+    backgrounds = [bg for bg in _camera_backgrounds(scene) if _kind(bg) == "koma"]
+    if len(backgrounds) != 1:
+        raise AssertionError(f"コマ内レイヤー背景は1件必要です: {len(backgrounds)}")
+    image = getattr(backgrounds[0], "image", None)
+    path = Path(bpy.path.abspath(str(getattr(image, "filepath", "") or "")))
+    if not path.is_file():
+        raise AssertionError(f"コマ内レイヤー背景PNGがありません: {path}")
+    with Image.open(path) as opened:
+        alpha = opened.convert("RGBA").getchannel("A")
+        histogram = alpha.histogram()
+        total = max(1, alpha.width * alpha.height)
+        nonzero_ratio = sum(histogram[1:]) / total
+        opaque_ratio = histogram[255] / total
+    if not 0.0 < nonzero_ratio < 0.5:
+        raise AssertionError(
+            f"コマ内レイヤー背景が透明な作品要素だけではありません: {nonzero_ratio:.6f}"
+        )
+    return {
+        "path": str(path),
+        "nonzero_alpha_ratio": nonzero_ratio,
+        "opaque_alpha_ratio": opaque_ratio,
+    }
 
 
 def _first_view3d():
@@ -447,8 +455,10 @@ def _after_coma_open() -> None:
             generate_references=True,
         )
         coma_camera.refresh_coma_page_overview(bpy.context)
-        _add_dummy_koma_background(scene, page_id, coma_id)
         coma_camera.apply_coma_overlay_background_visibility(bpy.context, scene=scene)
+        if not any(_kind(bg) == "koma" for bg in _camera_backgrounds(scene)):
+            raise AssertionError("本番経路がコマ内レイヤー背景を生成していません")
+        content_only = _assert_koma_overlay_is_content_only(scene)
         states = _exercise_visibility(scene, coma_camera)
         guide = _exercise_paper_guide_front(
             scene, work, page_id, coma_id, coma_camera, overlay_coma_page_labels,
@@ -460,6 +470,7 @@ def _after_coma_open() -> None:
             "role": role,
             "page_id": page_id,
             "coma_id": coma_id,
+            "content_only": content_only,
             "states": states,
             "guide": guide,
             "fisheye": fisheye,

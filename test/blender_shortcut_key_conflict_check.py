@@ -140,6 +140,9 @@ def main() -> None:
 
         shortcut_visibility.bmanga_panel_visible = lambda _context=None: False
         shortcut_visibility.any_bmanga_panel_visible = lambda _context=None: False
+        # A single unreadable/off tick is deliberately ignored so a transient
+        # sidebar redraw cannot terminate a resident tool mid-drag.
+        keymap_mod._watch_bmanga_tab()
         keymap_mod._watch_bmanga_tab()
         assert _active_bmanga_items(keymap_mod) == 0, "B-MANGAパネル非表示後もB-MANGAキーが有効です"
         assert bool(kmi_o.active), "B-MANGAパネル非表示後にO競合キーが復元されません"

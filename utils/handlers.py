@@ -24,6 +24,21 @@ _current_file_sync_generation = 0
 _saving_work_metadata = False
 _native_save_token = None
 _native_save_reload_generation = 0
+_NATIVE_SAVE_RELOAD_FIRST_INTERVAL = 0.15
+
+
+def _suspend_keymap_for_native_reload(*, disable_now: bool) -> None:
+    """保存復旧のmainfile切替とBlenderのキーマップ更新を重ねない."""
+    try:
+        from ..keymap import keymap as _keymap
+
+        _keymap.suspend_visibility_updates(
+            6.0,
+            reason="native save recovery",
+            disable_now=disable_now,
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("native save recovery keymap suspension failed")
 
 
 def _native_save_memory_version(scene, work) -> int:
@@ -70,7 +85,9 @@ def _schedule_native_save_reload(path: Path, *, notice: bool = True) -> None:
         if generation != _native_save_reload_generation:
             return None
         try:
+            _suspend_keymap_for_native_reload(disable_now=False)
             result = bpy.ops.wm.open_mainfile(filepath=str(path), load_ui=False)
+            _suspend_keymap_for_native_reload(disable_now=False)
             if "FINISHED" not in result:
                 raise RuntimeError("最新の作品データを再読込できませんでした")
         except Exception as exc:  # noqa: BLE001
@@ -84,7 +101,10 @@ def _schedule_native_save_reload(path: Path, *, notice: bool = True) -> None:
             )
         return None
 
-    bpy.app.timers.register(_reload, first_interval=0.05)
+    # 同じイベント処理内ではキーマップを書き換えず、先に停止を確定する。
+    _suspend_keymap_for_native_reload(disable_now=True)
+    bpy.app.timers.register(
+        _reload, first_interval=_NATIVE_SAVE_RELOAD_FIRST_INTERVAL)
 
 
 def _begin_native_save_guard(filepath_arg=None) -> bool | None:

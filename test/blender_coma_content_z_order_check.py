@@ -194,16 +194,17 @@ def main() -> None:
         ]
         if empty_rows:
             raise AssertionError(f"レイヤーリストに空行が残っています: {empty_rows}")
-        if preview_uid in initial_uids:
-            preview_item = next(
-                item
-                for item in stack
-                if layer_stack_utils.stack_item_uid(item) == preview_uid
-            )
-            if str(getattr(preview_item, "label", "") or "") != "コマプレビュー":
-                raise AssertionError("コマプレビュー行の表示名が空、または想定外です")
-            if str(getattr(preview_item, "parent_key", "") or "") != parent_key:
-                raise AssertionError("コマプレビュー行が対象コマの配下にありません")
+        if initial_uids.count(preview_uid) != 1:
+            raise AssertionError("コマプレビュー行が対象コマに1行ありません")
+        preview_item = next(
+            item
+            for item in stack
+            if layer_stack_utils.stack_item_uid(item) == preview_uid
+        )
+        if str(getattr(preview_item, "label", "") or "") != "コマプレビュー":
+            raise AssertionError("コマプレビュー行の表示名が空、または想定外です")
+        if str(getattr(preview_item, "parent_key", "") or "") != parent_key:
+            raise AssertionError("コマプレビュー行が対象コマの配下にありません")
         if balloon_uid not in initial_uids or effect_uid not in initial_uids:
             raise AssertionError(
                 "コマ内で新規作成したフキダシ/効果線がレイヤー一覧に作成されていません"
@@ -217,7 +218,20 @@ def main() -> None:
             stack.move(from_idx, anchor_idx)
 
         effect_obj_name = str(effect_obj.name)
-        _move_before(effect_uid, balloon_uid)
+        _move_before(balloon_uid, preview_uid)
+        _move_before(effect_uid, preview_uid)
+        preview_index = next(
+            i for i, item in enumerate(stack)
+            if layer_stack_utils.stack_item_uid(item) == preview_uid
+        )
+        effect_index = next(
+            i for i, item in enumerate(stack)
+            if layer_stack_utils.stack_item_uid(item) == effect_uid
+        )
+        effect_target = preview_index + 1
+        if effect_index < effect_target:
+            effect_target -= 1
+        stack.move(effect_index, min(effect_target, len(stack) - 1))
         layer_stack_utils.apply_stack_order(bpy.context)
         layer_object_sync.assign_per_page_z_ranks(scene, work)
         # 並べ替えで実体オブジェクトが作り直されることがあるため取り直す
@@ -232,8 +246,10 @@ def main() -> None:
         if effect_display is None:
             raise AssertionError("並べ替え後に効果線の表示実体が見つかりません")
         _assert_between(balloon_obj.location.z, plane_z, white_z, "コマ内のフキダシ")
-        _assert_between(effect_obj.location.z, plane_z, white_z, "コマ内の効果線")
-        _assert_between(effect_display.location.z, plane_z, white_z, "コマ内の効果線の表示実体")
+        if not effect_obj.location.z < plane_z:
+            raise AssertionError("コマプレビューより後ろへ移した効果線が背面にありません")
+        if not effect_display.location.z < plane_z:
+            raise AssertionError("コマプレビューより後ろへ移した効果線表示実体が背面にありません")
 
         print("BMANGA_COMA_CONTENT_Z_ORDER_OK", flush=True)
     finally:

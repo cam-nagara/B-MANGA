@@ -14,6 +14,26 @@ def apply_current_coma_cutout(src, coma, canvas_w_mm: float, canvas_h_mm: float)
     The cutout uses the same soft edge mask as page export so a coma whose
     border is set to "輪郭ぼかし" keeps its blurred transition in the page image.
     """
+    split = split_current_coma_layers(src, coma, canvas_w_mm, canvas_h_mm)
+    return split[0] if split is not None else None
+
+
+def extract_current_coma_content(src, coma, canvas_w_mm: float, canvas_h_mm: float):
+    """Return only the part of ``src`` inside the current coma."""
+    split = split_current_coma_layers(src, coma, canvas_w_mm, canvas_h_mm)
+    return split[1] if split is not None else None
+
+
+def split_current_coma_layers(src, coma, canvas_w_mm: float, canvas_h_mm: float):
+    """Split a page preview into outside-page and current-coma layers."""
+    mask = _current_coma_mask(src, coma, canvas_w_mm, canvas_h_mm)
+    if mask is None:
+        return None
+    inverse = mask.point(lambda px: 255 - int(px))
+    return _apply_alpha_mask(src, inverse), _apply_alpha_mask(src, mask)
+
+
+def _current_coma_mask(src, coma, canvas_w_mm: float, canvas_h_mm: float):
     Image = export_pipeline.Image
     ImageChops = export_pipeline.ImageChops
     ImageDraw = export_pipeline.ImageDraw
@@ -23,8 +43,7 @@ def apply_current_coma_cutout(src, coma, canvas_w_mm: float, canvas_h_mm: float)
     points_mm = coma_content_mask.coma_polygon_mm(coma)
     if len(points_mm) < 3:
         return None
-    out = src.convert("RGBA").copy()
-    width_px, height_px = out.size
+    width_px, height_px = src.size
     if width_px <= 0 or height_px <= 0:
         return None
     bbox_mm = (
@@ -34,7 +53,7 @@ def apply_current_coma_cutout(src, coma, canvas_w_mm: float, canvas_h_mm: float)
         max(1.0e-6, float(canvas_h_mm)),
     )
     try:
-        mask = export_soft_mask.coma_soft_edge_mask(
+        return export_soft_mask.coma_soft_edge_mask(
             Image,
             ImageChops,
             ImageDraw,
@@ -48,12 +67,21 @@ def apply_current_coma_cutout(src, coma, canvas_w_mm: float, canvas_h_mm: float)
     except Exception:  # noqa: BLE001
         _logger.exception("own page coma cutout mask failed")
         return None
-    inverse = mask.point(lambda px: 255 - int(px))
+
+
+def _apply_alpha_mask(src, mask):
+    Image = export_pipeline.Image
+    ImageChops = export_pipeline.ImageChops
+    if Image is None:
+        return None
+    out = src.convert("RGBA").copy()
     alpha = out.getchannel("A")
     if ImageChops is not None:
-        alpha = ImageChops.multiply(alpha, inverse)
+        alpha = ImageChops.multiply(alpha, mask)
     else:
-        alpha.paste(0, mask=mask)
+        clipped = Image.new("RGBA", out.size, (0, 0, 0, 0))
+        clipped.paste(out, mask=mask)
+        return clipped
     out.putalpha(alpha)
     return out
 

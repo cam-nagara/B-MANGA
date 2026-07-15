@@ -351,7 +351,7 @@ def _write_visual_report(state: dict) -> None:
     focus = Image.new("RGB", (760, 360), "white")
     focus_draw = ImageDraw.Draw(focus)
     focus_draw.text((24, 18), "Layer stack preview spacing sample", fill=(0, 0, 0), font=font)
-    focus_draw.text((24, 40), "Expected: preview helper row is hidden from the visible layer list", fill=(0, 0, 0), font=font)
+    focus_draw.text((24, 40), "Expected: one visible coma preview row under each coma", fill=(0, 0, 0), font=font)
     y = 78
     for row in state.get("preview_focus_rows", []):
         depth = int(row.get("depth", 0))
@@ -370,7 +370,7 @@ def _write_visual_report(state: dict) -> None:
         fill=status_color,
         font=font,
     )
-    hidden_color = (0, 120, 0) if not state.get("preview_visible_rows") else (180, 0, 0)
+    hidden_color = (0, 120, 0) if len(state.get("preview_visible_rows", [])) == 1 else (180, 0, 0)
     focus_draw.text(
         (24, y + 40),
         "preview helper visible rows: " + str(state.get("preview_visible_rows", [])),
@@ -562,13 +562,20 @@ def main() -> None:
         for uid in (gp_uid, effect_uid, raster_uid, balloon_uid, text_a_uid, text_b_uid):
             _move_uid_below_parent(context, uid, coma_uid)
             _assert_parent(context, uid, coma_key)
-        _stack(context)
-        try:
-            preview_index, preview_item = _find_stack_item(context, coma_preview_uid)
-        except AssertionError:
-            preview_index, preview_item = -1, None
-        if preview_index >= 0 or preview_item is not None:
-            raise AssertionError("レイヤー一覧にコマの内部表示行が残っています")
+        stack = _stack(context)
+        preview_rows = [
+            item for item in stack
+            if layer_stack_utils.stack_item_uid(item) == coma_preview_uid
+        ]
+        if len(preview_rows) != 1:
+            raise AssertionError(f"コマプレビュー行が1行ではありません: {len(preview_rows)}")
+        preview_index, preview_item = _find_stack_item(context, coma_preview_uid)
+        if str(getattr(preview_item, "label", "") or "") != "コマプレビュー":
+            raise AssertionError("コマプレビュー行の表示名が不正です")
+        if str(getattr(preview_item, "parent_key", "") or "") != coma_key:
+            raise AssertionError("コマプレビュー行が対象コマの配下にありません")
+        if int(getattr(preview_item, "depth", -1)) != 2:
+            raise AssertionError("コマプレビュー行のインデント深度が不正です")
 
         _move_uid_before(context, effect_uid, balloon_uid)
         stack = _stack(context)
@@ -622,8 +629,10 @@ def main() -> None:
             for visible_index, item in enumerate(visible_rows)
             if getattr(item, "kind", "") == layer_stack_utils.COMA_PREVIEW_KIND
         ]
-        if preview_visible_rows:
-            raise AssertionError(f"レイヤー一覧にコマの内部表示行が残っています: {preview_visible_rows}")
+        if len(preview_visible_rows) != 1:
+            raise AssertionError(f"コマプレビュー行が表示一覧に1行ありません: {preview_visible_rows}")
+        if not gpencil_panel._show_stack_item_in_layer_list(preview_item):
+            raise AssertionError("コマプレビュー行が描画フィルタで非表示です")
 
         if gp_parent.parent_key(gp_layer) != coma_key:
             raise AssertionError("GP layer parent was not applied")
@@ -739,8 +748,8 @@ def main() -> None:
             }
             for item in stack
         ]
-        focus_from = max(0, effect_index - 1)
-        focus_to = min(len(stack), balloon_index + 2)
+        focus_from = max(0, preview_index - 2)
+        focus_to = min(len(stack), preview_index + 3)
         preview_focus_rows = [
             {
                 "kind": str(getattr(item, "kind", "")),

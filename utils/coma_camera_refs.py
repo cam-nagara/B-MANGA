@@ -435,6 +435,109 @@ def _render_page_reference_from_work_blend(
         _remove_new_bpy_ids(bpy, before)
 
 
+def ensure_page_content_overlay(work, page, out: Path, target_size: tuple[int, int]) -> Path | None:
+    """紙面背景とコマ3Dを除いたページ作画要素の透明画像を返す."""
+    work_dir_text = str(getattr(work, "work_dir", "") or "").strip()
+    page_id = str(getattr(page, "id", "") or "")
+    if not work_dir_text or not page_id:
+        return None
+    work_dir = Path(work_dir_text)
+    page_blend = paths.page_blend_path(work_dir, page_id)
+    stale = _reference_is_stale(work_dir, page, out, include_work_blend=False)
+    stale = stale or _path_mtime(out) < _path_mtime(page_blend)
+    if not stale and export_pipeline.Image is not None:
+        try:
+            with export_pipeline.Image.open(str(out)) as cached:
+                stale = cached.size != (max(1, int(target_size[0])), max(1, int(target_size[1])))
+        except Exception:  # noqa: BLE001
+            stale = True
+    if not stale:
+        return out
+    rendered = False
+    if page_blend.is_file() and not _current_mainfile_is(page_blend):
+        rendered = _render_page_content_overlay_from_blend(
+            page_blend, work_dir, page_id, out, target_size,
+        )
+    if not rendered:
+        rendered = _render_page_content_overlay_in_scene(work, page, out, target_size)
+    return out if rendered and out.is_file() else None
+
+
+def _render_page_content_overlay_in_scene(work, page, out: Path, target_size: tuple[int, int]) -> bool:
+    """現在のsceneからページ作画要素だけを透明PNGへ描画する."""
+    Image = export_pipeline.Image
+    ImageChops = export_pipeline.ImageChops
+    if Image is None:
+        return False
+    paper = getattr(work, "paper", None)
+    width_mm = max(1.0, float(getattr(paper, "canvas_width_mm", 182.0) or 182.0))
+    height_mm = max(1.0, float(getattr(paper, "canvas_height_mm", 257.0) or 257.0))
+    width_px, height_px = max(1, int(target_size[0])), max(1, int(target_size[1]))
+    dpi = max(8, int(round(max(width_px / width_mm, height_px / height_mm) * 25.4)))
+    options = export_pipeline.ExportOptions(
+        area="canvas", dpi_override=dpi, include_border=True,
+        include_white_margin=True, include_nombre=False, include_work_info=False,
+        include_tombo=False, include_paper_color=False, include_coma_previews=False,
+    )
+    layers = [
+        layer for layer in export_pipeline.build_page_layers(work, page, options)
+        if str(getattr(layer, "name", "") or "") not in {"paper", "background", "render"}
+    ]
+    size = export_pipeline._page_canvas_size_px(work, page, options)
+    masks = export_pipeline._coma_group_masks(work, page, options)
+    from ..io import export_group_masks
+
+    layers = export_group_masks.apply_group_masks_to_layers(layers, masks, Image, ImageChops)
+    image = export_pipeline._flatten_layers(layers, size).convert("RGBA")
+    if image.size != (width_px, height_px):
+        resampling = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
+        image = image.resize((width_px, height_px), resampling)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    image.save(str(out))
+    return True
+
+
+def _render_page_content_overlay_from_blend(
+    page_blend: Path,
+    work_dir: Path,
+    page_id: str,
+    out: Path,
+    target_size: tuple[int, int],
+) -> bool:
+    """ページblendを一時読込し、保存済み実体を含む透明作画画像を生成する."""
+    try:
+        import bpy
+    except Exception:  # pragma: no cover - bpy unavailable outside Blender
+        return False
+    before = _snapshot_bpy_ids(bpy)
+    old_scene = getattr(getattr(bpy.context, "window", None), "scene", None)
+    try:
+        with bpy.data.libraries.load(str(page_blend.resolve()), link=False) as (data_from, data_to):
+            data_to.scenes = list(getattr(data_from, "scenes", []) or [])
+        loaded_scenes = _new_bpy_ids(bpy.data.scenes, before["scenes"])
+        scene, loaded_work, loaded_page = _loaded_page_scene(loaded_scenes, work_dir, page_id)
+        if scene is None or loaded_work is None or loaded_page is None:
+            return False
+        window = getattr(bpy.context, "window", None)
+        if window is not None:
+            window.scene = scene
+        with bpy.context.temp_override(scene=scene):
+            return _render_page_content_overlay_in_scene(
+                loaded_work, loaded_page, out, target_size,
+            )
+    except Exception:  # noqa: BLE001
+        _logger.exception("panel camera page content overlay render failed: %s", page_id)
+        return False
+    finally:
+        try:
+            window = getattr(bpy.context, "window", None)
+            if window is not None and old_scene is not None:
+                window.scene = old_scene
+        except Exception:  # noqa: BLE001
+            pass
+        _remove_new_bpy_ids(bpy, before)
+
+
 def _loaded_page_scene(loaded_scenes, work_dir: Path, page_id: str):
     for scene in loaded_scenes:
         work = getattr(scene, "bmanga_work", None)

@@ -24,6 +24,7 @@ from .coma_camera_constants import (
 )
 from .coma_camera_refs import (
     ReferenceImage,
+    ensure_page_content_overlay,
     ensure_reference_images,
     reference_dir,
     _collect_existing_reference_images,
@@ -1334,6 +1335,7 @@ def _add_page_overview_backgrounds(scene, work) -> None:
                 cam_data, work, page_id, coma_id, coma_panel,
                 canvas_w_mm, canvas_h_mm, user_scale,
                 own_page_alpha, own_page_visible,
+                koma_alpha, koma_visible,
                 "BACK" if koma_depth_back else "FRONT",
             )
             continue
@@ -1375,9 +1377,10 @@ def _add_own_page_backgrounds(
     cam_data, work, page_id, coma_id, coma_panel,
     canvas_w_mm, canvas_h_mm, user_scale,
     own_page_alpha, own_page_visible,
+    koma_alpha, koma_visible,
     depth,
 ) -> None:
-    """現在ページをコマ領域透明にして自ページ画像として追加."""
+    """現在ページをコマ領域の外側画像と内側レイヤーに分けて追加."""
     from . import page_preview_object
 
     png_path = page_preview_object._preview_png_path(work, page_id)
@@ -1402,13 +1405,42 @@ def _add_own_page_backgrounds(
     if coma_panel is not None:
         from . import coma_own_page_mask
 
-        masked_path = cache_dir / f"own_page_{page_id}_{coma_id}.png"
-        masked = coma_own_page_mask.apply_current_coma_cutout(src, coma_panel, canvas_w_mm, canvas_h_mm)
-        if masked is not None:
-            masked.save(str(masked_path))
+        outside = coma_own_page_mask.apply_current_coma_cutout(
+            src, coma_panel, canvas_w_mm, canvas_h_mm,
+        )
+        page = next(
+            (candidate for candidate in getattr(work, "pages", [])
+             if str(getattr(candidate, "id", "") or "") == page_id),
+            None,
+        )
+        overlay_path = cache_dir / f"page_content_{page_id}.png"
+        content_source_path = (
+            ensure_page_content_overlay(work, page, overlay_path, src.size)
+            if page is not None else None
+        )
+        content = None
+        if content_source_path is not None:
+            try:
+                with Image.open(str(content_source_path)) as opened:
+                    content = coma_own_page_mask.extract_current_coma_content(
+                        opened.convert("RGBA"), coma_panel, canvas_w_mm, canvas_h_mm,
+                    )
+            except Exception:  # noqa: BLE001
+                _logger.exception("page content overlay load failed: %s", page_id)
+        if outside is not None:
+            outside_path = cache_dir / f"own_page_{page_id}_{coma_id}.png"
+            outside.save(str(outside_path))
             _load_overview_bg(
-                cam_data, masked_path, page_id, "own_page", user_scale, own_page_alpha, own_page_visible, depth=depth,
+                cam_data, outside_path, page_id, "own_page",
+                user_scale, own_page_alpha, own_page_visible, depth=depth,
             )
+            if content is not None:
+                content_path = cache_dir / f"koma_content_{page_id}_{coma_id}.png"
+                content.save(str(content_path))
+                _load_overview_bg(
+                    cam_data, content_path, page_id, "koma",
+                    user_scale, koma_alpha, koma_visible, depth=depth,
+                )
             return
     _add_own_page_fallback(cam_data, png_path, page_id, user_scale, own_page_alpha, own_page_visible, depth)
 

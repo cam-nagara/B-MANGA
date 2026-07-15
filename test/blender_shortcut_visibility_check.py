@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 import bpy
@@ -31,7 +32,16 @@ class _RecordingLayout:
     def prop(self, _data, prop_name: str, text: str = "", **_kwargs) -> None:
         self.records.append(("prop", prop_name, text))
 
-    def separator(self) -> None:
+    def row(self, **_kwargs):
+        return self
+
+    def column(self, **_kwargs):
+        return self
+
+    def label(self, text: str = "", **_kwargs) -> None:
+        self.records.append(("label", "", text))
+
+    def separator(self, **_kwargs) -> None:
         self.records.append(("separator", "", ""))
 
 
@@ -156,8 +166,12 @@ def main() -> None:
         shortcut_visibility.mark_bmanga_panel_drawn(
             SimpleNamespace(area=fake_reported_other_area, screen=fake_reported_other_screen)
         )
+        assert shortcut_visibility._area_has_bmanga_panel_category(fake_reported_other_area), (
+            "パネル再描画直後の短い猶予中にB-MANGA操作が切れています"
+        )
+        time.sleep(shortcut_visibility.PANEL_DRAW_GRACE_SECONDS + 0.05)
         assert not shortcut_visibility._area_has_bmanga_panel_category(fake_reported_other_area), (
-            "B-MANGA以外のタブ表示中にB-MANGAショートカットが有効です"
+            "再描画猶予後もB-MANGA以外のタブでショートカットが有効です"
         )
 
         kc = bpy.context.window_manager.keyconfigs.addon
@@ -167,6 +181,7 @@ def main() -> None:
 
         shortcut_visibility.bmanga_panel_visible = lambda _context=None: False
         shortcut_visibility.any_bmanga_panel_visible = lambda _context=None: False
+        keymap_mod._watch_bmanga_tab()
         keymap_mod._watch_bmanga_tab()
         assert _active_bmanga_items(keymap_mod) == 0, "B-MANGAタブ非表示扱いでショートカットが有効です"
         assert bool(conflict_kmi.active), "B-MANGAタブ非表示扱いで他のショートカットが無効化されています"
@@ -197,6 +212,8 @@ def main() -> None:
         coma_modal_state.set_active("object_tool", dummy, bpy.context)
         shortcut_visibility.bmanga_panel_visible = lambda _context=None: False
         shortcut_visibility.any_bmanga_panel_visible = lambda _context=None: False
+        # An active tool is stopped only after a confirmed second off tick.
+        keymap_mod._watch_bmanga_tab()
         keymap_mod._watch_bmanga_tab()
         assert dummy.finished == [True], "B-MANGAタブ非表示時に起動済み操作が終了しません"
         assert not coma_modal_state.is_active("object_tool"), "B-MANGAタブ非表示後も起動済み操作が残っています"
