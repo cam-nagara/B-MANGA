@@ -70,6 +70,13 @@ def main() -> None:
         if export_pipeline._rgb255((*coma_linear, 1.0))[:3] != (128, 128, 128):
             raise AssertionError("書き出し用の色変換が 50% グレーを暗く変換しています")
 
+        # ページ一覧プレビューにはセーフライン外/裁ち落とし枠外の塗りも
+        # 焼き込まれる (v0.6.516 で欠落バグを修正)。本テストの目的は
+        # 用紙色・コマ色がプレビューへ忠実に出ることの確認なので、
+        # 塗りを無効化して素の用紙色を採点する。
+        work.safe_area_overlay.enabled = False
+        work.safe_area_overlay.bleed_outer_enabled = False
+
         work.paper.paper_color = (*paper_linear, 1.0)
         for index, coma in enumerate(page.comas):
             coma.visible = index == 0

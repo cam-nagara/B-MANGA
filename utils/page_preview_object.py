@@ -518,12 +518,21 @@ def _render_preview_image(work, page, page_index: int, *, current: bool, scene=N
         exported = _resize_preview_image(exported, target_width, target_height)
         from . import page_preview_decor
 
+        # DETAIL バリアントでは export 側が塗りを焼き込む
+        # (_render_preview_image_from_export の include_page_overlay_fills)。
+        # 作品ファイルのページ一覧 (work バリアント) では export が塗りを
+        # 含まないため、装飾側で塗りを描く。両方で描くと二重になるので
+        # export が焼き込んだ時だけ装飾側の塗りを止める。
+        fills_baked = (
+            _preview_render_variant(scene) == PREVIEW_RENDER_VARIANT_DETAIL
+            and page_preview_decor.page_guides_visible(work, scene)
+        )
         page_preview_decor.draw_preview_decoration(
             exported,
             work,
             page,
             scene=scene,
-            include_fills=False,
+            include_fills=not fills_baked,
         )
         draw = ImageDraw.Draw(exported)
         _draw_preview_frame(draw, target_width, target_height, current=current)

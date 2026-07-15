@@ -3,6 +3,30 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.2 を対象としています。
 
+## 2026-07-16 — ページ一覧プレビューの塗り欠落を修正しテスト期待値を現行化 (B-MANGA v0.6.516)
+
+### 症状
+
+- 作品ファイルのページ一覧プレビューに、有効にしているはずの「セーフライン外の塗り」「裁ち落とし枠外の塗り」が表示されなかった (Pillow が使える通常環境で常に欠落)。
+- `test/blender_page_overlay_fill_psd_layers_check.py` が 2026-06-27 以降失敗したまま放置されていた。
+
+### 原因
+
+- 2026-06-27 の 78279447 で「ページ/コマファイルの詳細プレビューは書き出しレンダーが塗りを焼き込み、装飾側は塗りを描かない (include_fills=False)」へ再編した際、作品ファイルのページ一覧 (work バリアント) では書き出し側も塗りを含めないため、どちらの段でも塗りが描かれなくなっていた (実バグ)。
+- 同日 a73a4518 の設計変更「作品ファイルのページ実体再生成を防止」により、ページ一覧では表示設定変更で用紙ガイド実体を作らなくなったが、上記テストの前半が旧設計 (一覧画面にも実体が生える) の期待のまま残っていた (期待値の陳腐化)。
+
+### 修正
+
+- プレビュー生成の書き出し経路で、書き出しが塗りを焼き込んだ場合 (DETAIL バリアント) だけ装飾側の塗りを止め、ページ一覧では装飾側で塗りを描くようにした (`utils/page_preview_object.py`)。
+- テスト前半を現行設計の期待へ更新: 一覧画面では設定変更後にガイド実体が「残らない」ことを確認し、実体の品質確認 (メッシュ・素材・最前面非依存) は `regenerate_all_paper_guides` 直後へ移動した。
+- `blender_page_preview_color_fidelity_check` は「塗りなしプレビュー」(バグ状態) を前提に用紙色を採点していたため、塗りを無効化してから採点するよう前処理を追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `blender_page_overlay_fill_psd_layers_check` が全区間 (PSDレイヤー・一覧プレビュー焼き込み・再生成・再読込後の修復) 合格
+- 回帰合格: `blender_paper_guide_visibility_check` / `blender_bleed_outer_default_color_check` / `blender_safe_area_fill_viewport_visual_check` / `blender_page_file_preview_visual_check` / `blender_page_preview_color_fidelity_check` / `blender_page_preview_work_info_overlay_check` / `blender_preview_overlay_alignment_visual_check`
+- `blender_spread_overlay_fill_visual_check` は本変更前から `SpreadContentError` で失敗する既存問題であることを stash 比較で確認 (AGENT_INBOX の既知失敗リストへ追記)
+
 ## 2026-07-16 — 書き出し重ね順・保存復旧・コマ下絵の未コミット修正を検証して反映 (B-MANGA v0.6.515)
 
 ### 経緯

@@ -126,16 +126,14 @@ def main() -> None:
         _assert_fill_sample(safe_layer, between_safe_and_bleed_top, dpi, (51, 153, 204, 128))
         _assert_fill_sample(safe_layer, inside_safe, dpi, (0, 0, 0, 0))
 
+        # 2026-06-27 の設計変更 (a73a4518「作品ファイルのページ実体再生成を防止」)
+        # 以降、ページ一覧画面では表示設定の変更でページ実体 (用紙ガイド) を
+        # 再生成せず、塗りはページ一覧プレビュー画像へ焼き込む。設定変更後に
+        # 一覧画面へガイド実体が残らないことを確認する (実体の品質確認は
+        # 後段の regenerate_all_paper_guides 直後で行う)。
         bleed_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_BLEED_OUTER_FILL_PREFIX}{page.id}")
-        if bleed_obj is None:
-            raise AssertionError("ページ上の裁ち落とし枠外塗りが作られていません")
-        if bleed_obj.type != "MESH":
-            raise AssertionError(f"裁ち落とし枠外塗りはメッシュである必要があります: {bleed_obj.type}")
-        if bool(getattr(bleed_obj, "show_in_front", False)):
-            raise AssertionError("裁ち落とし枠外塗りが最前面ワイヤ表示に依存しています")
-        bleed_mat = bleed_obj.active_material
-        if bleed_mat is None or not bleed_mat.name.startswith(paper_guide_object.PAPER_BLEED_OUTER_FILL_VIEW_MATERIAL):
-            raise AssertionError("裁ち落とし枠外塗りの表示素材がありません")
+        if bleed_obj is not None:
+            raise AssertionError("ページ一覧画面に裁ち落とし枠外塗りの実体が残っています")
 
         work.safe_area_overlay.bleed_outer_enabled = False
         names = [layer.name for layer in export_pipeline.build_page_layers(work, page, options)]
@@ -209,6 +207,13 @@ def main() -> None:
         bleed_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_BLEED_OUTER_FILL_PREFIX}{page.id}")
         if bleed_obj is None:
             raise AssertionError("再表示後の裁ち落とし枠外塗りが作られていません")
+        if bleed_obj.type != "MESH":
+            raise AssertionError(f"裁ち落とし枠外塗りはメッシュである必要があります: {bleed_obj.type}")
+        if bool(getattr(bleed_obj, "show_in_front", False)):
+            raise AssertionError("裁ち落とし枠外塗りが最前面ワイヤ表示に依存しています")
+        bleed_mat = bleed_obj.active_material
+        if bleed_mat is None or not bleed_mat.name.startswith(paper_guide_object.PAPER_BLEED_OUTER_FILL_VIEW_MATERIAL):
+            raise AssertionError("裁ち落とし枠外塗りの表示素材がありません")
         bleed_obj_name = bleed_obj.name
         reopen_path = temp_root / "overlay_fill_reopen.blend"
         bpy.ops.wm.save_as_mainfile(filepath=str(reopen_path))
