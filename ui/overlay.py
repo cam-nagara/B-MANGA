@@ -966,15 +966,24 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
             )
         except Exception:  # noqa: BLE001
             pass
-        x_px = float(coord.x)
-        y_px = float(coord.y)
+        x_px = float(coord.x) + float(getattr(glyph, "offset_x_mm", 0.0)) * px_per_mm
+        y_px = float(coord.y) + float(getattr(glyph, "offset_y_mm", 0.0)) * px_per_mm
         rotated = getattr(glyph, "rotation_deg", 0.0) != 0.0
         if rotated:
             blf.enable(glyph_font_id, blf.ROTATION)
-            blf.rotation(glyph_font_id, math.radians(glyph.rotation_deg))
+            theta = math.radians(glyph.rotation_deg)
+            blf.rotation(glyph_font_id, theta)
+            # blf の回転はペン位置 (ベースライン左端) が軸。全角ボディ中心が
+            # セル中心と一致するペン位置を逆算する: P = C - R(theta)・m
+            # (m はペン→ボディ中心。CJK フォントはベースラインがボディ下端
+            # から 0.12em 上のため m_y = 0.38em)
             half_em = size_px * 0.5
-            x_px += half_em
-            y_px += half_em
+            m_x = half_em
+            m_y = size_px * 0.38
+            cos_t = math.cos(theta)
+            sin_t = math.sin(theta)
+            x_px = x_px + half_em - (m_x * cos_t - m_y * sin_t)
+            y_px = y_px + half_em - (m_x * sin_t + m_y * cos_t)
         stroke_width_px = 0.0
         if getattr(entry, "stroke_enabled", False):
             stroke_width_px = max(1.0, float(getattr(entry, "stroke_width_mm", 0.2)) * max(px_per_mm, 0.1))

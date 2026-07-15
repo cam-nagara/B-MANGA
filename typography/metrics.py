@@ -67,12 +67,42 @@ def is_kinsoku_end(ch: str) -> bool:
     return ch in "「『（【〈《〔［"
 
 
-_VERTICAL_ROTATE_CHARS = frozenset("…～〜ー―–—─")
+_VERTICAL_ROTATE_CHARS = frozenset(
+    "…‥～〜ー―–—─－"  # 三点リーダ・波ダッシュ・長音・ダッシュ類
+    "「」『』（）〈〉《》【】〔〕〖〗〘〙〚〛［］｛｝"  # 括弧類 (回転で縦組み用字形相当になる)
+)
 
 
 def needs_vertical_rotation(ch: str) -> bool:
     """縦書きで 90° 回転が必要な文字か."""
     return ch in _VERTICAL_ROTATE_CHARS
+
+
+# 句読点は横書き字形では全角ボディの左下に字面があるが、縦書きでは右上に
+# 置く (JIS X 4051 / JLREQ の縦組み配置)。字面が左下 1/4 領域に収まるため、
+# 右へ 0.5em・上へ 0.5em ずらすとちょうど右上 1/4 領域へ移る。
+_VERTICAL_UPPER_RIGHT_PUNCTUATION = frozenset("、。，．")
+_PUNCTUATION_OFFSET_EM = (0.5, 0.5)
+
+# 小書き仮名 (拗音・促音等) は縦書き用字形ではボディの右上寄りに置かれる
+# (docs/縦書きの小文字…徹底調査.txt 参照)。OpenType vert 切替導入までの
+# 近似として右上へ 0.1em ずらす。
+_VERTICAL_SMALL_KANA = frozenset("ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶ")
+_SMALL_KANA_OFFSET_EM = (0.1, 0.1)
+
+
+def vertical_draw_offset_em(ch: str) -> tuple[float, float]:
+    """縦書きで字面を描画時にずらす量 (em 単位、右+ / 上+)。
+
+    セル (文字送り) 位置は変えず、字面の描画位置だけをずらすための値。
+    """
+    if not ch:
+        return (0.0, 0.0)
+    if ch in _VERTICAL_UPPER_RIGHT_PUNCTUATION:
+        return _PUNCTUATION_OFFSET_EM
+    if ch in _VERTICAL_SMALL_KANA:
+        return _SMALL_KANA_OFFSET_EM
+    return (0.0, 0.0)
 
 
 def is_tatechuyoko_candidate(chars: str) -> bool:

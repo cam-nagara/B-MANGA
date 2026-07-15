@@ -26,6 +26,10 @@ class GlyphPlacement:
     size_pt: float  # この文字の描画サイズ (縦中横などで変わる)
     rotation_deg: float  # 0=通常、-90=縦中横の横向き等
     index: int = -1  # 元本文内の文字インデックス
+    # 字面の描画時ずらし (縦書きの句読点・小書き仮名など)。セル座標
+    # (x_mm/y_mm) には含めないため、カーソル・ルビ・当たり判定は不変。
+    offset_x_mm: float = 0.0  # 右+
+    offset_y_mm: float = 0.0  # 上+
 
 
 @dataclass(frozen=True)
@@ -121,9 +125,11 @@ def typeset_vertical(
         )
         y_cursor = region_y_mm + region_height_mm
 
+    after_explicit_break = False
     for text_index, ch in enumerate(text):
         if ch == "\n":
             advance_column(new_logical_line=True)
+            after_explicit_break = True
             continue
         glyph_size_pt = (
             float(font_size_pt_for_index(text_index))
@@ -132,6 +138,11 @@ def typeset_vertical(
         )
         em_mm = _mm_per_em_at(glyph_size_pt)
         char_pitch_mm = em_mm * (1.0 + letter_spacing)
+        # 縦書きの約物処理: 回転 (括弧・ダッシュ類) と字面ずらし (句読点・小書き仮名)
+        rot = -90.0 if metrics.needs_vertical_rotation(ch) else 0.0
+        offset_x_em, offset_y_em = metrics.vertical_draw_offset_em(ch)
+        offset_x_mm = offset_x_em * em_mm
+        offset_y_mm = offset_y_em * em_mm
         # 現在の列 X 座標 (右端から左へ) — 文字セルの左端
         x = region_x_mm + region_width_mm - em_mm - col_offset_mm
         # 現在の行 Y 座標 (上端から下へ)
@@ -148,9 +159,15 @@ def typeset_vertical(
                 overflow = True
                 break
 
-        # 禁則処理: 行頭に禁則文字が来たら前の行末にぶら下げて追加 (簡易版)。
-        # 新しい行の 1 文字目になるのを避け、前行の最終文字のさらに 1 段下に置く。
-        if y_cursor == region_y_mm + region_height_mm and metrics.is_kinsoku_start(ch) and placements:
+        # 禁則処理: 自動折返しの行頭に禁則文字が来たら前の行末にぶら下げて追加
+        # (簡易版)。明示改行 (\n) 直後は作者がその文字で行を始めているので
+        # ぶら下げず、そのまま新しい列の先頭に置く。
+        if (
+            not after_explicit_break
+            and y_cursor == region_y_mm + region_height_mm
+            and metrics.is_kinsoku_start(ch)
+            and placements
+        ):
             prev = placements[-1]
             placements.append(
                 GlyphPlacement(
@@ -158,14 +175,15 @@ def typeset_vertical(
                     x_mm=prev.x_mm,
                     y_mm=prev.y_mm - char_pitch_mm,
                     size_pt=glyph_size_pt,
-                    rotation_deg=0.0,
+                    rotation_deg=rot,
                     index=text_index,
+                    offset_x_mm=offset_x_mm,
+                    offset_y_mm=offset_y_mm,
                 )
             )
             # y_cursor はそのまま (次の文字も新行の先頭扱い)
             continue
 
-        rot = -90.0 if metrics.needs_vertical_rotation(ch) else 0.0
         placements.append(
             GlyphPlacement(
                 ch=ch,
@@ -174,9 +192,12 @@ def typeset_vertical(
                 size_pt=glyph_size_pt,
                 rotation_deg=rot,
                 index=text_index,
+                offset_x_mm=offset_x_mm,
+                offset_y_mm=offset_y_mm,
             )
         )
         y_cursor -= char_pitch_mm
+        after_explicit_break = False
 
     return TypesetResult(placements=placements, overflow=overflow)
 

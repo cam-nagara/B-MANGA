@@ -38,6 +38,11 @@ def _layout_bottom_to_pillow_top(image_height: int, y_px: float, size_px: int) -
     return float(image_height) - (float(y_px) + float(size_px))
 
 
+# CJK フォントはベースラインを em ボディ下端から 0.12em 上に置く設計慣習。
+# ボディ中心を回転軸に取るときのアセンダ上端→ボディ上端の補正に使う。
+_CJK_BODY_ASCENT_RATIO = 0.88
+
+
 def _draw_rotated_char(
     image: Any,
     draw: Any,
@@ -49,16 +54,27 @@ def _draw_rotated_char(
     rotation_deg: float,
     **kwargs,
 ) -> None:
-    """1文字を回転して image に合成."""
+    """1文字を回転して image に合成 (全角ボディ中心を軸に回転).
+
+    rotation_deg は blf と同じ符号 (負=時計回り)。Pillow の ``Image.rotate``
+    は正=反時計回りなので、そのまま渡すと同じ見た目になる。
+    """
     margin = size_px
-    tmp_size = size_px + margin * 2
+    tmp_size = size_px * 3
     tmp = Image.new("RGBA", (tmp_size, tmp_size), (0, 0, 0, 0))
     tmp_draw = ImageDraw.Draw(tmp)
     tmp_draw.text((margin, margin), ch, font=font, **kwargs)
-    rotated = tmp.rotate(-rotation_deg, resample=Image.BICUBIC, expand=False)
-    paste_x = int(x - tmp_size / 2 + size_px * 0.5)
-    paste_y = int(y - tmp_size / 2 + size_px * 0.5)
-    image.alpha_composite(rotated, (paste_x, paste_y))
+    # 既定アンカー "la" ではアセンダ上端が y に来るため、em ボディ上端は
+    # ascent - 0.88em だけ下がる。ボディ中心を回転軸に補正する。
+    try:
+        ascent_px = float(font.getmetrics()[0])
+    except Exception:  # noqa: BLE001 - ビットマップ代替フォント等は補正なし
+        ascent_px = size_px * _CJK_BODY_ASCENT_RATIO
+    body_top = margin + ascent_px - size_px * _CJK_BODY_ASCENT_RATIO
+    center = (margin + size_px * 0.5, body_top + size_px * 0.5)
+    rotated = tmp.rotate(rotation_deg, resample=Image.BICUBIC, expand=False, center=center)
+    # tmp の (margin, margin) が非回転描画の (x, y) と一致するように合成する
+    image.alpha_composite(rotated, (int(x - margin), int(y - margin)))
 
 
 def render_to_image(
@@ -100,8 +116,8 @@ def render_to_image(
         size_px = max(1, int(g.size_pt * px_per_mm * 25.4 / 72.0))
         glyph_font_path = font_path_for_index(g.index) if font_path_for_index is not None else font_path
         font = font_for(glyph_font_path, size_px)
-        x = origin_xy_px[0] + g.x_mm * px_per_mm
-        y = origin_xy_px[1] + g.y_mm * px_per_mm
+        x = origin_xy_px[0] + (g.x_mm + g.offset_x_mm) * px_per_mm
+        y = origin_xy_px[1] + (g.y_mm + g.offset_y_mm) * px_per_mm
         # layout.py の y は文字の下端、Pillow は左上原点の上端指定。
         y_px = _layout_bottom_to_pillow_top(image.height, y, size_px)
         glyph_color = color_for_index(g.index) if color_for_index is not None else color

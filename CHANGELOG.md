@@ -3,6 +3,44 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.2 を対象としています。
 
+## 2026-07-16 — 縦書きテキストの記号類 (約物) の位置・回転対応 (B-MANGA v0.6.517)
+
+### 症状
+
+- 縦書きテキストで記号類が横書きのままの見た目になっていた:
+  - 句読点 (、。，．) が文字マスの左下 (横書き位置) に表示される (正しくは右上)
+  - 括弧類 (「」『』（）【】等) が回転されず横倒しの字形にならない
+  - 小書き仮名 (っゃゅょ等) が縦書き用の右上寄せにならない
+- あわせて、明示改行の直後に ー や … などの行頭禁則文字が来ると、
+  「ぶら下げ」が誤発動して前の列の末尾に張り付いていた。
+
+### 修正
+
+- 組版計画書 3.1.5 の「句読点・括弧の回転/位置調整 (約物処理)」を実装:
+  - `typography/metrics.py` — 縦書き回転対象に括弧類・ダッシュ類を追加し、
+    句読点 0.5em / 小書き仮名 0.1em の右上ずらし量を新設
+  - `typography/layout.py` — 配置結果 (GlyphPlacement) に描画時ずらしを追加。
+    セル座標は変えないためカーソル・ルビ・当たり判定は従来のまま。
+    ぶら下げ禁則で回転・ずらしが消える問題と、明示改行直後のぶら下げ
+    誤発動も修正
+  - `typography/export_renderer.py` — Pillow の回転方向を blf と同符号に統一
+    (従来は逆回転で、左右対称な ー…〜 では見えなかった)。回転軸を全角
+    ボディ中心へ補正 (フォントのアセント差でずれていた)
+  - `ui/overlay.py` / `typography/viewport_renderer.py` — 編集オーバーレイの
+    blf 回転ペン位置を「全角ボディ中心がセル中心に一致する」式へ修正
+    (従来は回転文字が右下へ約半文字ずれる)
+
+### 検証 (Blender 5.1.2 実機)
+
+- 新規: `blender_text_vertical_punctuation_check` — 配置データ (回転・ずらし・
+  禁則) と Pillow 実描画の字面重心 (、。=右上 / 「=下寄り / 」=上寄り /
+  ー=縦棒中央 / （=下開き) の両方を検証し合格
+- GPU オフスクリーンで blf 描画も目視確認 (「」ー っ の縦組み字形・位置)
+- 回帰合格: `blender_text_rotation_check` / `blender_text_vertical_cursor_check` /
+  `blender_text_ruby_ux_check` / `blender_text_request_visual_audit_check` /
+  `blender_text_autofit_perf_check` / `blender_ruby_settings_test` /
+  `blender_ruby_overlap_comprehensive_test` / `blender_text_ime_runtime_check`
+
 ## 2026-07-16 — ページ一覧プレビューの塗り欠落を修正しテスト期待値を現行化 (B-MANGA v0.6.516)
 
 ### 症状

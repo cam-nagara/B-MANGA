@@ -41,13 +41,25 @@ def render_placements(
         if size_px <= 0:
             continue
         blf.size(font_id, max(1, int(size_px)))
-        screen_x = origin_screen_xy[0] + g.x_mm * view_to_screen_px_per_mm
-        screen_y = origin_screen_xy[1] + g.y_mm * view_to_screen_px_per_mm
+        screen_x = origin_screen_xy[0] + (g.x_mm + g.offset_x_mm) * view_to_screen_px_per_mm
+        screen_y = origin_screen_xy[1] + (g.y_mm + g.offset_y_mm) * view_to_screen_px_per_mm
         if g.rotation_deg != 0.0:
             blf.enable(font_id, blf.ROTATION)
-            blf.rotation(font_id, math.radians(g.rotation_deg))
+            theta = math.radians(g.rotation_deg)
+            blf.rotation(font_id, theta)
+            # blf の回転はペン位置 (ベースライン左端) が軸。全角ボディ中心が
+            # セル中心と一致するペン位置を逆算する (ui/overlay.py と同式)。
             half_em = size_px * 0.5
-            blf.position(font_id, screen_x + half_em, screen_y + half_em, 0.0)
+            m_x = half_em
+            m_y = size_px * 0.38
+            cos_t = math.cos(theta)
+            sin_t = math.sin(theta)
+            blf.position(
+                font_id,
+                screen_x + half_em - (m_x * cos_t - m_y * sin_t),
+                screen_y + half_em - (m_x * sin_t + m_y * cos_t),
+                0.0,
+            )
             rotated = True
         else:
             if rotated:
