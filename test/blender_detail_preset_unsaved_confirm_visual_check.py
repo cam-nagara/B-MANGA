@@ -27,6 +27,8 @@ RESULT_PATH = OUT_DIR / "result.json"
 
 _WORK_ROOT: Path | None = None
 _TARGET_ID = ""
+_FROM_PRESET = ""
+_TO_PRESET = ""
 _ATTEMPTS = 0
 _CONFIRM_ATTEMPTS = 0
 _DONE = False
@@ -103,6 +105,8 @@ def _finish() -> None:
     _DONE = True
     payload = {
         "image": str(IMAGE_PATH),
+        "from_preset": _FROM_PRESET,
+        "to_preset": _TO_PRESET,
         "temporary_regions": _temporary_regions(),
     }
     RESULT_PATH.write_text(
@@ -131,7 +135,7 @@ def _after_confirm_open():
 
 
 def _request_preset_switch():
-    global _ATTEMPTS
+    global _ATTEMPTS, _FROM_PRESET, _TO_PRESET
     try:
         _ATTEMPTS += 1
         session = _running_session()
@@ -145,8 +149,13 @@ def _request_preset_switch():
             bpy.context,
             "effect_line",
         )
-        assert entries
-        identifier, label, _description = entries[0]
+        _FROM_PRESET = str(session.preset_selection or "").strip()
+        assert _FROM_PRESET, "切替元プリセットが選択されていません"
+        candidates = [item for item in entries if str(item[0]) != _FROM_PRESET]
+        assert candidates, "切替元と異なる効果線プリセットがありません"
+        identifier, label, _description = candidates[0]
+        _TO_PRESET = str(identifier)
+        assert _TO_PRESET != _FROM_PRESET
         with bpy.context.temp_override(**_view3d_override()):
             result = bpy.ops.bmanga.detail_preset_apply(
                 "INVOKE_DEFAULT",

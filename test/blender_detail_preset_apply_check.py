@@ -306,8 +306,30 @@ def _check_unsaved_switch_baseline(context, page) -> None:
             target,
             "text",
         ), "現在設定のプリセット保存後も未保存扱いです"
+
+        entry.line_height = 1.8
+        failed_operator = SimpleNamespace(
+            preset_type="text",
+            preset_name="__missing_detail_preset__",
+            session_token=session.token,
+            bl_idname="bmanga.detail_preset_apply",
+            _fixed_target=lambda _context, _preset_type: target,
+            report=lambda *_args: None,
+        )
+        assert detail_preset_apply_op.BMANGA_OT_detail_preset_apply.execute(
+            failed_operator,
+            context,
+        ) == {"CANCELLED"}
+        assert abs(entry.line_height - 1.8) < 1e-5, "適用失敗で現在設定が変わりました"
+        assert detail_dialog_runtime.preset_switch_requires_confirmation(
+            context,
+            session.token,
+            target,
+            "text",
+        ), "適用失敗後に未保存変更が消えました"
     finally:
         detail_dialog_runtime.cancel_actual_session(context, session)
+    assert abs(entry.line_height - 1.0) < 1e-5, "親画面の取消で開始時設定へ戻りません"
 
 
 def main() -> None:
