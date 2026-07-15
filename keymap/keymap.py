@@ -908,6 +908,107 @@ def ensure_standard_view_toggles_enabled() -> int:
     return repaired
 
 
+def _default_counterpart_active(default_km, kmi, idname: str) -> bool:
+    """default keyconfig 側の同一キー項目が Blender 既定で有効かを返す.
+
+    Blender が既定から inactive で同梱している項目まで有効化しないための照合。
+    idname / キー / 修飾キー / value=PRESS が一致する項目が default 側で
+    active なら True。
+    """
+    combo = KeymapState._combo_for_kmi(kmi)
+    try:
+        candidates = list(default_km.keymap_items)
+    except Exception:  # noqa: BLE001
+        return False
+    for candidate in candidates:
+        try:
+            if str(getattr(candidate, "idname", "") or "") != idname:
+                continue
+            if str(getattr(candidate, "value", "PRESS")) != "PRESS":
+                continue
+            if KeymapState._combo_for_kmi(candidate) != combo:
+                continue
+            if bool(getattr(candidate, "active", False)):
+                return True
+        except (ReferenceError, AttributeError):
+            continue
+    return False
+
+
+def repair_stale_disabled_shortcuts() -> int:
+    """過去セッションの衝突退避で無効のまま取り残された標準キーを自己修復する.
+
+    ``disable_conflicting_keys`` は B-MANGA タブ表示中に user keyconfig の
+    F/K/O/T 等を ``active=False`` へ退避するが、復元情報 (saved_conflicts)
+    はメモリ上にしか無い。タブを開いたまま Blender を終了すると無効状態が
+    userpref.blend に保存され、次回起動以降は誰も復元できず「編集モードの
+    F (面張り) / K (ナイフ) / O (プロポーショナル編集) 等が永久に効かない」
+    事故になる (N キーの sidebar toggle で実際に確認された事象の一般化)。
+
+    アドオン読込ごとに、B-MANGA が予約するキー組み合わせのうち default
+    keyconfig では active な標準項目が user keyconfig で inactive に取り残さ
+    れていれば active へ戻す。今セッションで意図的に退避中の項目
+    (saved_conflicts に記録済み) は対象外とし、restore_conflicting_keys 側の
+    復元に任せる。
+    """
+    wm = bpy.context.window_manager
+    if wm is None:
+        return 0
+    user_kc = getattr(wm.keyconfigs, "user", None)
+    default_kc = getattr(wm.keyconfigs, "default", None)
+    if user_kc is None or default_kc is None:
+        return 0
+    state = _state
+    combos: set[tuple[str, bool, bool, bool, bool]] = set()
+    saved_ptrs: set[int] = set()
+    if state is not None:
+        try:
+            combos |= state._exclusive_conflict_combos()
+        except Exception:  # noqa: BLE001
+            pass
+        saved_ptrs = {
+            ptr
+            for ptr in (KeymapState._ptr(s.item_ref) for s in state.saved_conflicts)
+            if ptr is not None
+        }
+    for key in KeymapState._BMANGA_RESERVED_SINGLE_KEYS:
+        combos.add((key, False, False, False, False))
+    repaired = 0
+    for km in list(user_kc.keymaps):
+        if not KeymapState._keymap_can_steal_view3d_shortcut(km):
+            continue
+        default_km = default_kc.keymaps.get(km.name)
+        if default_km is None:
+            continue
+        for kmi in list(km.keymap_items):
+            try:
+                idname = str(getattr(kmi, "idname", "") or "")
+                if not idname or idname.startswith("bmanga."):
+                    continue
+                if bool(getattr(kmi, "active", True)):
+                    continue
+                if str(getattr(kmi, "value", "PRESS")) != "PRESS":
+                    continue
+                if KeymapState._combo_for_kmi(kmi) not in combos:
+                    continue
+                item_ptr = KeymapState._ptr(kmi)
+                if item_ptr is not None and item_ptr in saved_ptrs:
+                    continue
+                if not _default_counterpart_active(default_km, kmi, idname):
+                    continue
+                kmi.active = True
+                repaired += 1
+                print(
+                    "[B-MANGA][KEYMAP] re-enabled stale disabled shortcut:"
+                    f" km={km.name!r} idname={idname!r} key={kmi.type}"
+                )
+            except (ReferenceError, AttributeError):
+                continue
+    if repaired:
+        _logger.info("re-enabled %d stale disabled shortcut kmi", repaired)
+    return repaired
+
+
 def suspend_visibility_updates(
     seconds: float = 3.0,
     *,
@@ -999,6 +1100,7 @@ def _watch_bmanga_tab() -> Optional[float]:
             km = state.create_bmanga_keymap()
             if km is not None:
                 ensure_standard_view_toggles_enabled()
+                repair_stale_disabled_shortcuts()
                 _logger.info(
                     "bmanga keymap recreated by watcher (items=%d)",
                     len(state.bmanga_items),
@@ -1145,6 +1247,9 @@ def register() -> None:
         )
     # 標準の N サイドバー開閉キーが過去の保存状態で無効化されていれば修復する。
     ensure_standard_view_toggles_enabled()
+    # 過去セッションの衝突退避 (F/K/O/T 等) が userpref.blend に焼き付いて
+    # いれば有効へ戻す。編集モードの F/K/O が効かなくなる事故の自己修復。
+    repair_stale_disabled_shortcuts()
     # register 時点でもサイドバー状態を見て active を合わせる。
     # B-MANGA タブが表示されていない間は Blender 標準キーへ戻す。
     _apply_visibility_state(_state, bool(keymap_enabled and _any_bmanga_tab_active()))
@@ -1205,6 +1310,7 @@ def rebuild_keymap_from_prefs() -> None:
         # B-MANGA タブ状態に合わせて自前キーだけを切り替える
         state.create_bmanga_keymap()
         ensure_standard_view_toggles_enabled()
+        repair_stale_disabled_shortcuts()
         from ..preferences import get_preferences
         prefs = get_preferences()
         keymap_enabled = True if prefs is None else bool(prefs.keymap_enabled)
