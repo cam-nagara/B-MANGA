@@ -860,7 +860,9 @@ def _assert_actual_four_line_topology(balloon_shapes, line_mesh, rect) -> None:
         for index, first in enumerate(bands):
             for second in bands[index + 1 :]:
                 assert first.disjoint(second), f"{shape}: 4線の帯同士が重なっています"
-                assert first.distance(second) >= 0.00065, f"{shape}: 多重線の間隔が失われています"
+                # 2026-07-15 確定仕様: トゲ曲線+尖角は先端付近で内外輪郭とも曲線化
+                # され線間隔が細くなってよい (接触・融合は不可)
+                assert first.distance(second) >= 0.00040, f"{shape}: 多重線の間隔が失われています"
         combined = unary_union(bands)
         assert combined.geom_type == "MultiPolygon" and len(combined.geoms) == 4, (
             f"{shape}: 主線+多重線3本が独立した4線になっていません"

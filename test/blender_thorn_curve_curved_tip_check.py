@@ -575,10 +575,13 @@ def _assert_line_spacing(bands) -> None:
 
     polygons = [Polygon(outer, holes) for band in bands for outer, holes in band]
     assert len(polygons) == len(LINE_SPECS_MM)
+    # 2026-07-15 確定仕様 (手描き理想図): 先端付近は線の内外輪郭とも曲線化され、
+    # 線幅・線間隔が先端に向かって細くなってよい。そのため間隔の下限は
+    # 「側面の設定間隔 0.7mm が概ね保たれ、絶対に接触しない」ことの確認に留める。
     for index, first in enumerate(polygons):
         for following_index, second in enumerate(polygons[index + 1 :], start=index + 1):
             distance = first.distance(second)
-            assert first.disjoint(second) and distance >= 0.65, (
+            assert first.disjoint(second) and distance >= 0.40, (
                 f"{LINE_SPECS_MM[index][0]}/{LINE_SPECS_MM[following_index][0]}: "
                 f"多重線間隔が不足しています: {distance:.6f}mm"
             )
@@ -674,9 +677,24 @@ def _assert_dynamic_polygon_contract(curve_helper, reference, legacy, curved):
     independent = matched - blocked
     polygon = Polygon(new_outer, new_holes)
     assert polygon.is_valid and not polygon.is_empty, "adjacent-apex: 修正後bandが無効です"
-    assert tuple(_canonical_ring(hole) for hole in old_holes) == tuple(
-        _canonical_ring(hole) for hole in new_holes
-    ), "adjacent-apex: 通常の内周を変更しました"
+    # 2026-07-15 確定仕様: 内側輪郭 (穴) もミター先端位置を保ったまま曲線化される。
+    # 変更される場合は「本体山頂に対応するmitre先端を持ち、先端位置が不変」であること。
+    assert len(old_holes) == len(new_holes), "adjacent-apex: 内周の本数が変わりました"
+    for old_hole, new_hole in zip(old_holes, new_holes):
+        if _canonical_ring(old_hole) == _canonical_ring(new_hole):
+            continue
+        old_hole_ring = _open_test_ring(old_hole)
+        new_hole_ring = _open_test_ring(new_hole)
+        hole_matched = curve_helper._matched_apex_indices(  # noqa: SLF001
+            old_hole_ring, reference, center
+        )
+        assert hole_matched, "adjacent-apex: 対応する山が無い内周が変更されました"
+        for hole_apex in hole_matched:
+            old_tip = old_hole_ring[hole_apex]
+            new_tip = new_hole_ring[_nearest_ring_index(new_hole_ring, old_tip)]
+            assert _distance(new_tip, old_tip) <= 1.0e-11, (
+                "adjacent-apex: 内周のmitre先端位置が変わりました"
+            )
     for apex_index in matched:
         old_tip = old_ring[apex_index]
         new_tip = new_ring[_nearest_ring_index(new_ring, old_tip)]
