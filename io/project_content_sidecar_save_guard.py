@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 import os
 from pathlib import Path
 import re
@@ -33,6 +34,9 @@ SIDECAR_JOURNAL_NAME = "sidecar-save-journal.json"
 _DONE_STATUSES = {"committed", "restored"}
 _TRANSACTION_ID_RE = re.compile(r"^\d{8}T\d{6}Z-[0-9a-f]{12}$")
 _VALID_STATUSES = {"secured", "writing", *_DONE_STATUSES}
+# native側と同じ猶予期間。ジャーナル未到達 (=退避コピー未完了) のディレクト
+# リだけを対象にし、進行中トランザクションやDropbox同期遅延は消さない。
+_STALE_TRANSACTION_MAX_AGE = timedelta(hours=24)
 
 
 class SidecarSaveError(RuntimeError):
@@ -267,6 +271,48 @@ def _token_from_journal(path: Path, data: dict, work: Path) -> SidecarSaveToken:
     )
 
 
+def cleanup_stale_transactions(
+    work_dir: str | os.PathLike[str],
+) -> tuple[Path, ...]:
+    """ジャーナル未到達のまま残った古いトランザクションディレクトリを掃除する.
+
+    ``begin_sidecar_save`` は全件の退避コピー完了後にだけジャーナルを書く
+    ため、ジャーナルが無いディレクトリは実ファイルへの書込みが一切始まって
+    いない。誤って進行中トランザクションを消さないよう、この関数自体は
+    例外を外へ出さず、個々のエントリで握って続行する。
+    """
+    try:
+        base = _base(Path(work_dir))
+    except Exception:  # noqa: BLE001
+        return ()
+    if not base.is_dir():
+        return ()
+    removed: list[Path] = []
+    now = datetime.now(timezone.utc)
+    try:
+        entries = list(base.iterdir())
+    except OSError:
+        return ()
+    for entry in entries:
+        try:
+            if entry.is_symlink() or not entry.is_dir():
+                continue
+            if not _TRANSACTION_ID_RE.fullmatch(entry.name):
+                continue
+            stamp = datetime.strptime(
+                entry.name.split("-", 1)[0], "%Y%m%dT%H%M%SZ"
+            ).replace(tzinfo=timezone.utc)
+            if now - stamp < _STALE_TRANSACTION_MAX_AGE:
+                continue
+            if (entry / SIDECAR_JOURNAL_NAME).is_file():
+                continue
+            shutil.rmtree(entry, ignore_errors=True)
+            removed.append(entry)
+        except Exception:  # noqa: BLE001
+            continue
+    return tuple(removed)
+
+
 def find_pending_sidecar_saves(work_dir: str | os.PathLike[str]) -> tuple[Path, ...]:
     work = Path(work_dir).resolve(strict=True)
     base = _base(work)
@@ -314,6 +360,7 @@ __all__ = [
     "SidecarSaveError",
     "SidecarSaveToken",
     "begin_sidecar_save",
+    "cleanup_stale_transactions",
     "commit_sidecars",
     "find_pending_sidecar_saves",
     "mark_sidecar_writes_started",

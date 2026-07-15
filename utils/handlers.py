@@ -11,6 +11,7 @@ bmanga_current_coma_id を自動推定する。
 
 from __future__ import annotations
 
+import functools
 from pathlib import Path
 
 import bpy
@@ -24,6 +25,10 @@ _current_file_sync_generation = 0
 _saving_work_metadata = False
 _native_save_token = None
 _native_save_reload_generation = 0
+# 保存トランザクションの一時退避と再読込タイマーが重なる競合窓を吸収する
+# ためのリトライ回数・間隔。上限到達後は作品ファイルへフォールバックする。
+_NATIVE_SAVE_RELOAD_MAX_ATTEMPTS = 10
+_NATIVE_SAVE_RELOAD_RETRY_INTERVAL = 0.2
 _NATIVE_SAVE_RELOAD_FIRST_INTERVAL = 0.15
 
 
@@ -66,6 +71,88 @@ def _show_native_save_notice(*, title: str, lines: tuple[str, ...]) -> None:
         _logger.exception("native save notice failed")
 
 
+def _reload_fallback_target(path: Path) -> Path | None:
+    """再読込対象が見つからない時に代わりに開く作品ファイルを返す.
+
+    復旧済みページファイルはトランザクションの一時退避と競合して直後の
+    数百msだけ消えていることがある (リトライで通常はここへ来ない)。
+    リトライ上限を超えてもまだ無い場合だけ、行き止まりを避けて作品ファイル
+    (ページ一覧) へ逃がす。work.blend 自身の再読込失敗はフォールバック先が
+    無いため、従来どおり行き止まりダイアログになる。
+    """
+    work_root = _find_work_root(path)
+    if work_root is None:
+        return None
+    candidate = work_root / paths.WORK_BLEND_NAME
+    if not candidate.is_file():
+        return None
+    try:
+        if candidate.resolve(strict=False) == path.resolve(strict=False):
+            return None
+    except OSError:
+        return None
+    return candidate
+
+
+def _reload_missing_target(path: Path, state: dict) -> float | None:
+    """再読込対象が未出現の間の待機・フォールバック処理."""
+
+    state["attempts"] += 1
+    if state["attempts"] < _NATIVE_SAVE_RELOAD_MAX_ATTEMPTS:
+        return _NATIVE_SAVE_RELOAD_RETRY_INTERVAL
+    fallback = _reload_fallback_target(path)
+    if fallback is not None:
+        try:
+            _suspend_keymap_for_native_reload(disable_now=False)
+            result = bpy.ops.wm.open_mainfile(filepath=str(fallback), load_ui=False)
+            _suspend_keymap_for_native_reload(disable_now=False)
+            if "FINISHED" not in result:
+                raise RuntimeError("作品ファイルを開き直せませんでした")
+            _show_native_save_notice(
+                title="作品ファイルを開き直しました",
+                lines=(
+                    "最新のページファイルが見つからないため、作品ファイル（ページ一覧）を開き直しました。",
+                    "ページはページ一覧から開き直すと再構築されます。",
+                ),
+            )
+            return None
+        except Exception:  # noqa: BLE001
+            _logger.exception("native save recovery fallback reload failed")
+    _show_native_save_notice(
+        title="再読込に失敗しました",
+        lines=(
+            "この画面では保存せず、Blenderを閉じて作品を開き直してください。",
+            "最新のページファイルが見つかりませんでした。",
+        ),
+    )
+    return None
+
+
+def _native_save_reload_tick(path: Path, generation: int, state: dict) -> float | None:
+    """予約された再読込を1回分実行する (クロージャでなくモジュール関数化してテスト可能に)."""
+
+    if generation != _native_save_reload_generation:
+        return None
+    if not path.is_file():
+        return _reload_missing_target(path, state)
+    try:
+        _suspend_keymap_for_native_reload(disable_now=False)
+        result = bpy.ops.wm.open_mainfile(filepath=str(path), load_ui=False)
+        _suspend_keymap_for_native_reload(disable_now=False)
+        if "FINISHED" not in result:
+            raise RuntimeError("最新の作品データを再読込できませんでした")
+    except Exception as exc:  # noqa: BLE001
+        _logger.exception("native save recovery reload failed")
+        _show_native_save_notice(
+            title="再読込に失敗しました",
+            lines=(
+                "この画面では保存せず、Blenderを閉じて作品を開き直してください。",
+                str(exc),
+            ),
+        )
+    return None
+
+
 def _schedule_native_save_reload(path: Path, *, notice: bool = True) -> None:
     """旧画面の保存結果を戻した後、復旧済みファイルを安全に再読込する."""
 
@@ -81,30 +168,14 @@ def _schedule_native_save_reload(path: Path, *, notice: bool = True) -> None:
             ),
         )
 
-    def _reload():
-        if generation != _native_save_reload_generation:
-            return None
-        try:
-            _suspend_keymap_for_native_reload(disable_now=False)
-            result = bpy.ops.wm.open_mainfile(filepath=str(path), load_ui=False)
-            _suspend_keymap_for_native_reload(disable_now=False)
-            if "FINISHED" not in result:
-                raise RuntimeError("最新の作品データを再読込できませんでした")
-        except Exception as exc:  # noqa: BLE001
-            _logger.exception("native save recovery reload failed")
-            _show_native_save_notice(
-                title="再読込に失敗しました",
-                lines=(
-                    "この画面では保存せず、Blenderを閉じて作品を開き直してください。",
-                    str(exc),
-                ),
-            )
-        return None
-
-    # 同じイベント処理内ではキーマップを書き換えず、先に停止を確定する。
+    # 保存/選択イベントの同じ処理単位ではキーマップを書き換えず、先に停止を
+    # 確定してから次のイベントループでmainfileを開く。
     _suspend_keymap_for_native_reload(disable_now=True)
+    state = {"attempts": 0}
     bpy.app.timers.register(
-        _reload, first_interval=_NATIVE_SAVE_RELOAD_FIRST_INTERVAL)
+        functools.partial(_native_save_reload_tick, path, generation, state),
+        first_interval=_NATIVE_SAVE_RELOAD_FIRST_INTERVAL,
+    )
 
 
 def _begin_native_save_guard(filepath_arg=None) -> bool | None:
