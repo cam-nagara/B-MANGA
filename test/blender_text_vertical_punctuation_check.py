@@ -190,6 +190,28 @@ def _run_check() -> None:
             f"ぶら下げ配置で '、' の右上ずらしが失われています: ({g_hang2.offset_x_mm!r}, {g_hang2.offset_y_mm!r})",
         )
 
+        # --- 6b. ぶら下げ直後の明示改行で列が余分に飛ばない (行消失の回帰) ---
+        # 従来は折返し時に列を進めてからぶら下げていたため、行末ぶら下げ+\n で
+        # 空列が挟まり、狭い領域では後続の行が領域外へ消えていた。
+        col_pitch_mm = em_mm * 1.4  # typeset_vertical 既定 line_height=1.4
+        result_hang_nl = layout.typeset_vertical(
+            "ああ、\nいい", 0.0, 0.0, 60.0, region_h2, font_size_pt=font_size_pt
+        )
+        by_hang_nl = _placement_map(result_hang_nl)
+        _check(not result_hang_nl.overflow, "ぶら下げ+改行の検証テキストがあふれ扱いになっています")
+        _check("い" in by_hang_nl and len(by_hang_nl.get("い", [])) == 2, "ぶら下げ+改行で後続の行が消えています")
+        if len(by_hang_nl.get("い", [])) == 2:
+            g_a1 = by_hang_nl["あ"][0]
+            g_i1 = by_hang_nl["い"][0]
+            _check(
+                abs(g_i1.x_mm - (g_a1.x_mm - col_pitch_mm)) < 1e-9,
+                f"ぶら下げ直後の改行で列が1つ飛んでいます: あ x={g_a1.x_mm!r} い x={g_i1.x_mm!r}",
+            )
+            _check(
+                abs(g_i1.y_mm - (region_h2 - em_mm)) < 1e-9,
+                f"ぶら下げ直後の改行行が列の先頭から始まっていません: y={g_i1.y_mm!r}",
+            )
+
         # --- 7. 縦中横は新フィールドと共存する (回帰スモーク) ---
         class _Span:
             start = 0

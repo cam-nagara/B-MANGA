@@ -3,6 +3,47 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.2 を対象としています。
 
+## 2026-07-16 — 縦書き約物対応の徹底チェックで行消失バグを発見・修正 (B-MANGA v0.6.518)
+
+### 経緯
+
+- v0.6.517 (縦書き約物対応) の実機テストを AI 目視で徹底チェックした際、
+  配置データのプローブで以下の既存バグを発見した。
+
+### 症状
+
+- 縦書きで行末の禁則文字 (、。」等) が「ぶら下げ」になった行の直後に
+  明示改行があると、列が 1 つ余分に飛んで空列ができ、狭いテキスト欄では
+  後続の行が領域外へ消えて表示されなかった (行の消失)。
+
+### 原因
+
+- 折返し時に「列を進めてから」ぶら下げ判定していたため、ぶら下げで
+  新しい列を使わなかったのに列オフセットが進んだままになり、次の \n で
+  さらに列が進んでいた (`typography/layout.py` typeset_vertical)。
+
+### 修正
+
+- ぶら下げは列を進めずに行い、次の文字が改めて折返しを判定する構造へ変更。
+  連続テキストの折返し・ぶら下げの連鎖・明示改行行頭の配置は従来どおり
+  (`blender_text_vertical_punctuation_check` に回帰ケース 6b を追加)。
+
+### 検証 (Blender 5.1.2 実機・AI目視徹底チェック)
+
+- 製品経路 2 本 (ビューポート実体画像 / 書き出しレイヤー) で 9 ケースの
+  比較 PNG を生成し全ケース AI 目視合格: 基本約物・全括弧種・ぶら下げ・
+  改行行頭禁則・小書き仮名+ルビ・縁取り・横書き対照・テキスト全体回転90度・
+  字間/行間拡大 (`_verify/2026-07-16_vertical_punctuation/matrix/`)
+- 両経路のページ座標での文字 bbox 一致を機械照合 (許容±2px)
+- 既知の別問題として、ビューポート画像 (round) と書き出しキャンバス
+  (floor/ceil 拡張) の丸め方式差で矩形寸法により最大 2px の位置差があること
+  を A/B 検証で確認 (修正前後で同値・今回の変更とは無関係。AGENT_INBOX へ記録)
+- 回帰合格 (再実行): `blender_text_rotation_check` /
+  `blender_text_vertical_cursor_check` / `blender_text_ruby_ux_check` /
+  `blender_text_ime_runtime_check` / `blender_text_request_visual_audit_check` /
+  `blender_text_autofit_perf_check` / `blender_ruby_settings_test` /
+  `blender_ruby_overlap_comprehensive_test` / `blender_text_vertical_punctuation_check`
+
 ## 2026-07-16 — 縦書きテキストの記号類 (約物) の位置・回転対応 (B-MANGA v0.6.517)
 
 ### 症状

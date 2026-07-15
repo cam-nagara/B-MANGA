@@ -152,37 +152,33 @@ def typeset_vertical(
             overflow = True
             break
         if y < region_y_mm:
+            # 禁則処理: 自動折返しで行頭に禁則文字が来る場合、列は進めずに
+            # 前の行末へぶら下げる (簡易版)。列を進めてからぶら下げると、
+            # 直後の明示改行 (\n) でさらに列が進んで空列ができ、後続の行が
+            # 領域外へ消える。明示改行直後の行頭 (作者がその文字で行を始めた
+            # 場合) はぶら下げ対象にしない。
+            if not after_explicit_break and metrics.is_kinsoku_start(ch) and placements:
+                prev = placements[-1]
+                placements.append(
+                    GlyphPlacement(
+                        ch=ch,
+                        x_mm=prev.x_mm,
+                        y_mm=prev.y_mm - char_pitch_mm,
+                        size_pt=glyph_size_pt,
+                        rotation_deg=rot,
+                        index=text_index,
+                        offset_x_mm=offset_x_mm,
+                        offset_y_mm=offset_y_mm,
+                    )
+                )
+                # y_cursor はそのまま (次の文字が改めて折返しを判定する)
+                continue
             advance_column(new_logical_line=False)
             x = region_x_mm + region_width_mm - em_mm - col_offset_mm
             y = y_cursor - em_mm
             if x < region_x_mm:
                 overflow = True
                 break
-
-        # 禁則処理: 自動折返しの行頭に禁則文字が来たら前の行末にぶら下げて追加
-        # (簡易版)。明示改行 (\n) 直後は作者がその文字で行を始めているので
-        # ぶら下げず、そのまま新しい列の先頭に置く。
-        if (
-            not after_explicit_break
-            and y_cursor == region_y_mm + region_height_mm
-            and metrics.is_kinsoku_start(ch)
-            and placements
-        ):
-            prev = placements[-1]
-            placements.append(
-                GlyphPlacement(
-                    ch=ch,
-                    x_mm=prev.x_mm,
-                    y_mm=prev.y_mm - char_pitch_mm,
-                    size_pt=glyph_size_pt,
-                    rotation_deg=rot,
-                    index=text_index,
-                    offset_x_mm=offset_x_mm,
-                    offset_y_mm=offset_y_mm,
-                )
-            )
-            # y_cursor はそのまま (次の文字も新行の先頭扱い)
-            continue
 
         placements.append(
             GlyphPlacement(
