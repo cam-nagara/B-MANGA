@@ -82,7 +82,9 @@ class ExportOptions:
     include_work_info: bool = True
     include_tombo: bool = False
     include_paper_color: bool = True
+    include_coma_backgrounds: bool = True
     include_coma_previews: bool = True
+    coma_preview_side: str = "all"  # "all" | "front" | "back"
     include_page_overlay_fills: bool = False
     icc_profile_path: str = ""
 
@@ -97,6 +99,8 @@ class ExportLayer:
     visible: bool = True
     opacity: int = 255
     blend_mode: str = "normal"
+    stack_uid: str = ""
+    stack_parent_key: str = ""
 
     @property
     def right(self) -> int:
@@ -946,6 +950,7 @@ def _render_image_layer(
         visible=bool(getattr(entry, "visible", True)),
         opacity=255,
         blend_mode=_blend_mode_name(getattr(entry, "blend_mode", "normal")),
+        stack_parent_key=str(getattr(entry, "parent_key", "") or ""),
     )
 
 
@@ -1022,6 +1027,7 @@ def _render_fill_layer(
         visible=bool(getattr(entry, "visible", True)),
         opacity=alpha_byte,
         blend_mode="normal",
+        stack_parent_key=str(getattr(entry, "parent_key", "") or ""),
     )
 
 
@@ -1818,6 +1824,8 @@ def _render_gp_object_layers(
                 visible=True,
                 opacity=_normalize_opacity(getattr(layer, "opacity", 1.0)),
                 blend_mode=_blend_mode_name(getattr(layer, "blend_mode", "normal")),
+                stack_uid=_stack_uid_for_export_object(obj),
+                stack_parent_key=parent_key,
             )
         )
     return out
@@ -1851,6 +1859,128 @@ def _gp_layers(work, page, canvas_size: tuple[int, int], dpi: int) -> list[Expor
     return out
 
 
+def _stack_uid_for_export_object(obj) -> str:
+    try:
+        from ..utils import layer_stack as layer_stack_utils
+
+        kind = str(obj.get("bmanga_kind", "") or "")
+        key = str(obj.get("bmanga_id", "") or "")
+        if kind in {"gp", "effect"} and key:
+            return layer_stack_utils.target_uid(kind, key)
+    except Exception:  # noqa: BLE001
+        pass
+    return ""
+
+
+def _entry_stack_uid(kind: str, page, entry) -> str:
+    from ..utils import layer_stack as layer_stack_utils
+    from ..utils.layer_hierarchy import page_stack_key
+
+    key = str(getattr(entry, "id", "") or "")
+    return layer_stack_utils.target_uid(kind, f"{page_stack_key(page)}:{key}")
+
+
+def _entry_stack_parent_key(kind: str, page, entry) -> str:
+    parent_key = str(getattr(entry, "parent_key", "") or "")
+    if kind != "balloon":
+        return parent_key
+    group_id = str(getattr(entry, "merge_group_id", "") or "")
+    if not group_id:
+        return parent_key
+    from ..utils.layer_hierarchy import page_stack_key
+
+    group_key = f"{page_stack_key(page)}:{group_id}"
+    try:
+        import bpy
+
+        if any(
+            str(getattr(item, "key", "") or "") == group_key
+            for item in getattr(bpy.context.scene, "bmanga_layer_stack", ())
+        ):
+            return group_key
+    except Exception:  # noqa: BLE001
+        pass
+    return parent_key
+
+
+def _apply_coma_preview_export_order(
+    work, page, layers: list[ExportLayer], *, side: str = "all",
+) -> list[ExportLayer]:
+    """レイヤー一覧のプレビュー境界をPNG/PSDの合成順にも反映する."""
+
+    try:
+        import bpy
+        from ..utils import layer_folder, layer_object_sync, layer_stack as layer_stack_utils
+        from ..utils.layer_hierarchy import coma_stack_key
+    except Exception:  # pragma: no cover - bpy unavailable outside Blender
+        return layers
+    result = list(layers)
+    scene = getattr(bpy.context, "scene", None)
+    stack = getattr(scene, "bmanga_layer_stack", None) if scene is not None else None
+    if stack is None:
+        return result
+    for panel in getattr(page, "comas", ()):
+        coma_key = coma_stack_key(page, panel)
+        order, preview_uid = layer_object_sync._coma_stack_order(scene, work, coma_key)
+        index_by_uid = {uid: index for index, uid in enumerate(order)}
+        if preview_uid not in index_by_uid:
+            continue
+        container_indexes = {}
+        for item in stack:
+            uid = layer_stack_utils.stack_item_uid(item)
+            if uid in index_by_uid:
+                container_indexes[str(getattr(item, "key", "") or "")] = index_by_uid[uid]
+
+        def _layer_index(layer: ExportLayer):
+            direct = index_by_uid.get(str(layer.stack_uid or ""))
+            if direct is not None:
+                return direct
+            parent = str(layer.stack_parent_key or "")
+            seen: set[str] = set()
+            while parent and parent not in seen:
+                found = container_indexes.get(parent)
+                if found is not None:
+                    return found
+                seen.add(parent)
+                folder = layer_folder.find_folder(work, parent)
+                if folder is None:
+                    break
+                parent = layer_folder.folder_parent_key(folder)
+            return None
+
+        positioned = [
+            (position, layer, _layer_index(layer))
+            for position, layer in enumerate(result)
+            if layer.stack_uid or layer.stack_parent_key
+        ]
+        positioned = [item for item in positioned if item[2] is not None]
+        preview_index = index_by_uid[preview_uid]
+        if side in {"front", "back"}:
+            remove = {
+                position
+                for position, _layer, index in positioned
+                if (side == "front" and int(index) >= preview_index)
+                or (side == "back" and int(index) <= preview_index)
+            }
+            result = [layer for position, layer in enumerate(result) if position not in remove]
+            continue
+        if not any(layer.stack_uid == preview_uid for _pos, layer, _idx in positioned):
+            continue
+        positions = {position for position, _layer, _index in positioned}
+        insertion = min(positions)
+        ordered = [
+            layer
+            for _position, layer, _index in sorted(
+                positioned,
+                key=lambda item: int(item[2]),
+                reverse=True,
+            )
+        ]
+        result = [layer for position, layer in enumerate(result) if position not in positions]
+        result[insertion:insertion] = ordered
+    return result
+
+
 def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
     if not _HAS_PIL:
         return []
@@ -1862,6 +1992,8 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
         page_detail.ensure_page_detail(work, page)
     except Exception:  # noqa: BLE001
         _logger.exception("export: page detail on-demand load failed")
+    from ..utils import layer_stack as layer_stack_utils
+    from ..utils.layer_hierarchy import coma_stack_key
     paper = work.paper
     dpi = _dpi(paper, options)
     canvas_size = _page_canvas_size_px(work, page, options)
@@ -1911,6 +2043,10 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
                 ),
             )
             if layer is not None:
+                layer = replace(
+                    layer,
+                    stack_uid=layer_stack_utils.target_uid("image", str(getattr(entry, "id", "") or "")),
+                )
                 if entry_parent_kind == "coma" and ":" in entry_parent_key:
                     coma_id = entry_parent_key.split(":", 1)[1]
                     _image_layers_by_coma.setdefault(coma_id, []).append(layer)
@@ -1945,6 +2081,10 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
                 ),
             )
             if layer is not None:
+                layer = replace(
+                    layer,
+                    stack_uid=layer_stack_utils.target_uid("fill", str(getattr(entry, "id", "") or "")),
+                )
                 if entry_parent_kind == "coma" and ":" in entry_parent_key:
                     coma_id = entry_parent_key.split(":", 1)[1]
                     _fill_layers_by_coma.setdefault(coma_id, []).append(layer)
@@ -1966,6 +2106,9 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
                 str(getattr(entry, "parent_key", "") or ""),
                 fallback,
             ),
+            stack_uid_for_entry=lambda entry: layer_stack_utils.target_uid(
+                "raster", str(getattr(entry, "id", "") or "")
+            ),
         )
     except Exception:  # noqa: BLE001
         _logger.exception("raster layer export failed")
@@ -1981,18 +2124,20 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
     for panel in sorted(page.comas, key=lambda candidate: int(getattr(candidate, "z_order", 0))):
         coma_group = _coma_root_group_path(panel)
         content_group = _coma_content_group_path(panel)
+        coma_id = str(getattr(panel, "id", "") or "")
         if options.include_white_margin and getattr(panel.white_margin, "enabled", False):
             wm_layer = _draw_coma_white_margin_layer(panel, canvas_size[1], dpi)
             if wm_layer is not None:
                 layers.append(replace(wm_layer, group_path=coma_group))
-        bg_layer = _draw_coma_background_layer(
-            panel,
-            canvas_size[1],
-            dpi,
-            include_brush_edge=bool(options.include_border),
-        )
-        if bg_layer is not None:
-            layers.append(replace(bg_layer, group_path=content_group))
+        if options.include_coma_backgrounds:
+            bg_layer = _draw_coma_background_layer(
+                panel,
+                canvas_size[1],
+                dpi,
+                include_brush_edge=bool(options.include_border),
+            )
+            if bg_layer is not None:
+                layers.append(replace(bg_layer, group_path=content_group))
         if options.include_coma_previews:
             render_layer = _render_coma_preview_layer(
                 work,
@@ -2003,8 +2148,18 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
                 include_brush_edge=bool(options.include_border),
             )
             if render_layer is not None:
-                layers.append(replace(render_layer, group_path=content_group))
-        coma_id = str(getattr(panel, "id", "") or "")
+                preview_uid = layer_stack_utils.target_uid(
+                    layer_stack_utils.COMA_PREVIEW_KIND,
+                    layer_stack_utils.coma_preview_key(coma_stack_key(page, panel)),
+                )
+                layers.append(
+                    replace(
+                        render_layer,
+                        group_path=content_group,
+                        stack_uid=preview_uid,
+                        stack_parent_key=coma_stack_key(page, panel),
+                    )
+                )
         coma_gn = _coma_group_name(panel)
         for il in _image_layers_by_coma.get(coma_id, []):
             layers.append(il)
@@ -2028,6 +2183,8 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
                     # 非表示フキダシは PSD では非表示レイヤーとして残し、
                     # PNG / プレビューの合成では描かない
                     visible=bool(getattr(balloon, "visible", True)),
+                    stack_uid=_entry_stack_uid("balloon", page, balloon),
+                    stack_parent_key=_entry_stack_parent_key("balloon", page, balloon),
                     group_path=_group_path_for_parent(
                         page,
                         str(getattr(balloon, "parent_kind", "") or "page"),
@@ -2044,6 +2201,8 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
                 replace(
                     layer,
                     visible=bool(getattr(text, "visible", True)),
+                    stack_uid=_entry_stack_uid("text", page, text),
+                    stack_parent_key=str(getattr(text, "parent_key", "") or ""),
                     group_path=_group_path_for_parent(
                         page,
                         str(getattr(text, "parent_kind", "") or "page"),
@@ -2052,6 +2211,13 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
                     ),
                 )
             )
+
+    layers = _apply_coma_preview_export_order(
+        work,
+        page,
+        layers,
+        side=str(getattr(options, "coma_preview_side", "all") or "all"),
+    )
 
     if options.include_tombo:
         tombo = _tombo_layer(work, page, canvas_size, dpi)

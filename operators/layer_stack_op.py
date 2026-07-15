@@ -1350,14 +1350,6 @@ class BMANGA_OT_layer_stack_toggle_visibility(Operator):
                     entry.visible = new_visible
         elif item.kind == layer_stack_utils.COMA_PREVIEW_KIND and hasattr(target, "paper_visible"):
             target.paper_visible = not bool(target.paper_visible)
-            obj = resolved.get("object") if resolved is not None else None
-            if obj is not None:
-                hidden = not bool(target.paper_visible)
-                try:
-                    obj.hide_viewport = hidden
-                    obj.hide_render = hidden
-                except Exception:  # noqa: BLE001
-                    pass
         elif item.kind in {PAGE_KIND, COMA_KIND} and hasattr(target, "visible"):
             target.visible = not bool(target.visible)
         elif item.kind in {"layer_folder", "image", "image_path", "raster", "fill"} and hasattr(target, "visible"):

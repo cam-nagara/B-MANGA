@@ -71,6 +71,7 @@ def page_raster_layers(
     Image,
     *,
     group_path_for_parent=None,
+    stack_uid_for_entry=None,
 ) -> list:
     coll = getattr(scene, "bmanga_raster_layers", None) if scene is not None else None
     if coll is None:
@@ -106,6 +107,8 @@ def page_raster_layers(
                 ),
                 opacity=255,
                 blend_mode="normal",
+                stack_uid=(stack_uid_for_entry(entry) if stack_uid_for_entry is not None else ""),
+                stack_parent_key=parent_key,
             )
         )
     return layers

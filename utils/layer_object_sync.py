@@ -257,6 +257,7 @@ def _stack_uid_for_coma_object(obj: bpy.types.Object, page_id: str) -> str:
         return ""
     try:
         from . import layer_stack as ls
+        from . import layer_folder as lf
 
         if kind == "balloon":
             return ls.target_uid(kind, f"{page_id}:{bmanga_id}")
@@ -275,7 +276,7 @@ def _stack_uid_for_coma_object(obj: bpy.types.Object, page_id: str) -> str:
     return ""
 
 
-def _coma_stack_order(scene, coma_key: str) -> tuple[list[str], str]:
+def _coma_stack_order(scene, work, coma_key: str) -> tuple[list[str], str]:
     try:
         from . import layer_stack as ls
 
@@ -283,11 +284,34 @@ def _coma_stack_order(scene, coma_key: str) -> tuple[list[str], str]:
         if stack is None:
             return [], ""
         preview_uid = ls.target_uid(ls.COMA_PREVIEW_KIND, ls.coma_preview_key(coma_key))
+        containers = {
+            str(getattr(item, "key", "") or ""): item
+            for item in stack
+            if str(getattr(item, "kind", "") or "") in {"layer_folder", "balloon_group"}
+        }
+
+        def _belongs_to_coma(item) -> bool:
+            parent_key = str(getattr(item, "parent_key", "") or "")
+            seen: set[str] = set()
+            while parent_key and parent_key not in seen:
+                if parent_key == coma_key:
+                    return True
+                seen.add(parent_key)
+                parent = containers.get(parent_key)
+                if parent is None:
+                    try:
+                        semantic = lf.semantic_parent_key_for_folder(work, parent_key)
+                    except Exception:  # noqa: BLE001
+                        semantic = ""
+                    return semantic == coma_key
+                parent_key = str(getattr(parent, "parent_key", "") or "")
+            return False
+
         order = [
             ls.stack_item_uid(item)
             for item in stack
-            if str(getattr(item, "parent_key", "") or "") == coma_key
-            and str(getattr(item, "kind", "") or "") in ls.COMA_REORDER_KINDS
+            if str(getattr(item, "kind", "") or "") in ls.COMA_REORDER_KINDS
+            and _belongs_to_coma(item)
         ]
         return order, preview_uid
     except Exception:  # noqa: BLE001
@@ -296,7 +320,7 @@ def _coma_stack_order(scene, coma_key: str) -> tuple[list[str], str]:
 
 def _assign_coma_item_z(scene, work, coma_key: str, coma, items: list[tuple[int, bpy.types.Object]]) -> int:
     page_id = coma_key.split(":", 1)[0]
-    order, preview_uid = _coma_stack_order(scene, coma_key)
+    order, preview_uid = _coma_stack_order(scene, work, coma_key)
     if not order:
         items.sort(key=lambda x: (x[0], x[1].name))
         count = len(items)
@@ -307,13 +331,33 @@ def _assign_coma_item_z(scene, work, coma_key: str, coma, items: list[tuple[int,
         return updated
 
     index_by_uid = {uid: i for i, uid in enumerate(order)}
+    container_index_by_key: dict[str, int] = {}
+    stack = getattr(scene, "bmanga_layer_stack", None)
+    if stack is not None:
+        for item in stack:
+            layer_stack_uid = ""
+            try:
+                from . import layer_stack as ls
+
+                layer_stack_uid = ls.stack_item_uid(item)
+            except Exception:  # noqa: BLE001
+                pass
+            if layer_stack_uid in index_by_uid:
+                container_index_by_key[str(getattr(item, "key", "") or "")] = index_by_uid[layer_stack_uid]
+
+    def _object_stack_index(obj):
+        uid = _stack_uid_for_coma_object(obj, page_id)
+        direct = index_by_uid.get(uid)
+        if direct is not None:
+            return direct
+        return container_index_by_key.get(str(obj.get(on.PROP_PARENT_KEY, "") or ""))
+
     preview_index = index_by_uid.get(preview_uid)
 
     if preview_index is None:
         sorted_items: list[tuple[int, int, bpy.types.Object]] = []
         for z_index, obj in items:
-            uid = _stack_uid_for_coma_object(obj, page_id)
-            stack_index = index_by_uid.get(uid)
+            stack_index = _object_stack_index(obj)
             if stack_index is not None:
                 sorted_items.append((stack_index, z_index, obj))
             else:
@@ -331,8 +375,7 @@ def _assign_coma_item_z(scene, work, coma_key: str, coma, items: list[tuple[int,
     back: list[tuple[int, int, bpy.types.Object]] = []
     fallback: list[tuple[int, int, bpy.types.Object]] = []
     for z_index, obj in items:
-        uid = _stack_uid_for_coma_object(obj, page_id)
-        stack_index = index_by_uid.get(uid)
+        stack_index = _object_stack_index(obj)
         if stack_index is None:
             fallback.append((10_000, -z_index, obj))
         elif stack_index < preview_index:
