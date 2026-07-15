@@ -1017,6 +1017,15 @@ class BMANGA_OT_gpencil_master_mode_set(bpy.types.Operator):
         return "B-MANGAツールを切り替えます"
 
     def execute(self, context):
+        if self.mode == _GP_OBJECT_MODE:
+            try:
+                from ..operators import coma_modal_state
+
+                coma_modal_state.activate_object_tool(context)
+            except Exception as exc:  # noqa: BLE001
+                self.report({"WARNING"}, f"オブジェクトツールへ切り替えられません: {exc}")
+                return {"CANCELLED"}
+            return {"FINISHED"}
         try:
             from ..operators import coma_modal_state
 
@@ -1053,11 +1062,6 @@ class BMANGA_OT_gpencil_master_mode_set(bpy.types.Operator):
         except Exception as exc:  # noqa: BLE001
             self.report({"WARNING"}, f"モード切替失敗: {exc}")
             return {"CANCELLED"}
-        if self.mode == _GP_OBJECT_MODE:
-            try:
-                bpy.ops.bmanga.object_tool("INVOKE_DEFAULT")
-            except Exception:  # noqa: BLE001
-                pass
         return {"FINISHED"}
 
 

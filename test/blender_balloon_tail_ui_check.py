@@ -40,6 +40,7 @@ class _FakeLayout:
         self.ops: list[str] = []
         self.props: list[str] = []
         self.labels: list[str] = []
+        self.template_lists: list[str] = []
         self.enabled = True
 
     def box(self):
@@ -76,6 +77,9 @@ class _FakeLayout:
     def operator_menu_enum(self, op_id: str, _prop: str, **_kwargs):
         self.ops.append(op_id)
         return _FakeOp()
+
+    def template_list(self, list_id: str, *_args, **_kwargs):
+        self.template_lists.append(list_id)
 
 
 def _add_balloon(page):
@@ -259,6 +263,8 @@ def main() -> None:
             assert operator_id in layout.ops, operator_id
         for prop_name in {"line_type", "root_width_mm", "tip_width_mm", "sharp_corners"}:
             assert prop_name in layout.props, prop_name
+        assert "BMANGA_UL_presets" in layout.template_lists
+        assert "bmanga_tail_preset_selector" not in layout.props
         for prop_name in {
             "fill_opacity",
             "fill_material_name",
@@ -280,6 +286,8 @@ def main() -> None:
         assert "bmanga.balloon_tail_remove" in tail_layout.ops
         assert "bmanga.balloon_tail_preset_apply" in tail_layout.ops
         assert "bmanga.balloon_tail_preset_save" in tail_layout.ops
+        assert "BMANGA_UL_presets" in tail_layout.template_lists
+        assert "bmanga_tail_preset_selector" not in tail_layout.props
         for prop_name in {"line_type", "root_width_mm", "tip_width_mm", "sharp_corners"}:
             assert prop_name in tail_layout.props, prop_name
 

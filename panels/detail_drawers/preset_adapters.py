@@ -59,7 +59,7 @@ def preset_spec_for_target(target) -> PresetUiSpec | None:
     return PresetUiSpec("fill", "囲い塗りプリセット", "SNAP_FACE", "bmanga.fill_preset")
 
 
-def draw_preset_management(layout, _context, session, mode) -> bool:
+def draw_preset_management(layout, _context, session, mode, *, list_owner=None) -> bool:
     """一覧側のアクティブ選択を参照しないプリセット欄を描画する。"""
 
     if str(getattr(mode, "value", mode)) != "actual":
@@ -73,7 +73,7 @@ def draw_preset_management(layout, _context, session, mode) -> bool:
 
     box = layout.box()
     box.label(text=spec.label, icon=spec.icon)
-    _draw_target_apply(box, session, spec)
+    _draw_target_apply(box, _context, session, spec, list_owner=list_owner)
     _draw_selected_management(box, _context, session, spec)
     box.label(
         text="プリセットの追加・編集・管理は、この画面のキャンセルでは戻りません",
@@ -82,7 +82,43 @@ def draw_preset_management(layout, _context, session, mode) -> bool:
     return True
 
 
-def _draw_target_apply(layout, session, spec: PresetUiSpec) -> None:
+def _draw_target_apply(
+    layout,
+    context,
+    session,
+    spec: PresetUiSpec,
+    *,
+    list_owner=None,
+) -> None:
+    if list_owner is not None:
+        from ...operators import detail_preset_apply_op
+
+        count = detail_preset_apply_op.sync_detail_preset_list(
+            list_owner,
+            context,
+            session,
+            spec.preset_type,
+        )
+        if count >= 0:
+            if count == 0:
+                empty = layout.row()
+                empty.enabled = False
+                empty.label(text="（プリセットなし）", icon="INFO")
+                return
+            rows = max(3, min(6, count))
+            layout.template_list(
+                "BMANGA_UL_detail_presets",
+                spec.preset_type,
+                list_owner,
+                "detail_preset_items",
+                list_owner,
+                "detail_preset_index",
+                rows=rows,
+                maxrows=6,
+            )
+            return
+
+    # 公開描画APIを単体利用する互換経路。通常の詳細ダイアログは必ず上のUIListを使う。
     selected = str(getattr(session, "preset_selection", "") or "")
     text = selected or "プリセットを選択して適用"
     operator = detail_operator_menu_enum(
@@ -211,7 +247,7 @@ def _draw_existing_management(layout, draft, common: dict, selected: str) -> Non
 
 
 def _draw_selected_management(layout, context, session, spec: PresetUiSpec) -> None:
-    selected = str(getattr(session, "preset_selection", "") or "")
+    selected = _manageable_selection(session, spec)
     common = {
         "session_token": session.token,
         "target_kind": session.target.kind,
@@ -223,6 +259,15 @@ def _draw_selected_management(layout, context, session, spec: PresetUiSpec) -> N
     _draw_overwrite_management(layout, session, spec, selected)
     if selected:
         _draw_existing_management(layout, draft, common, selected)
+
+
+def _manageable_selection(session, spec: PresetUiSpec) -> str:
+    if spec.preset_type != "balloon":
+        return str(getattr(session, "preset_selection", "") or "")
+    target = session.target
+    if str(value(target.data, "shape", "") or "") != "custom":
+        return ""
+    return str(value(target.data, "custom_preset_name", "") or "")
 
 
 __all__ = ["PresetUiSpec", "draw_preset_management", "preset_spec_for_target"]

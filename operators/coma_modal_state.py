@@ -235,6 +235,25 @@ def exit_drawing_mode(context) -> bool:
         return False
 
 
+def _invoke_object_tool():
+    return bpy.ops.bmanga.object_tool("INVOKE_DEFAULT")
+
+
+def activate_object_tool(context):
+    """選択実体の有無や現在の描画種別に依存せずオブジェクトツールへ切り替える。"""
+
+    finish_all(context)
+    exit_drawing_mode(context)
+    objects = getattr(getattr(context, "view_layer", None), "objects", None)
+    active = getattr(objects, "active", None) if objects is not None else None
+    if active is not None and str(getattr(active, "mode", "") or "") != "OBJECT":
+        bpy.ops.object.mode_set(mode="OBJECT")
+    result = _invoke_object_tool()
+    if not ({"RUNNING_MODAL", "FINISHED"} & set(result)):
+        raise RuntimeError("オブジェクトツールを開始できませんでした")
+    return result
+
+
 def restore_modal_cursor(context) -> None:
     window = getattr(context, "window", None) if context is not None else None
     if window is None:

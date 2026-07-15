@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import bpy
-from bpy.props import StringProperty
+from bpy.props import CollectionProperty, IntProperty, StringProperty
 from bpy.types import Operator
 
 from ..utils import log
+from .detail_preset_apply_op import BMANGA_DetailPresetListItem
 
 
 _logger = log.get_logger(__name__)
@@ -22,6 +23,16 @@ class BMANGA_OT_layer_detail_open(Operator):
 
     bmanga_id: StringProperty(name="bmanga_id", default="", options={"HIDDEN"})  # type: ignore[valid-type]
     kind: StringProperty(name="kind", default="", options={"HIDDEN"})  # type: ignore[valid-type]
+    detail_preset_items: CollectionProperty(  # type: ignore[valid-type]
+        type=BMANGA_DetailPresetListItem,
+        options={"HIDDEN"},
+    )
+    detail_preset_index: IntProperty(default=-1, options={"HIDDEN"})  # type: ignore[valid-type]
+    detail_linked_balloon_items: CollectionProperty(  # type: ignore[valid-type]
+        type=BMANGA_DetailPresetListItem,
+        options={"HIDDEN"},
+    )
+    detail_linked_balloon_index: IntProperty(default=-1, options={"HIDDEN"})  # type: ignore[valid-type]
 
     @classmethod
     def poll(cls, context):
@@ -99,7 +110,12 @@ class BMANGA_OT_layer_detail_open(Operator):
         try:
             from . import detail_dialog_runtime
 
-            detail_dialog_runtime.draw_actual_session(self.layout, context, session)
+            detail_dialog_runtime.draw_actual_session(
+                self.layout,
+                context,
+                session,
+                preset_list_owner=self,
+            )
         except Exception as exc:  # noqa: BLE001
             _logger.exception("right-click detail draw failed")
             self.layout.label(text="詳細設定を表示できません", icon="ERROR")

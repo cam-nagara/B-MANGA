@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import bpy
-from bpy.props import BoolProperty, IntProperty, StringProperty
+from bpy.props import BoolProperty, CollectionProperty, IntProperty, StringProperty
 from bpy.types import Operator
 
 from ..utils import layer_stack as layer_stack_utils
 from ..utils.layer_hierarchy import COMA_KIND
+from .detail_preset_apply_op import BMANGA_DetailPresetListItem
 
 
 def _resolve_detail_stack_index(stack, requested_index: int, requested_uid: str) -> int:
@@ -34,6 +35,16 @@ class BMANGA_OT_layer_stack_detail(Operator):
     uid: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
     preserve_edge_selection: BoolProperty(default=False, options={"HIDDEN"})  # type: ignore[valid-type]
     offset_from_selection: BoolProperty(default=False, options={"HIDDEN"})  # type: ignore[valid-type]
+    detail_preset_items: CollectionProperty(  # type: ignore[valid-type]
+        type=BMANGA_DetailPresetListItem,
+        options={"HIDDEN"},
+    )
+    detail_preset_index: IntProperty(default=-1, options={"HIDDEN"})  # type: ignore[valid-type]
+    detail_linked_balloon_items: CollectionProperty(  # type: ignore[valid-type]
+        type=BMANGA_DetailPresetListItem,
+        options={"HIDDEN"},
+    )
+    detail_linked_balloon_index: IntProperty(default=-1, options={"HIDDEN"})  # type: ignore[valid-type]
 
     @classmethod
     def poll(cls, context):
@@ -158,7 +169,13 @@ class BMANGA_OT_layer_stack_detail(Operator):
             self.layout.label(text="詳細設定の対象がありません", icon="ERROR")
             return
         try:
-            draw_detail_dialog(self.layout, context, session, DetailMode.ACTUAL)
+            draw_detail_dialog(
+                self.layout,
+                context,
+                session,
+                DetailMode.ACTUAL,
+                preset_list_owner=self,
+            )
         except Exception as exc:  # noqa: BLE001
             self.layout.label(text="詳細設定を表示できません", icon="ERROR")
             self.layout.label(text=str(exc)[:80])

@@ -49,6 +49,7 @@ def draw_detail_dialog(
     mode,
     *,
     description_owner=None,
+    preset_list_owner=None,
 ) -> bool:
     """3入口が共有する唯一の詳細描画API。"""
 
@@ -64,8 +65,23 @@ def draw_detail_dialog(
     if normalized_mode.value == "preset" and description_owner is not None:
         layout.prop(description_owner, "description_text")
         layout.separator()
-    drawer(layout, context, session, normalized_mode)
-    preset_adapters.draw_preset_management(layout, context, session, normalized_mode)
+    preset_adapters.draw_preset_management(
+        layout,
+        context,
+        session,
+        normalized_mode,
+        list_owner=preset_list_owner,
+    )
+    if target.kind == "text":
+        drawer(
+            layout,
+            context,
+            session,
+            normalized_mode,
+            preset_list_owner=preset_list_owner,
+        )
+    else:
+        drawer(layout, context, session, normalized_mode)
     draw_linked_layers(layout, context, target, normalized_mode)
     return True
 

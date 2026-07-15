@@ -216,6 +216,9 @@ def _draw_tail_box(layout, context, page, entry, tail, tail_index: int, *, prese
         remove.balloon_id = balloon_id
         remove.tail_index = tail_index
 
+    if not preset_mode:
+        _draw_tail_preset_list(box, context, page_id, balloon_id, tail_index)
+
     has_points = len(balloon_tail_geom.tail_local_points(tail)) >= 2
     row = box.row(align=True)
     row.prop(tail, "line_type", expand=True)
@@ -246,25 +249,38 @@ def _draw_tail_box(layout, context, page, entry, tail, tail_index: int, *, prese
     row.prop(tail, "root_width_mm")
     row.prop(tail, "tip_width_mm")
 
-    if not preset_mode:
-        preset_row = box.row(align=True)
-        preset_row.prop(context.window_manager, "bmanga_tail_preset_selector", text="")
-        apply_op = preset_row.operator(
-            BMANGA_OT_balloon_tail_preset_apply.bl_idname,
-            text="適用",
-            icon="PRESET",
-        )
-        apply_op.page_id = page_id
-        apply_op.balloon_id = balloon_id
-        apply_op.tail_index = tail_index
-        save_op = preset_row.operator(
-            BMANGA_OT_balloon_tail_preset_save.bl_idname,
-            text="",
-            icon="FILE_TICK",
-        )
-        save_op.page_id = page_id
-        save_op.balloon_id = balloon_id
-        save_op.tail_index = tail_index
+
+def _draw_tail_preset_list(layout, context, page_id: str, balloon_id: str, tail_index: int) -> None:
+    from ..panels import preset_management_ui
+
+    preset_management_ui.draw_preset_list(layout, context, "tail", compact=True)
+    preset_row = layout.row(align=True)
+    apply_op = preset_row.operator(
+        BMANGA_OT_balloon_tail_preset_apply.bl_idname,
+        text="選択プリセットを適用",
+        icon="PRESET",
+    )
+    apply_op.page_id = page_id
+    apply_op.balloon_id = balloon_id
+    apply_op.tail_index = tail_index
+    save_op = preset_row.operator(
+        BMANGA_OT_balloon_tail_preset_save.bl_idname,
+        text="現在の設定をプリセットへ追加",
+        icon="FILE_TICK",
+    )
+    save_op.page_id = page_id
+    save_op.balloon_id = balloon_id
+    save_op.tail_index = tail_index
+
+
+def _selected_local_tail_preset(context) -> str:
+    wm = getattr(context, "window_manager", None)
+    selected = str(getattr(wm, "bmanga_tail_preset_selector", "") or "") if wm else ""
+    local_names = {
+        str(getattr(preset, "name", "") or "")
+        for preset in tail_presets.list_local_presets(_work_dir(context))
+    }
+    return selected if selected in local_names else ""
 
 
 class BMANGA_OT_balloon_tail_detail_open(Operator):
@@ -329,12 +345,15 @@ class BMANGA_OT_balloon_tail_detail_open(Operator):
         note = layout.box()
         note.label(text="線の色・太さ・下地はフキダシの設定に従います", icon="INFO")
         note.label(text="プリセットの保存・削除は即時確定します", icon="INFO")
-        layout.operator_menu_enum(
+        delete_row = layout.row()
+        selected_local = _selected_local_tail_preset(context)
+        delete = delete_row.operator(
             BMANGA_OT_balloon_tail_preset_delete.bl_idname,
-            "preset_name",
-            text="プリセットを削除",
+            text="選択したユーザープリセットを削除",
             icon="TRASH",
         )
+        delete.preset_name = selected_local or "NONE"
+        delete_row.enabled = bool(selected_local)
 
     def check(self, context):
         session = getattr(self, "_detail_session", None)

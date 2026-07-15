@@ -628,7 +628,7 @@ def effect_selection_is_allowed(context, obj) -> bool:
     return True
 
 
-def draw_actual_session(layout, context, session) -> bool:
+def draw_actual_session(layout, context, session, *, preset_list_owner=None) -> bool:
     from ..panels.detail_drawers import draw_detail_dialog
 
     return draw_detail_dialog(
@@ -636,6 +636,7 @@ def draw_actual_session(layout, context, session) -> bool:
         context,
         session,
         detail_dialog.DetailMode.ACTUAL,
+        preset_list_owner=preset_list_owner,
     )
 
 

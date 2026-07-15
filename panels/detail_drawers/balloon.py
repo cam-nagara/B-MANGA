@@ -59,7 +59,8 @@ def _draw_shape(layout, session, entry, balloon_shapes) -> None:
     _draw_regenerate_controls(box, session, entry)
     prop_if(box, entry, "shape", text="形状")
     if str(value(entry, "shape", "") or "") == "custom":
-        prop_if(box, entry, "custom_preset_name", text="プリセット")
+        preset_name = str(value(entry, "custom_preset_name", "") or "")
+        box.label(text=f"使用中プリセット: {preset_name or '未指定'}", icon="PRESET")
     shape = balloon_shapes.normalize_shape(str(value(entry, "shape", "") or ""))
     if shape == "rect":
         prop_if(box, entry, "corner_type", text="角")
@@ -279,9 +280,9 @@ def _draw_one_tail(layout, context, session, tail, index: int, preset_mode: bool
             balloon_id=str(value(session.target.data, "id", "") or ""),
             tail_index=index,
         )
-    _draw_tail_fields(box, tail)
     if not preset_mode:
         _draw_tail_preset(box, context, session, index)
+    _draw_tail_fields(box, tail)
 
 
 def _draw_tail_fields(layout, tail) -> None:
@@ -298,14 +299,20 @@ def _draw_tail_fields(layout, tail) -> None:
 
 
 def _draw_tail_preset(layout, context, session, index: int) -> None:
+    from .. import preset_management_ui
+
+    preset_management_ui.draw_preset_list(
+        layout,
+        context,
+        "tail",
+        compact=True,
+    )
     row = layout.row(align=True)
     wm = getattr(context, "window_manager", None)
-    if wm is not None and hasattr(wm, "bmanga_tail_preset_selector"):
-        row.prop(wm, "bmanga_tail_preset_selector", text="")
     apply = detail_operator(
         row,
         "bmanga.detail_tail_preset_apply",
-        text="適用",
+        text="選択プリセットを適用",
         icon="PRESET",
     )
     set_operator_fields(

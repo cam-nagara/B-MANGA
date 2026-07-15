@@ -116,24 +116,12 @@ class BMANGA_OT_set_mode_object(Operator):
         return self.execute(context)
 
     def execute(self, context):
-        _finish_modal_tools_for_mode_switch(context)
-        if getattr(context.scene, "bmanga_active_layer_kind", "") == "raster":
-            try:
-                return bpy.ops.bmanga.raster_layer_paint_exit("EXEC_DEFAULT")
-            except Exception:  # noqa: BLE001
-                pass
-        obj = context.view_layer.objects.active
         try:
-            if obj is not None and obj.mode != "OBJECT":
-                bpy.ops.object.mode_set(mode="OBJECT")
+            coma_modal_state.activate_object_tool(context)
         except Exception as exc:  # noqa: BLE001
             _logger.exception("set_mode_object failed")
             self.report({"WARNING"}, f"切替不可: {exc}")
             return {"CANCELLED"}
-        try:
-            bpy.ops.bmanga.object_tool("INVOKE_DEFAULT")
-        except Exception:  # noqa: BLE001
-            pass
         return {"FINISHED"}
 
 

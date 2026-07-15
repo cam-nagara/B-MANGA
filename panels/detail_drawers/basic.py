@@ -214,7 +214,7 @@ def draw_coma_body(layout, context, session, mode) -> None:
         border_box,
         context,
         entry,
-        # プリセット選択は共通外枠の後段へ一度だけ置く。
+        # プリセット一覧は共通外枠の本文より前へ一度だけ置く。
         preset_mode=True,
     )
 

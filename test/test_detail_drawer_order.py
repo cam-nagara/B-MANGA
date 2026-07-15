@@ -362,8 +362,8 @@ def test_actual_draw_is_entry_independent_and_has_canonical_section_order():
     assert visible_records[0] == visible_records[1]
     assert data.__dict__ == before
     labels = [record[1] for record in records[0] if record[0] == "label"]
-    assert labels.index("テキスト") < labels.index("配置 (mm)")
-    assert labels.index("配置 (mm)") < labels.index("テキストプリセット")
+    assert labels.index("テキスト") < labels.index("テキストプリセット")
+    assert labels.index("テキストプリセット") < labels.index("配置 (mm)")
     assert labels.index("テキストプリセット") < labels.index("リンク中のレイヤー")
     assert (
         "operator_menu_enum",
@@ -439,7 +439,9 @@ def test_preset_description_is_after_common_header_and_before_body(
     description = Data(description_text="説明")
     original = dispatcher._BODY_DRAWERS[kind]
     dispatcher._BODY_DRAWERS[kind] = (
-        lambda body_layout, _context, _session, _mode: body_layout.label(text="本文")
+        lambda body_layout, _context, _session, _mode, **_kwargs: body_layout.label(
+            text="本文"
+        )
     )
     try:
         DRAWERS.draw_detail_dialog(

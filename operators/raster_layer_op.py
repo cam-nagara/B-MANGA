@@ -1245,7 +1245,14 @@ class BMANGA_OT_raster_layer_mode_set(Operator):
                 pass
             return bpy.ops.bmanga.raster_layer_paint_enter("EXEC_DEFAULT")
         if self.mode == "OBJECT":
-            return bpy.ops.bmanga.raster_layer_paint_exit("EXEC_DEFAULT")
+            try:
+                from . import coma_modal_state as _cms
+
+                _cms.activate_object_tool(context)
+            except Exception as exc:  # noqa: BLE001
+                self.report({"WARNING"}, f"オブジェクトツールへ切り替えられません: {exc}")
+                return {"CANCELLED"}
+            return {"FINISHED"}
         return {"CANCELLED"}
 
 

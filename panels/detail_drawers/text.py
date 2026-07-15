@@ -15,16 +15,22 @@ from .basic import (
 )
 
 
-def draw_text_body(layout, _context, session, mode) -> None:
+def draw_text_body(layout, _context, session, mode, *, preset_list_owner=None) -> None:
     entry = session.target.data
     preset_mode = str(getattr(mode, "value", mode)) == "preset"
     columns = body_columns(layout, session)
     primary = columns[0]
     secondary = columns[min(1, len(columns) - 1)]
 
+    _draw_linked_balloon_preset(
+        primary,
+        _context,
+        entry,
+        session,
+        list_owner=preset_list_owner,
+    )
     if not preset_mode:
         _draw_placement(primary, entry)
-    _draw_linked_balloon_preset(primary, entry, session)
     _draw_typography(secondary, entry)
     _draw_stroke(secondary, entry)
     _draw_ruby(secondary, entry, preset_mode, session)
@@ -39,11 +45,32 @@ def _draw_placement(layout, entry) -> None:
     prop_if(box, entry, "speaker_name", text="話者")
 
 
-def _draw_linked_balloon_preset(layout, entry, session) -> None:
+def _draw_linked_balloon_preset(layout, context, entry, session, *, list_owner=None) -> None:
     """モジュール大域の対象IDを書き換えず、固定済み対象IDへ適用する。"""
 
     box = layout.box()
     box.label(text="リンクフキダシプリセット", icon="LINKED")
+    if list_owner is not None:
+        from ...operators import detail_preset_apply_op
+
+        count = detail_preset_apply_op.sync_detail_linked_balloon_preset_list(
+            list_owner,
+            context,
+            session,
+        )
+        if count >= 0:
+            rows = max(2, min(5, count))
+            box.template_list(
+                "BMANGA_UL_detail_linked_balloon_presets",
+                "linked_balloon",
+                list_owner,
+                "detail_linked_balloon_items",
+                list_owner,
+                "detail_linked_balloon_index",
+                rows=rows,
+                maxrows=5,
+            )
+            return
     selected = str(value(entry, "linked_balloon_preset", "") or "")
     operator = detail_operator_menu_enum(
         box,

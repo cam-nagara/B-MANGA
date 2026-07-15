@@ -10,8 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import bpy
-from bpy.props import EnumProperty, StringProperty
-from bpy.types import Operator
+from bpy.props import BoolProperty, EnumProperty, StringProperty
+from bpy.types import Operator, PropertyGroup, UIList
 
 from ..utils import log
 
@@ -29,6 +29,85 @@ _EXPECTED_TARGET_KIND = {
     "image_path": "image_path",
     "balloon": "balloon",
 }
+
+
+class BMANGA_DetailPresetListItem(PropertyGroup):
+    """詳細設定専用UIListの1行。通常ツール側の選択状態とは共有しない。"""
+
+    identifier: StringProperty(name="プリセット名")  # type: ignore[valid-type]
+    description: StringProperty(name="説明")  # type: ignore[valid-type]
+    preset_type: StringProperty(options={"HIDDEN"})  # type: ignore[valid-type]
+    target_kind: StringProperty(options={"HIDDEN"})  # type: ignore[valid-type]
+    target_id: StringProperty(options={"HIDDEN"})  # type: ignore[valid-type]
+    stack_uid: StringProperty(options={"HIDDEN"})  # type: ignore[valid-type]
+    session_token: StringProperty(options={"HIDDEN"})  # type: ignore[valid-type]
+    is_selected: BoolProperty(default=False, options={"HIDDEN"})  # type: ignore[valid-type]
+
+
+class BMANGA_UL_detail_presets(UIList):
+    """固定済み詳細対象へだけ適用するプリセット一覧。"""
+
+    bl_idname = "BMANGA_UL_detail_presets"
+
+    def draw_item(
+        self,
+        _context,
+        layout,
+        _data,
+        item,
+        _icon,
+        _active_data,
+        _active_property,
+        _index,
+    ):
+        if self.layout_type == "GRID":
+            layout.alignment = "CENTER"
+            layout.label(text="", icon="PRESET")
+            return
+        operator = layout.operator(
+            "bmanga.detail_preset_apply",
+            text=str(item.name or item.identifier),
+            icon="CHECKMARK" if item.is_selected else "PRESET",
+            depress=bool(item.is_selected),
+        )
+        operator.preset_type = item.preset_type
+        operator.preset_name = item.identifier
+        operator.target_kind = item.target_kind
+        operator.target_id = item.target_id
+        operator.stable_id = item.target_id
+        operator.stack_uid = item.stack_uid
+        operator.session_token = item.session_token
+
+
+class BMANGA_UL_detail_linked_balloon_presets(UIList):
+    """テキスト詳細のリンクフキダシプリセット一覧。"""
+
+    bl_idname = "BMANGA_UL_detail_linked_balloon_presets"
+
+    def draw_item(
+        self,
+        _context,
+        layout,
+        _data,
+        item,
+        _icon,
+        _active_data,
+        _active_property,
+        _index,
+    ):
+        if self.layout_type == "GRID":
+            layout.alignment = "CENTER"
+            layout.label(text="", icon="LINKED")
+            return
+        operator = layout.operator(
+            "bmanga.detail_text_linked_balloon_set",
+            text=str(item.name or item.identifier),
+            icon="CHECKMARK" if item.is_selected else "LINKED",
+            depress=bool(item.is_selected),
+        )
+        operator.session_token = item.session_token
+        operator.target_id = item.target_id
+        operator.preset_name = item.identifier
 
 
 def _work_dir(context) -> Path | None:
@@ -69,15 +148,134 @@ def _list_presets(context, preset_type: str):
     return list(callback() if callback is not None else ())
 
 
+def _detail_preset_entries(context, preset_type: str) -> list[tuple[str, str, str]]:
+    """実レイヤーへ適用できる識別子・表示名・説明を一覧化する。"""
+
+    preset_type = _preset_type(preset_type)
+    if preset_type != "balloon":
+        return [
+            (
+                str(getattr(preset, "name", "") or "").strip(),
+                str(getattr(preset, "name", "") or "").strip(),
+                str(getattr(preset, "description", "") or ""),
+            )
+            for preset in _list_presets(context, preset_type)
+            if str(getattr(preset, "name", "") or "").strip()
+        ]
+
+    from ..core.balloon import _SHAPE_ITEMS
+
+    entries = [
+        (f"shape:{shape_id}", str(label), str(description or ""))
+        for shape_id, label, description, _icon, _number in _SHAPE_ITEMS
+        if shape_id not in {"custom", "none"}
+    ]
+    entries.extend(
+        (
+            f"custom:{str(preset.name)}",
+            f"{preset.name} (カスタム)",
+            str(getattr(preset, "description", "") or ""),
+        )
+        for preset in _list_presets(context, preset_type)
+        if str(getattr(preset, "name", "") or "").strip()
+    )
+    return entries
+
+
+def sync_detail_preset_list(owner, context, session, preset_type: str) -> int:
+    """ダイアログ所有Operatorの独立UIListを現在の全プリセットと同期する。"""
+
+    collection = getattr(owner, "detail_preset_items", None)
+    if collection is None or not hasattr(owner, "detail_preset_index"):
+        return -1
+    preset_type = _preset_type(preset_type)
+    entries = tuple(_detail_preset_entries(context, preset_type))
+    selected = str(getattr(session, "preset_selection", "") or "")
+    target = session.target
+    selected_identifier = selected
+    if preset_type == "balloon":
+        shape = str(getattr(target.data, "shape", "") or "")
+        selected_identifier = (
+            f"custom:{selected}" if shape == "custom" and selected else f"shape:{shape}"
+        )
+    signature = (
+        str(session.token),
+        preset_type,
+        str(target.kind),
+        str(target.stable_id),
+        str(target.stack_uid or ""),
+        selected,
+        selected_identifier,
+        entries,
+    )
+    if getattr(owner, "_detail_preset_list_signature", None) == signature:
+        return len(collection)
+
+    collection.clear()
+    selected_index = -1
+    for index, (identifier, label, description) in enumerate(entries):
+        item = collection.add()
+        item.name = label
+        item.identifier = identifier
+        item.description = description
+        item.preset_type = preset_type
+        item.target_kind = target.kind
+        item.target_id = target.stable_id
+        item.stack_uid = target.stack_uid or ""
+        item.session_token = session.token
+        item.is_selected = identifier == selected_identifier
+        if item.is_selected:
+            selected_index = index
+    owner.detail_preset_index = selected_index if selected_index >= 0 else (0 if entries else -1)
+    owner._detail_preset_list_signature = signature
+    return len(entries)
+
+
+def sync_detail_linked_balloon_preset_list(owner, context, session) -> int:
+    """リンクフキダシ用の「なし」を含む全一覧を独立UIListへ同期する。"""
+
+    collection = getattr(owner, "detail_linked_balloon_items", None)
+    if collection is None or not hasattr(owner, "detail_linked_balloon_index"):
+        return -1
+    from . import detail_transaction_action_op
+
+    entries = tuple(detail_transaction_action_op._linked_balloon_preset_items(None, context))
+    selected_name = str(getattr(session.target.data, "linked_balloon_preset", "") or "")
+    selected_identifier = (
+        f"{detail_transaction_action_op._LINKED_BALLOON_PRESET_PREFIX}{selected_name}"
+        if selected_name
+        else detail_transaction_action_op._NO_LINKED_BALLOON_PRESET
+    )
+    signature = (
+        str(session.token),
+        str(session.target.stable_id),
+        selected_identifier,
+        entries,
+    )
+    if getattr(owner, "_detail_linked_balloon_list_signature", None) == signature:
+        return len(collection)
+
+    collection.clear()
+    selected_index = 0 if entries else -1
+    for index, (identifier, label, description) in enumerate(entries):
+        item = collection.add()
+        item.name = str(label)
+        item.identifier = str(identifier)
+        item.description = str(description or "")
+        item.target_id = session.target.stable_id
+        item.session_token = session.token
+        item.is_selected = item.identifier == selected_identifier
+        if item.is_selected:
+            selected_index = index
+    owner.detail_linked_balloon_index = selected_index
+    owner._detail_linked_balloon_list_signature = signature
+    return len(entries)
+
+
 def _preset_enum_items(self, context):
     preset_type = _preset_type(getattr(self, "preset_type", ""))
     try:
-        presets = _list_presets(context, preset_type)
-        items = [
-            (str(item.name), str(item.name), str(getattr(item, "description", "") or ""))
-            for item in presets
-            if str(getattr(item, "name", "") or "").strip()
-        ]
+        items = _detail_preset_entries(context, preset_type)
     except Exception:  # Blender のメニュー描画を壊さず実行時に改めて報告する
         _logger.exception("detail preset enum build failed: %s", preset_type)
         items = []
@@ -244,7 +442,25 @@ def _apply_balloon(_context, target, name: str) -> str:
     from ..io import balloon_presets
     from ..utils import balloon_curve_object
 
-    preset = _require_preset(balloon_presets.load_preset_by_name(name), name)
+    if name.startswith("shape:"):
+        shape = name.split(":", 1)[1]
+        from ..core.balloon import _SHAPE_ITEMS
+
+        shape_labels = {
+            str(item[0]): str(item[1])
+            for item in _SHAPE_ITEMS
+            if str(item[0]) not in {"custom", "none"}
+        }
+        if shape not in shape_labels:
+            raise LookupError(f"フキダシ形状が見つかりません: {shape}")
+        with balloon_curve_object.suspend_auto_sync():
+            target.data.custom_preset_name = ""
+            target.data.shape = shape
+        balloon_curve_object.on_balloon_entry_changed(target.data)
+        return shape_labels[shape]
+
+    preset_name = name.split(":", 1)[1] if name.startswith("custom:") else name
+    preset = _require_preset(balloon_presets.load_preset_by_name(preset_name), preset_name)
     with balloon_curve_object.suspend_auto_sync():
         target.data.custom_preset_name = str(preset.name)
         target.data.shape = "custom"
@@ -375,7 +591,12 @@ class BMANGA_OT_detail_preset_apply(Operator):
         return {"FINISHED"}
 
 
-_CLASSES = (BMANGA_OT_detail_preset_apply,)
+_CLASSES = (
+    BMANGA_DetailPresetListItem,
+    BMANGA_UL_detail_presets,
+    BMANGA_UL_detail_linked_balloon_presets,
+    BMANGA_OT_detail_preset_apply,
+)
 
 
 def register() -> None:
@@ -389,8 +610,13 @@ def unregister() -> None:
 
 
 __all__ = [
+    "BMANGA_DetailPresetListItem",
+    "BMANGA_UL_detail_linked_balloon_presets",
+    "BMANGA_UL_detail_presets",
     "BMANGA_OT_detail_preset_apply",
     "apply_preset_to_target",
+    "sync_detail_preset_list",
+    "sync_detail_linked_balloon_preset_list",
     "register",
     "unregister",
 ]

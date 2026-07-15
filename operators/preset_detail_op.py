@@ -24,8 +24,10 @@ from __future__ import annotations
 from typing import Any, Callable
 
 import bpy
-from bpy.props import FloatVectorProperty, PointerProperty, StringProperty
+from bpy.props import CollectionProperty, FloatVectorProperty, IntProperty, PointerProperty, StringProperty
 from bpy.types import Operator, PropertyGroup
+
+from .detail_preset_apply_op import BMANGA_DetailPresetListItem
 
 from ..core.balloon import BMangaBalloonTail
 from ..core.coma_border import BMangaComaBorder, BMangaComaWhiteMargin
@@ -385,6 +387,11 @@ class BMANGA_OT_preset_detail_edit(Operator):
     parent_target_id: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
 
     description_text: StringProperty(name="説明")  # type: ignore[valid-type]
+    detail_linked_balloon_items: CollectionProperty(  # type: ignore[valid-type]
+        type=BMANGA_DetailPresetListItem,
+        options={"HIDDEN"},
+    )
+    detail_linked_balloon_index: IntProperty(default=-1, options={"HIDDEN"})  # type: ignore[valid-type]
 
     _balloon_data: dict[str, Any] = {}
     _detail_session: Any = None
@@ -511,6 +518,7 @@ class BMANGA_OT_preset_detail_edit(Operator):
             session,
             DetailMode.PRESET,
             description_owner=self,
+            preset_list_owner=self,
         )
 
     def check(self, context):
