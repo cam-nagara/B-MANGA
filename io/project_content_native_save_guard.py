@@ -79,6 +79,7 @@ _RECOVERY_NAME_RE = re.compile(
 _CREATED_NAME_RE = re.compile(
     r"^\.(?P<source>.+\.blend)\.(?P<tx>\d{8}T\d{6}Z-[0-9a-f]{12})\.native-created$"
 )
+_NATIVE_COPYING_NAME_RE = re.compile(r"^\..+\.blend\..+\.native-copying$")
 
 
 class NativeSaveRecoveryError(RuntimeError):
@@ -100,6 +101,7 @@ class NativeSaveToken:
     disk_detail_version: int = -1
     metadata_saved: bool | None = None
     restore_reason: str = ""
+    reload_after_restore: bool = False
     conflict_paths: tuple[str, ...] = ()
     transaction_id: str = ""
     sidecar_token: Any = None
@@ -184,18 +186,21 @@ def begin_native_save(
                 dict.fromkeys(str(path) for path in conflicts)
             )
             token.requires_restore = True
+            token.reload_after_restore = True
             token.restore_reason = "別のBlender画面で作品データが更新されています"
             _arm_restore(token, error=token.restore_reason)
             return token
         if memory == disk and disk <= MIGRATION_VERSION:
             return token
         token.requires_restore = True
+        token.reload_after_restore = True
         token.restore_reason = "詳細データ版が一致しません"
         _arm_restore(token, error=token.restore_reason)
         return token
     except DetailDataVersionError as exc:
         # 不正な版も保存を許さず、既存blendを必ず戻せる状態にする。
         token.requires_restore = True
+        token.reload_after_restore = True
         token.restore_reason = str(exc)
         _arm_restore(token, error=token.restore_reason)
         return token
@@ -208,7 +213,7 @@ def _verified_copy_to_recovery(source: Path, recovery: Path, expected_sha: str) 
     """認識対象外tempを検証後だけ最終recovery名へ原子的に昇格する."""
 
     fd, temp_name = tempfile.mkstemp(
-        prefix=f".{source.name}.",
+        prefix=f"{recovery.name}.",
         suffix=".native-copying",
         dir=str(source.parent),
     )
@@ -362,6 +367,7 @@ def force_native_save_restore(
     if token.released:
         raise NativeSaveRecoveryError("解放済みの保存トークンです")
     token.requires_restore = True
+    token.reload_after_restore = True
     token.restore_reason = reason
     _arm_restore(token, error=reason)
 
@@ -390,7 +396,7 @@ def finish_native_save(
             record_successful_write(token.source)
         return NativeSaveResult(
             restored,
-            restored,
+            restored and token.reload_after_restore,
             token.journal_path,
             token.metadata_saved is True,
             native_save_succeeded,
@@ -414,7 +420,25 @@ def _rollback_transaction(token: NativeSaveToken) -> bool:
             first_error = exc
     if first_error is not None:
         raise NativeSaveRecoveryError("保存トランザクションを復元できませんでした") from first_error
+    if restored:
+        _record_rollback_baselines(token)
     return restored
+
+
+def _record_rollback_baselines(token: NativeSaveToken) -> None:
+    """物理復元後の状態を、同じ画面からの再保存用基準へ戻す."""
+
+    paths_to_record = [token.source]
+    sidecar_token = token.sidecar_token
+    paths_to_record.extend(
+        record.source for record in getattr(sidecar_token, "records", ())
+    )
+    for path in paths_to_record:
+        try:
+            record_successful_write(path)
+        except Exception:
+            # 復元済みファイルを基準記録だけの失敗で未復元扱いにしない。
+            pass
 
 
 def _write_native_status(token: NativeSaveToken, status: str) -> None:
@@ -461,11 +485,16 @@ def _restore_token(token: NativeSaveToken) -> bool:
             token.creation_marker.unlink(missing_ok=True)
         restored = True
     if token.journal_path is not None:
-        journal = read_json_mapping(token.journal_path)
-        journal["status"] = "restored"
-        journal["restoredAt"] = utc_now()
-        atomic_write_json(token.journal_path, journal)
-        shutil.rmtree(token.journal_path.parent, ignore_errors=True)
+        try:
+            journal = read_json_mapping(token.journal_path)
+            journal["status"] = "restored"
+            journal["restoredAt"] = utc_now()
+            atomic_write_json(token.journal_path, journal)
+            shutil.rmtree(token.journal_path.parent, ignore_errors=True)
+        except Exception:
+            # 本体の物理復元を第一結果とする。残った記録は次回起動時に
+            # 同じhashを確認して安全に再処理できる。
+            pass
     return restored
 
 
@@ -516,10 +545,39 @@ def cleanup_stale_transactions(
             if (entry / NATIVE_JOURNAL_NAME).is_file():
                 continue
             shutil.rmtree(entry, ignore_errors=True)
-            removed.append(entry)
+            if not entry.exists():
+                removed.append(entry)
         except Exception:  # noqa: BLE001
             continue
+    removed.extend(_cleanup_stale_copying_files(Path(work_dir), now))
     return tuple(removed)
+
+
+def _cleanup_stale_copying_files(work: Path, now: datetime) -> list[Path]:
+    """rename失敗後の検証copy中に異常終了した部分ファイルだけを掃除する."""
+
+    removed: list[Path] = []
+    try:
+        candidates = list(work.rglob("*.native-copying"))
+    except OSError:
+        return removed
+    for candidate in candidates:
+        try:
+            if (
+                candidate.is_symlink()
+                or not candidate.is_file()
+                or not _NATIVE_COPYING_NAME_RE.fullmatch(candidate.name)
+            ):
+                continue
+            age = now - datetime.fromtimestamp(candidate.stat().st_mtime, timezone.utc)
+            if age < _STALE_TRANSACTION_MAX_AGE:
+                continue
+            candidate.unlink()
+            if not candidate.exists():
+                removed.append(candidate)
+        except Exception:  # noqa: BLE001
+            continue
+    return removed
 
 
 def recover_pending_native_saves(

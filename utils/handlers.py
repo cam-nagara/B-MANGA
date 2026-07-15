@@ -94,8 +94,8 @@ def _reload_fallback_target(path: Path) -> Path | None:
     return candidate
 
 
-def _reload_missing_target(path: Path, state: dict) -> float | None:
-    """再読込対象が未出現の間の待機・フォールバック処理."""
+def _reload_missing_target(path: Path, state: dict, *, last_error: str = "") -> float | None:
+    """再読込対象が未出現・一時読込不能の間の待機処理."""
 
     state["attempts"] += 1
     if state["attempts"] < _NATIVE_SAVE_RELOAD_MAX_ATTEMPTS:
@@ -122,7 +122,7 @@ def _reload_missing_target(path: Path, state: dict) -> float | None:
         title="再読込に失敗しました",
         lines=(
             "この画面では保存せず、Blenderを閉じて作品を開き直してください。",
-            "最新のページファイルが見つかりませんでした。",
+            last_error or "最新のページファイルが見つかりませんでした。",
         ),
     )
     return None
@@ -133,23 +133,26 @@ def _native_save_reload_tick(path: Path, generation: int, state: dict) -> float 
 
     if generation != _native_save_reload_generation:
         return None
+    origin = str(state.get("origin", "") or "")
+    current = str(getattr(bpy.data, "filepath", "") or "")
+    if origin and current:
+        try:
+            if Path(current).resolve(strict=False) != Path(origin).resolve(strict=False):
+                return None
+        except OSError:
+            return None
     if not path.is_file():
         return _reload_missing_target(path, state)
     try:
         _suspend_keymap_for_native_reload(disable_now=False)
         result = bpy.ops.wm.open_mainfile(filepath=str(path), load_ui=False)
-        _suspend_keymap_for_native_reload(disable_now=False)
         if "FINISHED" not in result:
             raise RuntimeError("最新の作品データを再読込できませんでした")
     except Exception as exc:  # noqa: BLE001
         _logger.exception("native save recovery reload failed")
-        _show_native_save_notice(
-            title="再読込に失敗しました",
-            lines=(
-                "この画面では保存せず、Blenderを閉じて作品を開き直してください。",
-                str(exc),
-            ),
-        )
+        return _reload_missing_target(path, state, last_error=str(exc))
+    finally:
+        _suspend_keymap_for_native_reload(disable_now=False)
     return None
 
 
@@ -171,7 +174,10 @@ def _schedule_native_save_reload(path: Path, *, notice: bool = True) -> None:
     # 保存/選択イベントの同じ処理単位ではキーマップを書き換えず、先に停止を
     # 確定してから次のイベントループでmainfileを開く。
     _suspend_keymap_for_native_reload(disable_now=True)
-    state = {"attempts": 0}
+    state = {
+        "attempts": 0,
+        "origin": str(getattr(bpy.data, "filepath", "") or ""),
+    }
     bpy.app.timers.register(
         functools.partial(_native_save_reload_tick, path, generation, state),
         first_interval=_NATIVE_SAVE_RELOAD_FIRST_INTERVAL,

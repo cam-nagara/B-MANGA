@@ -19,6 +19,19 @@ from ..utils import color_space, layer_object_model, log, page_grid, page_range,
 _logger = log.get_logger(__name__)
 
 
+def _recover_selected_work_before_open(work_dir: Path) -> tuple[bool, str]:
+    """work.blendが退避中でも、作品を開く入口から先に復旧できるようにする."""
+
+    try:
+        from ..io import project_content_native_save_guard
+
+        project_content_native_save_guard.recover_pending_native_saves(work_dir)
+        return True, ""
+    except Exception as exc:  # noqa: BLE001
+        _logger.exception("work_open: pending native save recovery failed")
+        return False, str(exc)
+
+
 def _apply_phase1_defaults(work) -> None:
     """新規作品のワンショット既定値セット.
 
@@ -347,6 +360,13 @@ class BMANGA_OT_work_open(Operator, ImportHelper):
         work_dir = selected if selected.suffix == paths.BMANGA_DIR_SUFFIX else selected.parent
         if not work_dir.is_dir() or work_dir.suffix != paths.BMANGA_DIR_SUFFIX:
             self.report({"ERROR"}, f".bmanga フォルダを指定してください: {work_dir}")
+            return {"CANCELLED"}
+        recovered, recovery_error = _recover_selected_work_before_open(work_dir)
+        if not recovered:
+            self.report(
+                {"ERROR"},
+                f"中断された保存を復旧できないため、作品を開きませんでした: {recovery_error}",
+            )
             return {"CANCELLED"}
 
         try:

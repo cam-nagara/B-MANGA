@@ -196,8 +196,12 @@ def restore_sidecars(token: SidecarSaveToken | None) -> bool:
         else:
             record.source.unlink(missing_ok=True)
     token.status = "restored"
-    atomic_write_json(token.journal_path, _journal_value(token, token.status))
-    shutil.rmtree(token.transaction_dir, ignore_errors=True)
+    try:
+        atomic_write_json(token.journal_path, _journal_value(token, token.status))
+        shutil.rmtree(token.transaction_dir, ignore_errors=True)
+    except Exception:
+        # ファイル群の物理復元は完了済み。記録は次回起動時の再処理用に残す。
+        pass
     return True
 
 
@@ -307,7 +311,8 @@ def cleanup_stale_transactions(
             if (entry / SIDECAR_JOURNAL_NAME).is_file():
                 continue
             shutil.rmtree(entry, ignore_errors=True)
-            removed.append(entry)
+            if not entry.exists():
+                removed.append(entry)
         except Exception:  # noqa: BLE001
             continue
     return tuple(removed)
