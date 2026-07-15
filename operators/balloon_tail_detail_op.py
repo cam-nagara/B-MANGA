@@ -185,6 +185,11 @@ class BMANGA_OT_balloon_tail_preset_delete(Operator):
 
     preset_name: bpy.props.EnumProperty(name="プリセット", items=_local_tail_preset_enum_items)  # type: ignore[valid-type]
 
+    def invoke(self, context, _event):
+        if str(self.preset_name or "") in {"", "NONE"}:
+            return {"CANCELLED"}
+        return context.window_manager.invoke_confirm(self, _event)
+
     def execute(self, context):
         work_dir = _work_dir(context)
         name = str(self.preset_name or "")

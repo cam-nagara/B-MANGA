@@ -223,8 +223,16 @@ def _ensure_mask_volume(obj: Optional[bpy.types.Object], mod_name: str) -> None:
         mod.thickness = 10.0
         mod.offset = 0.0
         mod.use_quality_normals = True
-        mod.show_render = False
+        # 参照 Object 自体は hide_render=True だが、Boolean 評価時にはこの
+        # Solidify が必要。無効だとレンダー時だけ参照形状が平面へ戻り、
+        # text / image / raster 等の平面レイヤーが INTERSECT で空になる。
+        mod.show_render = True
         mod.show_viewport = True
+        try:
+            obj.update_tag(refresh={"OBJECT", "DATA", "TIME"})
+        except TypeError:
+            obj.update_tag()
+        _request_view_layer_update()
     except Exception:  # noqa: BLE001
         _logger.exception("mask_apply: mask volume setup failed")
 

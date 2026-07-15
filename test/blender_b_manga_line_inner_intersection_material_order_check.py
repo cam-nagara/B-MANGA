@@ -167,6 +167,31 @@ def _test_inner_line_material_order() -> None:
     _assert_slot_order_preserved(obj)
 
 
+def _test_combined_outline_inner_material_order() -> None:
+    """複数素材で輪郭線の後ろへ稜谷線を積んでも素材を維持する."""
+    _clear_scene()
+    _make_camera()
+    obj = _make_plain_cube("BML_mo_outline_inner_cube", (0.0, 0.0, 0.0))
+    second = bpy.data.materials.new(f"{obj.name}_surface_second")
+    obj.data.materials.append(second)
+    for polygon in list(obj.data.polygons)[::2]:
+        polygon.material_index = 1
+    settings = obj.bmanga_line_settings
+    settings.outline_enabled = True
+    settings.inner_line_enabled = True
+    settings.selection_line_enabled = False
+    settings.intersection_enabled = False
+    settings.auto_subdivision_for_midpoint = False
+    _disable_all_limits(settings)
+    _select(obj)
+    assert presets.apply_line_settings(obj, bpy.context), (
+        "輪郭線＋稜谷線の適用に失敗しました"
+    )
+    assert obj.modifiers.get(core.MODIFIER_NAME) is not None
+    assert obj.modifiers.get(core.GN_MODIFIER_NAME) is not None
+    _assert_slot_order_preserved(obj)
+
+
 # ------------------------------------------------------------------
 # 2. 選択線（inner_lines.py の GN ツリービルダーを直接使う唯一の経路）
 # ------------------------------------------------------------------
@@ -391,6 +416,7 @@ def main() -> None:
     b_manga_line.register()
     _clear_scene()
     _test_inner_line_material_order()
+    _test_combined_outline_inner_material_order()
     _test_selection_line_material_order()
     _test_intersection_cache_material_order()
     _test_combined_inner_intersection_material_order()

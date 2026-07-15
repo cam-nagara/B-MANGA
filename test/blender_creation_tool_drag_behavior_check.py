@@ -69,6 +69,9 @@ def main() -> None:
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "CreationDrag.bmanga"))
         if "FINISHED" not in result:
             raise AssertionError(f"作品作成に失敗しました: {result}")
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        if "FINISHED" not in result:
+            raise AssertionError(f"ページファイルを開けません: {result}")
 
         from bmanga_dev_creation_drag.operators import balloon_op, effect_line_op, text_op
         from bmanga_dev_creation_drag.ui import overlay_creation_range

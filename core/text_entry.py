@@ -51,6 +51,7 @@ _FONT_SIZE_UNIT_ITEMS = (
 )
 
 _font_size_sync_depth = 0
+_writing_mode_sync_depth = 0
 
 
 class BMangaRubySegment(bpy.types.PropertyGroup):
@@ -115,6 +116,23 @@ class BMangaTextStyleSpan(bpy.types.PropertyGroup):
 
 def _on_text_visible_changed(_self, context) -> None:
     _on_text_entry_changed(_self, context)
+
+
+def _on_writing_mode_changed(self, context) -> None:
+    """書字方向の切替時にテキストフィールドを90度回転相当にする。"""
+    global _writing_mode_sync_depth
+    if _writing_mode_sync_depth > 0:
+        return
+    _writing_mode_sync_depth += 1
+    try:
+        width_mm = float(getattr(self, "width_mm", 0.0) or 0.0)
+        height_mm = float(getattr(self, "height_mm", 0.0) or 0.0)
+        if abs(width_mm - height_mm) > 1.0e-9:
+            self.width_mm = height_mm
+            self.height_mm = width_mm
+    finally:
+        _writing_mode_sync_depth -= 1
+    _on_text_entry_changed(self, context)
 
 
 def _on_text_entry_changed(self, context) -> None:
@@ -306,7 +324,7 @@ class BMangaTextEntry(bpy.types.PropertyGroup):
     font_bold: BoolProperty(name="太字", default=False, description="本文全体を太字にします", update=_on_text_entry_changed)  # type: ignore[valid-type]
     font_italic: BoolProperty(name="斜体", default=False, description="本文全体を斜体にします", update=_on_text_entry_changed)  # type: ignore[valid-type]
     color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, description="本文の文字色", update=_on_text_entry_changed)  # type: ignore[valid-type]
-    writing_mode: EnumProperty(items=_WRITING_MODE_ITEMS, default="horizontal", description="テキストの書字方向を選択します", update=_on_text_entry_changed)  # type: ignore[valid-type]
+    writing_mode: EnumProperty(items=_WRITING_MODE_ITEMS, default="horizontal", description="テキストの書字方向を選択します。切り替えるとテキストフィールドも90度回転します", update=_on_writing_mode_changed)  # type: ignore[valid-type]
     line_height: FloatProperty(name="行間", default=1.4, min=0.5, soft_max=3.0, description="行と行の間隔（文字サイズに対する倍率）", update=_on_text_entry_changed)  # type: ignore[valid-type]
     letter_spacing: FloatProperty(name="字間", default=0.0, soft_min=-1.0, soft_max=1.0, description="文字と文字の間隔（文字サイズに対する倍率）", update=_on_text_entry_changed)  # type: ignore[valid-type]
     ruby_line_height: FloatProperty(name="ルビ行の行間", default=1.8, min=0.5, soft_max=5.0, description="ルビを含む行の行間（文字サイズに対する倍率）", update=_on_text_entry_changed)  # type: ignore[valid-type]

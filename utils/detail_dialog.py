@@ -506,6 +506,15 @@ DETAIL_ACTION_SPECS: Mapping[str, DetailActionSpec] = MappingProxyType(
         "bmanga.balloon_tail_preset_apply": DetailActionSpec(
             "bmanga.balloon_tail_preset_apply", DetailActionBoundary.EXCLUDED
         ),
+        "bmanga.balloon_tail_preset_save": DetailActionSpec(
+            "bmanga.balloon_tail_preset_save",
+            DetailActionBoundary.INDEPENDENT_IMMEDIATE,
+        ),
+        "bmanga.balloon_tail_preset_delete": DetailActionSpec(
+            "bmanga.balloon_tail_preset_delete",
+            DetailActionBoundary.INDEPENDENT_IMMEDIATE,
+            requires_confirmation=True,
+        ),
         "bmanga.text_ruby_add_dialog": DetailActionSpec(
             "bmanga.text_ruby_add_dialog", DetailActionBoundary.EXCLUDED
         ),

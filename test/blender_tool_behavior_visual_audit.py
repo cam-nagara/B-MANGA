@@ -282,6 +282,8 @@ def _setup_scene(temp_root: Path):
     mod = _load_addon()
     result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "ToolVisualAudit.bmanga"))
     assert "FINISHED" in result, result
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+    assert "FINISHED" in result, result
 
     from bmanga_dev_tool_visual.operators import effect_line_op, raster_layer_op
     from bmanga_dev_tool_visual.utils import layer_hierarchy, layer_stack as layer_stack_utils
@@ -318,8 +320,10 @@ def _setup_scene(temp_root: Path):
     ry = int(round(mm_to_px(232.0, int(raster.dpi))))
     width, height = int(raster_image.size[0]), int(raster_image.size[1])
     pixels = list(raster_image.pixels[:])
-    for yy in range(max(0, ry - 3), min(height, ry + 4)):
-        for xx in range(max(0, rx - 3), min(width, rx + 4)):
+    # The UI test converts through integer screen pixels; at 300 dpi one
+    # viewport pixel can move the sampled raster position by more than 10 px.
+    for yy in range(max(0, ry - 24), min(height, ry + 25)):
+        for xx in range(max(0, rx - 24), min(width, rx + 25)):
             offset = (yy * width + xx) * 4
             pixels[offset:offset + 4] = [0.0, 0.0, 0.0, 1.0]
     raster_image.pixels[:] = pixels
@@ -374,12 +378,13 @@ def _setup_scene(temp_root: Path):
 
 def _assert_shortcuts() -> tuple[bool, list[str]]:
     from bmanga_dev_tool_visual.keymap import keymap as keymap_mod
-    from bmanga_dev_tool_visual.ui import sidebar
     from bmanga_dev_tool_visual.utils import shortcut_visibility
 
     state = keymap_mod.get_state()
     assert state is not None
-    sidebar.open_bmanga_sidebar(bpy.context)
+    # The page-file transition may leave stale SpaceView3D wrappers for one UI
+    # tick.  Touching show_region_ui here crashes Blender 5.1, while shortcut
+    # visibility only requires the panel-drawn marker.
     shortcut_visibility.mark_bmanga_panel_drawn(bpy.context)
     try:
         keymap_mod._apply_visibility_state(state, True)
@@ -472,9 +477,17 @@ def _assert_menu_items(context) -> bool:
         expected = ["詳細設定", "コピー", "貼り付け", "複製", "リンク複製"]
         if kind in {"balloon", "effect"}:
             expected.append("中心点を中心へ戻す")
-        expected.append("選択レイヤーをリンク")
+            expected.append("自由変形")
+            expected.append("自由変形をリセット")
+            if kind == "balloon":
+                expected.append("拡大・縮小・回転")
+        elif kind == "text":
+            expected.append("自由変形をリセット")
+        expected.extend(["選択レイヤーをリンク", "リンクを解除"])
+        if kind == "page":
+            expected.extend(["見開きに変更", "見開きを解除"])
         if kind == "balloon":
-            expected.extend(["しっぽをコピー", "しっぽを貼り付け"])
+            expected.extend(["フキダシを結合", "しっぽをコピー", "しっぽを貼り付け"])
         expected.append("削除")
         assert labels == expected, (kind, labels)
         for menu_item in items:
@@ -729,10 +742,14 @@ def _invoke_tool(label: str, op_id: str, operator_context: str, props: dict | No
     op = getattr(getattr(bpy.ops, namespace), name)
     with _view3d_override():
         try:
-            from bmanga_dev_tool_visual.ui import sidebar
             from bmanga_dev_tool_visual.utils import shortcut_visibility
 
-            sidebar.open_bmanga_sidebar(bpy.context)
+            # Use only the validated override area.  Iterating every cached
+            # SpaceView3D immediately after page.blend replacement can touch a
+            # stale RNA wrapper in Blender 5.1.
+            space = getattr(bpy.context, "space_data", None)
+            if space is not None and not bool(getattr(space, "show_region_ui", False)):
+                space.show_region_ui = True
             shortcut_visibility.mark_bmanga_panel_drawn(bpy.context)
         except Exception:
             pass
@@ -784,6 +801,14 @@ def _run_tool_visuals(context, data) -> list[dict]:
     ]
     items = []
     for index, (label, op_id, op_context, props, select_key) in enumerate(tool_specs):
+        print(f"BMANGA_TOOL_VISUAL_PHASE tool={index}:{label}", flush=True)
+        if index >= 3:
+            # Match the toolbar's object-mode transition before launching a
+            # modal creation/editing tool from raster paint mode.
+            with _view3d_override():
+                mode_result = bpy.ops.bmanga.raster_layer_mode_set("EXEC_DEFAULT", mode="OBJECT")
+            if "FINISHED" not in mode_result:
+                raise AssertionError(f"{label} の前にオブジェクトモードへ戻せません: {mode_result}")
         layer_stack_utils.sync_layer_stack_after_data_change(context)
         if not _select_stack_for_key(context, select_key):
             raise AssertionError(f"{label} の対象をレイヤー一覧で選択できません")
@@ -813,6 +838,7 @@ def _run_visual_audit() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_tool_visual_audit_"))
     mod = None
     try:
+        print("BMANGA_TOOL_VISUAL_PHASE setup", flush=True)
         mod, data = _setup_scene(temp_root)
         context = bpy.context
         with _view3d_override():
@@ -826,10 +852,14 @@ def _run_visual_audit() -> None:
                 rv3d.view_perspective = "ORTHO"
                 rv3d.view_rotation = Quaternion((1.0, 0.0, 0.0, 0.0))
         _dismiss_startup_splash()
+        print("BMANGA_TOOL_VISUAL_PHASE shortcuts", flush=True)
         shortcut_ok, shortcut_lines = _assert_shortcuts()
+        print("BMANGA_TOOL_VISUAL_PHASE menus", flush=True)
         menu_ok = _assert_menu_items(context)
+        print("BMANGA_TOOL_VISUAL_PHASE selection", flush=True)
         with _view3d_override():
             selection_edit_ok = _assert_click_and_edit(bpy.context, data)
+        print("BMANGA_TOOL_VISUAL_PHASE tools", flush=True)
         screenshots = _run_tool_visuals(context, data)
         summary = {
             "shortcut_ok": shortcut_ok,

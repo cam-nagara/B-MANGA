@@ -61,6 +61,8 @@ def _assert_object_tool_page_open_route() -> None:
 def _start_check(temp_root: Path) -> Path:
     result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "DeferredOpen.bmanga"))
     assert result == {"FINISHED"}, result
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+    assert result == {"FINISHED"}, result
 
     from bmanga_dev_deferred_coma_open_ui.keymap import keymap as keymap_mod
     from bmanga_dev_deferred_coma_open_ui.operators import object_tool_op

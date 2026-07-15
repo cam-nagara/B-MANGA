@@ -1079,14 +1079,29 @@ def sync_layer_stack(
     old_active_index = int(getattr(scene, "bmanga_active_layer_stack_index", -1))
     old_active_uid = ""
     if 0 <= old_active_index < len(stack):
-        old_active_uid = stack_item_uid(stack[old_active_index])
+        try:
+            old_active_uid = stack_item_uid(stack[old_active_index])
+        except ValueError:
+            # 旧版の空行が選択中でも、実データ同期で修復を続行する。
+            old_active_uid = ""
 
     targets = collect_targets(context)
     target_by_uid = {target.uid: target for target in targets}
 
-    for i in range(len(stack) - 1, -1, -1):
-        if stack_item_uid(stack[i]) not in target_by_uid:
-            stack.remove(i)
+    remove_indices: list[int] = []
+    seen_uids: set[str] = set()
+    for i, item in enumerate(stack):
+        try:
+            uid = stack_item_uid(item)
+        except ValueError:
+            remove_indices.append(i)
+            continue
+        if uid not in target_by_uid or uid in seen_uids:
+            remove_indices.append(i)
+            continue
+        seen_uids.add(uid)
+    for i in reversed(remove_indices):
+        stack.remove(i)
 
     existing = {stack_item_uid(item) for item in stack}
     for item in stack:
@@ -1131,7 +1146,25 @@ def _stack_signature(scene) -> tuple[str, ...]:
     stack = getattr(scene, "bmanga_layer_stack", None)
     if stack is None:
         return ()
-    return tuple(stack_item_uid(item) for item in stack)
+    signature: list[str] = []
+    for index, item in enumerate(stack):
+        kind = str(getattr(item, "kind", "") or "").strip()
+        key = str(getattr(item, "key", "") or "").strip()
+        label = str(
+            getattr(item, "label", "")
+            or getattr(item, "name", "")
+            or ""
+        ).strip()
+        if not kind or not key or not label:
+            # 旧版が保存した空行も、パネル描画中は比較可能な署名へ変換する。
+            # 厳格 UID 生成を先に呼ぶと、修復タイマーを予約する前に例外になる。
+            signature.append(f"@placeholder:{index}:{kind}:{key}:{label}")
+            continue
+        try:
+            signature.append(stack_item_uid(item))
+        except ValueError:
+            signature.append(f"@invalid:{index}:{kind}:{key}:{label}")
+    return tuple(signature)
 
 
 def _remember_stack_signature(context) -> None:
@@ -1615,6 +1648,7 @@ def schedule_layer_stack_draw_maintenance(context) -> bool:
         scene_key = int(scene.as_pointer())
     except Exception:  # noqa: BLE001
         scene_key = id(scene)
+    has_placeholders = _stack_has_placeholder_rows(stack)
     signature = _stack_signature(scene)
     try:
         from . import layer_stack_visible
@@ -1626,7 +1660,7 @@ def schedule_layer_stack_draw_maintenance(context) -> bool:
     except Exception:  # noqa: BLE001
         _logger.exception("visible layer stack freshness check failed")
         visible_current = True
-    if _stack_has_placeholder_rows(stack):
+    if has_placeholders:
         # 同じ placeholder 状態を毎 draw で再 sync すると、sync タイマーが
         # tag_view3d_redraw を繰り返すためパネルを開いている間ずっとビューポートが
         # 再描画され続ける (約16回/秒の点滅)。signature が前回スケジュール時から

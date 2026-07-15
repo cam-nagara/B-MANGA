@@ -126,7 +126,36 @@ def _render(objects: list[bpy.types.Object]) -> float:
     scene.render.filepath = str(OUTPUT)
     result = bpy.ops.render.render(write_still=True)
     assert "FINISHED" in result and OUTPUT.is_file()
+    _assert_text_pixels(scene, objects)
     return camera_scale
+
+
+def _assert_text_pixels(scene: bpy.types.Scene, objects: list[bpy.types.Object]) -> None:
+    from bpy_extras.object_utils import world_to_camera_view
+    from mathutils import Vector
+    from PIL import Image
+
+    image = Image.open(OUTPUT).convert("RGB")
+    width, height = image.size
+    for obj in objects:
+        if str(obj.get("bmanga_kind", "") or "") != "text":
+            continue
+        projected = [
+            world_to_camera_view(scene, scene.camera, obj.matrix_world @ Vector(corner))
+            for corner in obj.bound_box
+        ]
+        left = max(0, int(min(point.x for point in projected) * width))
+        right = min(width, int(max(point.x for point in projected) * width) + 1)
+        top = max(0, int((1.0 - max(point.y for point in projected)) * height))
+        bottom = min(height, int((1.0 - min(point.y for point in projected)) * height) + 1)
+        assert right > left and bottom > top
+        dark_pixels = sum(
+            1
+            for red, green, blue in image.crop((left, top, right, bottom)).getdata()
+            if max(red, green, blue) < 96
+        )
+        # マスク線が1本横切るだけでは合格しない量を要求し、文字面そのものを確認する。
+        assert dark_pixels >= 500, f"レンダー内にテキストがありません: {obj.name} ({dark_pixels}px)"
 
 
 def main() -> None:
@@ -137,9 +166,11 @@ def main() -> None:
     try:
         result = bpy.ops.bmanga.work_new(filepath=str(work_dir))
         assert "FINISHED" in result, result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        assert "FINISHED" in result, result
         from bmanga_dev_meldex_visual.core.work import get_work
         from bmanga_dev_meldex_visual.io import balloon_presets, meldex_scenario_import, text_presets
-        from bmanga_dev_meldex_visual.utils import balloon_curve_object, page_detail, text_real_object
+        from bmanga_dev_meldex_visual.utils import balloon_curve_object, mask_apply, page_detail, text_real_object
 
         custom = SimpleNamespace(
             name="ナレーション",
@@ -187,6 +218,10 @@ def main() -> None:
                 page=page,
             )
             assert obj is not None
+            page_mask = obj.modifiers.get(mask_apply.MOD_NAME_PAGE_MASK)
+            assert page_mask is not None and page_mask.object is not None
+            mask_volume = page_mask.object.modifiers.get(mask_apply.MOD_NAME_PAGE_MASK_VOLUME)
+            assert mask_volume is not None and mask_volume.show_render
             visible_objects.append(obj)
 
         assert len(page.balloons) == 3 and len(page.texts) == 3

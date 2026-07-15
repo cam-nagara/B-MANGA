@@ -127,6 +127,13 @@ def _create_work_scene() -> None:
         result = bpy.ops.bmanga.work_new(filepath=str(_TEMP_ROOT / "Text_IME_Visual.bmanga"))
     if "FINISHED" not in result:
         raise RuntimeError(f"work_new failed: {result}")
+    if override:
+        with bpy.context.temp_override(**override):
+            result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+    else:
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+    if "FINISHED" not in result:
+        raise RuntimeError(f"open_page_file failed: {result}")
 
 
 def _install_text_probe() -> None:
@@ -239,6 +246,10 @@ def _commit_text() -> None:
 
 def _capture_commit():
     _commit_text()
+    if _STATE.get("commit_error"):
+        print(json.dumps(_STATE, ensure_ascii=False, sort_keys=True), flush=True)
+        _cleanup()
+        os._exit(1)
     _STATE["commit_screenshot"] = _screenshot("text_ime_committed.png")
     _write_state()
     print("BMANGA_TEXT_IME_VISUAL_OK", flush=True)

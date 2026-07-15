@@ -279,8 +279,20 @@ def main() -> None:
         shortcut_visibility.shortcuts_allowed = lambda _context=None: True
         bpy.ops.object.select_all(action="DESELECT")
         bpy.context.view_layer.objects.active = None
-        result = bpy.ops.bmanga.set_mode_object("EXEC_DEFAULT")
+        # background 実行には modal_handler を受け取る VIEW_3D ウィンドウが
+        # 無い。ここでは起動委譲までを実動作させ、modal起動結果だけを
+        # 決定値へ差し替えて「未選択でも起動を要求する」契約を確認する。
+        original_invoke_object_tool = coma_modal_state._invoke_object_tool
+        invoked = []
+        coma_modal_state._invoke_object_tool = (
+            lambda: invoked.append(True) or {"RUNNING_MODAL"}
+        )
+        try:
+            result = bpy.ops.bmanga.set_mode_object("EXEC_DEFAULT")
+        finally:
+            coma_modal_state._invoke_object_tool = original_invoke_object_tool
         assert "FINISHED" in result, "オブジェクトが未選択の状態でオブジェクトツールへ切り替わりません"
+        assert invoked, "オブジェクトツールの起動処理へ委譲されていません"
 
         shortcut_visibility._last_bmanga_panel_draw = 0.0
         shortcut_visibility.mark_bmanga_panel_drawn(

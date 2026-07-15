@@ -58,6 +58,7 @@ class BMANGA_OT_layer_detail_open(Operator):
 
     def invoke(self, context, event):
         self._detail_session = None
+        self._text_dialog_cursor_override = False
         try:
             target = self._resolve_fixed_target(context)
             from . import detail_dialog_runtime
@@ -68,6 +69,7 @@ class BMANGA_OT_layer_detail_open(Operator):
             from ..utils import detail_popup
 
             detail_popup.position_dialog_cursor(context, event, key="layer_detail")
+            self._set_text_dialog_cursor_override(context, True)
             result = context.window_manager.invoke_props_dialog(
                 self,
                 width=self._detail_session.layout.dialog_width,
@@ -86,6 +88,7 @@ class BMANGA_OT_layer_detail_open(Operator):
         return result
 
     def _abort_opening_session(self, context):
+        self._set_text_dialog_cursor_override(context, False)
         session = getattr(self, "_detail_session", None)
         self._detail_session = None
         if session is None:
@@ -97,6 +100,17 @@ class BMANGA_OT_layer_detail_open(Operator):
         except Exception as exc:  # noqa: BLE001
             return exc
         return None
+
+    def _set_text_dialog_cursor_override(self, context, active: bool) -> None:
+        """右クリック詳細画面の間もテキストツールのカーソルを可視化する。"""
+        active = bool(active)
+        current = bool(getattr(self, "_text_dialog_cursor_override", False))
+        if current == active:
+            return
+        from . import text_edit_runtime
+
+        text_edit_runtime.set_dialog_cursor_override(context, active)
+        self._text_dialog_cursor_override = active
 
     def _resolve_fixed_target(self, context):
         from ..utils import detail_dialog, detail_target_resolver
@@ -147,6 +161,7 @@ class BMANGA_OT_layer_detail_open(Operator):
         return True
 
     def execute(self, context):
+        self._set_text_dialog_cursor_override(context, False)
         session = getattr(self, "_detail_session", None)
         if session is None:
             return {"CANCELLED"}
@@ -168,6 +183,7 @@ class BMANGA_OT_layer_detail_open(Operator):
         return {"FINISHED"}
 
     def cancel(self, context):
+        self._set_text_dialog_cursor_override(context, False)
         session = getattr(self, "_detail_session", None)
         if session is None:
             return

@@ -133,6 +133,8 @@ def load_scene(audit: Audit):
         "camera_comp": importlib.import_module("b_manga_line.camera_comp"),
         "core": importlib.import_module("b_manga_line.core"),
         "intersection_lines": importlib.import_module("b_manga_line.intersection_lines"),
+        "intersection_cache": importlib.import_module("b_manga_line.intersection_cache"),
+        "intersection_shell": importlib.import_module("b_manga_line.intersection_shell"),
         "outline_setup": importlib.import_module("b_manga_line.outline_setup"),
         "presets": importlib.import_module("b_manga_line.presets"),
         "vertex_analysis": importlib.import_module("b_manga_line.vertex_analysis"),
@@ -231,6 +233,7 @@ def count_lines(objects: list[bpy.types.Object], modules) -> dict[str, int]:
         "inner": 0,
         "intersection": 0,
         "shell_intersection": 0,
+        "cached_intersection": 0,
         "boolean_or_sdf_intersection": 0,
         "line_hidden": 0,
     }
@@ -243,8 +246,15 @@ def count_lines(objects: list[bpy.types.Object], modules) -> dict[str, int]:
         if mods:
             counts["intersection"] += len(mods)
         for mod in mods:
-            if mod.name.endswith("__Shell"):
+            if mod.name == modules["intersection_shell"].SHELL_MODIFIER_NAME:
                 counts["shell_intersection"] += 1
+            elif (
+                mod.name == core.INTERSECTION_MODIFIER_NAME
+                and getattr(getattr(mod, "node_group", None), "name", "").startswith(
+                    modules["intersection_cache"].CACHE_TREE_NAME
+                )
+            ):
+                counts["cached_intersection"] += 1
             else:
                 counts["boolean_or_sdf_intersection"] += 1
         if bool(obj.get(core.PROP_LINES_HIDDEN, False)):
@@ -258,6 +268,10 @@ def save_camera_render(audit: Audit, scene, name: str) -> Path:
     try:
         bpy.ops.render.opengl(write_still=True, view_context=False)
     except Exception:
+        # 大規模アセットでは組合せ変更直後の1回目がシェーダー準備中の黒い
+        # 画像になることがある。製品の定常表示を判定するため、1回目を
+        # ウォームアップ、2回目を証跡画像として保存する。
+        bpy.ops.render.render(write_still=True)
         bpy.ops.render.render(write_still=True)
     audit.result["screenshots"].append(str(path))
     print(f"[SCREEN] {path}", flush=True)
@@ -435,14 +449,24 @@ def phase2(audit: Audit, max_targets: int) -> None:
     ]
     with forbid_auto_targets(audit):
         for label, outline, inner, intersection in combos:
-            with audit.time_op(f"combo_{label}", "toggle"):
+            # 340オブジェクトへ明示的に「すべてのラインを反映」する操作は
+            # 単一設定の軽量トグルではなく全量反映として測る。
+            with audit.time_op(f"combo_{label}", "full_apply"):
                 set_line_flags(settings, outline, inner, intersection)
-                apply_selected(audit, targets, "toggle")
+                apply_selected(audit, targets, "full_apply")
             audit.result["counts"][f"combo_{label}"] = count_lines(targets, modules)
             save_camera_render(audit, scene, f"combo_{label}")
 
+        # 直前までのシェーダー／依存グラフ評価が完了した後でも、輪郭線＋
+        # 稜谷線の素材表示が同じかを確認する。最初の一度だけ黒化する場合も
+        # 製品不具合と区別できるよう、全組合せの後でもう一度決定的に撮る。
+        set_line_flags(settings, True, True, False)
+        apply_selected(audit, targets, "full_apply")
+        audit.result["counts"]["combo_110_repeat"] = count_lines(targets, modules)
+        save_camera_render(audit, scene, "combo_110_repeat")
+
         set_line_flags(settings, False, False, False)
-        apply_selected(audit, targets, "toggle")
+        apply_selected(audit, targets, "full_apply")
         states = {label: (outline, inner, intersection) for label, outline, inner, intersection in combos}
         for label, values in states.items():
             for index, name in enumerate(("O", "I", "X")):

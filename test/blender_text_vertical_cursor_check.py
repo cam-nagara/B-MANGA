@@ -27,6 +27,8 @@
   6. _editing 中 (インライン編集中) でも MOUSEMOVE で縦書きカスタムカーソル
      の描画座標 (_vcur_x/_vcur_y) が更新される。ビューポート外では -1 にして
      非表示化する。
+  7. オブジェクト右クリックの詳細設定ダイアログ開始中は通常カーソルへ戻し、
+     OK・キャンセル・開始失敗の全終了経路でテキストツールのカーソルへ復帰する。
 
 実行:
   & "C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe" \
@@ -290,6 +292,66 @@ def _check_vcur_position_follows_mouse_even_while_editing(text_op, view_event_re
         view_event_region.view3d_window_under_event = original
 
 
+def _check_right_click_detail_dialog_cursor_lifecycle(layer_detail_op, coma_modal_state, context) -> None:
+    """7: 右クリック詳細画面の全終了経路でカーソル上書きを解除する。"""
+
+    class _ActiveTextTool:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def begin_dialog_cursor_override(self, _context) -> None:
+            self.calls.append("begin")
+
+        def end_dialog_cursor_override(self, _context) -> None:
+            self.calls.append("end")
+
+    active = _ActiveTextTool()
+    operator_cls = layer_detail_op.BMANGA_OT_layer_detail_open
+    probe_cls = type(
+        "_LayerDetailCursorProbe",
+        (),
+        {
+            name: operator_cls.__dict__[name]
+            for name in (
+                "_set_text_dialog_cursor_override",
+                "_abort_opening_session",
+                "cancel",
+                "execute",
+            )
+        },
+    )
+    coma_modal_state.set_active("text_tool", active, context)
+    try:
+        # 開始失敗／invoke_props_dialog の CANCELLED 経路。
+        op = probe_cls()
+        op._detail_session = None
+        op._text_dialog_cursor_override = False
+        op._set_text_dialog_cursor_override(context, True)
+        op._abort_opening_session(context)
+        _check(active.calls == ["begin", "end"], f"詳細画面開始中止: begin/end が対になる (実際: {active.calls!r})")
+
+        # ダイアログのキャンセル経路。
+        active.calls.clear()
+        op = probe_cls()
+        op._detail_session = None
+        op._text_dialog_cursor_override = False
+        op._set_text_dialog_cursor_override(context, True)
+        op.cancel(context)
+        _check(active.calls == ["begin", "end"], f"詳細画面キャンセル: begin/end が対になる (実際: {active.calls!r})")
+
+        # OK押下後、対象が既に無い異常終了でもカーソルだけは必ず復帰する。
+        active.calls.clear()
+        op = probe_cls()
+        op._detail_session = None
+        op._text_dialog_cursor_override = False
+        op._set_text_dialog_cursor_override(context, True)
+        result = op.execute(context)
+        _check("CANCELLED" in result, "詳細画面の対象消失時は安全にCANCELLEDとなる")
+        _check(active.calls == ["begin", "end"], f"詳細画面OK異常終了: begin/end が対になる (実際: {active.calls!r})")
+    finally:
+        coma_modal_state.clear_active("text_tool", active, context)
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_text_vertical_cursor_"))
     mod = None
@@ -304,6 +366,7 @@ def main() -> None:
         work = context.scene.bmanga_work
 
         text_op = _sub("operators.text_op")
+        layer_detail_op = _sub("operators.layer_detail_op")
         preset_op = _sub("operators.preset_op")
         coma_modal_state = _sub("operators.coma_modal_state")
         view_event_region = _sub("operators.view_event_region")
@@ -324,6 +387,7 @@ def main() -> None:
         _check_runtime_preset_switch_without_active_op(coma_modal_state, wm, vertical_name)
         _check_sync_modal_cursor_for_event_region(coma_modal_state, view_event_region)
         _check_vcur_position_follows_mouse_even_while_editing(text_op, view_event_region)
+        _check_right_click_detail_dialog_cursor_lifecycle(layer_detail_op, coma_modal_state, context)
     finally:
         if mod is not None:
             try:

@@ -221,19 +221,16 @@ def _text_uid(page, entry) -> str:
     return layer_stack_utils.target_uid("text", f"{page.id}:{entry.id}")
 
 
-def _effect_uid(layer) -> str:
+def _effect_uid(obj, layer) -> str:
     from bmanga_dev_asset_thumbnail.utils import layer_object_model
     from bmanga_dev_asset_thumbnail.utils import layer_stack as layer_stack_utils
 
-    obj = next(
-        (
-            candidate
-            for candidate in layer_object_model.iter_layer_objects("effect")
-            if layer_object_model.content_layer(candidate) == layer
-        ),
-        None,
-    )
-    assert obj is not None
+    # Grease Pencil Layer の Python ラッパーは、スタック同期後に同じ内部
+    # レイヤーでも別ラッパーとして返ることがあり、``==`` での逆引きは
+    # 不安定。作成APIが返した制御Objectを正本として実体とIDを検証する。
+    assert layer_object_model.is_layer_object(obj, "effect")
+    assert layer_object_model.content_layer(obj) is not None
+    assert str(getattr(layer, "name", "") or "")
     return layer_stack_utils.target_uid("effect", layer_object_model.stable_id(obj))
 
 
@@ -298,6 +295,9 @@ def main() -> None:
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "AssetThumbnail.bmanga"))
         if "FINISHED" not in result:
             raise AssertionError(f"作品作成に失敗しました: {result}")
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        if "FINISHED" not in result:
+            raise AssertionError(f"ページファイルを開けません: {result}")
 
         context = bpy.context
         work = context.scene.bmanga_work
@@ -334,7 +334,7 @@ def main() -> None:
             raise AssertionError("作成したフキダシまたはテキストを再取得できません")
         balloon_uids = [_balloon_uid(page, entry) for entry in balloons]
         text_uids = [_text_uid(page, entry) for entry in texts]
-        effect_uids = [_effect_uid(layer) for _obj, layer in effects]
+        effect_uids = [_effect_uid(obj, layer) for obj, layer in effects]
 
         cases: list[tuple[str, list[str]]] = []
         cases.extend((f"単体フキダシ {entry.title}", [uid]) for entry, uid in zip(balloons, balloon_uids))
