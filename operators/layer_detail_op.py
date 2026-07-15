@@ -7,7 +7,11 @@ from bpy.props import CollectionProperty, IntProperty, StringProperty
 from bpy.types import Operator
 
 from ..utils import log
-from .detail_preset_apply_op import BMANGA_DetailPresetListItem
+from .detail_preset_apply_op import (
+    BMANGA_DetailPresetListItem,
+    on_detail_linked_balloon_index_changed,
+    on_detail_preset_index_changed,
+)
 
 
 _logger = log.get_logger(__name__)
@@ -27,12 +31,20 @@ class BMANGA_OT_layer_detail_open(Operator):
         type=BMANGA_DetailPresetListItem,
         options={"HIDDEN"},
     )
-    detail_preset_index: IntProperty(default=-1, options={"HIDDEN"})  # type: ignore[valid-type]
+    detail_preset_index: IntProperty(  # type: ignore[valid-type]
+        default=-1,
+        options={"HIDDEN"},
+        update=on_detail_preset_index_changed,
+    )
     detail_linked_balloon_items: CollectionProperty(  # type: ignore[valid-type]
         type=BMANGA_DetailPresetListItem,
         options={"HIDDEN"},
     )
-    detail_linked_balloon_index: IntProperty(default=-1, options={"HIDDEN"})  # type: ignore[valid-type]
+    detail_linked_balloon_index: IntProperty(  # type: ignore[valid-type]
+        default=-1,
+        options={"HIDDEN"},
+        update=on_detail_linked_balloon_index_changed,
+    )
 
     @classmethod
     def poll(cls, context):

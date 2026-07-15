@@ -8,7 +8,11 @@ from bpy.types import Operator
 
 from ..utils import layer_stack as layer_stack_utils
 from ..utils.layer_hierarchy import COMA_KIND
-from .detail_preset_apply_op import BMANGA_DetailPresetListItem
+from .detail_preset_apply_op import (
+    BMANGA_DetailPresetListItem,
+    on_detail_linked_balloon_index_changed,
+    on_detail_preset_index_changed,
+)
 
 
 def _resolve_detail_stack_index(stack, requested_index: int, requested_uid: str) -> int:
@@ -39,12 +43,20 @@ class BMANGA_OT_layer_stack_detail(Operator):
         type=BMANGA_DetailPresetListItem,
         options={"HIDDEN"},
     )
-    detail_preset_index: IntProperty(default=-1, options={"HIDDEN"})  # type: ignore[valid-type]
+    detail_preset_index: IntProperty(  # type: ignore[valid-type]
+        default=-1,
+        options={"HIDDEN"},
+        update=on_detail_preset_index_changed,
+    )
     detail_linked_balloon_items: CollectionProperty(  # type: ignore[valid-type]
         type=BMANGA_DetailPresetListItem,
         options={"HIDDEN"},
     )
-    detail_linked_balloon_index: IntProperty(default=-1, options={"HIDDEN"})  # type: ignore[valid-type]
+    detail_linked_balloon_index: IntProperty(  # type: ignore[valid-type]
+        default=-1,
+        options={"HIDDEN"},
+        update=on_detail_linked_balloon_index_changed,
+    )
 
     @classmethod
     def poll(cls, context):

@@ -64,19 +64,7 @@ class BMANGA_UL_detail_presets(UIList):
             layout.alignment = "CENTER"
             layout.label(text="", icon="PRESET")
             return
-        operator = layout.operator(
-            "bmanga.detail_preset_apply",
-            text=str(item.name or item.identifier),
-            icon="CHECKMARK" if item.is_selected else "PRESET",
-            depress=bool(item.is_selected),
-        )
-        operator.preset_type = item.preset_type
-        operator.preset_name = item.identifier
-        operator.target_kind = item.target_kind
-        operator.target_id = item.target_id
-        operator.stable_id = item.target_id
-        operator.stack_uid = item.stack_uid
-        operator.session_token = item.session_token
+        layout.label(text=str(item.name or item.identifier))
 
 
 class BMANGA_UL_detail_linked_balloon_presets(UIList):
@@ -99,15 +87,65 @@ class BMANGA_UL_detail_linked_balloon_presets(UIList):
             layout.alignment = "CENTER"
             layout.label(text="", icon="LINKED")
             return
-        operator = layout.operator(
-            "bmanga.detail_text_linked_balloon_set",
-            text=str(item.name or item.identifier),
-            icon="CHECKMARK" if item.is_selected else "LINKED",
-            depress=bool(item.is_selected),
-        )
-        operator.session_token = item.session_token
-        operator.target_id = item.target_id
-        operator.preset_name = item.identifier
+        layout.label(text=str(item.name or item.identifier))
+
+
+def _invoke_detail_preset_apply(item):
+    return bpy.ops.bmanga.detail_preset_apply(
+        "EXEC_DEFAULT",
+        preset_type=str(item.preset_type),
+        preset_name=str(item.identifier),
+        target_kind=str(item.target_kind),
+        target_id=str(item.target_id),
+        stable_id=str(item.target_id),
+        stack_uid=str(item.stack_uid),
+        session_token=str(item.session_token),
+    )
+
+
+def on_detail_preset_index_changed(owner, context) -> None:
+    """標準UIListの選択変更を、固定済み詳細対象への即時適用へ変換する。"""
+
+    if bool(getattr(owner, "_detail_preset_list_syncing", False)):
+        return
+    collection = getattr(owner, "detail_preset_items", None)
+    index = int(getattr(owner, "detail_preset_index", -1))
+    if collection is None or not (0 <= index < len(collection)):
+        return
+    try:
+        result = _invoke_detail_preset_apply(collection[index])
+        if "CANCELLED" in result:
+            owner._detail_preset_list_signature = None
+    except Exception:  # UIListの再描画は維持し、適用Operator側の報告を優先する
+        owner._detail_preset_list_signature = None
+        _logger.exception("detail preset list selection failed")
+
+
+def _invoke_detail_linked_balloon_set(item):
+    return bpy.ops.bmanga.detail_text_linked_balloon_set(
+        "EXEC_DEFAULT",
+        session_token=str(item.session_token),
+        target_id=str(item.target_id),
+        preset_name=str(item.identifier),
+    )
+
+
+def on_detail_linked_balloon_index_changed(owner, context) -> None:
+    """リンクフキダシも標準UIListの選択変更だけで固定対象へ適用する。"""
+
+    if bool(getattr(owner, "_detail_linked_balloon_list_syncing", False)):
+        return
+    collection = getattr(owner, "detail_linked_balloon_items", None)
+    index = int(getattr(owner, "detail_linked_balloon_index", -1))
+    if collection is None or not (0 <= index < len(collection)):
+        return
+    try:
+        result = _invoke_detail_linked_balloon_set(collection[index])
+        if "CANCELLED" in result:
+            owner._detail_linked_balloon_list_signature = None
+    except Exception:
+        owner._detail_linked_balloon_list_signature = None
+        _logger.exception("linked balloon preset list selection failed")
 
 
 def _work_dir(context) -> Path | None:
@@ -172,7 +210,7 @@ def _detail_preset_entries(context, preset_type: str) -> list[tuple[str, str, st
     ]
     entries.extend(
         (
-            f"custom:{str(preset.name)}",
+            str(preset.name),
             f"{preset.name} (カスタム)",
             str(getattr(preset, "description", "") or ""),
         )
@@ -196,7 +234,7 @@ def sync_detail_preset_list(owner, context, session, preset_type: str) -> int:
     if preset_type == "balloon":
         shape = str(getattr(target.data, "shape", "") or "")
         selected_identifier = (
-            f"custom:{selected}" if shape == "custom" and selected else f"shape:{shape}"
+            selected if shape == "custom" and selected else f"shape:{shape}"
         )
     signature = (
         str(session.token),
@@ -226,7 +264,13 @@ def sync_detail_preset_list(owner, context, session, preset_type: str) -> int:
         item.is_selected = identifier == selected_identifier
         if item.is_selected:
             selected_index = index
-    owner.detail_preset_index = selected_index if selected_index >= 0 else (0 if entries else -1)
+    owner._detail_preset_list_syncing = True
+    try:
+        owner.detail_preset_index = (
+            selected_index if selected_index >= 0 else (0 if entries else -1)
+        )
+    finally:
+        owner._detail_preset_list_syncing = False
     owner._detail_preset_list_signature = signature
     return len(entries)
 
@@ -267,7 +311,11 @@ def sync_detail_linked_balloon_preset_list(owner, context, session) -> int:
         item.is_selected = item.identifier == selected_identifier
         if item.is_selected:
             selected_index = index
-    owner.detail_linked_balloon_index = selected_index
+    owner._detail_linked_balloon_list_syncing = True
+    try:
+        owner.detail_linked_balloon_index = selected_index
+    finally:
+        owner._detail_linked_balloon_list_syncing = False
     owner._detail_linked_balloon_list_signature = signature
     return len(entries)
 
@@ -615,6 +663,8 @@ __all__ = [
     "BMANGA_UL_detail_presets",
     "BMANGA_OT_detail_preset_apply",
     "apply_preset_to_target",
+    "on_detail_linked_balloon_index_changed",
+    "on_detail_preset_index_changed",
     "sync_detail_preset_list",
     "sync_detail_linked_balloon_preset_list",
     "register",

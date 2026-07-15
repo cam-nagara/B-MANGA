@@ -217,7 +217,7 @@ def _draw_tail_box(layout, context, page, entry, tail, tail_index: int, *, prese
         remove.tail_index = tail_index
 
     if not preset_mode:
-        _draw_tail_preset_list(box, context, page_id, balloon_id, tail_index)
+        draw_tail_preset_list_actions(box, context, page_id, balloon_id, tail_index)
 
     has_points = len(balloon_tail_geom.tail_local_points(tail)) >= 2
     row = box.row(align=True)
@@ -250,27 +250,75 @@ def _draw_tail_box(layout, context, page, entry, tail, tail_index: int, *, prese
     row.prop(tail, "tip_width_mm")
 
 
-def _draw_tail_preset_list(layout, context, page_id: str, balloon_id: str, tail_index: int) -> None:
-    from ..panels import preset_management_ui
+def draw_tail_preset_list_actions(
+    layout,
+    context,
+    page_id: str,
+    balloon_id: str,
+    tail_index: int,
+    *,
+    session=None,
+) -> None:
+    """しっぽも標準リスト＋右側の適用／追加／削除ボタンで描画する。"""
 
-    preset_management_ui.draw_preset_list(layout, context, "tail", compact=True)
-    preset_row = layout.row(align=True)
-    apply_op = preset_row.operator(
-        BMANGA_OT_balloon_tail_preset_apply.bl_idname,
-        text="選択プリセットを適用",
-        icon="PRESET",
+    from ..panels import preset_list_ui
+
+    wm = getattr(context, "window_manager", None)
+    if wm is None or not hasattr(wm, "bmanga_tail_preset_list"):
+        return
+    preset_list_ui.refresh_preset_list(context, "tail")
+    row = layout.row()
+    row.template_list(
+        "BMANGA_UL_presets",
+        "tail",
+        wm,
+        "bmanga_tail_preset_list",
+        wm,
+        "bmanga_tail_preset_list_index",
+        rows=3,
+        maxrows=5,
     )
-    apply_op.page_id = page_id
-    apply_op.balloon_id = balloon_id
-    apply_op.tail_index = tail_index
-    save_op = preset_row.operator(
+    actions = row.column(align=True)
+    actions.operator_context = "INVOKE_DEFAULT"
+    selected = str(getattr(wm, "bmanga_tail_preset_selector", "") or "")
+    if session is None:
+        apply_op = actions.operator(
+            BMANGA_OT_balloon_tail_preset_apply.bl_idname,
+            text="",
+            icon="CHECKMARK",
+        )
+        apply_op.page_id = page_id
+        apply_op.balloon_id = balloon_id
+        apply_op.tail_index = tail_index
+    else:
+        apply_op = actions.operator(
+            "bmanga.detail_tail_preset_apply",
+            text="",
+            icon="CHECKMARK",
+        )
+        apply_op.session_token = session.token
+        apply_op.target_id = session.target.stable_id
+        apply_op.page_id = page_id
+        apply_op.balloon_id = balloon_id
+        apply_op.tail_index = tail_index
+        apply_op.preset_name = selected
+    save_op = actions.operator(
         BMANGA_OT_balloon_tail_preset_save.bl_idname,
-        text="現在の設定をプリセットへ追加",
-        icon="FILE_TICK",
+        text="",
+        icon="ADD",
     )
     save_op.page_id = page_id
     save_op.balloon_id = balloon_id
     save_op.tail_index = tail_index
+    selected_local = _selected_local_tail_preset(context)
+    delete_row = actions.row(align=True)
+    delete_row.enabled = bool(selected_local)
+    delete = delete_row.operator(
+        BMANGA_OT_balloon_tail_preset_delete.bl_idname,
+        text="",
+        icon="REMOVE",
+    )
+    delete.preset_name = selected_local or "NONE"
 
 
 def _selected_local_tail_preset(context) -> str:
@@ -345,15 +393,6 @@ class BMANGA_OT_balloon_tail_detail_open(Operator):
         note = layout.box()
         note.label(text="線の色・太さ・下地はフキダシの設定に従います", icon="INFO")
         note.label(text="プリセットの保存・削除は即時確定します", icon="INFO")
-        delete_row = layout.row()
-        selected_local = _selected_local_tail_preset(context)
-        delete = delete_row.operator(
-            BMANGA_OT_balloon_tail_preset_delete.bl_idname,
-            text="選択したユーザープリセットを削除",
-            icon="TRASH",
-        )
-        delete.preset_name = selected_local or "NONE"
-        delete_row.enabled = bool(selected_local)
 
     def check(self, context):
         session = getattr(self, "_detail_session", None)

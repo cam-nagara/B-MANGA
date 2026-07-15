@@ -73,11 +73,142 @@ def draw_preset_management(layout, _context, session, mode, *, list_owner=None) 
 
     box = layout.box()
     box.label(text=spec.label, icon=spec.icon)
-    _draw_target_apply(box, _context, session, spec, list_owner=list_owner)
-    _draw_selected_management(box, _context, session, spec)
+    compact = _draw_compact_management(
+        box,
+        _context,
+        session,
+        spec,
+        list_owner=list_owner,
+    )
+    if not compact:
+        _draw_target_apply(box, _context, session, spec, list_owner=list_owner)
+        _draw_selected_management(box, _context, session, spec)
     box.label(
         text="プリセットの追加・編集・管理は、この画面のキャンセルでは戻りません",
         icon="INFO",
+    )
+    return True
+
+
+def _action_row(layout, *, enabled: bool):
+    row = layout.row(align=True)
+    row.enabled = bool(enabled)
+    return row
+
+
+def _draw_compact_management(
+    layout,
+    context,
+    session,
+    spec: PresetUiSpec,
+    *,
+    list_owner=None,
+) -> bool:
+    """サイドバーと同じ標準リスト＋右側縦ボタンだけを描画する。"""
+
+    if list_owner is None:
+        return False
+    from ...operators import detail_preset_apply_op
+
+    count = detail_preset_apply_op.sync_detail_preset_list(
+        list_owner,
+        context,
+        session,
+        spec.preset_type,
+    )
+    if count < 0:
+        return False
+
+    row = layout.row()
+    if count == 0:
+        empty = row.column()
+        empty.enabled = False
+        empty.label(text="（プリセットなし）", icon="INFO")
+    else:
+        rows = max(3, min(6, count))
+        row.template_list(
+            "BMANGA_UL_detail_presets",
+            spec.preset_type,
+            list_owner,
+            "detail_preset_items",
+            list_owner,
+            "detail_preset_index",
+            rows=rows,
+            maxrows=6,
+        )
+
+    selected = _manageable_selection(session, spec)
+    has_selected = bool(selected)
+    common = {
+        "session_token": session.token,
+        "target_kind": session.target.kind,
+        "target_id": session.target.stable_id,
+        "preset_type": spec.preset_type,
+    }
+    actions = row.column(align=True)
+    actions.operator_context = "INVOKE_DEFAULT"
+    add = detail_operator(
+        _action_row(actions, enabled=True),
+        "bmanga.detail_preset_add",
+        text="",
+        icon="ADD",
+    )
+    set_operator_fields(add, **common)
+    delete = detail_operator(
+        _action_row(actions, enabled=has_selected),
+        "bmanga.detail_preset_delete",
+        text="",
+        icon="REMOVE",
+    )
+    set_operator_fields(delete, **common, preset_name=selected)
+    actions.separator()
+    move_up = detail_operator(
+        _action_row(actions, enabled=has_selected),
+        "bmanga.detail_preset_move",
+        text="",
+        icon="TRIA_UP",
+    )
+    set_operator_fields(move_up, **common, preset_name=selected, direction="UP")
+    move_down = detail_operator(
+        _action_row(actions, enabled=has_selected),
+        "bmanga.detail_preset_move",
+        text="",
+        icon="TRIA_DOWN",
+    )
+    set_operator_fields(move_down, **common, preset_name=selected, direction="DOWN")
+    actions.separator()
+    overwrite = detail_operator(
+        _action_row(actions, enabled=has_selected),
+        "bmanga.preset_detail_edit",
+        text="",
+        icon="FILE_TICK",
+    )
+    set_operator_fields(
+        overwrite,
+        preset_type=spec.preset_type,
+        preset_name=selected,
+        parent_session_token=session.token,
+        parent_target_kind=session.target.kind,
+        parent_target_id=session.target.stable_id,
+    )
+    rename = detail_operator(
+        _action_row(actions, enabled=has_selected),
+        "bmanga.detail_preset_rename",
+        text="",
+        icon="GREASEPENCIL",
+    )
+    set_operator_fields(rename, **common, preset_name=selected, new_name=selected)
+    duplicate = detail_operator(
+        _action_row(actions, enabled=has_selected),
+        "bmanga.detail_preset_duplicate",
+        text="",
+        icon="DUPLICATE",
+    )
+    set_operator_fields(
+        duplicate,
+        **common,
+        preset_name=selected,
+        new_name=f"{selected} コピー" if selected else "",
     )
     return True
 

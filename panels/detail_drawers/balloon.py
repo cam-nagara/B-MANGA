@@ -299,34 +299,15 @@ def _draw_tail_fields(layout, tail) -> None:
 
 
 def _draw_tail_preset(layout, context, session, index: int) -> None:
-    from .. import preset_management_ui
+    from ...operators import balloon_tail_detail_op
 
-    preset_management_ui.draw_preset_list(
+    balloon_tail_detail_op.draw_tail_preset_list_actions(
         layout,
         context,
-        "tail",
-        compact=True,
-    )
-    row = layout.row(align=True)
-    wm = getattr(context, "window_manager", None)
-    apply = detail_operator(
-        row,
-        "bmanga.detail_tail_preset_apply",
-        text="選択プリセットを適用",
-        icon="PRESET",
-    )
-    set_operator_fields(
-        apply,
-        session_token=session.token,
-        target_id=session.target.stable_id,
-        page_id=_page_id(session.target.params),
-        balloon_id=str(value(session.target.data, "id", "") or ""),
-        tail_index=index,
-        preset_name=(
-            str(getattr(wm, "bmanga_tail_preset_selector", "") or "")
-            if wm is not None
-            else ""
-        ),
+        _page_id(session.target.params),
+        str(value(session.target.data, "id", "") or ""),
+        index,
+        session=session,
     )
 
 
