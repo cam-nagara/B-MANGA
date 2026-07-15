@@ -205,11 +205,28 @@ def load_preset_by_name(name: str, work_dir: Path | None = None) -> EffectLinePr
 def apply_preset_to_params(preset: EffectLinePreset, params) -> None:
     from ..core import effect_line
 
-    data = {
+    data: dict[str, Any] = {}
+    if preset.source == "global":
+        # 組み込みプリセットは「種類だけを上書きする差分」ではなく、
+        # いつ選んでも同じ見た目になる現行既定値の完全なプリセットとして
+        # 扱う。RNA から既定値を取得することで、設定追加時の取りこぼしも防ぐ。
+        properties = getattr(getattr(params, "bl_rna", None), "properties", None)
+        if properties is not None:
+            data["schema_version"] = effect_line.EFFECT_PARAM_SCHEMA_VERSION
+            for field in effect_line.EFFECT_PARAM_FIELDS:
+                prop = properties.get(field)
+                if prop is None or bool(getattr(prop, "is_readonly", False)):
+                    continue
+                if bool(getattr(prop, "is_array", False)):
+                    value = list(getattr(prop, "default_array", ()))
+                else:
+                    value = getattr(prop, "default", None)
+                data[field] = copy.deepcopy(value)
+    data.update({
         key: copy.deepcopy(value)
         for key, value in dict(preset.data).items()
         if key not in {"schemaVersion", "presetType", "presetName", "description"}
-    }
+    })
     effect_line.effect_params_from_dict(params, data)
 
 

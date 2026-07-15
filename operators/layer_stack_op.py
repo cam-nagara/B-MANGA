@@ -938,6 +938,7 @@ class BMANGA_OT_layer_stack_add(Operator, ImportHelper):
         }
         result = bpy.ops.bmanga.raster_layer_add(
             "EXEC_DEFAULT",
+            dpi_preset="custom",
             dpi=int(getattr(self, "dpi", 300)),
             bit_depth=str(getattr(self, "bit_depth", "gray8") or "gray8"),
         )

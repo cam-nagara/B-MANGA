@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import bpy
 from mathutils import Matrix, Vector
 
@@ -101,6 +103,27 @@ def _page_offset_mm(context, work, page) -> tuple[float, float]:
     return 0.0, 0.0
 
 
+def _curve_outline_cache_json(obj: bpy.types.Object) -> str:
+    """登録元カーブを、実体差し替え後も使える輪郭キャッシュへ変換する."""
+    try:
+        from ..utils import balloon_line_mesh
+
+        spline = balloon_line_mesh._resolve_body_spline(obj)
+        if spline is None:
+            return ""
+        samples = balloon_line_mesh.sample_body_spline(spline, 12)
+        points = [
+            [round(float(x) * 1000.0, 3), round(float(y) * 1000.0, 3)]
+            for x, y, _radius in samples
+        ]
+        if len(points) < 3:
+            return ""
+        return json.dumps(points, separators=(",", ":"))
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon: selected curve outline cache failed")
+        return ""
+
+
 class BMANGA_OT_balloons_to_curve_all(bpy.types.Operator):
     bl_idname = "bmanga.balloons_to_curve_all"
     bl_label = "全フキダシを再生成"
@@ -190,6 +213,10 @@ class BMANGA_OT_balloon_register_selected_curve(bpy.types.Operator):
             self.report({"WARNING"}, "ページが選択されていません")
             return {"CANCELLED"}
         min_x, min_y, max_x, max_y = bounds
+        outline_cache = _curve_outline_cache_json(obj)
+        if not outline_cache:
+            self.report({"WARNING"}, "選択カーブの輪郭を読み取れません")
+            return {"CANCELLED"}
         offset_x, offset_y = _page_offset_mm(context, work, page)
         with bco.defer_auto_sync():
             entry = page.balloons.add()
@@ -200,6 +227,7 @@ class BMANGA_OT_balloon_register_selected_curve(bpy.types.Operator):
             entry.y_mm = m_to_mm(min_y) - offset_y
             entry.width_mm = max(0.1, m_to_mm(max_x - min_x))
             entry.height_mm = max(0.1, m_to_mm(max_y - min_y))
+            entry.custom_outline_json = outline_cache
             entry.parent_kind = parent_kind
             entry.parent_key = parent_key
             entry.selected = True

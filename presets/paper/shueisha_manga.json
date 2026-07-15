@@ -65,7 +65,7 @@
       "color": "#FFFFFF"
     }
   },
-  "panelGap": {
+  "comaGap": {
     "verticalMm": 7.3,
     "horizontalMm": 2.1
   }

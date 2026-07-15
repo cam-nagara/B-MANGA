@@ -186,7 +186,13 @@ def _add_raster(context, page, marker: tuple[int, int]):
     from bmanga_dev.operators import raster_layer_op
     from bmanga_dev.utils.layer_hierarchy import page_stack_key
 
-    result = bpy.ops.bmanga.raster_layer_add("EXEC_DEFAULT", dpi=30, bit_depth="gray8", enter_paint=False)
+    result = bpy.ops.bmanga.raster_layer_add(
+        "EXEC_DEFAULT",
+        dpi_preset="custom",
+        dpi=30,
+        bit_depth="gray8",
+        enter_paint=False,
+    )
     assert "FINISHED" in result, result
     entry = context.scene.bmanga_raster_layers[context.scene.bmanga_active_raster_layer_index]
     page_id = str(getattr(page, "id", "") or "")

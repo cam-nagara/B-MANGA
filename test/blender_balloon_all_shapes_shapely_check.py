@@ -102,7 +102,7 @@ def main() -> None:
     ]:
         _delete_all_balloons(page)
         balloon_curve_object.cleanup_orphan_balloon_objects(context.scene)
-        objects = []
+        object_ids = []
         for idx, shape in enumerate(SHAPES):
             entry = balloon_op._create_balloon_entry(
                 context, page,
@@ -145,7 +145,20 @@ def main() -> None:
                 scene=context.scene, entry=entry, page=page,
             )
             assert obj is not None and obj.type == "CURVE"
+            object_ids.append((str(entry.id), shape))
+
+        # 後続フキダシの同期で既存表示オブジェクトが差し替わる場合があるため、
+        # 生成直後の古い RNA 参照ではなく、全件同期後の現役オブジェクトを検証する。
+        objects = []
+        for balloon_id, shape in object_ids:
+            entry = next(item for item in page.balloons if str(item.id) == balloon_id)
+            obj = balloon_curve_object.ensure_balloon_curve_object(
+                scene=context.scene,
+                entry=entry,
+                page=page,
+            )
             objects.append((obj, shape))
+        assert all(obj is not None and obj.type == "CURVE" for obj, _shape in objects)
 
         xs = [float(obj.location.x) for obj, _ in objects]
         ys = [float(obj.location.y) for obj, _ in objects]

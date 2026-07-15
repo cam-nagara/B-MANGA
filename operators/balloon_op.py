@@ -1900,14 +1900,17 @@ class BMANGA_OT_balloon_save_preset(Operator):
             return {"CANCELLED"}
         idx = page.active_balloon_index
         entry = page.balloons[idx]
-        # Phase 3 骨格: 矩形 4 頂点を保存。パスツール実装後は任意形状へ。
-        verts = [
-            (entry.x_mm, entry.y_mm),
-            (entry.x_mm + entry.width_mm, entry.y_mm),
-            (entry.x_mm + entry.width_mm, entry.y_mm + entry.height_mm),
-            (entry.x_mm, entry.y_mm + entry.height_mm),
-        ]
         try:
+            from ..utils import balloon_multiline_curve
+
+            verts, _corners = balloon_multiline_curve.body_outline_for_entry(entry)
+            if len(verts) < 3:
+                raise ValueError("フキダシの輪郭を取得できません")
+            if self.absolute_coords:
+                verts = [
+                    (float(x) + float(entry.x_mm), float(y) + float(entry.y_mm))
+                    for x, y in verts
+                ]
             out = balloon_presets.save_global_preset(
                 self.preset_name, self.description, verts, self.absolute_coords
             )

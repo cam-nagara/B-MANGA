@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
 import shutil
 import sys
@@ -65,6 +66,16 @@ def _new_text(page):
     entry.x_mm, entry.y_mm = 10.0, 10.0
     entry.width_mm, entry.height_mm = 30.0, 20.0
     return entry
+
+
+def _ensure_linked_balloon_fixture():
+    presets = _sub("io.balloon_presets")
+    presets.save_global_preset(
+        "詳細画面リンク確認",
+        "テスト用",
+        [(0.0, 0.0), (30.0, 0.0), (28.0, 18.0), (4.0, 22.0)],
+        False,
+    )
 
 
 def _new_coma(page):
@@ -267,6 +278,26 @@ def _test_linked_balloon_fixed_target_and_cancel(
             str(same_id_other_page_balloon.shape),
             str(same_id_other_page_balloon.custom_preset_name),
         ) == other_opening, "キャンセル時に別ページフキダシが変更されました"
+
+    entry.parent_balloon_id = str(parent_balloon.id)
+    entry.linked_balloon_preset = preset_name
+    parent_balloon.shape = "none"
+    parent_balloon.custom_preset_name = ""
+    unlink_session = _begin(target)
+    result = bpy.ops.bmanga.detail_text_linked_balloon_set(
+        "EXEC_DEFAULT",
+        session_token=unlink_session.token,
+        target_id=target.stable_id,
+        preset_name=actions._NO_LINKED_BALLOON_PRESET,
+    )
+    assert "FINISHED" in result
+    assert str(entry.linked_balloon_preset) == ""
+    assert str(entry.parent_balloon_id) == str(parent_balloon.id), "『なし』で親フキダシとの紐付けが失われました"
+    assert str(parent_balloon.shape) == "rect", "『なし』で非表示フキダシが矩形へ戻りませんでした"
+    runtime.cancel_actual_session(bpy.context, unlink_session)
+    assert str(entry.parent_balloon_id) == str(parent_balloon.id)
+    assert str(entry.linked_balloon_preset) == preset_name
+    assert str(parent_balloon.shape) == "none"
 
 
 def _test_preset_regeneration_failure_rolls_back(page, entry):
@@ -569,12 +600,15 @@ def _test_balloon_preset_keeps_the_actual_outline(page, entry):
 
 def main():
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_detail_transaction_"))
+    old_config = os.environ.get("BMANGA_USER_CONFIG_DIR")
+    os.environ["BMANGA_USER_CONFIG_DIR"] = str(temp_root / "config")
     addon = None
     work = None
     try:
         addon = _load_addon()
         _assert_transaction_children_have_no_undo()
         work, page = _new_work(temp_root)
+        _ensure_linked_balloon_fixture()
         _cleanup_reference_test_presets(work)
         balloon = _new_balloon(page)
         _test_tail_cancel(page, balloon)
@@ -608,6 +642,10 @@ def main():
                 print(f"WARN: テスト用プリセットの後始末に失敗しました: {exc}")
         if addon is not None:
             addon.unregister()
+        if old_config is None:
+            os.environ.pop("BMANGA_USER_CONFIG_DIR", None)
+        else:
+            os.environ["BMANGA_USER_CONFIG_DIR"] = old_config
         shutil.rmtree(temp_root, ignore_errors=True)
 
 

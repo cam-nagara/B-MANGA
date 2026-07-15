@@ -187,8 +187,8 @@ def _check_load_type_fields(context, text_presets, preset_detail_op) -> None:
     _check(getattr(scratch, "font_size_unit", "") == "q", "旧表記 'Q' が 'q' として読み込まれる")
     entry_writing_mode = getattr(scratch, "writing_mode", None)
     _check(
-        entry_writing_mode == "vertical",
-        f"不正な writing_mode が既定値 vertical のまま残る (実際: {entry_writing_mode!r})",
+        entry_writing_mode == "horizontal",
+        f"不正な writing_mode が現行既定値 horizontal のまま残る (実際: {entry_writing_mode!r})",
     )
 
 

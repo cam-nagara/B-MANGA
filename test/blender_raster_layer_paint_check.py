@@ -49,7 +49,10 @@ def main() -> None:
 
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "Raster_Paint.bmanga"))
         assert result == {"FINISHED"}, result
-        result = bpy.ops.bmanga.raster_layer_add(dpi=150, bit_depth="gray8")
+        result = bpy.ops.bmanga.raster_layer_add(
+            dpi_preset="150",
+            bit_depth="gray8",
+        )
         assert result == {"FINISHED"}, result
 
         scene = bpy.context.scene

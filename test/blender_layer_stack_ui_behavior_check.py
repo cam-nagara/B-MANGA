@@ -87,7 +87,9 @@ def _add_test_gp_layer(context, parent_key: str):
 def _add_test_raster_layer(context, parent_key: str):
     from bmanga_dev.operators import raster_layer_op
 
-    result = bpy.ops.bmanga.raster_layer_add("EXEC_DEFAULT", dpi=30, bit_depth="gray8")
+    result = bpy.ops.bmanga.raster_layer_add(
+        "EXEC_DEFAULT", dpi_preset="custom", dpi=30, bit_depth="gray8"
+    )
     assert "FINISHED" in result, result
     coll = context.scene.bmanga_raster_layers
     entry = coll[context.scene.bmanga_active_raster_layer_index]

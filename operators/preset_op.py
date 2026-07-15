@@ -695,6 +695,11 @@ def _on_border_preset_selector_change(self, context):
     global _SUPPRESS_BORDER_SELECTOR_UPDATE
     if _SUPPRESS_BORDER_SELECTOR_UPDATE:
         return
+    # コマ作成ツール中の一覧は「次に作るコマ」の設定欄。同じセレクタを
+    # 既存コマ編集にも共有しているため、ここで直前のコマへ即時適用すると
+    # 連続作成した全プリセットが一つずつ後ろへずれてしまう。
+    if coma_modal_state.is_active("coma_create"):
+        return
     name = getattr(self, "bmanga_border_preset_selector", "")
     if not name:
         return

@@ -109,7 +109,13 @@ def _add_image(context, parent_key: str):
 
 
 def _add_raster(context, parent_key: str):
-    result = bpy.ops.bmanga.raster_layer_add("EXEC_DEFAULT", dpi=30, bit_depth="gray8", enter_paint=False)
+    result = bpy.ops.bmanga.raster_layer_add(
+        "EXEC_DEFAULT",
+        dpi_preset="custom",
+        dpi=30,
+        bit_depth="gray8",
+        enter_paint=False,
+    )
     assert "FINISHED" in result, result
     entry = context.scene.bmanga_raster_layers[context.scene.bmanga_active_raster_layer_index]
     entry.parent_kind = "coma"

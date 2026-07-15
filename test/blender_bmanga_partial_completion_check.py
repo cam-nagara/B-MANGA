@@ -485,7 +485,9 @@ def _assert_brush_size_texture_paint(context) -> dict:
             bpy.ops.object.mode_set(mode="OBJECT")
     except Exception:
         pass
-    result = bpy.ops.bmanga.raster_layer_add("EXEC_DEFAULT", dpi=30, bit_depth="gray8")
+    result = bpy.ops.bmanga.raster_layer_add(
+        "EXEC_DEFAULT", dpi_preset="custom", dpi=30, bit_depth="gray8"
+    )
     assert "FINISHED" in result, result
     result = bpy.ops.bmanga.raster_layer_paint_enter("EXEC_DEFAULT")
     assert "FINISHED" in result, result

@@ -94,7 +94,13 @@ def _create_work(work_dir: Path):
         ],
     )
 
-    raster_result = bpy.ops.bmanga.raster_layer_add("EXEC_DEFAULT", dpi=30, bit_depth="gray8", enter_paint=False)
+    raster_result = bpy.ops.bmanga.raster_layer_add(
+        "EXEC_DEFAULT",
+        dpi_preset="custom",
+        dpi=30,
+        bit_depth="gray8",
+        enter_paint=False,
+    )
     assert "FINISHED" in raster_result, raster_result
     raster_index = int(bpy.context.scene.bmanga_active_raster_layer_index)
     assert raster_index >= 0

@@ -324,6 +324,9 @@ def _check_nurbs_balloon(page) -> None:
     assert "FINISHED" in result, result
     assert len(page.balloons) == before + 1
     entry = page.balloons[-1]
+    assert str(getattr(entry, "custom_outline_json", "") or ""), (
+        "登録直後に自由形状の輪郭キャッシュがありません"
+    )
     balloon_curve_object.ensure_balloon_curve_object(scene=bpy.context.scene, entry=entry, page=page)
     bid = str(entry.id)
     assert _poly_count(f"balloon_fill_mesh_{bid}") > 0, "NURBSフキダシの塗りが空です"
@@ -400,8 +403,9 @@ def _check_schema_roundtrip(page, entry) -> None:
 
 
 def main() -> None:
-    _load_addon()
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_tail_decor_"))
+    os.environ["BMANGA_USER_CONFIG_DIR"] = str(temp_root / "config")
+    _load_addon()
     result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "TailDecor.bmanga"))
     assert result == {"FINISHED"}, result
     result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)

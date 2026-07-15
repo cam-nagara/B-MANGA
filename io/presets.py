@@ -125,8 +125,13 @@ def apply_preset_to_paper(preset: PaperPreset, paper) -> None:
 def apply_preset_to_work(preset: PaperPreset, work) -> None:
     apply_preset_to_paper(preset, work.paper)
     _apply_display_on_canvas(preset.data.get("displayOnCanvas", {}), work.work_info)
-    if "comaGap" in preset.data:
-        schema.coma_gap_from_dict(work.coma_gap, preset.data.get("comaGap", {}))
+    # 初期同梱プリセットは旧キー ``panelGap`` で配布されていたため、
+    # 現行の ``comaGap`` を優先しつつ旧ファイルも欠落なく読み込む。
+    gap_data = preset.data.get("comaGap")
+    if gap_data is None:
+        gap_data = preset.data.get("panelGap")
+    if isinstance(gap_data, dict):
+        schema.coma_gap_from_dict(work.coma_gap, gap_data)
 
 
 def save_local_preset(work_dir: Path, work, name: str, description: str = "") -> Path:
