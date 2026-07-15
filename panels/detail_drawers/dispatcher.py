@@ -61,17 +61,25 @@ def draw_detail_dialog(
     if drawer is None:
         raise DetailContractError(f"detail drawer is not registered: {target.kind}")
 
-    draw_detail_header(layout, target, normalized_mode)
-    if normalized_mode.value == "preset" and description_owner is not None:
-        layout.prop(description_owner, "description_text")
-        layout.separator()
-    preset_adapters.draw_preset_management(
-        layout,
-        context,
-        session,
-        normalized_mode,
-        list_owner=preset_list_owner,
-    )
+    preset_spec = preset_adapters.preset_spec_for_target(target)
+    if preset_spec is not None:
+        top_left, top_right = basic.equal_columns(layout, 2, 2)
+    else:
+        top_left, top_right = layout.column(align=True), None
+    draw_detail_header(top_left, target, normalized_mode)
+    if normalized_mode.value == "actual":
+        draw_target_placement(top_left, target)
+    elif description_owner is not None:
+        top_left.prop(description_owner, "description_text")
+    if top_right is not None:
+        preset_adapters.draw_preset_management(
+            top_right,
+            context,
+            session,
+            normalized_mode,
+            list_owner=preset_list_owner,
+        )
+    layout.separator()
     if target.kind == "text":
         drawer(
             layout,
@@ -149,6 +157,40 @@ def _draw_visibility_and_lock(layout, target) -> None:
         row.enabled = False
 
 
+def draw_target_placement(layout, target) -> bool:
+    """表示情報の直下へ、実レイヤーの配置項目を共通順序で描く。"""
+
+    if target.kind not in {"balloon", "text", "image"}:
+        return False
+    entry = target.data
+    box = layout.box()
+    box.label(text="配置 (mm)")
+    basic.prop_pair(box, entry, "x_mm", "y_mm")
+    basic.prop_pair(box, entry, "width_mm", "height_mm")
+    basic.prop_if(box, entry, "rotation_deg", text="回転")
+    if target.kind == "text":
+        basic.prop_if(box, entry, "speaker_name", text="話者")
+    elif target.kind == "balloon":
+        basic.prop_pair(
+            box,
+            entry,
+            "flip_h",
+            "flip_v",
+            flip_h={"text": "水平反転", "toggle": True},
+            flip_v={"text": "垂直反転", "toggle": True},
+        )
+    else:
+        basic.prop_pair(
+            box,
+            entry,
+            "flip_x",
+            "flip_y",
+            flip_x={"text": "左右反転", "toggle": True},
+            flip_y={"text": "上下反転", "toggle": True},
+        )
+    return True
+
+
 def _has_custom_property(obj, name: str) -> bool:
     if obj is None:
         return False
@@ -192,4 +234,9 @@ def _target_page(params):
     return value(params, "page", None)
 
 
-__all__ = ["draw_detail_dialog", "draw_detail_header", "draw_linked_layers"]
+__all__ = [
+    "draw_detail_dialog",
+    "draw_detail_header",
+    "draw_linked_layers",
+    "draw_target_placement",
+]

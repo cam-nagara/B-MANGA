@@ -34,6 +34,10 @@ def available_dialog_width(context) -> int | None:
 def prepare_actual_target(context, target) -> None:
     """対象固有の一時設定と編集用グラフをinvoke時に一度だけ準備する。"""
 
+    if target.kind == "text":
+        from ..core.text_entry import prime_writing_mode_tracking
+
+        prime_writing_mode_tracking(target.data)
     _prepare_layer_object_state(target)
     if target.kind == "effect":
         _load_effect_target(context, target)

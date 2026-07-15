@@ -182,7 +182,9 @@ def try_intercept_press(context, event, operator) -> bool:
             # capture を先に試し、スナップショットが1件も取れない場合は
             # セッションを作らずフォールスルーする (空ドラッグ/空Undo防止。
             # object_tool_op._start_rotation_drag と同じ考え方)。
-            keys = [rot_hit["key"]]
+            from ..utils import layer_links
+
+            keys = layer_links.related_object_keys_for_key(context, rot_hit["key"])
             snapshots = _capture_rotation_snapshots(context, keys)
             if snapshots:
                 session = _DragSession("rotate", "")

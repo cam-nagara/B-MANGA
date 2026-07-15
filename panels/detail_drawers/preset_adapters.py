@@ -45,6 +45,8 @@ _SPECS = {
 
 
 def preset_spec_for_target(target) -> PresetUiSpec | None:
+    if target.kind == "balloon_shape":
+        return _SPECS["balloon"]
     if target.kind != "fill":
         return _SPECS.get(target.kind)
     fill_type = str(value(target.data, "fill_type", "solid") or "solid")
@@ -62,11 +64,17 @@ def preset_spec_for_target(target) -> PresetUiSpec | None:
 def draw_preset_management(layout, _context, session, mode, *, list_owner=None) -> bool:
     """一覧側のアクティブ選択を参照しないプリセット欄を描画する。"""
 
-    if str(getattr(mode, "value", mode)) != "actual":
-        return False
     spec = preset_spec_for_target(session.target)
     if spec is None:
         return False
+    if str(getattr(mode, "value", mode)) == "preset":
+        return _draw_preset_edit_list(
+            layout,
+            _context,
+            session,
+            spec,
+            list_owner=list_owner,
+        )
     session_type = getattr(session, "preset_type", None)
     if session_type is not None and session_type != spec.preset_type:
         session.set_preset_context(spec.preset_type, None)
@@ -86,6 +94,33 @@ def draw_preset_management(layout, _context, session, mode, *, list_owner=None) 
     box.label(
         text="プリセットの追加・編集・管理は、この画面のキャンセルでは戻りません",
         icon="INFO",
+    )
+    return True
+
+
+def _draw_preset_edit_list(layout, context, session, spec: PresetUiSpec, *, list_owner=None) -> bool:
+    """プリセット編集入口でも、同種の全プリセットを標準リストで表示する。"""
+
+    if list_owner is None or not hasattr(list_owner, "sync_preset_edit_list"):
+        return False
+    count = list_owner.sync_preset_edit_list(context, session, spec.preset_type)
+    box = layout.box()
+    box.label(text=spec.label, icon=spec.icon)
+    if count <= 0:
+        row = box.row()
+        row.enabled = False
+        row.label(text="（プリセットなし）", icon="INFO")
+        return True
+    rows = max(3, min(6, count))
+    box.template_list(
+        "BMANGA_UL_detail_presets",
+        f"preset_edit_{spec.preset_type}",
+        list_owner,
+        "detail_preset_items",
+        list_owner,
+        "detail_preset_index",
+        rows=rows,
+        maxrows=6,
     )
     return True
 

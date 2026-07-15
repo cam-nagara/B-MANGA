@@ -242,6 +242,49 @@ def linked_object_keys_for_key(context, key: str) -> list[str]:
     return out or [key]
 
 
+def related_object_keys_for_key(context, key: str) -> list[str]:
+    """明示リンクとテキスト⇔フキダシ紐付けを辿った操作対象キーを返す。"""
+
+    from . import layer_stack as layer_stack_utils
+
+    source_key = str(key or "")
+    if not source_key:
+        return []
+    stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
+    if stack is None:
+        return [source_key]
+    items_by_uid = {
+        layer_stack_utils.stack_item_uid(item): item
+        for item in stack
+        if layer_stack_utils.stack_item_uid(item)
+    }
+    key_by_uid = {
+        uid: _object_key_for_item(context, item)
+        for uid, item in items_by_uid.items()
+    }
+    start_uids = [uid for uid, object_key in key_by_uid.items() if object_key == source_key]
+    if not start_uids:
+        return [source_key]
+    pending = list(start_uids)
+    related = set(start_uids)
+    while pending:
+        uid = pending.pop(0)
+        item = items_by_uid.get(uid)
+        if item is None:
+            continue
+        for partner_uid in related_uids_for_item(context, item):
+            if partner_uid in items_by_uid and partner_uid not in related:
+                related.add(partner_uid)
+                pending.append(partner_uid)
+    result = [source_key]
+    for item in stack:
+        uid = layer_stack_utils.stack_item_uid(item)
+        object_key = key_by_uid.get(uid, "")
+        if uid in related and object_key and object_key not in result:
+            result.append(object_key)
+    return result
+
+
 def object_key_for_item(context, item) -> str:
     return _object_key_for_item(context, item)
 
@@ -286,22 +329,34 @@ def _balloon_text_partner_uids(context, kind: str, entry, page) -> set[str]:
     """
     from . import layer_stack as layer_stack_utils
 
-    if entry is None or page is None:
+    if entry is None:
         return set()
-    page_key = layer_hierarchy.page_stack_key(page)
+    if page is None:
+        from ..core.work import get_work
+
+        work = get_work(context)
+        if work is None:
+            return set()
+        balloons = getattr(work, "shared_balloons", ()) or ()
+        texts = getattr(work, "shared_texts", ()) or ()
+        page_key = layer_hierarchy.OUTSIDE_STACK_KEY
+    else:
+        balloons = getattr(page, "balloons", ()) or ()
+        texts = getattr(page, "texts", ()) or ()
+        page_key = layer_hierarchy.page_stack_key(page)
     partners: set[str] = set()
     if kind == "text":
         balloon_id = str(getattr(entry, "parent_balloon_id", "") or "")
         if not balloon_id:
             return partners
-        for balloon in getattr(page, "balloons", []) or []:
+        for balloon in balloons:
             if str(getattr(balloon, "id", "") or "") == balloon_id:
                 partners.add(layer_stack_utils.target_uid("balloon", f"{page_key}:{balloon_id}"))
                 break
     elif kind == "balloon":
         balloon_id = str(getattr(entry, "id", "") or "")
         text_id = str(getattr(entry, "text_id", "") or "")
-        for text in getattr(page, "texts", []) or []:
+        for text in texts:
             tid = str(getattr(text, "id", "") or "")
             parent_id = str(getattr(text, "parent_balloon_id", "") or "")
             if (balloon_id and parent_id == balloon_id) or (text_id and tid == text_id):

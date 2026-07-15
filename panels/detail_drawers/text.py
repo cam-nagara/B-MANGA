@@ -29,20 +29,9 @@ def draw_text_body(layout, _context, session, mode, *, preset_list_owner=None) -
         session,
         list_owner=preset_list_owner,
     )
-    if not preset_mode:
-        _draw_placement(primary, entry)
     _draw_typography(secondary, entry)
     _draw_stroke(secondary, entry)
     _draw_ruby(secondary, entry, preset_mode, session)
-
-
-def _draw_placement(layout, entry) -> None:
-    box = layout.box()
-    box.label(text="配置 (mm)")
-    prop_pair(box, entry, "x_mm", "y_mm")
-    prop_pair(box, entry, "width_mm", "height_mm")
-    prop_if(box, entry, "rotation_deg", text="回転")
-    prop_if(box, entry, "speaker_name", text="話者")
 
 
 def _draw_linked_balloon_preset(layout, context, entry, session, *, list_owner=None) -> None:

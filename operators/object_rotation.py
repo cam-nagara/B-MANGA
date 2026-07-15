@@ -25,6 +25,7 @@
 from __future__ import annotations
 
 import math
+from copy import deepcopy
 from collections.abc import Callable
 
 from ..core.work import get_work
@@ -91,7 +92,14 @@ def _capture_balloon_rotation(context, key: str) -> dict | None:
 def _apply_balloon_rotation(context, snapshot: dict, rotation_deg: float) -> None:
     entry = snapshot.get("entry")
     if entry is not None:
-        entry.rotation_deg = float(rotation_deg)
+        # Property update が持つ旧来の「リンク先へ絶対値コピー」を一時停止する。
+        # 回転ドラッグ側は全リンク対象の各開始角へ同じ差分を加えるため、ここで
+        # 先に別スナップショットを書き換えると差分が二重適用されてしまう。
+        from ..utils import balloon_curve_object
+
+        with balloon_curve_object.suspend_auto_sync():
+            entry.rotation_deg = float(rotation_deg)
+        balloon_curve_object.on_balloon_entry_changed(entry)
 
 
 def _capture_image_rotation(context, key: str) -> dict | None:
@@ -113,28 +121,56 @@ def _capture_effect_rotation(context, key: str) -> dict | None:
     obj, layer = object_tool_selection.find_effect_layer(item_id)
     if layer is None:
         return None
-    # 効果線の回転角は「シーン単一のアクティブレイヤー用バッファ」
-    # (scene.bmanga_effect_line_params) を経由して各レイヤーの保存値へ
-    # 反映される。クリック選択時に使われるアクティブ化関数を先に通す
-    # ことで、複数の効果線レイヤーを選択していても「ドラッグした方の
-    # レイヤー」が正しくバッファへ読み込まれ、回転もそのレイヤーへ
-    # 書き戻される (対象キー以外を選び直すわけではないので、ビューポート
-    # の複数選択状態 (object_selection) は変更しない)。
     from . import effect_line_op
 
-    if not effect_line_op._select_effect_layer(context, obj, layer):
-        return None
-    scene = getattr(context, "scene", None)
-    params = getattr(scene, "bmanga_effect_line_params", None) if scene is not None else None
-    if params is None:
-        return None
-    return {"params": params, "base_rotation_deg": float(getattr(params, "rotation_deg", 0.0))}
+    data = deepcopy(effect_line_op._layer_params_data(obj, layer))
+    if not data:
+        params = effect_line_op._params_for_write(context, obj, layer)
+        if params is None:
+            return None
+        from ..core import effect_line
+
+        data = effect_line.effect_params_to_dict(params)
+    return {
+        "effect_obj": obj,
+        "effect_layer": layer,
+        "effect_params": data,
+        "base_rotation_deg": float(data.get("rotation_deg", 0.0) or 0.0),
+    }
 
 
 def _apply_effect_rotation(context, snapshot: dict, rotation_deg: float) -> None:
-    params = snapshot.get("params")
-    if params is not None:
-        params.rotation_deg = float(rotation_deg)
+    obj = snapshot.get("effect_obj")
+    layer = snapshot.get("effect_layer")
+    if obj is None or layer is None:
+        return
+    from . import effect_line_op
+
+    bounds = effect_line_op.effect_layer_bounds(obj, layer)
+    scene_params = getattr(getattr(context, "scene", None), "bmanga_effect_line_params", None)
+    if bounds is None or scene_params is None:
+        return
+    data = deepcopy(snapshot.get("effect_params", {}))
+    data["rotation_deg"] = float(rotation_deg)
+    proxy = effect_line_op._EffectParamProxy(scene_params, data)
+    effect_line_op._write_effect_strokes(
+        context,
+        obj,
+        layer,
+        bounds,
+        params_override=proxy,
+        propagate_link=False,
+    )
+    from ..utils import layer_object_model
+
+    scene = context.scene
+    if str(getattr(scene, "bmanga_active_effect_layer_name", "") or "") == layer_object_model.stable_id(obj):
+        was_syncing = effect_line_op._scene_params_syncing(scene)
+        try:
+            effect_line_op._set_scene_params_syncing(scene, True)
+            scene_params.rotation_deg = float(rotation_deg)
+        finally:
+            effect_line_op._set_scene_params_syncing(scene, was_syncing)
 
 
 register_rotation_handler("balloon", _capture_balloon_rotation, _apply_balloon_rotation)

@@ -70,6 +70,9 @@ class _LayoutProbe:
     def column(self, **_kwargs):
         return self
 
+    def box(self, **_kwargs):
+        return self
+
     def separator(self):
         return None
 
@@ -448,6 +451,73 @@ def _assert_sidebar_style_layout(context) -> None:
     assert all(not text for _operator, text, _icon in tail_layout.operators)
 
 
+def _assert_preset_editor_list_and_confirmation(context) -> None:
+    adapters = _sub("panels.detail_drawers.preset_adapters")
+    preset_detail = _sub("operators.preset_detail_op")
+    spec = adapters.PresetUiSpec("text", "テキストプリセット", "FONT_DATA", "bmanga.text_preset")
+    session = SimpleNamespace(token="preset-editor-session")
+    owner = SimpleNamespace(
+        preset_name="",
+        detail_preset_items=_ItemCollection(),
+        detail_preset_index=-1,
+        _detail_preset_list_signature=None,
+        _preset_edit_list_syncing=False,
+    )
+    owner._sync_preset_edit_index = lambda: preset_detail.BMANGA_OT_preset_detail_edit._sync_preset_edit_index(owner)
+    count = preset_detail.BMANGA_OT_preset_detail_edit.sync_preset_edit_list(
+        owner,
+        context,
+        session,
+        "text",
+    )
+    assert count > 0 and len(owner.detail_preset_items) == count
+    owner.preset_name = owner.detail_preset_items[0].identifier
+    owner._sync_preset_edit_index()
+    assert owner.detail_preset_index == 0
+
+    layout = _LayoutProbe()
+    draw_owner = SimpleNamespace(
+        detail_preset_items=owner.detail_preset_items,
+        detail_preset_index=owner.detail_preset_index,
+        sync_preset_edit_list=lambda *_args: count,
+    )
+    assert adapters._draw_preset_edit_list(  # noqa: SLF001
+        layout,
+        context,
+        session,
+        spec,
+        list_owner=draw_owner,
+    )
+    assert layout.template_lists == ["BMANGA_UL_detail_presets"], (
+        "サイドバーの歯車から開くプリセット詳細に一覧がありません"
+    )
+
+    confirms: list[dict] = []
+
+    class _WindowManager:
+        def invoke_confirm(self, _operator, _event, **kwargs):
+            confirms.append(kwargs)
+            return {"RUNNING_MODAL"}
+
+    switch_owner = SimpleNamespace(_has_unsaved_preset_changes=lambda: True)
+    switch = SimpleNamespace(
+        preset_name="横書き",
+        preset_label="横書き",
+        _owner=lambda: switch_owner,
+        execute=lambda _context: {"FINISHED"},
+        report=lambda *_args: None,
+    )
+    result = preset_detail.BMANGA_OT_preset_detail_switch.invoke(
+        switch,
+        SimpleNamespace(window_manager=_WindowManager()),
+        SimpleNamespace(type="LEFTMOUSE"),
+    )
+    assert result == {"RUNNING_MODAL"} and len(confirms) == 1
+    assert confirms[0]["title"] == "プリセットの切り替え確認"
+    assert "現在の設定はプリセットに保存されていません" in confirms[0]["message"]
+    assert confirms[0]["confirm_text"] == "保存せずに切り替える"
+
+
 def _assert_object_tool_routes(context) -> None:
     modal_state = _sub("operators.coma_modal_state")
     gp_panel = _sub("panels.gpencil_panel")
@@ -499,6 +569,7 @@ def main() -> None:
         _assert_unsaved_switch_confirmation_contract()
         _assert_preset_setting_change_snapshots(context)
         _assert_sidebar_style_layout(context)
+        _assert_preset_editor_list_and_confirmation(context)
         apply_op = _sub("operators.detail_preset_apply_op")
         work = context.scene.bmanga_work
         balloon = work.pages[0].balloons.add()
@@ -510,15 +581,14 @@ def main() -> None:
         _assert_object_tool_routes(context)
         assert hasattr(bpy.types, "BMANGA_UL_detail_presets")
         assert hasattr(bpy.types, "BMANGA_UL_detail_linked_balloon_presets")
-        for operator_type, requires_main_list in (
-            (bpy.ops.bmanga.layer_stack_detail, True),
-            (bpy.ops.bmanga.layer_detail_open, True),
-            (bpy.ops.bmanga.preset_detail_edit, False),
+        for operator_type in (
+            bpy.ops.bmanga.layer_stack_detail,
+            bpy.ops.bmanga.layer_detail_open,
+            bpy.ops.bmanga.preset_detail_edit,
         ):
             properties = operator_type.get_rna_type().properties
-            if requires_main_list:
-                assert "detail_preset_items" in properties
-                assert "detail_preset_index" in properties
+            assert "detail_preset_items" in properties
+            assert "detail_preset_index" in properties
             assert "detail_linked_balloon_items" in properties
             assert "detail_linked_balloon_index" in properties
         apply_properties = bpy.ops.bmanga.detail_preset_apply.get_rna_type().properties

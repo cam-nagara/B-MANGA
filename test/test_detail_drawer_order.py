@@ -362,8 +362,10 @@ def test_actual_draw_is_entry_independent_and_has_canonical_section_order():
     assert visible_records[0] == visible_records[1]
     assert data.__dict__ == before
     labels = [record[1] for record in records[0] if record[0] == "label"]
-    assert labels.index("テキスト") < labels.index("テキストプリセット")
-    assert labels.index("テキストプリセット") < labels.index("配置 (mm)")
+    # 上段の左列は表示情報→配置、右列はプリセット一覧。RecordingLayout は
+    # 列を作成順に記録するため、左列全体が右列より先に現れる。
+    assert labels.index("テキスト") < labels.index("配置 (mm)")
+    assert labels.index("配置 (mm)") < labels.index("テキストプリセット")
     assert labels.index("テキストプリセット") < labels.index("リンク中のレイヤー")
     assert (
         "operator_menu_enum",

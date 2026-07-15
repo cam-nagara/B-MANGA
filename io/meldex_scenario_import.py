@@ -23,9 +23,6 @@ from ..utils.layer_hierarchy import page_stack_key
 from . import balloon_presets, page_io, text_presets, work_io
 from .meldex_contract import ScenarioDocument, ScenarioRow, validate_payload
 
-BALLOON_PADDING_X_MM = 6.0
-BALLOON_PADDING_Y_MM = 6.0
-
 _logger = log.get_logger(__name__)
 
 
@@ -203,7 +200,7 @@ def _upsert_row(
         _set_initial_center(work, text, ordinal)
     if balloon_new or type_changed:
         if linked:
-            _apply_balloon_preset(balloon, balloon_by_name.get(linked))
+            _apply_balloon_preset(balloon, balloon_by_name.get(_linked_custom_name(linked)), linked)
         else:
             _apply_balloon_preset(balloon, balloon_by_name.get(row.type_name))
     text.parent_balloon_id = balloon.id
@@ -295,12 +292,25 @@ def _allocate_id(collection, prefix: str) -> str:
     return f"{prefix}_{index:04d}"
 
 
-def _apply_balloon_preset(entry, preset) -> None:
+def _linked_custom_name(reference: str) -> str:
+    value = str(reference or "")
+    if value.startswith("custom:"):
+        return value.split(":", 1)[1]
+    return "" if value.startswith("shape:") else value
+
+
+def _apply_balloon_preset(entry, preset, reference: str = "") -> None:
     _reset_balloon_to_defaults(entry)
+    if reference:
+        from ..utils import text_balloon_link
+
+        text_balloon_link.apply_balloon_preset_reference(entry, reference, preset=preset)
+        return
     if preset is None:
         entry.shape = "ellipse"
         entry.custom_preset_name = ""
         return
+    balloon_presets.apply_linked_text_settings(entry, preset.data)
     entry.shape = "custom"
     entry.custom_preset_name = preset.name
 
@@ -385,28 +395,22 @@ def _place_initial_pair(work, page, text, balloon) -> None:
 
 def _fit_pair(text, balloon, *, balloon_new: bool) -> None:
     from ..operators import text_edit_runtime
-    from ..typography import ruby as ruby_layout
+    from ..utils import text_balloon_link
 
     if balloon_new:
-        old_center_x = float(text.x_mm)
-        old_center_y = float(text.y_mm)
+        text_center_x = float(text.x_mm)
+        text_center_y = float(text.y_mm)
     else:
-        old_center_x = float(balloon.x_mm) + float(balloon.width_mm) * 0.5
-        old_center_y = float(balloon.y_mm) + float(balloon.height_mm) * 0.5
+        balloon_center_x = float(balloon.x_mm) + float(balloon.width_mm) * 0.5
+        balloon_center_y = float(balloon.y_mm) + float(balloon.height_mm) * 0.5
+        text_center_x = balloon_center_x - float(getattr(balloon, "linked_text_offset_x_mm", 0.0) or 0.0)
+        text_center_y = balloon_center_y - float(getattr(balloon, "linked_text_offset_y_mm", 0.0) or 0.0)
     width, height = text_edit_runtime.natural_text_outer_size(text)
     text.width_mm = max(2.0, width)
     text.height_mm = max(2.0, height)
-    ruby_pad = ruby_layout.render_pad_mm_for_entry(text, minimum=0.0)
-    # 実表示用の文字画像は、縦横どちらの書字方向でも四辺へ同じルビ余白を持つ。
-    # 書字方向側だけを広げると、親文字より長いルビが上下端からはみ出す。
-    extra_x = ruby_pad
-    extra_y = ruby_pad
-    balloon.width_mm = text.width_mm + (BALLOON_PADDING_X_MM + extra_x) * 2.0
-    balloon.height_mm = text.height_mm + (BALLOON_PADDING_Y_MM + extra_y) * 2.0
-    balloon.x_mm = old_center_x - balloon.width_mm * 0.5
-    balloon.y_mm = old_center_y - balloon.height_mm * 0.5
-    text.x_mm = balloon.x_mm + BALLOON_PADDING_X_MM + extra_x
-    text.y_mm = balloon.y_mm + BALLOON_PADDING_Y_MM + extra_y
+    text.x_mm = text_center_x - float(text.width_mm) * 0.5
+    text.y_mm = text_center_y - float(text.height_mm) * 0.5
+    text_balloon_link.fit_linked_balloon_to_text(text, balloon)
 
 
 def _fit_text_only(text) -> None:

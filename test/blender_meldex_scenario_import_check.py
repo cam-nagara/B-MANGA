@@ -65,11 +65,23 @@ def main() -> None:
         text_presets.list_all_presets = lambda _path: [
             SimpleNamespace(
                 name="先頭既定",
-                data={"font": first_font, "font_bold": False, "writing_mode": "vertical", "linked_balloon_preset": ""},
+                data={
+                    "font": first_font,
+                    "font_bold": False,
+                    "writing_mode": "vertical",
+                    "line_height": 1.5,
+                    "linked_balloon_preset": "",
+                },
             ),
             SimpleNamespace(
                 name="会話",
-                data={"font": dialogue_font, "font_bold": True, "writing_mode": "horizontal", "linked_balloon_preset": "会話"},
+                data={
+                    "font": dialogue_font,
+                    "font_bold": True,
+                    "writing_mode": "horizontal",
+                    "line_height": 1.8,
+                    "linked_balloon_preset": "会話",
+                },
             )
         ]
 
@@ -95,11 +107,15 @@ def main() -> None:
         text = next(item for item in work.pages[0].texts if item.meldex_source_row_id == "r1")
         assert text.body == "東京\nです"
         assert text.font_bold and text.writing_mode == "horizontal"
+        assert abs(float(text.line_height) - 1.8) < 1.0e-6, "完全一致プリセットの行間を適用する"
         assert text.font == dialogue_font, "完全一致プリセットのフォントを適用する"
         assert len(text.ruby_spans) == 1 and text.ruby_spans[0].ruby_text == "とうきょう"
         fallback_text = next(item for item in work.pages[0].texts if item.meldex_source_row_id == "r2")
         assert fallback_text.font == first_font and fallback_text.writing_mode == "vertical", (
             "完全一致しないタイプにはリスト先頭のテキストプリセットをフォント込みで適用する"
+        )
+        assert abs(float(fallback_text.line_height) - 1.5) < 1.0e-6, (
+            "完全一致しないタイプにもリスト先頭の行間を適用する"
         )
         balloon = next(item for item in imported if item.meldex_source_row_id == "r1")
         assert balloon.width_mm > text.width_mm and balloon.height_mm > text.height_mm

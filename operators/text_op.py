@@ -1212,6 +1212,17 @@ class BMANGA_OT_text_tool(Operator):
         ):
             self._push_undo_step("B-MANGA: テキスト編集")
         if entry is not None and _page is not None:
+            from ..utils import balloon_curve_object, text_balloon_link
+
+            work = get_work(context)
+            linked_balloon = text_balloon_link.find_linked_balloon(
+                work,
+                entry,
+                page=_page,
+            )
+            if linked_balloon is not None and rect_changed:
+                text_balloon_link.fit_linked_balloon_to_text(entry, linked_balloon)
+                balloon_curve_object.on_balloon_entry_changed(linked_balloon)
             text_real_object.set_text_object_preview_hidden(entry, _page, hidden=False)
             _sync_text_real_object(context, _page, entry)
             layer_stack_utils.sync_layer_stack_after_data_change(context)

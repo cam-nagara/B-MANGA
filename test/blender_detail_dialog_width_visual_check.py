@@ -22,14 +22,22 @@ OUT_DIR = Path(
         str(ROOT / "_verify" / "2026-07-14_detail_dialog_width_visual"),
     )
 )
+TARGET_KIND = str(os.environ.get("BMANGA_DETAIL_DIALOG_VISUAL_TARGET", "effect") or "effect").strip().lower()
+if TARGET_KIND not in {"effect", "text"}:
+    raise ValueError("BMANGA_DETAIL_DIALOG_VISUAL_TARGET は effect または text を指定してください")
 EFFECT_TYPE = str(os.environ.get("BMANGA_DETAIL_DIALOG_VISUAL_TYPE", "focus") or "focus").strip().lower()
 if EFFECT_TYPE not in {"focus", "speed"}:
     raise ValueError("BMANGA_DETAIL_DIALOG_VISUAL_TYPE は focus または speed を指定してください")
-EXPECTED_COLUMNS = 3 if EFFECT_TYPE == "focus" else 2
+EXPECTED_COLUMNS = 2 if TARGET_KIND == "text" else (3 if EFFECT_TYPE == "focus" else 2)
+EXPECTED_MAX_COLUMNS = 2 if TARGET_KIND == "text" else 3
 IMAGE_PATH = OUT_DIR / (
-    "effect_focus_3columns.png" if EFFECT_TYPE == "focus" else "effect_speed_2columns.png"
+    "text_2columns.png"
+    if TARGET_KIND == "text"
+    else ("effect_focus_3columns.png" if EFFECT_TYPE == "focus" else "effect_speed_2columns.png")
 )
-RESULT_PATH = OUT_DIR / f"result_{EFFECT_TYPE}.json"
+RESULT_PATH = OUT_DIR / (
+    "result_text.json" if TARGET_KIND == "text" else f"result_{EFFECT_TYPE}.json"
+)
 
 _WORK_ROOT: Path | None = None
 _FIXED_WIDTH = 0
@@ -153,6 +161,7 @@ def _finish_success(region: dict[str, int | str], session) -> None:
     global _DONE
     _DONE = True
     payload = {
+        "target_kind": TARGET_KIND,
         "effect_type": EFFECT_TYPE,
         "requested_width": _FIXED_WIDTH,
         "region": region,
@@ -183,7 +192,7 @@ def _after_dialog_open():
                 f"詳細設定ダイアログが表示されません: session={session is not None}, "
                 f"regions={_region_inventory()}"
             )
-        assert int(session.layout.max_columns) == 3
+        assert int(session.layout.max_columns) == EXPECTED_MAX_COLUMNS
         assert int(session.layout.column_count) == EXPECTED_COLUMNS
         _FIXED_WIDTH = int(session.layout.dialog_width)
         region = _dialog_region(session)
@@ -224,34 +233,55 @@ def _run() -> None:
     context = bpy.context
     work = _sub("core.work").get_work(context)
     page = work.pages[0]
-    effect_op = _sub("operators.effect_line_op")
-    params = context.scene.bmanga_effect_line_params
-    effect_op._set_scene_params_syncing(context.scene, True)
-    try:
-        params.effect_type = EFFECT_TYPE
-        params.spacing_mode = "angle"
-        params.spacing_angle_deg = 30.0
-        params.max_line_count = 12
-    finally:
-        effect_op._set_scene_params_syncing(context.scene, False)
-    parent_key = _sub("utils.layer_hierarchy").page_stack_key(page)
-    obj, layer = effect_op._create_effect_layer(
-        context,
-        (40.0, 55.0, 85.0, 65.0),
-        parent_key=parent_key,
-    )
-    assert obj is not None and layer is not None
+    if TARGET_KIND == "text":
+        entry = page.texts.add()
+        entry.id = "detail_visual_text"
+        entry.title = "詳細設定レイアウト"
+        entry.body = "右上のプリセット一覧\n左上の配置"
+        entry.x_mm = 40.0
+        entry.y_mm = 55.0
+        entry.width_mm = 60.0
+        entry.height_mm = 35.0
+        text_real_object = _sub("utils.text_real_object")
+        obj = text_real_object.ensure_text_real_object(
+            scene=context.scene,
+            entry=entry,
+            page=page,
+        )
+        assert obj is not None
+        _sub("utils.layer_stack").sync_layer_stack_after_data_change(context)
+        bmanga_id = text_real_object.text_object_bmanga_id(page, entry)
+        detail_kind = "text"
+    else:
+        effect_op = _sub("operators.effect_line_op")
+        params = context.scene.bmanga_effect_line_params
+        effect_op._set_scene_params_syncing(context.scene, True)
+        try:
+            params.effect_type = EFFECT_TYPE
+            params.spacing_mode = "angle"
+            params.spacing_angle_deg = 30.0
+            params.max_line_count = 12
+        finally:
+            effect_op._set_scene_params_syncing(context.scene, False)
+        parent_key = _sub("utils.layer_hierarchy").page_stack_key(page)
+        obj, layer = effect_op._create_effect_layer(
+            context,
+            (40.0, 55.0, 85.0, 65.0),
+            parent_key=parent_key,
+        )
+        assert obj is not None and layer is not None
+        bmanga_id = _sub("utils.object_naming").get_bmanga_id(obj)
+        detail_kind = "effect"
     for candidate in tuple(context.view_layer.objects):
         if candidate.select_get():
             candidate.select_set(False)
     obj.select_set(True)
     context.view_layer.objects.active = obj
-    bmanga_id = _sub("utils.object_naming").get_bmanga_id(obj)
     with context.temp_override(**_view3d_override()):
         result = bpy.ops.bmanga.layer_detail_open(
             "INVOKE_DEFAULT",
             bmanga_id=bmanga_id,
-            kind="effect",
+            kind=detail_kind,
         )
     assert "RUNNING_MODAL" in result, result
     bpy.app.timers.register(_after_dialog_open, first_interval=0.5)

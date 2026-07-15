@@ -27,6 +27,29 @@ GLOBAL_BALLOONS_DIR = _ADDON_ROOT / "presets" / "balloons"
 PRESET_SUFFIX = ".json"
 PRESET_INDEX_FILENAME = "_preset_index.json"
 
+LINKED_TEXT_SETTING_KEYS = {
+    "linkedTextOffsetXMm": ("linked_text_offset_x_mm", 0.0),
+    "linkedTextOffsetYMm": ("linked_text_offset_y_mm", 0.0),
+    "linkedTextPaddingXMm": ("linked_text_padding_x_mm", 6.0),
+    "linkedTextPaddingYMm": ("linked_text_padding_y_mm", 6.0),
+}
+
+
+def linked_text_settings_from_entry(entry) -> dict[str, float]:
+    return {
+        key: round(float(getattr(entry, attr, default) or 0.0), 3)
+        for key, (attr, default) in LINKED_TEXT_SETTING_KEYS.items()
+    }
+
+
+def apply_linked_text_settings(entry, data: dict | None) -> None:
+    payload = data if isinstance(data, dict) else {}
+    for key, (attr, default) in LINKED_TEXT_SETTING_KEYS.items():
+        value = float(payload.get(key, default))
+        if "Padding" in key:
+            value = max(0.0, value)
+        setattr(entry, attr, value)
+
 
 @dataclass(frozen=True)
 class BalloonPreset:
@@ -118,13 +141,22 @@ def save_local_preset(
     description: str,
     vertices_mm: list[tuple[float, float]],
     absolute_coords: bool = False,
+    *,
+    extras: dict | None = None,
 ) -> Path:
     del work_dir
     target_dir = shared_presets.preset_dir("balloons")
     safe = _sanitize_filename(name)
     out = target_dir / f"{safe}{PRESET_SUFFIX}"
     is_new = not out.exists()
-    result = save_preset(out, name, description, vertices_mm, absolute_coords=absolute_coords)
+    result = save_preset(
+        out,
+        name,
+        description,
+        vertices_mm,
+        absolute_coords=absolute_coords,
+        extras=extras,
+    )
     index = _read_local_index()
     hidden = set(index.get("hidden", []))
     if name in hidden:
@@ -141,12 +173,21 @@ def save_global_preset(
     description: str,
     vertices_mm: list[tuple[float, float]],
     absolute_coords: bool = False,
+    *,
+    extras: dict | None = None,
 ) -> Path:
     """全作品共通プリセットとして保存する."""
     safe = _sanitize_filename(name)
     out = shared_presets.preset_dir("balloons") / f"{safe}{PRESET_SUFFIX}"
     is_new = not out.exists()
-    result = save_preset(out, name, description, vertices_mm, absolute_coords=absolute_coords)
+    result = save_preset(
+        out,
+        name,
+        description,
+        vertices_mm,
+        absolute_coords=absolute_coords,
+        extras=extras,
+    )
     if is_new:
         _insert_order_name(name)
     return result

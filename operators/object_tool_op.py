@@ -1558,17 +1558,24 @@ class BMANGA_OT_object_tool(Operator):
             return False
         # kind別のスナップショット取得は object_rotation のレジストリに集約
         # (effect は per-layer 化のためのアクティブ化もここで行われる)。
-        snapshot = object_rotation.capture_rotation_snapshot(context, rot_hit["key"])
-        if snapshot is None:
+        from ..utils import layer_links
+
+        keys = layer_links.related_object_keys_for_key(context, rot_hit["key"])
+        snapshots = [
+            snapshot
+            for key in keys
+            if (snapshot := object_rotation.capture_rotation_snapshot(context, key)) is not None
+        ]
+        if not snapshots:
             return False
         self._dragging = True
         self._drag_action = "rotate"
         self._drag_start_x = float(x_mm)
         self._drag_start_y = float(y_mm)
         self._rotate_center = rot_hit["center"]
-        self._drag_keys = [rot_hit["key"]]
+        self._drag_keys = keys
         self._drag_moved = False
-        self._rotate_snapshots = [snapshot]
+        self._rotate_snapshots = snapshots
         coma_modal_state.set_modal_cursor(context, "SCROLL_XY")
         return True
 

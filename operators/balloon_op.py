@@ -1912,7 +1912,11 @@ class BMANGA_OT_balloon_save_preset(Operator):
                     for x, y in verts
                 ]
             out = balloon_presets.save_global_preset(
-                self.preset_name, self.description, verts, self.absolute_coords
+                self.preset_name,
+                self.description,
+                verts,
+                self.absolute_coords,
+                extras=balloon_presets.linked_text_settings_from_entry(entry),
             )
         except Exception as exc:  # noqa: BLE001
             _logger.exception("balloon_save_preset failed")

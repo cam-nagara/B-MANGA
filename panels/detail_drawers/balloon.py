@@ -21,6 +21,7 @@ def draw_balloon_body(layout, context, session, mode) -> None:
         draw_tail_body(layout, context, session, mode)
         return
     if preset_mode and str(getattr(session.target, "namespace", "") or "") == "balloon":
+        _draw_linked_text_fit(layout, session.target.data)
         return
 
     from ...utils import balloon_shapes
@@ -31,25 +32,26 @@ def draw_balloon_body(layout, context, session, mode) -> None:
     line_column = columns[min(1, len(columns) - 1)]
     effect_columns = columns[1:] if len(columns) > 1 else columns
 
-    _draw_placement(shape_column, entry)
+    _draw_linked_text_fit(shape_column, entry)
     _draw_shape(shape_column, session, entry, balloon_shapes)
     _draw_line(line_column, entry, balloon_shapes, effect_columns, preset_mode)
     _draw_tails(shape_column, context, session, entry, preset_mode)
 
 
-def _draw_placement(layout, entry) -> None:
+def _draw_linked_text_fit(layout, entry) -> None:
     box = layout.box()
-    box.label(text="配置 (mm)")
-    prop_pair(box, entry, "x_mm", "y_mm")
-    prop_pair(box, entry, "width_mm", "height_mm")
-    prop_if(box, entry, "rotation_deg", text="回転")
+    box.label(text="リンクテキストに合わせる", icon="LINKED")
     prop_pair(
         box,
         entry,
-        "flip_h",
-        "flip_v",
-        flip_h={"text": "水平反転", "toggle": True},
-        flip_v={"text": "垂直反転", "toggle": True},
+        "linked_text_offset_x_mm",
+        "linked_text_offset_y_mm",
+    )
+    prop_pair(
+        box,
+        entry,
+        "linked_text_padding_x_mm",
+        "linked_text_padding_y_mm",
     )
 
 

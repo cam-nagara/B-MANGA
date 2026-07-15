@@ -20,19 +20,20 @@ _LINKED_BALLOON_PRESET_ITEMS: list[tuple[str, str, str]] = []
 
 
 def _linked_balloon_preset_items(_self, _context):
-    from ..io import balloon_presets
+    from . import detail_preset_apply_op
 
     items = [(_NO_LINKED_BALLOON_PRESET, "なし", "フキダシを連動しません")]
-    for preset in balloon_presets.list_all_presets(None):
-        name = str(getattr(preset, "name", "") or "").strip()
-        if name:
-            items.append(
-                (
-                    f"{_LINKED_BALLOON_PRESET_PREFIX}{name}",
-                    name,
-                    str(getattr(preset, "description", "") or ""),
-                )
+    for identifier, label, description in detail_preset_apply_op._detail_preset_entries(
+        _context,
+        "balloon",
+    ):
+        items.append(
+            (
+                f"{_LINKED_BALLOON_PRESET_PREFIX}{identifier}",
+                label,
+                description,
             )
+        )
     _LINKED_BALLOON_PRESET_ITEMS[:] = items
     return _LINKED_BALLOON_PRESET_ITEMS
 
@@ -292,8 +293,16 @@ class BMANGA_OT_detail_text_linked_balloon_set(Operator):
 
         def apply_preset(target):
             name = _linked_balloon_preset_name(self.preset_name)
-            if name and balloon_presets.load_preset_by_name(name) is None:
-                raise LookupError(f"プリセットが見つかりません: {name}")
+            if name.startswith("shape:"):
+                from ..core.balloon import _SHAPE_ITEMS
+
+                valid_shapes = {str(item[0]) for item in _SHAPE_ITEMS}
+                if name.split(":", 1)[1] not in valid_shapes:
+                    raise LookupError(f"フキダシ形状が見つかりません: {name}")
+            else:
+                custom_name = name.split(":", 1)[1] if name.startswith("custom:") else name
+                if custom_name and balloon_presets.load_preset_by_name(custom_name) is None:
+                    raise LookupError(f"プリセットが見つかりません: {custom_name}")
             text_balloon_link.apply_linked_balloon_preset(
                 get_work(context),
                 target.data,

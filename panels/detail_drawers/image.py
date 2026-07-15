@@ -15,20 +15,6 @@ def draw_image_body(layout, _context, session, _mode) -> None:
     source_box.label(text="画像", icon="IMAGE_DATA")
     prop_if(source_box, entry, "filepath", text="画像パス")
 
-    place_box = primary.box()
-    place_box.label(text="配置 (mm)")
-    prop_pair(place_box, entry, "x_mm", "y_mm")
-    prop_pair(place_box, entry, "width_mm", "height_mm")
-    prop_if(place_box, entry, "rotation_deg", text="回転")
-    prop_pair(
-        place_box,
-        entry,
-        "flip_x",
-        "flip_y",
-        flip_x={"text": "左右反転", "toggle": True},
-        flip_y={"text": "上下反転", "toggle": True},
-    )
-
     display_box = secondary.box()
     display_box.label(text="合成")
     prop_if(display_box, entry, "opacity", text="不透明度", slider=True)

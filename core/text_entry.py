@@ -52,6 +52,7 @@ _FONT_SIZE_UNIT_ITEMS = (
 
 _font_size_sync_depth = 0
 _writing_mode_sync_depth = 0
+_WRITING_MODE_TRACK_KEY = "_bmanga_last_writing_mode"
 
 
 class BMangaRubySegment(bpy.types.PropertyGroup):
@@ -118,18 +119,40 @@ def _on_text_visible_changed(_self, context) -> None:
     _on_text_entry_changed(_self, context)
 
 
+def prime_writing_mode_tracking(entry) -> None:
+    """現在の書字方向を、次回の実変更を判定する基準として記録する。"""
+
+    if entry is None:
+        return
+    try:
+        entry[_WRITING_MODE_TRACK_KEY] = str(
+            getattr(entry, "writing_mode", "horizontal") or "horizontal"
+        )
+    except (AttributeError, ReferenceError, TypeError):
+        pass
+
+
 def _on_writing_mode_changed(self, context) -> None:
-    """書字方向の切替時にテキストフィールドを90度回転相当にする。"""
+    """書字方向が実際に切り替わった時だけフィールドの縦横を入れ替える。"""
     global _writing_mode_sync_depth
     if _writing_mode_sync_depth > 0:
         return
+    current_mode = str(getattr(self, "writing_mode", "horizontal") or "horizontal")
+    try:
+        # 新規エントリのRNA既定値は horizontal。追跡値がまだ無い最初の
+        # vertical 指定も正しい「横→縦」の変更として扱う。
+        previous_mode = str(self.get(_WRITING_MODE_TRACK_KEY, "horizontal") or "horizontal")
+    except (AttributeError, ReferenceError, TypeError):
+        previous_mode = current_mode
     _writing_mode_sync_depth += 1
     try:
-        width_mm = float(getattr(self, "width_mm", 0.0) or 0.0)
-        height_mm = float(getattr(self, "height_mm", 0.0) or 0.0)
-        if abs(width_mm - height_mm) > 1.0e-9:
-            self.width_mm = height_mm
-            self.height_mm = width_mm
+        if previous_mode != current_mode:
+            width_mm = float(getattr(self, "width_mm", 0.0) or 0.0)
+            height_mm = float(getattr(self, "height_mm", 0.0) or 0.0)
+            if abs(width_mm - height_mm) > 1.0e-9:
+                self.width_mm = height_mm
+                self.height_mm = width_mm
+        prime_writing_mode_tracking(self)
     finally:
         _writing_mode_sync_depth -= 1
     _on_text_entry_changed(self, context)

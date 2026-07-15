@@ -7,7 +7,7 @@ from bpy.props import StringProperty
 from bpy.types import Menu, Operator
 
 from ..core.work import get_active_page, get_work
-from ..io import balloon_presets, text_presets
+from ..io import text_presets
 from ..utils import log
 
 _logger = log.get_logger(__name__)
@@ -356,9 +356,11 @@ class BMANGA_MT_linked_balloon_preset(Menu):
         op.preset_name = ""
         op.text_id = target_id
         layout.separator()
-        for preset in balloon_presets.list_all_presets(None):
-            op = layout.operator(BMANGA_OT_set_linked_balloon_preset.bl_idname, text=preset.name)
-            op.preset_name = preset.name
+        from .detail_preset_apply_op import _detail_preset_entries
+
+        for identifier, label, _description in _detail_preset_entries(context, "balloon"):
+            op = layout.operator(BMANGA_OT_set_linked_balloon_preset.bl_idname, text=label)
+            op.preset_name = identifier
             op.text_id = target_id
 
 

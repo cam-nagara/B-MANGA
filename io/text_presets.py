@@ -153,6 +153,9 @@ def snapshot_from_entry(entry) -> dict[str, Any]:
 
 def apply_to_entry(entry, data: dict[str, Any]) -> None:
     """プリセットデータを TextEntry に適用."""
+    from ..core.text_entry import prime_writing_mode_tracking
+
+    prime_writing_mode_tracking(entry)
     for key in _TEXT_KEYS:
         if key not in data:
             continue

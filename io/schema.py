@@ -1353,6 +1353,10 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "widthMm": round(entry.width_mm, 3),
         "heightMm": round(entry.height_mm, 3),
         "rotationDeg": round(entry.rotation_deg, 3),
+        "linkedTextOffsetXMm": round(float(getattr(entry, "linked_text_offset_x_mm", 0.0)), 3),
+        "linkedTextOffsetYMm": round(float(getattr(entry, "linked_text_offset_y_mm", 0.0)), 3),
+        "linkedTextPaddingXMm": round(float(getattr(entry, "linked_text_padding_x_mm", 6.0)), 3),
+        "linkedTextPaddingYMm": round(float(getattr(entry, "linked_text_padding_y_mm", 6.0)), 3),
         "centerOffsetXMm": round(float(getattr(entry, "center_offset_x_mm", 0.0)), 3),
         "centerOffsetYMm": round(float(getattr(entry, "center_offset_y_mm", 0.0)), 3),
         "freeTransform": _free_transform_to_dict(entry),
@@ -1533,6 +1537,10 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     entry.width_mm = float(data.get("widthMm", 40.0))
     entry.height_mm = float(data.get("heightMm", 20.0))
     entry.rotation_deg = float(data.get("rotationDeg", 0.0))
+    entry.linked_text_offset_x_mm = float(data.get("linkedTextOffsetXMm", 0.0))
+    entry.linked_text_offset_y_mm = float(data.get("linkedTextOffsetYMm", 0.0))
+    entry.linked_text_padding_x_mm = max(0.0, float(data.get("linkedTextPaddingXMm", 6.0)))
+    entry.linked_text_padding_y_mm = max(0.0, float(data.get("linkedTextPaddingYMm", 6.0)))
     entry.center_offset_x_mm = float(data.get("centerOffsetXMm", 0.0))
     entry.center_offset_y_mm = float(data.get("centerOffsetYMm", 0.0))
     _free_transform_from_dict(entry, data.get("freeTransform"))
@@ -1874,9 +1882,11 @@ def text_entry_to_dict(entry) -> dict[str, Any]:
 
 
 def text_entry_from_dict(entry, data: dict[str, Any]) -> None:
+    from ..core.text_entry import prime_writing_mode_tracking
     from ..utils import text_style
     from ..utils.geom import pt_to_q, q_to_pt
 
+    prime_writing_mode_tracking(entry)
     data = data or {}
     entry.id = data.get("id", entry.id)
     entry.meldex_source_document_id = str(data.get("meldexSourceDocumentId", "") or "")

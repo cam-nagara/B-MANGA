@@ -532,6 +532,7 @@ def _apply_balloon(_context, target, name: str) -> str:
     preset_name = name.split(":", 1)[1] if name.startswith("custom:") else name
     preset = _require_preset(balloon_presets.load_preset_by_name(preset_name), preset_name)
     with balloon_curve_object.suspend_auto_sync():
+        balloon_presets.apply_linked_text_settings(target.data, preset.data)
         target.data.custom_preset_name = str(preset.name)
         target.data.shape = "custom"
     balloon_curve_object.on_balloon_entry_changed(target.data)

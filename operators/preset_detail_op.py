@@ -24,7 +24,14 @@ from __future__ import annotations
 from typing import Any, Callable
 
 import bpy
-from bpy.props import CollectionProperty, FloatVectorProperty, IntProperty, PointerProperty, StringProperty
+from bpy.props import (
+    CollectionProperty,
+    FloatProperty,
+    FloatVectorProperty,
+    IntProperty,
+    PointerProperty,
+    StringProperty,
+)
 from bpy.types import Operator, PropertyGroup
 
 from .detail_preset_apply_op import (
@@ -55,6 +62,32 @@ from ..utils.detail_state_adapters import ACTUAL_DETAIL_STATE_REGISTRY
 from ..panels.detail_drawers import draw_detail_dialog
 
 _logger = log.get_logger(__name__)
+_OPEN_PRESET_DETAIL_OPERATORS: dict[str, Any] = {}
+
+
+def _on_preset_edit_index_changed(owner, context) -> None:
+    if bool(getattr(owner, "_preset_edit_list_syncing", False)):
+        return
+    collection = getattr(owner, "detail_preset_items", None)
+    index = int(getattr(owner, "detail_preset_index", -1))
+    if collection is None or not (0 <= index < len(collection)):
+        return
+    name = str(collection[index].identifier or "")
+    if not name or name == str(getattr(owner, "preset_name", "") or ""):
+        return
+    owner._sync_preset_edit_index()
+    session = getattr(owner, "_detail_session", None)
+    if session is None:
+        return
+    try:
+        bpy.ops.bmanga.preset_detail_switch(
+            "INVOKE_DEFAULT",
+            session_token=session.token,
+            preset_name=name,
+            preset_label=str(collection[index].name or name),
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("failed to request preset detail switch")
 
 
 # ────────────────────────────────────────────────────────────────
@@ -80,11 +113,21 @@ class _BMangaPresetScratchComa(PropertyGroup):
     )
 
 
+class _BMangaPresetScratchBalloon(PropertyGroup):
+    """頂点列JSONを保ったまま、リンクテキスト用設定だけを編集する入れ物。"""
+
+    linked_text_offset_x_mm: FloatProperty(name="横位置 (mm)", default=0.0)  # type: ignore[valid-type]
+    linked_text_offset_y_mm: FloatProperty(name="縦位置 (mm)", default=0.0)  # type: ignore[valid-type]
+    linked_text_padding_x_mm: FloatProperty(name="横余白 (mm)", default=6.0, min=0.0)  # type: ignore[valid-type]
+    linked_text_padding_y_mm: FloatProperty(name="縦余白 (mm)", default=6.0, min=0.0)  # type: ignore[valid-type]
+
+
 # WindowManager 側スクラッチ属性名 → 保持する PropertyGroup 型。
 # fill と gradient は同じ BMangaFillLayer だが、プリセットの実体
 # (JSON 保存先ディレクトリ) が別なので取り違え防止のため別インスタンスにする。
 _SCRATCH_WM_PROPS: tuple[tuple[str, type], ...] = (
     ("bmanga_preset_scratch_border", _BMangaPresetScratchComa),
+    ("bmanga_preset_scratch_balloon", _BMangaPresetScratchBalloon),
     ("bmanga_preset_scratch_text", BMangaTextEntry),
     ("bmanga_preset_scratch_effect_line", BMangaEffectLineParams),
     ("bmanga_preset_scratch_fill", BMangaFillLayer),
@@ -323,6 +366,7 @@ _SAVERS: dict[str, _SaverFn] = {
 
 _PRESET_SCRATCH_ATTRS = {
     "border": "bmanga_preset_scratch_border",
+    "balloon": "bmanga_preset_scratch_balloon",
     "text": "bmanga_preset_scratch_text",
     "effect_line": "bmanga_preset_scratch_effect_line",
     "fill": "bmanga_preset_scratch_fill",
@@ -341,8 +385,7 @@ def _available_dialog_width(context) -> int | None:
 
 
 def _preset_target_data(context, preset_type: str, balloon_data: dict[str, Any]):
-    if preset_type == "balloon":
-        return balloon_data
+    del balloon_data
     attr = _PRESET_SCRATCH_ATTRS.get(preset_type)
     if attr is None:
         return None
@@ -378,6 +421,54 @@ def _sync_preset_curve_ui(preset_type: str, target) -> bool:
     return False
 
 
+class BMANGA_OT_preset_detail_switch(Operator):
+    """開いているプリセット詳細を、一覧で選んだ別プリセットへ切り替える。"""
+
+    bl_idname = "bmanga.preset_detail_switch"
+    bl_label = "編集するプリセットを切り替え"
+    bl_options = {"INTERNAL"}
+
+    session_token: StringProperty(options={"HIDDEN"})  # type: ignore[valid-type]
+    preset_name: StringProperty(options={"HIDDEN"})  # type: ignore[valid-type]
+    preset_label: StringProperty(options={"HIDDEN"})  # type: ignore[valid-type]
+
+    def _owner(self):
+        return _OPEN_PRESET_DETAIL_OPERATORS.get(str(self.session_token or ""))
+
+    def invoke(self, context, event):
+        owner = self._owner()
+        if owner is None:
+            self.report({"WARNING"}, "プリセット詳細設定を開き直してください")
+            return {"CANCELLED"}
+        if not owner._has_unsaved_preset_changes():
+            return self.execute(context)
+        return context.window_manager.invoke_confirm(
+            self,
+            event,
+            title="プリセットの切り替え確認",
+            message=(
+                "現在の設定はプリセットに保存されていません。"
+                f"保存せずに「{self.preset_label or self.preset_name}」へ切り替えますか？"
+            ),
+            confirm_text="保存せずに切り替える",
+            icon="QUESTION",
+        )
+
+    def execute(self, context):
+        owner = self._owner()
+        if owner is None:
+            self.report({"WARNING"}, "プリセット詳細設定を開き直してください")
+            return {"CANCELLED"}
+        try:
+            owner._switch_preset_detail(context, self.preset_name)
+        except Exception as exc:  # noqa: BLE001
+            _logger.exception("failed to switch preset detail")
+            self.report({"WARNING"}, str(exc) or "プリセットを切り替えられませんでした")
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"編集するプリセットを切り替えました: {self.preset_label or self.preset_name}")
+        return {"FINISHED"}
+
+
 class BMANGA_OT_preset_detail_edit(Operator):
     bl_idname = "bmanga.preset_detail_edit"
     bl_label = "プリセット詳細設定"
@@ -390,6 +481,15 @@ class BMANGA_OT_preset_detail_edit(Operator):
     parent_target_id: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
 
     description_text: StringProperty(name="説明")  # type: ignore[valid-type]
+    detail_preset_items: CollectionProperty(  # type: ignore[valid-type]
+        type=BMANGA_DetailPresetListItem,
+        options={"HIDDEN"},
+    )
+    detail_preset_index: IntProperty(  # type: ignore[valid-type]
+        default=-1,
+        options={"HIDDEN"},
+        update=_on_preset_edit_index_changed,
+    )
     detail_linked_balloon_items: CollectionProperty(  # type: ignore[valid-type]
         type=BMANGA_DetailPresetListItem,
         options={"HIDDEN"},
@@ -402,8 +502,9 @@ class BMANGA_OT_preset_detail_edit(Operator):
 
     _balloon_data: dict[str, Any] = {}
     _detail_session: Any = None
+    _description_baseline: str = ""
 
-    def _open_detail_session(self, context):
+    def _begin_detail_session(self, context):
         data = _preset_target_data(context, self.preset_type, self._balloon_data)
         if data is None:
             raise RuntimeError(f"プリセット一時設定を取得できません: {self.preset_type}")
@@ -438,7 +539,103 @@ class BMANGA_OT_preset_detail_edit(Operator):
             cancel_detail_session(self._detail_session)
             self._detail_session = None
             raise
+        _OPEN_PRESET_DETAIL_OPERATORS[self._detail_session.token] = self
+        self._description_baseline = str(self.description_text or "")
+        self._detail_preset_list_signature = None
+        return self._detail_session
+
+    def _open_detail_session(self, context):
+        self._begin_detail_session(context)
         return self._invoke_detail_dialog(context)
+
+    def sync_preset_edit_list(self, context, session, preset_type: str) -> int:
+        from . import detail_preset_apply_op
+
+        presets = detail_preset_apply_op._list_presets(context, preset_type)
+        entries = tuple(
+            (
+                str(getattr(preset, "name", "") or ""),
+                str(getattr(preset, "name", "") or ""),
+                str(getattr(preset, "description", "") or ""),
+            )
+            for preset in presets
+            if str(getattr(preset, "name", "") or "")
+        )
+        signature = (str(session.token), str(preset_type), str(self.preset_name), entries)
+        if getattr(self, "_detail_preset_list_signature", None) != signature:
+            self._preset_edit_list_syncing = True
+            try:
+                self.detail_preset_items.clear()
+                for identifier, label, description in entries:
+                    item = self.detail_preset_items.add()
+                    item.identifier = identifier
+                    item.name = label
+                    item.description = description
+                    item.preset_type = str(preset_type)
+                self._detail_preset_list_signature = signature
+            finally:
+                self._preset_edit_list_syncing = False
+        self._sync_preset_edit_index()
+        return len(self.detail_preset_items)
+
+    def _sync_preset_edit_index(self) -> None:
+        target_index = next(
+            (
+                index
+                for index, item in enumerate(self.detail_preset_items)
+                if str(item.identifier or "") == str(self.preset_name or "")
+            ),
+            -1,
+        )
+        if int(self.detail_preset_index) == target_index:
+            return
+        self._preset_edit_list_syncing = True
+        try:
+            self.detail_preset_index = target_index
+        finally:
+            self._preset_edit_list_syncing = False
+
+    def _has_unsaved_preset_changes(self) -> bool:
+        session = self._detail_session
+        if session is None:
+            return False
+        if str(self.description_text or "") != str(self._description_baseline or ""):
+            return True
+        from ..utils import detail_dialog_state
+
+        current = detail_dialog_state._capture_current_session_state(session)
+        return not detail_dialog_state._snapshots_equivalent(session.opening_snapshot, current)
+
+    def _load_preset_for_switch(self, context, preset_name: str) -> None:
+        if self.preset_type == "balloon":
+            from ..io import balloon_presets
+
+            data = _load_balloon(preset_name)
+            if data is None:
+                raise LookupError(f"プリセットが見つかりません: {preset_name}")
+            self._balloon_data = data
+            balloon_presets.apply_linked_text_settings(
+                context.window_manager.bmanga_preset_scratch_balloon,
+                data,
+            )
+            self.description_text = str(data.get("description", "") or "")
+            return
+        loader = _LOADERS.get(self.preset_type)
+        if loader is None:
+            raise LookupError(f"未対応のプリセットタイプです: {self.preset_type}")
+        description = loader(context, preset_name)
+        if description is None:
+            raise LookupError(f"プリセットが見つかりません: {preset_name}")
+        self.description_text = description
+
+    def _switch_preset_detail(self, context, preset_name: str) -> None:
+        name = str(preset_name or "").strip()
+        if not name or name == str(self.preset_name or ""):
+            return
+        self._restore_open_session()
+        self.preset_name = name
+        self._load_preset_for_switch(context, name)
+        self._begin_detail_session(context)
 
     def _invoke_detail_dialog(self, context):
         try:
@@ -478,11 +675,17 @@ class BMANGA_OT_preset_detail_edit(Operator):
             self.report({"WARNING"}, str(exc))
             return {"CANCELLED"}
         if pt == "balloon":
+            from ..io import balloon_presets
+
             data = _load_balloon(self.preset_name)
             if data is None:
                 self.report({"WARNING"}, f"プリセットが見つかりません: {self.preset_name}")
                 return {"CANCELLED"}
             self._balloon_data = data
+            balloon_presets.apply_linked_text_settings(
+                context.window_manager.bmanga_preset_scratch_balloon,
+                data,
+            )
             self.description_text = str(data.get("description", "") or "")
             try:
                 return self._open_detail_session(context)
@@ -558,6 +761,13 @@ class BMANGA_OT_preset_detail_edit(Operator):
 
         if pt == "balloon":
             try:
+                from ..io import balloon_presets
+
+                self._balloon_data.update(
+                    balloon_presets.linked_text_settings_from_entry(
+                        self._detail_session.target.data,
+                    )
+                )
                 _save_balloon(self.preset_name, self.description_text, self._balloon_data)
             except Exception:  # noqa: BLE001
                 _logger.exception("failed to save balloon preset description %s", self.preset_name)
@@ -648,6 +858,7 @@ class BMANGA_OT_preset_detail_edit(Operator):
         try:
             commit_detail_session(session)
         finally:
+            _OPEN_PRESET_DETAIL_OPERATORS.pop(session.token, None)
             detail_dialog_runtime.unregister_preset_session(session)
 
     def _release_failed_session(self) -> None:
@@ -679,10 +890,16 @@ class BMANGA_OT_preset_detail_edit(Operator):
                 raise failure
             _prepare_preset_curve_ui(self.preset_type, session.target)
         finally:
+            _OPEN_PRESET_DETAIL_OPERATORS.pop(session.token, None)
             detail_dialog_runtime.unregister_preset_session(session)
 
 
-_CLASSES = (_BMangaPresetScratchComa, BMANGA_OT_preset_detail_edit)
+_CLASSES = (
+    _BMangaPresetScratchComa,
+    _BMangaPresetScratchBalloon,
+    BMANGA_OT_preset_detail_switch,
+    BMANGA_OT_preset_detail_edit,
+)
 
 
 def register():
@@ -693,6 +910,7 @@ def register():
 
 
 def unregister():
+    _OPEN_PRESET_DETAIL_OPERATORS.clear()
     for attr, _prop_type in _SCRATCH_WM_PROPS:
         try:
             delattr(bpy.types.WindowManager, attr)

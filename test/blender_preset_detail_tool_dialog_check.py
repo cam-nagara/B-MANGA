@@ -620,39 +620,59 @@ def _check_tail(context, preset_detail_op) -> None:
         _check(expected in props, f"tail: draw に {expected} が含まれる")
 
 
-def _check_balloon_description_only(context, preset_detail_op, balloon_presets) -> None:
-    """balloon タイプは対象外 (頂点座標列プリセットのため、専用ツール
-    ダイアログが存在しない)。説明編集のみ現行どおり動作することを確認する。
-    """
+def _check_balloon_linked_text_settings(context, preset_detail_op, balloon_presets) -> None:
+    """頂点列を維持しつつ、リンクテキスト用の位置・余白を詳細編集する。"""
     balloon_presets.save_local_preset(
-        None, "TestBalloonPreset", "説明A", [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]
+        None,
+        "TestBalloonPreset",
+        "説明A",
+        [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)],
+        extras={
+            "linkedTextOffsetXMm": 1.25,
+            "linkedTextOffsetYMm": -2.5,
+            "linkedTextPaddingXMm": 7.0,
+            "linkedTextPaddingYMm": 8.0,
+        },
     )
     data = preset_detail_op._load_balloon("TestBalloonPreset")
     _check(data is not None, "balloon: プリセットデータの読込")
     if data is None:
         return
     _check(str(data.get("description", "")) == "説明A", "balloon: 説明の読込")
+    scratch = context.window_manager.bmanga_preset_scratch_balloon
+    balloon_presets.apply_linked_text_settings(scratch, data)
+    _check(abs(float(scratch.linked_text_offset_x_mm) - 1.25) < 1.0e-6, "balloon: 横位置の読込")
+    _check(abs(float(scratch.linked_text_padding_y_mm) - 8.0) < 1.0e-6, "balloon: 縦余白の読込")
 
+    records: list[tuple[str, str, str]] = []
+    draw_preset_detail(
+        MOD_NAME,
+        _RecordingLayout(records),
+        context,
+        "balloon",
+        scratch,
+        preset_name="TestBalloonPreset",
+    )
+    props = _props(records)
+    for expected in (
+        "linked_text_offset_x_mm",
+        "linked_text_offset_y_mm",
+        "linked_text_padding_x_mm",
+        "linked_text_padding_y_mm",
+    ):
+        _check(expected in props, f"balloon: draw に {expected} が含まれる")
+
+    scratch.linked_text_offset_x_mm = 3.5
+    scratch.linked_text_padding_y_mm = 9.5
+    data.update(balloon_presets.linked_text_settings_from_entry(scratch))
     preset_detail_op._save_balloon("TestBalloonPreset", "説明B", data)
     reloaded = preset_detail_op._load_balloon("TestBalloonPreset")
     _check(reloaded is not None and str(reloaded.get("description", "")) == "説明B", "balloon: 説明の上書き保存")
-
-    records: list[tuple[str, str, str]] = []
-    label_texts = []
-
-    class _Op:
-        preset_type = "balloon"
-        preset_name = "TestBalloonPreset"
-
-        def draw(self, _context):
-            layout = _RecordingLayout(records)
-            layout.label(text="このプリセットタイプは詳細編集未対応です")
-            label_texts.append("このプリセットタイプは詳細編集未対応です")
-
-    _Op().draw(context)
     _check(
-        "このプリセットタイプは詳細編集未対応です" in label_texts,
-        "balloon: 詳細編集未対応の案内文言 (draw() のフォールバック分岐と同一文言)",
+        reloaded is not None
+        and abs(float(reloaded.get("linkedTextOffsetXMm", 0.0)) - 3.5) < 1.0e-6
+        and abs(float(reloaded.get("linkedTextPaddingYMm", 0.0)) - 9.5) < 1.0e-6,
+        "balloon: リンクテキスト用設定の上書き保存",
     )
 
 
@@ -833,7 +853,7 @@ def main() -> int:
                 f"(前: {before[key]!r} / 後: {after[key]!r})",
             )
 
-        _check_balloon_description_only(context, preset_detail_op, balloon_presets)
+        _check_balloon_linked_text_settings(context, preset_detail_op, balloon_presets)
 
         print("BMANGA_PRESET_DETAIL_TOOL_DIALOG_OK")
     finally:
