@@ -173,6 +173,7 @@ class BMANGA_OT_text_ruby_add_dialog(Operator):
             start, end = 0, body_len
         self.start = start
         self.length = max(1, end - start)
+        self.style = str(getattr(entry, "ruby_default_style", "group") or "group")
         if not self.ruby_text:
             for r_start, r_end, ruby_text, style in text_style.ruby_spans_snapshot(entry):
                 if r_start == start and r_end == end:

@@ -250,6 +250,7 @@ def _apply_ruby_presentation(text, presentation: dict) -> None:
         "align": "ruby_align",
         "smallKana": "ruby_small_kana",
         "fontPreset": "ruby_font_preset",
+        "defaultStyle": "ruby_default_style",
     }
     for wire_name, property_name in property_map.items():
         if wire_name in presentation and hasattr(text, property_name):

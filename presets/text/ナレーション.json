@@ -21,6 +21,7 @@
   "font_italic": false,
   "ruby_align": "center",
   "ruby_small_kana": "keep",
+  "ruby_default_style": "group",
   "stroke_enabled": false,
   "stroke_width_mm": 0.2,
   "stroke_color": [1.0, 1.0, 1.0, 1.0],

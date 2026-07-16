@@ -33,7 +33,8 @@ def main() -> None:
     addon = _load_addon()
     try:
         from bmanga_dev_ruby_unification.io import schema
-        from bmanga_dev_ruby_unification.typography import ruby
+        from bmanga_dev_ruby_unification.typography import ruby, ruby_presentation
+        from bmanga_dev_ruby_unification.utils import auto_ruby
         from bmanga_dev_ruby_unification.typography.layout import GlyphPlacement
 
         work = bpy.context.scene.bmanga_work
@@ -45,6 +46,7 @@ def main() -> None:
         assert abs(entry.ruby_line_height - 1.8) < 1.0e-6
         assert entry.ruby_align == "center" and entry.ruby_small_kana == "keep"
         assert entry.ruby_font_preset == "inherit"
+        assert entry.ruby_default_style == "group"
         default_span = entry.ruby_spans.add()
         assert default_span.style == "group"
         entry.ruby_spans.clear()
@@ -53,9 +55,27 @@ def main() -> None:
         entry.ruby_gap_mm = 1.1
         assert abs(ruby.ruby_gap_mm_from_entry(entry) - 1.1) < 1.0e-6
         entry.ruby_gap_em = 0.25
+        entry.ruby_default_style = "jukugo"
         assert abs(ruby.ruby_gap_mm_from_entry(entry) - 1.25) < 1.0e-6
         entry.ruby_font = r"Z:\missing\ruby-font.ttf"
         assert Path(ruby.ruby_font_path_from_entry(entry)).is_file(), "無効フォントは本文フォントへ戻す"
+        entry.ruby_font = ""
+        for preset, expected_name in (
+            ("sans-jp", "NotoSansJP-VF.ttf"),
+            ("serif-jp", "NotoSerifJP-VF.ttf"),
+            ("gothic-jp", "BIZ-UDGothicR.ttc"),
+        ):
+            entry.ruby_font_preset = preset
+            resolved = Path(ruby_presentation.resolve_font_path(entry))
+            if (Path(r"C:\Windows\Fonts") / expected_name).is_file():
+                assert resolved.name == expected_name, (preset, resolved)
+        entry.ruby_font_preset = "inherit"
+
+        auto_entry = page.texts.add()
+        auto_entry.body = "東京"
+        auto_entry.ruby_default_style = "jukugo"
+        assert auto_ruby.apply_auto_ruby(auto_entry, [("東京", "とうきょう")]) == 1
+        assert auto_entry.ruby_spans[0].style == "jukugo"
 
         size_pt = 20.0 * 0.25 * 72.0 / 25.4
         parents = [
@@ -104,6 +124,7 @@ def main() -> None:
         clone = page.texts.add()
         schema.text_entry_from_dict(clone, saved)
         assert abs(clone.ruby_gap_em - 0.25) < 1.0e-6
+        assert clone.ruby_default_style == "jukugo"
         assert clone.ruby_spans[0].origin == "document-rule" and clone.ruby_spans[0].priority == 7
         assert len(clone.ruby_spans[0].segments) == 2
 

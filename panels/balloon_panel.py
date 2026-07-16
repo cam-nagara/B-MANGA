@@ -364,7 +364,7 @@ class BMANGA_PT_texts(Panel):
         # 組版
         box = layout.box()
         box.label(text="組版", icon="FONT_DATA")
-        box.prop(entry, "writing_mode")
+        box.prop(entry, "writing_mode", text="書字方向")
         if entry.writing_mode == "vertical":
             box.prop(entry, "tatechuyoko_auto")
         box.prop(entry, "font", text="基本フォント")
@@ -392,6 +392,7 @@ class BMANGA_PT_texts(Panel):
         row.prop(entry, "ruby_align")
         row.prop(entry, "ruby_small_kana")
         ruby_box.prop(entry, "ruby_font_preset")
+        ruby_box.prop(entry, "ruby_default_style")
         row = ruby_box.row(align=True)
         row.operator("bmanga.text_ruby_add_dialog", text="追加・編集", icon="ADD")
         row.operator("bmanga.text_ruby_clear", text="全解除", icon="TRASH")

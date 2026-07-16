@@ -41,6 +41,7 @@ _TEXT_KEYS = (
     "ruby_font_preset",
     "ruby_align",
     "ruby_small_kana",
+    "ruby_default_style",
     "stroke_enabled",
     "stroke_width_mm",
     "stroke_color",

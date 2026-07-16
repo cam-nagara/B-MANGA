@@ -31,8 +31,6 @@ def resolve_font_path(entry) -> str:
     preset = str(getattr(entry, "ruby_font_preset", "inherit") or "inherit")
     if preset == "inherit":
         return text_style.resolve_font_path(str(getattr(entry, "font", "") or ""))
-    if preset == "sans-jp":
-        return text_style.resolve_font_path("")
     candidates = _logical_candidates(preset)
     for candidate in candidates:
         if Path(candidate).is_file():
@@ -41,10 +39,23 @@ def resolve_font_path(entry) -> str:
 
 
 def _logical_candidates(preset: str) -> tuple[str, ...]:
+    if preset == "sans-jp":
+        return (
+            r"C:\Windows\Fonts\NotoSansJP-VF.ttf",
+            r"C:\Windows\Fonts\YuGothM.ttc",
+            "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
+        )
     if preset == "serif-jp":
         return (
+            r"C:\Windows\Fonts\NotoSerifJP-VF.ttf",
             r"C:\Windows\Fonts\YuMincho.ttc",
             r"C:\Windows\Fonts\msmincho.ttc",
             "/System/Library/Fonts/ヒラギノ明朝 ProN.ttc",
+        )
+    if preset == "gothic-jp":
+        return (
+            r"C:\Windows\Fonts\BIZ-UDGothicR.ttc",
+            r"C:\Windows\Fonts\meiryo.ttc",
+            "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
         )
     return tuple(text_style.font_candidates())

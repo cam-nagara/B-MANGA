@@ -90,6 +90,7 @@ def main() -> None:
         entry.ruby_gap_mm = 1.1
         entry.ruby_letter_spacing = 0.35
         entry.ruby_size_percent = 62.0
+        entry.ruby_default_style = "jukugo"
         entry.ruby_font = ruby_font
         assert text_style.apply_ruby_span(entry, 0, 2, "かんじ", "group")
         assert text_style.ruby_spans_snapshot(entry) == ((0, 2, "かんじ", "group"),)
@@ -100,6 +101,7 @@ def main() -> None:
         assert data["rubyLetterSpacing"] == 0.35
         assert data["rubySizePercent"] == 62.0
         assert data["rubyFont"] == ruby_font
+        assert data["rubyDefaultStyle"] == "jukugo"
         assert data["rubySpans"][0]["rubyText"] == "かんじ"
         clone = page.texts.add()
         schema.text_entry_from_dict(clone, data)
@@ -108,6 +110,7 @@ def main() -> None:
         assert abs(clone.ruby_letter_spacing - 0.35) < 1.0e-6
         assert abs(clone.ruby_size_percent - 62.0) < 1.0e-6
         assert clone.ruby_font == ruby_font
+        assert clone.ruby_default_style == "jukugo"
         assert text_style.ruby_spans_snapshot(clone) == ((0, 2, "かんじ", "group"),)
         page.texts.remove(len(page.texts) - 1)
 
@@ -119,6 +122,7 @@ def main() -> None:
         assert abs(preset_target.ruby_letter_spacing - 0.35) < 1.0e-6
         assert abs(preset_target.ruby_size_percent - 62.0) < 1.0e-6
         assert preset_target.ruby_font == ruby_font
+        assert preset_target.ruby_default_style == "jukugo"
         page.texts.remove(len(page.texts) - 1)
 
         entry.body = "A\n漢字"

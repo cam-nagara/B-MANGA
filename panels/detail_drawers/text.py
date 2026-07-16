@@ -95,7 +95,7 @@ def _draw_typography(layout, entry) -> None:
         font_italic={"text": "斜体", "toggle": True},
     )
     prop_if(box, entry, "color", text="色")
-    prop_if(box, entry, "writing_mode", text="組み方向")
+    prop_if(box, entry, "writing_mode", text="書字方向")
     if str(value(entry, "writing_mode", "horizontal") or "horizontal") == "vertical":
         prop_if(box, entry, "tatechuyoko_auto", text="縦中横の自動適用")
     prop_pair(box, entry, "line_height", "letter_spacing")
@@ -121,6 +121,7 @@ def _draw_ruby(layout, entry, preset_mode: bool, session) -> None:
     prop_pair(box, entry, "ruby_letter_spacing", "ruby_line_height")
     prop_pair(box, entry, "ruby_align", "ruby_small_kana")
     prop_if(box, entry, "ruby_font_preset", text="ルビ用フォント")
+    prop_if(box, entry, "ruby_default_style", text="ルビ種類")
     if not preset_mode:
         row = box.row(align=True)
         add = detail_operator(

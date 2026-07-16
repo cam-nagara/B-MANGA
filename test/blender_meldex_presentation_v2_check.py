@@ -2,20 +2,20 @@
 
 io/meldex_contract.py が検証する contract v2 の presentation.ruby
 (writingMode / sizePercent / gapEm / letterSpacingEm / lineHeight / align /
-smallKana / fontPreset) と、io/meldex_scenario_import.py の
+ smallKana / fontPreset / defaultStyle) と、io/meldex_scenario_import.py の
 _apply_ruby_presentation によるプロパティ適用 (writing_mode /
 ruby_size_percent / ruby_gap_em / ruby_letter_spacing / ruby_line_height /
-ruby_align / ruby_small_kana / ruby_font_preset) は、現行の Meldex 送信側が
+ruby_align / ruby_small_kana / ruby_font_preset / ruby_default_style) は、
 version 1 固定のため実運用で一度も通っていない未検証経路である。
 
 このテストは以下を実機で確認する:
-  1. v2 + presentation.ruby 全8フィールド (既定値と異なる値) が
+  1. v2 + presentation.ruby 全9フィールド (既定値と異なる値) が
      document.version >= 2 かつ prefs.meldex_apply_ruby_presentation=True
      (既定 True) の条件で、すべて対応プロパティへ反映されること。
   2. 同じ v2 ドキュメントでも prefs.meldex_apply_ruby_presentation=False なら
-     8プロパティとも既定値のまま (適用されない) こと。
+     9プロパティとも既定値のまま (適用されない) こと。
   3. version 1 ドキュメント (presentation なし) では従来どおり取り込まれ、
-     8プロパティが既定値のままであること。
+     9プロパティが既定値のままであること。
   4. presentation.ruby の一部フィールドのみ (sizePercent のみ) の v2 では、
      指定分だけ反映され残りは既定値のままであること。
   5. contract の許容範囲外の値 (sizePercent=300) を含む v2 ドキュメントが
@@ -70,6 +70,7 @@ RUBY_FIELD_DEFAULTS: dict[str, object] = {
     "ruby_align": "center",
     "ruby_small_kana": "keep",
     "ruby_font_preset": "inherit",
+    "ruby_default_style": "group",
 }
 
 # io/meldex_scenario_import.py の _apply_ruby_presentation と同じ対応表。
@@ -82,6 +83,7 @@ WIRE_TO_PROPERTY: dict[str, str] = {
     "align": "ruby_align",
     "smallKana": "ruby_small_kana",
     "fontPreset": "ruby_font_preset",
+    "defaultStyle": "ruby_default_style",
 }
 
 FULL_RUBY_PRESENTATION: dict[str, object] = {
@@ -93,6 +95,7 @@ FULL_RUBY_PRESENTATION: dict[str, object] = {
     "align": "start",
     "smallKana": "fullsize",
     "fontPreset": "serif-jp",
+    "defaultStyle": "jukugo",
 }
 
 
@@ -170,7 +173,7 @@ def main() -> int:
                 if item.meldex_source_document_id == document_id and item.meldex_source_row_id == row_id
             )
 
-        # --- 1. v2 + presentation.ruby 全8フィールド (既定 True で適用される) ---
+        # --- 1. v2 + presentation.ruby 全9フィールド (既定 True で適用される) ---
         addon.preferences.get_preferences = lambda _context=None: prefs_on
         doc_id = "scenario-full-v2"
         result1 = meldex_scenario_import.import_payload(

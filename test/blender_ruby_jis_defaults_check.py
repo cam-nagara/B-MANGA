@@ -178,6 +178,7 @@ def _visual_checks(page) -> None:
         assert entry.ruby_letter_spacing == 0.0
         assert entry.ruby_align == "center"
         assert entry.ruby_font_preset == "inherit"
+        assert entry.ruby_default_style == "group"
         assert text_style.apply_ruby_span(entry, 0, 4, "かな", "group")
         _render_entry(entry, filename)
 

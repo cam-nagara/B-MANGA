@@ -350,6 +350,7 @@ class BMANGA_OT_detail_text_ruby_add(Operator):
             self.report({"WARNING"}, "ルビを付ける文字がありません")
             return {"CANCELLED"}
         self.start, self.length = start, end - start
+        self.style = str(getattr(entry, "ruby_default_style", "group") or "group")
         text_edit_runtime.suppress_ime_text()
         text_edit_runtime.set_dialog_cursor_override(context, True)
         return context.window_manager.invoke_props_dialog(self, width=320)

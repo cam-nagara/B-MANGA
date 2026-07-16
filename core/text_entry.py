@@ -24,8 +24,8 @@ _logger = log.get_logger(__name__)
 
 
 _WRITING_MODE_ITEMS = (
-    ("vertical", "縦書き", "文字を上から下へ縦に並べます"),
     ("horizontal", "横書き", "文字を左から右へ横に並べます"),
+    ("vertical", "縦書き", "文字を上から下へ縦に並べます"),
 )
 
 _RUBY_ALIGN_ITEMS = (
@@ -40,9 +40,15 @@ _RUBY_SMALL_KANA_ITEMS = (
 
 _RUBY_FONT_PRESET_ITEMS = (
     ("inherit", "本文と同じ", "本文と同じフォントを使います"),
-    ("sans-jp", "日本語サンセリフ", "OSで利用できる日本語サンセリフ体を使います"),
-    ("serif-jp", "日本語セリフ", "OSで利用できる日本語セリフ体を使います"),
-    ("gothic-jp", "日本語ゴシック", "OSで利用できる日本語ゴシック体を使います"),
+    ("sans-jp", "日本語ゴシック", "Noto Sans JPを優先して使います"),
+    ("serif-jp", "日本語明朝", "Noto Serif JPを優先して使います"),
+    ("gothic-jp", "読みやすいゴシック", "BIZ UDPGothicを優先して使います"),
+)
+
+_RUBY_DEFAULT_STYLE_ITEMS = (
+    ("group", "グループ", "親文字列全体へまとめてルビを割り付けます"),
+    ("mono", "モノ", "親文字ごとにルビを割り付けます"),
+    ("jukugo", "熟語", "熟語内の対応関係を保ってルビを割り付けます"),
 )
 
 _FONT_SIZE_UNIT_ITEMS = (
@@ -350,15 +356,16 @@ class BMangaTextEntry(bpy.types.PropertyGroup):
     writing_mode: EnumProperty(items=_WRITING_MODE_ITEMS, default="horizontal", description="テキストの書字方向を選択します。切り替えるとテキストフィールドも90度回転します", update=_on_writing_mode_changed)  # type: ignore[valid-type]
     line_height: FloatProperty(name="行間", default=1.4, min=0.5, soft_max=3.0, description="行と行の間隔（文字サイズに対する倍率）", update=_on_text_entry_changed)  # type: ignore[valid-type]
     letter_spacing: FloatProperty(name="字間", default=0.0, soft_min=-1.0, soft_max=1.0, description="文字と文字の間隔（文字サイズに対する倍率）", update=_on_text_entry_changed)  # type: ignore[valid-type]
-    ruby_line_height: FloatProperty(name="ルビ行の行間", default=1.8, min=0.5, soft_max=5.0, description="ルビを含む行の行間（文字サイズに対する倍率）", update=_on_text_entry_changed)  # type: ignore[valid-type]
+    ruby_line_height: FloatProperty(name="ルビ行の行間", default=1.8, min=0.5, max=5.0, step=10, description="ルビを含む行の行間（文字サイズに対する倍率）", update=_on_text_entry_changed)  # type: ignore[valid-type]
     ruby_gap_mm: FloatProperty(name="親文字との間隔", default=0.0, min=0.0, soft_max=5.0, description="親文字とルビの間隔（mm）", unit="LENGTH", update=_on_text_entry_changed)  # type: ignore[valid-type]
     ruby_gap_em: FloatProperty(name="親文字との間隔", default=0.0, min=-2.0, max=4.0, description="親文字の大きさに対する間隔。大きいほど離れます", get=_get_ruby_gap_em, set=_set_ruby_gap_em, update=_on_text_entry_changed)  # type: ignore[valid-type]
-    ruby_letter_spacing: FloatProperty(name="ルビの字間", default=0.0, min=-0.9, soft_min=-0.5, soft_max=3.0, description="ルビ文字同士の間隔（文字サイズに対する倍率）", update=_on_text_entry_changed)  # type: ignore[valid-type]
-    ruby_size_percent: FloatProperty(name="サイズ（親文字比%）", default=50.0, min=5.0, soft_max=200.0, description="ルビの文字サイズを親文字に対する割合(%)で指定", subtype="PERCENTAGE", update=_on_text_entry_changed)  # type: ignore[valid-type]
+    ruby_letter_spacing: FloatProperty(name="ルビの字間", default=0.0, min=-0.9, max=3.0, step=5, description="ルビ文字同士の間隔（文字サイズに対する倍率）", update=_on_text_entry_changed)  # type: ignore[valid-type]
+    ruby_size_percent: FloatProperty(name="サイズ（親文字比%）", default=50.0, min=5.0, max=200.0, step=5, description="ルビの文字サイズを親文字に対する割合(%)で指定", subtype="PERCENTAGE", update=_on_text_entry_changed)  # type: ignore[valid-type]
     ruby_font: StringProperty(name="ルビ用フォント", default="", description="ルビに使うフォント（空欄なら基本フォントを使用）", subtype="FILE_PATH", update=_on_text_entry_changed)  # type: ignore[valid-type]
     ruby_font_preset: EnumProperty(name="ルビ用フォント", items=_RUBY_FONT_PRESET_ITEMS, default="inherit", update=_on_text_entry_changed)  # type: ignore[valid-type]
     ruby_align: EnumProperty(name="配置方法", description="ルビと親文字の位置揃え方を選択します", items=_RUBY_ALIGN_ITEMS, default="center", update=_on_text_entry_changed)  # type: ignore[valid-type]
     ruby_small_kana: EnumProperty(name="小書き仮名", description="小書き仮名（ゃゅょっ等）の表示方法を選択します", items=_RUBY_SMALL_KANA_ITEMS, default="keep", update=_on_text_entry_changed)  # type: ignore[valid-type]
+    ruby_default_style: EnumProperty(name="ルビ種類", description="新しく付けるルビの既定の割り付け方式", items=_RUBY_DEFAULT_STYLE_ITEMS, default="group", update=_on_text_entry_changed)  # type: ignore[valid-type]
 
     # 白フチ (計画書 3.1.4.4)
     stroke_enabled: BoolProperty(name="白フチ", default=False, description="文字の周囲に白フチを付けます", update=_on_text_entry_changed)  # type: ignore[valid-type]

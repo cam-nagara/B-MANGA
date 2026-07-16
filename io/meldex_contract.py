@@ -150,7 +150,7 @@ def _validate_presentation(raw: Any, version: int) -> dict[str, Any] | None:
         raise ContractError("presentation.ruby must be an object")
     allowed = {
         "writingMode", "sizePercent", "gapEm", "letterSpacingEm", "lineHeight",
-        "align", "smallKana", "fontPreset",
+        "align", "smallKana", "fontPreset", "defaultStyle",
     }
     if set(ruby) - allowed:
         raise ContractError("unsupported presentation.ruby field")
@@ -162,7 +162,7 @@ def _validate_presentation(raw: Any, version: int) -> dict[str, Any] | None:
     if "gapEm" in ruby:
         checked["gapEm"] = _number(ruby["gapEm"], -2.0, 4.0, "gapEm")
     if "letterSpacingEm" in ruby:
-        checked["letterSpacingEm"] = _number(ruby["letterSpacingEm"], -0.5, 3.0, "letterSpacingEm")
+        checked["letterSpacingEm"] = _number(ruby["letterSpacingEm"], -0.9, 3.0, "letterSpacingEm")
     if "lineHeight" in ruby:
         checked["lineHeight"] = _number(ruby["lineHeight"], 0.5, 5.0, "lineHeight")
     if "align" in ruby:
@@ -174,6 +174,8 @@ def _validate_presentation(raw: Any, version: int) -> dict[str, Any] | None:
         if preset not in {"inherit", "sans-jp", "serif-jp", "gothic-jp"}:
             raise ContractError("fontPreset must be a logical preset name")
         checked["fontPreset"] = preset
+    if "defaultStyle" in ruby:
+        checked["defaultStyle"] = _choice(ruby["defaultStyle"], {"group", "mono", "jukugo"}, "defaultStyle")
     return {"ruby": checked}
 
 

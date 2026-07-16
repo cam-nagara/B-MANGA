@@ -318,6 +318,7 @@ def _text_data():
         ruby_size_percent=50.0,
         ruby_align="center",
         ruby_small_kana=True,
+        ruby_default_style="group",
         ruby_font="",
         ruby_spans=(),
         font_spans=(),

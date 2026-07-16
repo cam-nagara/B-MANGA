@@ -1834,6 +1834,7 @@ def text_entry_to_dict(entry) -> dict[str, Any]:
         "rubyFontPreset": str(getattr(entry, "ruby_font_preset", "inherit") or "inherit"),
         "rubyAlign": str(getattr(entry, "ruby_align", "center") or "center"),
         "rubySmallKana": str(getattr(entry, "ruby_small_kana", "keep") or "keep"),
+        "rubyDefaultStyle": str(getattr(entry, "ruby_default_style", "group") or "group"),
         "strokeEnabled": bool(entry.stroke_enabled),
         "strokeWidthMm": round(entry.stroke_width_mm, 3),
         "strokeColor": color_to_hex(entry.stroke_color),
@@ -1935,6 +1936,8 @@ def text_entry_from_dict(entry, data: dict[str, Any]) -> None:
         entry.ruby_align = str(data.get("rubyAlign", data.get("ruby_align", "center")) or "center")
     if hasattr(entry, "ruby_small_kana"):
         entry.ruby_small_kana = str(data.get("rubySmallKana", data.get("ruby_small_kana", "keep")) or "keep")
+    if hasattr(entry, "ruby_default_style"):
+        entry.ruby_default_style = str(data.get("rubyDefaultStyle", data.get("ruby_default_style", "group")) or "group")
     entry.stroke_enabled = bool(data.get("strokeEnabled", False))
     entry.stroke_width_mm = float(data.get("strokeWidthMm", 0.2))
     alpha = float(data.get("strokeColorAlpha", 1.0))

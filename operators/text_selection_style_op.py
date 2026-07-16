@@ -143,7 +143,7 @@ class BMANGA_OT_text_selection_style_popup(Operator):
         self.font_bold = bool(style[3])
         self.font_italic = bool(style[4])
         self.ruby_text = ""
-        self.ruby_style = "group"
+        self.ruby_style = str(getattr(entry, "ruby_default_style", "group") or "group")
         for r_start, r_end, ruby_text, ruby_sty in text_style.ruby_spans_snapshot(entry):
             if r_start == start and r_end == end:
                 self.ruby_text = ruby_text

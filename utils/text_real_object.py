@@ -356,6 +356,7 @@ def _entry_render_signature(entry) -> str:
         str(getattr(entry, "ruby_font_preset", "inherit") or "inherit"),
         str(getattr(entry, "ruby_align", "center") or "center"),
         str(getattr(entry, "ruby_small_kana", "keep") or "keep"),
+        str(getattr(entry, "ruby_default_style", "group") or "group"),
         _ruby_detail_signature(entry),
         bool(getattr(entry, "stroke_enabled", False)),
         _float_sig(getattr(entry, "stroke_width_mm", 0.0)),

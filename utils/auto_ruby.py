@@ -108,7 +108,9 @@ def apply_auto_ruby(entry, dictionary: list[tuple[str, str]]) -> int:
                 start = pos + 1
                 continue
             if text_style.apply_ruby_span(
-                entry, pos, end, reading, "group", origin="local-auto-dictionary"
+                entry, pos, end, reading,
+                str(getattr(entry, "ruby_default_style", "group") or "group"),
+                origin="local-auto-dictionary",
             ):
                 covered |= indices
                 applied += 1
