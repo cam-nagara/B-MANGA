@@ -1878,6 +1878,7 @@ def text_entry_to_dict(entry) -> dict[str, Any]:
             }
             for start, end, _text, _style in text_style.tatechuyoko_ranges_snapshot(entry)
         ],
+        "tatechuyokoAuto": bool(getattr(entry, "tatechuyoko_auto", True)),
     }
 
 
@@ -1995,6 +1996,9 @@ def text_entry_from_dict(entry, data: dict[str, Any]) -> None:
         span.length = max(1, int(item.get("length", 1)))
         span.style = str(item.get("style", "group") or "group")
     text_style.normalize_tatechuyoko_ranges(entry)
+    if hasattr(entry, "tatechuyoko_auto"):
+        # 旧データ (キー未保存) は True 扱い (従来どおり自動適用).
+        entry.tatechuyoko_auto = bool(data.get("tatechuyokoAuto", data.get("tatechuyoko_auto", True)))
 
 
 def _ruby_span_to_dict(span) -> dict[str, Any]:

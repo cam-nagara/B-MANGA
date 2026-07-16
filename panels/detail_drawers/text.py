@@ -96,6 +96,8 @@ def _draw_typography(layout, entry) -> None:
     )
     prop_if(box, entry, "color", text="色")
     prop_if(box, entry, "writing_mode", text="組み方向")
+    if str(value(entry, "writing_mode", "horizontal") or "horizontal") == "vertical":
+        prop_if(box, entry, "tatechuyoko_auto", text="縦中横の自動適用")
     prop_pair(box, entry, "line_height", "letter_spacing")
 
 

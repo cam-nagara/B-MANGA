@@ -365,6 +365,8 @@ class BMANGA_PT_texts(Panel):
         box = layout.box()
         box.label(text="組版", icon="FONT_DATA")
         box.prop(entry, "writing_mode")
+        if entry.writing_mode == "vertical":
+            box.prop(entry, "tatechuyoko_auto")
         box.prop(entry, "font", text="基本フォント")
         row = box.row(align=True)
         row.prop(entry, "font_size_unit", text="")

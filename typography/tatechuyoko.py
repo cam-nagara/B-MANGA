@@ -2,6 +2,14 @@
 
 計画書 3.1.5 参照。TextEntry.tatechuyoko_ranges で指定された範囲の
 半角文字群を 1 文字分の領域に収めて横向き描画する。
+
+2026-07-17 追記: 実際の縦中横処理は typography/layout.py の
+typeset_vertical へ統合済み (後処理方式だと行送り・列送りが崩れるため)。
+typeset() は TextEntry.tatechuyoko_ranges (手動) と
+TextEntry.tatechuyoko_auto (半角英数2〜4文字の自動検出、
+metrics.auto_tatechuyoko_ranges) を合成して typeset_vertical へ渡す。
+本モジュールの apply_tatechuyoko は呼び出し元がなくなった旧実装であり、
+実際の描画には使われていない (削除はせず参考として残置)。
 """
 
 from __future__ import annotations

@@ -112,6 +112,41 @@ def is_tatechuyoko_candidate(chars: str) -> bool:
     return all(ch.isascii() and ch.isalnum() for ch in chars)
 
 
+def _is_tatechuyoko_char(ch: str) -> bool:
+    """自動縦中横の対象文字か (半角英数字 + ! ?)."""
+    if not ch:
+        return False
+    if ch.isascii() and ch.isalnum():
+        return True
+    return ch in "!?"
+
+
+def auto_tatechuyoko_ranges(text: str) -> list[tuple[int, int]]:
+    """本文から自動縦中横の対象範囲 (start, length) を検出する.
+
+    半角英数字 + '!' '?' の連続ランのうち、2〜4 文字のものだけを縦中横の
+    候補として返す。1 文字のラン (単独文字はそのまま正立) と 5 文字以上の
+    ラン (縦積みのまま) は対象外。ランはそのまま (途中で区切らず) 判定する
+    ため、"no1234567" のような 5 文字以上のランは丸ごと対象外になる。
+    """
+    ranges: list[tuple[int, int]] = []
+    text = text or ""
+    n = len(text)
+    i = 0
+    while i < n:
+        if not _is_tatechuyoko_char(text[i]):
+            i += 1
+            continue
+        start = i
+        while i < n and _is_tatechuyoko_char(text[i]):
+            i += 1
+        length = i - start
+        if 2 <= length <= 4:
+            ranges.append((start, length))
+        # length == 1 または length >= 5 は対象外 (縦積みのまま)
+    return ranges
+
+
 def load_font(font_path: str) -> Optional[object]:
     """fontTools で TTFont を開く。失敗時は None."""
     if not _HAS_FONTTOOLS:

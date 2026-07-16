@@ -126,6 +126,7 @@ def _distributed_starts(
     count: int,
     letter_spacing: float,
     align: str = "center",
+    target_extent: float | None = None,
 ) -> list[float]:
     count = int(count)
     if count <= 0:
@@ -136,14 +137,23 @@ def _distributed_starts(
         if align == "start":
             return [float(parent_start)]
         return [parent_center - ruby_em * 0.5]
-    natural_pitch = ruby_em * max(0.1, 1.0 + float(letter_spacing))
-    natural_span = ruby_em + natural_pitch * (count - 1)
-    target_span = max(parent_span, natural_span)
-    step = 0.0 if count <= 1 else (target_span - ruby_em) / (count - 1)
+    if target_extent is not None:
+        # 重なり解決 (_resolve_ruby_overlaps) 後の延べ幅をそのまま使う。
+        # eff_ls は負の字間を表現できず 0 でクランプされるため、字間から
+        # 再計算すると圧縮結果が失われて隣のルビと重なる。
+        natural_span = max(ruby_em, float(target_extent))
+    else:
+        natural_pitch = ruby_em * max(0.1, 1.0 + float(letter_spacing))
+        natural_span = ruby_em + natural_pitch * (count - 1)
     if align == "start":
+        # 肩付き: 親文字の先頭へ詰めたまま置く (親文字幅へ引き伸ばさない)。
+        # 引き伸ばすと中付きと同じ見た目になり、設定の意味が失われる。
+        span = natural_span
         first = float(parent_start)
     else:
-        first = parent_center - target_span * 0.5
+        span = max(parent_span, natural_span)
+        first = parent_center - span * 0.5
+    step = 0.0 if count <= 1 else (span - ruby_em) / (count - 1)
     return [first + step * i for i in range(count)]
 
 
@@ -159,6 +169,24 @@ def _ls_for_target_extent(target: float, ruby_em: float, count: int) -> float:
         return 0.0
     pitch = (target - ruby_em) / (count - 1)
     return max(0.0, pitch / ruby_em - 1.0)
+
+
+# 字間圧縮で吸収し切れない衝突はルビサイズ縮小で収める。可読性の下限。
+_RUBY_SHRINK_MIN_RATIO = 0.6
+
+
+def _shrink_ruby_size(info: dict, cut: float) -> None:
+    """ルビサイズを縮小して延べ幅 (ext) を cut だけ詰める。
+
+    ext は ruby_em に比例するため、係数 k = (ext - cut) / ext を
+    ruby_em / ruby_size / ext / min_ext へ一律に掛ける。
+    """
+    ext = float(info['ext'])
+    if ext <= 1e-9 or cut <= 1e-9:
+        return
+    k = max(_RUBY_SHRINK_MIN_RATIO, (ext - cut) / ext)
+    for key in ('ruby_em', 'ruby_size', 'ext', 'min_ext'):
+        info[key] = float(info[key]) * k
 
 
 def _ruby_rp_range(info: dict) -> tuple[float, float]:
@@ -203,11 +231,20 @@ def _resolve_ruby_overlaps(infos: list[dict]) -> None:
             a_cut += extra
             left -= extra
         if left > 1e-6:
-            b_cut += min(left, b_room - b_cut)
+            extra = min(left, b_room - b_cut)
+            b_cut += extra
+            left -= extra
         a['ext'] -= a_cut
         b['ext'] -= b_cut
         a['eff_ls'] = _ls_for_target_extent(a['ext'], a['ruby_em'], a['count'])
         b['eff_ls'] = _ls_for_target_extent(b['ext'], b['ruby_em'], b['count'])
+        if left > 1e-6:
+            # 字間がベタ (min_ext) まで詰まっても収まらない場合は、はみ出して
+            # いる側のルビサイズを縮小して収める (既定のルビ字間 0 では
+            # ベタ組が初期状態のため、ここが実質の解決経路になる)。
+            if total_of > 1e-9:
+                _shrink_ruby_size(a, left * a_of / total_of)
+                _shrink_ruby_size(b, left * b_of / total_of)
 
 
 def _expanded_spans(ruby_spans) -> list[dict]:
@@ -328,6 +365,7 @@ def compute_ruby_placements(
                 parent_start=left_x, parent_end=right_x,
                 ruby_em=em, count=cnt,
                 letter_spacing=ls, align=align,
+                target_extent=info['ext'],
             )
             ry = top_y + ruby_offset_mm
             for rch, rx in zip(txt, starts):
@@ -343,6 +381,7 @@ def compute_ruby_placements(
                 parent_start=bot_y, parent_end=top_y,
                 ruby_em=em, count=cnt,
                 letter_spacing=ls, align=align,
+                target_extent=info['ext'],
             )
             if align == "start" and starts:
                 shift = (top_y - em) - starts[-1]

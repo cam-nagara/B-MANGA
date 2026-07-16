@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from ..utils import text_style
@@ -82,6 +83,96 @@ def _line_flag(flags: list[bool], logical_line_index: int) -> bool:
     return False
 
 
+def _normalize_tatechuyoko_starts(
+    text: str, ranges: Sequence[tuple[int, int]] | None
+) -> dict[int, int]:
+    r"""縦中横範囲をソート・重複除去し、範囲開始インデックス→長さの辞書にする.
+
+    範囲外へはみ出す指定は本文長へ切り詰め、改行 (\n) を含む範囲は無効として
+    通常処理 (縦積み) に落とす。重なる範囲は開始位置が早いものを優先する。
+    """
+    if not ranges:
+        return {}
+    text_len = len(text)
+    cleaned: list[tuple[int, int]] = []
+    for item in ranges:
+        try:
+            start = int(item[0])
+            length = int(item[1])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if length <= 0:
+            continue
+        start = max(0, start)
+        end = min(text_len, start + length)
+        if start >= end:
+            continue
+        if "\n" in text[start:end]:
+            continue
+        cleaned.append((start, end - start))
+    cleaned.sort(key=lambda r: (r[0], r[1]))
+    starts: dict[int, int] = {}
+    occupied_until = -1
+    for start, length in cleaned:
+        if start < occupied_until:
+            continue
+        starts[start] = length
+        occupied_until = start + length
+    return starts
+
+
+def _place_tatechuyoko_cell(
+    text: str,
+    start: int,
+    count: int,
+    region_x_mm: float,
+    region_y_mm: float,
+    region_width_mm: float,
+    col_offset_mm: float,
+    y_cursor: float,
+    letter_spacing: float,
+    font_size_pt: float,
+    font_size_pt_for_index,
+) -> tuple[list[GlyphPlacement], float] | None:
+    """縦中横セル (1 文字分の領域に count 文字を横並び) の配置を計算する.
+
+    列に収まらない場合は None を返す (呼出側が列送りしてから再試行する)。
+    """
+    base_size_pt = (
+        float(font_size_pt_for_index(start)) if font_size_pt_for_index is not None else font_size_pt
+    )
+    em_mm = _mm_per_em_at(base_size_pt)
+    char_pitch_mm = em_mm * (1.0 + letter_spacing)
+    x = region_x_mm + region_width_mm - em_mm - col_offset_mm
+    y = y_cursor - em_mm
+    if x < region_x_mm or y < region_y_mm:
+        return None
+
+    # 半角文字の自然幅は 0.5em。count 文字を 1em 領域へ収めるための縮小率。
+    scale = min(1.0, 2.0 / count) if count > 0 else 1.0
+    glyph_size_pt = base_size_pt * scale
+    total_em = 0.5 * count * scale
+    margin_mm = max(0.0, 1.0 - total_em) * 0.5 * em_mm
+    left_x = x + margin_mm
+
+    cell_glyphs: list[GlyphPlacement] = []
+    for i in range(count):
+        offset_x = 0.5 * scale * em_mm * i
+        cell_glyphs.append(
+            GlyphPlacement(
+                ch=text[start + i],
+                x_mm=left_x + offset_x,
+                y_mm=y,
+                size_pt=glyph_size_pt,
+                rotation_deg=0.0,
+                index=start + i,
+                offset_x_mm=0.0,
+                offset_y_mm=0.0,
+            )
+        )
+    return cell_glyphs, char_pitch_mm
+
+
 def typeset_vertical(
     text: str,
     region_x_mm: float,
@@ -94,6 +185,7 @@ def typeset_vertical(
     ruby_line_height: float | None = None,
     ruby_spans=None,
     font_size_pt_for_index=None,
+    tatechuyoko_ranges: Sequence[tuple[int, int]] | None = None,
 ) -> TypesetResult:
     """縦書きで文字を配置.
 
@@ -101,11 +193,14 @@ def typeset_vertical(
     - 文字は上→下
     - 句読点・括弧の簡易約物処理 (将来拡張)
     - 禁則処理 (行頭/行末) は簡易版
+    - ``tatechuyoko_ranges``: 縦中横 (半角文字を横並びの 1 文字セルへ圧縮)
+      で処理する (start, length) の一覧。テキストインデックス基準。
     """
     placements: list[GlyphPlacement] = []
     base_em_mm = _mm_per_em_at(font_size_pt)
     ruby_line_height = float(ruby_line_height if ruby_line_height is not None else line_height)
     ruby_flags = _logical_line_ruby_flags(text, _ruby_parent_indices(ruby_spans))
+    tatechuyoko_starts = _normalize_tatechuyoko_starts(text, tatechuyoko_ranges)
 
     # 右上から始まる: 1 行目 = 右端列
     col_offset_mm = 0.0
@@ -126,11 +221,57 @@ def typeset_vertical(
         y_cursor = region_y_mm + region_height_mm
 
     after_explicit_break = False
-    for text_index, ch in enumerate(text):
+    text_len = len(text)
+    text_index = 0
+    while text_index < text_len:
+        ch = text[text_index]
         if ch == "\n":
             advance_column(new_logical_line=True)
             after_explicit_break = True
+            text_index += 1
             continue
+
+        cell_length = tatechuyoko_starts.get(text_index)
+        if cell_length is not None:
+            cell = _place_tatechuyoko_cell(
+                text,
+                text_index,
+                cell_length,
+                region_x_mm,
+                region_y_mm,
+                region_width_mm,
+                col_offset_mm,
+                y_cursor,
+                letter_spacing,
+                font_size_pt,
+                font_size_pt_for_index,
+            )
+            if cell is None:
+                # 現在の列に収まらない → 範囲全体を次の列の先頭へ折り返す
+                advance_column(new_logical_line=False)
+                cell = _place_tatechuyoko_cell(
+                    text,
+                    text_index,
+                    cell_length,
+                    region_x_mm,
+                    region_y_mm,
+                    region_width_mm,
+                    col_offset_mm,
+                    y_cursor,
+                    letter_spacing,
+                    font_size_pt,
+                    font_size_pt_for_index,
+                )
+                if cell is None:
+                    overflow = True
+                    break
+            cell_glyphs, consumed_pitch_mm = cell
+            placements.extend(cell_glyphs)
+            y_cursor -= consumed_pitch_mm
+            after_explicit_break = False
+            text_index += cell_length
+            continue
+
         glyph_size_pt = (
             float(font_size_pt_for_index(text_index))
             if font_size_pt_for_index is not None
@@ -172,6 +313,7 @@ def typeset_vertical(
                     )
                 )
                 # y_cursor はそのまま (次の文字が改めて折返しを判定する)
+                text_index += 1
                 continue
             advance_column(new_logical_line=False)
             x = region_x_mm + region_width_mm - em_mm - col_offset_mm
@@ -194,6 +336,7 @@ def typeset_vertical(
         )
         y_cursor -= char_pitch_mm
         after_explicit_break = False
+        text_index += 1
 
     return TypesetResult(placements=placements, overflow=overflow)
 
@@ -271,6 +414,39 @@ def typeset_horizontal(
     return TypesetResult(placements=placements, overflow=overflow)
 
 
+def _manual_tatechuyoko_ranges(text_entry) -> list[tuple[int, int]]:
+    ranges: list[tuple[int, int]] = []
+    for span in getattr(text_entry, "tatechuyoko_ranges", None) or ():
+        try:
+            start = int(getattr(span, "start", 0))
+            length = max(1, int(getattr(span, "length", 1)))
+        except Exception:  # noqa: BLE001
+            continue
+        ranges.append((start, length))
+    return ranges
+
+
+def _ranges_overlap(a_start: int, a_length: int, b_start: int, b_length: int) -> bool:
+    return a_start < b_start + b_length and b_start < a_start + a_length
+
+
+def tatechuyoko_ranges_for_entry(text_entry, body: str) -> list[tuple[int, int]]:
+    """テキストエントリから縦中横の最終範囲一覧 (手動 + 自動) を組み立てる.
+
+    手動範囲 (``entry.tatechuyoko_ranges``) を優先し、自動検出
+    (``entry.tatechuyoko_auto``) の範囲が手動範囲と重なる場合は自動側を
+    捨てる。横書きでは呼び出し側 (``typeset``) がそもそも呼ばない。
+    """
+    manual = _manual_tatechuyoko_ranges(text_entry)
+    ranges = list(manual)
+    if bool(getattr(text_entry, "tatechuyoko_auto", True)):
+        for start, length in metrics.auto_tatechuyoko_ranges(body or ""):
+            if any(_ranges_overlap(start, length, m_start, m_length) for m_start, m_length in manual):
+                continue
+            ranges.append((start, length))
+    return ranges
+
+
 def typeset(
     text_entry,
     region_x_mm: float,
@@ -310,4 +486,5 @@ def typeset(
         ruby_line_height=getattr(text_entry, "ruby_line_height", text_entry.line_height),
         ruby_spans=getattr(text_entry, "ruby_spans", []) or [],
         font_size_pt_for_index=lambda index: q_to_pt(text_style.font_size_q_for_index(text_entry, index)),
+        tatechuyoko_ranges=tatechuyoko_ranges_for_entry(text_entry, text_entry.body),
     )
