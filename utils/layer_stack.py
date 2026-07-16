@@ -1638,6 +1638,8 @@ def normalize_paired_layer_order(context, pairs) -> None:
         changed = True
     if changed:
         _remember_stack_signature(context)
+        _sync_real_objects_after_stack_order(context)
+        tag_view3d_redraw(context)
 
 
 def schedule_layer_stack_draw_maintenance(context) -> bool:

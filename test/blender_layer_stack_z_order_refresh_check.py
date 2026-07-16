@@ -258,6 +258,107 @@ def _assert_all_order_pairs(context, parent_key: str, targets: list[tuple]) -> i
     return count
 
 
+def _assert_page_layers_cross_coma_boundary(context, coma, page_targets: list[tuple]) -> None:
+    """ページ直下レイヤーがコマ行をまたいだ時も一覧と Z 順が一致する."""
+    from bmanga_dev_z_order_refresh.utils import coma_z_order, layer_stack
+
+    stack = layer_stack.sync_layer_stack(context)
+    assert stack is not None
+    for target in page_targets:
+        uid = _stack_uid_for_target(target[1], target[2], target[3])
+        _move_uid(stack, uid, len(stack) - 1)
+    layer_stack.apply_stack_order(context)
+    context.view_layer.update()
+    back_limit = coma_z_order.group_back_z(coma)
+    for label, _kind, _key, obj in page_targets:
+        assert 0.0 < float(obj.location.z) < back_limit, (
+            f"コマ行より下の{label}がコマ群の背面に移動していません: "
+            f"z={float(obj.location.z)} limit={back_limit}"
+        )
+
+    coma_index = next(
+        i for i, item in enumerate(stack)
+        if str(getattr(item, "kind", "") or "") == "coma"
+    )
+    for target in reversed(page_targets):
+        uid = _stack_uid_for_target(target[1], target[2], target[3])
+        _move_uid(stack, uid, coma_index)
+    layer_stack.apply_stack_order(context)
+    context.view_layer.update()
+    front_limit = coma_z_order.border_z(coma)
+    for label, _kind, _key, obj in page_targets:
+        assert float(obj.location.z) > front_limit, (
+            f"コマ行より上の{label}がコマ群の前面に移動していません: "
+            f"z={float(obj.location.z)} limit={front_limit}"
+        )
+
+
+def _assert_page_layer_between_comas(context, page, page_target: tuple) -> None:
+    from bmanga_dev_z_order_refresh.utils import coma_z_order, layer_stack
+
+    second = page.comas.add()
+    second.id = "z_second_coma"
+    second.shape_type = "rect"
+    second.rect_x_mm = 35.0
+    second.rect_y_mm = 45.0
+    second.rect_width_mm = 100.0
+    second.rect_height_mm = 110.0
+    layer_stack.sync_layer_stack_after_data_change(context)
+    stack = layer_stack.sync_layer_stack(context)
+    assert stack is not None
+    coma_rows = [
+        (i, item) for i, item in enumerate(stack)
+        if str(getattr(item, "kind", "") or "") == "coma"
+    ]
+    assert len(coma_rows) == 2
+    target_uid = _stack_uid_for_target(page_target[1], page_target[2], page_target[3])
+    current_index = next(i for i, item in enumerate(stack) if layer_stack.stack_item_uid(item) == target_uid)
+    destination = coma_rows[1][0] - 1 if current_index < coma_rows[1][0] else coma_rows[1][0]
+    _move_uid(stack, target_uid, destination)
+    layer_stack.apply_stack_order(context)
+    context.view_layer.update()
+
+    if int(page.comas[0].z_order) > int(page.comas[1].z_order):
+        front_coma, back_coma = page.comas[0], page.comas[1]
+    else:
+        front_coma, back_coma = page.comas[1], page.comas[0]
+    z = float(page_target[3].location.z)
+    assert coma_z_order.border_z(back_coma) < z < coma_z_order.group_back_z(front_coma), (
+        "2つのコマ行の間に置いたページレイヤーが、対応するZ帯の間にありません: "
+        f"z={z} front_back={coma_z_order.group_back_z(front_coma)} "
+        f"back_front={coma_z_order.border_z(back_coma)}"
+    )
+
+
+def _assert_pair_normalization_refreshes_z(context, page, page_targets: list[tuple]) -> None:
+    from bmanga_dev_z_order_refresh.utils import layer_stack
+
+    balloon = next(target for target in page_targets if target[1] == "balloon")
+    text = next(target for target in page_targets if target[1] == "text")
+    stack = layer_stack.sync_layer_stack(context)
+    assert stack is not None
+    balloon_uid = _stack_uid_for_target(balloon[1], balloon[2], balloon[3])
+    text_uid = _stack_uid_for_target(text[1], text[2], text[3])
+    coma_index = next(i for i, item in enumerate(stack) if item.kind == "coma")
+    _move_uid(stack, balloon_uid, coma_index)
+    page_index = next(i for i, item in enumerate(stack) if item.kind == "page")
+    _move_uid(stack, text_uid, page_index + 1)
+    assert abs(
+        next(i for i, item in enumerate(stack) if layer_stack.stack_item_uid(item) == balloon_uid)
+        - next(i for i, item in enumerate(stack) if layer_stack.stack_item_uid(item) == text_uid)
+    ) > 1
+
+    balloon_id = balloon[2].split(":", 1)[1]
+    text_id = text[2].split(":", 1)[1]
+    layer_stack.normalize_paired_layer_order(context, [(page.id, balloon_id, text_id)])
+    text_index = next(i for i, item in enumerate(stack) if layer_stack.stack_item_uid(item) == text_uid)
+    balloon_index = next(i for i, item in enumerate(stack) if layer_stack.stack_item_uid(item) == balloon_uid)
+    assert text_index == balloon_index - 1
+    assert float(text[3].location.z) > float(balloon[3].location.z), (
+        "ペア順の最終補正後に実体Zが更新されていません"
+    )
+
+
 def _assert_page_preview_refresh(context, work, page, preview_path: Path) -> None:
     before = preview_path.stat().st_mtime if preview_path.is_file() else 0.0
     result = bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
@@ -286,7 +387,7 @@ def main() -> None:
         assert "FINISHED" in result, result
 
         context = bpy.context
-        work, page, _coma, page_key, coma_key = _page_and_coma(context)
+        work, page, coma, page_key, coma_key = _page_and_coma(context)
         image_path = temp_root / "source.png"
         _write_png(image_path)
 
@@ -298,6 +399,9 @@ def main() -> None:
         layer_stack.sync_layer_stack_after_data_change(context)
         page_pairs = _assert_all_order_pairs(context, page_key, page_targets)
         coma_pairs = _assert_all_order_pairs(context, coma_key, coma_targets)
+        _assert_pair_normalization_refreshes_z(context, page, page_targets)
+        _assert_page_layers_cross_coma_boundary(context, coma, page_targets)
+        _assert_page_layer_between_comas(context, page, page_targets[-2])
 
         preview_path = temp_root / "ZOrder.bmanga" / str(page.id) / "page_preview.png"
         _assert_page_preview_refresh(context, work, page, preview_path)

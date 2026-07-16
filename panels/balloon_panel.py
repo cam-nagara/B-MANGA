@@ -386,7 +386,7 @@ class BMANGA_PT_texts(Panel):
         row.operator("bmanga.text_ruby_add_dialog", text="追加・編集", icon="ADD")
         row.operator("bmanga.text_ruby_clear", text="全解除", icon="TRASH")
 
-        # 白フチ
+        # フチ
         box = layout.box()
         box.prop(entry, "stroke_enabled")
         sub = box.column()

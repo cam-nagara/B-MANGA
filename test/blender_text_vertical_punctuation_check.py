@@ -267,7 +267,8 @@ def _run_check() -> None:
                 img_size = int((region + pad_mm * 2.0) * px_per_mm)
                 image = Image.new("RGBA", (img_size, img_size), (0, 0, 0, 0))
                 export_renderer.render_to_image(
-                    res, image, font_path=font_path, px_per_mm=px_per_mm, color=(0, 0, 0, 255)
+                    res, image, font_path=font_path, px_per_mm=px_per_mm,
+                    color=(0, 0, 0, 255), writing_mode="vertical",
                 )
                 bbox = image.getchannel("A").getbbox()
                 if bbox is None:
@@ -290,6 +291,16 @@ def _run_check() -> None:
                     _check(
                         dx > 0.15 and dy > 0.15,
                         f"縦書きの {ch!r} が右上に描画されていません: dx_em={dx:.3f} dy_em={dy:.3f}",
+                    )
+
+            for ch in ("・", "！", "？"):
+                stats = ink_stats(ch)
+                _check(stats is not None, f"{ch!r} の ink が取得できません")
+                if stats:
+                    dx, _dy, _w, _h = stats
+                    _check(
+                        abs(dx) <= 0.035,
+                        f"縦書きの {ch!r} が全角セル中央にありません: dx_em={dx:.3f}",
                     )
 
             # 始め括弧は字面が「囲む文字側」= 縦書きでは下半分に付き、外側 (上)

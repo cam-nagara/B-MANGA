@@ -11,10 +11,12 @@ from __future__ import annotations
 
 from typing import Any
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 
 from ..utils import python_deps
 from ..utils import log
 from .layout import TypesetResult
+from . import vertical_glyph
 
 python_deps.ensure_bundled_wheels_on_path()
 
@@ -77,6 +79,42 @@ def _draw_rotated_char(
     image.alpha_composite(rotated, (int(x - margin), int(y - margin)))
 
 
+@dataclass(frozen=True)
+class _DrawGlyph:
+    ch: str
+    font: Any
+    x: float
+    y: float
+    size_px: int
+    rotation_deg: float
+    color: tuple[int, int, int, int]
+    bold: bool = False
+    italic: bool = False
+
+
+def _draw_glyph(image: Any, draw: Any, glyph: _DrawGlyph, **kwargs) -> None:
+    if glyph.rotation_deg != 0.0:
+        _draw_rotated_char(
+            image, draw, glyph.ch, glyph.font, glyph.x, glyph.y,
+            glyph.size_px, glyph.rotation_deg, **kwargs,
+        )
+        return
+    draw.text((glyph.x, glyph.y), glyph.ch, font=glyph.font, **kwargs)
+    if glyph.bold:
+        draw.text(
+            (glyph.x + max(1, glyph.size_px // 28), glyph.y),
+            glyph.ch, font=glyph.font, **kwargs,
+        )
+    if glyph.italic:
+        draw.text(
+            (
+                glyph.x + max(1, int(round(glyph.size_px * 0.055))),
+                glyph.y - max(1, int(round(glyph.size_px * 0.025))),
+            ),
+            glyph.ch, font=glyph.font, **kwargs,
+        )
+
+
 def render_to_image(
     result: TypesetResult,
     image: Any,
@@ -92,6 +130,7 @@ def render_to_image(
     stroke_width_px: int = 0,
     stroke_color: tuple[int, int, int, int] = (255, 255, 255, 255),
     ruby_placements: Sequence[Any] | None = None,
+    writing_mode: str = "horizontal",
 ) -> None:
     """Pillow Image に組版結果を描画."""
     if not _HAS_PIL:
@@ -112,6 +151,8 @@ def render_to_image(
         font_cache[cache_key] = font
         return font
 
+    glyphs: list[_DrawGlyph] = []
+    vertical = str(writing_mode or "horizontal") == "vertical"
     for g in result.placements:
         size_px = max(1, int(g.size_pt * px_per_mm * 25.4 / 72.0))
         glyph_font_path = font_path_for_index(g.index) if font_path_for_index is not None else font_path
@@ -120,24 +161,14 @@ def render_to_image(
         y = origin_xy_px[1] + (g.y_mm + g.offset_y_mm) * px_per_mm
         # layout.py の y は文字の下端、Pillow は左上原点の上端指定。
         y_px = _layout_bottom_to_pillow_top(image.height, y, size_px)
+        if vertical and g.rotation_deg == 0.0:
+            x += vertical_glyph.optical_center_offset_px(g.ch, font, size_px)
         glyph_color = color_for_index(g.index) if color_for_index is not None else color
-        kwargs: dict = {"fill": glyph_color, "stroke_width": 1, "stroke_fill": glyph_color}
-        if stroke_width_px > 0:
-            kwargs["stroke_width"] = stroke_width_px
-            kwargs["stroke_fill"] = stroke_color
-        if g.rotation_deg != 0.0:
-            _draw_rotated_char(image, draw, g.ch, font, x, y_px, size_px, g.rotation_deg, **kwargs)
-        else:
-            draw.text((x, y_px), g.ch, font=font, **kwargs)
-            if bold_for_index is not None and bold_for_index(g.index):
-                draw.text((x + max(1, size_px // 28), y_px), g.ch, font=font, **kwargs)
-            if italic_for_index is not None and italic_for_index(g.index):
-                draw.text(
-                    (x + max(1, int(round(size_px * 0.055))), y_px - max(1, int(round(size_px * 0.025)))),
-                    g.ch,
-                    font=font,
-                    **kwargs,
-                )
+        glyphs.append(_DrawGlyph(
+            g.ch, font, x, y_px, size_px, g.rotation_deg, glyph_color,
+            bool(bold_for_index is not None and bold_for_index(g.index)),
+            bool(italic_for_index is not None and italic_for_index(g.index)),
+        ))
     for r in ruby_placements or ():
         size_pt = float(getattr(r, "size_pt", 0.0) or 0.0)
         if size_pt <= 0.0:
@@ -152,13 +183,18 @@ def render_to_image(
             float(getattr(r, "y_mm", 0.0)) + float(getattr(r, "offset_y_mm", 0.0))
         ) * px_per_mm
         y_px = _layout_bottom_to_pillow_top(image.height, y, size_px)
-        kwargs: dict = {"fill": color, "stroke_width": 1, "stroke_fill": color}
-        if stroke_width_px > 0:
-            kwargs["stroke_width"] = max(1, stroke_width_px // 2)
-            kwargs["stroke_fill"] = stroke_color
         ch = str(getattr(r, "ch", "") or "")
         rotation_deg = float(getattr(r, "rotation_deg", 0.0) or 0.0)
-        if rotation_deg != 0.0:
-            _draw_rotated_char(image, draw, ch, font, x, y_px, size_px, rotation_deg, **kwargs)
-        else:
-            draw.text((x, y_px), ch, font=font, **kwargs)
+        if vertical and rotation_deg == 0.0:
+            x += vertical_glyph.optical_center_offset_px(ch, font, size_px)
+        glyphs.append(_DrawGlyph(ch, font, x, y_px, size_px, rotation_deg, color))
+
+    # フチを本文・ルビの全字形へ先に一括描画し、その後で全ての文字を描く。
+    # 文字ごとにフチ→文字を繰り返すと、狭い字間で後続文字のフチが前字を隠す。
+    if stroke_width_px > 0:
+        fringe = {"fill": stroke_color, "stroke_width": stroke_width_px, "stroke_fill": stroke_color}
+        for glyph in glyphs:
+            _draw_glyph(image, draw, glyph, **fringe)
+    for glyph in glyphs:
+        fill = {"fill": glyph.color, "stroke_width": 1, "stroke_fill": glyph.color}
+        _draw_glyph(image, draw, glyph, **fill)

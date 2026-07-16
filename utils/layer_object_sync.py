@@ -421,30 +421,98 @@ def _assign_coma_item_z(scene, work, coma_key: str, coma, items: list[tuple[int,
     return updated
 
 
-def _page_level_stack_order(scene, page_key: str) -> list[str]:
-    """ページ直下レイヤーの stack 順序 (前面→背面) を返す."""
+def _page_stack_positions(scene, work, page_key: str):
+    """ページレイヤーとコマ行の stack 位置を返す."""
     try:
         from . import layer_stack as ls
+        from . import layer_folder as lf
 
         stack = getattr(scene, "bmanga_layer_stack", None)
         if stack is None:
-            return []
-        return [
-            ls.stack_item_uid(item)
-            for item in stack
-            if str(getattr(item, "parent_key", "") or "") == page_key
-            and str(getattr(item, "kind", "") or "") in ls.COMA_REORDER_KINDS
+            return {}, {}, []
+        index_by_uid = {ls.stack_item_uid(item): i for i, item in enumerate(stack)}
+        container_index_by_key = {
+            str(getattr(item, "key", "") or ""): i
+            for i, item in enumerate(stack)
+            if str(getattr(item, "kind", "") or "") in {"layer_folder", "balloon_group"}
+        }
+        coma_lookup = _coma_lookup(work)
+        coma_rows = [
+            (i, coma_lookup[str(getattr(item, "key", "") or "")])
+            for i, item in enumerate(stack)
+            if str(getattr(item, "kind", "") or "") == "coma"
+            and str(getattr(item, "key", "") or "").startswith(f"{page_key}:")
+            and str(getattr(item, "key", "") or "") in coma_lookup
         ]
+
+        def container_index(key: str) -> int | None:
+            current = str(key or "")
+            seen: set[str] = set()
+            while current and current not in seen:
+                found = container_index_by_key.get(current)
+                if found is not None:
+                    return found
+                seen.add(current)
+                folder = lf.find_folder(work, current)
+                if folder is None:
+                    break
+                current = lf.folder_parent_key(folder)
+            return None
+
+        return index_by_uid, container_index, coma_rows
     except Exception:  # noqa: BLE001
+        return {}, {}, []
+
+
+def _page_item_z_positions(scene, work, page_id: str, items: list[tuple[int, bpy.types.Object]]):
+    """一覧内のコマ行を境界としてページレイヤーの Z を割り当てる."""
+    index_by_uid, container_index, coma_rows = _page_stack_positions(scene, work, page_id)
+    if not coma_rows:
         return []
+
+    segments: list[list[tuple[int, int, bpy.types.Object]]] = [
+        [] for _unused in range(len(coma_rows) + 1)
+    ]
+    for z_index, obj in items:
+        uid = _stack_uid_for_coma_object(obj, page_id)
+        stack_index = index_by_uid.get(uid)
+        if stack_index is None:
+            stack_index = container_index(str(obj.get(on.PROP_FOLDER_ID, "") or ""))
+        if stack_index is None:
+            stack_index = container_index(str(obj.get(on.PROP_PARENT_KEY, "") or ""))
+        # 一覧へまだ同期されていない新規項目は、従来契約どおり全コマの前面。
+        effective_index = -1 if stack_index is None else stack_index
+        segment_index = sum(1 for coma_index, _coma in coma_rows if coma_index < effective_index)
+        segments[segment_index].append((effective_index, z_index, obj))
+
+    positioned: list[tuple[bpy.types.Object, float]] = []
+    for segment_index, segment in enumerate(segments):
+        if not segment:
+            continue
+        segment.sort(key=lambda value: (value[0], value[1], value[2].name))
+        count = len(segment)
+        if segment_index == 0:
+            lower = coma_z_order.border_z(coma_rows[0][1])
+            for i, (_si, _zi, obj) in enumerate(segment):
+                positioned.append((obj, lower + (count - i) * BMANGA_Z_STEP_M))
+            continue
+        upper = coma_z_order.group_back_z(coma_rows[segment_index - 1][1])
+        lower = 0.0
+        if segment_index < len(coma_rows):
+            lower = coma_z_order.border_z(coma_rows[segment_index][1])
+        span = max(0.0, upper - lower)
+        for i, (_si, _zi, obj) in enumerate(segment):
+            fraction = (count - i) / (count + 1)
+            positioned.append((obj, lower + span * fraction))
+    return positioned
 
 
 def assign_per_page_z_ranks(scene, work) -> int:
     """各ページごとにレイヤーの ``location.z`` を表示順へリセット.
 
-    ページ直下のレイヤーは従来どおりページ内 rank で並べる。コマ配下の
-    レイヤーは、同じコマの用紙面と枠線の間に収め、コマ内容が枠線を
-    手前から隠さないようにする。
+    ページ直下のレイヤーはレイヤー一覧内のコマ行を境界にして各コマ Z 帯の
+    前・間・後へ並べる。コマ配下のレイヤーは、同じコマの用紙面と枠線の
+    間に収め、コマ内容が枠線を手前から隠さないようにする。
 
     旧実装の z_index*0.1 では z_index=1010 のフキダシが z=101m に飛んで
     view_all 時に用紙が消える問題があったため、 per-page rank に変更。
@@ -483,30 +551,17 @@ def assign_per_page_z_ranks(scene, work) -> int:
 
     updated = 0
     for page_id, items in page_groups.items():
-        stack_order = _page_level_stack_order(scene, page_id)
-        if stack_order:
-            index_by_uid = {uid: i for i, uid in enumerate(stack_order)}
-            sorted_items: list[tuple[int, int, bpy.types.Object]] = []
-            for z_index, obj in items:
-                uid = _stack_uid_for_coma_object(obj, page_id)
-                si = index_by_uid.get(uid)
-                if si is not None:
-                    sorted_items.append((si, z_index, obj))
-                else:
-                    sorted_items.append((10_000, -z_index, obj))
-            sorted_items.sort(key=lambda x: (x[0], x[1], x[2].name))
-            count = len(sorted_items)
-            for i, (_si, _zi, obj) in enumerate(sorted_items):
-                rank = count - i
-                new_z = page_front_base.get(page_id, 0.0) + rank * BMANGA_Z_STEP_M
+        positioned = _page_item_z_positions(scene, work, page_id, items)
+        if positioned:
+            for obj, new_z in positioned:
                 if _set_object_z(obj, new_z):
                     updated += 1
-        else:
-            items.sort(key=lambda x: (x[0], x[1].name))
-            for rank, (_zi, obj) in enumerate(items, start=1):
-                new_z = page_front_base.get(page_id, 0.0) + rank * BMANGA_Z_STEP_M
-                if _set_object_z(obj, new_z):
-                    updated += 1
+            continue
+        items.sort(key=lambda x: (x[0], x[1].name))
+        for rank, (_zi, obj) in enumerate(items, start=1):
+            new_z = page_front_base.get(page_id, 0.0) + rank * BMANGA_Z_STEP_M
+            if _set_object_z(obj, new_z):
+                updated += 1
     for coma_key, items in coma_items.items():
         coma = comas_by_key.get(coma_key)
         if coma is None:
@@ -1049,8 +1104,8 @@ def mirror_work_to_outliner(
         except Exception:  # noqa: BLE001
             _logger.exception("mirror legacy __masks__ purge failed")
 
-        # 最後にページごとの Z rank を再計算 (page 内 0.1 刻み、 ページ間
-        # は独立)。 paper_bg は z=0、 各レイヤーは z=0.1, 0.2, 0.3, ...
+        # 最後にページごとの Z rank を再計算。ページ間は独立し、コマと
+        # ページ直下レイヤーの相対順はレイヤー一覧を正本にする。
         try:
             assign_per_page_z_ranks(scene, structure_work)
         except Exception:  # noqa: BLE001

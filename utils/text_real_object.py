@@ -301,6 +301,7 @@ def _render_entry_to_pillow(entry):
         stroke_width_px=stroke_width_px,
         stroke_color=stroke_color,
         ruby_placements=ruby_placements,
+        writing_mode=str(getattr(entry, "writing_mode", "horizontal") or "horizontal"),
     )
     return image, pad_mm, width_mm, height_mm
 

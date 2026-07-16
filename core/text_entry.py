@@ -1,6 +1,6 @@
 """テキストエントリ PropertyGroup (フキダシ内テキスト/擬音/ナレーション共通).
 
-計画書 3.1.4.4 / 3.1.5 参照。縦書き・ルビ・縦中横・白フチ・行間/字間を
+計画書 3.1.4.4 / 3.1.5 参照。縦書き・ルビ・縦中横・フチ・行間/字間を
 保持する。実際の組版レンダリングは typography/ が担当する。
 """
 
@@ -367,10 +367,10 @@ class BMangaTextEntry(bpy.types.PropertyGroup):
     ruby_small_kana: EnumProperty(name="小書き仮名", description="小書き仮名（ゃゅょっ等）の表示方法を選択します", items=_RUBY_SMALL_KANA_ITEMS, default="keep", update=_on_text_entry_changed)  # type: ignore[valid-type]
     ruby_default_style: EnumProperty(name="ルビ種類", description="新しく付けるルビの既定の割り付け方式", items=_RUBY_DEFAULT_STYLE_ITEMS, default="group", update=_on_text_entry_changed)  # type: ignore[valid-type]
 
-    # 白フチ (計画書 3.1.4.4)
-    stroke_enabled: BoolProperty(name="白フチ", default=False, description="文字の周囲に白フチを付けます", update=_on_text_entry_changed)  # type: ignore[valid-type]
-    stroke_width_mm: FloatProperty(name="フチ幅", default=0.2, min=0.0, soft_max=5.0, description="白フチの太さ（mm）", update=_on_text_entry_changed)  # type: ignore[valid-type]
-    stroke_color: FloatVectorProperty(subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, description="白フチの色", update=_on_text_entry_changed)  # type: ignore[valid-type]
+    # フチ (計画書 3.1.4.4)
+    stroke_enabled: BoolProperty(name="フチ", default=False, description="文字の周囲にフチを付けます", update=_on_text_entry_changed)  # type: ignore[valid-type]
+    stroke_width_mm: FloatProperty(name="フチ幅", default=0.2, min=0.0, soft_max=5.0, description="フチの太さ（mm）", update=_on_text_entry_changed)  # type: ignore[valid-type]
+    stroke_color: FloatVectorProperty(name="フチ色", subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, description="フチの色", update=_on_text_entry_changed)  # type: ignore[valid-type]
 
     # リンクフキダシプリセット
     linked_balloon_preset: StringProperty(  # type: ignore[valid-type]

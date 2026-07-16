@@ -135,6 +135,29 @@ def main() -> None:
         all_imported_ids = [item.id for page in work.pages for item in page.balloons if item.meldex_source_row_id]
         assert len(all_imported_ids) == len(set(all_imported_ids)), "フキダシIDは作品内で一意"
 
+        # コマ指定のないシナリオ要素は、既存コマより前面のページ直下へ作る。
+        from bmanga_dev_meldex_import.utils import layer_stack
+        stack = layer_stack.sync_layer_stack(bpy.context)
+        assert stack is not None
+        coma_key = f"{work.pages[0].id}:{coma.id}"
+        coma_index = next(
+            i for i, item in enumerate(stack)
+            if layer_stack.stack_item_uid(item) == layer_stack.target_uid("coma", coma_key)
+        )
+        imported_uids = []
+        for imported_text in (item for item in work.pages[0].texts if item.meldex_source_row_id):
+            imported_uids.append(layer_stack.target_uid("text", f"{work.pages[0].id}:{imported_text.id}"))
+        for imported_balloon in imported:
+            imported_uids.append(layer_stack.target_uid("balloon", f"{work.pages[0].id}:{imported_balloon.id}"))
+        positions = {layer_stack.stack_item_uid(item): i for i, item in enumerate(stack)}
+        assert imported_uids and all(positions[uid] < coma_index for uid in imported_uids), (
+            "コマ指定のないシナリオ要素が既存コマより前面に作成されていません"
+        )
+        for imported_text in (item for item in work.pages[0].texts if item.meldex_source_row_id):
+            assert imported_text.parent_kind == "page" and imported_text.parent_key == work.pages[0].id
+        for imported_balloon in imported:
+            assert imported_balloon.parent_kind == "page" and imported_balloon.parent_key == work.pages[0].id
+
         counts = [(len(page.balloons), len(page.texts), len(page.comas)) for page in work.pages]
         balloon.line_width_mm = 4.0
         balloon.fill_color = (0.2, 0.3, 0.4, 1.0)

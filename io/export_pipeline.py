@@ -1093,6 +1093,7 @@ def _render_text_layer(entry, canvas_height_px: int, dpi: int) -> ExportLayer | 
         stroke_width_px=stroke_width_px,
         stroke_color=stroke_color,
         ruby_placements=ruby_placements,
+        writing_mode=str(getattr(entry, "writing_mode", "horizontal") or "horizontal"),
     )
     image, left_px, top_px = canvas.image, canvas.left, canvas.top
     rotation_deg = float(getattr(entry, "rotation_deg", 0.0) or 0.0)

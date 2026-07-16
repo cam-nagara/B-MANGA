@@ -61,6 +61,12 @@ def _setup_work(tmp_dir: Path):
 
 def _assert_range_operator(work, out_dir: Path, io_op) -> None:
     assert bpy.types.BMANGA_OT_export_all_pages.bl_label == "指定範囲を書き出し"
+    for operator in (
+        bpy.ops.bmanga.export_page,
+        bpy.ops.bmanga.export_all_pages,
+        bpy.ops.bmanga.export_pdf,
+    ):
+        assert operator.get_rna_type().properties["include_white_margin"].name == "フチ"
     assert io_op._scaled_dpi(work, 12.5) == 12, "12.5% のDPI換算が不正です"
     op_rna = bpy.ops.bmanga.export_all_pages.get_rna_type()
     assert op_rna.properties["flat_scale_percent"].default == 100.0

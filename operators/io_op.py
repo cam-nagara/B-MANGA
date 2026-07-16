@@ -360,7 +360,7 @@ class BMANGA_OT_export_page(Operator):
     )
     dpi_override: IntProperty(name="DPI 上書き (0 で既定)", default=0, min=0, soft_max=1200)  # type: ignore[valid-type]
     include_border: BoolProperty(name="コマ枠線", default=True)  # type: ignore[valid-type]
-    include_white_margin: BoolProperty(name="白フチ", default=True)  # type: ignore[valid-type]
+    include_white_margin: BoolProperty(name="フチ", default=True)  # type: ignore[valid-type]
     include_nombre: BoolProperty(name="ノンブル", default=True)  # type: ignore[valid-type]
     include_work_info: BoolProperty(name="作品情報", default=True)  # type: ignore[valid-type]
     include_tombo: BoolProperty(name="トンボ", default=False)  # type: ignore[valid-type]
@@ -461,7 +461,7 @@ class BMANGA_OT_export_all_pages(Operator):
     color_mode: EnumProperty(name="カラーモード", items=_COLOR_MODE_ITEMS, default="rgb")  # type: ignore[valid-type]
     area: EnumProperty(name="範囲", items=_AREA_ITEMS, default="finish")  # type: ignore[valid-type]
     include_border: BoolProperty(name="コマ枠線", default=True)  # type: ignore[valid-type]
-    include_white_margin: BoolProperty(name="白フチ", default=True)  # type: ignore[valid-type]
+    include_white_margin: BoolProperty(name="フチ", default=True)  # type: ignore[valid-type]
     include_nombre: BoolProperty(name="ノンブル", default=True)  # type: ignore[valid-type]
     include_work_info: BoolProperty(name="作品情報", default=True)  # type: ignore[valid-type]
     include_tombo: BoolProperty(name="トンボ", default=False)  # type: ignore[valid-type]
@@ -590,7 +590,7 @@ class BMANGA_OT_export_pdf(Operator):
         subtype="PERCENTAGE",
     )
     include_border: BoolProperty(name="コマ枠線", default=True)  # type: ignore[valid-type]
-    include_white_margin: BoolProperty(name="白フチ", default=True)  # type: ignore[valid-type]
+    include_white_margin: BoolProperty(name="フチ", default=True)  # type: ignore[valid-type]
     include_nombre: BoolProperty(name="ノンブル", default=True)  # type: ignore[valid-type]
     include_work_info: BoolProperty(name="作品情報", default=True)  # type: ignore[valid-type]
     include_tombo: BoolProperty(name="トンボ", default=False)  # type: ignore[valid-type]

@@ -43,3 +43,8 @@ def white_margin_z(coma) -> float:
 
 def border_z(coma) -> float:
     return plane_z(coma) + COMA_BORDER_OFFSET_Z_M
+
+
+def group_back_z(coma) -> float:
+    """コマ行とその全子レイヤーより確実に背面となる Z 座標."""
+    return plane_z(coma) - COMA_CONTENT_MAX_OFFSET_Z_M

@@ -258,7 +258,7 @@ def _check_detail_toggles(context, targets) -> list[dict]:
 
     _toggle_check(results, "テキスト / 太字", text, "font_bold")
     _toggle_check(results, "テキスト / 斜体", text, "font_italic")
-    _toggle_check(results, "テキスト / 白フチ", text, "stroke_enabled")
+    _toggle_check(results, "テキスト / フチ", text, "stroke_enabled")
     _toggle_check(results, "テキスト / 表示", text, "visible")
 
     _toggle_check(results, "ページ / 表示", page, "visible")

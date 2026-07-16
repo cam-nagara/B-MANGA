@@ -103,8 +103,8 @@ def _draw_typography(layout, entry) -> None:
 
 def _draw_stroke(layout, entry) -> None:
     box = layout.box()
-    box.label(text="白フチ")
-    prop_if(box, entry, "stroke_enabled", text="白フチ")
+    box.label(text="フチ")
+    prop_if(box, entry, "stroke_enabled", text="フチ")
     content = box.column(align=True)
     content.enabled = bool(value(entry, "stroke_enabled", False))
     prop_if(content, entry, "stroke_width_mm", text="幅")

@@ -941,8 +941,13 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
         px_per_mm = abs(float(o1.x) - float(o0.x))
     else:
         px_per_mm = 3.78
+    from ..typography import vertical_glyph
+
+    vertical = str(getattr(entry, "writing_mode", "horizontal") or "horizontal") == "vertical"
+    draw_records: list[dict] = []
     for glyph in result.placements:
-        glyph_font_id = _get_font_id_for_path(text_style.font_for_index(entry, glyph.index))
+        glyph_font_path = text_style.resolve_font_path(text_style.font_for_index(entry, glyph.index))
+        glyph_font_id = _get_font_id_for_path(glyph_font_path)
         coord = location_3d_to_region_2d(
             region,
             rv3d,
@@ -951,28 +956,16 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
         if coord is None:
             continue
         size_px = glyph.size_pt * px_per_mm * 25.4 / 72.0
-        try:
-            blf.size(glyph_font_id, max(1, int(size_px)))
-        except Exception:  # noqa: BLE001
-            pass
         entry_color = text_style.color_for_index(entry, glyph.index)
-        try:
-            blf.color(
-                glyph_font_id,
-                float(entry_color[0]),
-                float(entry_color[1]),
-                float(entry_color[2]),
-                float(entry_color[3]),
-            )
-        except Exception:  # noqa: BLE001
-            pass
         x_px = float(coord.x) + float(getattr(glyph, "offset_x_mm", 0.0)) * px_per_mm
         y_px = float(coord.y) + float(getattr(glyph, "offset_y_mm", 0.0)) * px_per_mm
         rotated = getattr(glyph, "rotation_deg", 0.0) != 0.0
+        if vertical and not rotated:
+            x_px += vertical_glyph.optical_center_offset_for_path_px(
+                glyph.ch, glyph_font_path, size_px,
+            )
         if rotated:
-            blf.enable(glyph_font_id, blf.ROTATION)
             theta = math.radians(glyph.rotation_deg)
-            blf.rotation(glyph_font_id, theta)
             # blf の回転はペン位置 (ベースライン左端) が軸。全角ボディ中心が
             # セル中心と一致するペン位置を逆算する: P = C - R(theta)・m
             # (m はペン→ボディ中心。CJK フォントはベースラインがボディ下端
@@ -984,62 +977,18 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
             sin_t = math.sin(theta)
             x_px = x_px + half_em - (m_x * cos_t - m_y * sin_t)
             y_px = y_px + half_em - (m_x * sin_t + m_y * cos_t)
-        stroke_width_px = 0.0
-        if getattr(entry, "stroke_enabled", False):
-            stroke_width_px = max(1.0, float(getattr(entry, "stroke_width_mm", 0.2)) * max(px_per_mm, 0.1))
-            stroke_color = getattr(entry, "stroke_color", (1.0, 1.0, 1.0, 1.0))
-            try:
-                blf.color(
-                    glyph_font_id,
-                    float(stroke_color[0]),
-                    float(stroke_color[1]),
-                    float(stroke_color[2]),
-                    float(stroke_color[3]),
-                )
-            except Exception:  # noqa: BLE001
-                pass
-            offsets = (
-                (-stroke_width_px, 0.0),
-                (stroke_width_px, 0.0),
-                (0.0, -stroke_width_px),
-                (0.0, stroke_width_px),
-                (-stroke_width_px * 0.707, -stroke_width_px * 0.707),
-                (stroke_width_px * 0.707, -stroke_width_px * 0.707),
-                (-stroke_width_px * 0.707, stroke_width_px * 0.707),
-                (stroke_width_px * 0.707, stroke_width_px * 0.707),
-            )
-            for ox, oy in offsets:
-                blf.position(glyph_font_id, x_px + ox, y_px + oy, 0.0)
-                blf.draw(glyph_font_id, glyph.ch)
-        blf.position(glyph_font_id, x_px, y_px, 0.0)
-        try:
-            blf.color(
-                glyph_font_id,
-                float(entry_color[0]),
-                float(entry_color[1]),
-                float(entry_color[2]),
-                float(entry_color[3]),
-            )
-        except Exception:  # noqa: BLE001
-            pass
-        blf.draw(glyph_font_id, glyph.ch)
-        if not rotated:
-            thicken_offset = max(0.5, size_px * 0.018)
-            blf.position(glyph_font_id, x_px + thicken_offset, y_px, 0.0)
-            blf.draw(glyph_font_id, glyph.ch)
-            if text_style.bold_for_index(entry, glyph.index):
-                blf.position(glyph_font_id, x_px + max(1.0, size_px * 0.035), y_px, 0.0)
-                blf.draw(glyph_font_id, glyph.ch)
-            if text_style.italic_for_index(entry, glyph.index):
-                blf.position(glyph_font_id, x_px + max(1.0, size_px * 0.055), y_px + max(1.0, size_px * 0.025), 0.0)
-                blf.draw(glyph_font_id, glyph.ch)
-        if rotated:
-            blf.disable(glyph_font_id, blf.ROTATION)
+        draw_records.append({
+            "font_id": glyph_font_id, "ch": glyph.ch, "x": x_px, "y": y_px,
+            "size": size_px, "rotation": float(glyph.rotation_deg), "color": entry_color,
+            "bold": text_style.bold_for_index(entry, glyph.index),
+            "italic": text_style.italic_for_index(entry, glyph.index), "thicken": True,
+        })
     ruby_color = getattr(entry, "color", (0.0, 0.0, 0.0, 1.0))
     for ruby_glyph in ruby_placements:
-        ruby_font_id = _get_font_id_for_path(
+        ruby_font_path = text_style.resolve_font_path(
             str(getattr(ruby_glyph, "font_path", "") or getattr(entry, "font", "") or "")
         )
+        ruby_font_id = _get_font_id_for_path(ruby_font_path)
         coord = location_3d_to_region_2d(
             region,
             rv3d,
@@ -1052,21 +1001,15 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
         if coord is None:
             continue
         size_px = ruby_glyph.size_pt * px_per_mm * 25.4 / 72.0
-        try:
-            blf.size(ruby_font_id, max(1, int(size_px)))
-        except Exception:  # noqa: BLE001
-            pass
-        try:
-            blf.color(ruby_font_id, float(ruby_color[0]), float(ruby_color[1]), float(ruby_color[2]), float(ruby_color[3]))
-        except Exception:  # noqa: BLE001
-            pass
         x_px = float(coord.x)
         y_px = float(coord.y)
         rotation_deg = float(getattr(ruby_glyph, "rotation_deg", 0.0) or 0.0)
+        if vertical and rotation_deg == 0.0:
+            x_px += vertical_glyph.optical_center_offset_for_path_px(
+                ruby_glyph.ch, ruby_font_path, size_px,
+            )
         if rotation_deg != 0.0:
-            blf.enable(ruby_font_id, blf.ROTATION)
             theta = math.radians(rotation_deg)
-            blf.rotation(ruby_font_id, theta)
             half_em = size_px * 0.5
             m_x = half_em
             m_y = size_px * 0.38
@@ -1074,10 +1017,54 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
             sin_t = math.sin(theta)
             x_px = x_px + half_em - (m_x * cos_t - m_y * sin_t)
             y_px = y_px + half_em - (m_x * sin_t + m_y * cos_t)
-        blf.position(ruby_font_id, x_px, y_px, 0.0)
-        blf.draw(ruby_font_id, ruby_glyph.ch)
-        if rotation_deg != 0.0:
-            blf.disable(ruby_font_id, blf.ROTATION)
+        draw_records.append({
+            "font_id": ruby_font_id, "ch": ruby_glyph.ch, "x": x_px, "y": y_px,
+            "size": size_px, "rotation": rotation_deg, "color": ruby_color,
+            "bold": False, "italic": False, "thicken": False,
+        })
+
+    def draw_record(record: dict, draw_color, offsets=((0.0, 0.0),), *, fill_pass=False):
+        font_id = record["font_id"]
+        try:
+            blf.size(font_id, max(1, int(record["size"])))
+            blf.color(font_id, *(float(draw_color[i]) for i in range(4)))
+        except Exception:  # noqa: BLE001
+            pass
+        rotated = record["rotation"] != 0.0
+        if rotated:
+            blf.enable(font_id, blf.ROTATION)
+            blf.rotation(font_id, math.radians(record["rotation"]))
+        style_offsets = [(0.0, 0.0)]
+        if not rotated and record["bold"]:
+            style_offsets.append((max(1.0, record["size"] * 0.035), 0.0))
+        if not rotated and record["italic"]:
+            style_offsets.append((
+                max(1.0, record["size"] * 0.055),
+                max(1.0, record["size"] * 0.025),
+            ))
+        for sx, sy in style_offsets:
+            for ox, oy in offsets:
+                blf.position(font_id, record["x"] + sx + ox, record["y"] + sy + oy, 0.0)
+                blf.draw(font_id, record["ch"])
+        if fill_pass and not rotated and record["thicken"]:
+            blf.position(font_id, record["x"] + max(0.5, record["size"] * 0.018), record["y"], 0.0)
+            blf.draw(font_id, record["ch"])
+        if rotated:
+            blf.disable(font_id, blf.ROTATION)
+
+    if getattr(entry, "stroke_enabled", False):
+        width = max(1.0, float(getattr(entry, "stroke_width_mm", 0.2)) * max(px_per_mm, 0.1))
+        diagonal = width * 0.707
+        fringe_offsets = (
+            (-width, 0.0), (width, 0.0), (0.0, -width), (0.0, width),
+            (-diagonal, -diagonal), (diagonal, -diagonal),
+            (-diagonal, diagonal), (diagonal, diagonal),
+        )
+        stroke_color = getattr(entry, "stroke_color", (1.0, 1.0, 1.0, 1.0))
+        for record in draw_records:
+            draw_record(record, stroke_color, fringe_offsets)
+    for record in draw_records:
+        draw_record(record, record["color"], fill_pass=True)
 
 
 def _draw_rect_fill_pixel(context, rect: Rect, color: tuple[float, float, float, float]) -> None:
