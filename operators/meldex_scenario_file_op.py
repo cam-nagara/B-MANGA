@@ -10,8 +10,14 @@ from bpy.types import Operator
 from bpy_extras.io_utils import ImportHelper
 
 from ..core.work import get_work
-from ..io import meldex_scenario_file, meldex_scenario_import
+from ..io import (
+    meldex_scenario_file,
+    meldex_scenario_import,
+    meldex_scenario_import_transaction,
+)
 from ..io.meldex_contract import ContractError
+from ..io.project_content_migration_lock import WorkLockError
+from ..io.project_content_sidecar_save_guard import SidecarSaveError
 from ..utils import log, page_file_scene
 
 
@@ -58,7 +64,13 @@ class BMANGA_OT_meldex_scenario_file_import(Operator, ImportHelper):
         try:
             payload = meldex_scenario_file.load_contract_payload(path)
             result = meldex_scenario_import.import_payload(context, work, payload)
-        except (meldex_scenario_file.ScenarioFileError, ContractError) as exc:
+        except (
+            meldex_scenario_file.ScenarioFileError,
+            ContractError,
+            meldex_scenario_import_transaction.ScenarioImportTransactionError,
+            SidecarSaveError,
+            WorkLockError,
+        ) as exc:
             self.report({"ERROR"}, str(exc))
             return {"CANCELLED"}
         except Exception:  # noqa: BLE001 - 想定外時はログへ詳細を残し、作品を閉じない

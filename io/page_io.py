@@ -28,6 +28,15 @@ _logger = log.get_logger(__name__)
 _LAST_WRITTEN_PAGE_JSON: dict[str, str] = {}
 
 
+def invalidate_page_json_write_cache(
+    paths_to_invalidate: list[Path] | tuple[Path, ...],
+) -> None:
+    """外部復元でファイル内容が巻き戻った保存先の差分書込キャッシュを破棄する。"""
+
+    for path in paths_to_invalidate:
+        _LAST_WRITTEN_PAGE_JSON.pop(str(Path(path)), None)
+
+
 def save_page_json(work_dir: Path, page_entry) -> Path:
     import hashlib
     import json as _json

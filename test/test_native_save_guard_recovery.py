@@ -399,6 +399,51 @@ def test_legacy_external_sidecar_journal_is_recovered_and_pruned(tmp_path):
     assert not (work / ".bmanga-save-recovery-v1").exists()
 
 
+def test_sidecar_recovery_prunes_only_opted_in_empty_new_directories(tmp_path):
+    """シナリオ取込中断で新設したページ階層は、復元対象ファイルを消した後に
+    空の場合だけ除去する。未知のファイルを含む階層は巻き込まない。"""
+
+    work = _work(tmp_path, "ScenarioDirectoryRollback")
+    page_dir = work / "p0001"
+    coma_dir = page_dir / "c01"
+    page_json = page_dir / "page.json"
+    coma_json = coma_dir / "c01.json"
+    token = SIDECAR_GUARD.begin_sidecar_save(
+        work,
+        (page_json, coma_json),
+        prune_empty_dirs=(coma_dir, page_dir),
+    )
+    SIDECAR_GUARD.mark_sidecar_writes_started(token)
+    coma_dir.mkdir(parents=True)
+    page_json.write_bytes(b"new-page")
+    coma_json.write_bytes(b"new-coma")
+
+    restored = SIDECAR_GUARD.recover_pending_sidecar_saves(work)
+
+    assert set(restored) == {page_json, coma_json}
+    assert not page_dir.exists()
+    assert not (work / ".bmanga-save-recovery-v1").exists()
+
+    guarded_page = work / "p0002"
+    guarded_coma = guarded_page / "c01"
+    guarded_json = guarded_coma / "c01.json"
+    token = SIDECAR_GUARD.begin_sidecar_save(
+        work,
+        (guarded_json,),
+        prune_empty_dirs=(guarded_coma, guarded_page),
+    )
+    SIDECAR_GUARD.mark_sidecar_writes_started(token)
+    guarded_coma.mkdir(parents=True)
+    guarded_json.write_bytes(b"new-coma")
+    (guarded_page / "unknown.txt").write_text("keep", encoding="utf-8")
+
+    SIDECAR_GUARD.recover_pending_sidecar_saves(work)
+
+    assert not guarded_coma.exists()
+    assert guarded_page.is_dir()
+    assert (guarded_page / "unknown.txt").read_text(encoding="utf-8") == "keep"
+
+
 @pytest.mark.parametrize("legacy_part", ["native", "sidecar"])
 def test_commit_decision_survives_mixed_current_and_legacy_layouts(
     tmp_path,

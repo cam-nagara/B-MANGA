@@ -6,6 +6,7 @@ from contextlib import ExitStack
 from pathlib import Path
 
 from ..core import balloon as balloon_core
+from ..core.work_info import suppress_page_number_range_update
 from ..utils import (
     balloon_curve_object,
     json_io,
@@ -20,7 +21,14 @@ from ..utils import (
     text_style,
 )
 from ..utils.layer_hierarchy import page_stack_key
-from . import balloon_presets, meldex_text_presentation, page_io, text_presets, work_io
+from . import (
+    balloon_presets,
+    meldex_scenario_import_transaction,
+    meldex_text_presentation,
+    page_io,
+    text_presets,
+    work_io,
+)
 from .meldex_contract import ScenarioDocument, ScenarioRow, validate_payload
 
 _logger = log.get_logger(__name__)
@@ -30,15 +38,43 @@ def import_payload(context, work, payload: dict) -> dict[str, int]:
     document = validate_payload(payload)
     if meldex_text_presentation.is_enabled(context):
         document = meldex_text_presentation.enrich_from_source_file(document)
-    result = import_document(context, work, document)
-    json_io.write_json(paths.scenario_file(Path(str(work.work_dir))), payload)
-    return result
+    return _import_document(context, work, document, payload_to_save=payload)
 
 
 def import_document(context, work, document: ScenarioDocument) -> dict[str, int]:
+    return _import_document(context, work, document, payload_to_save=None)
+
+
+def _import_document(
+    context,
+    work,
+    document: ScenarioDocument,
+    *,
+    payload_to_save: dict | None,
+) -> dict[str, int]:
     work_dir = Path(str(work.work_dir))
     original_active = int(getattr(work, "active_page_index", -1))
-    added_pages, new_page_ids = _ensure_page_count(work, work_dir, len(document.pages))
+    with meldex_scenario_import_transaction.scenario_import_transaction(
+        work,
+        len(document.pages),
+        save_payload_copy=payload_to_save is not None,
+    ) as plan:
+        result, new_pairs = _apply_document(
+            context,
+            work,
+            document,
+            plan,
+            original_active,
+        )
+        if payload_to_save is not None:
+            json_io.write_json(paths.scenario_file(work_dir), payload_to_save)
+    _post_import_sync(context, work, result["pagesAdded"], new_pairs)
+    return result
+
+
+def _apply_document(context, work, document, plan, original_active):
+    work_dir = plan.work_dir
+    added_pages = _ensure_page_count(work, work_dir, plan.new_page_ids)
     balloon_by_name = {p.name: p for p in balloon_presets.list_all_presets(work_dir)}
     ordered_text_presets = text_presets.list_all_presets(work_dir)
     text_by_name = {p.name: p for p in ordered_text_presets}
@@ -47,16 +83,18 @@ def import_document(context, work, document: ScenarioDocument) -> dict[str, int]
         document.version >= 2 and meldex_text_presentation.is_enabled(context)
     )
     result = {"pagesAdded": added_pages, "created": 0, "updated": 0, "ignored": 0}
-    # 今回の取込で新規作成した (フキダシ, テキスト) ペアだけを記録する。
-    # 既存ペア (更新のみ) は含めない — 手動で並び替えた順序を尊重するため。
+    # 今回の取込で両方を新設したペアだけ、後段で隣接順へ揃える。
+    # 既存要素の手動並び順は再取込でも維持する。
     new_pairs: list[tuple[str, str, str]] = []
     with ExitStack() as stack:
         stack.enter_context(balloon_curve_object.defer_auto_sync())
         stack.enter_context(text_real_object.suspend_auto_sync())
         for page_index, source_page in enumerate(document.pages):
             page = work.pages[page_index]
-            was_loaded = bool(page.detail_loaded) and page.id not in new_page_ids
-            page_detail.ensure_page_detail(work, page)
+            if not bool(page.detail_loaded):
+                raise meldex_scenario_import_transaction.ScenarioImportTransactionError(
+                    f"{page.id} のページ情報を読み込めません"
+                )
             page_key = page_stack_key(page)
             for row_index, row in enumerate(source_page.rows):
                 if not row.body:
@@ -77,55 +115,67 @@ def import_document(context, work, document: ScenarioDocument) -> dict[str, int]
                     ) if apply_meldex_presentation else None,
                 )
                 result["created" if created else "updated"] += 1
-                # フキダシ・テキストの両方を今回新規作成した行だけを並び順の
-                # 強制対象にする。片方だけ再生成された行 (例: ユーザーが片側を
-                # 削除して再送した場合) は、生き残った側の手動配置を尊重する。
                 if pair_new:
                     new_pairs.append((page_key, balloon_id, text_id))
             page.coma_count = len(page.comas)
             page_io.save_page_json(work_dir, page)
-            if not was_loaded:
+            if str(page.id) not in plan.originally_loaded_page_ids:
                 page_detail.clear_page_detail(page)
     work.active_page_index = original_active if -1 <= original_active < len(work.pages) else -1
-    page_io.save_pages_json(work_dir, work)
     if added_pages:
-        page_range.sync_end_number_to_page_count(work)
-        work_io.save_work_json(work_dir, work)
-        page_grid.apply_page_collection_transforms(context, work)
-    layer_stack.sync_layer_stack_after_data_change(context)
+        with suppress_page_number_range_update():
+            page_range.sync_end_number_to_page_count(work)
+    page_io.save_pages_json(work_dir, work)
+    work_io.save_work_json(work_dir, work)
+    return result, new_pairs
+
+
+def _post_import_sync(context, work, added_pages: int, new_pairs) -> None:
+    if added_pages:
+        try:
+            page_grid.apply_page_collection_transforms(context, work)
+        except Exception:  # noqa: BLE001 - 保存済み取込をUI同期失敗だけで巻き戻さない
+            _logger.exception("meldex import: page grid sync failed")
+    try:
+        layer_stack.sync_layer_stack_after_data_change(context)
+    except Exception:  # noqa: BLE001 - 次回読込で再構築できる表示同期はベストエフォート
+        _logger.exception("meldex import: layer stack sync failed")
     try:
         layer_stack.normalize_paired_layer_order(context, new_pairs)
-    except Exception:  # noqa: BLE001 - 並び順の最終保証はベストエフォート。失敗しても取込自体は成立させる
+    except Exception:  # noqa: BLE001 - 並び順の最終保証はベストエフォート
         _logger.exception("meldex import: paired layer order normalize failed")
-    _sync_current_page(context, work)
-    return result
+    try:
+        _sync_current_page(context, work)
+    except Exception:  # noqa: BLE001 - JSON取込成功後の実体同期失敗は次回読込で回復可能
+        _logger.exception("meldex import: current page object sync failed")
 
 
-def _ensure_page_count(work, work_dir: Path, required: int) -> tuple[int, set[str]]:
-    """ページ数が required に満たない場合、末尾へ新規ページを追加する.
+def _ensure_page_count(
+    work,
+    work_dir: Path,
+    expected_page_ids: tuple[str, ...],
+) -> int:
+    """事前検査で確保したIDどおりに、不足ページを末尾へ追加する。
 
     2026-07-12 ユーザー指示により、通常のページ追加 (BMANGA_OT_page_add) と
     同様に基本枠サイズの矩形コマを1個自動生成する。既存ページには一切触れない
-    (このループは len(work.pages) < required の間だけ回るため、対象は今回
-    新規登録したページに限られる)。
+    対象は ``expected_page_ids`` に含まれる今回の新規ページだけに限る。
     """
     from ..operators.coma_op import create_basic_frame_coma
 
-    added = 0
-    new_ids: set[str] = set()
-    while len(work.pages) < required:
+    for expected_page_id in expected_page_ids:
         page = page_io.register_new_page(work)
-        page_io.ensure_page_dir(work_dir, page.id)
-        page_io.save_page_json(work_dir, page)
-        try:
-            create_basic_frame_coma(work, page, work_dir)
-        except Exception:  # noqa: BLE001 - コマ作成失敗で取込バッチ全体を失敗させない
-            _logger.exception(
-                "meldex import: basic frame coma creation failed (page=%s)", page.id
+        if str(page.id) != expected_page_id:
+            raise meldex_scenario_import_transaction.ScenarioImportTransactionError(
+                "ページ採番が取込開始時の検査結果と一致しません"
             )
-        new_ids.add(page.id)
-        added += 1
-    return added, new_ids
+        page_io.ensure_page_dir(work_dir, page.id)
+        coma = create_basic_frame_coma(work, page, work_dir)
+        if str(getattr(coma, "coma_id", "") or "") != "c01":
+            raise meldex_scenario_import_transaction.ScenarioImportTransactionError(
+                f"{page.id} の基本枠コマ採番が不正です"
+            )
+    return len(expected_page_ids)
 
 
 def _upsert_row(

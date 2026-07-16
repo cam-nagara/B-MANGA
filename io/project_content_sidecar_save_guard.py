@@ -60,6 +60,7 @@ class SidecarSaveToken:
     transaction_dir: Path
     journal_path: Path
     records: tuple[SidecarRecord, ...]
+    prune_empty_dirs: tuple[Path, ...] = ()
     status: str = "secured"
 
 
@@ -96,6 +97,24 @@ def _validate_source(work: Path, source: Path) -> Path:
     return resolved
 
 
+def _validate_prune_dir(work: Path, directory: Path) -> Path:
+    """復元後に空なら除去してよい、作品内の新規ディレクトリを検証する。"""
+
+    root = work.resolve(strict=True)
+    if directory.is_symlink():
+        raise SidecarSaveError("復元後の削除対象がリンクです")
+    resolved = directory.resolve(strict=False)
+    if resolved == root:
+        raise SidecarSaveError("作品フォルダー自体は復元後の削除対象にできません")
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise SidecarSaveError("復元後の削除対象が作品フォルダー外です") from exc
+    if resolved.is_symlink() or (resolved.exists() and not resolved.is_dir()):
+        raise SidecarSaveError(f"復元後の削除対象が通常フォルダーではありません: {resolved}")
+    return resolved
+
+
 def _copy_verified(source: Path, target: Path, expected_sha: str) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_name = tempfile.mkstemp(
@@ -127,6 +146,7 @@ def _journal_value(token: SidecarSaveToken, status: str) -> dict:
         "status": status,
         "updatedAt": utc_now(),
         "workDir": str(token.work_dir),
+        "pruneEmptyDirs": [str(path) for path in token.prune_empty_dirs],
         "records": [
             {
                 "sourcePath": str(record.source),
@@ -144,6 +164,7 @@ def begin_sidecar_save(
     paths: Iterable[str | os.PathLike[str]],
     *,
     transaction_id: str = "",
+    prune_empty_dirs: Iterable[str | os.PathLike[str]] = (),
 ) -> SidecarSaveToken:
     """全書込み対象を先に退避する。戻った時点では全件復元可能。"""
 
@@ -152,6 +173,18 @@ def begin_sidecar_save(
         {_validate_source(work, Path(path)) for path in paths},
         key=lambda path: os.path.normcase(str(path)),
     )
+    prune_dirs = tuple(sorted(
+        {_validate_prune_dir(work, Path(path)) for path in prune_empty_dirs},
+        key=lambda path: (-len(path.parts), os.path.normcase(str(path))),
+    ))
+    if any(directory.exists() for directory in prune_dirs):
+        raise SidecarSaveError("復元後の削除対象は取引開始前から存在しています")
+    for directory in prune_dirs:
+        if not any(
+            not source.exists() and source.is_relative_to(directory)
+            for source in sources
+        ):
+            raise SidecarSaveError("復元後の削除対象が新規作品情報と対応していません")
     tx_id = transaction_id or new_transaction_id()
     tx_dir = _base(work) / tx_id
     tx_dir.mkdir(parents=True, exist_ok=False)
@@ -172,6 +205,7 @@ def begin_sidecar_save(
             transaction_dir=tx_dir,
             journal_path=journal_path,
             records=tuple(records),
+            prune_empty_dirs=prune_dirs,
         )
         atomic_write_json(journal_path, _journal_value(token, "secured"))
         return token
@@ -212,6 +246,15 @@ def restore_sidecars(token: SidecarSaveToken | None) -> bool:
             _copy_verified(record.backup, record.source, record.original_sha256)
         else:
             record.source.unlink(missing_ok=True)
+    for directory in token.prune_empty_dirs:
+        try:
+            directory.rmdir()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            # 未知のファイルが残るフォルダーは削除しない。復元対象外データを
+            # 巻き込まないため、再帰削除にはしない。
+            continue
     token.status = "restored"
     try:
         atomic_write_json(token.journal_path, _journal_value(token, token.status))
@@ -256,6 +299,15 @@ def _token_from_journal(path: Path, data: dict, work: Path) -> SidecarSaveToken:
         raise SidecarSaveError("作品情報復旧状態が不正です")
     source_keys = set()
     records = []
+    raw_prune_dirs = data.get("pruneEmptyDirs", [])
+    if not isinstance(raw_prune_dirs, list) or not all(
+        isinstance(value, str) for value in raw_prune_dirs
+    ):
+        raise SidecarSaveError("復元後の削除対象が不正です")
+    prune_dirs = tuple(sorted(
+        {_validate_prune_dir(work, Path(value)) for value in raw_prune_dirs},
+        key=lambda directory: (-len(directory.parts), os.path.normcase(str(directory))),
+    ))
     raw_records = data.get("records", [])
     if not isinstance(raw_records, list):
         raise SidecarSaveError("作品情報復旧レコードが不正です")
@@ -288,12 +340,19 @@ def _token_from_journal(path: Path, data: dict, work: Path) -> SidecarSaveToken:
                 original_sha256=digest,
             )
         )
+    for directory in prune_dirs:
+        if not any(
+            not record.existed and record.source.is_relative_to(directory)
+            for record in records
+        ):
+            raise SidecarSaveError("復元後の削除対象が新規作品情報と対応していません")
     return SidecarSaveToken(
         work_dir=work,
         transaction_id=tx_id,
         transaction_dir=path.parent,
         journal_path=path,
         records=tuple(records),
+        prune_empty_dirs=prune_dirs,
         status=status,
     )
 
