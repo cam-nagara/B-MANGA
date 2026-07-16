@@ -175,7 +175,66 @@ def _case_existing_target_is_opened(handlers, work_blend: Path, page: Path) -> N
     )
 
 
-EXPECTED_CHECK_COUNT = 12
+def _case_changed_file_cancels_stale_timer(handlers, work_blend: Path, page: Path) -> None:
+    """(F) 待機中に別blendへ移動したら、古い予約は現在画面を奪わない."""
+
+    page.unlink(missing_ok=True)
+    other = work_blend.with_name("other.blend")
+    shutil.copy2(work_blend, other)
+    _open(other, "work")
+    state = {"attempts": 0, "origin": str(work_blend)}
+    result = handlers._native_save_reload_tick(
+        page, handlers._native_save_reload_generation, state,
+    )
+    _check(result is None, "別ファイル移動後も古いタイマーが継続しました")
+    _check(state["attempts"] == 0, "別ファイル移動後にattemptsが加算されました")
+    _check(Path(bpy.data.filepath).resolve() == other.resolve(), "古いタイマーが別ファイルを開きました")
+
+
+def _case_transient_open_failure_retries(handlers, work_blend: Path, page: Path) -> None:
+    """(G) 実在ファイルの一時読込失敗も上限内では再試行する."""
+
+    shutil.copy2(work_blend, page)
+    _open(work_blend, "work")
+    original = handlers._open_native_reload_target
+
+    def _fail_once(_path):
+        raise OSError("temporary sharing violation")
+
+    handlers._open_native_reload_target = _fail_once
+    try:
+        state = {"attempts": 0, "origin": str(work_blend)}
+        result = handlers._native_save_reload_tick(
+            page, handlers._native_save_reload_generation, state,
+        )
+    finally:
+        handlers._open_native_reload_target = original
+    _check(result == handlers._NATIVE_SAVE_RELOAD_RETRY_INTERVAL, "一時読込失敗を再試行しません")
+    _check(state["attempts"] == 1, "一時読込失敗でattemptsが加算されません")
+    _check(Path(bpy.data.filepath).resolve() == work_blend.resolve(), "一時失敗中に画面が移動しました")
+    result = handlers._native_save_reload_tick(
+        page, handlers._native_save_reload_generation, state,
+    )
+    _check(result is None, "再試行成功後の戻り値がNoneではありません")
+    _check(Path(bpy.data.filepath).resolve() == page.resolve(), "再試行で対象を開けません")
+
+
+def _case_work_open_preflight_restores_missing_work_blend(work_op, native_guard, root: Path) -> None:
+    """(H) work.blend退避直後の異常終了も「作品を開く」入口で復旧する."""
+
+    work = root / "OpenPreflight.bmanga"
+    _write_json(work / "work.json", {"detailDataVersion": 0})
+    source = work / "work.blend"
+    source.write_bytes(b"latest-work")
+    token = native_guard.begin_native_save(source, 0)
+    _check(token is not None and token.requires_restore, "中断保存の復旧トークンを作れません")
+    _check(not source.exists(), "退避直後のwork.blend欠落状態を再現できません")
+    native_guard._release(token)
+    recovered, error = work_op._recover_selected_work_before_open(work)
+    _check(recovered and not error and source.read_bytes() == b"latest-work", "作品を開く前にwork.blendを復旧できません")
+
+
+EXPECTED_CHECK_COUNT = 23
 
 
 def main() -> None:
@@ -186,6 +245,8 @@ def main() -> None:
     try:
         addon = _load_addon()
         handlers = importlib.import_module(f"{MODULE_NAME}.utils.handlers")
+        work_op = importlib.import_module(f"{MODULE_NAME}.operators.work_op")
+        native_guard = importlib.import_module(f"{MODULE_NAME}.io.project_content_native_save_guard")
         _work, work_blend, page = _create_work(temp_root)
 
         _case_fallback_target(handlers, work_blend, page)
@@ -193,6 +254,9 @@ def main() -> None:
         _case_fallback_opens_work_blend_at_limit(handlers, work_blend, page)
         _case_generation_mismatch_does_nothing(handlers, work_blend, page)
         _case_existing_target_is_opened(handlers, work_blend, page)
+        _case_changed_file_cancels_stale_timer(handlers, work_blend, page)
+        _case_transient_open_failure_retries(handlers, work_blend, page)
+        _case_work_open_preflight_restores_missing_work_blend(work_op, native_guard, temp_root)
 
         assert _counters["checks"] == EXPECTED_CHECK_COUNT, (
             f"検証アサートの実行数が想定と異なります: {_counters['checks']}"

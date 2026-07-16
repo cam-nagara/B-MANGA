@@ -523,10 +523,10 @@ def cleanup_stale_transactions(
         base = _base(Path(work_dir))
     except Exception:  # noqa: BLE001
         return ()
-    if not base.is_dir():
-        return ()
-    removed: list[Path] = []
     now = datetime.now(timezone.utc)
+    if not base.is_dir():
+        return tuple(_cleanup_stale_copying_files(Path(work_dir), now))
+    removed: list[Path] = []
     try:
         entries = list(base.iterdir())
     except OSError:

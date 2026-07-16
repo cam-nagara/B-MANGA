@@ -11,7 +11,7 @@ import math
 from pathlib import Path
 from typing import Any, Sequence
 
-from . import export_group_masks, export_psd, export_raster, export_soft_mask
+from . import export_group_masks, export_psd, export_raster, export_soft_mask, export_stack_order
 from ..ui import overlay_shared
 from ..utils import (
     border_geom,
@@ -950,7 +950,7 @@ def _render_image_layer(
         visible=bool(getattr(entry, "visible", True)),
         opacity=255,
         blend_mode=_blend_mode_name(getattr(entry, "blend_mode", "normal")),
-        stack_parent_key=str(getattr(entry, "parent_key", "") or ""),
+        stack_parent_key=str(getattr(entry, "folder_key", "") or getattr(entry, "parent_key", "") or ""),
     )
 
 
@@ -1027,7 +1027,7 @@ def _render_fill_layer(
         visible=bool(getattr(entry, "visible", True)),
         opacity=alpha_byte,
         blend_mode="normal",
-        stack_parent_key=str(getattr(entry, "parent_key", "") or ""),
+        stack_parent_key=str(getattr(entry, "folder_key", "") or getattr(entry, "parent_key", "") or ""),
     )
 
 
@@ -1824,8 +1824,8 @@ def _render_gp_object_layers(
                 visible=True,
                 opacity=_normalize_opacity(getattr(layer, "opacity", 1.0)),
                 blend_mode=_blend_mode_name(getattr(layer, "blend_mode", "normal")),
-                stack_uid=_stack_uid_for_export_object(obj),
-                stack_parent_key=parent_key,
+                stack_uid=export_stack_order.stack_uid_for_object(obj),
+                stack_parent_key=str(obj.get("bmanga_folder_id", "") or parent_key),
             )
         )
     return out
@@ -1857,128 +1857,6 @@ def _gp_layers(work, page, canvas_size: tuple[int, int], dpi: int) -> list[Expor
             )
         )
     return out
-
-
-def _stack_uid_for_export_object(obj) -> str:
-    try:
-        from ..utils import layer_stack as layer_stack_utils
-
-        kind = str(obj.get("bmanga_kind", "") or "")
-        key = str(obj.get("bmanga_id", "") or "")
-        if kind in {"gp", "effect"} and key:
-            return layer_stack_utils.target_uid(kind, key)
-    except Exception:  # noqa: BLE001
-        pass
-    return ""
-
-
-def _entry_stack_uid(kind: str, page, entry) -> str:
-    from ..utils import layer_stack as layer_stack_utils
-    from ..utils.layer_hierarchy import page_stack_key
-
-    key = str(getattr(entry, "id", "") or "")
-    return layer_stack_utils.target_uid(kind, f"{page_stack_key(page)}:{key}")
-
-
-def _entry_stack_parent_key(kind: str, page, entry) -> str:
-    parent_key = str(getattr(entry, "parent_key", "") or "")
-    if kind != "balloon":
-        return parent_key
-    group_id = str(getattr(entry, "merge_group_id", "") or "")
-    if not group_id:
-        return parent_key
-    from ..utils.layer_hierarchy import page_stack_key
-
-    group_key = f"{page_stack_key(page)}:{group_id}"
-    try:
-        import bpy
-
-        if any(
-            str(getattr(item, "key", "") or "") == group_key
-            for item in getattr(bpy.context.scene, "bmanga_layer_stack", ())
-        ):
-            return group_key
-    except Exception:  # noqa: BLE001
-        pass
-    return parent_key
-
-
-def _apply_coma_preview_export_order(
-    work, page, layers: list[ExportLayer], *, side: str = "all",
-) -> list[ExportLayer]:
-    """レイヤー一覧のプレビュー境界をPNG/PSDの合成順にも反映する."""
-
-    try:
-        import bpy
-        from ..utils import layer_folder, layer_object_sync, layer_stack as layer_stack_utils
-        from ..utils.layer_hierarchy import coma_stack_key
-    except Exception:  # pragma: no cover - bpy unavailable outside Blender
-        return layers
-    result = list(layers)
-    scene = getattr(bpy.context, "scene", None)
-    stack = getattr(scene, "bmanga_layer_stack", None) if scene is not None else None
-    if stack is None:
-        return result
-    for panel in getattr(page, "comas", ()):
-        coma_key = coma_stack_key(page, panel)
-        order, preview_uid = layer_object_sync._coma_stack_order(scene, work, coma_key)
-        index_by_uid = {uid: index for index, uid in enumerate(order)}
-        if preview_uid not in index_by_uid:
-            continue
-        container_indexes = {}
-        for item in stack:
-            uid = layer_stack_utils.stack_item_uid(item)
-            if uid in index_by_uid:
-                container_indexes[str(getattr(item, "key", "") or "")] = index_by_uid[uid]
-
-        def _layer_index(layer: ExportLayer):
-            direct = index_by_uid.get(str(layer.stack_uid or ""))
-            if direct is not None:
-                return direct
-            parent = str(layer.stack_parent_key or "")
-            seen: set[str] = set()
-            while parent and parent not in seen:
-                found = container_indexes.get(parent)
-                if found is not None:
-                    return found
-                seen.add(parent)
-                folder = layer_folder.find_folder(work, parent)
-                if folder is None:
-                    break
-                parent = layer_folder.folder_parent_key(folder)
-            return None
-
-        positioned = [
-            (position, layer, _layer_index(layer))
-            for position, layer in enumerate(result)
-            if layer.stack_uid or layer.stack_parent_key
-        ]
-        positioned = [item for item in positioned if item[2] is not None]
-        preview_index = index_by_uid[preview_uid]
-        if side in {"front", "back"}:
-            remove = {
-                position
-                for position, _layer, index in positioned
-                if (side == "front" and int(index) >= preview_index)
-                or (side == "back" and int(index) <= preview_index)
-            }
-            result = [layer for position, layer in enumerate(result) if position not in remove]
-            continue
-        if not any(layer.stack_uid == preview_uid for _pos, layer, _idx in positioned):
-            continue
-        positions = {position for position, _layer, _index in positioned}
-        insertion = min(positions)
-        ordered = [
-            layer
-            for _position, layer, _index in sorted(
-                positioned,
-                key=lambda item: int(item[2]),
-                reverse=True,
-            )
-        ]
-        result = [layer for position, layer in enumerate(result) if position not in positions]
-        result[insertion:insertion] = ordered
-    return result
 
 
 def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
@@ -2183,8 +2061,8 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
                     # 非表示フキダシは PSD では非表示レイヤーとして残し、
                     # PNG / プレビューの合成では描かない
                     visible=bool(getattr(balloon, "visible", True)),
-                    stack_uid=_entry_stack_uid("balloon", page, balloon),
-                    stack_parent_key=_entry_stack_parent_key("balloon", page, balloon),
+                    stack_uid=export_stack_order.entry_stack_uid("balloon", page, balloon),
+                    stack_parent_key=export_stack_order.entry_stack_parent_key("balloon", page, balloon),
                     group_path=_group_path_for_parent(
                         page,
                         str(getattr(balloon, "parent_kind", "") or "page"),
@@ -2201,8 +2079,8 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
                 replace(
                     layer,
                     visible=bool(getattr(text, "visible", True)),
-                    stack_uid=_entry_stack_uid("text", page, text),
-                    stack_parent_key=str(getattr(text, "parent_key", "") or ""),
+                    stack_uid=export_stack_order.entry_stack_uid("text", page, text),
+                    stack_parent_key=str(getattr(text, "folder_key", "") or getattr(text, "parent_key", "") or ""),
                     group_path=_group_path_for_parent(
                         page,
                         str(getattr(text, "parent_kind", "") or "page"),
@@ -2212,7 +2090,7 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
                 )
             )
 
-    layers = _apply_coma_preview_export_order(
+    layers = export_stack_order.apply_coma_preview_order(
         work,
         page,
         layers,

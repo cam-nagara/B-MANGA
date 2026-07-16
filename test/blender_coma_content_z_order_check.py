@@ -7,6 +7,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import bpy
 
@@ -250,6 +251,74 @@ def main() -> None:
             raise AssertionError("コマプレビューより後ろへ移した効果線が背面にありません")
         if not effect_display.location.z < plane_z:
             raise AssertionError("コマプレビューより後ろへ移した効果線表示実体が背面にありません")
+
+        from bmanga_dev_coma_content_z.io import export_stack_order
+
+        fake_layers = [
+            SimpleNamespace(name="balloon", stack_uid=balloon_uid, stack_parent_key=parent_key),
+            SimpleNamespace(name="preview", stack_uid=preview_uid, stack_parent_key=parent_key),
+            SimpleNamespace(name="effect", stack_uid=effect_uid, stack_parent_key=parent_key),
+        ]
+        ordered = export_stack_order.apply_coma_preview_order(work, page, fake_layers)
+        if [layer.name for layer in ordered] != ["effect", "preview", "balloon"]:
+            raise AssertionError(f"ページ画像のプレビュー境界順が不正です: {[layer.name for layer in ordered]}")
+        front_only = export_stack_order.apply_coma_preview_order(
+            work, page, fake_layers, side="front",
+        )
+        back_only = export_stack_order.apply_coma_preview_order(
+            work, page, fake_layers, side="back",
+        )
+        if [layer.name for layer in front_only] != ["balloon"]:
+            raise AssertionError("コマファイル前面用画像に背面レイヤーが混入しました")
+        if [layer.name for layer in back_only] != ["effect"]:
+            raise AssertionError("コマファイル背面用画像に前面レイヤーが混入しました")
+
+        from bmanga_dev_coma_content_z.io import export_pipeline
+
+        for index, title in enumerate(("paper", "background", "render")):
+            fill = scene.bmanga_fill_layers.add()
+            fill.id = f"reserved_name_{index}"
+            fill.title = title
+            fill.parent_kind = "coma"
+            fill.parent_key = parent_key
+        options = export_pipeline.ExportOptions(
+            area="canvas",
+            dpi_override=32,
+            include_paper_color=False,
+            include_coma_backgrounds=False,
+            include_coma_previews=False,
+            include_nombre=False,
+            include_work_info=False,
+            include_tombo=False,
+        )
+        reserved_layers = [
+            layer
+            for layer in export_pipeline.build_page_layers(work, page, options)
+            if tuple(getattr(layer, "group_path", ()) or ()) != ("paper",)
+        ]
+        reserved_names = {layer.name for layer in reserved_layers}
+        if not {"paper", "background", "render"}.issubset(reserved_names):
+            raise AssertionError(f"予約語と同名のユーザーレイヤーが消えました: {reserved_names}")
+
+        from bmanga_dev_coma_content_z.utils import layer_object_model
+
+        folder = work.layer_folders.add()
+        folder.id = "preview_back_folder"
+        folder.title = "プレビュー背面フォルダ"
+        folder.parent_key = parent_key
+        folder.expanded = False
+        layer_object_model.set_folder_id(effect_obj, folder.id)
+        stack = layer_stack_utils.sync_layer_stack(bpy.context, preserve_active_index=True)
+        folder_uid = layer_stack_utils.target_uid("layer_folder", folder.id)
+        folder_index = next(i for i, item in enumerate(stack) if layer_stack_utils.stack_item_uid(item) == folder_uid)
+        preview_index = next(i for i, item in enumerate(stack) if layer_stack_utils.stack_item_uid(item) == preview_uid)
+        if folder_index < preview_index:
+            preview_index -= 1
+        stack.move(folder_index, min(preview_index + 1, len(stack) - 1))
+        layer_stack_utils.apply_stack_order(bpy.context)
+        layer_object_sync.assign_per_page_z_ranks(scene, work)
+        if not effect_obj.location.z < plane_z:
+            raise AssertionError("折り畳みフォルダをプレビュー下へ移しても中身が背面になりません")
 
         print("BMANGA_COMA_CONTENT_Z_ORDER_OK", flush=True)
     finally:

@@ -578,6 +578,22 @@ def main() -> None:
             raise AssertionError("コマプレビュー行が対象コマの配下にありません")
         if int(getattr(preview_item, "depth", -1)) != 2:
             raise AssertionError("コマプレビュー行のインデント深度が不正です")
+        preview_resolved = layer_stack_utils.resolve_stack_item(context, preview_item)
+        preview_plane = preview_resolved.get("object") if preview_resolved else None
+        preview_panel = preview_resolved.get("target") if preview_resolved else None
+        if preview_plane is None or not bool(getattr(preview_plane, "hide_render", False)):
+            raise AssertionError("表示専用のコマプレビュー面がレンダー除外されていません")
+        if "FINISHED" not in bpy.ops.bmanga.layer_stack_toggle_visibility(index=preview_index):
+            raise AssertionError("コマプレビュー行の非表示切替に失敗しました")
+        if bool(getattr(preview_panel, "paper_visible", True)) or not bool(preview_plane.hide_viewport):
+            raise AssertionError("コマプレビュー行を非表示にしても面が隠れません")
+        preview_index, preview_item = _find_stack_item(context, coma_preview_uid)
+        if "FINISHED" not in bpy.ops.bmanga.layer_stack_toggle_visibility(index=preview_index):
+            raise AssertionError("コマプレビュー行の再表示に失敗しました")
+        if not bool(getattr(preview_panel, "paper_visible", False)) or bool(preview_plane.hide_viewport):
+            raise AssertionError("コマプレビュー行を再表示しても面が表示されません")
+        if not bool(preview_plane.hide_render):
+            raise AssertionError("コマプレビュー再表示でレンダー除外が解除されました")
 
         _move_uid_before(context, effect_uid, balloon_uid)
         stack = _stack(context)

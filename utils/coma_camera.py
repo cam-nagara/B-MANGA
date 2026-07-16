@@ -52,6 +52,7 @@ from .coma_camera_refs import (
 _logger = log.get_logger(__name__)
 _OPACITY_PERCENT_MIGRATION_PROP = "bmanga_coma_camera_opacity_percent_units_v1"
 _OWN_PAGE_DEFAULT_OPACITY_MIGRATION_PROP = "bmanga_coma_camera_own_page_opacity_default_v1"
+_DEFAULT_DEPTH_PROP = "bmanga_default_camera_depth"
 HATCHING_IMAGE_NAME = "ハッチング間隔.png"
 HATCHING_ASSET_PATH = Path(__file__).resolve().parents[1] / "assets" / HATCHING_IMAGE_NAME
 
@@ -325,6 +326,7 @@ def configure_camera_backgrounds(scene, camera, refs: Iterable[ReferenceImage], 
             img["bmanga_full_page_mask"] = bool(ref.full_page_mask)
             img["bmanga_page_count"] = int(ref.page_count)
             img["bmanga_render_side"] = ref.render_side
+            img[_DEFAULT_DEPTH_PROP] = "FRONT"
         except Exception:  # noqa: BLE001
             pass
         bg = data.background_images.new()
@@ -803,10 +805,19 @@ def ensure_hatching_background(context):
 
 
 def set_koma_background_depth(context, *, back: bool) -> None:
-    depth = "BACK" if back else "FRONT"
     for bg in _iter_camera_backgrounds(context):
         if _background_matches_kind(bg, "koma") or _background_matches_kind(bg, "own_page"):
+            depth = "BACK" if back else _background_default_depth(bg)
             _set_bg_attr(bg, "display_depth", depth)
+
+
+def _background_default_depth(bg) -> str:
+    img = getattr(bg, "image", None)
+    try:
+        depth = str(img.get(_DEFAULT_DEPTH_PROP, "FRONT") or "FRONT") if img is not None else "FRONT"
+    except Exception:  # noqa: BLE001
+        depth = "FRONT"
+    return depth if depth in {"FRONT", "BACK"} else "FRONT"
 
 
 def toggle_backgrounds_by_kind(context, kind: str) -> bool:
@@ -1486,6 +1497,7 @@ def _load_overview_bg(
         img["bmanga_page_id"] = page_id
         img["bmanga_page_count"] = int(page_count)
         img["bmanga_render_side"] = str(render_side)
+        img[_DEFAULT_DEPTH_PROP] = str(depth)
     except Exception:  # noqa: BLE001
         pass
     bg = cam_data.background_images.new()

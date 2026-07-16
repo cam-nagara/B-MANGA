@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
@@ -55,6 +56,7 @@ def _load_native_guard():
 
 NATIVE_GUARD = _load_native_guard()
 SIDECAR_GUARD = sys.modules["project_content_sidecar_save_guard"]
+BASELINE = sys.modules["project_content_save_baseline"]
 
 
 def _write_json(path: Path, value) -> None:
@@ -163,6 +165,27 @@ def test_native_cleanup_stale_transactions_removes_only_old_journal_less_dirs(tm
     assert invalid_name_dir.is_dir()
 
 
+def test_native_cleanup_removes_only_old_copying_files_from_actual_source_tree(tmp_path):
+    work = _work(tmp_path, "CopyingCleanup")
+    source_dir = work / "p0001"
+    source_dir.mkdir()
+    old_copy = source_dir / ".page.blend.random.native-copying"
+    recent_copy = source_dir / ".page.blend.recent.native-copying"
+    invalid = source_dir / "page.blend.random.native-copying"
+    for path in (old_copy, recent_copy, invalid):
+        path.write_bytes(b"partial")
+    old_stamp = (datetime.now(timezone.utc) - timedelta(hours=25)).timestamp()
+    os.utime(old_copy, (old_stamp, old_stamp))
+    os.utime(invalid, (old_stamp, old_stamp))
+
+    removed = NATIVE_GUARD.cleanup_stale_transactions(work)
+
+    assert old_copy in removed
+    assert not old_copy.exists()
+    assert recent_copy.is_file()
+    assert invalid.is_file()
+
+
 # --- (c) sidecar側 cleanup_stale_transactions --------------------------
 
 
@@ -213,3 +236,78 @@ def test_recover_pending_native_saves_also_cleans_up_both_stale_bases(tmp_path):
 
     assert not (native_base / native_old).exists()
     assert not (sidecar_base / sidecar_old).exists()
+
+
+def test_interrupted_existing_work_blend_can_be_restored_before_open(tmp_path):
+    work = _work(tmp_path, "MissingWorkBlend")
+    source = work / "work.blend"
+    source.write_bytes(b"latest-work")
+    token = NATIVE_GUARD.begin_native_save(source, 0)
+    assert token is not None and token.requires_restore
+    assert not source.exists()
+    NATIVE_GUARD._release(token)
+
+    restored = NATIVE_GUARD.recover_pending_native_saves(work)
+
+    assert source in restored
+    assert source.read_bytes() == b"latest-work"
+
+
+def test_native_save_io_failure_restores_disk_without_reloading_memory(tmp_path):
+    work = _work(tmp_path, "LocalSaveFailure")
+    source = work / "work.blend"
+    source.write_bytes(b"old-blend")
+    BASELINE.capture_loaded_baseline(work, source)
+    token = NATIVE_GUARD.begin_native_save(source, 0)
+    assert token is not None and not token.requires_restore
+    NATIVE_GUARD.prepare_native_save_sidecars(token, (work / "work.json",))
+    source.write_bytes(b"partial-new-blend")
+    (work / "work.json").write_text('{"detailDataVersion": 1}', encoding="utf-8")
+
+    result = NATIVE_GUARD.finish_native_save(token, native_save_succeeded=False)
+
+    assert result.restored is True
+    assert result.reload_required is False
+    assert source.read_bytes() == b"old-blend"
+    retry = NATIVE_GUARD.begin_native_save(source, 0)
+    assert retry is not None and not retry.requires_restore
+    NATIVE_GUARD.finish_native_save(retry, native_save_succeeded=False)
+
+
+def test_external_conflict_restore_still_requires_reload_when_status_write_fails(tmp_path, monkeypatch):
+    work = _work(tmp_path, "ExternalConflict")
+    source = work / "work.blend"
+    source.write_bytes(b"loaded")
+    BASELINE.capture_loaded_baseline(work, source)
+    source.write_bytes(b"newest-external")
+    token = NATIVE_GUARD.begin_native_save(source, 0)
+    assert token is not None and token.reload_after_restore
+    source.write_bytes(b"stale-memory-save")
+    monkeypatch.setattr(
+        NATIVE_GUARD,
+        "atomic_write_json",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("journal locked")),
+    )
+
+    result = NATIVE_GUARD.finish_native_save(token, native_save_succeeded=True)
+
+    assert result.restored is True
+    assert result.reload_required is True
+    assert source.read_bytes() == b"newest-external"
+
+
+def test_sidecar_restore_prioritizes_physical_files_when_status_write_fails(tmp_path, monkeypatch):
+    work = _work(tmp_path, "SidecarStatusFailure")
+    source = work / "page.json"
+    source.write_bytes(b"old-sidecar")
+    token = SIDECAR_GUARD.begin_sidecar_save(work, (source,))
+    SIDECAR_GUARD.mark_sidecar_writes_started(token)
+    source.write_bytes(b"new-sidecar")
+    monkeypatch.setattr(
+        SIDECAR_GUARD,
+        "atomic_write_json",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("journal locked")),
+    )
+
+    assert SIDECAR_GUARD.restore_sidecars(token) is True
+    assert source.read_bytes() == b"old-sidecar"

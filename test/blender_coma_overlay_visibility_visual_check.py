@@ -9,6 +9,7 @@ import shutil
 import sys
 import traceback
 from pathlib import Path
+from types import SimpleNamespace
 
 import bpy
 from bpy.app.handlers import persistent
@@ -105,32 +106,112 @@ def _assert_visible(scene, label: str, *, own: bool, koma: bool, name: bool) -> 
     return counts
 
 
-def _assert_koma_overlay_is_content_only(scene) -> dict[str, float | str]:
+def _assert_koma_overlay_is_content_only(scene) -> dict:
     """The current-coma overlay must not be an opaque stale 3D page preview."""
     from PIL import Image
 
     backgrounds = [bg for bg in _camera_backgrounds(scene) if _kind(bg) == "koma"]
-    if len(backgrounds) != 1:
-        raise AssertionError(f"コマ内レイヤー背景は1件必要です: {len(backgrounds)}")
-    image = getattr(backgrounds[0], "image", None)
-    path = Path(bpy.path.abspath(str(getattr(image, "filepath", "") or "")))
-    if not path.is_file():
-        raise AssertionError(f"コマ内レイヤー背景PNGがありません: {path}")
-    with Image.open(path) as opened:
-        alpha = opened.convert("RGBA").getchannel("A")
-        histogram = alpha.histogram()
-        total = max(1, alpha.width * alpha.height)
-        nonzero_ratio = sum(histogram[1:]) / total
-        opaque_ratio = histogram[255] / total
+    if len(backgrounds) != 2:
+        raise AssertionError(f"コマ内レイヤー背景は前面・背面の2件必要です: {len(backgrounds)}")
+    entries = []
+    for bg in backgrounds:
+        image = getattr(bg, "image", None)
+        path = Path(bpy.path.abspath(str(getattr(image, "filepath", "") or "")))
+        if not path.is_file():
+            raise AssertionError(f"コマ内レイヤー背景PNGがありません: {path}")
+        with Image.open(path) as opened:
+            alpha = opened.convert("RGBA").getchannel("A")
+            histogram = alpha.histogram()
+            total = max(1, alpha.width * alpha.height)
+            entries.append({
+                "path": str(path),
+                "depth": str(getattr(bg, "display_depth", "") or ""),
+                "nonzero_alpha_ratio": sum(histogram[1:]) / total,
+                "opaque_alpha_ratio": histogram[255] / total,
+            })
+    nonzero_ratio = sum(entry["nonzero_alpha_ratio"] for entry in entries)
     if not 0.0 < nonzero_ratio < 0.5:
         raise AssertionError(
             f"コマ内レイヤー背景が透明な作品要素だけではありません: {nonzero_ratio:.6f}"
         )
-    return {
-        "path": str(path),
-        "nonzero_alpha_ratio": nonzero_ratio,
-        "opaque_alpha_ratio": opaque_ratio,
-    }
+    if {entry["depth"] for entry in entries} != {"FRONT", "BACK"}:
+        raise AssertionError(f"コマ内レイヤーが前面・背面へ分離されていません: {entries}")
+    return {"entries": entries, "nonzero_alpha_ratio": nonzero_ratio}
+
+
+def _assert_spread_right_alignment(scene) -> dict:
+    checked = []
+    for bg in _camera_backgrounds(scene):
+        if _kind(bg) not in {"own_page", "koma"}:
+            continue
+        image = getattr(bg, "image", None)
+        page_count = int(image.get("bmanga_page_count", 1)) if image is not None else 1
+        side = str(image.get("bmanga_render_side", "full") or "full") if image is not None else "full"
+        if page_count != 2 or side != "right":
+            raise AssertionError(f"見開き右コマの下絵メタデータが不正です: count={page_count}, side={side}")
+        offset = tuple(float(value) for value in getattr(bg, "offset", (0.0, 0.0)))
+        scale = float(getattr(bg, "scale", 0.0))
+        if abs(scale - 2.0) > 1e-6 or abs(offset[0] + 0.5) > 1e-6:
+            raise AssertionError(f"見開き右コマの縮尺・位置が不正です: scale={scale}, offset={offset}")
+        checked.append({"kind": _kind(bg), "scale": scale, "offset": list(offset)})
+    if len(checked) < 3:
+        raise AssertionError(f"見開き下絵の検証数が不足しています: {checked}")
+    return {"checked": checked}
+
+
+def _scene_content_signature(scene) -> tuple:
+    work = scene.bmanga_work
+    return (
+        tuple(sorted((obj.name, int(obj.as_pointer())) for obj in scene.objects)),
+        len(work.pages),
+        sum(len(page.balloons) for page in work.pages),
+        sum(len(page.texts) for page in work.pages),
+    )
+
+
+def _assert_safe_fallbacks(scene, work, page_id: str, coma_id: str) -> dict:
+    from bmanga_dev_coma_overlay_visibility.io import export_pipeline
+    from bmanga_dev_coma_overlay_visibility.utils import coma_camera, coma_camera_refs
+
+    fake_work = SimpleNamespace(
+        loaded=True,
+        work_dir=str(OUT_DIR / "NoSafeMask.bmanga"),
+        pages=[],
+        paper=work.paper,
+    )
+    if coma_camera_refs._collect_existing_reference_images(fake_work, page_id, coma_id):
+        raise AssertionError("安全なコマ抜き画像が無いのに旧3D画像へフォールバックしました")
+
+    camera_data = bpy.data.cameras.new("FallbackSafetyCamera")
+    camera_obj = bpy.data.objects.new("FallbackSafetyCamera", camera_data)
+    scene.collection.objects.link(camera_obj)
+    user_image = bpy.data.images.new("UserCameraBackground", 8, 8)
+    managed_image = bpy.data.images.new("ManagedCameraBackground", 8, 8)
+    managed_image[coma_camera.MANAGED_IMAGE_PROP] = True
+    user_bg = camera_data.background_images.new()
+    user_bg.image = user_image
+    managed_bg = camera_data.background_images.new()
+    managed_bg.image = managed_image
+    coma_camera.configure_camera_backgrounds(scene, camera_obj, (), page_id, coma_id)
+    if len(camera_data.background_images) != 1 or camera_data.background_images[0].image != user_image:
+        raise AssertionError("生成失敗時に古い管理下絵だけを安全に消せません")
+
+    panel = next(panel for page in work.pages if page.id == page_id for panel in page.comas if panel.id == coma_id)
+    original_has_pillow = export_pipeline.has_pillow
+    export_pipeline.has_pillow = lambda: False
+    try:
+        empty_data = bpy.data.cameras.new("NoPillowFallbackCamera")
+        coma_camera._add_own_page_backgrounds(
+            empty_data, work, page_id, coma_id, panel,
+            300.0, float(work.paper.canvas_height_mm), 1.0,
+            1.0, True, 1.0, True, "FRONT",
+            page_count=2, render_side="right",
+        )
+        if len(empty_data.background_images) != 0:
+            raise AssertionError("Pillow不在時に穴あけ前のページ画像を表示しました")
+    finally:
+        export_pipeline.has_pillow = original_has_pillow
+    return {"legacy_fallback_refs": 0, "managed_after_empty": 0, "user_after_empty": 1}
 
 
 def _first_view3d():
@@ -210,16 +291,16 @@ def _exercise_visibility(scene, coma_camera) -> dict[str, dict[str, int]]:
     coma_camera.apply_coma_overlay_background_visibility(bpy.context, scene=scene)
     depths_front_again = _display_depths(scene, "koma")
     own_depths_front_again = _display_depths(scene, "own_page")
-    if not depths_front or not all(depth == "FRONT" for depth in depths_front):
-        raise AssertionError(f"コマ内レイヤーが既定で前面になっていません: {depths_front}")
+    if sorted(depths_front) != ["BACK", "FRONT"]:
+        raise AssertionError(f"コマ内レイヤーがプレビュー境界で分離されていません: {depths_front}")
     if not own_depths_front or not all(depth == "FRONT" for depth in own_depths_front):
         raise AssertionError(f"ページ画像が既定で前面になっていません: {own_depths_front}")
     if not depths_back or not all(depth == "BACK" for depth in depths_back):
         raise AssertionError(f"コマを後ろにするONでコマ内レイヤーが背面になっていません: {depths_back}")
     if not own_depths_back or not all(depth == "BACK" for depth in own_depths_back):
         raise AssertionError(f"コマを後ろにするONでページ画像が背面になっていません: {own_depths_back}")
-    if not depths_front_again or not all(depth == "FRONT" for depth in depths_front_again):
-        raise AssertionError(f"コマを後ろにするOFFでコマ内レイヤーが前面へ戻っていません: {depths_front_again}")
+    if sorted(depths_front_again) != ["BACK", "FRONT"]:
+        raise AssertionError(f"コマを後ろにするOFFで前面・背面分離へ戻りません: {depths_front_again}")
     if not own_depths_front_again or not all(depth == "FRONT" for depth in own_depths_front_again):
         raise AssertionError(f"コマを後ろにするOFFでページ画像が前面へ戻っていません: {own_depths_front_again}")
     states["koma_depth"] = {
@@ -454,11 +535,17 @@ def _after_coma_open() -> None:
             coma_id=coma_id,
             generate_references=True,
         )
+        before_refresh = _scene_content_signature(scene)
         coma_camera.refresh_coma_page_overview(bpy.context)
+        after_refresh = _scene_content_signature(scene)
+        if after_refresh != before_refresh:
+            raise AssertionError("背景生成が現在のコマSceneの実体・メタデータを変更しました")
         coma_camera.apply_coma_overlay_background_visibility(bpy.context, scene=scene)
         if not any(_kind(bg) == "koma" for bg in _camera_backgrounds(scene)):
             raise AssertionError("本番経路がコマ内レイヤー背景を生成していません")
         content_only = _assert_koma_overlay_is_content_only(scene)
+        spread_alignment = _assert_spread_right_alignment(scene)
+        safe_fallbacks = _assert_safe_fallbacks(scene, work, page_id, coma_id)
         states = _exercise_visibility(scene, coma_camera)
         guide = _exercise_paper_guide_front(
             scene, work, page_id, coma_id, coma_camera, overlay_coma_page_labels,
@@ -471,6 +558,8 @@ def _after_coma_open() -> None:
             "page_id": page_id,
             "coma_id": coma_id,
             "content_only": content_only,
+            "spread_alignment": spread_alignment,
+            "safe_fallbacks": safe_fallbacks,
             "states": states,
             "guide": guide,
             "fisheye": fisheye,
@@ -502,7 +591,49 @@ def _run() -> None:
             raise AssertionError(f"ページ追加に失敗しました: {result}")
     work = bpy.context.scene.bmanga_work
     work.active_page_index = 1
-    work.pages[1].active_coma_index = 0
+    for page_id in ("p0002", "p0003"):
+        work = bpy.context.scene.bmanga_work
+        page_index = next(index for index, page in enumerate(work.pages) if page.id == page_id)
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=page_index)
+        if result != {"FINISHED"}:
+            raise AssertionError(f"見開き元ページを開けません: {page_id}: {result}")
+        result = bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
+        if "FINISHED" not in result:
+            raise AssertionError(f"見開き元ページを保存できません: {page_id}: {result}")
+    work = bpy.context.scene.bmanga_work
+    work.active_page_index = 1
+    result = bpy.ops.bmanga.pages_merge_spread("EXEC_DEFAULT", left_index=1)
+    if result != {"FINISHED"}:
+        raise AssertionError(f"見開き結合に失敗しました: {result}")
+    work = bpy.context.scene.bmanga_work
+    work.active_page_index = 1
+    spread_page = work.pages[1]
+    right_index = max(
+        range(len(spread_page.comas)),
+        key=lambda index: float(spread_page.comas[index].rect_x_mm),
+    )
+    panel = spread_page.comas[right_index]
+    spread_page.active_coma_index = right_index
+    parent_key = f"{spread_page.id}:{panel.id}"
+    balloon = spread_page.balloons.add()
+    balloon.id = "overlay_balloon"
+    balloon.title = "表示確認フキダシ"
+    balloon.parent_kind = "coma"
+    balloon.parent_key = parent_key
+    balloon.x_mm = panel.rect_x_mm + 12.0
+    balloon.y_mm = panel.rect_y_mm + 15.0
+    balloon.width_mm = 28.0
+    balloon.height_mm = 18.0
+    text = spread_page.texts.add()
+    text.id = "overlay_text"
+    text.title = "表示確認テキスト"
+    text.body = "確認"
+    text.parent_kind = "coma"
+    text.parent_key = parent_key
+    text.x_mm = balloon.x_mm + 7.0
+    text.y_mm = balloon.y_mm + 4.0
+    text.width_mm = 14.0
+    text.height_mm = 10.0
     bpy.context.scene.bmanga_page_preview_range_mode = "ALL"
     result = bpy.ops.bmanga.work_save()
     if result != {"FINISHED"}:

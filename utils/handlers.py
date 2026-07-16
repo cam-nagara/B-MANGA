@@ -94,6 +94,16 @@ def _reload_fallback_target(path: Path) -> Path | None:
     return candidate
 
 
+def _open_native_reload_target(path: Path) -> None:
+    _suspend_keymap_for_native_reload(disable_now=False)
+    try:
+        result = bpy.ops.wm.open_mainfile(filepath=str(path), load_ui=False)
+        if "FINISHED" not in result:
+            raise RuntimeError("最新の作品データを再読込できませんでした")
+    finally:
+        _suspend_keymap_for_native_reload(disable_now=False)
+
+
 def _reload_missing_target(path: Path, state: dict, *, last_error: str = "") -> float | None:
     """再読込対象が未出現・一時読込不能の間の待機処理."""
 
@@ -103,11 +113,7 @@ def _reload_missing_target(path: Path, state: dict, *, last_error: str = "") -> 
     fallback = _reload_fallback_target(path)
     if fallback is not None:
         try:
-            _suspend_keymap_for_native_reload(disable_now=False)
-            result = bpy.ops.wm.open_mainfile(filepath=str(fallback), load_ui=False)
-            _suspend_keymap_for_native_reload(disable_now=False)
-            if "FINISHED" not in result:
-                raise RuntimeError("作品ファイルを開き直せませんでした")
+            _open_native_reload_target(fallback)
             _show_native_save_notice(
                 title="作品ファイルを開き直しました",
                 lines=(
@@ -144,15 +150,10 @@ def _native_save_reload_tick(path: Path, generation: int, state: dict) -> float 
     if not path.is_file():
         return _reload_missing_target(path, state)
     try:
-        _suspend_keymap_for_native_reload(disable_now=False)
-        result = bpy.ops.wm.open_mainfile(filepath=str(path), load_ui=False)
-        if "FINISHED" not in result:
-            raise RuntimeError("最新の作品データを再読込できませんでした")
+        _open_native_reload_target(path)
     except Exception as exc:  # noqa: BLE001
         _logger.exception("native save recovery reload failed")
         return _reload_missing_target(path, state, last_error=str(exc))
-    finally:
-        _suspend_keymap_for_native_reload(disable_now=False)
     return None
 
 
