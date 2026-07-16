@@ -84,7 +84,9 @@ def _make_pair(context):
 
 
 def _assert_fit(balloon, *, offset_x: float, offset_y: float,
-                padding_x: float, padding_y: float) -> None:
+                padding_x: float, padding_y: float,
+                text_center_x: float = 35.0,
+                text_center_y: float = 35.0) -> None:
     expected_width = 30.0 + padding_x * 2.0
     expected_height = 10.0 + padding_y * 2.0
     _close(balloon.linked_text_offset_x_mm, offset_x)
@@ -93,8 +95,8 @@ def _assert_fit(balloon, *, offset_x: float, offset_y: float,
     _close(balloon.linked_text_padding_y_mm, padding_y)
     _close(balloon.width_mm, expected_width)
     _close(balloon.height_mm, expected_height)
-    _close(balloon.x_mm, 35.0 + offset_x - expected_width * 0.5)
-    _close(balloon.y_mm, 35.0 + offset_y - expected_height * 0.5)
+    _close(balloon.x_mm, text_center_x + offset_x - expected_width * 0.5)
+    _close(balloon.y_mm, text_center_y + offset_y - expected_height * 0.5)
 
 
 def _assert_direct_setting_refits(balloon, text) -> None:
@@ -187,6 +189,49 @@ def _assert_tool_selector_switches_values(context, balloon) -> None:
         offset_y=5.0,
         padding_x=7.0,
         padding_y=8.0,
+    )
+
+
+def _assert_new_balloon_refits_after_auto_link(context, page) -> None:
+    text = page.texts.add()
+    text.id = "new_balloon_auto_link_text"
+    text.body = "自動リンク"
+    text.x_mm = 40.0
+    text.y_mm = 50.0
+    text.width_mm = 30.0
+    text.height_mm = 10.0
+
+    context.window_manager.bmanga_balloon_tool_preset_selector = "custom:余白A"
+    balloon_op = _sub("operators.balloon_op")
+    tool_class = balloon_op.BMANGA_OT_balloon_tool
+
+    class ToolProbe:
+        _drag_page_for_create = tool_class._drag_page_for_create
+        _clear_drag_state = tool_class._clear_drag_state
+        _clear_tail_polyline_state = tool_class._clear_tail_polyline_state
+        _push_undo_step = tool_class._push_undo_step
+
+    operator = ToolProbe()
+    operator._drag_moved = True
+    operator._drag_page_id = str(page.id)
+    operator._drag_start_x = 35.0
+    operator._drag_start_y = 45.0
+    operator._drag_last_x = 75.0
+    operator._drag_last_y = 65.0
+    operator._drag_parent_kind = "page"
+    operator._drag_parent_key = ""
+    tool_class._finish_create_preview(operator, context)
+
+    balloon = page.balloons[-1]
+    assert text.parent_balloon_id == balloon.id
+    _assert_fit(
+        balloon,
+        offset_x=1.0,
+        offset_y=-2.0,
+        padding_x=2.0,
+        padding_y=3.0,
+        text_center_x=55.0,
+        text_center_y=55.0,
     )
 
 
@@ -288,6 +333,7 @@ def main() -> None:
         _assert_single_fallback_and_ambiguous_links(context, page)
         _assert_shared_pair_refits(context)
         _assert_tool_selector_switches_values(context, balloon)
+        _assert_new_balloon_refits_after_auto_link(context, page)
         _assert_detail_switch_refits(context, page, balloon)
         _assert_preset_storage(context, page, balloon_presets, balloon)
         print("BMANGA_LINKED_BALLOON_PRESET_PADDING_OK")

@@ -1898,7 +1898,14 @@ class BMANGA_OT_balloon_tool(Operator):
                                 entry,
                                 f"custom:{preset_custom}",
                             )
-                    _attach_texts_enclosed_by_balloon(context, page, entry)
+                            _attach_texts_enclosed_by_balloon(context, page, entry)
+                            text_balloon_link.fit_balloon_to_linked_text(
+                                get_work(context),
+                                entry,
+                                page=page,
+                            )
+                    else:
+                        _attach_texts_enclosed_by_balloon(context, page, entry)
                     balloon_curve_object.on_balloon_entry_changed(entry)
                     self._push_undo_step("B-MANGA: フキダシ作成")
         else:
