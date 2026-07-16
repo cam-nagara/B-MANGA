@@ -319,6 +319,8 @@ def _coma_stack_order(scene, work, coma_key: str) -> tuple[list[str], str]:
 
 
 def _assign_coma_item_z(scene, work, coma_key: str, coma, items: list[tuple[int, bpy.types.Object]]) -> int:
+    from . import layer_folder as lf
+
     page_id = coma_key.split(":", 1)[0]
     order, preview_uid = _coma_stack_order(scene, work, coma_key)
     if not order:
@@ -345,16 +347,31 @@ def _assign_coma_item_z(scene, work, coma_key: str, coma, items: list[tuple[int,
             if layer_stack_uid in index_by_uid:
                 container_index_by_key[str(getattr(item, "key", "") or "")] = index_by_uid[layer_stack_uid]
 
+    def _container_stack_index(key: str) -> int | None:
+        """折り畳みで消えたフォルダ行を、一覧に残る最寄りの祖先へ寄せる。"""
+        current = str(key or "")
+        seen: set[str] = set()
+        while current and current not in seen:
+            found = container_index_by_key.get(current)
+            if found is not None:
+                return found
+            seen.add(current)
+            folder = lf.find_folder(work, current)
+            if folder is None:
+                break
+            current = lf.folder_parent_key(folder)
+        return None
+
     def _object_stack_index(obj):
         uid = _stack_uid_for_coma_object(obj, page_id)
         direct = index_by_uid.get(uid)
         if direct is not None:
             return direct
         folder_key = str(obj.get(on.PROP_FOLDER_ID, "") or "")
-        folder_index = container_index_by_key.get(folder_key)
+        folder_index = _container_stack_index(folder_key)
         if folder_index is not None:
             return folder_index
-        return container_index_by_key.get(str(obj.get(on.PROP_PARENT_KEY, "") or ""))
+        return _container_stack_index(str(obj.get(on.PROP_PARENT_KEY, "") or ""))
 
     preview_index = index_by_uid.get(preview_uid)
 

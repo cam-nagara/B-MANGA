@@ -67,9 +67,18 @@ def is_kinsoku_end(ch: str) -> bool:
     return ch in "「『（【〈《〔［"
 
 
+# 自動縦中横を無効にした時の半角 ASCII は、縦組みの既定どおり横倒しにする。
+# 自動縦中横が有効なら下の ``_TATECHUYOKO_ASCII_CHARS`` が先に範囲化する
+# ため、通常は Meldex と同じく横組みの 1 セルとして正立する。
+_ASCII_VERTICAL_ROTATE_CHARS = "".join(chr(code) for code in range(0x21, 0x7F))
+
 _VERTICAL_ROTATE_CHARS = frozenset(
-    "…‥～〜ー―–—─－"  # 三点リーダ・波ダッシュ・長音・ダッシュ類
-    "「」『』（）〈〉《》【】〔〕〖〗〘〙〚〛［］｛｝"  # 括弧類 (回転で縦組み用字形相当になる)
+    _ASCII_VERTICAL_ROTATE_CHARS
+    + "…‥～〜ー―–—─－"  # 三点リーダ・波ダッシュ・長音・ダッシュ類
+    + "「」『』（）〈〉《》【】〔〕〖〗〘〙〚〛［］｛｝"  # 括弧類
+    # 全角 ASCII 約物のうち、横書き字形を 90° 回して縦組み相当にするもの。
+    # ！・？・＋など正立または回転対称の記号は含めない。
+    + "＂＇／：；＜＝＞＼＾＿｀｜"
 )
 
 
@@ -105,29 +114,28 @@ def vertical_draw_offset_em(ch: str) -> tuple[float, float]:
     return (0.0, 0.0)
 
 
+# Meldex の自動縦中横は、半角英数字に加えて句読点・括弧・演算子等を含む
+# 連続 ASCII 記号を 1 つの横組みセルにする。B-MANGA でも同じ入力を別の
+# 見た目にしないため、空白を除く printable ASCII 全体を対象にする。
+_TATECHUYOKO_ASCII_CHARS = frozenset(chr(code) for code in range(0x21, 0x7F))
+
+
 def is_tatechuyoko_candidate(chars: str) -> bool:
-    """連続した半角英数字の塊が縦中横の候補か (2〜4 文字の半角数字)."""
-    if not chars or len(chars) > 4:
-        return False
-    return all(ch.isascii() and ch.isalnum() for ch in chars)
+    """連続する空白以外の printable ASCII が縦中横の候補か."""
+    return bool(chars) and all(ch in _TATECHUYOKO_ASCII_CHARS for ch in chars)
 
 
 def _is_tatechuyoko_char(ch: str) -> bool:
-    """自動縦中横の対象文字か (半角英数字 + ! ?)."""
-    if not ch:
-        return False
-    if ch.isascii() and ch.isalnum():
-        return True
-    return ch in "!?"
+    """自動縦中横の対象文字か (空白以外の printable ASCII)."""
+    return ch in _TATECHUYOKO_ASCII_CHARS
 
 
 def auto_tatechuyoko_ranges(text: str) -> list[tuple[int, int]]:
     """本文から自動縦中横の対象範囲 (start, length) を検出する.
 
-    半角英数字 + '!' '?' の連続ランのうち、2〜4 文字のものだけを縦中横の
-    候補として返す。1 文字のラン (単独文字はそのまま正立) と 5 文字以上の
-    ラン (縦積みのまま) は対象外。ランはそのまま (途中で区切らず) 判定する
-    ため、"no1234567" のような 5 文字以上のランは丸ごと対象外になる。
+    空白以外の printable ASCII の連続ランを、文字数にかかわらず縦中横の
+    候補として返す。Meldex と同様に句読点・引用符・括弧・演算子等も含め、
+    途中で分割しない。空白・改行・全角文字でランを区切る。
     """
     ranges: list[tuple[int, int]] = []
     text = text or ""
@@ -140,10 +148,7 @@ def auto_tatechuyoko_ranges(text: str) -> list[tuple[int, int]]:
         start = i
         while i < n and _is_tatechuyoko_char(text[i]):
             i += 1
-        length = i - start
-        if 2 <= length <= 4:
-            ranges.append((start, length))
-        # length == 1 または length >= 5 は対象外 (縦積みのまま)
+        ranges.append((start, i - start))
     return ranges
 
 

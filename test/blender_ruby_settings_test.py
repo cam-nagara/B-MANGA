@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import shutil
 import sys
@@ -39,23 +40,27 @@ def _find_ja_font() -> str:
     return ""
 
 
-def _save_on_white(image, path: Path) -> None:
+def _save_on_white(image, path: Path):
     from PIL import Image
     base = Image.new("RGBA", image.size, (255, 255, 255, 255))
     base.alpha_composite(image)
-    base.convert("RGB").save(path)
+    result = base.convert("RGB")
+    result.save(path)
+    return result
 
 
-def _render_entry(entry, label: str) -> None:
+def _render_entry(entry, label: str) -> str:
+    from PIL import Image, ImageChops
     from bmanga_dev.utils import text_real_object
     rendered = text_real_object._render_entry_to_pillow(entry)
-    if rendered is None:
-        print(f"  SKIP: {label}")
-        return
+    assert rendered is not None, f"Pillow描画が利用できません: {label}"
     pil_image = rendered[0]
     out_path = OUT_DIR / f"{label}.png"
-    _save_on_white(pil_image, out_path)
+    rgb = _save_on_white(pil_image, out_path)
+    blank = Image.new("RGB", rgb.size, (255, 255, 255))
+    assert ImageChops.difference(rgb, blank).getbbox() is not None, f"空画像です: {label}"
     print(f"  OK: {label} ({pil_image.size[0]}x{pil_image.size[1]})")
+    return hashlib.sha256(rgb.tobytes()).hexdigest()
 
 
 def main() -> None:
@@ -103,13 +108,16 @@ def main() -> None:
         _render_entry(e1b, "02_gap_05mm")
 
         # --- 2: 中付き vs 肩付き ---
-        e2a = _make_entry("center", "猫", ruby_align="center")
-        text_style.apply_ruby_span(e2a, 0, 1, "ねこ", "group")
-        _render_entry(e2a, "03_align_center")
+        e2a = _make_entry("center", "梔椿", ruby_align="center")
+        text_style.apply_ruby_span(e2a, 0, 1, "くちなし", "group")
+        text_style.apply_ruby_span(e2a, 1, 2, "つばき", "group")
+        center_hash = _render_entry(e2a, "03_align_center")
 
-        e2b = _make_entry("start", "猫", ruby_align="start")
-        text_style.apply_ruby_span(e2b, 0, 1, "ねこ", "group")
-        _render_entry(e2b, "04_align_start")
+        e2b = _make_entry("start", "梔椿", ruby_align="start")
+        text_style.apply_ruby_span(e2b, 0, 1, "くちなし", "group")
+        text_style.apply_ruby_span(e2b, 1, 2, "つばき", "group")
+        start_hash = _render_entry(e2b, "04_align_start")
+        assert center_hash != start_hash, "中付きと肩付きの実画像が同一です"
 
         # --- 3: 小書き仮名 keep vs fullsize ---
         e3a = _make_entry("kana_keep", "全集中の呼吸", ruby_small_kana="keep")

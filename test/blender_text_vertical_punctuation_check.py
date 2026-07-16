@@ -78,13 +78,20 @@ def _run_check() -> None:
         em_mm = font_size_pt * 25.4 / 72.0
 
         # --- 1. 回転対象: 括弧類・ダッシュ類は -90、通常文字・句読点は 0 ---
-        for ch in "「」『』（）〈〉《》【】〔〕［］｛｝ー―…‥～〜－":
+        vertical_rotate_chars = (
+            "「」『』（）〈〉《》【】〔〕［］｛｝ー―…‥～〜－"
+            "＂＇／：；＜＝＞＼＾＿｀｜"
+        )
+        for ch in vertical_rotate_chars:
             _check(metrics.needs_vertical_rotation(ch), f"縦書き回転対象のはずの文字が回転されません: {ch!r}")
-        for ch in "あ漢！？・、。っー゙ゃ"[:8]:
-            if ch in "ー":
-                continue
+        # 自動縦中横を明示的にOFFにした時は、半角ASCIIを縦組みの既定どおり
+        # 横倒しにできる。通常は自動縦中横が先にASCIIランを1セルへまとめる。
+        ascii_printable = "".join(chr(code) for code in range(0x21, 0x7F))
+        for ch in ascii_printable:
+            _check(metrics.needs_vertical_rotation(ch), f"auto OFF時のASCIIが回転対象ではありません: {ch!r}")
+        for ch in "あ漢！？・、。っゃ！？，．＋＃＄％＆＊＠０Ａａ":
             _check(
-                not metrics.needs_vertical_rotation(ch) or ch in "ー",
+                not metrics.needs_vertical_rotation(ch),
                 f"回転してはいけない文字が回転対象です: {ch!r}",
             )
 
@@ -104,6 +111,23 @@ def _run_check() -> None:
                 metrics.vertical_draw_offset_em(ch) == (0.0, 0.0),
                 f"ずらし不要の文字にずらし量が付いています: {ch!r}",
             )
+
+        # --- 2b. 全角ASCII約物の回転/正立マトリクス ---
+        fullwidth_matrix = vertical_rotate_chars + "！，．？＋＃＄％＆＊＠０Ａａ"
+        result_fw = layout.typeset_vertical(
+            fullwidth_matrix, 0.0, 0.0, 120.0, 240.0, font_size_pt=font_size_pt
+        )
+        _check(not result_fw.overflow, "全角記号マトリクスが領域からあふれました")
+        by_index_fw = {g.index: g for g in result_fw.placements}
+        for index, ch in enumerate(fullwidth_matrix):
+            placement = by_index_fw.get(index)
+            _check(placement is not None, f"全角記号が配置結果から欠落しています: {ch!r}")
+            if placement is not None:
+                expected_rotation = -90.0 if metrics.needs_vertical_rotation(ch) else 0.0
+                _check(
+                    placement.rotation_deg == expected_rotation,
+                    f"全角記号の回転が配置へ反映されません: {ch!r} {placement.rotation_deg!r}",
+                )
 
         # --- 3. typeset_vertical が回転・ずらしを配置データへ反映する ---
         result = layout.typeset_vertical(

@@ -386,7 +386,7 @@ class BMangaTextEntry(bpy.types.PropertyGroup):
     tatechuyoko_ranges: CollectionProperty(type=BMangaRubySpan, description="縦中横（縦書き内で横向きに並べる範囲）の一覧")  # type: ignore[valid-type]
     tatechuyoko_auto: BoolProperty(  # type: ignore[valid-type]
         name="縦中横の自動適用",
-        description="縦書きで半角英数2〜4文字の連続を自動で横組みにします",
+        description="縦書きで空白以外の半角英数字・記号の連続を自動で横組みにします",
         default=True,
         update=_on_text_entry_changed,
     )

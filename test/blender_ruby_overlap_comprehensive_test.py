@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import shutil
 import sys
@@ -39,23 +40,53 @@ def _find_ja_font() -> str:
     return ""
 
 
-def _save_on_white(image, path: Path) -> None:
+def _save_on_white(image, path: Path):
     from PIL import Image
     base = Image.new("RGBA", image.size, (255, 255, 255, 255))
     base.alpha_composite(image)
-    base.convert("RGB").save(path)
+    result = base.convert("RGB")
+    result.save(path)
+    return result
 
 
-def _render_entry(entry, label: str) -> None:
+def _render_entry(entry, label: str) -> str:
+    from PIL import Image, ImageChops
     from bmanga_dev.utils import text_real_object
     rendered = text_real_object._render_entry_to_pillow(entry)
-    if rendered is None:
-        print(f"  SKIP: {label}")
-        return
+    assert rendered is not None, f"Pillow描画が利用できません: {label}"
     pil_image = rendered[0]
     out_path = OUT_DIR / f"{label}.png"
-    _save_on_white(pil_image, out_path)
+    rgb = _save_on_white(pil_image, out_path)
+    blank = Image.new("RGB", rgb.size, (255, 255, 255))
+    assert ImageChops.difference(rgb, blank).getbbox() is not None, f"空画像です: {label}"
     print(f"  OK: {label} ({pil_image.size[0]}x{pil_image.size[1]})")
+    return hashlib.sha256(rgb.tobytes()).hexdigest()
+
+
+def _assert_adjacent_ruby_no_overlap(entry, ruby_texts: list[str]) -> None:
+    from bmanga_dev.typography import layout, ruby
+
+    result = layout.typeset(entry, 0.0, 0.0, entry.width_mm, entry.height_mm)
+    placements = ruby.compute_for_entry(result.placements, entry)
+    assert len(placements) == sum(map(len, ruby_texts)), (
+        len(placements), ruby_texts,
+    )
+    intervals = []
+    cursor = 0
+    horizontal = entry.writing_mode == "horizontal"
+    for text in ruby_texts:
+        chunk = placements[cursor:cursor + len(text)]
+        cursor += len(text)
+        if horizontal:
+            lo = min(item.x_mm for item in chunk)
+            hi = max(item.x_mm + item.size_pt * 25.4 / 72.0 for item in chunk)
+        else:
+            lo = min(item.y_mm for item in chunk)
+            hi = max(item.y_mm + item.size_pt * 25.4 / 72.0 for item in chunk)
+        intervals.append((lo, hi))
+    intervals.sort()
+    for current, following in zip(intervals, intervals[1:]):
+        assert current[1] <= following[0] + 1.0e-6, (intervals, ruby_texts)
 
 
 def main() -> None:
@@ -99,9 +130,12 @@ def main() -> None:
             num = f"{idx[0]:02d}"
             eid = f"t{num}"
             e = _make(eid, body, **kw)
+            style = kw.get("ruby_style", "mono")
             for start, end, ruby_text in rubies:
-                text_style.apply_ruby_span(e, start, end, ruby_text, "mono")
+                text_style.apply_ruby_span(e, start, end, ruby_text, style)
             _render_entry(e, f"{num}_{label_suffix}")
+            if kw.get("expect_no_overlap", False):
+                _assert_adjacent_ruby_no_overlap(e, [item[2] for item in rubies])
 
         # ── A: ルビ文字数が多い漢字が続く（縦書き） ──
         _case("v_many_2chars",
@@ -179,12 +213,12 @@ def main() -> None:
         _case("v_start_many",
               "梔椿が咲く",
               [(0, 1, "くちなし"), (1, 2, "つばき")],
-              ruby_align="start")
+              ruby_align="start", ruby_style="group", expect_no_overlap=True)
 
         _case("v_start_short",
               "猫犬が走る",
               [(0, 1, "ねこ"), (1, 2, "いぬ")],
-              ruby_align="start")
+              ruby_align="start", ruby_style="group", expect_no_overlap=True)
 
         # ── G: ルビ字間をユーザーが広げた場合（圧縮効果の確認） ──
         _case("v_ls03_many",
@@ -211,6 +245,23 @@ def main() -> None:
         _case("v_gap_between",
               "蝸と牛が",
               [(0, 1, "かたつむり"), (2, 3, "うし")])
+
+        # ── J: style × align × ruby length の決定的な隣接マトリクス ──
+        matrix = (
+            ("short", "猫犬", [(0, 1, "ねこ"), (1, 2, "いぬ")]),
+            ("long", "梔椿", [(0, 1, "くちなし"), (1, 2, "つばき")]),
+        )
+        for style in ("mono", "group"):
+            for align in ("center", "start"):
+                for length_label, body, rubies in matrix:
+                    _case(
+                        f"matrix_{style}_{align}_{length_label}_adjacent",
+                        body,
+                        rubies,
+                        ruby_style=style,
+                        ruby_align=align,
+                        expect_no_overlap=(style == "group" and align == "start"),
+                    )
 
         print("\nRUBY_OVERLAP_V2_TEST_OK")
     finally:

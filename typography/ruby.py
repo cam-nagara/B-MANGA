@@ -164,11 +164,17 @@ def _ruby_extent(ruby_em: float, count: int, letter_spacing: float) -> float:
     return ruby_em + pitch * (count - 1)
 
 
-def _ls_for_target_extent(target: float, ruby_em: float, count: int) -> float:
+def _ls_for_target_extent(
+    target: float,
+    ruby_em: float,
+    count: int,
+    *,
+    min_spacing: float = 0.0,
+) -> float:
     if count <= 1 or ruby_em < 1e-9:
         return 0.0
     pitch = (target - ruby_em) / (count - 1)
-    return max(0.0, pitch / ruby_em - 1.0)
+    return max(float(min_spacing), pitch / ruby_em - 1.0)
 
 
 # 字間圧縮で吸収し切れない衝突はルビサイズ縮小で収める。可読性の下限。
@@ -198,6 +204,22 @@ def _ruby_rp_range(info: dict) -> tuple[float, float]:
     return c - actual * 0.5, c + actual * 0.5
 
 
+def _fit_start_ruby_before(info: dict, next_parent_start: float) -> None:
+    """肩付きルビを次の親文字の肩までに収める。
+
+    肩付きは先頭を動かせないため、通常字間まで詰めても長い読みは
+    サイズ縮小し、それでも残る分だけ字送りを圧縮する。
+    """
+    available = max(0.0, float(next_parent_start) - float(info['rp_lo']))
+    if float(info['ext']) <= available + 1e-6:
+        return
+    _shrink_ruby_size(info, float(info['ext']) - available)
+    info['ext'] = max(float(info['ruby_em']), min(float(info['ext']), available))
+    info['eff_ls'] = _ls_for_target_extent(
+        info['ext'], info['ruby_em'], info['count'], min_spacing=-0.9,
+    )
+
+
 def _resolve_ruby_overlaps(infos: list[dict]) -> None:
     for i in range(len(infos) - 1):
         a, b = infos[i], infos[i + 1]
@@ -209,9 +231,7 @@ def _resolve_ruby_overlaps(infos: list[dict]) -> None:
             continue
         overlap = a_hi - b_lo
         if a.get('align') == "start":
-            max_ext = b['rp_lo'] - a['rp_lo']
-            a['ext'] = max(a['min_ext'], min(a['ext'], max_ext))
-            a['eff_ls'] = _ls_for_target_extent(a['ext'], a['ruby_em'], a['count'])
+            _fit_start_ruby_before(a, b['rp_lo'])
             continue
         needed = 2.0 * overlap
         a_of = max(0.0, a['ext'] - a['parent_span'])

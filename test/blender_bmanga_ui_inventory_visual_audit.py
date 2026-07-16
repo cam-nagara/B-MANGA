@@ -646,9 +646,8 @@ def _record_texts(records: list[dict[str, Any]]) -> set[str]:
 
 def _required_labels_missing(records: list[dict[str, Any]]) -> list[str]:
     texts = _record_texts(records)
-    required = (
+    required_exact = (
         "作品情報",
-        "プリセット",
         "レイヤー",
         "B-MANGA 階層を修復",
         "カメラプリセット",
@@ -664,7 +663,12 @@ def _required_labels_missing(records: list[dict[str, Any]]) -> list[str]:
         # 「選択中: 名前 (内部種別)」メタ表示は廃止済み。本文の存在を確認する。
         "フォルダー設定",
     )
-    return [label for label in required if label not in texts]
+    missing = [label for label in required_exact if label not in texts]
+    # プリセット欄は種別が分かる「フキダシプリセット」「テキストプリセット」等へ
+    # 統一済み。意味の薄い単独ラベルを要求せず、いずれかの現役欄を確認する。
+    if not any("プリセット" in text for text in texts):
+        missing.append("プリセット")
+    return missing
 
 
 def _write_json(records: list[dict[str, Any]], missing: list[str]) -> Path:

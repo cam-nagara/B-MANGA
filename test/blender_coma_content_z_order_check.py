@@ -320,6 +320,79 @@ def main() -> None:
         if not effect_obj.location.z < plane_z:
             raise AssertionError("折り畳みフォルダをプレビュー下へ移しても中身が背面になりません")
 
+        # 折り畳んだ祖先フォルダ配下にさらにフォルダが入る場合も、一覧に残る
+        # 最も近い祖先フォルダの位置を 3D / PNG / PSD の共通境界として使う。
+        # 外側 > 中 > 内 > 効果線の 3 階層を作り、内側の行が一覧から消えた状態を検証する。
+        nested_outer = work.layer_folders.add()
+        nested_outer.id = "preview_back_nested_outer"
+        nested_outer.title = "折り畳み外側"
+        nested_outer.parent_key = parent_key
+        nested_outer.expanded = False
+        nested_middle = work.layer_folders.add()
+        nested_middle.id = "preview_back_nested_middle"
+        nested_middle.title = "中間"
+        nested_middle.parent_key = nested_outer.id
+        nested_middle.expanded = True
+        nested_inner = work.layer_folders.add()
+        nested_inner.id = "preview_back_nested_inner"
+        nested_inner.title = "内側"
+        nested_inner.parent_key = nested_middle.id
+        nested_inner.expanded = True
+        layer_object_model.set_folder_id(effect_obj, nested_inner.id)
+
+        stack = layer_stack_utils.sync_layer_stack(bpy.context, preserve_active_index=True)
+        nested_outer_uid = layer_stack_utils.target_uid("layer_folder", nested_outer.id)
+        nested_hidden_uids = {
+            layer_stack_utils.target_uid("layer_folder", nested_middle.id),
+            layer_stack_utils.target_uid("layer_folder", nested_inner.id),
+            effect_uid,
+        }
+        stack_uids = [layer_stack_utils.stack_item_uid(item) for item in stack]
+        if nested_outer_uid not in stack_uids:
+            raise AssertionError("折り畳んだ外側フォルダがレイヤー一覧にありません")
+        if nested_hidden_uids.intersection(stack_uids):
+            raise AssertionError("折り畳んだ祖先配下の行がレイヤー一覧に残っています")
+
+        outer_index = stack_uids.index(nested_outer_uid)
+        preview_index = stack_uids.index(preview_uid)
+        if outer_index < preview_index:
+            preview_index -= 1
+        stack.move(outer_index, min(preview_index + 1, len(stack) - 1))
+        layer_stack_utils.apply_stack_order(bpy.context)
+        layer_object_sync.assign_per_page_z_ranks(scene, work)
+        if not effect_obj.location.z < plane_z:
+            raise AssertionError(
+                "3階層の折り畳みフォルダをプレビュー下へ移しても3D実体が背面になりません"
+            )
+
+        nested_fake_layers = [
+            SimpleNamespace(
+                name="nested_effect",
+                stack_uid=effect_uid,
+                stack_parent_key=nested_inner.id,
+            ),
+            SimpleNamespace(name="preview", stack_uid=preview_uid, stack_parent_key=parent_key),
+            SimpleNamespace(name="balloon", stack_uid=balloon_uid, stack_parent_key=parent_key),
+        ]
+        nested_ordered = export_stack_order.apply_coma_preview_order(
+            work, page, nested_fake_layers,
+        )
+        if [layer.name for layer in nested_ordered] != ["nested_effect", "preview", "balloon"]:
+            raise AssertionError(
+                "3階層フォルダのPNG/PSD合成順が3D境界と一致しません: "
+                f"{[layer.name for layer in nested_ordered]}"
+            )
+        nested_front = export_stack_order.apply_coma_preview_order(
+            work, page, nested_fake_layers, side="front",
+        )
+        nested_back = export_stack_order.apply_coma_preview_order(
+            work, page, nested_fake_layers, side="back",
+        )
+        if [layer.name for layer in nested_front] != ["balloon"]:
+            raise AssertionError("3階層フォルダのPNG前面画像に背面レイヤーが混入しました")
+        if [layer.name for layer in nested_back] != ["nested_effect"]:
+            raise AssertionError("3階層フォルダのPSD背面画像から対象レイヤーが欠落しました")
+
         print("BMANGA_COMA_CONTENT_Z_ORDER_OK", flush=True)
     finally:
         if mod is not None:
