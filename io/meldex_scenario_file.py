@@ -25,6 +25,14 @@ _DEFAULT_PRESENTATION = {
     "fontPreset": "inherit",
     "defaultStyle": "group",
 }
+# Meldex旧描画の承認済み実測値。旧CSSは14pxの親文字span（交差方向は
+# 横書き14px／縦書き18px）に対し `100% - legacyOffsetPx` でルビを
+# 置いていた。新しい相対距離は仮想親文字端 `(crossSize + baseEm) / 2` から
+# 測るため、この値を使って
+# 一度だけgapEmへ変換する。固定の符号反転ではなく旧レンダー座標の変換である。
+_MELDEX_LEGACY_BASE_EM_PX = 14.0
+_MELDEX_LEGACY_HORIZONTAL_CROSS_SIZE_PX = 14.0
+_MELDEX_LEGACY_VERTICAL_CROSS_SIZE_PX = 18.0
 _BREAK_NAMES = {
     "manga": {"めくり", "改ページ", "柱"},
     "drama": {"シーン見出し", "場面転換", "柱"},
@@ -259,11 +267,18 @@ def _document_presentation(document: dict[str, Any]) -> dict[str, Any]:
     legacy_offset = editor.get("rubyOffset")
     if legacy_size not in (None, "") or legacy_offset not in (None, "") or has_content:
         size_em = _finite(legacy_size, 0.55, 0.05, 2.0)
+        offset_px = _finite(legacy_offset, 3.5, -100.0, 100.0)
         return _normalize_presentation({
             "writingMode": writing_mode,
             "sizePercent": size_em * 100.0,
             "gapEm": 0.0,
             "lineHeight": 1.0,
+            "compatibility": {
+                "legacySizeEm": size_em,
+                "legacyOffsetPx": offset_px,
+                "useLegacySize": True,
+                "useLegacyGap": True,
+            },
         }, writing_mode=writing_mode)
     return _normalize_presentation({"writingMode": writing_mode}, writing_mode=writing_mode)
 
@@ -286,10 +301,22 @@ def _row_presentation(
 def _normalize_presentation(
     source: dict[str, Any], *, writing_mode: str = "horizontal"
 ) -> dict[str, Any]:
+    compatibility = (
+        source.get("compatibility") if isinstance(source.get("compatibility"), dict) else {}
+    )
+    normalized_writing_mode = _choice(
+        source.get("writingMode"), {"horizontal", "vertical"}, writing_mode
+    )
+    size_percent = _finite(source.get("sizePercent"), 50.0, 5.0, 200.0)
+    if compatibility.get("useLegacySize") is True:
+        size_percent = _finite(compatibility.get("legacySizeEm"), 0.55, 0.05, 2.0) * 100.0
+    gap_em = _finite(source.get("gapEm"), 0.0, -2.0, 4.0)
+    if compatibility.get("useLegacyGap") is True:
+        gap_em = _legacy_gap_em(compatibility, writing_mode=normalized_writing_mode)
     return {
-        "writingMode": _choice(source.get("writingMode"), {"horizontal", "vertical"}, writing_mode),
-        "sizePercent": _finite(source.get("sizePercent"), 50.0, 5.0, 200.0),
-        "gapEm": _finite(source.get("gapEm"), 0.0, -2.0, 4.0),
+        "writingMode": normalized_writing_mode,
+        "sizePercent": size_percent,
+        "gapEm": gap_em,
         "letterSpacingEm": _finite(source.get("letterSpacingEm"), 0.0, -0.9, 3.0),
         "lineHeight": _finite(source.get("lineHeight"), 1.8, 0.5, 5.0),
         "align": _choice(source.get("align"), {"center", "start"}, "center"),
@@ -299,6 +326,30 @@ def _normalize_presentation(
         ),
         "defaultStyle": _ruby_style(source.get("defaultStyle")),
     }
+
+
+def _legacy_gap_em(
+    compatibility: dict[str, Any], *, writing_mode: str
+) -> float:
+    explicit = compatibility.get("legacyGapEm")
+    if explicit not in (None, ""):
+        return _finite(explicit, 0.0, -2.0, 4.0)
+    base_em = _finite(
+        compatibility.get("legacyBaseEmPx"), _MELDEX_LEGACY_BASE_EM_PX, 0.001, 1000.0
+    )
+    default_cross_size = (
+        _MELDEX_LEGACY_VERTICAL_CROSS_SIZE_PX
+        if writing_mode == "vertical"
+        else _MELDEX_LEGACY_HORIZONTAL_CROSS_SIZE_PX
+    )
+    cross_size = _finite(
+        compatibility.get("legacyCrossSizePx"),
+        default_cross_size,
+        0.001,
+        1000.0,
+    )
+    offset = _finite(compatibility.get("legacyOffsetPx"), 3.5, -100.0, 100.0)
+    return max(-2.0, min(4.0, ((cross_size - base_em) * 0.5 - offset) / base_em))
 
 
 def _role_categories(document: dict[str, Any]) -> tuple[set[str], set[str]]:

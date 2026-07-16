@@ -87,6 +87,15 @@ def needs_vertical_rotation(ch: str) -> bool:
     return ch in _VERTICAL_ROTATE_CHARS
 
 
+def needs_vertical_ruby_rotation(ch: str) -> bool:
+    """縦書きルビで縦組み字形相当の90°回転が必要か.
+
+    Meldexのルビは ``text-orientation: upright`` なのでASCIIは正立させる。
+    一方、和文括弧・ダッシュ等はブラウザの縦組み字形に合わせて回転する。
+    """
+    return ch in _VERTICAL_ROTATE_CHARS and ch not in _ASCII_VERTICAL_ROTATE_CHARS
+
+
 # 句読点は横書き字形では全角ボディの左下に字面があるが、縦書きでは右上に
 # 置く (JIS X 4051 / JLREQ の縦組み配置)。字面が左下 1/4 領域に収まるため、
 # 右へ 0.5em・上へ 0.5em ずらすとちょうど右上 1/4 領域へ移る。

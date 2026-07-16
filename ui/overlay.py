@@ -1043,7 +1043,11 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
         coord = location_3d_to_region_2d(
             region,
             rv3d,
-            Vector((mm_to_m(ruby_glyph.x_mm), mm_to_m(ruby_glyph.y_mm), 0.0)),
+            Vector((
+                mm_to_m(ruby_glyph.x_mm + float(getattr(ruby_glyph, "offset_x_mm", 0.0))),
+                mm_to_m(ruby_glyph.y_mm + float(getattr(ruby_glyph, "offset_y_mm", 0.0))),
+                0.0,
+            )),
         )
         if coord is None:
             continue
@@ -1056,8 +1060,24 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
             blf.color(ruby_font_id, float(ruby_color[0]), float(ruby_color[1]), float(ruby_color[2]), float(ruby_color[3]))
         except Exception:  # noqa: BLE001
             pass
-        blf.position(ruby_font_id, float(coord.x), float(coord.y), 0.0)
+        x_px = float(coord.x)
+        y_px = float(coord.y)
+        rotation_deg = float(getattr(ruby_glyph, "rotation_deg", 0.0) or 0.0)
+        if rotation_deg != 0.0:
+            blf.enable(ruby_font_id, blf.ROTATION)
+            theta = math.radians(rotation_deg)
+            blf.rotation(ruby_font_id, theta)
+            half_em = size_px * 0.5
+            m_x = half_em
+            m_y = size_px * 0.38
+            cos_t = math.cos(theta)
+            sin_t = math.sin(theta)
+            x_px = x_px + half_em - (m_x * cos_t - m_y * sin_t)
+            y_px = y_px + half_em - (m_x * sin_t + m_y * cos_t)
+        blf.position(ruby_font_id, x_px, y_px, 0.0)
         blf.draw(ruby_font_id, ruby_glyph.ch)
+        if rotation_deg != 0.0:
+            blf.disable(ruby_font_id, blf.ROTATION)
 
 
 def _draw_rect_fill_pixel(context, rect: Rect, color: tuple[float, float, float, float]) -> None:

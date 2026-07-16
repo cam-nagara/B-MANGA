@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .layout import GlyphPlacement
-from . import ruby_presentation
+from . import metrics, ruby_presentation
 
 
 @dataclass(frozen=True)
@@ -19,6 +19,9 @@ class RubyPlacement:
     y_mm: float
     size_pt: float
     font_path: str = ""
+    rotation_deg: float = 0.0
+    offset_x_mm: float = 0.0
+    offset_y_mm: float = 0.0
 
 
 def _glyph_em_mm(glyph: GlyphPlacement) -> float:
@@ -450,7 +453,15 @@ def compute_ruby_placements(
                 if abs(shift) > 1e-6:
                     starts = [s + shift for s in starts]
             for rch, ry in zip(txt, reversed(starts)):
+                offset_x_em, offset_y_em = metrics.vertical_draw_offset_em(rch)
                 out.append(RubyPlacement(
-                    ch=rch, x_mm=rx, y_mm=ry, size_pt=sz, font_path=font,
+                    ch=rch,
+                    x_mm=rx,
+                    y_mm=ry,
+                    size_pt=sz,
+                    font_path=font,
+                    rotation_deg=-90.0 if metrics.needs_vertical_ruby_rotation(rch) else 0.0,
+                    offset_x_mm=offset_x_em * em,
+                    offset_y_mm=offset_y_em * em,
                 ))
     return out

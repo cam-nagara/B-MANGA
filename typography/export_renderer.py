@@ -145,11 +145,20 @@ def render_to_image(
         size_px = max(1, int(size_pt * px_per_mm * 25.4 / 72.0))
         ruby_font_path = str(getattr(r, "font_path", "") or font_path)
         font = font_for(ruby_font_path, size_px)
-        x = origin_xy_px[0] + float(getattr(r, "x_mm", 0.0)) * px_per_mm
-        y = origin_xy_px[1] + float(getattr(r, "y_mm", 0.0)) * px_per_mm
+        x = origin_xy_px[0] + (
+            float(getattr(r, "x_mm", 0.0)) + float(getattr(r, "offset_x_mm", 0.0))
+        ) * px_per_mm
+        y = origin_xy_px[1] + (
+            float(getattr(r, "y_mm", 0.0)) + float(getattr(r, "offset_y_mm", 0.0))
+        ) * px_per_mm
         y_px = _layout_bottom_to_pillow_top(image.height, y, size_px)
         kwargs: dict = {"fill": color, "stroke_width": 1, "stroke_fill": color}
         if stroke_width_px > 0:
             kwargs["stroke_width"] = max(1, stroke_width_px // 2)
             kwargs["stroke_fill"] = stroke_color
-        draw.text((x, y_px), str(getattr(r, "ch", "") or ""), font=font, **kwargs)
+        ch = str(getattr(r, "ch", "") or "")
+        rotation_deg = float(getattr(r, "rotation_deg", 0.0) or 0.0)
+        if rotation_deg != 0.0:
+            _draw_rotated_char(image, draw, ch, font, x, y_px, size_px, rotation_deg, **kwargs)
+        else:
+            draw.text((x, y_px), ch, font=font, **kwargs)

@@ -117,6 +117,54 @@ def main() -> None:
         first = next(item for item in work.pages[0].texts if item.meldex_source_row_id == "r1")
         assert first.body == "東京を更新"
 
+        legacy_document = _document("幽奈")
+        legacy_document["rubyPresentation"] = {
+            **legacy_document["rubyPresentation"],
+            "sizePercent": 75,
+            "gapEm": 0.4,
+            "compatibility": {
+                "legacySizeEm": 0.55,
+                "legacyOffsetPx": 3.5,
+                "useLegacySize": True,
+                "useLegacyGap": True,
+            },
+        }
+        legacy_path = temp_root / "旧互換.scriptnote.json"
+        legacy_path.write_text(
+            json.dumps(legacy_document, ensure_ascii=False), encoding="utf-8"
+        )
+        result = bpy.ops.bmanga.meldex_scenario_file_import(
+            "EXEC_DEFAULT", filepath=str(legacy_path)
+        )
+        assert result == {"FINISHED"}, result
+        legacy = next(
+            item
+            for item in work.pages[0].texts
+            if item.meldex_source_document_id == str(legacy_path.resolve())
+            and item.meldex_source_row_id == "r1"
+        )
+        assert abs(legacy.ruby_size_percent - 55.0) < 1.0e-6
+        assert abs(legacy.ruby_gap_em - (-3.0 / 28.0)) < 1.0e-6
+
+        horizontal_document = json.loads(json.dumps(legacy_document, ensure_ascii=False))
+        horizontal_document["rubyPresentation"]["writingMode"] = "horizontal"
+        horizontal_path = temp_root / "旧互換_横書き.scriptnote.json"
+        horizontal_path.write_text(
+            json.dumps(horizontal_document, ensure_ascii=False), encoding="utf-8"
+        )
+        result = bpy.ops.bmanga.meldex_scenario_file_import(
+            "EXEC_DEFAULT", filepath=str(horizontal_path)
+        )
+        assert result == {"FINISHED"}, result
+        horizontal = next(
+            item
+            for item in work.pages[0].texts
+            if item.meldex_source_document_id == str(horizontal_path.resolve())
+            and item.meldex_source_row_id == "r1"
+        )
+        assert horizontal.writing_mode == "horizontal"
+        assert abs(horizontal.ruby_gap_em - (-0.25)) < 1.0e-6
+
         bad_path = temp_root / "broken.mel-scenario"
         bad_path.write_text("{broken", encoding="utf-8")
         counts_before = [(len(page.balloons), len(page.texts)) for page in work.pages]

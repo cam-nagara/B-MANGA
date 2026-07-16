@@ -117,8 +117,52 @@ class MeldexScenarioFileTests(unittest.TestCase):
         ruby = payload["presentation"]["ruby"]
         self.assertEqual("vertical", ruby["writingMode"])
         self.assertAlmostEqual(55.0, ruby["sizePercent"])
+        self.assertAlmostEqual(-3.0 / 28.0, ruby["gapEm"])
         self.assertEqual(1.0, ruby["lineHeight"])
         self.assertEqual(2, len(payload["pages"]))
+
+    def test_saved_legacy_compatibility_is_converted_from_renderer_coordinates(self):
+        presentation = {
+            "version": 2,
+            "writingMode": "vertical",
+            "sizePercent": 75,
+            "gapEm": 0.4,
+            "letterSpacingEm": 0,
+            "lineHeight": 1,
+            "align": "center",
+            "smallKana": "keep",
+            "fontPreset": "inherit",
+            "defaultStyle": "group",
+            "compatibility": {
+                "legacySizeEm": 0.55,
+                "legacyOffsetPx": 3.5,
+                "useLegacySize": True,
+                "useLegacyGap": True,
+            },
+        }
+        document = {
+            "fileType": "meldex-scriptnote",
+            "layoutMode": "manga",
+            "editor": {"viewMode": "vertical"},
+            "rubyPresentation": presentation,
+            "rows": [{"id": "r1", "role": "", "text": "幽奈"}],
+            "rubyRules": [{"text": "幽奈", "ruby": "ゆうな"}],
+        }
+        path = self._write("legacy-compatible.scriptnote.json", document)
+        ruby = SCENARIO_FILE.load_contract_payload(path)["presentation"]["ruby"]
+        self.assertAlmostEqual(55.0, ruby["sizePercent"])
+        self.assertAlmostEqual(-3.0 / 28.0, ruby["gapEm"])
+
+        presentation["writingMode"] = "horizontal"
+        document["editor"]["viewMode"] = "horizontal"
+        path = self._write("legacy-horizontal.scriptnote.json", document)
+        ruby = SCENARIO_FILE.load_contract_payload(path)["presentation"]["ruby"]
+        self.assertAlmostEqual(-0.25, ruby["gapEm"])
+
+        presentation["compatibility"]["legacyGapEm"] = -0.2
+        path = self._write("legacy-explicit.scriptnote.json", document)
+        ruby = SCENARIO_FILE.load_contract_payload(path)["presentation"]["ruby"]
+        self.assertAlmostEqual(-0.2, ruby["gapEm"])
 
     def test_invalid_files_are_rejected_before_import(self):
         wrong_extension = self._write("scenario.json", {"rows": []})

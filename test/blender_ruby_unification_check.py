@@ -107,6 +107,20 @@ def main() -> None:
             ruby_small_kana="fullsize",
         )
         assert "ょ" not in "".join(item.ch for item in converted)
+        vertical_parents = [
+            GlyphPlacement("東", 0.0, 5.0, size_pt, 0.0, 0),
+            GlyphPlacement("京", 0.0, 0.0, size_pt, 0.0, 1),
+        ]
+        symbol_ruby = ruby.compute_ruby_placements(
+            vertical_parents,
+            [SimpleNamespace(start=0, length=2, ruby_text="「A、ゃ", style="group", segments=[])],
+            writing_mode="vertical",
+        )
+        symbol_map = {item.ch: item for item in symbol_ruby}
+        assert symbol_map["「"].rotation_deg == -90.0
+        assert symbol_map["A"].rotation_deg == 0.0
+        assert symbol_map["、"].offset_x_mm > 0.0 and symbol_map["、"].offset_y_mm > 0.0
+        assert symbol_map["ゃ"].offset_x_mm > 0.0 and symbol_map["ゃ"].offset_y_mm > 0.0
 
         span = entry.ruby_spans.add()
         span.start = 0
