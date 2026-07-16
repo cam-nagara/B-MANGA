@@ -104,6 +104,18 @@ class BMANGA_PT_work(Panel):
             )
             return
 
+        box = layout.box()
+        box.label(text="Meldexシナリオ", icon="FILE_TEXT")
+        box.operator(
+            "bmanga.meldex_scenario_file_import",
+            text="シナリオファイルを読み込む",
+            icon="IMPORT",
+        )
+        hint = box.column(align=True)
+        hint.scale_y = 0.85
+        hint.label(text=".mel-scenario / .scriptnote.json", icon="INFO")
+        hint.label(text="同じファイルを再読込すると既存行を更新")
+
         mode = get_mode(context)
         info = work.work_info
 

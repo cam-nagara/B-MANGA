@@ -45,6 +45,7 @@ from . import (
     layer_stack_op,
     layer_stack_detail_op,
     mask_object_op,
+    meldex_scenario_file_op,
     mode_op,
     object_tool_op,
     overlay_toggle_op,
@@ -82,6 +83,7 @@ from . import (
 
 _MODULES = (
     work_op,
+    meldex_scenario_file_op,
     detail_data_migration_op,
     page_file_op,
     page_op,

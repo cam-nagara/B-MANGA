@@ -225,6 +225,8 @@ def main() -> None:
             "サブタイトル",
             "作者名",
             "ページ数",
+            "Meldexシナリオ",
+            "シナリオファイルを読み込む",
             "ページ一覧プレビュー",
             "コマ用blendファイル (この作品のみ)",
         )
@@ -245,6 +247,7 @@ def main() -> None:
             "show_safe_line",
             "show_trim_marks",
         )
+        assert bpy.ops.bmanga.meldex_scenario_file_import.poll()
         work_view_records = _draw_records(view_panel.BMANGA_PT_view, context)
         _assert_present(work_view_records, "全ページを一覧", "列数", "横間隔mm", "縦間隔mm")
         _assert_absent(work_view_records, "全ページ", "前後ページ", "前後ページ数")
@@ -293,6 +296,7 @@ def main() -> None:
         assert tool_panel.BMANGA_PT_tools.poll(context)
         assert not export_panel.BMANGA_PT_export.poll(context)
         assert not work_panel.BMANGA_PT_work.poll(context)
+        assert not bpy.ops.bmanga.meldex_scenario_file_import.poll()
         assert not paper_panel.BMANGA_PT_paper.poll(context)
         transition_records = _draw_records(work_panel.BMANGA_PT_coma_return, context)
         _assert_present(
@@ -346,6 +350,7 @@ def main() -> None:
         role, _page_id, _coma_id = page_file_scene.current_role(context)
         assert role == page_file_scene.ROLE_COMA
         assert work_panel.BMANGA_PT_coma_return.poll(context)
+        assert not bpy.ops.bmanga.meldex_scenario_file_import.poll()
         assert not paper_panel.BMANGA_PT_paper.poll(context)
         transition_records = _draw_records(work_panel.BMANGA_PT_coma_return, context)
         _assert_present(
