@@ -46,6 +46,9 @@ class _MemorySnapshot:
     pages_data: dict
     page_details: dict[str, dict]
     detail_loaded: dict[str, bool]
+    coma_count: dict[str, int]
+    stack_expanded: dict[str, bool]
+    selected: dict[str, bool]
     work_dir: str
     loaded: bool
 
@@ -53,15 +56,24 @@ class _MemorySnapshot:
 def _capture_memory(work) -> _MemorySnapshot:
     details: dict[str, dict] = {}
     loaded: dict[str, bool] = {}
+    coma_count: dict[str, int] = {}
+    stack_expanded: dict[str, bool] = {}
+    selected: dict[str, bool] = {}
     for page in work.pages:
         page_id = str(getattr(page, "id", "") or "")
         details[page_id] = copy.deepcopy(schema.page_to_dict(page))
         loaded[page_id] = bool(getattr(page, "detail_loaded", False))
+        coma_count[page_id] = int(getattr(page, "coma_count", 0) or 0)
+        stack_expanded[page_id] = bool(getattr(page, "stack_expanded", True))
+        selected[page_id] = bool(getattr(page, "selected", False))
     return _MemorySnapshot(
         work_data=copy.deepcopy(schema.work_to_dict(work)),
         pages_data=copy.deepcopy(schema.pages_to_dict(work)),
         page_details=details,
         detail_loaded=loaded,
+        coma_count=coma_count,
+        stack_expanded=stack_expanded,
+        selected=selected,
         work_dir=str(getattr(work, "work_dir", "") or ""),
         loaded=bool(getattr(work, "loaded", False)),
     )
@@ -77,7 +89,9 @@ def _restore_memory(work, snapshot: _MemorySnapshot) -> None:
         if detail is not None:
             schema.page_from_dict(page, copy.deepcopy(detail))
         page.detail_loaded = bool(snapshot.detail_loaded.get(page_id, False))
-        page.coma_count = len(page.comas)
+        page.coma_count = int(snapshot.coma_count.get(page_id, len(page.comas)))
+        page.stack_expanded = bool(snapshot.stack_expanded.get(page_id, True))
+        page.selected = bool(snapshot.selected.get(page_id, False))
     work.work_dir = snapshot.work_dir
     work.loaded = snapshot.loaded
 

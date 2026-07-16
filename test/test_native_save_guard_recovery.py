@@ -573,3 +573,32 @@ def test_sidecar_restore_prioritizes_physical_files_when_status_write_fails(tmp_
 
     assert SIDECAR_GUARD.restore_sidecars(token) is True
     assert source.read_bytes() == b"old-sidecar"
+
+
+def test_sidecar_commit_journal_failure_keeps_transaction_rollbackable(
+    tmp_path,
+    monkeypatch,
+):
+    """確定記録を書けなかった取引を、メモリ上だけ確定済みにしない。"""
+
+    work = _work(tmp_path, "SidecarCommitStatusFailure")
+    source = work / "page.json"
+    source.write_bytes(b"old-sidecar")
+    token = SIDECAR_GUARD.begin_sidecar_save(work, (source,))
+    SIDECAR_GUARD.mark_sidecar_writes_started(token)
+    source.write_bytes(b"new-sidecar")
+    original_atomic_write = SIDECAR_GUARD.atomic_write_json
+
+    def fail_commit_record(path, data):
+        if data.get("status") == "committed":
+            raise OSError("commit journal locked")
+        return original_atomic_write(path, data)
+
+    monkeypatch.setattr(SIDECAR_GUARD, "atomic_write_json", fail_commit_record)
+
+    with pytest.raises(OSError, match="commit journal locked"):
+        SIDECAR_GUARD.commit_sidecars(token)
+
+    assert token.status == "writing"
+    assert SIDECAR_GUARD.restore_sidecars(token) is True
+    assert source.read_bytes() == b"old-sidecar"

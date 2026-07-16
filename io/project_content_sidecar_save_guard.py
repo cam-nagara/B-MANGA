@@ -271,8 +271,11 @@ def commit_sidecars(token: SidecarSaveToken | None) -> None:
         return
     if token.status == "restored":
         raise SidecarSaveError("復元済みの作品情報は確定できません")
+    # 確定記録がディスクへ書ける前にメモリだけ committed へ進めると、
+    # 記録書込みの失敗時に同じプロセス内の rollback まで拒否してしまう。
+    # 永続化できた時点を確定点とし、それまでは復元可能な状態を維持する。
+    atomic_write_json(token.journal_path, _journal_value(token, "committed"))
     token.status = "committed"
-    atomic_write_json(token.journal_path, _journal_value(token, token.status))
     shutil.rmtree(token.transaction_dir, ignore_errors=True)
     _prune_base(token.work_dir, token.transaction_dir.parent)
 

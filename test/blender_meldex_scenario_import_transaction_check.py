@@ -99,9 +99,12 @@ def main() -> None:
 
         # 既存page.jsonが壊れている場合は、空のページ詳細で上書きせず中止する。
         page = work.pages[0]
+        page.stack_expanded = False
+        page.selected = True
         page_json = paths.page_meta_path(work_dir, str(page.id))
         original_page = page_json.read_bytes()
         page_detail.clear_page_detail(page)
+        original_coma_count = int(page.coma_count)
         page_json.write_bytes(b"{broken")
         baseline.record_successful_write(page_json)
         try:
@@ -112,6 +115,8 @@ def main() -> None:
             raise AssertionError("壊れたpage.jsonの取込が中止されなかった")
         assert page_json.read_bytes() == b"{broken"
         assert len(work.pages) == 1 and not work.pages[0].detail_loaded
+        assert int(work.pages[0].coma_count) == original_coma_count
+        assert not work.pages[0].stack_expanded and work.pages[0].selected
         assert not paths.scenario_file(work_dir).exists()
         page_json.write_bytes(original_page)
         baseline.record_successful_write(page_json)
