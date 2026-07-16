@@ -1165,7 +1165,7 @@ def select_keys_in_world_rect(
     return object_selection.get_keys(context)
 
 
-def active_selection_key(context) -> str:
+def _active_stack_object_key(context) -> str:
     item = layer_stack_utils.active_stack_item(context)
     resolved = layer_stack_utils.resolve_stack_item(context, item) if item is not None else None
     target = resolved.get("target") if resolved is not None else None
@@ -1196,6 +1196,18 @@ def active_selection_key(context) -> str:
     if kind == "page":
         return object_selection.page_key(target)
     return ""
+
+
+def active_selection_key(context) -> str:
+    """選択集合に含まれるアクティブキーだけを返す。"""
+
+    key = _active_stack_object_key(context)
+    selected = object_selection.get_keys(context)
+    if selected and key not in selected:
+        # 詳細設定の再同期直後など、UIListのactiveとビューポート選択が
+        # 一時的にずれた場合は、実際の選択集合の末尾（アクティブ）を正とする。
+        return selected[-1]
+    return key
 
 
 def scale_gp_layer_from_snapshot(layer, old_rect, new_rect) -> None:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..utils import detail_dialog, detail_dialog_state, detail_state_adapters
+from ..utils import detail_dialog, detail_dialog_state, detail_state_adapters, log
 from ..utils import detail_target_resolver
 
 
@@ -10,6 +10,8 @@ _OPEN_ACTUAL_SESSIONS = {}
 _OPEN_ACTUAL_SCENE_KEYS = {}
 _OPEN_PRESET_SESSIONS = {}
 _PREPARING_EFFECT_TARGET_IDS: set[str] = set()
+_RESUME_OBJECT_TOOL_TOKENS: set[str] = set()
+_logger = log.get_logger(__name__)
 
 _PRESET_SELECTOR_BY_TYPE = {
     "border": "bmanga_border_preset_selector",
@@ -156,7 +158,37 @@ def begin_actual_session(context, target, *, target_validator=None):
             _PREPARING_EFFECT_TARGET_IDS.discard(target.stable_id)
     _OPEN_ACTUAL_SESSIONS[session.token] = session
     _OPEN_ACTUAL_SCENE_KEYS[session.token] = _scene_session_key(context)
+    if _object_tool_active_for_dialog(context):
+        _RESUME_OBJECT_TOOL_TOKENS.add(session.token)
     return session
+
+
+def _object_tool_active_for_dialog(_context) -> bool:
+    """詳細設定を開く時点でオブジェクトツールが動いているか記録する。"""
+
+    from . import coma_modal_state
+
+    return coma_modal_state.get_active("object_tool") is not None
+
+
+def _resume_object_tool_after_dialog(context, session) -> None:
+    token = str(getattr(session, "token", "") or "")
+    if token not in _RESUME_OBJECT_TOOL_TOKENS:
+        return
+    _RESUME_OBJECT_TOOL_TOKENS.discard(token)
+    from . import coma_modal_state, object_tool_op
+
+    # props dialog をまたいだ古いmodal handlerはBlender側だけ失効する場合が
+    # あるため、Python側の参照も含めて必ず終了し、新しいhandlerへ交換する。
+    operator = coma_modal_state.get_active("object_tool")
+    try:
+        if operator is not None:
+            operator.finish_from_external(context, keep_selection=True)
+    except Exception:  # noqa: BLE001
+        _logger.exception("detail dialog: failed to retire the previous object tool")
+        coma_modal_state.clear_active("object_tool", operator, context)
+    finally:
+        object_tool_op._schedule_object_tool_relaunch(delay_seconds=0.05)
 
 
 def initial_preset_selection_for_target(context, target) -> str | None:
@@ -298,6 +330,7 @@ def commit_actual_session(context, session) -> None:
         # 対象削除・移動による生存確認失敗でも、以後の詳細設定を塞がない。
         _discard_actual_session(session)
         _release_curve_sync(session.target)
+        _resume_object_tool_after_dialog(context, session)
 
 
 def cancel_actual_session(context, session) -> None:
@@ -324,6 +357,7 @@ def cancel_actual_session(context, session) -> None:
     finally:
         # 復元不能のエラーは上位へ伝えつつ、登録だけは必ず解放する。
         _discard_actual_session(session)
+        _resume_object_tool_after_dialog(context, session)
 
 
 def rollback_failed_actual_session(context, session) -> None:
@@ -937,6 +971,8 @@ def cleanup_all_sessions(context=None) -> tuple[Exception, ...]:
     _OPEN_ACTUAL_SCENE_KEYS.clear()
     _OPEN_PRESET_SESSIONS.clear()
     _PREPARING_EFFECT_TARGET_IDS.clear()
+    # unregister中は詳細設定を閉じてもツールを再起動しない。
+    _RESUME_OBJECT_TOOL_TOKENS.clear()
     if context is None:
         try:
             import bpy

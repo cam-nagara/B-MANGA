@@ -388,6 +388,19 @@ def main() -> None:
         # 旧データ等で自由変形クアッドを持つテキストも、見えている角は背面へ
         # 抜けない。ただしテキストの既存契約どおり、角ドラッグは移動として扱う。
         text_key = object_selection.text_key(page, text)
+        # 詳細設定の再同期直後などにUIListのactive行だけが一時的にずれても、
+        # ビューポートの実選択をアクティブとしてハンドル操作を継続する。
+        stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
+        old_stack_index = int(context.scene.bmanga_active_layer_stack_index)
+        coma_uid = layer_stack_utils.target_uid("coma", coma_key)
+        coma_index = next(
+            i for i, item in enumerate(stack)
+            if layer_stack_utils.stack_item_uid(item) == coma_uid
+        )
+        layer_stack_utils.set_active_stack_index_silently(context, coma_index)
+        object_selection.set_keys(context, [text_key])
+        assert object_tool_selection.active_selection_key(context) == text_key
+        layer_stack_utils.set_active_stack_index_silently(context, old_stack_index)
         free_transform.set_entry_offsets(
             text,
             {
