@@ -229,12 +229,20 @@ def _case_work_open_preflight_restores_missing_work_blend(work_op, native_guard,
     token = native_guard.begin_native_save(source, 0)
     _check(token is not None and token.requires_restore, "中断保存の復旧トークンを作れません")
     _check(not source.exists(), "退避直後のwork.blend欠落状態を再現できません")
+    recovery_root = work / ".bmanga-save-recovery-v1"
+    _check(
+        token.journal_path is not None and recovery_root in token.journal_path.parents,
+        "保存復旧記録が作品フォルダー内にありません",
+    )
+    legacy_base = work.parent / f".{work.name}.native-save-recovery-v1"
+    _check(not legacy_base.exists(), "作品フォルダー外に旧形式の復旧先を作成しました")
     native_guard._release(token)
     recovered, error = work_op._recover_selected_work_before_open(work)
     _check(recovered and not error and source.read_bytes() == b"latest-work", "作品を開く前にwork.blendを復旧できません")
+    _check(not recovery_root.exists(), "復旧完了後も空の内部復旧フォルダーが残りました")
 
 
-EXPECTED_CHECK_COUNT = 23
+EXPECTED_CHECK_COUNT = 26
 
 
 def main() -> None:

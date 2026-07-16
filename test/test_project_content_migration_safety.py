@@ -462,10 +462,11 @@ def test_metadata_failure_restores_blend_and_all_sidecars_byte_exact(tmp_path):
 
     assert result.restored and not result.metadata_saved
     assert {path: path.read_bytes() for path in (page, *paths)} == before
-    native_base = work.parent / f".{work.name}.native-save-recovery-v1"
-    sidecar_base = work.parent / f".{work.name}.sidecar-save-recovery-v1"
-    assert not tuple(native_base.glob("*/"))
-    assert not tuple(sidecar_base.glob("*/"))
+    native_base = NATIVE_GUARD._base(work)
+    sidecar_base = NATIVE_GUARD._sidecar._base(work)
+    assert not native_base.exists()
+    assert not sidecar_base.exists()
+    assert not (work / ".bmanga-save-recovery-v1").exists()
 
 
 def test_repeated_successful_saves_do_not_accumulate_recovery_transactions(tmp_path):
@@ -491,10 +492,11 @@ def test_repeated_successful_saves_do_not_accumulate_recovery_transactions(tmp_p
         result = NATIVE_GUARD.finish_native_save(token)
         assert not result.restored and result.metadata_saved
 
-        native_base = work.parent / f".{work.name}.native-save-recovery-v1"
-        sidecar_base = work.parent / f".{work.name}.sidecar-save-recovery-v1"
-        assert not tuple(native_base.glob("*/"))
-        assert not tuple(sidecar_base.glob("*/"))
+        native_base = NATIVE_GUARD._base(work)
+        sidecar_base = NATIVE_GUARD._sidecar._base(work)
+        assert not native_base.exists()
+        assert not sidecar_base.exists()
+        assert not (work / ".bmanga-save-recovery-v1").exists()
 
 
 def test_native_stale_save_is_restored_after_save_post(tmp_path):

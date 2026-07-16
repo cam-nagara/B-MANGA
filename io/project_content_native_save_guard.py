@@ -2,8 +2,8 @@
 
 Blender は ``save_pre`` の例外を無視して保存を続ける。そのため、保存前から
 保存後まで作品ロックを保持し、旧セッションなら既存blendを同じディレクトリへ
-原子的に退避する。保存後は退避版を戻す。途中でプロセスが落ちても、外部
-ジャーナルを次回ロード時に回収できる。
+原子的に退避する。保存後は退避版を戻す。途中でプロセスが落ちても、
+復旧ジャーナルを次回ロード時に回収できる。
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ import threading
 from typing import Any, Iterable, Mapping
 
 try:
+    from . import project_content_save_recovery_paths as _recovery_paths
     from .project_content_migration_model import MIGRATION_VERSION
     from .project_content_migration_lock import find_work_root, work_lock
     from .project_content_save_baseline import (
@@ -42,6 +43,7 @@ try:
         read_work_detail_version,
     )
 except ImportError:  # ファイル単体でロードする純Pythonテスト用
+    import project_content_save_recovery_paths as _recovery_paths  # type: ignore
     from project_content_migration_model import MIGRATION_VERSION  # type: ignore
     from project_content_migration_lock import find_work_root, work_lock  # type: ignore
     from project_content_save_baseline import (  # type: ignore
@@ -139,10 +141,24 @@ def active_native_save_source(
 
 
 def _base(work: Path) -> Path:
-    base = work.parent / f".{work.name}.native-save-recovery-v1"
-    if base.is_symlink():
-        raise NativeSaveRecoveryError("ネイティブ保存復旧先がシンボリックリンクです")
-    return base
+    try:
+        return _recovery_paths.native_base(work)
+    except _recovery_paths.SaveRecoveryPathError as exc:
+        raise NativeSaveRecoveryError(str(exc)) from exc
+
+
+def _bases(work: Path) -> tuple[Path, ...]:
+    try:
+        return _recovery_paths.native_bases(work)
+    except _recovery_paths.SaveRecoveryPathError as exc:
+        raise NativeSaveRecoveryError(str(exc)) from exc
+
+
+def _prune_base(work: Path, base: Path) -> None:
+    try:
+        _recovery_paths.prune_empty_base(work, base)
+    except _recovery_paths.SaveRecoveryPathError:
+        pass
 
 
 def _validate_source(source: Path, work: Path) -> None:
@@ -296,6 +312,7 @@ def _arm_restore(token: NativeSaveToken, *, error: str) -> None:
         token.journal_path = None
         if tx_dir is not None:
             shutil.rmtree(tx_dir, ignore_errors=True)
+            _prune_base(token.work_dir, tx_dir.parent)
 
 
 def prepare_native_save_sidecars(
@@ -463,7 +480,9 @@ def _commit_transaction(token: NativeSaveToken) -> None:
         token.creation_marker.unlink(missing_ok=True)
     _write_native_status(token, "committed")
     if token.journal_path is not None:
-        shutil.rmtree(token.journal_path.parent, ignore_errors=True)
+        transaction_dir = token.journal_path.parent
+        shutil.rmtree(transaction_dir, ignore_errors=True)
+        _prune_base(token.work_dir, transaction_dir.parent)
 
 
 def _restore_token(token: NativeSaveToken) -> bool:
@@ -490,7 +509,9 @@ def _restore_token(token: NativeSaveToken) -> bool:
             journal["status"] = "restored"
             journal["restoredAt"] = utc_now()
             atomic_write_json(token.journal_path, journal)
-            shutil.rmtree(token.journal_path.parent, ignore_errors=True)
+            transaction_dir = token.journal_path.parent
+            shutil.rmtree(transaction_dir, ignore_errors=True)
+            _prune_base(token.work_dir, transaction_dir.parent)
         except Exception:
             # 本体の物理復元を第一結果とする。残った記録は次回起動時に
             # 同じhashを確認して安全に再処理できる。
@@ -519,38 +540,51 @@ def cleanup_stale_transactions(
     直後の rmtree 取りこぼし等)。誤って進行中トランザクションを消さない
     よう、この関数自体は例外を外へ出さず、個々のエントリで握って続行する。
     """
-    try:
-        base = _base(Path(work_dir))
-    except Exception:  # noqa: BLE001
-        return ()
+    work = Path(work_dir)
     now = datetime.now(timezone.utc)
+    removed: list[Path] = []
+    try:
+        bases = _bases(work)
+    except Exception:  # noqa: BLE001
+        return tuple(_cleanup_stale_copying_files(work, now))
+    for base in bases:
+        removed.extend(_cleanup_transaction_base(base, now))
+        _prune_base(work, base)
+    removed.extend(_cleanup_stale_copying_files(work, now))
+    return tuple(removed)
+
+
+def _cleanup_transaction_base(base: Path, now: datetime) -> list[Path]:
     if not base.is_dir():
-        return tuple(_cleanup_stale_copying_files(Path(work_dir), now))
+        return []
     removed: list[Path] = []
     try:
         entries = list(base.iterdir())
     except OSError:
-        return ()
+        return removed
     for entry in entries:
         try:
             if entry.is_symlink() or not entry.is_dir():
                 continue
             if not _TRANSACTION_ID_RE.fullmatch(entry.name):
                 continue
-            stamp = datetime.strptime(
-                entry.name.split("-", 1)[0], "%Y%m%dT%H%M%SZ"
-            ).replace(tzinfo=timezone.utc)
-            if now - stamp < _STALE_TRANSACTION_MAX_AGE:
-                continue
-            if (entry / NATIVE_JOURNAL_NAME).is_file():
-                continue
+            journal_path = entry / NATIVE_JOURNAL_NAME
+            if journal_path.is_file():
+                status = str(read_json_mapping(journal_path).get("status", ""))
+                if status not in {"restored", "committed"}:
+                    continue
+            else:
+                stamp = datetime.strptime(
+                    entry.name.split("-", 1)[0], "%Y%m%dT%H%M%SZ"
+                ).replace(tzinfo=timezone.utc)
+                if now - stamp < _STALE_TRANSACTION_MAX_AGE:
+                    continue
             shutil.rmtree(entry, ignore_errors=True)
             if not entry.exists():
                 removed.append(entry)
         except Exception:  # noqa: BLE001
             continue
-    removed.extend(_cleanup_stale_copying_files(Path(work_dir), now))
-    return tuple(removed)
+    return removed
 
 
 def _cleanup_stale_copying_files(work: Path, now: datetime) -> list[Path]:
@@ -591,8 +625,9 @@ def recover_pending_native_saves(
         # 決める。先にnative journalを掃除すると確定済みsidecarを誤復元する。
         restored.extend(_sidecar.recover_pending_sidecar_saves(work))
         restored.extend(_restore_orphan_guards(work))
-        base = _base(work)
-        if base.is_dir():
+        for base in _bases(work):
+            if not base.is_dir():
+                continue
             for journal_path in sorted(base.glob(f"*/{NATIVE_JOURNAL_NAME}")):
                 journal = read_json_mapping(journal_path)
                 _validate_journal(journal_path, journal, work)
@@ -612,6 +647,7 @@ def recover_pending_native_saves(
                     continue
                 if _restore_token(token):
                     restored.append(token.source)
+            _prune_base(work, base)
         # 復旧処理と同じロック下で、実書込み未着手の古いトランザクション
         # 残骸 (native/sidecar 双方) も一掃する。
         cleanup_stale_transactions(work)
@@ -625,9 +661,10 @@ def find_pending_native_save_journals(
     """書込み前ゲート用。壊れた記録も復旧待ちとして返す。"""
     work = Path(expected_work_dir).resolve(strict=True)
     orphans = tuple(_orphan_guards(work))
-    base = _base(work)
     pending: list[Path] = list(orphans)
-    if base.is_dir():
+    for base in _bases(work):
+        if not base.is_dir():
+            continue
         for path in sorted(base.glob(f"*/{NATIVE_JOURNAL_NAME}")):
             try:
                 status = str(read_json_mapping(path).get("status", ""))
@@ -675,11 +712,13 @@ def _restore_orphan_guards(work: Path) -> list[Path]:
 
 
 def _native_transaction_status(work: Path, tx_id: str) -> str:
-    journal = _base(work) / tx_id / NATIVE_JOURNAL_NAME
-    try:
-        return str(read_json_mapping(journal).get("status", ""))
-    except Exception:
-        return ""
+    for base in _bases(work):
+        journal = base / tx_id / NATIVE_JOURNAL_NAME
+        try:
+            return str(read_json_mapping(journal).get("status", ""))
+        except Exception:
+            continue
+    return ""
 
 
 def _validate_journal(path: Path, journal: Mapping[str, Any], work: Path) -> None:
@@ -689,7 +728,11 @@ def _validate_journal(path: Path, journal: Mapping[str, Any], work: Path) -> Non
     tx_id = str(journal.get("transactionId", ""))
     if not _TRANSACTION_ID_RE.fullmatch(tx_id):
         raise NativeSaveRecoveryError("ネイティブ保存復旧IDが不正です")
-    if path.parent.resolve(strict=False) != (_base(work) / tx_id).resolve(strict=False):
+    if not _recovery_paths.is_safe_transaction_journal(
+        path,
+        tx_id,
+        _bases(work),
+    ):
         raise NativeSaveRecoveryError("ネイティブ保存復旧の配置が不正です")
     if Path(str(journal.get("workDir", ""))).resolve(strict=True) != work:
         raise NativeSaveRecoveryError("ネイティブ保存復旧が別作品を指しています")

@@ -12,6 +12,7 @@ import tempfile
 from typing import Iterable
 
 try:
+    from . import project_content_save_recovery_paths as _recovery_paths
     from .project_content_migration_storage import (
         atomic_write_json,
         new_transaction_id,
@@ -20,6 +21,7 @@ try:
         utc_now,
     )
 except ImportError:  # ファイル単体でロードする純Pythonテスト用
+    import project_content_save_recovery_paths as _recovery_paths  # type: ignore
     from project_content_migration_storage import (  # type: ignore
         atomic_write_json,
         new_transaction_id,
@@ -62,10 +64,24 @@ class SidecarSaveToken:
 
 
 def _base(work: Path) -> Path:
-    base = work.parent / f".{work.name}.sidecar-save-recovery-v1"
-    if base.is_symlink():
-        raise SidecarSaveError("作品情報の退避先がシンボリックリンクです")
-    return base
+    try:
+        return _recovery_paths.sidecar_base(work)
+    except _recovery_paths.SaveRecoveryPathError as exc:
+        raise SidecarSaveError(str(exc)) from exc
+
+
+def _bases(work: Path) -> tuple[Path, ...]:
+    try:
+        return _recovery_paths.sidecar_bases(work)
+    except _recovery_paths.SaveRecoveryPathError as exc:
+        raise SidecarSaveError(str(exc)) from exc
+
+
+def _prune_base(work: Path, base: Path) -> None:
+    try:
+        _recovery_paths.prune_empty_base(work, base)
+    except _recovery_paths.SaveRecoveryPathError:
+        pass
 
 
 def _validate_source(work: Path, source: Path) -> Path:
@@ -161,6 +177,7 @@ def begin_sidecar_save(
         return token
     except BaseException:
         shutil.rmtree(tx_dir, ignore_errors=True)
+        _prune_base(work, tx_dir.parent)
         raise
 
 
@@ -199,6 +216,7 @@ def restore_sidecars(token: SidecarSaveToken | None) -> bool:
     try:
         atomic_write_json(token.journal_path, _journal_value(token, token.status))
         shutil.rmtree(token.transaction_dir, ignore_errors=True)
+        _prune_base(token.work_dir, token.transaction_dir.parent)
     except Exception:
         # ファイル群の物理復元は完了済み。記録は次回起動時の再処理用に残す。
         pass
@@ -213,6 +231,7 @@ def commit_sidecars(token: SidecarSaveToken | None) -> None:
     token.status = "committed"
     atomic_write_json(token.journal_path, _journal_value(token, token.status))
     shutil.rmtree(token.transaction_dir, ignore_errors=True)
+    _prune_base(token.work_dir, token.transaction_dir.parent)
 
 
 def _token_from_journal(path: Path, data: dict, work: Path) -> SidecarSaveToken:
@@ -226,7 +245,11 @@ def _token_from_journal(path: Path, data: dict, work: Path) -> SidecarSaveToken:
     tx_id = str(data.get("transactionId", ""))
     if not _TRANSACTION_ID_RE.fullmatch(tx_id):
         raise SidecarSaveError("作品情報復旧IDが不正です")
-    if path.parent.resolve(strict=False) != (_base(work) / tx_id).resolve(strict=False):
+    if not _recovery_paths.is_safe_transaction_journal(
+        path,
+        tx_id,
+        _bases(work),
+    ):
         raise SidecarSaveError("作品情報復旧の配置が不正です")
     status = str(data.get("status", ""))
     if status not in _VALID_STATUSES:
@@ -285,53 +308,66 @@ def cleanup_stale_transactions(
     いない。誤って進行中トランザクションを消さないよう、この関数自体は
     例外を外へ出さず、個々のエントリで握って続行する。
     """
-    try:
-        base = _base(Path(work_dir))
-    except Exception:  # noqa: BLE001
-        return ()
-    if not base.is_dir():
-        return ()
+    work = Path(work_dir)
     removed: list[Path] = []
     now = datetime.now(timezone.utc)
     try:
+        bases = _bases(work)
+    except Exception:  # noqa: BLE001
+        return ()
+    for base in bases:
+        removed.extend(_cleanup_transaction_base(base, now))
+        _prune_base(work, base)
+    return tuple(removed)
+
+
+def _cleanup_transaction_base(base: Path, now: datetime) -> list[Path]:
+    if not base.is_dir():
+        return []
+    removed: list[Path] = []
+    try:
         entries = list(base.iterdir())
     except OSError:
-        return ()
+        return removed
     for entry in entries:
         try:
             if entry.is_symlink() or not entry.is_dir():
                 continue
             if not _TRANSACTION_ID_RE.fullmatch(entry.name):
                 continue
-            stamp = datetime.strptime(
-                entry.name.split("-", 1)[0], "%Y%m%dT%H%M%SZ"
-            ).replace(tzinfo=timezone.utc)
-            if now - stamp < _STALE_TRANSACTION_MAX_AGE:
-                continue
-            if (entry / SIDECAR_JOURNAL_NAME).is_file():
-                continue
+            journal_path = entry / SIDECAR_JOURNAL_NAME
+            if journal_path.is_file():
+                status = str(read_json_mapping(journal_path).get("status", ""))
+                if status not in _DONE_STATUSES:
+                    continue
+            else:
+                stamp = datetime.strptime(
+                    entry.name.split("-", 1)[0], "%Y%m%dT%H%M%SZ"
+                ).replace(tzinfo=timezone.utc)
+                if now - stamp < _STALE_TRANSACTION_MAX_AGE:
+                    continue
             shutil.rmtree(entry, ignore_errors=True)
             if not entry.exists():
                 removed.append(entry)
         except Exception:  # noqa: BLE001
             continue
-    return tuple(removed)
+    return removed
 
 
 def find_pending_sidecar_saves(work_dir: str | os.PathLike[str]) -> tuple[Path, ...]:
     work = Path(work_dir).resolve(strict=True)
-    base = _base(work)
-    if not base.is_dir():
-        return ()
     pending = []
-    for path in sorted(base.glob(f"*/{SIDECAR_JOURNAL_NAME}")):
-        try:
-            status = str(read_json_mapping(path).get("status", ""))
-        except Exception:
-            pending.append(path)
+    for base in _bases(work):
+        if not base.is_dir():
             continue
-        if status not in _DONE_STATUSES:
-            pending.append(path)
+        for path in sorted(base.glob(f"*/{SIDECAR_JOURNAL_NAME}")):
+            try:
+                status = str(read_json_mapping(path).get("status", ""))
+            except Exception:
+                pending.append(path)
+                continue
+            if status not in _DONE_STATUSES:
+                pending.append(path)
     return tuple(pending)
 
 
@@ -341,16 +377,7 @@ def recover_pending_sidecar_saves(work_dir: str | os.PathLike[str]) -> tuple[Pat
     for path in find_pending_sidecar_saves(work):
         data = dict(read_json_mapping(path))
         token = _token_from_journal(path, data, work)
-        native_journal = (
-            work.parent
-            / f".{work.name}.native-save-recovery-v1"
-            / token.transaction_id
-            / "native-save-journal.json"
-        )
-        try:
-            native_status = str(read_json_mapping(native_journal).get("status", ""))
-        except Exception:
-            native_status = ""
+        native_status = _native_transaction_status(work, token.transaction_id)
         if native_status in {"commit_decided", "committed"}:
             commit_sidecars(token)
             continue
@@ -359,6 +386,20 @@ def recover_pending_sidecar_saves(work_dir: str | os.PathLike[str]) -> tuple[Pat
         if restore_sidecars(token):
             restored.extend(record.source for record in token.records)
     return tuple(restored)
+
+
+def _native_transaction_status(work: Path, transaction_id: str) -> str:
+    try:
+        bases = _recovery_paths.native_bases(work)
+    except _recovery_paths.SaveRecoveryPathError as exc:
+        raise SidecarSaveError(str(exc)) from exc
+    for base in bases:
+        journal = base / transaction_id / "native-save-journal.json"
+        try:
+            return str(read_json_mapping(journal).get("status", ""))
+        except Exception:
+            continue
+    return ""
 
 
 __all__ = [
