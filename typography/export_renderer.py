@@ -196,5 +196,7 @@ def render_to_image(
         for glyph in glyphs:
             _draw_glyph(image, draw, glyph, **fringe)
     for glyph in glyphs:
-        fill = {"fill": glyph.color, "stroke_width": 1, "stroke_fill": glyph.color}
-        _draw_glyph(image, draw, glyph, **fill)
+        # Pillow のフォント描画自体にアンチエイリアスがあるため、本文へ固定
+        # 1px の同色ストロークを足さない。固定pxは低解像度のページプレビュー
+        # ほど物理的に太くなり、300dpiの実体表示と字面が一致しなくなる。
+        _draw_glyph(image, draw, glyph, fill=glyph.color)
