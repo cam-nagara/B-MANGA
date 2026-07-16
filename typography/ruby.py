@@ -83,6 +83,21 @@ def _normalize_small_kana(text: str, mode: str) -> str:
     return "".join(_SMALL_TO_FULL_KANA.get(ch, ch) for ch in text)
 
 
+def _is_japanese_ruby_text(text: str) -> bool:
+    """JIS系の字間配分対象となる和文ルビかを返す。"""
+    chars = [ch for ch in str(text or "") if not ch.isspace()]
+    if not chars:
+        return False
+    return all(
+        "\u3040" <= ch <= "\u30ff"
+        or "\u3400" <= ch <= "\u4dbf"
+        or "\u4e00" <= ch <= "\u9fff"
+        or "\U00020000" <= ch <= "\U0002fa1f"
+        or ch in "々〆〻"
+        for ch in chars
+    )
+
+
 def render_pad_mm_for_entry(entry, minimum: float = 1.5) -> float:
     pad = max(0.0, float(minimum))
     spans = getattr(entry, "ruby_spans", []) or []
@@ -127,6 +142,9 @@ def _distributed_starts(
     letter_spacing: float,
     align: str = "center",
     target_extent: float | None = None,
+    group_style: bool = False,
+    jis_group_distribution: bool = False,
+    max_outer_space: float | None = None,
 ) -> list[float]:
     count = int(count)
     if count <= 0:
@@ -150,6 +168,20 @@ def _distributed_starts(
         # 引き伸ばすと中付きと同じ見た目になり、設定の意味が失われる。
         span = natural_span
         first = float(parent_start)
+    elif group_style and natural_span < parent_span - 1e-9:
+        if jis_group_distribution:
+            # JIS X 4051系の和文グループルビ配置。短いルビは、前後の
+            # 空きを1、ルビ文字間へ追加する空きを2の比率で配分する。
+            # 前後の空きは親文字の二分までとし、超過分は文字間へ回す。
+            outer = (parent_span - natural_span) / (2.0 * count)
+            if max_outer_space is not None:
+                outer = min(outer, max(0.0, float(max_outer_space)))
+            inner_step = (parent_span - 2.0 * outer - ruby_em) / (count - 1)
+            first = float(parent_start) + outer
+            return [first + inner_step * i for i in range(count)]
+        # 欧文の読みは語のまとまりを崩さず、字間を増やさず中央へ置く。
+        span = natural_span
+        first = parent_center - span * 0.5
     else:
         span = max(parent_span, natural_span)
         first = parent_center - span * 0.5
@@ -386,6 +418,11 @@ def compute_ruby_placements(
                 ruby_em=em, count=cnt,
                 letter_spacing=ls, align=align,
                 target_extent=info['ext'],
+                group_style=info['style'] == "group",
+                jis_group_distribution=(
+                    info['style'] == "group" and _is_japanese_ruby_text(txt)
+                ),
+                max_outer_space=max(_glyph_em_mm(g) for g in info['covered']) * 0.5,
             )
             ry = top_y + ruby_offset_mm
             for rch, rx in zip(txt, starts):
@@ -402,6 +439,11 @@ def compute_ruby_placements(
                 ruby_em=em, count=cnt,
                 letter_spacing=ls, align=align,
                 target_extent=info['ext'],
+                group_style=info['style'] == "group",
+                jis_group_distribution=(
+                    info['style'] == "group" and _is_japanese_ruby_text(txt)
+                ),
+                max_outer_space=max(_glyph_em_mm(g) for g in info['covered']) * 0.5,
             )
             if align == "start" and starts:
                 shift = (top_y - em) - starts[-1]

@@ -138,8 +138,12 @@ def main() -> None:
         parent_left = min(g.x_mm for g in parent)
         parent_right = max(g.x_mm + (g.size_pt * 25.4 / 72.0) for g in parent)
         ruby_size_mm = ruby_placements[0].size_pt * 25.4 / 72.0
-        assert abs(ruby_placements[0].x_mm - parent_left) < 0.01
-        assert abs((ruby_placements[-1].x_mm + ruby_size_mm) - parent_right) < 0.01
+        leading = ruby_placements[0].x_mm - parent_left
+        trailing = parent_right - (ruby_placements[-1].x_mm + ruby_size_mm)
+        inner = ruby_placements[1].x_mm - (ruby_placements[0].x_mm + ruby_size_mm)
+        assert leading > 0.0
+        assert abs(leading - trailing) < 0.01
+        assert abs(inner - 2.0 * leading) < 0.01
         parent_top = max(g.y_mm + (g.size_pt * 25.4 / 72.0) for g in parent)
         assert abs(ruby_placements[0].y_mm - (parent_top + entry.ruby_gap_mm)) < 0.01
         assert abs(ruby_placements[0].size_pt - parent[0].size_pt * 0.62) < 0.01
@@ -165,8 +169,12 @@ def main() -> None:
         parent_bottom = min(g.y_mm for g in parent)
         ruby_size_mm = ruby_placements[0].size_pt * 25.4 / 72.0
         assert ruby_placements[0].y_mm > ruby_placements[-1].y_mm
-        assert abs((ruby_placements[0].y_mm + ruby_size_mm) - parent_top) < 0.01
-        assert abs(ruby_placements[-1].y_mm - parent_bottom) < 0.01
+        leading = parent_top - (ruby_placements[0].y_mm + ruby_size_mm)
+        trailing = ruby_placements[-1].y_mm - parent_bottom
+        inner = ruby_placements[0].y_mm - (ruby_placements[1].y_mm + ruby_size_mm)
+        assert leading > 0.0
+        assert abs(leading - trailing) < 0.01
+        assert abs(inner - 2.0 * leading) < 0.01
 
         entry.body = "漢字ABC\n東京"
         entry.writing_mode = "vertical"
