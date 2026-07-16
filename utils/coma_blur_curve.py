@@ -102,12 +102,47 @@ def read_node_points(node) -> tuple[tuple[float, float], ...]:
         return DEFAULT_POINTS
 
 
+def _points_almost_equal(
+    a: Sequence[tuple[float, float]],
+    b: Sequence[tuple[float, float]],
+    tol: float = 5.0e-4,
+) -> bool:
+    if len(a) != len(b):
+        return False
+    return all(
+        abs(ax - bx) <= tol and abs(ay - by) <= tol
+        for (ax, ay), (bx, by) in zip(a, b)
+    )
+
+
 def apply_points_to_node(node, points: Sequence[tuple[float, float]]) -> None:
+    """点列をカーブノードへ適用する。
+
+    ドラッグ中に check() 経由で呼ばれるため、点を丸ごと作り直すと Blender
+    ウィジェットが掴んでいる点のインデックスが別の点にすり替わる
+    (utils/effect_inout_curve.py と同じ対策)。
+    """
     normalized = normalize_points(points)
+    try:
+        curve = node.mapping.curves[0]
+        current = normalize_points(
+            [(float(p.location.x), float(p.location.y)) for p in curve.points]
+        )
+        if len(curve.points) == len(normalized) and _points_almost_equal(current, normalized):
+            return
+    except Exception:  # noqa: BLE001
+        pass
     try:
         mapping = node.mapping
         mapping.initialize()
         curve = mapping.curves[0]
+        if len(curve.points) == len(normalized):
+            # 点数が同じ間は remove/new をせず位置だけ更新する
+            for point, (x, y) in zip(curve.points, normalized):
+                point.location = (x, y)
+                point.handle_type = "AUTO"
+            mapping.update()
+            return
         while len(curve.points) > 2:
             curve.points.remove(curve.points[-2])
         curve.points[0].location = normalized[0]

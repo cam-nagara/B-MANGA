@@ -648,10 +648,14 @@ def generate_focus_strokes(
     start_outline_mm: Sequence[tuple[float, float]] | None = None,
     start_extend_mm: float = 0.0,
     end_center_xy_mm: tuple[float, float] | None = None,
+    end_outline_mm: Sequence[tuple[float, float]] | None = None,
 ) -> list[EffectLineStroke]:
     """集中線 (focus) のストローク生成.
 
     始点形状から終点形状へ線を引く。中心点は放射方向の基準として扱う。
+    ``end_outline_mm`` を渡すと、``end_shape`` から算出する輪郭の代わりに
+    その点列を終点輪郭として使う (フキダシのウニフラが本体形状の輪郭を
+    内端輪郭として使うための入口)。
     """
     rng = random.Random(seed)
     out: list[EffectLineStroke] = []
@@ -664,8 +668,11 @@ def generate_focus_strokes(
     else:
         start_outline = [(float(x), float(y)) for x, y in start_outline_mm]
         start_extend = max(0.0, float(start_extend_mm))
-    end_rect = _scaled_rect(shape_center_xy_mm[0], shape_center_xy_mm[1], radius_x_mm, radius_y_mm, 1.0)
-    end_outline = _shape_outline(params, "end", end_rect, shape_center_xy_mm, seed=seed + 23)
+    if end_outline_mm is None:
+        end_rect = _scaled_rect(shape_center_xy_mm[0], shape_center_xy_mm[1], radius_x_mm, radius_y_mm, 1.0)
+        end_outline = _shape_outline(params, "end", end_rect, shape_center_xy_mm, seed=seed + 23)
+    else:
+        end_outline = [(float(x), float(y)) for x, y in end_outline_mm]
     distance_outline_available = str(getattr(params, "spacing_mode", "") or "") == "distance" and len(start_outline) >= 2
     if distance_outline_available and _spacing_density_compensation_enabled(params):
         for point in effect_line_radial_spacing.outline_points_for_perpendicular_spacing(
@@ -866,12 +873,21 @@ def generate_end_shape_fill_stroke(
     radius_y_mm: float,
     *,
     seed: int = 0,
+    end_outline_mm: Sequence[tuple[float, float]] | None = None,
 ) -> EffectLineStroke | None:
-    """終点形状を下地として塗るための閉じたストロークを返す。"""
+    """終点形状を下地として塗るための閉じたストロークを返す。
+
+    ``end_outline_mm`` を渡すと ``end_shape`` の代わりにその点列を塗り輪郭に使う。
+    """
     if str(getattr(params, "effect_type", "") or "") in {"speed", "white_outline"}:
         return None
-    rect = _scaled_rect(center_xy_mm[0], center_xy_mm[1], radius_x_mm, radius_y_mm, 1.0)
-    outline = _shape_outline(params, "end", rect, center_xy_mm, seed=seed + 23)
+    if end_outline_mm is None:
+        rect = _scaled_rect(center_xy_mm[0], center_xy_mm[1], radius_x_mm, radius_y_mm, 1.0)
+        outline = _shape_outline(params, "end", rect, center_xy_mm, seed=seed + 23)
+        smooth = _shape_guide_uses_smooth_bezier(params, "end")
+    else:
+        outline = [(float(x), float(y)) for x, y in end_outline_mm]
+        smooth = False
     if len(outline) < 3:
         return None
     return EffectLineStroke(
@@ -880,7 +896,7 @@ def generate_end_shape_fill_stroke(
         cyclic=True,
         role="end_fill",
         curve_type="BEZIER",
-        bezier_smooth=_shape_guide_uses_smooth_bezier(params, "end"),
+        bezier_smooth=smooth,
     )
 
 
@@ -1102,6 +1118,7 @@ def generate_strokes(
     start_outline_mm: Sequence[tuple[float, float]] | None = None,
     start_extend_mm: float = 0.0,
     end_center_xy_mm: tuple[float, float] | None = None,
+    end_outline_mm: Sequence[tuple[float, float]] | None = None,
 ):
     etype = params.effect_type
     rx, ry = radius_xy_mm
@@ -1140,6 +1157,7 @@ def generate_strokes(
         start_outline_mm=start_outline_mm,
         start_extend_mm=start_extend_mm,
         end_center_xy_mm=shape_center_xy_mm,
+        end_outline_mm=end_outline_mm,
     )
     if etype == "uni_flash":
         focus_strokes = _apply_uni_flash_jag(
@@ -1161,16 +1179,26 @@ def generate_shape_guide_strokes(
     start_extend_mm: float = 0.0,
     seed: int = 0,
     end_center_xy_mm: tuple[float, float] | None = None,
+    end_outline_mm: Sequence[tuple[float, float]] | None = None,
 ) -> list[EffectLineStroke]:
-    """始点/終点の形状ラインをガイドストロークとして返す。"""
+    """始点/終点の形状ラインをガイドストロークとして返す。
+
+    ``end_outline_mm`` を渡すと終点側ガイドにその点列を使う
+    (フキダシのウニフラ = 本体輪郭)。
+    """
     etype = getattr(params, "effect_type", "")
     shape_center_xy_mm = end_center_xy_mm if end_center_xy_mm is not None else center_xy_mm
     if etype == "speed":
         return generate_speed_guide_strokes(params, shape_center_xy_mm, radius_xy_mm)
     rx, ry = radius_xy_mm
     cx, cy = shape_center_xy_mm
-    end_rect = _scaled_rect(cx, cy, rx, ry, 1.0)
-    end_outline = _shape_outline(params, "end", end_rect, shape_center_xy_mm, seed=seed + 23)
+    if end_outline_mm is None:
+        end_rect = _scaled_rect(cx, cy, rx, ry, 1.0)
+        end_outline = _shape_outline(params, "end", end_rect, shape_center_xy_mm, seed=seed + 23)
+        end_smooth = _shape_guide_uses_smooth_bezier(params, "end")
+    else:
+        end_outline = [(float(x), float(y)) for x, y in end_outline_mm]
+        end_smooth = False
     if start_outline_mm is None:
         start_rect = _scaled_rect(cx, cy, rx, ry, 2.0)
         start_outline = _shape_outline(params, "start", start_rect, shape_center_xy_mm, seed=seed + 11)
@@ -1203,7 +1231,7 @@ def generate_shape_guide_strokes(
                 cyclic=True,
                 role="end_guide",
                 curve_type="BEZIER",
-                bezier_smooth=_shape_guide_uses_smooth_bezier(params, "end"),
+                bezier_smooth=end_smooth,
             )
         )
     return guides

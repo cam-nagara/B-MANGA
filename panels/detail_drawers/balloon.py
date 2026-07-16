@@ -187,6 +187,8 @@ def _draw_uni_flash(layout, entry, columns, preset_mode: bool) -> None:
         show_path_settings=False,
         columns=columns,
         preset_mode=preset_mode,
+        # 内端輪郭はフキダシ本体の形状を使うため、内端形状の設定は出さない
+        show_end_shape=False,
     )
 
 

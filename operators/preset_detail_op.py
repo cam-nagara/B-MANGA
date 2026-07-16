@@ -327,7 +327,12 @@ def _save_tail(context, preset_name: str, description: str) -> None:
 def _load_balloon(preset_name: str) -> dict[str, Any] | None:
     from ..io import balloon_presets
 
-    preset = balloon_presets.load_preset_by_name(preset_name)
+    name = str(preset_name or "")
+    if name.startswith("custom:"):
+        # ツールセレクタ経由の合成キー ("custom:実名") も実名として許容する
+        # (operators/detail_dialog_runtime.py 等の他呼び出し元と同じ堅牢性)
+        name = name.split(":", 1)[1]
+    preset = balloon_presets.load_preset_by_name(name)
     if preset is None:
         return None
     return dict(preset.data)

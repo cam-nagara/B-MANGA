@@ -257,7 +257,14 @@ def _white_outline_black_brush_mm(entry, line_width_mm: float) -> float:
     return max(0.0, float(line_width_mm)) * peak / 100.0
 
 
-def _base_rect(entry) -> tuple[tuple[float, float], float, float]:
+def _base_rect_with_outline(
+    entry,
+) -> tuple[tuple[float, float], float, float, list[tuple[float, float]]]:
+    """本体輪郭の中心・半径 (mm) と輪郭点列 (rect ローカル mm) を返す。
+
+    ウニフラの内端輪郭はフキダシ本体の輪郭そのものを使う (end_shape の
+    二重管理を廃止)。輪郭点列はその受け渡し用。
+    """
     width = max(0.001, float(getattr(entry, "width_mm", 0.0) or 0.0))
     height = max(0.001, float(getattr(entry, "height_mm", 0.0) or 0.0))
     rect = Rect(0.0, 0.0, width, height)
@@ -267,7 +274,13 @@ def _base_rect(entry) -> tuple[tuple[float, float], float, float]:
     min_y = min(float(y) for _x, y in points)
     max_y = max(float(y) for _x, y in points)
     center = ((min_x + max_x) * 0.5, (min_y + max_y) * 0.5)
-    return center, max(0.001, (max_x - min_x) * 0.5), max(0.001, (max_y - min_y) * 0.5)
+    outline = [(float(x), float(y)) for x, y in points]
+    return center, max(0.001, (max_x - min_x) * 0.5), max(0.001, (max_y - min_y) * 0.5), outline
+
+
+def _base_rect(entry) -> tuple[tuple[float, float], float, float]:
+    center, rx, ry, _outline = _base_rect_with_outline(entry)
+    return center, rx, ry
 
 
 def _default_easing_curve() -> str:
@@ -450,7 +463,7 @@ def generate_flash_strokes_rect_local(entry):
     同じ線群を使うための共通入口。free_transform やフキダシ原点への
     平行移動は含まない。
     """
-    center, rx, ry = _base_rect(entry)
+    center, rx, ry, body_outline = _base_rect_with_outline(entry)
     line_style = balloon_shapes.normalize_line_style(str(getattr(entry, "line_style", "") or ""))
     if line_style == "white_outline":
         line_width_mm = balloon_line_mesh.scaled_entry_width_mm(entry, "line_width_mm", 0.3)
@@ -488,6 +501,8 @@ def generate_flash_strokes_rect_local(entry):
             return []
         seed = int(getattr(getattr(entry, "shape_params", None), "shape_seed", 0) or 0)
         strokes = []
+        # ウニフラの内端輪郭・下地塗りはフキダシ本体の輪郭そのものを使う
+        # (end_shape 系フィールドは保存互換のため残るが生成には使わない)
         if bool(getattr(params, "fill_base_shape", False)):
             fill = effect_line_gen.generate_end_shape_fill_stroke(
                 params,
@@ -495,6 +510,7 @@ def generate_flash_strokes_rect_local(entry):
                 rx,
                 ry,
                 seed=seed,
+                end_outline_mm=body_outline,
             )
             if fill is not None:
                 strokes.append(fill)
@@ -503,6 +519,7 @@ def generate_flash_strokes_rect_local(entry):
             center_xy_mm=center,
             radius_xy_mm=(rx, ry),
             seed=seed,
+            end_outline_mm=body_outline,
         )
         # ウニフラの「ズラし量」: 線の終点を交互に出し入れする
         # (フキダシ側は params.effect_type を focus に固定しているため、

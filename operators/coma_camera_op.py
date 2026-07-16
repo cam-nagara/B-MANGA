@@ -11,6 +11,7 @@ from mathutils import Vector
 
 from ..core.mode import MODE_COMA, get_mode
 from ..utils import log, coma_camera
+from . import view_event_region
 
 _logger = log.get_logger(__name__)
 
@@ -275,6 +276,12 @@ class BMANGA_OT_coma_camera_shift_drag(Operator):
         )
 
     def invoke(self, context, event):
+        if (
+            event.type == "LEFTMOUSE"
+            and event.value == "PRESS"
+            and view_event_region.is_view3d_navigation_ui_event(context, event)
+        ):
+            return {"PASS_THROUGH"}
         cam = _camera(context)
         if cam is None:
             self.report({"WARNING"}, "カメラが選択されていません")

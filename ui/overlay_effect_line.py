@@ -102,6 +102,13 @@ def draw_active_effect_line_bounds(
                     )
 
 
+def _shape_guides_enabled(context) -> bool:
+    scene = getattr(context, "scene", None)
+    if scene is None:
+        return True
+    return bool(getattr(scene, "bmanga_show_line_shape_guides", True))
+
+
 def _draw_shape_guides(
     context,
     obj,
@@ -114,6 +121,8 @@ def _draw_shape_guides(
     logger=None,
 ) -> None:
     if draw_segments_mm is None or obj is None or layer is None or bounds is None or world_bounds is None:
+        return
+    if not _shape_guides_enabled(context):
         return
     try:
         from ..operators import effect_line_gen, effect_line_op
@@ -158,6 +167,107 @@ def _draw_shape_guides(
         except Exception:  # noqa: BLE001
             width_mm = _SHAPE_GUIDE_WIDTH_MM
         draw_segments_mm(segments, color, width_mm)
+
+
+def draw_selected_balloon_flash_guides(
+    context,
+    *,
+    draw_segments_mm: DrawSegmentsMM | None,
+    logger=None,
+) -> None:
+    """選択中フキダシ (線種ウニフラ) の外端/内端形状ガイドを細線で描く.
+
+    内端ガイドはフキダシ本体の輪郭そのもの (end_shape は生成に使わない
+    一本化仕様)。``scene.bmanga_show_line_shape_guides`` OFF なら描かない。
+    """
+    if draw_segments_mm is None or not _shape_guides_enabled(context):
+        return
+    keys = set(object_selection.get_keys(context))
+    try:
+        from ..operators import object_tool_op
+
+        active_key = object_tool_op.active_selection_key(context)
+        if active_key:
+            keys.add(active_key)
+    except Exception:  # noqa: BLE001
+        pass
+    balloon_keys = [key for key in sorted(keys) if object_selection.parse_key(key)[0] == "balloon"]
+    if not balloon_keys:
+        return
+    try:
+        from ..core.work import get_work
+        from ..operators import object_tool_selection
+        from ..utils.layer_hierarchy import OUTSIDE_STACK_KEY
+
+        work = get_work(context)
+    except Exception:  # noqa: BLE001
+        if logger is not None:
+            logger.exception("balloon flash guide setup failed")
+        return
+    for key in balloon_keys:
+        _kind, page_id, item_id = object_selection.parse_key(key)
+        try:
+            if page_id == OUTSIDE_STACK_KEY:
+                _idx, entry = object_tool_selection.find_shared_balloon_by_key(work, item_id)
+            else:
+                _pi, _page, _idx, entry = object_tool_selection.find_balloon_by_key(work, page_id, item_id)
+        except Exception:  # noqa: BLE001
+            entry = None
+        if entry is None:
+            continue
+        _draw_balloon_uni_flash_shape_guides(entry, draw_segments_mm=draw_segments_mm, logger=logger)
+
+
+def _draw_balloon_uni_flash_shape_guides(entry, *, draw_segments_mm, logger=None) -> None:
+    """1 フキダシ分のウニフラ形状ガイドをページ mm 座標で描く."""
+    try:
+        from mathutils import Vector
+
+        from ..operators import effect_line_gen
+        from ..utils import balloon_curve_object
+        from ..utils import balloon_flash_effect_line_mesh as flash_mesh
+        from ..utils import balloon_shapes
+
+        if balloon_shapes.normalize_line_style(str(getattr(entry, "line_style", "") or "")) != "uni_flash":
+            return
+        body_obj = balloon_curve_object.find_balloon_object(str(getattr(entry, "id", "") or ""))
+        if body_obj is None:
+            return
+        params = flash_mesh._focus_params(entry)
+        center, rx, ry, body_outline = flash_mesh._base_rect_with_outline(entry)
+        seed = int(getattr(getattr(entry, "shape_params", None), "shape_seed", 0) or 0)
+        guides = effect_line_gen.generate_shape_guide_strokes(
+            params,
+            center_xy_mm=center,
+            radius_xy_mm=(rx, ry),
+            seed=seed,
+            end_outline_mm=body_outline,
+        )
+        matrix = body_obj.matrix_world
+        for guide in guides:
+            # 放射線メッシュと同じ変換 (free_transform + rect ローカル原点) で
+            # フキダシローカル座標へ移し、本体オブジェクトのワールド変換
+            # (位置 + 回転 + 反転 + ページオフセット) を掛けてページ mm にする。
+            local_stroke = flash_mesh._transform_stroke_to_local(entry, guide)
+            points = list(getattr(local_stroke, "points_xyz", None) or [])
+            if len(points) < 2:
+                continue
+            pts = []
+            for p in points:
+                world = matrix @ Vector((float(p[0]), float(p[1]), 0.0))
+                pts.append((m_to_mm(float(world.x)), m_to_mm(float(world.y))))
+            segments = [(pts[i], pts[i + 1]) for i in range(len(pts) - 1)]
+            if bool(getattr(guide, "cyclic", False)):
+                segments.append((pts[-1], pts[0]))
+            if not segments:
+                continue
+            role = str(getattr(guide, "role", "") or "")
+            color = _END_GUIDE_COLOR if role == "end_guide" else _START_GUIDE_COLOR
+            draw_segments_mm(segments, color, _SHAPE_GUIDE_WIDTH_MM)
+    except Exception:  # noqa: BLE001
+        if logger is not None:
+            logger.exception("balloon flash guide draw failed")
+        return
 
 
 def _draw_center_cross(

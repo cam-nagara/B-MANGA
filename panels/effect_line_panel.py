@@ -187,6 +187,7 @@ def draw_effect_params(
     allow_path_edit: bool = True,
     columns=None,
     preset_mode: bool = False,
+    show_end_shape: bool = True,
 ) -> None:
     """効果線パラメータを ``layout`` に描画 (パネル / 詳細設定ダイアログ共通).
 
@@ -201,6 +202,9 @@ def draw_effect_params(
     ボタン・基準パスのモーダル編集ボタン) と、全インスタンス共有の単一ノード
     に書き込む入り抜きカーブウィジェット (utils/effect_inout_curve.py。実
     ツール側のグラフを汚染しうる) を描画しない。数値項目自体は編集できる。
+
+    ``show_end_shape=False`` で内端形状ボックスを出さない (フキダシの
+    ウニフラは内端輪郭にフキダシ本体の形状を使うため設定不要)。
     """
     if params is None:
         layout.label(text="未初期化", icon="ERROR")
@@ -230,7 +234,10 @@ def draw_effect_params(
 
     if effect_type == "white_outline":
         _draw_shape_settings(_col(0), params, "start", "外端形状", frame_toggle=True)
-        _draw_shape_settings(_col(0), params, "end", "内端形状")
+        if show_end_shape:
+            _draw_shape_settings(_col(0), params, "end", "内端形状")
+        else:
+            _col(0).label(text="内端形状: フキダシの形状を使用", icon="INFO")
         white_cols = (
             (_col(line_col), _col(inout_col), _col(side_col))
             if len(cols) > 2
@@ -256,7 +263,10 @@ def draw_effect_params(
 
     if effect_type != "speed":
         _draw_shape_settings(_col(0), params, "start", "外端形状", frame_toggle=True)
-        _draw_shape_settings(_col(0), params, "end", "内端形状")
+        if show_end_shape:
+            _draw_shape_settings(_col(0), params, "end", "内端形状")
+        else:
+            _col(0).label(text="内端形状: フキダシの形状を使用", icon="INFO")
 
     box = _col(line_col).box()
     box.label(text="線")
@@ -366,6 +376,8 @@ class BMANGA_PT_effect_line(Panel):
         layout = self.layout
         params = getattr(context.scene, "bmanga_effect_line_params", None)
         draw_effect_line_preset_management(layout, context)
+        if hasattr(context.scene, "bmanga_show_line_shape_guides"):
+            layout.prop(context.scene, "bmanga_show_line_shape_guides")
         draw_effect_params(layout, params)
 
 

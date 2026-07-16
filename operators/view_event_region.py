@@ -14,9 +14,21 @@ def _contains(region, mouse_x: int, mouse_y: int) -> bool:
     )
 
 
-_NAVIGATION_UI_HITBOX_WIDTH_PX = 112
-_NAVIGATION_UI_HITBOX_HEIGHT_PX = 232
-_NAVIGATION_UI_HITBOX_MARGIN_PX = 8
+# ヒットボックスの寸法は Blender の「ナビゲーションギズモサイズ」設定
+# (context.preferences.view.gizmo_size_navigate_v3d, 既定 80) が既定値の時に
+# 下の係数と一致するよう逆算してある: (80 + 32) * 1.0 = 112 / (80 + 152) * 1.0 = 232。
+_NAVIGATION_UI_HITBOX_WIDTH_GIZMO_OFFSET_PX = 32
+_NAVIGATION_UI_HITBOX_HEIGHT_GIZMO_OFFSET_PX = 152
+_NAVIGATION_UI_HITBOX_MARGIN_BASE_PX = 8
+
+# プリファレンス取得に失敗した場合のフォールバック値。既定環境の 112x232 より
+# 大きめに設定してある: ヒットボックスがギズモより小さいと実ギズモがはみ出し
+# てモーダルツールにクリックを奪われる (今回の不具合そのもの) が、大きすぎる
+# 場合は取りこぼしたクリックがナビゲーションUIパススルー扱いになるだけで実害
+# が小さい。「覆いきれないより覆いすぎる方が安全」という方針でこの値を選ぶ。
+_NAVIGATION_UI_HITBOX_FALLBACK_WIDTH_PX = 160
+_NAVIGATION_UI_HITBOX_FALLBACK_HEIGHT_PX = 280
+_NAVIGATION_UI_HITBOX_FALLBACK_MARGIN_PX = 8
 _MOUSE_EVENT_TYPES = {
     "LEFTMOUSE",
     "MIDDLEMOUSE",
@@ -94,6 +106,44 @@ def _navigation_ui_visible(context, area) -> bool:
     return bool(getattr(space, "show_gizmo_navigate", True))
 
 
+def _navigation_ui_hitbox_px(context) -> tuple[float, float, float]:
+    """Return (width, height, margin) in pixels for the navigation gizmo hitbox.
+
+    Blender's navigation gizmo (top-right corner of the VIEW_3D WINDOW region)
+    scales with two independent user preferences: the "Navigation Gizmos" size
+    slider (``preferences.view.gizmo_size_navigate_v3d``, factory default 80)
+    and the effective UI scale (``preferences.system.ui_scale``, which already
+    folds in the OS display-scaling setting on Windows). A hitbox sized only for
+    the factory defaults leaves the real gizmo poking out past it under Windows
+    125%/150% display scaling or a custom gizmo size, so a modal B-MANGA tool
+    ends up stealing clicks meant for the gizmo -- the bug this function exists
+    to fix.
+
+    If preferences cannot be read for any reason, fall back to hitbox values
+    larger than the factory-default 112x232 box. Over-covering is the safe
+    failure mode here: a hitbox that is too big just forwards a few extra
+    clicks near the corner down the (harmless) navigation-UI passthrough path,
+    while a hitbox that is too small lets a modal tool swallow clicks meant for
+    the real gizmo.
+    """
+    try:
+        preferences = context.preferences
+        gizmo_size = float(preferences.view.gizmo_size_navigate_v3d)
+        ui_scale = float(preferences.system.ui_scale)
+        if ui_scale <= 0.0:
+            raise ValueError("non-positive ui_scale")
+    except Exception:  # noqa: BLE001
+        return (
+            float(_NAVIGATION_UI_HITBOX_FALLBACK_WIDTH_PX),
+            float(_NAVIGATION_UI_HITBOX_FALLBACK_HEIGHT_PX),
+            float(_NAVIGATION_UI_HITBOX_FALLBACK_MARGIN_PX),
+        )
+    width = (gizmo_size + _NAVIGATION_UI_HITBOX_WIDTH_GIZMO_OFFSET_PX) * ui_scale
+    height = (gizmo_size + _NAVIGATION_UI_HITBOX_HEIGHT_GIZMO_OFFSET_PX) * ui_scale
+    margin = _NAVIGATION_UI_HITBOX_MARGIN_BASE_PX * ui_scale
+    return width, height, margin
+
+
 def is_view3d_navigation_ui_event(context, event) -> bool:
     """Return True when a mouse event is over Blender's top-right navigation UI.
 
@@ -110,11 +160,10 @@ def is_view3d_navigation_ui_event(context, event) -> bool:
     area, region, _rv3d, mouse_x, mouse_y = view
     if not _navigation_ui_visible(context, area):
         return False
+    hitbox_width, hitbox_height, hitbox_margin = _navigation_ui_hitbox_px(context)
     return (
-        int(mouse_x)
-        >= int(region.width) - _NAVIGATION_UI_HITBOX_WIDTH_PX - _NAVIGATION_UI_HITBOX_MARGIN_PX
-        and int(mouse_y)
-        >= int(region.height) - _NAVIGATION_UI_HITBOX_HEIGHT_PX - _NAVIGATION_UI_HITBOX_MARGIN_PX
+        float(mouse_x) >= float(region.width) - hitbox_width - hitbox_margin
+        and float(mouse_y) >= float(region.height) - hitbox_height - hitbox_margin
     )
 
 

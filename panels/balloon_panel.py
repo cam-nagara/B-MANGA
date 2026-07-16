@@ -184,6 +184,8 @@ class BMANGA_PT_balloons(Panel):
         # 主線の谷の線幅/山の線幅: % 指定 (動的形状のみ表示, 両方 0% で主線全体消失)
         _shape_norm_for_main_line = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
         if line_style == "uni_flash":
+            if hasattr(context.scene, "bmanga_show_line_shape_guides"):
+                box.prop(context.scene, "bmanga_show_line_shape_guides")
             effect_line_panel.draw_effect_params(
                 box,
                 entry,
@@ -191,6 +193,7 @@ class BMANGA_PT_balloons(Panel):
                 fixed_effect_type="uni_flash",
                 show_type=False,
                 show_path_settings=False,
+                show_end_shape=False,
             )
         elif balloon_shapes.is_flash_line_style(line_style):
             if line_style != "white_outline":

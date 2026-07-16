@@ -652,7 +652,6 @@ class BMANGA_OT_coma_knife_cut(Operator):
         self._dragging = False
         self._cut_count_total = 0
         self._externally_finished = False
-        self._navigation_drag_passthrough = False
         self._cursor_modal_set = False
         self._edge_drag = None
         self._edge_drag_moved = False
@@ -718,9 +717,6 @@ class BMANGA_OT_coma_knife_cut(Operator):
             and region.y <= mouse_y < region.y + region.height
         )
 
-    def _is_over_navigation_gizmo(self, ev) -> bool:
-        return view_event_region.is_view3d_navigation_ui_event(bpy.context, ev)
-
     def _tag_redraw(self) -> None:
         if self._region is not None:
             self._region.tag_redraw()
@@ -773,9 +769,10 @@ class BMANGA_OT_coma_knife_cut(Operator):
             return {"RUNNING_MODAL"}
         if getattr(self, "_edge_drag", None) is not None:
             return self._modal_edge_drag(context, event)
-        if getattr(self, "_navigation_drag_passthrough", False):
-            if event.type == "LEFTMOUSE" and event.value == "RELEASE":
-                self._navigation_drag_passthrough = False
+        if (
+            not self._dragging
+            and view_event_region.modal_navigation_ui_passthrough(self, context, event)
+        ):
             return {"PASS_THROUGH"}
         # Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y は modal 保持中の PropertyGroup 参照を
         # stale 化させて C レベル crash を起こすため、検知したら即終了して譲る。
@@ -831,8 +828,6 @@ class BMANGA_OT_coma_knife_cut(Operator):
                     self._region.tag_redraw()
                 except Exception:  # noqa: BLE001
                     pass
-            if not self._dragging and self._is_over_navigation_gizmo(event):
-                return {"PASS_THROUGH"}
             if not self._dragging and not self._is_inside_region(event):
                 return {"PASS_THROUGH"}
             if not self._dragging:
@@ -846,9 +841,6 @@ class BMANGA_OT_coma_knife_cut(Operator):
 
         if event.type == "LEFTMOUSE":
             if event.value == "PRESS":
-                if self._is_over_navigation_gizmo(event):
-                    self._navigation_drag_passthrough = True
-                    return {"PASS_THROUGH"}
                 if not self._is_inside_region(event):
                     return {"PASS_THROUGH"}
                 if handle_intercept.try_intercept_press(context, event, self):

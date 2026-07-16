@@ -238,6 +238,20 @@ def sync_detail_preset_list(owner, context, session, preset_type: str) -> int:
         selected_identifier = (
             selected if shape == "custom" and selected else f"shape:{shape}"
         )
+        if shape != "custom":
+            # フキダシの「プリセット保存対象値」は形状そのものなので、
+            # 「形状」フィールドの直接編集は組み込み形状プリセットを選ぶの
+            # と同義であり、「プリセット未保存の変更」ではない。基準値を
+            # 現在値へ追従させ、一覧が追従選択した際にプリセット切り替え
+            # 確認ダイアログが誤発動 (連続表示含む) しないようにする。
+            # カスタム形状の輪郭編集だけは従来どおり確認の対象に残す。
+            from ..utils import detail_preset_change_guard
+
+            current = detail_preset_change_guard.capture_preset_settings(
+                target, "balloon"
+            )
+            if getattr(session, "preset_baseline", None) not in (None, current):
+                session.set_preset_baseline(current)
     signature = (
         str(session.token),
         preset_type,

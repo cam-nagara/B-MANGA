@@ -1813,6 +1813,11 @@ def _draw_callback(phase: str = "post") -> None:
             draw_segments_mm=_draw_segments_mm,
             logger=_logger,
         )
+        overlay_effect_line.draw_selected_balloon_flash_guides(
+            context,
+            draw_segments_mm=_draw_segments_mm,
+            logger=_logger,
+        )
         overlay_creation_range.draw(
             draw_rect_fill=_draw_rect_fill,
             draw_rect_outline=_draw_rect_outline,

@@ -80,6 +80,15 @@ class BMANGA_OT_overlay_toggle(bpy.types.Operator):
         return {"FINISHED"}
 
 
+def _shape_guides_toggle_update(_self, context) -> None:
+    try:
+        for area in context.screen.areas if context.screen else ():
+            if area.type == "VIEW_3D":
+                area.tag_redraw()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 _CLASSES = (BMANGA_OT_overlay_toggle,)
 
 
@@ -89,6 +98,12 @@ def register() -> None:
         description="ページ番号・作品情報・選択枠・編集ハンドルなどの補助表示を切り替えます",
         default=True,
         update=_overlay_enabled_update,
+    )
+    bpy.types.Scene.bmanga_show_line_shape_guides = bpy.props.BoolProperty(
+        name="端形状ガイドを表示",
+        description="効果線・フキダシ(ウニフラ)の外端形状と内端形状をビューポートに細い線で表示します",
+        default=True,
+        update=_shape_guides_toggle_update,
     )
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
@@ -100,7 +115,8 @@ def unregister() -> None:
             bpy.utils.unregister_class(cls)
         except RuntimeError:
             pass
-    try:
-        del bpy.types.Scene.bmanga_overlay_enabled
-    except AttributeError:
-        pass
+    for prop in ("bmanga_overlay_enabled", "bmanga_show_line_shape_guides"):
+        try:
+            delattr(bpy.types.Scene, prop)
+        except AttributeError:
+            pass

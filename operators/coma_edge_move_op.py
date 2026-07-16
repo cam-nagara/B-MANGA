@@ -991,7 +991,6 @@ class BMANGA_OT_coma_edge_move(Operator):
         self._drag_start_world: Optional[tuple[float, float]] = None
         self._original_geometry: Optional[dict] = None
         self._externally_finished = False
-        self._navigation_drag_passthrough = False
         self._cursor_modal_set = False
         # シングル/ダブルクリック判定用
         self._last_press_time = 0.0
@@ -1076,9 +1075,6 @@ class BMANGA_OT_coma_edge_move(Operator):
             and region.y <= mouse_y < region.y + region.height
         )
 
-    def _is_over_navigation_gizmo(self, ev) -> bool:
-        return view_event_region.is_view3d_navigation_ui_event(bpy.context, ev)
-
     def _tag_redraw(self) -> None:
         if self._region is not None:
             self._region.tag_redraw()
@@ -1136,9 +1132,10 @@ class BMANGA_OT_coma_edge_move(Operator):
             return {"RUNNING_MODAL"}
         if view_event_region.toggle_modal_sidebar_if_requested(context, event):
             return {"RUNNING_MODAL"}
-        if getattr(self, "_navigation_drag_passthrough", False):
-            if event.type == "LEFTMOUSE" and event.value == "RELEASE":
-                self._navigation_drag_passthrough = False
+        if (
+            not self._dragging
+            and view_event_region.modal_navigation_ui_passthrough(self, context, event)
+        ):
             return {"PASS_THROUGH"}
         # Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y (undo / redo) はモーダルが保持する
         # PropertyGroup 参照を stale 化させて C レベル crash を起こすため、
@@ -1197,8 +1194,6 @@ class BMANGA_OT_coma_edge_move(Operator):
             # ▲ ハンドル hover ハイライト用にカーソル位置を WM に記録
             if self._region is not None:
                 edge_selection.update_overlay_pointer(context, self._region, event)
-            if not self._dragging and self._is_over_navigation_gizmo(event):
-                return {"PASS_THROUGH"}
             if not self._dragging and not self._is_inside_region(event):
                 return {"PASS_THROUGH"}
             if self._dragging and self._selection is not None:
@@ -1214,9 +1209,6 @@ class BMANGA_OT_coma_edge_move(Operator):
 
         if event.type == "LEFTMOUSE":
             if event.value == "PRESS":
-                if self._is_over_navigation_gizmo(event):
-                    self._navigation_drag_passthrough = True
-                    return {"PASS_THROUGH"}
                 if not self._is_inside_region(event):
                     return {"PASS_THROUGH"}
                 if handle_intercept.try_intercept_press(context, event, self):

@@ -11,6 +11,7 @@ from gpu_extras.batch import batch_for_shader
 
 from ..core.work import get_work
 from ..utils import shortcut_visibility
+from . import view_event_region
 
 _GP_PAINT_ATTRS = ("grease_pencil_paint", "gpencil_paint", "gpencil_v3_paint")
 _CIRCLE_SEGMENTS = 96
@@ -209,6 +210,8 @@ class BMANGA_OT_brush_size_drag(Operator):
             or not event.ctrl
             or not event.alt
         ):
+            return {"PASS_THROUGH"}
+        if view_event_region.is_view3d_navigation_ui_event(context, event):
             return {"PASS_THROUGH"}
         brush = _active_brush(context)
         if brush is None:

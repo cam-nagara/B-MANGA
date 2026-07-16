@@ -834,7 +834,7 @@ class BMangaBalloonEntry(bpy.types.PropertyGroup):
     out_range_percent: FloatProperty(name="抜きの範囲 (%)", description="先端側を細める範囲を、線の長さに対する割合で指定", default=100.0, min=0.0, max=100.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     in_range_mm: FloatProperty(name="入りの範囲 (mm)", description="根元側を細める範囲 (mm)", default=10.0, min=0.0, soft_max=200.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     out_range_mm: FloatProperty(name="抜きの範囲 (mm)", description="先端側を細める範囲 (mm)", default=10.0, min=0.0, soft_max=200.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    fill_base_shape: BoolProperty(name="内端形状を下地として塗る", description="ONで内端形状を下地として塗りつぶす", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    fill_base_shape: BoolProperty(name="フキダシの形状を下地として塗る", description="ONでフキダシの形状を下地として塗りつぶす", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     white_underlay_enabled: BoolProperty(name="白抜き", description="ONで線の内側に白い下地を敷く", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     white_underlay_width_percent: FloatProperty(name="白抜き幅 (%)", description="白い下地の幅を、線幅に対する割合で指定", default=100.0, min=-300.0, max=300.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     white_underlay_color: FloatVectorProperty(name="白抜き色", description="白い下地の色", subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]

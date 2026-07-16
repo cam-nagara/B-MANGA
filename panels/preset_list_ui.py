@@ -41,14 +41,27 @@ class BMANGA_UL_presets(UIList):
             tool_icon = _TYPE_ICON.get(preset_type, "PREFERENCES")
             row = layout.row(align=True)
             row.label(text=item.name)
-            op = row.operator(
-                "bmanga.preset_detail_edit",
-                text="",
-                icon=tool_icon,
-                emboss=False,
-            )
-            op.preset_type = preset_type
-            op.preset_name = item.identifier
+            preset_name = str(item.identifier or "")
+            if preset_type == "balloon":
+                # フキダシの一覧は「次に作る形状」セレクタ用の合成キー
+                # (DEFAULT / mode:* / shape:* / custom:実名) を identifier に
+                # 使うため、保存済みプリセットの実名へ変換できる行 (custom:)
+                # だけ詳細編集ボタンを出す。組み込み形状の行には編集できる
+                # プリセット実体が無い。
+                preset_name = (
+                    preset_name.split(":", 1)[1]
+                    if preset_name.startswith("custom:")
+                    else ""
+                )
+            if preset_name and preset_name not in {"NONE", "DEFAULT"}:
+                op = row.operator(
+                    "bmanga.preset_detail_edit",
+                    text="",
+                    icon=tool_icon,
+                    emboss=False,
+                )
+                op.preset_type = preset_type
+                op.preset_name = preset_name
         elif self.layout_type == "GRID":
             layout.alignment = "CENTER"
             layout.label(text="", icon="PRESET")
