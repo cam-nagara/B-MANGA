@@ -651,6 +651,61 @@ def _test_failed_close_releases_actual_session(fixture: _Fixture) -> None:
     runtime.cancel_actual_session(fixture.context, reopened)
 
 
+def _test_object_tool_resume_lifecycle(fixture: _Fixture) -> None:
+    """実詳細設定だけがObject Toolを1回再開し、解除時には再開しない。"""
+
+    runtime = _sub("operators.detail_dialog_runtime")
+    modal_state = _sub("operators.coma_modal_state")
+    object_tool_op = _sub("operators.object_tool_op")
+    resolver = _sub("utils.detail_target_resolver")
+    relaunches: list[float] = []
+    finishes: list[bool] = []
+    original_schedule = object_tool_op._schedule_object_tool_relaunch
+
+    class _DummyObjectTool:
+        def finish_from_external(self, context, *, keep_selection: bool) -> None:
+            finishes.append(bool(keep_selection))
+            modal_state.clear_active("object_tool", self, context)
+
+    object_tool_op._schedule_object_tool_relaunch = (
+        lambda delay_seconds=0.3: relaunches.append(float(delay_seconds))
+    )
+    try:
+        active = _DummyObjectTool()
+        modal_state.set_active("object_tool", active, fixture.context)
+        target = resolver.resolve_target_from_object(fixture.context, fixture.object_a)
+        session = runtime.begin_actual_session(fixture.context, target)
+        assert session.token in runtime._RESUME_OBJECT_TOOL_TOKENS, (
+            "Object Toolから開いた実詳細設定が再開対象として記録されません"
+        )
+        runtime.cancel_actual_session(fixture.context, session)
+        assert finishes == [True], "旧Object Toolが選択維持で終了されません"
+        assert relaunches == [0.05], "ダイアログ終了時のObject Tool再開が1回ではありません"
+        assert session.token not in runtime._RESUME_OBJECT_TOOL_TOKENS, (
+            "終了済み詳細設定のObject Tool再開トークンが残りました"
+        )
+
+        # Object Toolを使わずに開いた詳細設定は、閉じても勝手に起動しない。
+        target = resolver.resolve_target_from_object(fixture.context, fixture.object_a)
+        no_tool_session = runtime.begin_actual_session(fixture.context, target)
+        runtime.cancel_actual_session(fixture.context, no_tool_session)
+        assert relaunches == [0.05], "非起動時にもObject Toolが開始されました"
+
+        # アドオン解除／ファイル切替相当の全セッション清掃では再起動しない。
+        cleanup_tool = _DummyObjectTool()
+        modal_state.set_active("object_tool", cleanup_tool, fixture.context)
+        target = resolver.resolve_target_from_object(fixture.context, fixture.object_a)
+        cleanup_session = runtime.begin_actual_session(fixture.context, target)
+        failures = runtime.cleanup_all_sessions(fixture.context)
+        assert not failures, failures
+        assert relaunches == [0.05], "全セッション清掃中にObject Toolが再開されました"
+        assert cleanup_session.token not in runtime._RESUME_OBJECT_TOOL_TOKENS
+        modal_state.clear_active("object_tool", cleanup_tool, fixture.context)
+    finally:
+        object_tool_op._schedule_object_tool_relaunch = original_schedule
+        modal_state.clear_active("object_tool", context=fixture.context)
+
+
 def _test_actual_lifecycle(path: str, class_name: str) -> None:
     cls = _operator_class(path, class_name)
     assert "UNDO" in set(cls.bl_options), f"{cls.bl_idname} のOKが1回のUndo単位ではありません"
@@ -827,6 +882,7 @@ def _cases(fixture: _Fixture) -> list[tuple[str, Callable[[], None]]]:
         ("線種変更中の最大幅固定", lambda: _test_fixed_max_width(fixture)),
         ("同一実体の二重起動拒否", lambda: _test_same_actual_target_cannot_open_twice(fixture)),
         ("復元・確定失敗後のセッション解放", lambda: _test_failed_close_releases_actual_session(fixture)),
+        ("Object Tool再開と全解除のライフサイクル", lambda: _test_object_tool_resume_lifecycle(fixture)),
         ("レイヤー一覧のOK／キャンセル", lambda: _test_actual_lifecycle("operators.layer_stack_detail_op", "BMANGA_OT_layer_stack_detail")),
         ("右クリックのOK／キャンセル", lambda: _test_actual_lifecycle("operators.layer_detail_op", "BMANGA_OT_layer_detail_open")),
         ("プリセット歯車のOK／キャンセル", _test_preset_lifecycle),

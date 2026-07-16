@@ -346,6 +346,7 @@ class BMANGA_OT_balloon_tail_detail_open(Operator):
     balloon_id: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
 
     def invoke(self, context, _event):
+        self._detail_session = None
         page, entry = _find_balloon(context, self.page_id, self.balloon_id)
         if entry is None:
             self.report({"WARNING"}, "フキダシが見つかりません")
@@ -370,12 +371,34 @@ class BMANGA_OT_balloon_tail_detail_open(Operator):
             self._detail_session = detail_dialog_runtime.begin_actual_session(
                 context, target, target_validator=_target_is_alive
             )
+            result = context.window_manager.invoke_props_dialog(
+                self, width=self._detail_session.layout.dialog_width
+            )
         except Exception as exc:  # noqa: BLE001
-            self.report({"WARNING"}, f"しっぽの詳細設定を開けません: {exc}")
+            rollback_error = self._abort_opening_session(context)
+            if rollback_error is not None:
+                self.report({"ERROR"}, f"開始失敗後も元に戻せませんでした: {rollback_error}")
+            else:
+                self.report({"WARNING"}, f"しっぽの詳細設定を開けません: {exc}")
             return {"CANCELLED"}
-        return context.window_manager.invoke_props_dialog(
-            self, width=self._detail_session.layout.dialog_width
-        )
+        if "CANCELLED" in result:
+            rollback_error = self._abort_opening_session(context)
+            if rollback_error is not None:
+                self.report({"ERROR"}, f"開始中止後も元に戻せませんでした: {rollback_error}")
+        return result
+
+    def _abort_opening_session(self, context):
+        session = getattr(self, "_detail_session", None)
+        self._detail_session = None
+        if session is None:
+            return None
+        try:
+            from . import detail_dialog_runtime
+
+            detail_dialog_runtime.abort_opening_actual_session(context, session)
+        except Exception as exc:  # noqa: BLE001
+            return exc
+        return None
 
     def draw(self, context):
         layout = self.layout
@@ -415,7 +438,19 @@ class BMANGA_OT_balloon_tail_detail_open(Operator):
             return {"CANCELLED"}
         from . import detail_dialog_runtime
 
-        detail_dialog_runtime.commit_actual_session(context, session)
+        try:
+            detail_dialog_runtime.commit_actual_session(context, session)
+        except Exception as exc:  # noqa: BLE001
+            try:
+                detail_dialog_runtime.rollback_failed_actual_session(context, session)
+            except Exception as rollback_exc:  # noqa: BLE001
+                self.report(
+                    {"ERROR"},
+                    f"確定失敗後も元に戻せませんでした: {rollback_exc}",
+                )
+            else:
+                self.report({"ERROR"}, f"確定できなかったため変更を元に戻しました: {exc}")
+            return {"CANCELLED"}
         return {"FINISHED"}
 
     def cancel(self, context):

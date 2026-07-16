@@ -205,6 +205,77 @@ def _tick():
             if active is None or id(active) == STATE["before_cancel_identity"]:
                 return 0.1
             assert abs(float(_current_text().font_size_value) - STATE["font_before_cancel"]) < 1.0e-6
+            STATE["before_stack_identity"] = id(active)
+            STATE["phase"] = "invoke_stack"
+            return 0.1
+        if phase == "invoke_stack":
+            stack_mod = _sub("utils.layer_stack")
+            stack = stack_mod.sync_layer_stack(bpy.context, preserve_active_index=True)
+            uid = stack_mod.target_uid(
+                "text",
+                f"{stack_mod.page_stack_key(bpy.context.scene.bmanga_work.pages[0])}:detail_resume_text",
+            )
+            index = next(
+                i for i, item in enumerate(stack)
+                if stack_mod.stack_item_uid(item) == uid
+            )
+            STATE["font_before_stack"] = float(_current_text().font_size_value)
+            STATE["phase"] = "stack_change_and_close"
+            with bpy.context.temp_override(window=window, area=area, region=region):
+                result = bpy.ops.bmanga.layer_stack_detail(
+                    "INVOKE_DEFAULT",
+                    index=index,
+                    uid=uid,
+                )
+            assert result == {"RUNNING_MODAL"}, result
+            return 0.4
+        if phase == "stack_change_and_close":
+            if not runtime._OPEN_ACTUAL_SESSIONS:
+                return 0.1
+            session = next(iter(runtime._OPEN_ACTUAL_SESSIONS.values()))
+            session.target.data.font_size_value = STATE["font_before_stack"] + 1.0
+            runtime.sync_actual_session(bpy.context, session)
+            STATE["phase"] = "wait_stack_restart"
+            window.event_simulate(type="RET", value="PRESS")
+            window.event_simulate(type="RET", value="RELEASE")
+            return 0.4
+        if phase == "wait_stack_restart":
+            if runtime._OPEN_ACTUAL_SESSIONS:
+                return 0.1
+            active = modal_state.get_active("object_tool")
+            if active is None or id(active) == STATE["before_stack_identity"]:
+                return 0.1
+            assert abs(
+                float(_current_text().font_size_value)
+                - (STATE["font_before_stack"] + 1.0)
+            ) < 1.0e-6
+            active.finish_from_external(bpy.context, keep_selection=True)
+            assert modal_state.get_active("object_tool") is None
+            STATE["phase"] = "invoke_without_tool"
+            return 0.2
+        if phase == "invoke_without_tool":
+            STATE["phase"] = "cancel_without_tool"
+            with bpy.context.temp_override(window=window, area=area, region=region):
+                result = bpy.ops.bmanga.layer_detail_open(
+                    "INVOKE_DEFAULT",
+                    bmanga_id=STATE["bmanga_id"],
+                    kind="text",
+                )
+            assert result == {"RUNNING_MODAL"}, result
+            return 0.4
+        if phase == "cancel_without_tool":
+            if not runtime._OPEN_ACTUAL_SESSIONS:
+                return 0.1
+            STATE["phase"] = "wait_without_tool"
+            window.event_simulate(type="ESC", value="PRESS")
+            window.event_simulate(type="ESC", value="RELEASE")
+            return 0.5
+        if phase == "wait_without_tool":
+            if runtime._OPEN_ACTUAL_SESSIONS:
+                return 0.1
+            assert modal_state.get_active("object_tool") is None, (
+                "Object Toolを使わず開いた詳細設定がツールを起動しました"
+            )
             STATE["phase"] = "finish"
             return 0.1
         assert phase == "finish", phase

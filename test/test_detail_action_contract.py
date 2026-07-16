@@ -167,6 +167,7 @@ def test_detail_operator_fixed_identifiers_are_hidden_from_blender_ui():
         "preset_detail_op.py",
         "layer_detail_op.py",
         "layer_stack_detail_op.py",
+        "balloon_tail_detail_op.py",
     )
     checked = set()
     for filename in paths:
@@ -415,6 +416,7 @@ def test_prepare_failure_and_entry_execute_failure_have_rollback_paths(monkeypat
     for path in (
         ROOT / "operators" / "layer_detail_op.py",
         ROOT / "operators" / "layer_stack_detail_op.py",
+        ROOT / "operators" / "balloon_tail_detail_op.py",
     ):
         source = path.read_text(encoding="utf-8")
         assert "rollback_failed_actual_session(context, session)" in source
