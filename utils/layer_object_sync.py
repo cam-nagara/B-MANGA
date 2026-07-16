@@ -827,7 +827,12 @@ def _saved_runtime_objects_look_current(
     return True
 
 
-def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
+def mirror_work_to_outliner(
+    scene: bpy.types.Scene,
+    work,
+    *,
+    allow_object_writeback: bool = True,
+) -> None:
     """``work`` の page/coma/folder 配列から Collection 階層を生成・整合.
 
     既存 Collection は ``bmanga_id`` で逆引きして再利用する。
@@ -910,13 +915,15 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
     with suppress_sync():
         # 既存実体が Blender 標準機能で動かされていた場合は、B-MANGA 側の
         # 同期で上書きする前に現在の状態を作品データへ反映する。
-        try:
-            from . import object_state_sync
+        if allow_object_writeback:
+            try:
+                from . import history_runtime, object_state_sync
 
-            for obj in bpy.data.objects:
-                object_state_sync.sync_from_blender_object(scene, obj)
-        except Exception:  # noqa: BLE001
-            _logger.exception("mirror pre object state sync failed")
+                if not history_runtime.is_restoring():
+                    for obj in bpy.data.objects:
+                        object_state_sync.sync_from_blender_object(scene, obj)
+            except Exception:  # noqa: BLE001
+                _logger.exception("mirror pre object state sync failed")
         om.ensure_root_collection(scene)
         om.ensure_outside_collection(scene)
         # 全テキストレイヤー集約用 Collection (B-MANGA 直下、最上位 z_index)

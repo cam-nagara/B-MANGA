@@ -21,6 +21,7 @@ from ..utils import (
     layer_stack as layer_stack_utils,
     log,
     object_selection,
+    undo_transaction,
 )
 
 _logger = log.get_logger(__name__)
@@ -1442,11 +1443,11 @@ class BMANGA_OT_object_tool(Operator):
         changed = layer_reparent.reparent_selected(context, target)
         if changed > 0:
             _reparent_set_confirm(target)
-            try:
-                bpy.ops.ed.undo_push(message="B-MANGA: Alt+Shift で外へ移動")
-            except Exception:  # noqa: BLE001
-                pass
             layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
+            undo_transaction.push_undo(
+                "B-MANGA: Alt+Shift で外へ移動",
+                logger=_logger,
+            )
         else:
             _reparent_set_error(target)
 
@@ -1463,11 +1464,11 @@ class BMANGA_OT_object_tool(Operator):
         )
         if changed > 0:
             _reparent_set_confirm(target)
-            try:
-                bpy.ops.ed.undo_push(message="B-MANGA: Alt+ドラッグで移動")
-            except Exception:  # noqa: BLE001
-                pass
             layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
+            undo_transaction.push_undo(
+                "B-MANGA: Alt+ドラッグで移動",
+                logger=_logger,
+            )
         else:
             _reparent_set_error(target)
 
@@ -1486,6 +1487,7 @@ class BMANGA_OT_object_tool(Operator):
         self._drag_start_x = float(x_mm)
         self._drag_start_y = float(y_mm)
         self._drag_keys = keys
+        self._drag_primary_key = key
         self._snapshots = self._make_snapshots(context, keys, primary_key=key, action=action)
         self._drag_moved = False
         self._center_snap_targets = []
@@ -2141,13 +2143,11 @@ class BMANGA_OT_object_tool(Operator):
         if self._drag_action == "rotate":
             coma_modal_state.set_modal_cursor(context, "DEFAULT")
             self._rotate_cursor_active = False
-            if self._drag_moved:
+            changed = object_rotation.snapshots_changed(context, self._rotate_snapshots)
+            if changed:
                 self._clear_click_state()
-                try:
-                    bpy.ops.ed.undo_push(message="B-MANGA: 回転")
-                except Exception:  # noqa: BLE001
-                    pass
                 layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
+                undo_transaction.push_undo("B-MANGA: 回転", logger=_logger)
             self._clear_drag_state()
             layer_stack_utils.tag_view3d_redraw(context)
             return
@@ -2171,14 +2171,14 @@ class BMANGA_OT_object_tool(Operator):
             layer_stack_utils.tag_view3d_redraw(context)
             return
         if self._drag_action == "balloon_tail_point":
-            moved = bool(getattr(self, "_drag_moved", False))
-            if moved:
+            changed = object_tool_balloon_tail.point_drag_changed(self, context)
+            if changed:
                 self._clear_click_state()
-                try:
-                    bpy.ops.ed.undo_push(message="B-MANGA: しっぽ制御点移動")
-                except Exception:  # noqa: BLE001
-                    pass
                 layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
+                undo_transaction.push_undo(
+                    "B-MANGA: しっぽ制御点移動",
+                    logger=_logger,
+                )
             else:
                 layer_stack_utils.tag_view3d_redraw(context)
             self._clear_drag_state()
@@ -2193,13 +2193,24 @@ class BMANGA_OT_object_tool(Operator):
             changed = bool(self._edge_drag.finish())
         elif self._drag_action == "layer_move" and self._layer_drag is not None:
             changed = bool(self._layer_drag.finish(context))
+        elif self._snapshots:
+            current = self._make_snapshots(
+                context,
+                list(self._drag_keys),
+                primary_key=str(getattr(self, "_drag_primary_key", "") or ""),
+                action=self._drag_action,
+            )
+            changed = undo_transaction.states_differ(self._snapshots, current)
+        if changed:
+            self._clear_click_state()
         if changed:
             if not edge_session and not layer_session:
-                try:
-                    bpy.ops.ed.undo_push(message="B-MANGA: オブジェクト編集")
-                except Exception:  # noqa: BLE001
-                    pass
-            if not layer_session:
+                layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
+                undo_transaction.push_undo(
+                    "B-MANGA: オブジェクト編集",
+                    logger=_logger,
+                )
+            elif not layer_session:
                 layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
         elif not layer_session:
             layer_stack_utils.tag_view3d_redraw(context)
@@ -2259,6 +2270,7 @@ class BMANGA_OT_object_tool(Operator):
         self._drag_start_x = 0.0
         self._drag_start_y = 0.0
         self._drag_keys = []
+        self._drag_primary_key = ""
         self._snapshots = []
         self._drag_moved = False
         self._edge_drag = None
@@ -2302,16 +2314,23 @@ class BMANGA_OT_object_tool(Operator):
         layer_stack_utils.tag_view3d_redraw(context)
 
     def _confirm_free_transform(self, context) -> None:
+        snapshot = self._ft_snapshot
+        current = None
+        if snapshot is not None:
+            current = self._capture_ft_snapshot(
+                context,
+                str(getattr(self, "_ft_key", "") or ""),
+                str(snapshot.get("kind", "") or ""),
+            )
+        changed = undo_transaction.states_differ(snapshot, current)
         self._ft_mode = False
         self._ft_snapshot = None
         self._ft_key = ""
         object_tool_free_transform.clear_mode(context)
         context.workspace.status_text_set(None)
-        try:
-            bpy.ops.ed.undo_push(message="B-MANGA: 自由変形")
-        except Exception:  # noqa: BLE001
-            pass
-        layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
+        if changed:
+            layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
+            undo_transaction.push_undo("B-MANGA: 自由変形", logger=_logger)
         layer_stack_utils.tag_view3d_redraw(context)
 
     def _cancel_free_transform(self, context) -> None:

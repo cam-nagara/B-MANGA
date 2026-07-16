@@ -10,6 +10,12 @@ PAPER_GUIDE_DIM = (0.0, 0.72, 1.0, 0.5)
 
 SAFE_LINE = (0.25, 1.0, 0.35, 0.5)
 
+# 開いている page.blend / cNN.blend が属するページを示す専用色。
+# 選択ハイライトのマゼンタ、用紙ガイドのシアン、セーフラインの緑と
+# 同時に表示しても識別できるオレンジ系に固定する。
+CURRENT_PAGE = (1.0, 0.42, 0.0, 1.0)
+CURRENT_PAGE_STRONG = (1.0, 0.68, 0.05, 1.0)
+
 BLENDER_BACKGROUND_DEFAULT_SRGB = (0x40 / 255.0, 0x40 / 255.0, 0x40 / 255.0)
 BLENDER_BACKGROUND_DEFAULT_LINEAR = color_space.srgb_to_linear_rgb(
     BLENDER_BACKGROUND_DEFAULT_SRGB

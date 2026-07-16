@@ -14,7 +14,7 @@ from bpy.types import Operator
 from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_active_page, get_work
 from ..ui import overlay_creation_range
-from ..utils import coma_hit_visibility, free_transform, gp_layer_parenting as gp_parent, layer_hierarchy, log, object_selection, page_file_scene, page_grid, percentage
+from ..utils import coma_hit_visibility, free_transform, gp_layer_parenting as gp_parent, layer_hierarchy, log, object_selection, page_file_scene, page_grid, percentage, undo_transaction
 from ..utils.geom import m_to_mm, mm_to_m
 from ..utils import layer_stack as layer_stack_utils
 from . import (
@@ -1844,8 +1844,8 @@ class BMANGA_OT_effect_line_tool(Operator):
                         object_selection.effect_key(layer),
                         mode="single",
                     )
-                    self._push_undo_step("B-MANGA: 効果線作成")
                     layer_stack_utils.sync_layer_stack_after_data_change(context)
+                    self._push_undo_step("B-MANGA: 効果線作成")
             else:
                 layer_stack_utils.tag_view3d_redraw(context)
             self._clear_drag_state()
@@ -1853,6 +1853,23 @@ class BMANGA_OT_effect_line_tool(Operator):
         obj, layer = self._drag_target(context)
         moved = bool(getattr(self, "_drag_moved", False))
         action = self._drag_action
+        if action != "create" and obj is not None and layer is not None:
+            bounds = effect_layer_bounds(obj, layer)
+            center = effect_layer_center(obj, layer, bounds) if bounds is not None else None
+            before = (
+                self._drag_orig_x,
+                self._drag_orig_y,
+                self._drag_orig_w,
+                self._drag_orig_h,
+                self._drag_orig_center_x,
+                self._drag_orig_center_y,
+            )
+            after = (
+                (*bounds, *center)
+                if bounds is not None and center is not None
+                else None
+            )
+            moved = undo_transaction.states_differ(before, after)
         if action == "create" and not moved:
             _delete_effect_layer(context, obj, layer)
         elif moved:
@@ -1865,8 +1882,8 @@ class BMANGA_OT_effect_line_tool(Operator):
                     bounds,
                     center_xy_mm=effect_layer_center(obj, layer, bounds),
                 )
-            self._push_undo_step("B-MANGA: 効果線編集")
             layer_stack_utils.sync_layer_stack_after_data_change(context)
+            self._push_undo_step("B-MANGA: 効果線編集")
         else:
             layer_stack_utils.tag_view3d_redraw(context)
         self._clear_drag_state()
@@ -1898,10 +1915,7 @@ class BMANGA_OT_effect_line_tool(Operator):
         self._clear_drag_state()
 
     def _push_undo_step(self, message: str) -> None:
-        try:
-            bpy.ops.ed.undo_push(message=message)
-        except Exception:  # noqa: BLE001
-            _logger.exception("effect_line_tool: undo_push failed")
+        undo_transaction.push_undo(message, logger=_logger)
 
     def _cleanup(self, context) -> None:
         if getattr(self, "_cursor_modal_set", False):

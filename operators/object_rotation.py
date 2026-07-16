@@ -196,6 +196,25 @@ def capture_rotation_snapshot(context, key: str) -> dict | None:
     return snapshot
 
 
+def snapshots_changed(context, snapshots: list[dict]) -> bool:
+    """開始時スナップショットと各対象の現在角度を比較する."""
+
+    from ..utils import undo_transaction
+
+    before = [
+        (str(snap.get("key", "") or ""), float(snap.get("base_rotation_deg", 0.0)))
+        for snap in snapshots
+    ]
+    after = []
+    for key, _rotation in before:
+        current = capture_rotation_snapshot(context, key)
+        if current is None:
+            after.append((key, None))
+        else:
+            after.append((key, float(current.get("base_rotation_deg", 0.0))))
+    return undo_transaction.states_differ(before, after)
+
+
 def apply_rotation_snapshot(context, snapshot: dict, rotation_deg: float) -> None:
     """スナップショットの対象へ絶対角度 rotation_deg を書き込む."""
     kind = str(snapshot.get("kind", "") or "")

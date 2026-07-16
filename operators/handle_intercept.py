@@ -17,6 +17,7 @@ from ..core.work import get_work
 from ..utils import (
     free_transform,
     object_selection,
+    undo_transaction,
 )
 from . import (
     coma_edge_move_op,
@@ -331,7 +332,6 @@ def finish_drag(context, event, operator) -> bool:
             session.shared_handle_drag.finish(context)
         setattr(operator, _ATTR, None)
         return True
-    moved = getattr(session, "moved", False)
     if session.kind == "move":
         if session.move_session is not None:
             session.move_session.finish(context)
@@ -340,14 +340,24 @@ def finish_drag(context, event, operator) -> bool:
         return True
     if session.kind == "rotate":
         coma_modal_state.restore_modal_cursor(context)
-    if moved:
-        import bpy
-        try:
-            bpy.ops.ed.undo_push(message="B-MANGA: ハンドル操作")
-        except Exception:  # noqa: BLE001
-            pass
+    if session.kind == "rotate":
+        changed = object_rotation.snapshots_changed(context, session.snapshots)
+    elif session.kind == "resize":
+        changed = undo_transaction.states_differ(
+            session.snapshots,
+            _capture_resize_snapshots(context, session.keys),
+        )
+    elif session.kind == "free_transform":
+        changed = undo_transaction.states_differ(
+            session.snapshots,
+            _capture_free_transform_snapshots(context, session.keys),
+        )
+    else:
+        changed = bool(getattr(session, "moved", False))
+    if changed:
         from ..utils import layer_stack as _ls
         _ls.sync_layer_stack_after_data_change(context, align_coma_order=True)
+        undo_transaction.push_undo("B-MANGA: ハンドル操作")
     setattr(operator, _ATTR, None)
     return True
 

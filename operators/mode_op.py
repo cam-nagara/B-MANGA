@@ -550,8 +550,15 @@ class BMANGA_OT_enter_coma_mode(Operator):
                     except Exception:  # noqa: BLE001
                         _logger.exception("enter_coma_mode: failed to restore work.blend")
                     return {"CANCELLED"}
-                # save_as_mainfile 直後は load_post が走らないので、mode/stem/page_id と
-                # viewport 状態は明示的に current scene に反映する。
+                # 新規保存だけでは遷移元ファイルの Undo 履歴が残り得るため、
+                # 保存したコマファイルを開き直して履歴境界を確定する。
+                _suspend_keymap_visibility_updates()
+                if not blend_io.open_coma_blend(work_dir, page_id, stem):
+                    self.report({"ERROR"}, "作成したcNN.blendを開けませんでした")
+                    return {"CANCELLED"}
+                _suspend_keymap_visibility_updates()
+                # load_post後の fresh context に mode/stem/page_id と表示状態を
+                # 念のため明示する。
                 try:
                     from ..ui import overlay as _overlay
 

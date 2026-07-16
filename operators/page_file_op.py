@@ -255,6 +255,14 @@ class BMANGA_OT_open_page_file(Operator):
                     except Exception:  # noqa: BLE001
                         pass
                     return {"CANCELLED"}
+                # save_as_mainfile だけでは直前ファイルの Undo 履歴が残る場合が
+                # ある。保存したページを open_mainfile で開き直し、ファイル境界
+                # と履歴境界を一致させる。
+                if not blend_io.open_page_blend(work_dir, page_id):
+                    self.report({"ERROR"}, "作成したページ用blendファイルを開けませんでした")
+                    return {"CANCELLED"}
+            context = bpy.context
+            work = get_work(context)
         except Exception as exc:  # noqa: BLE001
             _logger.exception("open_page_file failed")
             self.report({"ERROR"}, f"ページを開けませんでした: {exc}")

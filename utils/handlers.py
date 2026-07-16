@@ -1276,17 +1276,35 @@ def _remove_named_handler(handler_list, name: str) -> None:
 
 
 @persistent
-def _bmanga_on_undo_post(*_args) -> None:
-    """undo/redo 後にモーダルツールの参照を無効化し、再起動する."""
+def _bmanga_on_undo_pre(*_args) -> None:
+    """Undo/Redo が RNA を差し替える前に監視とモーダル参照を止める."""
     try:
         from ..operators import coma_modal_state as _modal_state
+        from . import history_runtime
+
         count = _modal_state.mark_all_externally_finished()
+        history_runtime.begin_restore(relaunch_object_tool=count > 0)
         if count > 0:
-            _logger.debug("undo_post: marked %d modals as finished", count)
-            from ..operators.object_tool_op import _schedule_object_tool_relaunch
-            _schedule_object_tool_relaunch(delay_seconds=0.1)
+            _logger.debug("undo_pre: marked %d modals as finished", count)
     except Exception:  # noqa: BLE001
-        _logger.exception("undo_post: mark_all_externally_finished failed")
+        _logger.exception("undo_pre: restore guard failed")
+
+
+@persistent
+def _bmanga_on_undo_post(*_args) -> None:
+    """Undo/Redo 後の次イベントループで B-MANGA 実体を再同期する."""
+    try:
+        from ..operators import coma_modal_state as _modal_state
+        from . import history_runtime
+
+        count = _modal_state.mark_all_externally_finished()
+        if not history_runtime.is_restoring():
+            history_runtime.begin_restore(relaunch_object_tool=count > 0)
+        elif count > 0:
+            history_runtime.request_object_tool_relaunch()
+        history_runtime.schedule_reconcile()
+    except Exception:  # noqa: BLE001
+        _logger.exception("undo_post: deferred reconcile failed")
 
 
 def register() -> None:
@@ -1298,6 +1316,8 @@ def register() -> None:
     save_post_fail = getattr(bpy.app.handlers, "save_post_fail", None)
     if save_post_fail is not None:
         _remove_named_handler(save_post_fail, _bmanga_on_save_post_fail.__name__)
+    _remove_named_handler(bpy.app.handlers.undo_pre, _bmanga_on_undo_pre.__name__)
+    _remove_named_handler(bpy.app.handlers.redo_pre, _bmanga_on_undo_pre.__name__)
     _remove_named_handler(bpy.app.handlers.undo_post, _bmanga_on_undo_post.__name__)
     _remove_named_handler(bpy.app.handlers.redo_post, _bmanga_on_undo_post.__name__)
     bpy.app.handlers.load_post.append(_bmanga_on_load_post)
@@ -1305,6 +1325,8 @@ def register() -> None:
     bpy.app.handlers.save_post.append(_bmanga_on_save_post)
     if save_post_fail is not None:
         save_post_fail.append(_bmanga_on_save_post_fail)
+    bpy.app.handlers.undo_pre.append(_bmanga_on_undo_pre)
+    bpy.app.handlers.redo_pre.append(_bmanga_on_undo_pre)
     bpy.app.handlers.undo_post.append(_bmanga_on_undo_post)
     bpy.app.handlers.redo_post.append(_bmanga_on_undo_post)
     _logger.debug("handlers registered")
@@ -1357,6 +1379,8 @@ def unregister() -> None:
     save_post_fail = getattr(bpy.app.handlers, "save_post_fail", None)
     if save_post_fail is not None:
         _remove_named_handler(save_post_fail, _bmanga_on_save_post_fail.__name__)
+    _remove_named_handler(bpy.app.handlers.undo_pre, _bmanga_on_undo_pre.__name__)
+    _remove_named_handler(bpy.app.handlers.redo_pre, _bmanga_on_undo_pre.__name__)
     _remove_named_handler(bpy.app.handlers.undo_post, _bmanga_on_undo_post.__name__)
     _remove_named_handler(bpy.app.handlers.redo_post, _bmanga_on_undo_post.__name__)
     _logger.debug("handlers unregistered")

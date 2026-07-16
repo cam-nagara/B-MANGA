@@ -31,6 +31,7 @@ from ..utils import (
     log,
     object_selection,
     page_file_scene,
+    undo_transaction,
 )
 from ..utils import active_target as _active_target
 
@@ -1349,8 +1350,8 @@ class BMANGA_OT_balloon_tool(Operator):
             if hit_part.startswith("tail_segment:"):
                 _prefix, tail_index, insert_index = hit_part.split(":")
                 if _insert_tail_point_page(hit_entry, int(tail_index), int(insert_index), lx, ly) >= 0:
-                    self._push_undo_step("B-MANGA: しっぽ制御点追加")
                     layer_stack_utils.sync_layer_stack_after_data_change(context)
+                    self._push_undo_step("B-MANGA: しっぽ制御点追加")
                 return {"RUNNING_MODAL"}
             if hit_part.startswith("tail_point:"):
                 _prefix, tail_index, point_index = hit_part.split(":")
@@ -1513,7 +1514,7 @@ class BMANGA_OT_balloon_tool(Operator):
                 return False
             self._pending_tail_index = tail_index
             self._pending_tail_points = points
-            self._push_undo_step("B-MANGA: しっぽ作成")
+            undo_message = "B-MANGA: しっぽ作成"
         else:
             appended = _append_tail_point_page(entry, tail_index, x_mm, y_mm)
             if appended < 0:
@@ -1522,8 +1523,9 @@ class BMANGA_OT_balloon_tool(Operator):
                 (float(getattr(point, "x_mm", 0.0) or 0.0) + float(entry.x_mm), float(getattr(point, "y_mm", 0.0) or 0.0) + float(entry.y_mm))
                 for point in entry.tails[tail_index].points
             ]
-            self._push_undo_step("B-MANGA: しっぽ制御点追加")
+            undo_message = "B-MANGA: しっぽ制御点追加"
         layer_stack_utils.sync_layer_stack_after_data_change(context)
+        self._push_undo_step(undo_message)
         return True
 
     def _modal_dragging(self, context, event):
@@ -1672,6 +1674,48 @@ class BMANGA_OT_balloon_tool(Operator):
         page, entry = self._drag_page_and_entry(context)
         moved = bool(getattr(self, "_drag_moved", False))
         action = self._drag_action
+        if action == "tail_point" and entry is not None:
+            tail_index = int(getattr(self, "_tail_drag_tail_index", -1))
+            current_points = []
+            if 0 <= tail_index < len(entry.tails):
+                current_points = balloon_tail_geom.tail_local_points(entry.tails[tail_index])
+            moved = undo_transaction.states_differ(
+                list(getattr(self, "_tail_drag_points", []) or []),
+                current_points,
+            )
+        elif action == "center" and entry is not None:
+            moved = undo_transaction.states_differ(
+                (self._drag_orig_center_offset_x, self._drag_orig_center_offset_y),
+                (
+                    float(getattr(entry, "center_offset_x_mm", 0.0) or 0.0),
+                    float(getattr(entry, "center_offset_y_mm", 0.0) or 0.0),
+                ),
+            )
+        elif action not in {"create", "tail"}:
+            work = get_work(context)
+            collection = (
+                getattr(page, "balloons", None)
+                if page is not None
+                else getattr(work, "shared_balloons", None)
+            )
+            current_by_id = {
+                str(getattr(item, "id", "") or ""): (
+                    float(getattr(item, "x_mm", 0.0)),
+                    float(getattr(item, "y_mm", 0.0)),
+                    float(getattr(item, "width_mm", 0.0)),
+                    float(getattr(item, "height_mm", 0.0)),
+                )
+                for item in (collection or [])
+            }
+            before = [
+                (item_id, float(x), float(y), float(w), float(h))
+                for item_id, x, y, w, h in self._snapshots
+            ]
+            after = [
+                (item_id, *current_by_id.get(item_id, (float("nan"),) * 4))
+                for item_id, *_rect in self._snapshots
+            ]
+            moved = undo_transaction.states_differ(before, after)
         if action == "create" and not moved:
             _delete_balloon_by_id(context, self._drag_page_id, self._drag_balloon_id)
         elif action == "tail" and moved and page is not None and entry is not None:
@@ -1679,11 +1723,11 @@ class BMANGA_OT_balloon_tool(Operator):
         elif action == "tail" and page is not None and entry is not None and bool(getattr(self, "_tail_start_at_pointer", False)):
             self._start_pending_tail_click(context, page, entry, self._drag_start_x, self._drag_start_y)
         elif action == "tail_point" and moved:
+            layer_stack_utils.sync_layer_stack_after_data_change(context)
             self._push_undo_step("B-MANGA: しっぽ制御点移動")
-            layer_stack_utils.sync_layer_stack_after_data_change(context)
         elif moved:
-            self._push_undo_step("B-MANGA: フキダシ編集")
             layer_stack_utils.sync_layer_stack_after_data_change(context)
+            self._push_undo_step("B-MANGA: フキダシ編集")
         else:
             layer_stack_utils.tag_view3d_redraw(context)
         self._clear_drag_state()
@@ -1698,14 +1742,14 @@ class BMANGA_OT_balloon_tool(Operator):
             tail_index = _add_tail_polyline(entry, [(self._drag_start_x, self._drag_start_y), (float(lx), float(ly))])
             if tail_index >= 0:
                 self._clear_tail_polyline_state()
-                self._push_undo_step("B-MANGA: しっぽ作成")
                 layer_stack_utils.sync_layer_stack_after_data_change(context)
+                self._push_undo_step("B-MANGA: しっぽ作成")
             return
         if _point_in_balloon_rect(entry, lx, ly):
             return
         if _add_tail_to_point(entry, lx, ly):
-            self._push_undo_step("B-MANGA: フキダシしっぽ作成")
             layer_stack_utils.sync_layer_stack_after_data_change(context)
+            self._push_undo_step("B-MANGA: フキダシしっぽ作成")
 
     def _start_pending_tail_click(self, context, page, entry, x_mm: float, y_mm: float) -> None:
         self._pending_tail_page_id = str(getattr(page, "id", "") or "")
@@ -1808,10 +1852,7 @@ class BMANGA_OT_balloon_tool(Operator):
         layer_stack_utils.tag_view3d_redraw(context)
 
     def _push_undo_step(self, message: str) -> None:
-        try:
-            bpy.ops.ed.undo_push(message=message)
-        except Exception:  # noqa: BLE001
-            _logger.exception("balloon_tool: undo_push failed")
+        undo_transaction.push_undo(message, logger=_logger)
 
     def _cleanup(self, context) -> None:
         if getattr(self, "_cursor_modal_set", False):

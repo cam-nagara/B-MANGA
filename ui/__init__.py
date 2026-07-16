@@ -10,12 +10,20 @@ from . import (  # noqa: F401
     coma_return_header,
     context_menu,
     overlay,
+    overlay_current_page,
     overlay_shared,
     reparent_overlay,
     sidebar,
 )
 
-_MODULES = (overlay, reparent_overlay, context_menu, coma_return_header, coma_fisheye_overlay)
+_MODULES = (
+    overlay,
+    overlay_current_page,
+    reparent_overlay,
+    context_menu,
+    coma_return_header,
+    coma_fisheye_overlay,
+)
 
 
 def register() -> None:

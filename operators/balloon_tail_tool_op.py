@@ -17,7 +17,7 @@ from bpy.types import Operator
 
 from ..core.work import get_work
 from ..utils import layer_stack as layer_stack_utils
-from ..utils import log, page_file_scene
+from ..utils import log, page_file_scene, undo_transaction
 from . import balloon_op, coma_modal_state, object_tool_balloon_tail, view_event_region
 
 _logger = log.get_logger(__name__)
@@ -171,12 +171,15 @@ class BMANGA_OT_balloon_tail_tool(Operator):
             if bool(getattr(self, "_drag_moved", False)):
                 self._apply_preset_to_last_created_tail(context)
         elif action == "balloon_tail_point":
-            if bool(getattr(self, "_drag_moved", False)):
-                try:
-                    bpy.ops.ed.undo_push(message="B-MANGA: しっぽポイント移動")
-                except Exception:  # noqa: BLE001
-                    pass
-            layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
+            changed = object_tool_balloon_tail.point_drag_changed(self, context)
+            if changed:
+                layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
+                undo_transaction.push_undo(
+                    "B-MANGA: しっぽポイント移動",
+                    logger=_logger,
+                )
+            else:
+                layer_stack_utils.tag_view3d_redraw(context)
         self._dragging = False
         self._drag_action = ""
         return {"RUNNING_MODAL"}
@@ -245,11 +248,11 @@ class BMANGA_OT_balloon_tail_tool(Operator):
         if part_str.startswith("tail_segment:") and bool(getattr(event, "ctrl", False)):
             _prefix, tail_idx_s, ins_idx_s = part_str.split(":")
             if balloon_op._insert_tail_point_page(entry, int(tail_idx_s), int(ins_idx_s), lx, ly) >= 0:
-                try:
-                    bpy.ops.ed.undo_push(message="B-MANGA: しっぽ制御点追加")
-                except Exception:  # noqa: BLE001
-                    pass
                 layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
+                undo_transaction.push_undo(
+                    "B-MANGA: しっぽ制御点追加",
+                    logger=_logger,
+                )
             return {"RUNNING_MODAL"}
 
         # フキダシ本体 → ドラッグで 2 点しっぽ作成 / クリックで pending 開始
@@ -321,10 +324,7 @@ class BMANGA_OT_balloon_tail_tool(Operator):
         created = int(getattr(self, "_pending_tail_index", -1)) >= 0
         object_tool_balloon_tail.clear_pending(self)
         if created:
-            try:
-                bpy.ops.ed.undo_push(message="B-MANGA: しっぽ作成")
-            except Exception:  # noqa: BLE001
-                pass
+            undo_transaction.push_undo("B-MANGA: しっぽ作成", logger=_logger)
             self.report({"INFO"}, "しっぽを確定しました")
         layer_stack_utils.tag_view3d_redraw(context)
 
@@ -340,10 +340,10 @@ class BMANGA_OT_balloon_tail_tool(Operator):
             except Exception:  # noqa: BLE001
                 pass
             layer_stack_utils.sync_layer_stack_after_data_change(context)
-            try:
-                bpy.ops.ed.undo_push(message="B-MANGA: しっぽ作成を取り消し")
-            except Exception:  # noqa: BLE001
-                pass
+            undo_transaction.push_undo(
+                "B-MANGA: しっぽ作成を取り消し",
+                logger=_logger,
+            )
         object_tool_balloon_tail.clear_pending(self)
         self.report({"INFO"}, "作成中のしっぽを取り消しました")
 

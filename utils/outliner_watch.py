@@ -348,7 +348,9 @@ def _writeback_outliner_changes(scene) -> int:
 
     Returns: 書戻した件数。
     """
-    if scene is None:
+    from . import history_runtime
+
+    if scene is None or history_runtime.is_restoring():
         return 0
     changes = los.detect_outliner_changes(scene)
     if not changes:
@@ -384,7 +386,9 @@ def _scan_once() -> float | None:
         - effect / gp: Object custom property を書戻し
     """
     global _LAST_ENTRY_COUNTS
-    if los.is_sync_in_progress():
+    from . import history_runtime
+
+    if los.is_sync_in_progress() or history_runtime.is_restoring():
         return SCAN_INTERVAL_SECONDS
     try:
         scene = bpy.context.scene
@@ -450,7 +454,9 @@ def _on_depsgraph_update_post(scene, depsgraph) -> None:
     再帰抑止: ``los.suppress_sync()`` ガードと entry 同値チェックで重複処理を
     防ぐ。
     """
-    if los.is_sync_in_progress():
+    from . import history_runtime
+
+    if los.is_sync_in_progress() or history_runtime.is_restoring():
         return
     if scene is None:
         return

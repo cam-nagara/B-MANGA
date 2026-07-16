@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import bpy
-from bpy.props import StringProperty
 from bpy.types import Operator
 from bpy_extras.io_utils import ImportHelper
 
@@ -36,10 +35,6 @@ class BMANGA_OT_meldex_scenario_file_import(Operator, ImportHelper):
     bl_options = {"REGISTER"}
 
     filename_ext = ".mel-scenario"
-    filter_glob: StringProperty(  # type: ignore[valid-type]
-        default="*.mel-scenario;*.scriptnote.json",
-        options={"HIDDEN"},
-    )
 
     @classmethod
     def poll(cls, context):

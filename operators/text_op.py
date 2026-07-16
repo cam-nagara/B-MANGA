@@ -29,6 +29,7 @@ from ..utils import (
     shortcut_visibility,
     text_real_object,
     text_style,
+    undo_transaction,
 )
 from ..utils.layer_hierarchy import page_stack_key
 from . import coma_modal_state, preset_op, selection_context_menu, text_edit_history, text_edit_runtime, view_event_region
@@ -1394,25 +1395,40 @@ class BMANGA_OT_text_tool(Operator):
                 self._start_editing_existing(context, page, entry)
             return {"RUNNING_MODAL"}
         if event.type == "LEFTMOUSE" and event.value == "RELEASE":
-            moved = bool(getattr(self, "_drag_moved", False))
             action = str(getattr(self, "_drag_action", "") or "")
             page, entry, idx = self._drag_text_entry(context)
+            moved = bool(getattr(self, "_drag_moved", False))
+            if action != "create" and entry is not None:
+                moved = undo_transaction.states_differ(
+                    (
+                        self._drag_orig_x,
+                        self._drag_orig_y,
+                        self._drag_orig_w,
+                        self._drag_orig_h,
+                    ),
+                    (
+                        float(entry.x_mm),
+                        float(entry.y_mm),
+                        float(entry.width_mm),
+                        float(entry.height_mm),
+                    ),
+                )
             if action == "create":
                 if entry is None or page is None or idx < 0:
                     self._clear_drag_state()
                     return {"RUNNING_MODAL"}
                 if moved:
-                    self._push_undo_step("B-MANGA: テキスト作成")
                     _sync_text_real_object(context, page, entry)
                     layer_stack_utils.sync_layer_stack_after_data_change(context)
+                    self._push_undo_step("B-MANGA: テキスト作成")
                 self._start_editing_created(context, page, entry)
             else:
                 self._clear_drag_state()
                 if moved:
                     self._clear_click_state()
-                    self._push_undo_step("B-MANGA: テキスト移動/リサイズ")
                     _sync_text_real_object(context, page, entry)
                     layer_stack_utils.sync_layer_stack_after_data_change(context)
+                    self._push_undo_step("B-MANGA: テキスト移動/リサイズ")
                 else:
                     layer_stack_utils.tag_view3d_redraw(context)
             return {"RUNNING_MODAL"}
@@ -1513,10 +1529,7 @@ class BMANGA_OT_text_tool(Operator):
         layer_stack_utils.tag_view3d_redraw(context)
 
     def _push_undo_step(self, message: str) -> None:
-        try:
-            bpy.ops.ed.undo_push(message=message)
-        except Exception:  # noqa: BLE001
-            _logger.exception("text_tool: undo_push failed")
+        undo_transaction.push_undo(message, logger=_logger)
 
     def _current_text_entry(self, context):
         page = _find_page_by_id(context, self._page_id)
