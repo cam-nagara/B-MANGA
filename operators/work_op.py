@@ -331,7 +331,13 @@ class BMANGA_OT_work_open(Operator, ImportHelper):
     bl_options = {"REGISTER"}
 
     filename_ext = paths.BMANGA_DIR_SUFFIX
-    filter_glob: StringProperty(default="*.bmanga", options={"HIDDEN"})  # type: ignore[valid-type]
+
+    def invoke(self, context, _event):
+        # .bmangaフォルダー内のwork.blendを直接選べるよう、拡張子フィルターを
+        # 指定せずファイルブラウザーを開く。現在のblend名も選択欄へ流用しない。
+        self.filepath = ""
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
 
     def execute(self, context):
         work = get_work(context)
