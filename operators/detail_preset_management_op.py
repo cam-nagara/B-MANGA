@@ -10,7 +10,7 @@ from bpy.props import CollectionProperty, StringProperty
 from bpy.types import Operator, PropertyGroup
 
 from ..core.work import get_work
-from ..utils import log
+from ..utils import detail_popup, log
 
 
 _logger = log.get_logger(__name__)
@@ -342,7 +342,7 @@ class BMANGA_OT_detail_preset_add(Operator):
     preset_name: StringProperty(name="プリセット名", default="")  # type: ignore[valid-type]
     description: StringProperty(name="説明", default="")  # type: ignore[valid-type]
 
-    def invoke(self, context, _event):
+    def invoke(self, context, event):
         try:
             preset_type, _module, _target = _require_session(self)
             base = self.preset_name or _default_new_name(preset_type)
@@ -350,7 +350,7 @@ class BMANGA_OT_detail_preset_add(Operator):
         except (LookupError, OSError, ValueError) as exc:
             self.report({"WARNING"}, str(exc))
             return {"CANCELLED"}
-        return context.window_manager.invoke_props_dialog(self, width=360)
+        return detail_popup.invoke_props_dialog(context, event, self, width=360)
 
     def execute(self, context):
         try:
@@ -385,10 +385,10 @@ class BMANGA_OT_detail_preset_rename(Operator):
     )
     new_name: StringProperty(name="新しい名前", default="")  # type: ignore[valid-type]
 
-    def invoke(self, context, _event):
+    def invoke(self, context, event):
         if not self.new_name:
             self.new_name = str(self.preset_name or "")
-        return context.window_manager.invoke_props_dialog(self, width=360)
+        return detail_popup.invoke_props_dialog(context, event, self, width=360)
 
     def execute(self, context):
         try:
@@ -425,7 +425,7 @@ class BMANGA_OT_detail_preset_duplicate(Operator):
     )
     new_name: StringProperty(name="複製後の名前", default="")  # type: ignore[valid-type]
 
-    def invoke(self, context, _event):
+    def invoke(self, context, event):
         try:
             preset_type, _module, _target = _require_session(self)
             self.new_name = _unique_name(
@@ -436,7 +436,7 @@ class BMANGA_OT_detail_preset_duplicate(Operator):
         except (LookupError, OSError, ValueError) as exc:
             self.report({"WARNING"}, str(exc))
             return {"CANCELLED"}
-        return context.window_manager.invoke_props_dialog(self, width=360)
+        return detail_popup.invoke_props_dialog(context, event, self, width=360)
 
     def execute(self, context):
         try:
@@ -476,7 +476,7 @@ class BMANGA_OT_detail_preset_delete(Operator):
     )
 
     def invoke(self, context, event):
-        return context.window_manager.invoke_confirm(self, event)
+        return detail_popup.invoke_confirm(context, event, self)
 
     def execute(self, context):
         try:

@@ -383,7 +383,7 @@ class BMANGA_PT_texts(Panel):
         ruby_box.prop(entry, "ruby_font_preset")
         ruby_box.prop(entry, "ruby_default_style")
         row = ruby_box.row(align=True)
-        row.operator("bmanga.text_ruby_add_dialog", text="追加・編集", icon="ADD")
+        row.operator("bmanga.text_selection_style_popup", text="選択文字設定", icon="FONT_DATA")
         row.operator("bmanga.text_ruby_clear", text="全解除", icon="TRASH")
 
         # フチ

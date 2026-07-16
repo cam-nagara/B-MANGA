@@ -7,7 +7,7 @@ from bpy.props import StringProperty
 from bpy.types import Operator
 
 from ..io import gradient_presets
-from ..utils import log
+from ..utils import detail_popup, log
 
 _logger = log.get_logger(__name__)
 
@@ -50,7 +50,7 @@ class BMANGA_OT_gradient_preset_add_local(Operator):
 
     def invoke(self, context, event):
         self.preset_name = gradient_presets.unique_preset_name(self.preset_name or "新規グラデーション")
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         name = gradient_presets.unique_preset_name(self.preset_name.strip() or "新規グラデーション")
@@ -123,7 +123,7 @@ class BMANGA_OT_gradient_preset_rename(Operator):
         selected = _selected_gradient_preset_name(context)
         self.preset_name = selected
         self.new_name = selected
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         old_name = self.preset_name.strip() or _selected_gradient_preset_name(context)
@@ -160,7 +160,7 @@ class BMANGA_OT_gradient_preset_duplicate(Operator):
         selected = _selected_gradient_preset_name(context)
         self.preset_name = selected
         self.new_name = gradient_presets.unique_preset_name(f"{selected} コピー")
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         source_name = self.preset_name.strip() or _selected_gradient_preset_name(context)
@@ -194,7 +194,7 @@ class BMANGA_OT_gradient_preset_delete(Operator):
 
     def invoke(self, context, event):
         self.preset_name = self.preset_name or _selected_gradient_preset_name(context)
-        return context.window_manager.invoke_confirm(self, event)
+        return detail_popup.invoke_confirm(context, event, self)
 
     def execute(self, context):
         name = self.preset_name.strip() or _selected_gradient_preset_name(context)

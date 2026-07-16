@@ -12,7 +12,7 @@ from bpy.types import Operator
 from ..core.work import get_active_page, get_work
 from ..io import border_presets, image_path_presets, page_io, presets, work_io
 from ..io import coma_io
-from ..utils import log
+from ..utils import detail_popup, log
 from . import coma_modal_state
 
 _logger = log.get_logger(__name__)
@@ -162,7 +162,7 @@ class BMANGA_OT_paper_preset_apply(Operator):
         return bool(w and w.loaded)
 
     def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         work = get_work(context)
@@ -203,7 +203,7 @@ class BMANGA_OT_paper_preset_save_local(Operator):
     def invoke(self, context, event):
         work = get_work(context)
         self.preset_name = work.paper.preset_name or "新規プリセット"
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         work = get_work(context)
@@ -734,7 +734,7 @@ class BMANGA_OT_border_preset_apply(Operator):
         return _resolve_selected_coma(context) is not None
 
     def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         resolved = _resolve_selected_coma(context)
@@ -780,7 +780,7 @@ class BMANGA_OT_border_preset_save_local(Operator):
 
     def invoke(self, context, event):
         self.preset_name = _unique_border_preset_name(context, "新規枠線プリセット")
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         name = self.preset_name.strip() or "新規枠線プリセット"
@@ -823,7 +823,7 @@ class BMANGA_OT_border_preset_add_local(Operator):
         work_dir = _border_preset_work_dir(context)
         if work_dir is not None:
             self.preset_name = border_presets.unique_preset_name(work_dir, "新規枠線プリセット")
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         work_dir = _border_preset_work_dir(context)
@@ -871,7 +871,7 @@ class BMANGA_OT_border_preset_rename(Operator):
         selected = _selected_border_preset_name(context)
         self.preset_name = selected
         self.new_name = selected
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         work_dir = _border_preset_work_dir(context)
@@ -930,7 +930,7 @@ class BMANGA_OT_border_preset_duplicate(Operator):
             if work_dir is not None
             else f"{selected} コピー"
         )
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         work_dir = _border_preset_work_dir(context)
@@ -965,7 +965,7 @@ class BMANGA_OT_border_preset_delete(Operator):
 
     def invoke(self, context, event):
         self.preset_name = self.preset_name or _selected_border_preset_name(context)
-        return context.window_manager.invoke_confirm(self, event)
+        return detail_popup.invoke_confirm(context, event, self)
 
     def execute(self, context):
         work_dir = _border_preset_work_dir(context)
@@ -1302,7 +1302,7 @@ class BMANGA_OT_image_path_preset_add_local(Operator):
     def invoke(self, context, event):
         work_dir = _image_path_preset_work_dir(context)
         self.preset_name = image_path_presets.unique_preset_name(work_dir, "新規パターンカーブプリセット")
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         entry = _active_image_path_entry(context)
@@ -1348,7 +1348,7 @@ class BMANGA_OT_image_path_preset_rename(Operator):
         selected = _selected_image_path_preset_name(context)
         self.preset_name = selected
         self.new_name = selected
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         work_dir = _image_path_preset_work_dir(context)
@@ -1384,7 +1384,7 @@ class BMANGA_OT_image_path_preset_duplicate(Operator):
         selected = _selected_image_path_preset_name(context)
         self.preset_name = selected
         self.new_name = image_path_presets.unique_preset_name(work_dir, f"{selected} コピー")
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         work_dir = _image_path_preset_work_dir(context)
@@ -1416,7 +1416,7 @@ class BMANGA_OT_image_path_preset_delete(Operator):
 
     def invoke(self, context, event):
         self.preset_name = self.preset_name or _selected_image_path_preset_name(context)
-        return context.window_manager.invoke_confirm(self, event)
+        return detail_popup.invoke_confirm(context, event, self)
 
     def execute(self, context):
         work_dir = _image_path_preset_work_dir(context)

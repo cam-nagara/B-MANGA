@@ -7,6 +7,7 @@ from bpy.props import EnumProperty, IntProperty, StringProperty
 from bpy.types import Operator
 
 from ..core.work import get_work
+from ..utils import detail_popup
 
 
 _RUBY_STYLE_ITEMS = (
@@ -337,7 +338,7 @@ class BMANGA_OT_detail_text_ruby_add(Operator):
     ruby_text: StringProperty(name="ルビ", default="")  # type: ignore[valid-type]
     style: EnumProperty(name="種類", items=_RUBY_STYLE_ITEMS, default="group")  # type: ignore[valid-type]
 
-    def invoke(self, context, _event):
+    def invoke(self, context, event):
         from . import text_edit_runtime
 
         try:
@@ -353,7 +354,7 @@ class BMANGA_OT_detail_text_ruby_add(Operator):
         self.style = str(getattr(entry, "ruby_default_style", "group") or "group")
         text_edit_runtime.suppress_ime_text()
         text_edit_runtime.set_dialog_cursor_override(context, True)
-        return context.window_manager.invoke_props_dialog(self, width=320)
+        return detail_popup.invoke_props_dialog(context, event, self, width=320)
 
     def draw(self, context):
         from .text_ruby_op import _selected_preview

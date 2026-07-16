@@ -10,7 +10,7 @@ from mathutils import Matrix, Vector
 from ..utils import balloon_curve_object as bco
 from ..utils import balloon_curve_source_state
 from ..utils import image_real_object as iro
-from ..utils import log
+from ..utils import detail_popup, log
 from ..utils import text_real_object as tro
 
 _logger = log.get_logger(__name__)
@@ -161,7 +161,7 @@ class BMANGA_OT_balloon_regenerate_keep_edit(bpy.types.Operator):
     balloon_id: bpy.props.StringProperty(name="フキダシID", default="", options={"HIDDEN"})  # type: ignore[valid-type]
 
     def invoke(self, context, event):
-        return context.window_manager.invoke_confirm(self, event)
+        return detail_popup.invoke_confirm(context, event, self)
 
     def execute(self, context):
         page, entry = _find_balloon(context, self.page_id, self.balloon_id)
@@ -262,7 +262,7 @@ class BMANGA_OT_balloon_regenerate_discard_edit(bpy.types.Operator):
     balloon_id: bpy.props.StringProperty(name="フキダシID", default="", options={"HIDDEN"})  # type: ignore[valid-type]
 
     def invoke(self, context, event):
-        return context.window_manager.invoke_confirm(self, event)
+        return detail_popup.invoke_confirm(context, event, self)
 
     def execute(self, context):
         page, entry = _find_balloon(context, self.page_id, self.balloon_id)

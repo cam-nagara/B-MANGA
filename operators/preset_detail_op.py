@@ -45,7 +45,7 @@ from ..core.effect_line import BMangaEffectLineParams
 from ..core.fill_layer import BMangaFillLayer
 from ..core.image_path_layer import BMangaImagePathLayer
 from ..core.text_entry import BMangaTextEntry
-from ..utils import log
+from ..utils import detail_popup, log
 from ..utils.detail_dialog import (
     DetailContractError,
     DetailMode,
@@ -447,9 +447,10 @@ class BMANGA_OT_preset_detail_switch(Operator):
             return {"CANCELLED"}
         if not owner._has_unsaved_preset_changes():
             return self.execute(context)
-        return context.window_manager.invoke_confirm(
-            self,
+        return detail_popup.invoke_confirm(
+            context,
             event,
+            self,
             title="プリセットの切り替え確認",
             message=(
                 "現在の設定はプリセットに保存されていません。"
@@ -549,9 +550,9 @@ class BMANGA_OT_preset_detail_edit(Operator):
         self._detail_preset_list_signature = None
         return self._detail_session
 
-    def _open_detail_session(self, context):
+    def _open_detail_session(self, context, event):
         self._begin_detail_session(context)
-        return self._invoke_detail_dialog(context)
+        return self._invoke_detail_dialog(context, event)
 
     def sync_preset_edit_list(self, context, session, preset_type: str) -> int:
         from . import detail_preset_apply_op
@@ -642,9 +643,11 @@ class BMANGA_OT_preset_detail_edit(Operator):
         self._load_preset_for_switch(context, name)
         self._begin_detail_session(context)
 
-    def _invoke_detail_dialog(self, context):
+    def _invoke_detail_dialog(self, context, event):
         try:
-            result = context.window_manager.invoke_props_dialog(
+            result = detail_popup.invoke_props_dialog(
+                context,
+                event,
                 self,
                 width=self._detail_session.layout.dialog_width,
             )
@@ -693,7 +696,7 @@ class BMANGA_OT_preset_detail_edit(Operator):
             )
             self.description_text = str(data.get("description", "") or "")
             try:
-                return self._open_detail_session(context)
+                return self._open_detail_session(context, event)
             except Exception:  # noqa: BLE001
                 _logger.exception("failed to open preset detail %s/%s", pt, self.preset_name)
                 self.report({"WARNING"}, "プリセット詳細設定を開けませんでした")
@@ -713,7 +716,7 @@ class BMANGA_OT_preset_detail_edit(Operator):
             return {"CANCELLED"}
         self.description_text = description
         try:
-            return self._open_detail_session(context)
+            return self._open_detail_session(context, event)
         except Exception:  # noqa: BLE001
             _logger.exception("failed to open preset detail %s/%s", pt, self.preset_name)
             self.report({"WARNING"}, "プリセット詳細設定を開けませんでした")

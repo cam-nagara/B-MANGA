@@ -7,7 +7,7 @@ from bpy.props import BoolProperty, EnumProperty, FloatProperty, FloatVectorProp
 from bpy.types import Operator
 
 from ..core.work import get_work
-from ..utils import layer_stack as layer_stack_utils
+from ..utils import detail_popup, layer_stack as layer_stack_utils
 from ..utils import text_real_object, text_style
 from ..utils.geom import pt_to_q, q_to_pt
 from . import coma_modal_state
@@ -126,15 +126,33 @@ class BMANGA_OT_text_selection_style_popup(Operator):
 
     def invoke(self, context, event):
         page, entry, _idx = _find_text_entry(context, self.page_id, self.text_id)
+        if entry is None:
+            from .text_ruby_op import _resolve_text_entry
+
+            page, entry = _resolve_text_entry(context)
+            if page is not None and entry is not None:
+                self.page_id = str(getattr(page, "id", "") or "")
+                self.text_id = str(getattr(entry, "id", "") or "")
         if page is None or entry is None:
             self.report({"ERROR"}, "選択中のテキストが見つかりません")
             return {"CANCELLED"}
         start, end = self._bounds(entry)
         if start >= end:
-            self.report({"ERROR"}, "文字範囲を選択してください")
-            return {"CANCELLED"}
+            try:
+                from . import text_op
+
+                active_bounds = text_op._active_text_selection_bounds(context, page, entry)
+            except Exception:  # noqa: BLE001
+                active_bounds = None
+            if active_bounds is None:
+                active_bounds = (0, len(str(getattr(entry, "body", "") or "")))
+            start, end = active_bounds
+            if start >= end:
+                self.report({"ERROR"}, "設定する文字がありません")
+                return {"CANCELLED"}
         self.start = start
         self.end = end
+        self._original_spans = text_style.all_spans_snapshot(entry)
         style = text_style.style_for_index(entry, start)
         self.font_choice = text_style.dropdown_choice_for_font_path(style[0])
         self.font_size_q = float(style[1])
@@ -151,7 +169,7 @@ class BMANGA_OT_text_selection_style_popup(Operator):
                 break
         text_edit_runtime.suppress_ime_text()
         text_edit_runtime.set_dialog_cursor_override(context, True)
-        return context.window_manager.invoke_props_dialog(self, width=320)
+        return detail_popup.invoke_props_dialog(context, event, self, width=320)
 
     def draw(self, _context):
         layout = self.layout
@@ -165,13 +183,8 @@ class BMANGA_OT_text_selection_style_popup(Operator):
         layout.prop(self, "font_choice")
         layout.separator()
         layout.prop(self, "ruby_text")
-        row = layout.row(align=True)
-        row.prop(self, "ruby_style", text="")
-        op_clear = row.operator("bmanga.text_ruby_clear_inline", text="", icon="X")
-        op_clear.page_id = self.page_id
-        op_clear.text_id = self.text_id
-        op_clear.start = self.start
-        op_clear.end = self.end
+        layout.prop(self, "ruby_style", text="")
+        layout.label(text="ルビを外す場合は、ルビ欄を空にします", icon="INFO")
 
     def check(self, context):
         page, entry, _idx = _find_text_entry(context, self.page_id, self.text_id)
@@ -216,11 +229,19 @@ class BMANGA_OT_text_selection_style_popup(Operator):
             text_style.clear_ruby_spans(entry, start, end)
         page.active_text_index = idx
         self._sync_visual(context, page, entry, start, end)
+        self._original_spans = None
         return {"FINISHED"}
 
     def cancel(self, context):
         text_edit_runtime.unsuppress_ime_text()
         text_edit_runtime.set_dialog_cursor_override(context, False)
+        snapshot = getattr(self, "_original_spans", None)
+        page, entry, _idx = _find_text_entry(context, self.page_id, self.text_id)
+        if snapshot is not None and page is not None and entry is not None:
+            text_style.restore_all_spans(entry, snapshot)
+            start, end = self._bounds(entry)
+            self._sync_visual(context, page, entry, start, end)
+        self._original_spans = None
 
     def _bounds(self, entry) -> tuple[int, int]:
         body_len = len(str(getattr(entry, "body", "") or ""))

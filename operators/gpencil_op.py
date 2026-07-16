@@ -13,7 +13,7 @@ from bpy.types import Operator
 
 from ..core.work import get_active_page, get_work
 from ..utils import gpencil as gp_utils
-from ..utils import geom, layer_object_model, layer_stack as layer_stack_utils, log, page_grid
+from ..utils import detail_popup, geom, layer_object_model, layer_stack as layer_stack_utils, log, page_grid
 from . import object_rotation_gp  # noqa: F401 (import時にgp回転ハンドラーを登録)
 
 _logger = log.get_logger(__name__)
@@ -164,7 +164,7 @@ class BMANGA_OT_gpencil_layer_remove(Operator):
         return layer_object_model.is_layer_object(obj, "gp")
 
     def invoke(self, context, event):
-        return context.window_manager.invoke_confirm(self, event)
+        return detail_popup.invoke_confirm(context, event, self)
 
     def execute(self, context):
         obj = _target_gp_object(context)
@@ -255,7 +255,7 @@ class BMANGA_OT_gpencil_folder_remove(Operator):
         return item is not None and getattr(item, "kind", "") == "layer_folder"
 
     def invoke(self, context, event):
-        return context.window_manager.invoke_confirm(self, event)
+        return detail_popup.invoke_confirm(context, event, self)
 
     def execute(self, context):
         return bpy.ops.bmanga.layer_stack_delete("EXEC_DEFAULT")

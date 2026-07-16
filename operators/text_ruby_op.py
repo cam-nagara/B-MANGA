@@ -127,11 +127,11 @@ def _sync_after_ruby_change(context, page, entry, start: int, end: int) -> None:
 
 
 class BMANGA_OT_text_ruby_add_dialog(Operator):
-    """選択中の文字にルビを付ける."""
+    """旧ルビダイアログ互換。画面操作は選択文字設定へ転送する。"""
 
     bl_idname = "bmanga.text_ruby_add_dialog"
     bl_label = "ルビを付ける"
-    bl_options = {"REGISTER", "UNDO"}
+    bl_options = {"REGISTER", "UNDO", "INTERNAL"}
 
     page_id: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
     text_id: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
@@ -171,30 +171,17 @@ class BMANGA_OT_text_ruby_add_dialog(Operator):
             start, end = 0, body_len
         if start >= end and body_len > 0:
             start, end = 0, body_len
-        self.start = start
-        self.length = max(1, end - start)
-        self.style = str(getattr(entry, "ruby_default_style", "group") or "group")
-        if not self.ruby_text:
-            for r_start, r_end, ruby_text, style in text_style.ruby_spans_snapshot(entry):
-                if r_start == start and r_end == end:
-                    self.ruby_text = ruby_text
-                    self.style = style
-                    break
-        text_edit_runtime.suppress_ime_text()
-        text_edit_runtime.set_dialog_cursor_override(context, True)
-        return context.window_manager.invoke_props_dialog(self, width=320)
-
-    def draw(self, context):
-        layout = self.layout
-        _page, entry = self._resolve_target(context)
-        if entry is not None:
-            start, end = _entry_bounds(entry, self.start, self.start + self.length)
-            layout.label(text=f"親文字: {_selected_preview(entry, start, end)}")
-        row = layout.row(align=True)
-        row.prop(self, "start")
-        row.prop(self, "length")
-        layout.prop(self, "ruby_text")
-        layout.prop(self, "style")
+        try:
+            return bpy.ops.bmanga.text_selection_style_popup(
+                "INVOKE_DEFAULT",
+                page_id=str(getattr(page, "id", "") or ""),
+                text_id=str(getattr(entry, "id", "") or ""),
+                start=start,
+                end=end,
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.report({"ERROR"}, f"選択文字設定を開けません: {exc}")
+            return {"CANCELLED"}
 
     def execute(self, context):
         text_edit_runtime.unsuppress_ime_text()

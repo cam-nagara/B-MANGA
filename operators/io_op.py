@@ -21,7 +21,7 @@ from ..core.mode import MODE_PAGE, get_mode
 from ..core.work import get_active_page, get_work
 from ..io import export_page_regions, export_pipeline
 from ..io.export_pipeline import ExportOptions
-from ..utils import log, page_range, paths
+from ..utils import detail_popup, log, page_range, paths
 
 
 def _save_image(img, out_path: Path, image_format: str) -> None:
@@ -376,7 +376,7 @@ class BMANGA_OT_export_page(Operator):
         if not export_pipeline.has_pillow():
             self.report({"ERROR"}, "Pillow が同梱されていません (Phase 6 の wheels 同梱後に利用可能)")
             return {"CANCELLED"}
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def draw(self, _context):
         layout = self.layout
@@ -491,7 +491,7 @@ class BMANGA_OT_export_all_pages(Operator):
             self.filepath = str(_default_export_dir(work))
             self.output_start = int(getattr(work.work_info, "page_number_start", 1))
             self.output_end = int(getattr(work.work_info, "page_number_end", self.output_start))
-        return context.window_manager.invoke_props_dialog(self, width=520)
+        return detail_popup.invoke_props_dialog(context, event, self, width=520)
 
     def draw(self, _context):
         layout = self.layout
@@ -611,7 +611,7 @@ class BMANGA_OT_export_pdf(Operator):
         if work is not None:
             self.output_start = int(getattr(work.work_info, "page_number_start", 1))
             self.output_end = int(getattr(work.work_info, "page_number_end", self.output_start))
-        return context.window_manager.invoke_props_dialog(self, width=420)
+        return detail_popup.invoke_props_dialog(context, event, self, width=420)
 
     def draw(self, _context):
         layout = self.layout

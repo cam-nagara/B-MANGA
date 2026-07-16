@@ -6,7 +6,7 @@ import bpy
 from bpy.props import BoolProperty, CollectionProperty, IntProperty, StringProperty
 from bpy.types import Operator
 
-from ..utils import layer_stack as layer_stack_utils
+from ..utils import detail_popup, layer_stack as layer_stack_utils
 from ..utils.layer_hierarchy import COMA_KIND
 from .detail_preset_apply_op import (
     BMANGA_DetailPresetListItem,
@@ -77,8 +77,9 @@ class BMANGA_OT_layer_stack_detail(Operator):
         try:
             self._detail_session = self._begin_detail_session(context)
             layer_stack_utils.tag_view3d_redraw(context)
-            self._offset_cursor_for_selection_popup(context, event)
-            result = context.window_manager.invoke_props_dialog(
+            result = detail_popup.invoke_props_dialog(
+                context,
+                event,
                 self,
                 width=self._detail_session.layout.dialog_width,
             )
@@ -192,13 +193,6 @@ class BMANGA_OT_layer_stack_detail(Operator):
             self.layout.label(text="詳細設定を表示できません", icon="ERROR")
             self.layout.label(text=str(exc)[:80])
         layer_stack_utils.tag_view3d_redraw(context)
-
-    def _offset_cursor_for_selection_popup(self, context, event) -> None:
-        if not bool(getattr(self, "offset_from_selection", False)):
-            return
-        from ..utils import detail_popup
-
-        detail_popup.position_dialog_cursor(context, event, key="layer_detail", offset_x=360)
 
     def _capture_edge_selection(self, context) -> tuple[str, int, int, int, int]:
         wm = getattr(context, "window_manager", None)

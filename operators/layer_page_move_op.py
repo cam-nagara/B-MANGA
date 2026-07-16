@@ -7,7 +7,7 @@ from bpy.props import EnumProperty
 from bpy.types import Operator
 
 from ..core.work import get_work
-from ..utils import layer_reparent
+from ..utils import detail_popup, layer_reparent
 from ..utils import layer_stack as layer_stack_utils
 
 
@@ -76,7 +76,7 @@ class BMANGA_OT_layer_move_to_page(Operator):
         )
 
     def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self, width=320)
+        return detail_popup.invoke_props_dialog(context, event, self, width=320)
 
     def execute(self, context):
         work = get_work(context)

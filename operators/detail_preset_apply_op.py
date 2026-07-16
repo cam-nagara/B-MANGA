@@ -13,7 +13,7 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, StringProperty
 from bpy.types import Operator, PropertyGroup, UIList
 
-from ..utils import log
+from ..utils import detail_popup, log
 
 
 _logger = log.get_logger(__name__)
@@ -664,9 +664,10 @@ class BMANGA_OT_detail_preset_apply(Operator):
             self.report({"WARNING"}, str(exc) or "プリセットを切り替えられません")
             return {"CANCELLED"}
         label = str(self.preset_label or self.preset_name or "選択プリセット")
-        return context.window_manager.invoke_confirm(
-            self,
+        return detail_popup.invoke_confirm(
+            context,
             event,
+            self,
             title="プリセットの切り替え確認",
             message=(
                 "現在の設定はプリセットに保存されていません。"

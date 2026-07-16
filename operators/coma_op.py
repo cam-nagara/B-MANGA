@@ -12,7 +12,7 @@ from bpy.types import Operator
 
 from ..core.work import get_active_page, get_work
 from ..io import page_io, coma_io, schema
-from ..utils import coma_child_reparent, edge_selection, object_selection
+from ..utils import coma_child_reparent, detail_popup, edge_selection, object_selection
 from ..utils import layer_stack as layer_stack_utils
 from ..utils import log, page_grid, paths
 from .coma_knife_cut_op import _coma_polygon, _polygon_area, _set_coma_polygon, _split_convex_polygon_by_line
@@ -508,7 +508,7 @@ class BMANGA_OT_coma_remove(Operator):
         return page is not None and 0 <= page.active_coma_index < len(page.comas)
 
     def invoke(self, context, event):
-        return context.window_manager.invoke_confirm(self, event)
+        return detail_popup.invoke_confirm(context, event, self)
 
     def execute(self, context):
         work, page = _require_active_page(self, context)
@@ -666,7 +666,7 @@ class BMANGA_OT_coma_move_to_page(Operator):
         )
 
     def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         work, page = _require_active_page(self, context)
@@ -815,7 +815,7 @@ class BMANGA_OT_coma_merge_selected(Operator):
             self.report({"ERROR"}, "結合するコマを2つ以上選択してください")
             return {"CANCELLED"}
         coma_modal_state.finish_all(context)
-        return context.window_manager.invoke_props_dialog(self, width=360)
+        return detail_popup.invoke_props_dialog(context, event, self, width=360)
 
     def draw(self, context):
         layout = self.layout
@@ -950,7 +950,7 @@ class BMANGA_OT_coma_split_template(Operator):
         work.active_page_index = page_index
         page.active_coma_index = coma_index
         coma_modal_state.finish_all(context)
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         work = get_work(context)

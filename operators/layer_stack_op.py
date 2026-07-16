@@ -11,7 +11,7 @@ from bpy.props import EnumProperty, IntProperty, StringProperty
 from bpy.types import Menu, Operator
 from bpy_extras.io_utils import ImportHelper
 
-from ..utils import layer_stack as layer_stack_utils
+from ..utils import detail_popup, layer_stack as layer_stack_utils
 from ..utils import layer_folder as layer_folder_utils
 from ..utils.layer_hierarchy import (
     PAGE_KIND,
@@ -1434,7 +1434,7 @@ class BMANGA_OT_layer_stack_delete(Operator):
         return stack is not None and 0 <= idx < len(stack)
 
     def invoke(self, context, event):
-        return context.window_manager.invoke_confirm(self, event)
+        return detail_popup.invoke_confirm(context, event, self)
 
     def execute(self, context):
         idx = int(getattr(context.scene, "bmanga_active_layer_stack_index", -1))

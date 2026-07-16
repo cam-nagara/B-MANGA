@@ -14,7 +14,7 @@ from ..core.work import get_work
 from ..core.work_info import suppress_page_number_range_update
 from ..io import blend_io, page_io, presets, work_io
 from ..utils import gpencil as gp_utils
-from ..utils import color_space, layer_object_model, log, page_grid, page_range, paths, view_settings
+from ..utils import color_space, detail_popup, layer_object_model, log, page_grid, page_range, paths, view_settings
 
 _logger = log.get_logger(__name__)
 
@@ -469,9 +469,10 @@ class BMANGA_OT_work_make_coma_file(Operator):
         return not (work and work.loaded)
 
     def invoke(self, context, event):
-        return context.window_manager.invoke_confirm(
-            self,
+        return detail_popup.invoke_confirm(
+            context,
             event,
+            self,
             title="コマファイル化",
             message=(
                 "この .blend を単独のコマファイルにします。"

@@ -18,7 +18,7 @@ from ..core.work import get_work
 from ..io import page_io, page_operation_transaction, work_io
 from ..utils import gp_object_layer
 from ..utils import layer_stack as layer_stack_utils
-from ..utils import edge_selection, log, page_browser, page_grid, page_range
+from ..utils import detail_popup, edge_selection, log, page_browser, page_grid, page_range
 from ..utils import page_file_scene
 from ..utils import shortcut_visibility
 
@@ -214,7 +214,7 @@ class BMANGA_OT_page_remove(Operator):
         )
 
     def invoke(self, context, event):
-        return context.window_manager.invoke_confirm(self, event)
+        return detail_popup.invoke_confirm(context, event, self)
 
     def execute(self, context):
         work = get_work(context)

@@ -8,7 +8,7 @@ from bpy.types import Menu, Operator
 
 from ..core.work import get_active_page, get_work
 from ..io import text_presets
-from ..utils import log
+from ..utils import detail_popup, log
 
 _logger = log.get_logger(__name__)
 
@@ -66,7 +66,7 @@ class BMANGA_OT_text_preset_add_local(Operator):
 
     def invoke(self, context, event):
         self.preset_name = text_presets.unique_preset_name(self.preset_name or "新規テキストプリセット")
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         name = text_presets.unique_preset_name(self.preset_name.strip() or "新規テキストプリセット")
@@ -154,7 +154,7 @@ class BMANGA_OT_text_preset_rename(Operator):
         selected = _selected_text_preset_name(context)
         self.preset_name = selected
         self.new_name = selected
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         old_name = self.preset_name.strip() or _selected_text_preset_name(context)
@@ -192,7 +192,7 @@ class BMANGA_OT_text_preset_duplicate(Operator):
         selected = _selected_text_preset_name(context)
         self.preset_name = selected
         self.new_name = text_presets.unique_preset_name(f"{selected} コピー")
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         source_name = self.preset_name.strip() or _selected_text_preset_name(context)
@@ -227,7 +227,7 @@ class BMANGA_OT_text_preset_delete(Operator):
 
     def invoke(self, context, event):
         self.preset_name = self.preset_name or _selected_text_preset_name(context)
-        return context.window_manager.invoke_confirm(self, event)
+        return detail_popup.invoke_confirm(context, event, self)
 
     def execute(self, context):
         name = self.preset_name.strip() or _selected_text_preset_name(context)

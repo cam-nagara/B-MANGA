@@ -15,7 +15,7 @@ from bpy.types import Operator
 
 from ..core.work import get_work
 from ..io import tail_presets
-from ..utils import balloon_tail_geom, log
+from ..utils import balloon_tail_geom, detail_popup, log
 from .balloon_tail_op import _find_balloon, _sync_after_tail_change
 
 _logger = log.get_logger(__name__)
@@ -151,14 +151,14 @@ class BMANGA_OT_balloon_tail_preset_save(Operator):
     preset_name: StringProperty(name="プリセット名", default="")  # type: ignore[valid-type]
     description: StringProperty(name="説明", default="")  # type: ignore[valid-type]
 
-    def invoke(self, context, _event):
+    def invoke(self, context, event):
         work_dir = _work_dir(context)
         if work_dir is None:
             self.report({"WARNING"}, "作品が開かれていません")
             return {"CANCELLED"}
         if not self.preset_name:
             self.preset_name = tail_presets.unique_preset_name(work_dir, "新規しっぽプリセット")
-        return context.window_manager.invoke_props_dialog(self, width=280)
+        return detail_popup.invoke_props_dialog(context, event, self, width=280)
 
     def execute(self, context):
         work_dir = _work_dir(context)
@@ -185,10 +185,10 @@ class BMANGA_OT_balloon_tail_preset_delete(Operator):
 
     preset_name: bpy.props.EnumProperty(name="プリセット", items=_local_tail_preset_enum_items)  # type: ignore[valid-type]
 
-    def invoke(self, context, _event):
+    def invoke(self, context, event):
         if str(self.preset_name or "") in {"", "NONE"}:
             return {"CANCELLED"}
-        return context.window_manager.invoke_confirm(self, _event)
+        return detail_popup.invoke_confirm(context, event, self)
 
     def execute(self, context):
         work_dir = _work_dir(context)
@@ -345,7 +345,7 @@ class BMANGA_OT_balloon_tail_detail_open(Operator):
     page_id: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
     balloon_id: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
 
-    def invoke(self, context, _event):
+    def invoke(self, context, event):
         self._detail_session = None
         page, entry = _find_balloon(context, self.page_id, self.balloon_id)
         if entry is None:
@@ -371,8 +371,8 @@ class BMANGA_OT_balloon_tail_detail_open(Operator):
             self._detail_session = detail_dialog_runtime.begin_actual_session(
                 context, target, target_validator=_target_is_alive
             )
-            result = context.window_manager.invoke_props_dialog(
-                self, width=self._detail_session.layout.dialog_width
+            result = detail_popup.invoke_props_dialog(
+                context, event, self, width=self._detail_session.layout.dialog_width
             )
         except Exception as exc:  # noqa: BLE001
             rollback_error = self._abort_opening_session(context)

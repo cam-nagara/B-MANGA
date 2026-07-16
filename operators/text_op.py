@@ -21,6 +21,7 @@ from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_active_page, get_work
 from ..utils import (
     coma_hit_visibility,
+    detail_popup,
     layer_stack as layer_stack_utils,
     log,
     object_selection,
@@ -570,7 +571,7 @@ class BMANGA_OT_text_add(Operator):
 
     def invoke(self, context, event):
         if self.use_explicit_position:
-            return context.window_manager.invoke_props_dialog(self)
+            return detail_popup.invoke_props_dialog(context, event, self)
         work, page, lx, ly = _resolve_page_from_event(context, event)
         if work is None or page is None:
             self.report({"ERROR"}, "ページが選択されていません")
@@ -582,7 +583,7 @@ class BMANGA_OT_text_add(Operator):
         else:
             self.x_mm = work.paper.canvas_width_mm / 2.0 - self.width_mm / 2.0
             self.y_mm = work.paper.canvas_height_mm / 2.0 - self.height_mm / 2.0
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         page = get_active_page(context)

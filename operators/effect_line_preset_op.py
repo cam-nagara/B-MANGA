@@ -10,7 +10,7 @@ from bpy.types import Operator
 
 from ..core.work import get_work
 from ..io import effect_line_presets
-from ..utils import log
+from ..utils import detail_popup, log
 
 _logger = log.get_logger(__name__)
 
@@ -142,10 +142,10 @@ class BMANGA_OT_effect_line_preset_add_local(Operator):
     def poll(cls, context):
         return _active_effect_params(context) is not None
 
-    def invoke(self, context, _event):
+    def invoke(self, context, event):
         work_dir = _effect_line_preset_work_dir(context)
         self.preset_name = effect_line_presets.unique_preset_name(work_dir, "新規効果線プリセット")
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         params = _active_effect_params(context)
@@ -183,11 +183,11 @@ class BMANGA_OT_effect_line_preset_rename(Operator):
     def poll(cls, context):
         return bool(_selected_effect_line_preset_name(context))
 
-    def invoke(self, context, _event):
+    def invoke(self, context, event):
         selected = _selected_effect_line_preset_name(context)
         self.preset_name = selected
         self.new_name = selected
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         work_dir = _effect_line_preset_work_dir(context)
@@ -215,12 +215,12 @@ class BMANGA_OT_effect_line_preset_duplicate(Operator):
     def poll(cls, context):
         return bool(_selected_effect_line_preset_name(context))
 
-    def invoke(self, context, _event):
+    def invoke(self, context, event):
         work_dir = _effect_line_preset_work_dir(context)
         selected = _selected_effect_line_preset_name(context)
         self.preset_name = selected
         self.new_name = effect_line_presets.unique_preset_name(work_dir, f"{selected} コピー")
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         work_dir = _effect_line_preset_work_dir(context)
@@ -249,7 +249,7 @@ class BMANGA_OT_effect_line_preset_delete(Operator):
 
     def invoke(self, context, event):
         self.preset_name = self.preset_name or _selected_effect_line_preset_name(context)
-        return context.window_manager.invoke_confirm(self, event)
+        return detail_popup.invoke_confirm(context, event, self)
 
     def execute(self, context):
         work_dir = _effect_line_preset_work_dir(context)

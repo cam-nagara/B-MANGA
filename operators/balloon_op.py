@@ -26,6 +26,7 @@ from ..utils import (
     balloon_merge_object,
     balloon_shapes,
     balloon_tail_geom,
+    detail_popup,
     free_transform,
     layer_stack as layer_stack_utils,
     log,
@@ -986,7 +987,7 @@ class BMANGA_OT_balloon_add(Operator):
         # 追加時はカーソル位置を左下ではなく中央と解釈し、規定サイズで周囲に広げる
         self.x_mm = cx - self.width_mm / 2.0
         self.y_mm = cy - self.height_mm / 2.0
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         page = get_active_page(context)
@@ -1939,7 +1940,7 @@ class BMANGA_OT_balloon_save_preset(Operator):
         return 0 <= page.active_balloon_index < len(page.balloons)
 
     def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         page = get_active_page(context)

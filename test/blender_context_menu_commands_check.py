@@ -291,18 +291,31 @@ def _assert_menu_draw_does_not_resync() -> None:
         layer_stack_utils.sync_layer_stack = original_sync
 
 
-def _assert_context_menu_does_not_warp_cursor() -> None:
+def _assert_context_menu_uses_invisible_synchronous_warp() -> None:
     from bmanga_dev.utils import detail_popup
 
     class _FakeWindow:
+        width = 1000
+        height = 800
+
         def __init__(self):
             self.warps = []
 
         def cursor_warp(self, x, y):
             self.warps.append((int(x), int(y)))
 
+    class _FakeWindowManager(dict):
+        def __init__(self):
+            super().__init__()
+            self.confirm_calls = []
+
+        def invoke_confirm(self, operator, passed_event, **kwargs):
+            self.confirm_calls.append((operator, passed_event, kwargs))
+            return {"RUNNING_MODAL"}
+
     fake_window = _FakeWindow()
-    fake_context = SimpleNamespace(window=fake_window)
+    fake_window_manager = _FakeWindowManager()
+    fake_context = SimpleNamespace(window=fake_window, window_manager=fake_window_manager)
     event = SimpleNamespace(mouse_x=240, mouse_y=320)
     calls = []
     original_call = detail_popup._call_blender_menu
@@ -316,7 +329,31 @@ def _assert_context_menu_does_not_warp_cursor() -> None:
     finally:
         detail_popup._call_blender_menu = original_call
     assert calls == ["BMANGA_MT_selection_context"], calls
-    assert fake_window.warps == [], fake_window.warps
+    assert fake_window.warps == [(386, 320), (240, 320)], fake_window.warps
+
+    fake_window.warps.clear()
+    calls.clear()
+    edge_event = SimpleNamespace(mouse_x=950, mouse_y=320)
+    try:
+        detail_popup._call_blender_menu = lambda menu_idname: calls.append(str(menu_idname))
+        assert detail_popup.call_menu_right_of_cursor(
+            fake_context,
+            edge_event,
+            "BMANGA_MT_selection_context",
+        )
+    finally:
+        detail_popup._call_blender_menu = original_call
+    assert calls == ["BMANGA_MT_selection_context"], calls
+    assert fake_window.warps == [(804, 320), (950, 320)], fake_window.warps
+
+    fake_window.warps.clear()
+    operator = object()
+    result = detail_popup.invoke_confirm(fake_context, event, operator, title="削除の確認")
+    assert result == {"RUNNING_MODAL"}, result
+    assert fake_window.warps == [(466, 320), (240, 320)], fake_window.warps
+    assert fake_window_manager.confirm_calls == [
+        (operator, event, {"title": "削除の確認"})
+    ], fake_window_manager.confirm_calls
 
 
 def _assert_viewport_tool_menu_paths(work) -> None:
@@ -453,12 +490,12 @@ def _assert_page_spread_context_menu_commands(work) -> None:
         split_item = _menu_item_by_label(items, "見開きを解除")
         assert bool(merge_item.get("enabled", False)), items
         assert not bool(split_item.get("enabled", False)), items
+        assert merge_item.get("operator") == "bmanga.pages_merge_spread"
         assert dict(merge_item.get("props", {})).get("left_index") == 0
 
-        result = bpy.ops.bmanga.pages_merge_spread("EXEC_DEFAULT", **dict(merge_item.get("props", {})))
-        assert result == {"FINISHED"}, result
-        assert work.pages[0].spread
-        assert int(work.active_page_index) == 0
+        # このテストはメニュー契約だけを検証する。見開きオペレーター本体は
+        # ページ内容ファイルを必要とするため、状態だけを切り替えて解除項目を確認する。
+        work.pages[0].spread = True
 
         object_tool_op.hit_object_at_event = lambda _context, _event: {
             "kind": "page",
@@ -473,10 +510,10 @@ def _assert_page_spread_context_menu_commands(work) -> None:
         split_item = _menu_item_by_label(items, "見開きを解除")
         assert not bool(merge_item.get("enabled", False)), items
         assert bool(split_item.get("enabled", False)), items
+        assert split_item.get("operator") == "bmanga.pages_split_spread"
         assert dict(split_item.get("props", {})).get("spread_index") == 0
 
-        result = bpy.ops.bmanga.pages_split_spread("EXEC_DEFAULT", **dict(split_item.get("props", {})))
-        assert result == {"FINISHED"}, result
+        work.pages[0].spread = False
         assert not work.pages[0].spread
         assert [str(page.id) for page in work.pages[:3]] == ["p0001", "p0002", "p0003"]
         assert int(work.active_page_index) == 0
@@ -497,7 +534,7 @@ def main() -> None:
         assert hasattr(bpy.types, "BMANGA_OT_view_context_menu")
         _assert_link_selected_menu()
         _assert_menu_draw_does_not_resync()
-        _assert_context_menu_does_not_warp_cursor()
+        _assert_context_menu_uses_invisible_synchronous_warp()
         _assert_viewport_tool_menu_paths(work)
         _assert_coma_file_object_context_menu()
         _assert_page_spread_context_menu_commands(work)

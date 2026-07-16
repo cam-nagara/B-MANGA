@@ -18,6 +18,7 @@ from bpy.types import Operator
 from ..core.work import get_work
 from ..io import schema, spread_page_content
 from ..utils import (
+    detail_popup,
     log,
     page_detail,
     page_file_scene,
@@ -224,7 +225,7 @@ class BMANGA_OT_pages_merge_spread(Operator):
         if 0 <= self.left_index < len(work.pages) - 1:
             page_detail.ensure_page_detail(work, work.pages[self.left_index])
             page_detail.ensure_page_detail(work, work.pages[self.left_index + 1])
-        return context.window_manager.invoke_props_dialog(self, width=450)
+        return detail_popup.invoke_props_dialog(context, event, self, width=450)
 
     def draw(self, context):
         layout = self.layout
@@ -416,7 +417,7 @@ class BMANGA_OT_pages_split_spread(Operator):
         work = get_work(context)
         if self.spread_index < 0:
             self.spread_index = work.active_page_index
-        return context.window_manager.invoke_confirm(self, event)
+        return detail_popup.invoke_confirm(context, event, self)
 
     def execute(self, context):
         work = get_work(context)

@@ -18,7 +18,7 @@ from bpy.types import Operator
 
 from ..core.work import get_active_page, get_work
 from ..utils import layer_stack as layer_stack_utils
-from ..utils import log, paths, percentage
+from ..utils import detail_popup, log, paths, percentage
 from ..utils.geom import mm_to_m, mm_to_px
 from . import object_rotation_raster  # noqa: F401 (import時にraster回転ハンドラーを登録)
 
@@ -1015,7 +1015,7 @@ class BMANGA_OT_raster_layer_add(Operator):
         return _raster_collection(context.scene) is not None
 
     def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self, width=320)
+        return detail_popup.invoke_props_dialog(context, event, self, width=320)
 
     def draw(self, context):
         layout = self.layout

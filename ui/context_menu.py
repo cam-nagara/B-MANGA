@@ -11,7 +11,7 @@ from __future__ import annotations
 import bpy
 from bpy.types import Menu
 
-from ..utils import detail_target_resolver
+from ..utils import detail_popup, detail_target_resolver
 from ..utils import layer_stack as layer_stack_utils
 from ..utils import object_naming as on
 from ..utils import page_file_scene, shortcut_visibility
@@ -562,13 +562,13 @@ class BMANGA_MT_layer_context(Menu):
         _draw_layer_commands(self.layout, context)
 
 
-def open_layer_context_menu() -> bool:
+def open_layer_context_menu(context=None, event=None) -> bool:
     """ツール側の modal operator から呼び出すヘルパ."""
-    try:
-        bpy.ops.wm.call_menu(name=BMANGA_MT_layer_context.bl_idname)
-        return True
-    except Exception:  # noqa: BLE001
-        return False
+    return detail_popup.call_menu_right_of_cursor(
+        context or bpy.context,
+        event,
+        BMANGA_MT_layer_context.bl_idname,
+    )
 
 
 # 旧 idname を維持して既存ツール側の呼出を壊さない (内容は新メニューと同じ)

@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "b_manga"
-version = "0.6.538"
+version = "0.6.539"
 name = "B-MANGA"
 tagline = "Blender manga name/storyboard authoring addon"
 maintainer = "B-MANGA Project"

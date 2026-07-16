@@ -160,6 +160,22 @@ def _capture(path: Path) -> None:
 def _finish_success(region: dict[str, int | str], session) -> None:
     global _DONE
     _DONE = True
+    wm = bpy.context.window_manager
+    prefix = "bmanga_popup_placement_"
+    placement = {
+        "target_left": float(wm[f"{prefix}target_left"]),
+        "target_right": float(wm[f"{prefix}target_right"]),
+        "anchor_x": float(wm[f"{prefix}anchor_x"]),
+        "side": str(wm[f"{prefix}side"]),
+    }
+    scale = float(bpy.context.preferences.system.ui_scale or 1.0)
+    half_width = float(_FIXED_WIDTH) * scale * 0.5
+    if placement["side"] == "right":
+        assert placement["anchor_x"] - half_width > placement["target_right"], placement
+    elif placement["side"] == "left":
+        assert placement["anchor_x"] + half_width < placement["target_left"], placement
+    else:
+        raise AssertionError(f"対象を隠さない側へ配置できませんでした: {placement}")
     payload = {
         "target_kind": TARGET_KIND,
         "effect_type": EFFECT_TYPE,
@@ -169,6 +185,7 @@ def _finish_success(region: dict[str, int | str], session) -> None:
         "max_columns": int(session.layout.max_columns),
         "region_detected": int(region["region"]) != 0,
         "image": str(IMAGE_PATH),
+        "placement": placement,
     }
     RESULT_PATH.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",

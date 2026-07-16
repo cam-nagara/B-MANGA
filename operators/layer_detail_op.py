@@ -6,7 +6,7 @@ import bpy
 from bpy.props import CollectionProperty, IntProperty, StringProperty
 from bpy.types import Operator
 
-from ..utils import log
+from ..utils import detail_popup, log
 from .detail_preset_apply_op import (
     BMANGA_DetailPresetListItem,
     on_detail_linked_balloon_index_changed,
@@ -66,11 +66,10 @@ class BMANGA_OT_layer_detail_open(Operator):
             self._detail_session = detail_dialog_runtime.begin_actual_session(context, target)
             self.bmanga_id = target.stable_id
             self.kind = target.kind
-            from ..utils import detail_popup
-
-            detail_popup.position_dialog_cursor(context, event, key="layer_detail")
             self._set_text_dialog_cursor_override(context, True)
-            result = context.window_manager.invoke_props_dialog(
+            result = detail_popup.invoke_props_dialog(
+                context,
+                event,
                 self,
                 width=self._detail_session.layout.dialog_width,
             )

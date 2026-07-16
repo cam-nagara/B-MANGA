@@ -8,7 +8,7 @@ import bpy
 from bpy.props import BoolProperty, FloatProperty
 from bpy.types import Operator
 
-from ..utils import balloon_curve_object, free_transform, layer_stack as layer_stack_utils, text_real_object
+from ..utils import balloon_curve_object, detail_popup, free_transform, layer_stack as layer_stack_utils, text_real_object
 
 
 def _active_stack_kind(context) -> str:
@@ -230,8 +230,8 @@ class BMANGA_OT_balloon_free_transform_scale(Operator):
     def poll(cls, context):
         return _active_stack_kind(context) == "balloon"
 
-    def invoke(self, context, _event):
-        return context.window_manager.invoke_props_dialog(self)
+    def invoke(self, context, event):
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         target, resolved = _active_stack_target(context)
@@ -267,8 +267,8 @@ class BMANGA_OT_balloon_free_transform_rotate(Operator):
     def poll(cls, context):
         return _active_stack_kind(context) == "balloon"
 
-    def invoke(self, context, _event):
-        return context.window_manager.invoke_props_dialog(self)
+    def invoke(self, context, event):
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         target, resolved = _active_stack_target(context)
@@ -314,8 +314,8 @@ class BMANGA_OT_balloon_free_transform_scale_rotate(Operator):
     def poll(cls, context):
         return _active_stack_kind(context) == "balloon"
 
-    def invoke(self, context, _event):
-        return context.window_manager.invoke_props_dialog(self)
+    def invoke(self, context, event):
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         target, resolved = _active_stack_target(context)

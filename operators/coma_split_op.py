@@ -18,6 +18,7 @@ from bpy.types import Operator
 from ..core.work import get_work
 from ..io import coma_io, page_io
 from ..utils import (
+    detail_popup,
     layer_stack as layer_stack_utils,
     log,
     object_selection,
@@ -281,7 +282,7 @@ class BMANGA_OT_coma_split_ratio(Operator):
         return object_selection.selected_coma_count(context) >= 1
 
     def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self, width=280)
+        return detail_popup.invoke_props_dialog(context, event, self, width=280)
 
     def draw(self, context):
         layout = self.layout

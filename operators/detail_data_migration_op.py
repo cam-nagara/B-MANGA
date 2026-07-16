@@ -13,7 +13,7 @@ from bpy.types import Operator
 
 from ..core.work import get_work
 from ..io import project_content_migration
-from ..utils import layer_uid, log
+from ..utils import detail_popup, layer_uid, log
 
 _logger = log.get_logger(__name__)
 _PROMPT_PENDING = False
@@ -358,7 +358,7 @@ class BMANGA_OT_detail_data_migrate(Operator):
             work_dir, inspector=inspector
         )
 
-    def invoke(self, context, _event):
+    def invoke(self, context, event):
         try:
             work_dir = self._resolved_work_dir(context)
             if work_dir is None:
@@ -391,7 +391,7 @@ class BMANGA_OT_detail_data_migrate(Operator):
         if self._plan.already_current:
             self.report({"INFO"}, "作品データは更新済みです")
             return {"CANCELLED"}
-        return context.window_manager.invoke_props_dialog(self, width=620)
+        return detail_popup.invoke_props_dialog(context, event, self, width=620)
 
     def cancel(self, context) -> None:
         """確認を閉じても旧構造の通常編集を再開させない。"""

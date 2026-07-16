@@ -8,7 +8,7 @@ from bpy.types import Operator
 
 from ..core.work import get_active_page
 from ..io import fill_presets
-from ..utils import log
+from ..utils import detail_popup, log
 
 _logger = log.get_logger(__name__)
 
@@ -52,7 +52,7 @@ class BMANGA_OT_fill_preset_add_local(Operator):
 
     def invoke(self, context, event):
         self.preset_name = fill_presets.unique_preset_name(self.preset_name or "新規囲い塗りプリセット")
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         name = fill_presets.unique_preset_name(self.preset_name.strip() or "新規囲い塗りプリセット")
@@ -129,7 +129,7 @@ class BMANGA_OT_fill_preset_rename(Operator):
         selected = _selected_fill_preset_name(context)
         self.preset_name = selected
         self.new_name = selected
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         old_name = self.preset_name.strip() or _selected_fill_preset_name(context)
@@ -166,7 +166,7 @@ class BMANGA_OT_fill_preset_duplicate(Operator):
         selected = _selected_fill_preset_name(context)
         self.preset_name = selected
         self.new_name = fill_presets.unique_preset_name(f"{selected} コピー")
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         source_name = self.preset_name.strip() or _selected_fill_preset_name(context)
@@ -200,7 +200,7 @@ class BMANGA_OT_fill_preset_delete(Operator):
 
     def invoke(self, context, event):
         self.preset_name = self.preset_name or _selected_fill_preset_name(context)
-        return context.window_manager.invoke_confirm(self, event)
+        return detail_popup.invoke_confirm(context, event, self)
 
     def execute(self, context):
         name = self.preset_name.strip() or _selected_fill_preset_name(context)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import os
 import shutil
 import sys
@@ -244,6 +245,24 @@ def main() -> None:
         assert text_style.ruby_spans_snapshot(entry) == ((0, 3, "えーびーしー", "group"),)
         obj = text_real_object.ensure_text_real_object(scene=bpy.context.scene, entry=entry, page=page)
         assert obj is not None and not obj.hide_viewport
+
+        selection_rna = bpy.ops.bmanga.text_selection_style_popup.get_rna_type()
+        selection_props = {prop.identifier for prop in selection_rna.properties}
+        assert {"ruby_text", "ruby_style"} <= selection_props, selection_props
+        legacy_type = bpy.types.BMANGA_OT_text_ruby_add_dialog
+        assert "INTERNAL" in legacy_type.bl_options
+        legacy_invoke_source = inspect.getsource(legacy_type.invoke)
+        assert "text_selection_style_popup" in legacy_invoke_source
+        assert "invoke_props_dialog" not in legacy_invoke_source
+        for keyconfig_name in ("addon", "user", "default"):
+            keyconfig = getattr(bpy.context.window_manager.keyconfigs, keyconfig_name, None)
+            if keyconfig is None:
+                continue
+            for keymap in keyconfig.keymaps:
+                assert all(
+                    item.idname != "bmanga.text_ruby_add_dialog"
+                    for item in keymap.keymap_items
+                ), (keyconfig_name, keymap.name)
         _ = work
         print("BMANGA_TEXT_RUBY_UX_OK")
     finally:
