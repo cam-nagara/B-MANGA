@@ -254,12 +254,6 @@ class BMangaPreferences(bpy.types.AddonPreferences):
         default="",
         options={"HIDDEN"},
     )
-    meldex_apply_ruby_presentation: BoolProperty(  # type: ignore[valid-type]
-        name="Meldexのルビ表示設定を適用",
-        description="連携データに含まれる書字方向とルビ表示設定を取り込みます",
-        default=True,
-    )
-
     keymap_enabled: BoolProperty(  # type: ignore[valid-type]
         name="B-MANGA 専用キーマップを有効化",
         description="CLIP STUDIO PAINT 準拠のビューポート操作ショートカットを有効にする",
@@ -502,7 +496,6 @@ class BMangaPreferences(bpy.types.AddonPreferences):
         row = column.row(align=True)
         row.prop(self, "meldex_token", text="接続トークン")
         row.operator("bmanga.meldex_token_regenerate", text="再生成", icon="FILE_REFRESH")
-        column.prop(self, "meldex_apply_ruby_presentation")
         if self.meldex_enabled:
             box.label(text="ポートを使用できない場合は自動的にオフになります", icon="INFO")
 

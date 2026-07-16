@@ -80,6 +80,14 @@ def main() -> None:
                     "font_bold": True,
                     "writing_mode": "horizontal",
                     "line_height": 1.8,
+                    "ruby_size_percent": 72.0,
+                    "ruby_gap_em": 0.12,
+                    "ruby_letter_spacing": 0.07,
+                    "ruby_line_height": 1.7,
+                    "ruby_align": "center",
+                    "ruby_small_kana": "keep",
+                    "ruby_font_preset": "gothic-jp",
+                    "ruby_default_style": "mono",
                     "linked_balloon_preset": "会話",
                 },
             )
@@ -166,9 +174,12 @@ def main() -> None:
         ]
         meldex_scenario_import.import_payload(bpy.context, work, v2)
         text = next(item for item in work.pages[0].texts if item.meldex_source_row_id == "r1")
-        assert text.writing_mode == "vertical" and abs(text.ruby_size_percent - 75.0) < 1.0e-6
-        assert abs(text.ruby_gap_em - 0.25) < 1.0e-6 and text.ruby_align == "start"
-        assert text.ruby_small_kana == "fullsize" and text.ruby_font_preset == "inherit"
+        assert text.writing_mode == "horizontal" and abs(text.ruby_size_percent - 72.0) < 1.0e-6
+        assert abs(text.ruby_gap_em - 0.12) < 1.0e-6
+        assert abs(text.ruby_letter_spacing - 0.07) < 1.0e-6
+        assert abs(text.ruby_line_height - 1.7) < 1.0e-6 and text.ruby_align == "center"
+        assert text.ruby_small_kana == "keep" and text.ruby_font_preset == "gothic-jp"
+        assert text.ruby_default_style == "mono", "Meldex表示設定よりB-MANGAプリセットを優先する"
         assert len(text.ruby_spans) == 1 and text.ruby_spans[0].priority == 10
         assert text.ruby_spans[0].length == 2 and text.ruby_spans[0].ruby_text == "とうきょう"
         assert len(text.ruby_spans[0].segments) == 2 and text.ruby_spans[0].segments[1].ruby_text == "きょう"

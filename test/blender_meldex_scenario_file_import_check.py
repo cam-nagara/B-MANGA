@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import sys
 import tempfile
+from types import SimpleNamespace
 
 import bpy
 
@@ -71,6 +72,29 @@ def main() -> None:
         work_path = temp_root / "FileImport.bmanga"
         assert bpy.ops.bmanga.work_new(filepath=str(work_path)) == {"FINISHED"}
         work = bpy.context.scene.bmanga_work
+        from bmanga_dev_meldex_scenario_file.io import text_presets
+
+        text_presets.list_all_presets = lambda _path: [
+            SimpleNamespace(
+                name="セリフ",
+                data={
+                    "writing_mode": "horizontal",
+                    "ruby_size_percent": 58.0,
+                    "ruby_gap_em": -0.05,
+                    "ruby_letter_spacing": 0.03,
+                    "ruby_line_height": 1.6,
+                    "ruby_align": "center",
+                    "ruby_small_kana": "keep",
+                    "ruby_font_preset": "gothic-jp",
+                    "ruby_default_style": "group",
+                    "linked_balloon_preset": "",
+                },
+            ),
+            SimpleNamespace(
+                name="ナレーション",
+                data={"writing_mode": "vertical", "ruby_size_percent": 62.0},
+            ),
+        ]
 
         scenario_path = temp_root / "第1話.mel-scenario"
         scenario_path.write_text(
@@ -91,10 +115,14 @@ def main() -> None:
         second = next(item for item in work.pages[1].texts if item.meldex_source_row_id == "r2")
         assert first.body == "東京です"
         assert first.meldex_source_document_id == str(scenario_path.resolve())
-        assert first.writing_mode == "vertical"
-        assert abs(first.ruby_size_percent - 65.0) < 1.0e-6
-        assert abs(first.ruby_gap_em - 0.25) < 1.0e-6
-        assert first.ruby_default_style == "jukugo"
+        assert first.writing_mode == "horizontal"
+        assert abs(first.ruby_size_percent - 58.0) < 1.0e-6
+        assert abs(first.ruby_gap_em - (-0.05)) < 1.0e-6
+        assert abs(first.ruby_letter_spacing - 0.03) < 1.0e-6
+        assert abs(first.ruby_line_height - 1.6) < 1.0e-6
+        assert first.ruby_align == "center" and first.ruby_small_kana == "keep"
+        assert first.ruby_font_preset == "gothic-jp"
+        assert first.ruby_default_style == "group"
         assert len(first.ruby_spans) == 1
         assert first.ruby_spans[0].ruby_text == "とうきょう"
         assert first.ruby_spans[0].style == "jukugo"
@@ -143,8 +171,9 @@ def main() -> None:
             if item.meldex_source_document_id == str(legacy_path.resolve())
             and item.meldex_source_row_id == "r1"
         )
-        assert abs(legacy.ruby_size_percent - 55.0) < 1.0e-6
-        assert abs(legacy.ruby_gap_em - (-3.0 / 28.0)) < 1.0e-6
+        assert legacy.writing_mode == "horizontal"
+        assert abs(legacy.ruby_size_percent - 58.0) < 1.0e-6
+        assert abs(legacy.ruby_gap_em - (-0.05)) < 1.0e-6
 
         horizontal_document = json.loads(json.dumps(legacy_document, ensure_ascii=False))
         horizontal_document["rubyPresentation"]["writingMode"] = "horizontal"
@@ -163,7 +192,8 @@ def main() -> None:
             and item.meldex_source_row_id == "r1"
         )
         assert horizontal.writing_mode == "horizontal"
-        assert abs(horizontal.ruby_gap_em - (-0.25)) < 1.0e-6
+        assert abs(horizontal.ruby_size_percent - 58.0) < 1.0e-6
+        assert abs(horizontal.ruby_gap_em - (-0.05)) < 1.0e-6
 
         bad_path = temp_root / "broken.mel-scenario"
         bad_path.write_text("{broken", encoding="utf-8")

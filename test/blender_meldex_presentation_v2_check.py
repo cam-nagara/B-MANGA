@@ -1,27 +1,9 @@
-"""Blender実機用: Meldex contract v2 の presentation.ruby 受信経路の実機確認.
+"""Blender実機用: Meldex表示設定を無視してB-MANGA設定を守ることを確認する。
 
-io/meldex_contract.py が検証する contract v2 の presentation.ruby
-(writingMode / sizePercent / gapEm / letterSpacingEm / lineHeight / align /
- smallKana / fontPreset / defaultStyle) と、io/meldex_scenario_import.py の
-_apply_ruby_presentation によるプロパティ適用 (writing_mode /
-ruby_size_percent / ruby_gap_em / ruby_letter_spacing / ruby_line_height /
-ruby_align / ruby_small_kana / ruby_font_preset / ruby_default_style) は、
-version 1 固定のため実運用で一度も通っていない未検証経路である。
-
-このテストは以下を実機で確認する:
-  1. v2 + presentation.ruby 全9フィールド (既定値と異なる値) が
-     document.version >= 2 かつ prefs.meldex_apply_ruby_presentation=True
-     (既定 True) の条件で、すべて対応プロパティへ反映されること。
-  2. 同じ v2 ドキュメントでも prefs.meldex_apply_ruby_presentation=False なら
-     9プロパティとも既定値のまま (適用されない) こと。
-  3. version 1 ドキュメント (presentation なし) では従来どおり取り込まれ、
-     9プロパティが既定値のままであること。
-  4. presentation.ruby の一部フィールドのみ (sizePercent のみ) の v2 では、
-     指定分だけ反映され残りは既定値のままであること。
-  5. contract の許容範囲外の値 (sizePercent=300) を含む v2 ドキュメントが
-     contract 検証で拒否されること (クランプではなく reject)。
-  6. ルビ本体 (ruby_spans) が v2 でも優先度解決・segments 込みで正しく
-     生成されること (既存 v1 テストと同等の確認を v2 でも行う)。
+contract v2のpresentation.rubyは互換入力として検証するが、書字方向とルビ表示設定は
+B-MANGAのテキストプリセットを正本とし、取込時には適用しない。文書・行別presentation、
+旧ユーザー設定のオン値が残る場合、v1入力、ルビ範囲・由来・優先順位・segments、異常値の
+事前拒否をBlender実機で確認する。
 """
 
 from __future__ import annotations
@@ -73,19 +55,6 @@ RUBY_FIELD_DEFAULTS: dict[str, object] = {
     "ruby_default_style": "group",
 }
 
-# io/meldex_scenario_import.py の _apply_ruby_presentation と同じ対応表。
-WIRE_TO_PROPERTY: dict[str, str] = {
-    "writingMode": "writing_mode",
-    "sizePercent": "ruby_size_percent",
-    "gapEm": "ruby_gap_em",
-    "letterSpacingEm": "ruby_letter_spacing",
-    "lineHeight": "ruby_line_height",
-    "align": "ruby_align",
-    "smallKana": "ruby_small_kana",
-    "fontPreset": "ruby_font_preset",
-    "defaultStyle": "ruby_default_style",
-}
-
 FULL_RUBY_PRESENTATION: dict[str, object] = {
     "writingMode": "vertical",
     "sizePercent": 60.0,
@@ -135,10 +104,8 @@ def _document(document_id: str, row_id: str, version: int, *, presentation: dict
     return payload
 
 
-def _assert_defaults(text, *, except_fields: frozenset[str] = frozenset(), tag: str = "") -> None:
+def _assert_defaults(text, *, tag: str = "") -> None:
     for prop, default in RUBY_FIELD_DEFAULTS.items():
-        if prop in except_fields:
-            continue
         value = getattr(text, prop)
         if isinstance(default, float):
             _check(abs(float(value) - default) < 1.0e-6, f"{tag}{prop} は既定値 {default} のままであるべき (実際: {value})")
@@ -164,8 +131,11 @@ def main() -> int:
         page.detail_loaded = True
         work.active_page_index = 0
 
-        prefs_on = SimpleNamespace(meldex_apply_ruby_presentation=True)
-        prefs_off = SimpleNamespace(meldex_apply_ruby_presentation=False)
+        annotations = addon.preferences.BMangaPreferences.__annotations__
+        _check(
+            "meldex_apply_ruby_presentation" not in annotations,
+            "[UI] 廃止したMeldexルビ表示設定プロパティが登録されていない",
+        )
 
         def _text_for(document_id: str, row_id: str = "r1"):
             return next(
@@ -173,21 +143,17 @@ def main() -> int:
                 if item.meldex_source_document_id == document_id and item.meldex_source_row_id == row_id
             )
 
-        # --- 1. v2 + presentation.ruby 全9フィールド (既定 True で適用される) ---
-        addon.preferences.get_preferences = lambda _context=None: prefs_on
+        # --- 1. 旧環境にオン値が残っていても文書presentationは適用されない ---
+        addon.preferences.get_preferences = lambda _context=None: SimpleNamespace(
+            meldex_apply_ruby_presentation=True
+        )
         doc_id = "scenario-full-v2"
         result1 = meldex_scenario_import.import_payload(
             bpy.context, work, _document(doc_id, "r1", 2, presentation=FULL_RUBY_PRESENTATION)
         )
         _check(result1["created"] == 1, f"[1] 新規行が1件作成されるはず (実際: {result1})")
         text = _text_for(doc_id)
-        for wire_name, prop in WIRE_TO_PROPERTY.items():
-            expected = FULL_RUBY_PRESENTATION[wire_name]
-            value = getattr(text, prop)
-            if isinstance(expected, float):
-                _check(abs(float(value) - expected) < 1.0e-6, f"[1] {prop} は {expected} になるはず (実際: {value})")
-            else:
-                _check(value == expected, f"[1] {prop} は {expected!r} になるはず (実際: {value!r})")
+        _assert_defaults(text, tag="[1] ")
 
         # 6. ルビ本体 (ruby_spans) が v2 でも優先度解決 + segments 込みで正しく生成される。
         _check(len(text.ruby_spans) == 1, f"[6] 重複解決後は1件のはず (実際: {len(text.ruby_spans)})")
@@ -205,17 +171,17 @@ def main() -> int:
                     f"[6] segmentsのrubyText不一致: {[s.ruby_text for s in segments]!r}",
                 )
 
-        # --- 2. v2 + prefs.meldex_apply_ruby_presentation=False -> 適用されない ---
-        addon.preferences.get_preferences = lambda _context=None: prefs_off
-        doc_id2 = "scenario-prefs-off"
-        meldex_scenario_import.import_payload(
-            bpy.context, work, _document(doc_id2, "r1", 2, presentation=FULL_RUBY_PRESENTATION)
-        )
+        # --- 2. 行別presentationも適用されない ---
+        doc_id2 = "scenario-row-presentation"
+        row_document = _document(doc_id2, "r1", 2, presentation=FULL_RUBY_PRESENTATION)
+        row_document["pages"][0]["rows"][0]["presentation"] = {
+            "ruby": {**FULL_RUBY_PRESENTATION, "sizePercent": 88.0}
+        }
+        meldex_scenario_import.import_payload(bpy.context, work, row_document)
         text2 = _text_for(doc_id2)
         _assert_defaults(text2, tag="[2] ")
 
         # --- 3. version 1 (presentationなし) -> 従来どおり既定値のまま ---
-        addon.preferences.get_preferences = lambda _context=None: prefs_on
         doc_id3 = "scenario-v1"
         meldex_scenario_import.import_payload(bpy.context, work, _document(doc_id3, "r1", 1))
         text3 = _text_for(doc_id3)
@@ -225,17 +191,13 @@ def main() -> int:
             "[3] v1 でも従来どおりルビ本体は生成されるはず",
         )
 
-        # --- 4. v2 + 部分適用 (sizePercentのみ指定) -> 指定分のみ反映 ---
+        # --- 4. v2の部分presentationも適用されない ---
         doc_id4 = "scenario-partial-v2"
         meldex_scenario_import.import_payload(
             bpy.context, work, _document(doc_id4, "r1", 2, presentation={"sizePercent": 133.0})
         )
         text4 = _text_for(doc_id4)
-        _check(
-            abs(float(text4.ruby_size_percent) - 133.0) < 1.0e-6,
-            f"[4] sizePercent のみ反映されるはず (実際: {text4.ruby_size_percent})",
-        )
-        _assert_defaults(text4, except_fields=frozenset({"ruby_size_percent"}), tag="[4] ")
+        _assert_defaults(text4, tag="[4] ")
 
         # --- 5. contract 範囲外の値 (sizePercent=300) -> reject されること ---
         before_texts = len(work.pages[0].texts)

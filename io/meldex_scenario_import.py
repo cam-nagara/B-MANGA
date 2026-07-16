@@ -45,7 +45,6 @@ def import_document(context, work, document: ScenarioDocument) -> dict[str, int]
     # 今回の取込で新規作成した (フキダシ, テキスト) ペアだけを記録する。
     # 既存ペア (更新のみ) は含めない — 手動で並び替えた順序を尊重するため。
     new_pairs: list[tuple[str, str, str]] = []
-    apply_presentation = _should_apply_ruby_presentation(context) and document.version >= 2
     with ExitStack() as stack:
         stack.enter_context(balloon_curve_object.defer_auto_sync())
         stack.enter_context(text_real_object.suspend_auto_sync())
@@ -68,7 +67,6 @@ def import_document(context, work, document: ScenarioDocument) -> dict[str, int]
                     balloon_by_name,
                     exact_text_preset or first_text_preset,
                     exact_text_preset is not None,
-                    _merged_ruby_presentation(document.presentation, row.presentation) if apply_presentation else None,
                 )
                 result["created" if created else "updated"] += 1
                 # フキダシ・テキストの両方を今回新規作成した行だけを並び順の
@@ -124,7 +122,7 @@ def _ensure_page_count(work, work_dir: Path, required: int) -> tuple[int, set[st
 
 def _upsert_row(
     work, page, document_id: str, row: ScenarioRow, ordinal: int, balloon_by_name: dict, text_preset,
-    text_preset_exact_match: bool, ruby_presentation: dict | None = None,
+    text_preset_exact_match: bool,
 ) -> tuple[bool, bool, str, str]:
     balloon = _find_source(page.balloons, document_id, row.row_id)
     text = _find_source(page.texts, document_id, row.row_id)
@@ -143,8 +141,8 @@ def _upsert_row(
         text_presets.reset_entry_to_defaults(text)
         if text_preset is not None:
             text_presets.apply_to_entry(text, text_preset.data)
-    if ruby_presentation is not None:
-        _apply_ruby_presentation(text, ruby_presentation)
+    # Meldex側の書字方向・ルビ表示設定は意図的に適用しない。
+    # B-MANGAのテキストプリセットを表示設定の正本とする。
     text.speaker_name = row.type_name
     text.body = row.body
     text.ruby_spans.clear()
@@ -223,38 +221,6 @@ def _find_source(collection, document_id: str, row_id: str):
         if entry.meldex_source_document_id == document_id and entry.meldex_source_row_id == row_id:
             return entry
     return None
-
-
-def _should_apply_ruby_presentation(context) -> bool:
-    from ..preferences import get_preferences
-
-    prefs = get_preferences(context)
-    return True if prefs is None else bool(getattr(prefs, "meldex_apply_ruby_presentation", True))
-
-
-def _merged_ruby_presentation(document_value, row_value) -> dict | None:
-    merged: dict = {}
-    for source in (document_value, row_value):
-        if isinstance(source, dict) and isinstance(source.get("ruby"), dict):
-            merged.update(source["ruby"])
-    return merged or None
-
-
-def _apply_ruby_presentation(text, presentation: dict) -> None:
-    property_map = {
-        "writingMode": "writing_mode",
-        "sizePercent": "ruby_size_percent",
-        "gapEm": "ruby_gap_em",
-        "letterSpacingEm": "ruby_letter_spacing",
-        "lineHeight": "ruby_line_height",
-        "align": "ruby_align",
-        "smallKana": "ruby_small_kana",
-        "fontPreset": "ruby_font_preset",
-        "defaultStyle": "ruby_default_style",
-    }
-    for wire_name, property_name in property_map.items():
-        if wire_name in presentation and hasattr(text, property_name):
-            setattr(text, property_name, presentation[wire_name])
 
 
 def _rubies_by_priority(rubies) -> tuple[dict, ...]:
