@@ -76,6 +76,7 @@ class _MeldexHandler(BaseHTTPRequestHandler):
                 "meldex-bmanga-scenario": {
                     "versions": list(SUPPORTED_CONTRACT_VERSIONS),
                     "features": {
+                        "presentationText": True,
                         "presentationRuby": True,
                         "rubySpanOrigins": True,
                         "rubySegments": True,

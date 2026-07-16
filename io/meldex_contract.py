@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+import re
 from typing import Any
 
 CONTRACT_NAME = "meldex-bmanga-scenario"
@@ -145,7 +146,60 @@ def _validate_presentation(raw: Any, version: int) -> dict[str, Any] | None:
         return None
     if version < 2 or not isinstance(raw, dict):
         raise ContractError("presentation requires contract v2")
-    ruby = raw.get("ruby")
+    if set(raw) - {"text", "ruby"}:
+        raise ContractError("unsupported presentation field")
+    if not any(key in raw for key in ("text", "ruby")):
+        raise ContractError("presentation must contain text or ruby")
+    result: dict[str, Any] = {}
+    if "text" in raw:
+        result["text"] = _validate_text_presentation(raw["text"])
+    if "ruby" in raw:
+        result["ruby"] = _validate_ruby_presentation(raw["ruby"])
+    return result
+
+
+def _validate_text_presentation(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise ContractError("presentation.text must be an object")
+    allowed = {
+        "writingMode", "fontSizePx", "lineHeight", "letterSpacingEm", "bold", "italic",
+        "color", "fontFamily", "strokeWidthPx", "strokeColor",
+    }
+    if set(raw) - allowed:
+        raise ContractError("unsupported presentation.text field")
+    checked: dict[str, Any] = {}
+    if "writingMode" in raw:
+        checked["writingMode"] = _choice(raw["writingMode"], {"horizontal", "vertical"}, "writingMode")
+    if "fontSizePx" in raw:
+        checked["fontSizePx"] = _number(raw["fontSizePx"], 1.0, 512.0, "fontSizePx")
+    if "lineHeight" in raw:
+        checked["lineHeight"] = _number(raw["lineHeight"], 0.5, 5.0, "lineHeight")
+    if "letterSpacingEm" in raw:
+        checked["letterSpacingEm"] = _number(raw["letterSpacingEm"], -1.0, 3.0, "letterSpacingEm")
+    for key in ("bold", "italic"):
+        if key in raw:
+            if type(raw[key]) is not bool:
+                raise ContractError(f"{key} must be a boolean")
+            checked[key] = raw[key]
+    for key in ("color", "strokeColor"):
+        if key in raw:
+            checked[key] = _color(raw[key], key)
+    if "fontFamily" in raw:
+        family = raw["fontFamily"]
+        if (
+            not isinstance(family, str)
+            or not family.strip()
+            or len(family) > 256
+            or any(char in family for char in ("\x00", "/", "\\"))
+        ):
+            raise ContractError("fontFamily must be a logical font family name")
+        checked["fontFamily"] = family.strip()
+    if "strokeWidthPx" in raw:
+        checked["strokeWidthPx"] = _number(raw["strokeWidthPx"], 0.0, 64.0, "strokeWidthPx")
+    return checked
+
+
+def _validate_ruby_presentation(ruby: Any) -> dict[str, Any]:
     if not isinstance(ruby, dict):
         raise ContractError("presentation.ruby must be an object")
     allowed = {
@@ -176,7 +230,7 @@ def _validate_presentation(raw: Any, version: int) -> dict[str, Any] | None:
         checked["fontPreset"] = preset
     if "defaultStyle" in ruby:
         checked["defaultStyle"] = _choice(ruby["defaultStyle"], {"group", "mono", "jukugo"}, "defaultStyle")
-    return {"ruby": checked}
+    return checked
 
 
 def _strict_int(value: Any, message: str) -> int:
@@ -198,3 +252,9 @@ def _choice(value: Any, choices: set[str], name: str) -> str:
     if not isinstance(value, str) or value not in choices:
         raise ContractError(f"invalid {name}")
     return value
+
+
+def _color(value: Any, name: str) -> str:
+    if not isinstance(value, str) or re.fullmatch(r"#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?", value) is None:
+        raise ContractError(f"invalid {name}")
+    return value.upper()

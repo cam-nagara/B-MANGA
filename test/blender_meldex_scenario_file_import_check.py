@@ -36,6 +36,14 @@ def _document(body: str = "{東京|とうきょう}です") -> dict:
         "version": 2,
         "title": "読込確認",
         "layoutMode": "manga",
+        "editor": {
+            "viewMode": "vertical",
+            "baseTextFontSize": 16,
+            "baseTextLineHeightV": 1.7,
+            "baseTextLetterSpacingV": 0.15,
+            "baseTextBold": "bold",
+            "baseTextColor": "#808080",
+        },
         "rubyPresentation": {
             "version": 2,
             "writingMode": "vertical",
@@ -49,6 +57,14 @@ def _document(body: str = "{東京|とうきょう}です") -> dict:
             "defaultStyle": "jukugo",
         },
         "characters": [
+            {
+                "name": "セリフ",
+                "textStyle": {
+                    "fontSize": 18,
+                    "fontStyle": "italic",
+                    "textColor": "#404040",
+                },
+            },
             {"name": "めくり", "isBreak": True},
             {"name": "プロット", "isSummary": True},
         ],
@@ -72,7 +88,12 @@ def main() -> None:
         work_path = temp_root / "FileImport.bmanga"
         assert bpy.ops.bmanga.work_new(filepath=str(work_path)) == {"FINISHED"}
         work = bpy.context.scene.bmanga_work
+        from bmanga_dev_meldex_scenario_file import preferences
         from bmanga_dev_meldex_scenario_file.io import text_presets
+
+        preferences.get_preferences = lambda _context=None: SimpleNamespace(
+            meldex_apply_text_presentation=False
+        )
 
         text_presets.list_all_presets = lambda _path: [
             SimpleNamespace(
@@ -130,6 +151,27 @@ def main() -> None:
         assert not any(
             item.meldex_source_row_id == "plot"
             for page in work.pages for item in page.texts
+        )
+
+        # 同じ保存ファイルをオンで再読込すると、本文・ルビの表示設定だけを
+        # Meldex側へ切り替え、本文内容や取込IDはそのまま更新する。
+        preferences.get_preferences = lambda _context=None: SimpleNamespace(
+            meldex_apply_text_presentation=True
+        )
+        result = bpy.ops.bmanga.meldex_scenario_file_import(
+            "EXEC_DEFAULT", filepath=str(scenario_path)
+        )
+        assert result == {"FINISHED"}, result
+        first = next(item for item in work.pages[0].texts if item.meldex_source_row_id == "r1")
+        assert first.writing_mode == "vertical"
+        assert abs(first.font_size_q - 18.0 * 127.0 / 120.0) < 1.0e-5
+        assert abs(first.line_height - 1.7) < 1.0e-6
+        assert abs(first.letter_spacing - 0.15) < 1.0e-6
+        assert first.font_bold and first.font_italic
+        assert abs(first.ruby_size_percent - 65.0) < 1.0e-6
+        assert abs(first.ruby_gap_em - 0.25) < 1.0e-6
+        preferences.get_preferences = lambda _context=None: SimpleNamespace(
+            meldex_apply_text_presentation=False
         )
 
         counts = [(len(page.balloons), len(page.texts)) for page in work.pages]

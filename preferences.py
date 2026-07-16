@@ -240,6 +240,15 @@ class BMangaPreferences(bpy.types.AddonPreferences):
         default=False,
         update=_on_meldex_settings_changed,
     )
+    meldex_apply_text_presentation: BoolProperty(  # type: ignore[valid-type]
+        name="Meldexのテキスト設定を適用",
+        description=(
+            "オンにすると、シナリオ読込時に本文とルビの共通表示設定をMeldex側から取り込みます。"
+            "オフではB-MANGAのテキストプリセットを使います"
+        ),
+        default=False,
+        update=_on_preferences_changed,
+    )
     meldex_port: IntProperty(  # type: ignore[valid-type]
         name="Meldex 受信ポート",
         description="Meldex からのシナリオ受信に使う localhost ポート (Phase 5)",
@@ -490,6 +499,7 @@ class BMangaPreferences(bpy.types.AddonPreferences):
         box = layout.box()
         box.label(text="Meldex 連携")
         box.prop(self, "meldex_enabled")
+        box.prop(self, "meldex_apply_text_presentation")
         column = box.column(align=True)
         column.enabled = self.meldex_enabled
         column.prop(self, "meldex_port")

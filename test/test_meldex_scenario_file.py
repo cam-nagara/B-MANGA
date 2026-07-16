@@ -45,6 +45,16 @@ class MeldexScenarioFileTests(unittest.TestCase):
             "fileType": "meldex-scriptnote",
             "title": "第1話",
             "layoutMode": "manga",
+            "editor": {
+                "viewMode": "vertical",
+                "baseTextFontSize": 16,
+                "baseTextLineHeightV": 1.7,
+                "baseTextLetterSpacingV": 0.15,
+                "baseTextColor": "#112233",
+                "baseTextBold": "bold",
+                "baseTextItalic": "",
+                "baseTextFontFamily": "Yu Gothic UI, sans-serif",
+            },
             "rubyPresentation": {
                 "writingMode": "vertical",
                 "sizePercent": 65,
@@ -57,6 +67,17 @@ class MeldexScenarioFileTests(unittest.TestCase):
                 "defaultStyle": "jukugo",
             },
             "characters": [
+                {
+                    "name": "セリフ",
+                    "textStyle": {
+                        "fontSize": 18,
+                        "fontStyle": "italic",
+                        "textColor": "#445566",
+                        "bgColor": "#222222",
+                        "textStrokeWidth": 2,
+                        "textStrokeColor": "#FFFFFF",
+                    },
+                },
                 {"name": "めくり", "isBreak": True},
                 {"name": "プロット", "isSummary": True},
             ],
@@ -97,6 +118,18 @@ class MeldexScenarioFileTests(unittest.TestCase):
         self.assertEqual("jukugo", first["rubies"][1]["style"])
         self.assertEqual(65.0, payload["presentation"]["ruby"]["sizePercent"])
         self.assertEqual("vertical", payload["presentation"]["ruby"]["writingMode"])
+        text = payload["presentation"]["text"]
+        self.assertEqual("vertical", text["writingMode"])
+        self.assertEqual(16.0, text["fontSizePx"])
+        self.assertEqual(1.7, text["lineHeight"])
+        self.assertEqual(0.15, text["letterSpacingEm"])
+        self.assertTrue(text["bold"])
+        self.assertEqual("#112233", text["color"])
+        row_text = payload["pages"][0]["rows"][0]["presentation"]["text"]
+        self.assertEqual(18.0, row_text["fontSizePx"])
+        self.assertTrue(row_text["italic"])
+        self.assertNotIn("color", row_text, "編集セル背景と対のUI文字色は漫画本文へ移さない")
+        self.assertEqual(2.0, row_text["strokeWidthPx"])
         self.assertEqual(80.0, payload["pages"][1]["rows"][0]["presentation"]["ruby"]["sizePercent"])
         self.assertEqual(str(path.resolve()), payload["source"]["documentId"])
 

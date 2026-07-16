@@ -190,7 +190,10 @@ def main() -> None:
         # フキダシプリセット適用確認) を同梱プリセットの実データに依存させない
         # ため明示的にモックし、写像先のフキダシプリセットへ連動させておく。
         text_presets.list_all_presets = lambda _path: [
-            SimpleNamespace(name="ナレーション", data={"writing_mode": "horizontal", "linked_balloon_preset": "ナレーション"})
+            # 未登録タイプのfallbackは、リンクフキダシを持たない先頭プリセット。
+            # ナレーションは名前の完全一致で2件目を選び、カスタム形状へリンクする。
+            SimpleNamespace(name="既定", data={"writing_mode": "horizontal", "linked_balloon_preset": ""}),
+            SimpleNamespace(name="ナレーション", data={"writing_mode": "horizontal", "linked_balloon_preset": "ナレーション"}),
         ]
         work = get_work(bpy.context)
         initial_pages = len(work.pages)

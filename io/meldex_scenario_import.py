@@ -20,7 +20,7 @@ from ..utils import (
     text_style,
 )
 from ..utils.layer_hierarchy import page_stack_key
-from . import balloon_presets, page_io, text_presets, work_io
+from . import balloon_presets, meldex_text_presentation, page_io, text_presets, work_io
 from .meldex_contract import ScenarioDocument, ScenarioRow, validate_payload
 
 _logger = log.get_logger(__name__)
@@ -28,6 +28,8 @@ _logger = log.get_logger(__name__)
 
 def import_payload(context, work, payload: dict) -> dict[str, int]:
     document = validate_payload(payload)
+    if meldex_text_presentation.is_enabled(context):
+        document = meldex_text_presentation.enrich_from_source_file(document)
     result = import_document(context, work, document)
     json_io.write_json(paths.scenario_file(Path(str(work.work_dir))), payload)
     return result
@@ -41,6 +43,9 @@ def import_document(context, work, document: ScenarioDocument) -> dict[str, int]
     ordered_text_presets = text_presets.list_all_presets(work_dir)
     text_by_name = {p.name: p for p in ordered_text_presets}
     first_text_preset = ordered_text_presets[0] if ordered_text_presets else None
+    apply_meldex_presentation = (
+        document.version >= 2 and meldex_text_presentation.is_enabled(context)
+    )
     result = {"pagesAdded": added_pages, "created": 0, "updated": 0, "ignored": 0}
     # 今回の取込で新規作成した (フキダシ, テキスト) ペアだけを記録する。
     # 既存ペア (更新のみ) は含めない — 手動で並び替えた順序を尊重するため。
@@ -67,6 +72,9 @@ def import_document(context, work, document: ScenarioDocument) -> dict[str, int]
                     balloon_by_name,
                     exact_text_preset or first_text_preset,
                     exact_text_preset is not None,
+                    meldex_text_presentation.merge_presentations(
+                        document.presentation, row.presentation
+                    ) if apply_meldex_presentation else None,
                 )
                 result["created" if created else "updated"] += 1
                 # フキダシ・テキストの両方を今回新規作成した行だけを並び順の
@@ -122,7 +130,7 @@ def _ensure_page_count(work, work_dir: Path, required: int) -> tuple[int, set[st
 
 def _upsert_row(
     work, page, document_id: str, row: ScenarioRow, ordinal: int, balloon_by_name: dict, text_preset,
-    text_preset_exact_match: bool,
+    text_preset_exact_match: bool, incoming_presentation: dict | None,
 ) -> tuple[bool, bool, str, str]:
     balloon = _find_source(page.balloons, document_id, row.row_id)
     text = _find_source(page.texts, document_id, row.row_id)
@@ -141,8 +149,10 @@ def _upsert_row(
         text_presets.reset_entry_to_defaults(text)
         if text_preset is not None:
             text_presets.apply_to_entry(text, text_preset.data)
-    # Meldex側の書字方向・ルビ表示設定は意図的に適用しない。
-    # B-MANGAのテキストプリセットを表示設定の正本とする。
+    # 既定はB-MANGAプリセットを正本とする。明示的にオンの場合だけ、その上へ
+    # Meldexの本文・ルビ共通設定を重ねる（B-MANGA固有項目はプリセットを維持）。
+    if incoming_presentation is not None:
+        meldex_text_presentation.apply_to_entry(text, incoming_presentation)
     text.speaker_name = row.type_name
     text.body = row.body
     text.ruby_spans.clear()

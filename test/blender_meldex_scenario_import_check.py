@@ -48,7 +48,12 @@ def main() -> None:
         work = bpy.context.scene.bmanga_work
         work.loaded = True
         work.work_dir = str(temp_root)
+        from bmanga_dev_meldex_import import preferences
         from bmanga_dev_meldex_import.io import balloon_presets, meldex_scenario_import, page_io, text_presets
+
+        preferences.get_preferences = lambda _context=None: SimpleNamespace(
+            meldex_apply_text_presentation=False
+        )
 
         for _index in range(2):
             page = page_io.register_new_page(work)

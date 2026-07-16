@@ -67,11 +67,19 @@ def test_contract_v2_keeps_presentation_and_segments():
     payload["version"] = 2
     payload["indexUnit"] = "unicode-code-point"
     payload["normalization"] = "none"
-    payload["presentation"] = {"ruby": {
-        "writingMode": "horizontal", "sizePercent": 75, "gapEm": 0.2,
-        "letterSpacingEm": 0.1, "lineHeight": 1.8, "align": "start",
-        "smallKana": "keep", "fontPreset": "inherit",
-    }}
+    payload["presentation"] = {
+        "text": {
+            "writingMode": "horizontal", "fontSizePx": 14, "lineHeight": 1.5,
+            "letterSpacingEm": 0.02, "bold": True, "italic": False,
+            "color": "#12345678", "fontFamily": "Yu Gothic UI, sans-serif",
+            "strokeWidthPx": 1.5, "strokeColor": "#FFFFFF",
+        },
+        "ruby": {
+            "writingMode": "horizontal", "sizePercent": 75, "gapEm": 0.2,
+            "letterSpacingEm": 0.1, "lineHeight": 1.8, "align": "start",
+            "smallKana": "keep", "fontPreset": "inherit",
+        },
+    }
     payload["pages"][0]["rows"][0]["body"] = "東京"
     payload["pages"][0]["rows"][0]["rubies"] = [{
         "start": 0, "length": 2, "rubyText": "とうきょう", "style": "jukugo",
@@ -83,6 +91,8 @@ def test_contract_v2_keeps_presentation_and_segments():
     }]
     document = _module().validate_payload(payload)
     assert document.version == 2
+    assert document.presentation["text"]["fontSizePx"] == 14.0
+    assert document.presentation["text"]["color"] == "#12345678"
     assert document.presentation["ruby"]["gapEm"] == 0.2
     assert document.pages[0].rows[0].rubies[0]["segments"][1]["rubyText"] == "きょう"
 
@@ -100,6 +110,13 @@ def test_contract_v2_rejects_os_font_path():
         pass
     else:
         raise AssertionError("OS font path was accepted as a logical preset")
+    payload["presentation"] = {"text": {"fontFamily": r"C:\Windows\Fonts\foo.ttf"}}
+    try:
+        module.validate_payload(payload)
+    except module.ContractError:
+        pass
+    else:
+        raise AssertionError("OS font path was accepted as a logical font family")
 
 
 if __name__ == "__main__":

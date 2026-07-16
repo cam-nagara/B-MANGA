@@ -1,39 +1,37 @@
-"""Blender実機用: Meldex表示設定を無視してB-MANGA設定を守ることを確認する。
-
-contract v2のpresentation.rubyは互換入力として検証するが、書字方向とルビ表示設定は
-B-MANGAのテキストプリセットを正本とし、取込時には適用しない。文書・行別presentation、
-旧ユーザー設定のオン値が残る場合、v1入力、ルビ範囲・由来・優先順位・segments、異常値の
-事前拒否をBlender実機で確認する。
-"""
+"""Blender 5.1実機: Meldex本文・ルビ設定のオプトイン取込を確認する."""
 
 from __future__ import annotations
 
 import importlib.util
+import json
+from pathlib import Path
 import shutil
 import sys
 import tempfile
 import traceback
-from pathlib import Path
 from types import SimpleNamespace
 
 import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_NAME = "bmanga_dev_meldex_presentation_v2"
-
 FAILURES: list[str] = []
 
 
 def _check(condition: bool, message: str) -> None:
+    print(("OK: " if condition else "NG: ") + message, flush=True)
     if not condition:
         FAILURES.append(message)
-        print(f"NG: {message}", flush=True)
-    else:
-        print(f"OK: {message}", flush=True)
+
+
+def _close(actual: float, expected: float, tolerance: float = 1.0e-5) -> bool:
+    return abs(float(actual) - float(expected)) <= tolerance
 
 
 def _load_addon():
-    spec = importlib.util.spec_from_file_location(MODULE_NAME, ROOT / "__init__.py", submodule_search_locations=[str(ROOT)])
+    spec = importlib.util.spec_from_file_location(
+        MODULE_NAME, ROOT / "__init__.py", submodule_search_locations=[str(ROOT)]
+    )
     module = importlib.util.module_from_spec(spec)
     sys.modules[MODULE_NAME] = module
     assert spec and spec.loader
@@ -42,86 +40,112 @@ def _load_addon():
     return module
 
 
-# text_entry.py 上の既定値 (core/text_entry.py 参照)。
-RUBY_FIELD_DEFAULTS: dict[str, object] = {
+FULL_PRESENTATION = {
+    "text": {
+        "writingMode": "vertical",
+        "fontSizePx": 18.0,
+        "lineHeight": 2.0,
+        "letterSpacingEm": 0.25,
+        "bold": True,
+        "italic": True,
+        "color": "#8080FF80",
+        "fontFamily": "Meldex Test Font, sans-serif",
+        "strokeWidthPx": 2.0,
+        "strokeColor": "#FF0000",
+    },
+    "ruby": {
+        "writingMode": "vertical",
+        "sizePercent": 60.0,
+        "gapEm": 0.5,
+        "letterSpacingEm": 0.2,
+        "lineHeight": 2.2,
+        "align": "start",
+        "smallKana": "fullsize",
+        "fontPreset": "serif-jp",
+        "defaultStyle": "jukugo",
+    },
+}
+
+PRESET = {
+    "font": r"C:\Windows\Fonts\msgothic.ttc",
+    "font_size_unit": "q",
+    "font_size_value": 22.0,
+    "font_bold": False,
+    "font_italic": False,
+    "color": (0.1, 0.2, 0.3, 1.0),
     "writing_mode": "horizontal",
-    "ruby_size_percent": 50.0,
-    "ruby_gap_em": 0.0,
-    "ruby_letter_spacing": 0.0,
-    "ruby_line_height": 1.8,
+    "line_height": 1.4,
+    "letter_spacing": 0.05,
+    "ruby_size_percent": 52.0,
+    "ruby_gap_em": -0.05,
+    "ruby_letter_spacing": 0.03,
+    "ruby_line_height": 1.6,
     "ruby_align": "center",
     "ruby_small_kana": "keep",
-    "ruby_font_preset": "inherit",
+    "ruby_font_preset": "gothic-jp",
     "ruby_default_style": "group",
-}
-
-FULL_RUBY_PRESENTATION: dict[str, object] = {
-    "writingMode": "vertical",
-    "sizePercent": 60.0,
-    "gapEm": 0.5,
-    "letterSpacingEm": 0.2,
-    "lineHeight": 2.2,
-    "align": "start",
-    "smallKana": "fullsize",
-    "fontPreset": "serif-jp",
-    "defaultStyle": "jukugo",
+    "stroke_enabled": False,
+    "stroke_width_mm": 0.2,
+    "stroke_color": (1.0, 1.0, 1.0, 1.0),
+    "linked_balloon_preset": "",
 }
 
 
-def _rubies_for(version: int) -> list[dict]:
-    if version >= 2:
-        return [
-            {
-                "start": 0, "length": 1, "rubyText": "とう", "style": "mono",
-                "origin": "local-auto-dictionary", "priority": 1,
-            },
-            {
-                "start": 0, "length": 2, "rubyText": "とうきょう", "style": "jukugo",
-                "origin": "manual", "priority": 5,
-                "segments": [
-                    {"start": 0, "length": 1, "rubyText": "とう"},
-                    {"start": 1, "length": 1, "rubyText": "きょう"},
-                ],
-            },
-        ]
-    return [{"start": 0, "length": 2, "rubyText": "とうきょう", "style": "group"}]
+def _rubies(version: int) -> list[dict]:
+    if version < 2:
+        return [{"start": 0, "length": 2, "rubyText": "とうきょう", "style": "group"}]
+    return [
+        {
+            "start": 0, "length": 1, "rubyText": "とう", "style": "mono",
+            "origin": "local-auto-dictionary", "priority": 1,
+        },
+        {
+            "start": 0, "length": 2, "rubyText": "とうきょう", "style": "jukugo",
+            "origin": "manual", "priority": 5,
+            "segments": [
+                {"start": 0, "length": 1, "rubyText": "とう"},
+                {"start": 1, "length": 1, "rubyText": "きょう"},
+            ],
+        },
+    ]
 
 
-def _document(document_id: str, row_id: str, version: int, *, presentation: dict | None = None) -> dict:
-    payload: dict = {
+def _document(document_id: str, version: int, presentation: dict | None = None) -> dict:
+    payload = {
         "contract": "meldex-bmanga-scenario",
         "version": version,
         "source": {"documentId": document_id},
-        "pages": [{"rows": [
-            {"rowId": row_id, "type": "", "body": "東京です", "rubies": _rubies_for(version)},
-        ]}],
+        "pages": [{"rows": [{
+            "rowId": "r1", "type": "セリフ", "body": "東京です", "rubies": _rubies(version),
+        }]}],
     }
     if version >= 2:
-        payload["indexUnit"] = "unicode-code-point"
-        payload["normalization"] = "none"
+        payload.update(indexUnit="unicode-code-point", normalization="none")
     if presentation is not None:
-        payload["presentation"] = {"ruby": presentation}
+        payload["presentation"] = presentation
     return payload
-
-
-def _assert_defaults(text, *, tag: str = "") -> None:
-    for prop, default in RUBY_FIELD_DEFAULTS.items():
-        value = getattr(text, prop)
-        if isinstance(default, float):
-            _check(abs(float(value) - default) < 1.0e-6, f"{tag}{prop} は既定値 {default} のままであるべき (実際: {value})")
-        else:
-            _check(value == default, f"{tag}{prop} は既定値 {default!r} のままであるべき (実際: {value!r})")
 
 
 def main() -> int:
     addon = _load_addon()
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_meldex_presentation_v2_"))
     try:
-        from bmanga_dev_meldex_presentation_v2.io import balloon_presets, meldex_contract, meldex_scenario_import, page_io, text_presets
+        from bmanga_dev_meldex_presentation_v2.io import (
+            balloon_presets,
+            meldex_contract,
+            meldex_scenario_import,
+            meldex_text_presentation,
+            page_io,
+            text_presets,
+        )
+        from bmanga_dev_meldex_presentation_v2.utils import color_space
 
-        # 実際のユーザープリセット (グローバル設定フォルダ) に依存させない。
         balloon_presets.list_all_presets = lambda _path: []
-        text_presets.list_all_presets = lambda _path: []
+        text_presets.list_all_presets = lambda _path: [
+            SimpleNamespace(name="セリフ", data=PRESET)
+        ]
+        resolved_font = r"C:\Windows\Fonts\YuGothM.ttc"
+        meldex_text_presentation.resolve_installed_font_family = lambda _family: resolved_font
 
         work = bpy.context.scene.bmanga_work
         work.loaded = True
@@ -132,98 +156,153 @@ def main() -> int:
         work.active_page_index = 0
 
         annotations = addon.preferences.BMangaPreferences.__annotations__
+        _check("meldex_apply_text_presentation" in annotations, "新しい本文・ルビ共通チェックが登録される")
+        _check("meldex_apply_ruby_presentation" not in annotations, "旧ルビ専用チェックは復活しない")
+        prop = addon.preferences.BMangaPreferences.bl_rna.properties["meldex_apply_text_presentation"]
+        _check(prop.default is False, "Meldexテキスト設定適用の初期値はオフ")
         _check(
-            "meldex_apply_ruby_presentation" not in annotations,
-            "[UI] 廃止したMeldexルビ表示設定プロパティが登録されていない",
+            meldex_text_presentation._local_source_path(r"\\server\share\scenario.scriptnote.json") is None,
+            "直接送信の保存元補完でUNC共有へアクセスしない",
+        )
+        _check(
+            meldex_text_presentation._local_source_path("relative.scriptnote.json") is None,
+            "直接送信の保存元補完で相対パスへアクセスしない",
         )
 
-        def _text_for(document_id: str, row_id: str = "r1"):
+        def text_for(document_id: str):
             return next(
                 item for item in work.pages[0].texts
-                if item.meldex_source_document_id == document_id and item.meldex_source_row_id == row_id
+                if item.meldex_source_document_id == document_id
             )
 
-        # --- 1. 旧環境にオン値が残っていても文書presentationは適用されない ---
+        # オフ: 旧ルビ専用の保存値が真でもB-MANGAプリセットを守る。
         addon.preferences.get_preferences = lambda _context=None: SimpleNamespace(
-            meldex_apply_ruby_presentation=True
+            meldex_apply_text_presentation=False,
+            meldex_apply_ruby_presentation=True,
         )
-        doc_id = "scenario-full-v2"
-        result1 = meldex_scenario_import.import_payload(
-            bpy.context, work, _document(doc_id, "r1", 2, presentation=FULL_RUBY_PRESENTATION)
-        )
-        _check(result1["created"] == 1, f"[1] 新規行が1件作成されるはず (実際: {result1})")
-        text = _text_for(doc_id)
-        _assert_defaults(text, tag="[1] ")
-
-        # 6. ルビ本体 (ruby_spans) が v2 でも優先度解決 + segments 込みで正しく生成される。
-        _check(len(text.ruby_spans) == 1, f"[6] 重複解決後は1件のはず (実際: {len(text.ruby_spans)})")
-        if text.ruby_spans:
-            span = text.ruby_spans[0]
-            _check(span.start == 0 and span.length == 2, f"[6] span範囲不一致: start={span.start} length={span.length}")
-            _check(span.ruby_text == "とうきょう", f"[6] rubyText不一致: {span.ruby_text!r}")
-            _check(getattr(span, "priority", None) == 5, f"[6] priorityによる重複解決に失敗: {getattr(span, 'priority', None)!r}")
-            _check(getattr(span, "origin", None) == "manual", f"[6] origin不一致: {getattr(span, 'origin', None)!r}")
-            segments = list(getattr(span, "segments", []))
-            _check(len(segments) == 2, f"[6] segmentsは2件のはず (実際: {len(segments)})")
-            if len(segments) == 2:
-                _check(
-                    segments[0].ruby_text == "とう" and segments[1].ruby_text == "きょう",
-                    f"[6] segmentsのrubyText不一致: {[s.ruby_text for s in segments]!r}",
-                )
-
-        # --- 2. 行別presentationも適用されない ---
-        doc_id2 = "scenario-row-presentation"
-        row_document = _document(doc_id2, "r1", 2, presentation=FULL_RUBY_PRESENTATION)
-        row_document["pages"][0]["rows"][0]["presentation"] = {
-            "ruby": {**FULL_RUBY_PRESENTATION, "sizePercent": 88.0}
-        }
-        meldex_scenario_import.import_payload(bpy.context, work, row_document)
-        text2 = _text_for(doc_id2)
-        _assert_defaults(text2, tag="[2] ")
-
-        # --- 3. version 1 (presentationなし) -> 従来どおり既定値のまま ---
-        doc_id3 = "scenario-v1"
-        meldex_scenario_import.import_payload(bpy.context, work, _document(doc_id3, "r1", 1))
-        text3 = _text_for(doc_id3)
-        _assert_defaults(text3, tag="[3] ")
-        _check(
-            len(text3.ruby_spans) == 1 and text3.ruby_spans[0].ruby_text == "とうきょう",
-            "[3] v1 でも従来どおりルビ本体は生成されるはず",
-        )
-
-        # --- 4. v2の部分presentationも適用されない ---
-        doc_id4 = "scenario-partial-v2"
         meldex_scenario_import.import_payload(
-            bpy.context, work, _document(doc_id4, "r1", 2, presentation={"sizePercent": 133.0})
+            bpy.context, work, _document("off", 2, FULL_PRESENTATION)
         )
-        text4 = _text_for(doc_id4)
-        _assert_defaults(text4, tag="[4] ")
+        off = text_for("off")
+        _check(off.writing_mode == "horizontal", "オフ時はプリセットの書字方向")
+        _check(off.font == PRESET["font"], "オフ時はプリセットのフォント")
+        _check(_close(off.font_size_q, 22.0), "オフ時はプリセットの本文サイズ")
+        _check(_close(off.line_height, 1.4) and _close(off.letter_spacing, 0.05), "オフ時は本文行間・字間を維持")
+        _check(_close(off.ruby_size_percent, 52.0) and _close(off.ruby_gap_em, -0.05), "オフ時はルビ設定を維持")
 
-        # --- 5. contract 範囲外の値 (sizePercent=300) -> reject されること ---
-        before_texts = len(work.pages[0].texts)
-        before_balloons = len(work.pages[0].balloons)
-        invalid_doc = _document("scenario-invalid", "r1", 2, presentation={"sizePercent": 300.0})
-        rejected = False
+        # オン: 本文・ルビの全共通項目をプリセットの上へ適用する。
+        addon.preferences.get_preferences = lambda _context=None: SimpleNamespace(
+            meldex_apply_text_presentation=True
+        )
+        meldex_scenario_import.import_payload(
+            bpy.context, work, _document("on", 2, FULL_PRESENTATION)
+        )
+        on = text_for("on")
+        _check(on.writing_mode == "vertical", "オン時はMeldexの書字方向")
+        _check(on.font == resolved_font, "オン時は論理フォント名をこのPCのフォントへ解決")
+        _check(_close(on.font_size_q, 18.0 * 127.0 / 120.0), "CSS pxを物理サイズ同等のQへ変換")
+        _check(_close(on.line_height, 2.0) and _close(on.letter_spacing, 0.25), "本文行間・字間を適用")
+        _check(on.font_bold and on.font_italic, "本文の太字・斜体を適用")
+        expected_rgb = color_space.srgb_to_linear_rgb((128 / 255, 128 / 255, 1.0))
+        _check(all(_close(on.color[i], expected_rgb[i]) for i in range(3)) and _close(on.color[3], 128 / 255), "本文色をsRGBからBlender色へ変換")
+        _check(on.stroke_enabled and _close(on.stroke_width_mm, 2.0 * 25.4 / 96.0), "本文フチ幅をpxからmmへ変換")
+        _check(_close(on.stroke_color[0], 1.0) and _close(on.stroke_color[1], 0.0), "本文フチ色を適用")
+        _check(
+            on.ruby_size_percent == 60.0 and _close(on.ruby_gap_em, 0.5)
+            and _close(on.ruby_letter_spacing, 0.2) and _close(on.ruby_line_height, 2.2),
+            "ルビのサイズ・距離・字間・行間を適用",
+        )
+        _check(
+            on.ruby_align == "start" and on.ruby_small_kana == "fullsize"
+            and on.ruby_font_preset == "serif-jp" and on.ruby_default_style == "jukugo",
+            "ルビ配置・小書き・論理フォント・既定種類を適用",
+        )
+        _check(len(on.ruby_spans) == 1 and len(on.ruby_spans[0].segments) == 2, "ルビ内容・優先順位・内訳は設定切替と無関係に維持")
+
+        # 現行Meldexの直接送信payloadが本文設定をまだ含まない場合も、保存元
+        # シナリオの表示設定だけを補完し、送信payloadの本文・ルビ内容は守る。
+        source_path = temp_root / "direct.scriptnote.json"
+        source_path.write_text(json.dumps({
+            "fileType": "meldex-scriptnote",
+            "version": 2,
+            "title": "直接送信",
+            "layoutMode": "manga",
+            "editor": {
+                "viewMode": "vertical",
+                "baseTextFontSize": 20,
+                "baseTextLineHeightV": 1.9,
+                "baseTextLetterSpacingV": 0.3,
+            },
+            "rubyPresentation": FULL_PRESENTATION["ruby"],
+            "characters": [{"name": "セリフ"}],
+            "rows": [{"id": "r1", "role": "セリフ", "text": "保存元とは異なる本文"}],
+        }, ensure_ascii=False), encoding="utf-8")
+        meldex_scenario_import.import_payload(
+            bpy.context,
+            work,
+            _document(str(source_path), 2, {"ruby": FULL_PRESENTATION["ruby"]}),
+        )
+        direct = text_for(str(source_path))
+        _check(direct.body == "東京です", "直接送信payloadの本文を保存元で上書きしない")
+        _check(
+            direct.writing_mode == "vertical"
+            and _close(direct.font_size_q, 20.0 * 127.0 / 120.0)
+            and _close(direct.line_height, 1.9)
+            and _close(direct.letter_spacing, 0.3),
+            "直接送信で不足する本文設定を保存元シナリオから補完",
+        )
+
+        # 行別設定は文書設定より優先する。
+        row_payload = _document("row", 2, FULL_PRESENTATION)
+        row_payload["pages"][0]["rows"][0]["presentation"] = {
+            "text": {"writingMode": "horizontal", "fontSizePx": 24.0, "bold": False},
+            "ruby": {"sizePercent": 88.0, "gapEm": -0.1},
+        }
+        meldex_scenario_import.import_payload(bpy.context, work, row_payload)
+        row = text_for("row")
+        _check(row.writing_mode == "horizontal" and _close(row.font_size_q, 25.4), "行別本文設定が文書設定より優先")
+        _check(not row.font_bold and row.font_italic, "行別の部分上書き後も文書設定の残りを維持")
+        _check(_close(row.ruby_size_percent, 88.0) and _close(row.ruby_gap_em, -0.1), "行別ルビ設定が文書設定より優先")
+
+        # 既存行をオフで再取込した時は手動設定を上書きしない。
+        row.line_height = 1.23
+        addon.preferences.get_preferences = lambda _context=None: SimpleNamespace(
+            meldex_apply_text_presentation=False
+        )
+        changed = _document("row", 2, {**FULL_PRESENTATION, "text": {**FULL_PRESENTATION["text"], "lineHeight": 3.0}})
+        meldex_scenario_import.import_payload(bpy.context, work, changed)
+        _check(_close(text_for("row").line_height, 1.23), "オフでの再取込は既存の手動設定を維持")
+
+        # v1はオンでも従来のプリセットを使う。
+        addon.preferences.get_preferences = lambda _context=None: SimpleNamespace(
+            meldex_apply_text_presentation=True
+        )
+        meldex_scenario_import.import_payload(bpy.context, work, _document("v1", 1))
+        v1 = text_for("v1")
+        _check(v1.writing_mode == "horizontal" and _close(v1.font_size_q, 22.0), "v1は従来どおりプリセットを使用")
+
+        # 異常な本文設定は変更前に拒否する。
+        before = len(work.pages[0].texts)
+        invalid = _document("invalid", 2, {"text": {"fontSizePx": 999.0}})
         try:
-            meldex_scenario_import.import_payload(bpy.context, work, invalid_doc)
-        except meldex_contract.ContractError:
-            rejected = True
-        except Exception as exc:  # noqa: BLE001
-            FAILURES.append(f"[5] 想定外の例外型: {exc!r}")
-            traceback.print_exc()
-        _check(rejected, "[5] 範囲外の sizePercent=300 は ContractError で reject されるはず (クランプではない)")
-        _check(len(work.pages[0].texts) == before_texts, "[5] reject 時はテキストが新規作成されないはず")
-        _check(len(work.pages[0].balloons) == before_balloons, "[5] reject 時はフキダシが新規作成されないはず")
-        try:
-            meldex_contract.validate_payload(invalid_doc)
-            FAILURES.append("[5] validate_payload 単体でも ContractError を送出するはず")
+            meldex_contract.validate_payload(invalid)
         except meldex_contract.ContractError:
             pass
-
+        else:
+            FAILURES.append("範囲外の本文サイズをContractErrorで拒否する")
+        try:
+            meldex_scenario_import.import_payload(bpy.context, work, invalid)
+        except meldex_contract.ContractError:
+            pass
+        except Exception as exc:  # noqa: BLE001
+            FAILURES.append(f"異常値で想定外の例外: {exc!r}")
+        else:
+            FAILURES.append("異常値の取込が成功してしまった")
+        _check(len(work.pages[0].texts) == before, "異常値拒否時は作品を変更しない")
     finally:
         try:
             addon.unregister()
-        except Exception:  # noqa: BLE001  (後片付け失敗はテスト結果に影響させない)
+        except Exception:  # noqa: BLE001
             traceback.print_exc()
         bpy.ops.wm.read_factory_settings(use_empty=True)
         shutil.rmtree(temp_root, ignore_errors=True)
@@ -235,6 +314,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    code = main()
-    if code:
-        sys.exit(code)
+    raise SystemExit(main())

@@ -86,8 +86,9 @@ def load_contract_payload(filepath: str | Path) -> dict[str, Any]:
 
 def build_contract_payload(document: dict[str, Any], document_id: str) -> dict[str, Any]:
     """MeldexのbuildPayload既定動作と同じcontract v2を構築する."""
-    presentation = _document_presentation(document)
-    default_style = presentation["defaultStyle"]
+    ruby_presentation = _document_presentation(document)
+    text_presentation = _document_text_presentation(document)
+    default_style = ruby_presentation["defaultStyle"]
     break_names, summary_names = _role_categories(document)
     rules = document.get("rubyRules") if isinstance(document.get("rubyRules"), list) else []
     rows = document.get("rows") if isinstance(document.get("rows"), list) else []
@@ -111,9 +112,14 @@ def build_contract_payload(document: dict[str, Any], document_id: str) -> dict[s
             "body": body,
             "rubies": rubies,
         }
-        row_presentation = _row_presentation(row, presentation)
-        if row_presentation is not None:
-            row_payload["presentation"] = {"ruby": row_presentation}
+        row_ruby_presentation = _row_presentation(row, ruby_presentation)
+        row_text_presentation = _row_text_presentation(document, row)
+        if row_ruby_presentation is not None or row_text_presentation is not None:
+            row_payload["presentation"] = {}
+            if row_text_presentation is not None:
+                row_payload["presentation"]["text"] = row_text_presentation
+            if row_ruby_presentation is not None:
+                row_payload["presentation"]["ruby"] = row_ruby_presentation
         pages[-1]["rows"].append(row_payload)
     return {
         "contract": CONTRACT_NAME,
@@ -125,7 +131,7 @@ def build_contract_payload(document: dict[str, Any], document_id: str) -> dict[s
         "pages": pages,
         "indexUnit": "unicode-code-point",
         "normalization": "none",
-        "presentation": {"ruby": presentation},
+        "presentation": {"text": text_presentation, "ruby": ruby_presentation},
     }
 
 
@@ -296,6 +302,171 @@ def _row_presentation(
         {**document_presentation, **override},
         writing_mode=document_presentation["writingMode"],
     )
+
+
+def _document_text_presentation(document: dict[str, Any]) -> dict[str, Any]:
+    """Meldexの本文列で実際に有効な共通表示設定を契約形式へ変換する."""
+    editor = document.get("editor") if isinstance(document.get("editor"), dict) else {}
+    writing_mode = "vertical" if editor.get("viewMode") == "vertical" else "horizontal"
+    result = _base_text_presentation(editor, writing_mode)
+    _copy_optional_text_style(
+        result,
+        {
+            "textColor": editor.get("baseTextColor"),
+            "fontFamily": _first_defined(
+                editor.get("baseTextFontFamily"),
+                editor.get("fontV" if writing_mode == "vertical" else "fontH"),
+            ),
+        },
+    )
+    column_styles = editor.get("columnStyles") if isinstance(editor.get("columnStyles"), dict) else {}
+    column_text = column_styles.get("_text") if isinstance(column_styles.get("_text"), dict) else {}
+    _copy_optional_text_style(result, column_text)
+    presentation = document.get("presentation") if isinstance(document.get("presentation"), dict) else {}
+    explicit = presentation.get("text") if isinstance(presentation.get("text"), dict) else None
+    if isinstance(explicit, dict):
+        _copy_contract_text_style(result, explicit)
+    return result
+
+
+def _base_text_presentation(editor: dict[str, Any], writing_mode: str) -> dict[str, Any]:
+    mode_suffix = "V" if writing_mode == "vertical" else "H"
+    other_suffix = "H" if mode_suffix == "V" else "V"
+    return {
+        "writingMode": writing_mode,
+        "fontSizePx": _finite(editor.get("baseTextFontSize"), 13.0, 1.0, 512.0),
+        "lineHeight": _finite(
+            _first_defined(
+                editor.get(f"baseTextLineHeight{mode_suffix}"),
+                editor.get(f"baseTextLineHeight{other_suffix}"),
+                editor.get("baseTextLineHeight"),
+                editor.get("lineHeight"),
+            ),
+            1.5,
+            0.5,
+            5.0,
+        ),
+        "letterSpacingEm": _finite(
+            _first_defined(
+                editor.get(f"baseTextLetterSpacing{mode_suffix}"),
+                editor.get(f"baseTextLetterSpacing{other_suffix}"),
+                editor.get("baseTextLetterSpacing"),
+                editor.get("letterSpacing"),
+            ),
+            0.02,
+            -1.0,
+            3.0,
+        ),
+        "bold": _css_toggle(editor.get("baseTextBold"), "bold"),
+        "italic": _css_toggle(editor.get("baseTextItalic"), "italic"),
+    }
+
+
+def _row_text_presentation(
+    document: dict[str, Any], row: dict[str, Any]
+) -> dict[str, Any] | None:
+    """行タイプと行固有指定による本文表示の上書きだけを返す."""
+    result: dict[str, Any] = {}
+    role = _string(row.get("role"))
+    characters = document.get("characters") if isinstance(document.get("characters"), list) else []
+    character = next(
+        (
+            item for item in characters
+            if isinstance(item, dict) and _string(item.get("name")) == role
+        ),
+        None,
+    )
+    if isinstance(character, dict):
+        # Meldex描画と同じく textStyle を優先し、旧形式の直下設定をfallbackにする。
+        legacy_style = {
+            key: character.get(key)
+            for key in (
+                "fontSize", "fontWeight", "fontStyle", "textColor", "bgColor", "fontFamily",
+                "textStrokeColor", "textStrokeWidth",
+            )
+            if character.get(key) not in (None, "")
+        }
+        _copy_optional_text_style(result, legacy_style)
+        text_style = character.get("textStyle")
+        if isinstance(text_style, dict):
+            _copy_optional_text_style(result, text_style)
+    presentation = row.get("presentation") if isinstance(row.get("presentation"), dict) else {}
+    explicit = presentation.get("text") if isinstance(presentation.get("text"), dict) else None
+    if isinstance(explicit, dict):
+        _copy_contract_text_style(result, explicit)
+    return result or None
+
+
+def _copy_optional_text_style(target: dict[str, Any], source: dict[str, Any]) -> None:
+    mapping = {
+        "fontSize": "fontSizePx",
+        "textColor": "color",
+        "fontFamily": "fontFamily",
+        "textStrokeColor": "strokeColor",
+        "textStrokeWidth": "strokeWidthPx",
+    }
+    for source_key, target_key in mapping.items():
+        value = source.get(source_key)
+        if value in (None, ""):
+            continue
+        # textColor + bgColor はMeldex編集表のセル配色であり、背景を持たない
+        # B-MANGA本文へ前景色だけ移すと明色テーマの用紙上で文字が消える。
+        # 背景と対でない本文色（baseTextColor等）だけを作品側へ移す。
+        if source_key == "textColor" and source.get("bgColor") not in (None, ""):
+            continue
+        if target_key in {"color", "strokeColor"}:
+            color = _css_color(value)
+            if color:
+                target[target_key] = color
+        elif target_key == "fontFamily":
+            family = _logical_font_family(value)
+            if family:
+                target[target_key] = family
+        elif target_key == "fontSizePx":
+            target[target_key] = _finite(value, 13.0, 1.0, 512.0)
+        else:
+            target[target_key] = _finite(value, 0.0, 0.0, 64.0)
+    if source.get("fontWeight") not in (None, ""):
+        target["bold"] = _css_toggle(source.get("fontWeight"), "bold")
+    if source.get("fontStyle") not in (None, ""):
+        target["italic"] = _css_toggle(source.get("fontStyle"), "italic")
+
+
+def _copy_contract_text_style(target: dict[str, Any], source: dict[str, Any]) -> None:
+    for key in (
+        "writingMode", "fontSizePx", "lineHeight", "letterSpacingEm", "bold", "italic",
+        "color", "fontFamily", "strokeWidthPx", "strokeColor",
+    ):
+        if key in source:
+            target[key] = source[key]
+
+
+def _first_defined(*values: Any) -> Any:
+    return next((value for value in values if value not in (None, "")), None)
+
+
+def _css_toggle(value: Any, enabled_token: str) -> bool:
+    if type(value) is bool:
+        return value
+    normalized = _string(value).strip().lower()
+    return normalized in {enabled_token, "true", "1", "yes", "on"}
+
+
+def _css_color(value: Any) -> str:
+    normalized = _string(value).strip()
+    return normalized.upper() if re.fullmatch(r"#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?", normalized) else ""
+
+
+def _logical_font_family(value: Any) -> str:
+    normalized = _string(value).strip()
+    if (
+        not normalized
+        or len(normalized) > 256
+        or normalized.lower().startswith("var(")
+        or any(char in normalized for char in ("\x00", "/", "\\"))
+    ):
+        return ""
+    return normalized
 
 
 def _normalize_presentation(
