@@ -1889,8 +1889,14 @@ class BMANGA_OT_balloon_tool(Operator):
                     parent_key=str(getattr(self, "_drag_parent_key", "") or ""),
                 )
                 if entry is not None:
-                    if preset_custom and hasattr(entry, "custom_preset_name"):
-                        entry.custom_preset_name = preset_custom
+                    if preset_custom:
+                        from ..utils import text_balloon_link
+
+                        with balloon_curve_object.defer_auto_sync():
+                            text_balloon_link.apply_balloon_preset_reference(
+                                entry,
+                                f"custom:{preset_custom}",
+                            )
                     _attach_texts_enclosed_by_balloon(context, page, entry)
                     balloon_curve_object.on_balloon_entry_changed(entry)
                     self._push_undo_step("B-MANGA: フキダシ作成")

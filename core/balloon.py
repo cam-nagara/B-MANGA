@@ -223,6 +223,31 @@ def _on_balloon_entry_changed(_self, context) -> None:
     _tag_balloon_redraw(context)
 
 
+def _on_linked_text_fit_changed(_self, context) -> None:
+    """リンク余白・位置を変えた時、テキストを固定してフキダシを再配置する。"""
+
+    try:
+        from ..utils import balloon_curve_object, text_balloon_link
+
+        if not balloon_curve_object.auto_sync_is_paused():
+            scene = getattr(context, "scene", None) if context is not None else None
+            work = getattr(scene, "bmanga_work", None) if scene is not None else None
+            page, resolved = balloon_curve_object.find_balloon_entry(
+                scene,
+                str(getattr(_self, "id", "") or ""),
+            ) if scene is not None else (None, None)
+            if work is not None and resolved is not None:
+                with balloon_curve_object.defer_auto_sync():
+                    text_balloon_link.fit_balloon_to_linked_text(
+                        work,
+                        resolved,
+                        page=page,
+                    )
+    except Exception:  # UI入力は維持し、通常のフキダシ同期へ安全にフォールバックする
+        _logger.exception("linked text balloon fit failed")
+    _on_balloon_entry_changed(_self, context)
+
+
 def _inout_apply_value_from_flags(entry) -> str:
     legacy = str(getattr(entry, "inout_apply", "brush_size") or "brush_size")
     width = line_effect_schema.bool_value(
@@ -655,10 +680,10 @@ class BMangaBalloonEntry(bpy.types.PropertyGroup):
     width_mm: FloatProperty(name="幅 (mm)", description="フキダシ本体の幅", default=40.0, min=0.1, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     height_mm: FloatProperty(name="高さ (mm)", description="フキダシ本体の高さ", default=20.0, min=0.1, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     rotation_deg: FloatProperty(name="回転", description="フキダシ全体の回転角度", default=0.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    linked_text_offset_x_mm: FloatProperty(name="横位置 (mm)", description="リンクしたテキストの中心からフキダシ中心を横へずらす量", default=0.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    linked_text_offset_y_mm: FloatProperty(name="縦位置 (mm)", description="リンクしたテキストの中心からフキダシ中心を縦へずらす量", default=0.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    linked_text_padding_x_mm: FloatProperty(name="横余白 (mm)", description="リンクしたテキストの左右へ確保するフキダシの余白", default=6.0, min=0.0, soft_max=50.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    linked_text_padding_y_mm: FloatProperty(name="縦余白 (mm)", description="リンクしたテキストの上下へ確保するフキダシの余白", default=6.0, min=0.0, soft_max=50.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    linked_text_offset_x_mm: FloatProperty(name="横位置 (mm)", description="リンクしたテキストの中心からフキダシ中心を横へずらす量", default=0.0, update=_on_linked_text_fit_changed)  # type: ignore[valid-type]
+    linked_text_offset_y_mm: FloatProperty(name="縦位置 (mm)", description="リンクしたテキストの中心からフキダシ中心を縦へずらす量", default=0.0, update=_on_linked_text_fit_changed)  # type: ignore[valid-type]
+    linked_text_padding_x_mm: FloatProperty(name="横余白 (mm)", description="リンクしたテキストの左右へ確保するフキダシの余白", default=6.0, min=0.0, soft_max=50.0, update=_on_linked_text_fit_changed)  # type: ignore[valid-type]
+    linked_text_padding_y_mm: FloatProperty(name="縦余白 (mm)", description="リンクしたテキストの上下へ確保するフキダシの余白", default=6.0, min=0.0, soft_max=50.0, update=_on_linked_text_fit_changed)  # type: ignore[valid-type]
     center_offset_x_mm: FloatProperty(name="中心点 X", description="回転の中心点を、フキダシ中心から X 方向にずらす量", default=0.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     center_offset_y_mm: FloatProperty(name="中心点 Y", description="回転の中心点を、フキダシ中心から Y 方向にずらす量", default=0.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     free_transform_enabled: BoolProperty(name="自由変形", default=False, options={"HIDDEN"}, update=_on_balloon_entry_changed)  # type: ignore[valid-type]

@@ -81,6 +81,58 @@ def find_linked_balloon(work, entry, *, page=None, stable_id: str = ""):
     return None
 
 
+def _owner_texts_for_balloon(work, balloon, page=None):
+    if page is not None:
+        return getattr(page, "texts", ()) or ()
+    for candidate_page in getattr(work, "pages", ()) or ():
+        if any(
+            _same_entry(candidate, balloon)
+            for candidate in getattr(candidate_page, "balloons", ()) or ()
+        ):
+            return getattr(candidate_page, "texts", ()) or ()
+    if any(
+        _same_entry(candidate, balloon)
+        for candidate in getattr(work, "shared_balloons", ()) or ()
+    ):
+        return getattr(work, "shared_texts", ()) or ()
+    return ()
+
+
+def find_linked_text(work, balloon, *, page=None):
+    """フキダシと明示的に対応するテキストを1件だけ返す。"""
+
+    if work is None or balloon is None:
+        return None
+    balloon_id = str(getattr(balloon, "id", "") or "")
+    if not balloon_id:
+        return None
+    texts = _owner_texts_for_balloon(work, balloon, page=page)
+    text_id = str(getattr(balloon, "text_id", "") or "")
+    if text_id:
+        for text in texts:
+            if (
+                str(getattr(text, "id", "") or "") == text_id
+                and str(getattr(text, "parent_balloon_id", "") or "") == balloon_id
+            ):
+                return text
+    linked = [
+        text
+        for text in texts
+        if str(getattr(text, "parent_balloon_id", "") or "") == balloon_id
+    ]
+    return linked[0] if len(linked) == 1 else None
+
+
+def fit_balloon_to_linked_text(work, balloon, *, page=None):
+    """明示リンクが一意なら、テキストを固定したままフキダシを合わせる。"""
+
+    text = find_linked_text(work, balloon, page=page)
+    if text is None:
+        return None
+    fit_linked_balloon_to_text(text, balloon)
+    return text
+
+
 def apply_linked_balloon_preset(
     work,
     entry,
@@ -96,8 +148,12 @@ def apply_linked_balloon_preset(
     balloon = find_linked_balloon(work, entry, page=page, stable_id=stable_id)
     if balloon is None:
         return None
-    apply_balloon_preset_reference(balloon, name)
-    fit_linked_balloon_to_text(entry, balloon)
+    from . import balloon_curve_object
+
+    with balloon_curve_object.defer_auto_sync():
+        apply_balloon_preset_reference(balloon, name)
+        fit_linked_balloon_to_text(entry, balloon)
+    balloon_curve_object.on_balloon_entry_changed(balloon)
     return balloon
 
 
@@ -128,5 +184,7 @@ __all__ = [
     "apply_balloon_preset_reference",
     "apply_linked_balloon_preset",
     "find_linked_balloon",
+    "find_linked_text",
+    "fit_balloon_to_linked_text",
     "fit_linked_balloon_to_text",
 ]

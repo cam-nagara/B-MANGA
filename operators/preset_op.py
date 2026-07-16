@@ -331,22 +331,22 @@ def _apply_balloon_preset_to_selection(context, value: str) -> None:
         return
     if value == BALLOON_TOOL_NURBS_PRESET:
         return
-    if value.startswith("shape:"):
-        shape, custom = value.split(":", 1)[1], ""
-    elif value.startswith("custom:"):
-        shape, custom = "custom", value.split(":", 1)[1]
-    else:
+    if not value.startswith(("shape:", "custom:")):
         return
     entry = _active_balloon_entry(context)
     if entry is None or not hasattr(entry, "shape"):
         return
     try:
-        if str(getattr(entry, "shape", "") or "") != shape:
-            entry.shape = shape
-        if hasattr(entry, "custom_preset_name") and str(getattr(entry, "custom_preset_name", "") or "") != custom:
-            entry.custom_preset_name = custom
-        from ..utils import balloon_curve_object
+        from ..utils import balloon_curve_object, text_balloon_link
 
+        with balloon_curve_object.defer_auto_sync():
+            text_balloon_link.apply_balloon_preset_reference(entry, value)
+            if value.startswith("custom:"):
+                text_balloon_link.fit_balloon_to_linked_text(
+                    get_work(context),
+                    entry,
+                    page=get_active_page(context),
+                )
         balloon_curve_object.on_balloon_entry_changed(entry)
     except Exception:  # noqa: BLE001
         _logger.exception("balloon preset apply to selection failed")

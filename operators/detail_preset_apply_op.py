@@ -522,9 +522,10 @@ def _apply_image_path(context, target, name: str) -> str:
     return str(preset.name)
 
 
-def _apply_balloon(_context, target, name: str) -> str:
+def _apply_balloon(context, target, name: str) -> str:
     from ..io import balloon_presets
-    from ..utils import balloon_curve_object
+    from ..core.work import get_work
+    from ..utils import balloon_curve_object, text_balloon_link
 
     if name.startswith("shape:"):
         shape = name.split(":", 1)[1]
@@ -537,18 +538,20 @@ def _apply_balloon(_context, target, name: str) -> str:
         }
         if shape not in shape_labels:
             raise LookupError(f"フキダシ形状が見つかりません: {shape}")
-        with balloon_curve_object.suspend_auto_sync():
-            target.data.custom_preset_name = ""
-            target.data.shape = shape
+        with balloon_curve_object.defer_auto_sync():
+            text_balloon_link.apply_balloon_preset_reference(target.data, name)
         balloon_curve_object.on_balloon_entry_changed(target.data)
         return shape_labels[shape]
 
     preset_name = name.split(":", 1)[1] if name.startswith("custom:") else name
     preset = _require_preset(balloon_presets.load_preset_by_name(preset_name), preset_name)
-    with balloon_curve_object.suspend_auto_sync():
-        balloon_presets.apply_linked_text_settings(target.data, preset.data)
-        target.data.custom_preset_name = str(preset.name)
-        target.data.shape = "custom"
+    with balloon_curve_object.defer_auto_sync():
+        text_balloon_link.apply_balloon_preset_reference(
+            target.data,
+            f"custom:{preset.name}",
+            preset=preset,
+        )
+        text_balloon_link.fit_balloon_to_linked_text(get_work(context), target.data)
     balloon_curve_object.on_balloon_entry_changed(target.data)
     return str(preset.name)
 
