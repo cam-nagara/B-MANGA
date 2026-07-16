@@ -80,8 +80,6 @@ def draw_coma_border_settings(layout, context, entry, *, preset_mode: bool = Fal
         if curve_node is not None:
             content.label(text="ぼかしカーブ")
             content.template_curve_mapping(curve_node, "mapping", type="NONE")
-        else:
-            content.label(text="ぼかしカーブは表示更新後に編集できます", icon="INFO")
     row = content.row(align=True)
     row.prop(b, "width_mm", text="線幅")
     row.prop(b, "color", text="線色")

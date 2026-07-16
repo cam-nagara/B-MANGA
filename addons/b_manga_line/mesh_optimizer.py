@@ -294,6 +294,7 @@ class BMANGA_LINE_OT_optimize_purchased_mesh(bpy.types.Operator):
 
     bl_idname = "bmanga_line.optimize_purchased_mesh"
     bl_label = "選択メッシュを最適化"
+    bl_description = "ライン反映前の静的な選択メッシュを、最終レンダリング用に最適化します"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -309,7 +310,7 @@ class BMANGA_LINE_OT_optimize_purchased_mesh(bpy.types.Operator):
     def draw(self, context):
         objects = _selected_meshes(context)
         faces = _triangle_count(objects)
-        self.layout.label(text=f"選択メッシュ {len(objects)}件 / 三角面換算 {faces:,}面", icon="INFO")
+        self.layout.label(text=f"選択メッシュ {len(objects)}件 / 三角面換算 {faces:,}面", icon="MESH_DATA")
         self.layout.label(text="検証合格後に選択対象を一括確定します", icon="CHECKMARK")
 
     def execute(self, context):
@@ -361,7 +362,6 @@ class BMANGA_LINE_PT_mesh_optimizer(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        layout.label(text="ライン反映前の静的メッシュが対象です", icon="INFO")
         layout.prop(context.scene, QUALITY_SCENE_PROP, expand=True)
         layout.operator("bmanga_line.optimize_purchased_mesh", icon="MOD_SUBSURF")
         error = str(getattr(context.scene, ERROR_SCENE_PROP, "") or "")
@@ -383,6 +383,7 @@ def register() -> None:
         registration.register_class(cls)
     bpy.types.Scene.bmanga_line_mesh_optimize_quality = EnumProperty(
         name="品質",
+        description="ライン反映前の静的メッシュを最適化する品質",
         items=_QUALITY_ITEMS,
         default="STANDARD",
         options={"SKIP_SAVE"},

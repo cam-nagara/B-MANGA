@@ -474,7 +474,7 @@ def _draw_layer_commands(layout, context) -> None:
             layout.separator()
             _draw_selection_command_items(layout, context)
             return
-        layout.label(text="B-MANGA レイヤーを選択してください", icon="INFO")
+        layout.label(text="B-MANGA レイヤーを選択してください", icon="RESTRICT_SELECT_OFF")
         return
     kind = on.get_kind(obj)
     title = str(obj.get(on.PROP_TITLE, "") or obj.name)

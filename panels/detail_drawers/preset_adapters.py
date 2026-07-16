@@ -91,10 +91,6 @@ def draw_preset_management(layout, _context, session, mode, *, list_owner=None) 
     if not compact:
         _draw_target_apply(box, _context, session, spec, list_owner=list_owner)
         _draw_selected_management(box, _context, session, spec)
-    box.label(
-        text="プリセットの追加・編集・管理は、この画面のキャンセルでは戻りません",
-        icon="INFO",
-    )
     return True
 
 
@@ -109,7 +105,7 @@ def _draw_preset_edit_list(layout, context, session, spec: PresetUiSpec, *, list
     if count <= 0:
         row = box.row()
         row.enabled = False
-        row.label(text="（プリセットなし）", icon="INFO")
+        row.label(text="（プリセットなし）", icon="PRESET")
         return True
     rows = max(3, min(6, count))
     box.template_list(
@@ -158,7 +154,7 @@ def _draw_compact_management(
     if count == 0:
         empty = row.column()
         empty.enabled = False
-        empty.label(text="（プリセットなし）", icon="INFO")
+        empty.label(text="（プリセットなし）", icon="PRESET")
     else:
         rows = max(3, min(6, count))
         row.template_list(
@@ -269,7 +265,7 @@ def _draw_target_apply(
             if count == 0:
                 empty = layout.row()
                 empty.enabled = False
-                empty.label(text="（プリセットなし）", icon="INFO")
+                empty.label(text="（プリセットなし）", icon="PRESET")
                 return
             rows = max(3, min(6, count))
             layout.template_list(

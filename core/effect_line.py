@@ -382,7 +382,7 @@ class BMangaEffectLineParams(bpy.types.PropertyGroup):
     end_cloud_sub_height_jitter: FloatProperty(name="小山高 乱れ", description="内端形状の小山の高さをランダムに変化させる度合いです", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
 
     brush_size_mm: FloatProperty(name="線幅 (mm)", description="線の太さです（mm）", default=0.30, min=0.01, soft_max=5.0, update=_on_params_changed)  # type: ignore[valid-type]
-    base_path_enabled: BoolProperty(name="基準パスを編集", description="オンにすると、放射方向の代わりに自分で描いた基準パスに沿って線を配置します", default=False, update=_on_params_changed)  # type: ignore[valid-type]
+    base_path_enabled: BoolProperty(name="基準パスを編集", description="オンにすると、放射方向の代わりに自分で描いた基準パスに沿って線を配置します。保存済み基準パスの編集は効果線ツールから行います", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     base_path_points_json: StringProperty(name="基準パス", default="", options={"HIDDEN"}, update=_on_params_changed)  # type: ignore[valid-type]
     line_image_source: EnumProperty(name="内容", description="パス線に使う内容を画像ファイルか生成形状かで選びます", items=_LINE_IMAGE_SOURCE_ITEMS, default="image", update=_on_params_changed)  # type: ignore[valid-type]
     line_image_path: StringProperty(name="画像", description="パス線に使う画像ファイルのパスです", default="", subtype="FILE_PATH", update=_on_params_changed)  # type: ignore[valid-type]

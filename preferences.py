@@ -211,7 +211,7 @@ class BMangaRubyDictEntry(PropertyGroup):
 
     path: StringProperty(  # type: ignore[valid-type]
         name="辞書ファイル",
-        description="IME / Google日本語入力の辞書テキストファイル (.txt)",
+        description="Google日本語入力・MS-IME・ATOKのTSV辞書。1行を 読み<TAB>表記<TAB>品詞 の形式で読み取ります",
         subtype="FILE_PATH",
         update=_on_preferences_changed,
     )
@@ -236,7 +236,7 @@ class BMangaPreferences(bpy.types.AddonPreferences):
 
     meldex_enabled: BoolProperty(  # type: ignore[valid-type]
         name="Meldexからの受信を有効にする",
-        description="このPCのMeldexからシナリオを受け取ります（既定はオフ）",
+        description="このPCのMeldexからシナリオを受け取ります（既定はオフ）。ポートを使用できない場合は自動的にオフになります",
         default=False,
         update=_on_meldex_settings_changed,
     )
@@ -265,7 +265,10 @@ class BMangaPreferences(bpy.types.AddonPreferences):
     )
     keymap_enabled: BoolProperty(  # type: ignore[valid-type]
         name="B-MANGA 専用キーマップを有効化",
-        description="CLIP STUDIO PAINT 準拠のビューポート操作ショートカットを有効にする",
+        description=(
+            "CLIP STUDIO PAINT準拠のビューポート操作ショートカットを有効にします。"
+            "固定操作は Z=Undo、X=Redo、描画ツール中の Space=ナビゲート、C=ブラシシェル表示切替です"
+        ),
         default=True,
         update=_on_keymap_settings_changed,
     )
@@ -296,8 +299,8 @@ class BMangaPreferences(bpy.types.AddonPreferences):
     coma_blend_template_path: StringProperty(  # type: ignore[valid-type]
         name="コマ用blendファイル (共通)",
         description=(
-            "全作品共通で使うコマ用blendファイル (.blend)。"
-            "作品情報パネル側のコマ用blendファイルが空の場合に、こちらが使われる。"
+            "新しいコマへコピーする全作品共通の初期テンプレート (.blend)。"
+            "作品情報パネル側のコマ用blendファイルが設定されていれば、そちらを優先する。"
         ),
         default="",
         subtype="FILE_PATH",
@@ -420,14 +423,17 @@ class BMangaPreferences(bpy.types.AddonPreferences):
 
     key_navigate: StringProperty(  # type: ignore[valid-type]
         name="ナビゲート (パン/回転/ズーム統合)",
-        description="このキー押下中の LMB ドラッグでパン/回転/ズーム",
+        description=(
+            "Blenderのイベント名で指定します（例: SPACE）。押下中のLMBドラッグは通常パン、"
+            "Shiftで回転、Ctrlでズーム。LMBクリックは40%ズームイン、Alt+LMBは40%ズームアウトです"
+        ),
         default="SPACE",
         update=_on_keymap_settings_changed,
     )
 
     key_set_mode_object: StringProperty(  # type: ignore[valid-type]
         name="オブジェクトツール切替",
-        description="オブジェクトツールに切り替えるキー",
+        description="オブジェクトツールに切り替えるBlenderイベント名（例: O, F1）",
         default="O",
         update=_on_keymap_settings_changed,
     )
@@ -443,7 +449,7 @@ class BMangaPreferences(bpy.types.AddonPreferences):
 
     key_set_mode_draw: StringProperty(  # type: ignore[valid-type]
         name="描画ツール切替",
-        description="描画ツールに切り替えるキー",
+        description="描画ツールに切り替えるBlenderイベント名（例: P, F2）",
         default="P",
         update=_on_keymap_settings_changed,
     )
@@ -459,7 +465,7 @@ class BMangaPreferences(bpy.types.AddonPreferences):
 
     key_page_next: StringProperty(  # type: ignore[valid-type]
         name="次のページ",
-        description="次のページに移動するキー",
+        description="次のページに移動するBlenderイベント名（例: COMMA, PERIOD）",
         default="COMMA",
         update=_on_keymap_settings_changed,
     )
@@ -475,7 +481,7 @@ class BMangaPreferences(bpy.types.AddonPreferences):
 
     key_page_prev: StringProperty(  # type: ignore[valid-type]
         name="前のページ",
-        description="前のページに移動するキー",
+        description="前のページに移動するBlenderイベント名（例: COMMA, PERIOD）",
         default="PERIOD",
         update=_on_keymap_settings_changed,
     )
@@ -506,8 +512,6 @@ class BMangaPreferences(bpy.types.AddonPreferences):
         row = column.row(align=True)
         row.prop(self, "meldex_token", text="接続トークン")
         row.operator("bmanga.meldex_token_regenerate", text="再生成", icon="FILE_REFRESH")
-        if self.meldex_enabled:
-            box.label(text="ポートを使用できない場合は自動的にオフになります", icon="INFO")
 
         box = layout.box()
         box.label(text="キーマップ")
@@ -521,10 +525,6 @@ class BMangaPreferences(bpy.types.AddonPreferences):
         box.label(text="テキスト編集")
         box.prop(self, "text_selection_color", text="選択ハイライト色")
         box.prop(self, "default_base_font_path", text="標準フォント")
-        col = box.column(align=True)
-        col.scale_y = 0.85
-        col.label(text="テキストやルビにフォントが設定されていない時に使うフォント", icon="INFO")
-        col.label(text="空欄ならOS標準の日本語フォントを自動選択")
 
         box = layout.box()
         box.label(text="コマ枠編集")
@@ -552,14 +552,6 @@ class BMangaPreferences(bpy.types.AddonPreferences):
             row.prop(self, f"{mod_prefix}_alt", toggle=True)
             row.prop(self, key_attr, text="")
 
-        kbox.separator()
-        info = kbox.column(align=True)
-        info.scale_y = 0.85
-        info.label(text="キー名は Blender のイベント名 (例: SPACE, O, P, COMMA, PERIOD, F1〜F12)", icon="INFO")
-        info.label(text="ナビゲートのモード切替はキー押下中の Shift=回転 / Ctrl=ズーム (固定)")
-        info.label(text="B-MANGA使用中は Z=Undo / X=Redo (固定)")
-        info.label(text="ズーム中の LMB クリック=40%イン / Alt+LMB クリック=40%アウト (固定)")
-        info.label(text="描画ツール中: Space=ナビゲート / C=ブラシシェルフ表示切替 (Blender既定の入れ替え)")
 
         box = layout.box()
         box.label(text="アセットライブラリ登録ガイド")
@@ -572,26 +564,15 @@ class BMangaPreferences(bpy.types.AddonPreferences):
         box = layout.box()
         box.label(text="コマ用blendファイル (全作品共通)", icon="FILE_BLEND")
         box.prop(self, "coma_blend_template_path", text="")
-        col = box.column(align=True)
-        col.scale_y = 0.85
-        col.label(text="新しいコマ (cNN.blend) を作成するときの初期テンプレートとして全作品で使い回す", icon="INFO")
-        col.label(text="作品情報パネル側のコマ用blendファイルが設定されていれば、そちらが優先される")
 
         box = layout.box()
         box.label(text="設定の移行", icon="FILE_REFRESH")
         row = box.row(align=True)
         row.operator("bmanga.preferences_export", text="設定を書き出す", icon="EXPORT")
         row.operator("bmanga.preferences_import", text="設定を読み込む", icon="IMPORT")
-        col = box.column(align=True)
-        col.scale_y = 0.85
-        col.label(text="プリファレンスと共通プリセットをZIPで移行します", icon="INFO")
 
         box = layout.box()
         box.label(text="自動ルビ辞書", icon="FONT_DATA")
-        col = box.column(align=True)
-        col.scale_y = 0.85
-        col.label(text="Google日本語入力 / MS-IME / ATOK のエクスポート辞書ファイル (TSV) を登録", icon="INFO")
-        col.label(text="形式: 読み<TAB>表記<TAB>品詞 (1行1語)")
         row = box.row()
         row.template_list(
             "BMANGA_UL_ruby_dict_list", "",

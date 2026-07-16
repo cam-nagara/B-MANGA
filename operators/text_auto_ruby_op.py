@@ -30,6 +30,7 @@ class BMANGA_OT_ruby_dict_add(Operator):
 
     bl_idname = "bmanga.ruby_dict_add"
     bl_label = "辞書を追加"
+    bl_description = "Google日本語入力・MS-IME・ATOKのTSV辞書を登録します。1行を 読み<TAB>表記<TAB>品詞 の形式で読み取ります"
 
     def execute(self, context):
         prefs = get_preferences(context)

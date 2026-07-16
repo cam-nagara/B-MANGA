@@ -687,7 +687,7 @@ def _draw_page_list_box(layout, context) -> None:
     box = layout.box()
     box.label(text="ページ", icon="FILE_BLANK")
     if work is None or not getattr(work, "loaded", False):
-        box.label(text="(ページがありません)", icon="INFO")
+        box.label(text="(ページがありません)", icon="QUESTION")
         return
     row = box.row(align=True)
     rows = min(6, max(3, len(work.pages)))
@@ -818,7 +818,7 @@ def _visible_layer_stack_entries(context, stack) -> list[tuple[int, object]]:
 def _draw_layer_stack_rows(layout, context, stack) -> None:
     entries = _visible_layer_stack_entries(context, stack)
     if not entries:
-        layout.label(text="(レイヤーがありません)", icon="INFO")
+        layout.label(text="(レイヤーがありません)", icon="GREASEPENCIL")
         return
     # このヘルパーは template_list を経由しないため、_draw_layer_stack_box とは
     # 別に自前でキャッシュを更新する (関数内で1回だけ計算する分には問題ない)。
@@ -892,7 +892,7 @@ class BMANGA_PT_layer_stack(Panel):
         layout = self.layout
         work = get_work(context)
         if work is None or not work.loaded:
-            layout.label(text="作品を開いてください", icon="INFO")
+            layout.label(text="作品を開いてください", icon="FILE_FOLDER")
             return
         _draw_layer_stack_box(layout, context)
 
@@ -926,7 +926,7 @@ class BMANGA_PT_gpencil(Panel):
             row.operator("bmanga.gpencil_follow_cursor", text="切替")
 
         if work is None or not work.loaded:
-            layout.label(text="作品を開いてください", icon="INFO")
+            layout.label(text="作品を開いてください", icon="FILE_FOLDER")
             return
 
         # 選択対象が無い時は個別の手描きレイヤーを作る。
@@ -938,7 +938,7 @@ class BMANGA_PT_gpencil(Panel):
 
         obj = _selected_gp_object()
         if obj is None:
-            layout.label(text="手描きレイヤーがありません", icon="INFO")
+            layout.label(text="手描きレイヤーがありません", icon="GREASEPENCIL")
             return
 
         row = layout.row(align=True)

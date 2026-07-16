@@ -136,6 +136,7 @@ class BMANGA_LINE_OT_auto_repair_quad_mesh(bpy.types.Operator):
 
     bl_idname = "bmanga_line.auto_repair_quad_mesh"
     bl_label = "選択メッシュを自動修復・四角面化"
+    bl_description = "ライン反映前の静的な選択メッシュを修復し、Catmull-Clark向けの四角面へ再構成します"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -153,7 +154,7 @@ class BMANGA_LINE_OT_auto_repair_quad_mesh(bpy.types.Operator):
         faces = _triangle_count(objects)
         self.layout.label(
             text=f"選択メッシュ {len(objects)}件 / 三角面換算 {faces:,}面",
-            icon="INFO",
+            icon="MESH_DATA",
         )
         self.layout.label(text="全候補の検証合格後に一括確定します", icon="CHECKMARK")
 
@@ -204,7 +205,6 @@ class BMANGA_LINE_PT_auto_repair_quad_mesh(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        layout.label(text="ライン反映前の静的メッシュが対象です", icon="INFO")
         layout.prop(context.scene, QUALITY_SCENE_PROP, expand=True)
         layout.operator("bmanga_line.auto_repair_quad_mesh", icon="MOD_REMESH")
         error = str(getattr(context.scene, ERROR_SCENE_PROP, "") or "")
@@ -226,6 +226,7 @@ def register() -> None:
         registration.register_class(cls)
     bpy.types.Scene.bmanga_line_quad_repair_quality = EnumProperty(
         name="品質",
+        description="ライン反映前の静的メッシュを修復・四角面化する品質",
         items=_QUALITY_ITEMS,
         default="STANDARD",
         options={"SKIP_SAVE"},

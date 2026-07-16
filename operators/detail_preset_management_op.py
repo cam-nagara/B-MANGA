@@ -332,6 +332,7 @@ def detail_preset_draft(context, session, preset_type: str, selected_name: str):
 class BMANGA_OT_detail_preset_add(Operator):
     bl_idname = "bmanga.detail_preset_add"
     bl_label = "プリセットを追加"
+    bl_description = "プリセットを即時追加します。詳細設定のキャンセルでは戻りません"
     bl_options = {"INTERNAL"}
 
     session_token: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
@@ -370,6 +371,7 @@ class BMANGA_OT_detail_preset_add(Operator):
 class BMANGA_OT_detail_preset_rename(Operator):
     bl_idname = "bmanga.detail_preset_rename"
     bl_label = "プリセット名を変更"
+    bl_description = "プリセット名を即時変更します。詳細設定のキャンセルでは戻りません"
     bl_options = {"INTERNAL"}
 
     session_token: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
@@ -409,6 +411,7 @@ class BMANGA_OT_detail_preset_rename(Operator):
 class BMANGA_OT_detail_preset_duplicate(Operator):
     bl_idname = "bmanga.detail_preset_duplicate"
     bl_label = "プリセットを複製"
+    bl_description = "プリセットを即時複製します。詳細設定のキャンセルでは戻りません"
     bl_options = {"INTERNAL"}
 
     session_token: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
@@ -459,6 +462,7 @@ class BMANGA_OT_detail_preset_duplicate(Operator):
 class BMANGA_OT_detail_preset_delete(Operator):
     bl_idname = "bmanga.detail_preset_delete"
     bl_label = "プリセットを削除"
+    bl_description = "プリセットを即時削除します。詳細設定のキャンセルでは戻りません"
     bl_options = {"INTERNAL"}
 
     session_token: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
@@ -501,6 +505,7 @@ class BMANGA_OT_detail_preset_delete(Operator):
 class BMANGA_OT_detail_preset_move(Operator):
     bl_idname = "bmanga.detail_preset_move"
     bl_label = "プリセットを並べ替え"
+    bl_description = "プリセットを即時並べ替えます。詳細設定のキャンセルでは戻りません"
     bl_options = {"INTERNAL"}
 
     session_token: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]

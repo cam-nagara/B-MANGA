@@ -17,7 +17,7 @@ _logger = log.get_logger(__name__)
 class BMANGA_OT_preferences_export(Operator):
     bl_idname = "bmanga.preferences_export"
     bl_label = "B-MANGA設定をエクスポート"
-    bl_description = "B-MANGAのプリファレンスと共通プリセットをZIPに書き出します"
+    bl_description = "B-MANGAのプリファレンスと共通プリセットを移行用ZIPに書き出します"
     bl_options = {"REGISTER"}
 
     filepath: StringProperty(  # type: ignore[valid-type]
@@ -45,7 +45,7 @@ class BMANGA_OT_preferences_export(Operator):
 class BMANGA_OT_preferences_import(Operator):
     bl_idname = "bmanga.preferences_import"
     bl_label = "B-MANGA設定をインポート"
-    bl_description = "ZIPからB-MANGAのプリファレンスと共通プリセットを読み込みます"
+    bl_description = "移行用ZIPからB-MANGAのプリファレンスと共通プリセットを読み込みます"
     bl_options = {"REGISTER"}
 
     filepath: StringProperty(  # type: ignore[valid-type]

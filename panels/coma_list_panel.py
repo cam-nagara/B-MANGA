@@ -97,7 +97,7 @@ class BMANGA_PT_comas(Panel):
         layout = self.layout
         page = get_active_page(context)
         if page is None:
-            layout.label(text="ページを選択してください", icon="INFO")
+            layout.label(text="ページを選択してください", icon="QUESTION")
             return
 
         # モード表示

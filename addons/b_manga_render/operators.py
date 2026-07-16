@@ -225,7 +225,7 @@ class BMANGA_RENDER_OT_preset_settings(Operator):
         preset = core.active_preset(context)
         state = core.get_state(context)
         if preset is None or state is None:
-            layout.label(text="プリセットが選択されていません", icon="INFO")
+            layout.label(text="プリセットが選択されていません", icon="PRESET")
             return
         box = layout.box()
         box.label(text="プリセット", icon="PRESET")
@@ -338,7 +338,12 @@ class BMANGA_RENDER_OT_command_add(Operator):
     bl_label = "コマンドを追加"
 
     # 旧形式 (EEVR_*) は自動分岐版で代替できるため、新規追加の候補から外す
-    command_type: EnumProperty(name="種類", items=core.ADD_COMMAND_TYPE_ITEMS, default="RENDER")  # type: ignore[valid-type]
+    command_type: EnumProperty(  # type: ignore[valid-type]
+        name="種類",
+        description="追加するコマンドの処理内容。各候補にマウスを置くと対象と動作を確認できます",
+        items=core.ADD_COMMAND_TYPE_ITEMS,
+        default="RENDER",
+    )
 
     def invoke(self, context, _event):
         return context.window_manager.invoke_props_dialog(self)
@@ -346,17 +351,6 @@ class BMANGA_RENDER_OT_command_add(Operator):
     def draw(self, _context):
         layout = self.layout
         layout.prop(self, "command_type")
-        # 選んだ種類が何をするか、その場で読めるようにする
-        description = next(
-            (item[2] for item in core.ADD_COMMAND_TYPE_ITEMS if item[0] == self.command_type),
-            "",
-        )
-        if description:
-            box = layout.box()
-            col = box.column(align=True)
-            col.scale_y = 0.7
-            for i, line in enumerate(command_ui._wrap_text(f"{description}。", 28)):
-                col.label(text=line, icon="INFO" if i == 0 else "BLANK1")
 
     def execute(self, context):
         preset = core.active_preset(context)

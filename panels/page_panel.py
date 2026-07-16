@@ -72,7 +72,7 @@ class BMANGA_PT_pages(Panel):
 
         if is_coma_mode:
             box = layout.box()
-            box.label(text="コマ編集モード中は紙面操作できません", icon="INFO")
+            box.label(text="コマ編集モード中は紙面操作できません", icon="ERROR")
 
         row = layout.row()
         row.enabled = not is_coma_mode

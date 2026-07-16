@@ -33,7 +33,7 @@ def draw_balloon_body(layout, context, session, mode) -> None:
     effect_columns = columns[1:] if len(columns) > 1 else columns
 
     _draw_linked_text_fit(shape_column, entry)
-    _draw_shape(shape_column, session, entry, balloon_shapes)
+    _draw_shape(shape_column, entry, balloon_shapes)
     _draw_line(line_column, entry, balloon_shapes, effect_columns, preset_mode)
     _draw_tails(shape_column, context, session, entry, preset_mode)
 
@@ -55,10 +55,9 @@ def _draw_linked_text_fit(layout, entry) -> None:
     )
 
 
-def _draw_shape(layout, session, entry, balloon_shapes) -> None:
+def _draw_shape(layout, entry, balloon_shapes) -> None:
     box = layout.box()
     box.label(text="形状")
-    _draw_regenerate_controls(box, session, entry)
     prop_if(box, entry, "shape", text="形状")
     if str(value(entry, "shape", "") or "") == "custom":
         preset_name = str(value(entry, "custom_preset_name", "") or "")
@@ -72,15 +71,6 @@ def _draw_shape(layout, session, entry, balloon_shapes) -> None:
     shape_params = value(entry, "shape_params", None)
     if shape_params is not None and balloon_shapes.is_dynamic_meldex_shape(shape):
         _draw_dynamic_shape(layout, shape_params, shape)
-
-
-def _draw_regenerate_controls(layout, session, entry) -> None:
-    if not bool(value(entry, "id", None)):
-        return
-    layout.label(
-        text="形状の再生成はフキダシツール側から実行してください",
-        icon="INFO",
-    )
 
 
 def _draw_corner_radius(layout, owner, prefix: str = "rounded_corner") -> None:
@@ -315,13 +305,10 @@ def _draw_tail_preset(layout, context, session, index: int) -> None:
     )
 
 
-def draw_tail_body(layout, _context, session, mode) -> None:
-    preset_mode = str(getattr(mode, "value", mode)) == "preset"
+def draw_tail_body(layout, _context, session, _mode) -> None:
     box = body_columns(layout, session)[0].box()
     box.label(text="しっぽ設定", icon="SHARPCURVE")
     _draw_tail_fields(box, session.target.data)
-    if not preset_mode:
-        box.label(text="プリセット適用は各しっぽから行います", icon="INFO")
 
 
 def _page_id(params) -> str:

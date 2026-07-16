@@ -27,11 +27,6 @@ def draw_raster_body(layout, _context, session, _mode) -> None:
 
     actions = secondary.box()
     actions.label(text="編集と保存")
-    actions.label(text="PNG保存は即時実行です", icon="INFO")
-    actions.label(
-        text="テクスチャペイントは詳細設定を閉じてから開始してください",
-        icon="INFO",
-    )
     row = actions.row(align=True)
     save = detail_operator(
         row,

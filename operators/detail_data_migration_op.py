@@ -408,7 +408,7 @@ class BMANGA_OT_detail_data_migrate(Operator):
         if plan is None:
             layout.label(text="事前確認結果がありません", icon="ERROR")
             return
-        layout.label(text="この作品の全ページを新しいレイヤー形式へ更新します", icon="INFO")
+        layout.label(text="この作品の全ページを新しいレイヤー形式へ更新します", icon="FILE_REFRESH")
         layout.label(text="元のページは別フォルダーへ退避し、失敗時は全ページを元へ戻します")
         layout.label(text="開始後は完了または自動復旧まで画面を閉じられません", icon="LOCKED")
         open_state = getattr(self, "_open_state", None)

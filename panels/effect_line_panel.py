@@ -118,8 +118,6 @@ def draw_effect_path_settings(
         edit = row.row(align=True)
         edit.enabled = bool(getattr(params, "base_path_enabled", False))
         edit.operator("bmanga.effect_line_base_path_edit", text="編集", icon="CURVE_BEZCURVE")
-    elif not preset_mode:
-        row.label(text="基準パスの編集は効果線ツールから行います", icon="INFO")
 
     image_box = layout.box()
     image_box.label(text="パス線")
@@ -236,8 +234,6 @@ def draw_effect_params(
         _draw_shape_settings(_col(0), params, "start", "外端形状", frame_toggle=True)
         if show_end_shape:
             _draw_shape_settings(_col(0), params, "end", "内端形状")
-        else:
-            _col(0).label(text="内端形状: フキダシの形状を使用", icon="INFO")
         white_cols = (
             (_col(line_col), _col(inout_col), _col(side_col))
             if len(cols) > 2
@@ -265,8 +261,6 @@ def draw_effect_params(
         _draw_shape_settings(_col(0), params, "start", "外端形状", frame_toggle=True)
         if show_end_shape:
             _draw_shape_settings(_col(0), params, "end", "内端形状")
-        else:
-            _col(0).label(text="内端形状: フキダシの形状を使用", icon="INFO")
 
     box = _col(line_col).box()
     box.label(text="線")

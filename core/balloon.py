@@ -72,8 +72,8 @@ _LINE_STYLE_ITEMS = (
     ("dashed", "破線", "一定間隔で途切れる線で描く"),
     ("dotted", "点線", "点を連ねた線で描く"),
     ("double", "多重線", "複数本の線を重ねて描く"),
-    ("uni_flash", "ウニフラ", "フキダシの形状に沿って放射状の線を並べる"),
-    ("white_outline", "白抜き線", "フキダシの形状に沿って白抜き線を放射状に並べる"),
+    ("uni_flash", "ウニフラ", "フキダシの形状を内端輪郭として使い、放射状の線を並べる"),
+    ("white_outline", "白抜き線", "フキダシの形状を内端輪郭として使い、白抜き線を放射状に並べる"),
     ("shape", "図形", "●や★などの図形を線に沿って連続配置する"),
     ("image", "画像", "画像を線に沿って引き延ばして描く"),
     ("material", "マテリアル", "線の帯をマテリアルで塗る (フキダシの領域基準で貼るため、閉じた形でも切れ目が出ない)"),
@@ -641,7 +641,7 @@ class BMangaBalloonEntry(bpy.types.PropertyGroup):
         default=True,
         update=_on_balloon_entry_changed,
     )
-    shape: EnumProperty(name="形状", description="フキダシ本体の形 (矩形・楕円・雲形など)", items=_SHAPE_ITEMS, default="rect", update=_on_balloon_shape_changed)  # type: ignore[valid-type]
+    shape: EnumProperty(name="形状", description="フキダシ本体の形 (矩形・楕円・雲形など)。保存済み実形状の再生成はフキダシツール側から実行する", items=_SHAPE_ITEMS, default="rect", update=_on_balloon_shape_changed)  # type: ignore[valid-type]
     custom_preset_name: StringProperty(  # type: ignore[valid-type]
         name="カスタム形状名",
         description="shape=custom のとき参照するプリセット名",
@@ -862,8 +862,8 @@ class BMangaBalloonEntry(bpy.types.PropertyGroup):
         name="貼り方",
         description="線種「マテリアル」のテクスチャの貼り方",
         items=[
-            ("tile", "そのまま (タイル)", "ページ全体に敷き詰めた模様を帯の形に切り抜く"),
-            ("ribbon", "線に沿う (リボン)", "テクスチャを線の向きに沿って変形して貼る。閉じた図形では周の長さに合わせて整数枚に調整し、始点終点に継ぎ目を出さない"),
+            ("tile", "そのまま (タイル)", "フキダシの領域基準で敷き詰めた模様を帯の形に切り抜く。閉じた形でも切れ目は出ない"),
+            ("ribbon", "線に沿う (リボン)", "線の向きに沿って貼る。通常は周の長さに合わせて整数枚に調整するため切れ目は出ない"),
         ],
         default="tile",
         update=_on_balloon_entry_changed,
@@ -878,9 +878,9 @@ class BMangaBalloonEntry(bpy.types.PropertyGroup):
         name="継ぎ目処理",
         description="「1枚を全周に引き伸ばす」で左右がつながらない柄の始点終点を馴染ませる方法",
         items=[
-            ("none", "そのまま", "始点終点で柄が途切れたまま貼る"),
-            ("mirror", "ミラー往復", "行きは普通に、帰りは鏡像で貼る。始点終点が同じ端になり途切れないが、柄が途中で左右反転する"),
-            ("crossfade", "クロスフェード", "始点終点の手前の短い区間で柄を重ねて馴染ませる (出力で馴染ませる。画面の簡易表示では途切れて見えることがある)"),
+            ("none", "そのまま", "1枚を引き伸ばすため、左右がつながらない柄は始点終点で途切れる"),
+            ("mirror", "ミラー往復", "行きと帰りで鏡像にして始点終点をつなぐ。柄は途中で左右反転する"),
+            ("crossfade", "クロスフェード", "始点終点の手前を重ねて馴染ませる。出力時に適用し、画面の簡易表示では途切れて見えることがある"),
         ],
         default="none",
         update=_on_balloon_entry_changed,

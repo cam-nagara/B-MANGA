@@ -183,7 +183,7 @@ class BMANGA_LINE_OT_reflect_all(bpy.types.Operator):
                 f"選択メッシュ {summary['objects']}件 / "
                 f"ライン適用済み {summary['applied']}件"
             ),
-            icon="INFO",
+            icon="MESH_DATA",
         )
         if summary["intersection"]:
             layout.label(
@@ -193,7 +193,7 @@ class BMANGA_LINE_OT_reflect_all(bpy.types.Operator):
         if summary["uniform"]:
             layout.label(
                 text=f"線幅の均一化（頂点単位） {summary['uniform']}件",
-                icon="INFO",
+                icon="MOD_SMOOTH",
             )
 
     def execute(self, context):

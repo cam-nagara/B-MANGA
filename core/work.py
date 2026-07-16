@@ -90,7 +90,7 @@ class BMangaWorkData(bpy.types.PropertyGroup):
         name="コマblendテンプレート",
         description=(
             "新規 cNN.blend 作成時に初回コピーする .blend。"
-            "空ならB-MANGA標準の空コマシーンを作成"
+            "コマごとの設定が空のときに使われ、さらに空ならプリファレンスの共通設定を使う"
         ),
         default="",
         subtype="FILE_PATH",

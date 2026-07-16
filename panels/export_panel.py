@@ -36,15 +36,15 @@ class BMANGA_PT_export(Panel):
         layout = self.layout
         if not export_pipeline.has_pillow():
             layout.label(text="Pillow 未同梱 - ページ出力無効", icon="ERROR")
-            layout.label(text="wheels/ に Pillow を同梱後に有効化", icon="INFO")
+            layout.label(text="wheels/ に Pillow を同梱後に有効化", icon="ERROR")
             return
         layout.operator("bmanga.export_page", icon="RENDER_STILL")
         layout.operator("bmanga.export_all_pages", icon="RENDER_ANIMATION")
         layout.operator("bmanga.export_pdf", icon="FILE")
         if not export_pipeline.has_pypdf():
-            layout.label(text="(pypdf 未同梱のため Pillow 簡易 PDF)", icon="INFO")
+            layout.label(text="(pypdf 未同梱のため Pillow 簡易 PDF)", icon="ERROR")
         if not export_pipeline.can_write_layered_psd():
-            layout.label(text="(PSD レイヤー出力を利用できません)", icon="INFO")
+            layout.label(text="(PSD レイヤー出力を利用できません)", icon="ERROR")
 
 
 _CLASSES = (BMANGA_PT_export,)

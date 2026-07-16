@@ -535,7 +535,7 @@ class BMangaPaperSettings(bpy.types.PropertyGroup):
     # --- ページ番号書式 ---
     page_number_digits: IntProperty(  # type: ignore[valid-type]
         name="桁数",
-        description="ページ番号のゼロ埋め桁数",
+        description="ページ番号のゼロ埋め桁数。前='p'、桁数=4、後が空なら p0001 と表示します",
         default=4,
         min=1,
         max=8,
@@ -543,13 +543,13 @@ class BMangaPaperSettings(bpy.types.PropertyGroup):
     )
     page_number_prefix: StringProperty(  # type: ignore[valid-type]
         name="前",
-        description="ページ番号の前に付ける文字列 (例: 'p', 'ページ')",
+        description="ページ番号の前に付ける文字列。前='p'、桁数=4、後が空なら p0001 と表示します",
         default="p",
         update=_on_page_number_format_changed,
     )
     page_number_suffix: StringProperty(  # type: ignore[valid-type]
         name="後",
-        description="ページ番号の後に付ける文字列 (例: '頁')",
+        description="ページ番号の後に付ける文字列。前='p'、桁数=4、後='頁'なら p0001頁 と表示します",
         default="",
         update=_on_page_number_format_changed,
     )
@@ -557,7 +557,7 @@ class BMangaPaperSettings(bpy.types.PropertyGroup):
     # --- コマ番号書式 ---
     coma_number_digits: IntProperty(  # type: ignore[valid-type]
         name="桁数",
-        description="コマ番号のゼロ埋め桁数",
+        description="コマ番号のゼロ埋め桁数。前='c'、桁数=2、後が空なら c01 と表示します",
         default=2,
         min=1,
         max=4,
@@ -565,13 +565,13 @@ class BMangaPaperSettings(bpy.types.PropertyGroup):
     )
     coma_number_prefix: StringProperty(  # type: ignore[valid-type]
         name="前",
-        description="コマ番号の前に付ける文字列 (例: 'c', 'コマ')",
+        description="コマ番号の前に付ける文字列。前='c'、桁数=2、後が空なら c01 と表示します",
         default="c",
         update=_on_page_number_format_changed,
     )
     coma_number_suffix: StringProperty(  # type: ignore[valid-type]
         name="後",
-        description="コマ番号の後に付ける文字列 (例: '')",
+        description="コマ番号の後に付ける文字列。前='c'、桁数=2、後='コマ'なら c01コマ と表示します",
         default="",
         update=_on_page_number_format_changed,
     )

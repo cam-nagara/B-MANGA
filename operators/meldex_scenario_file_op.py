@@ -29,7 +29,10 @@ class BMANGA_OT_meldex_scenario_file_import(Operator, ImportHelper):
 
     bl_idname = "bmanga.meldex_scenario_file_import"
     bl_label = "Meldexシナリオを選択"
-    bl_description = "Meldex Scenarioの保存ファイルを読み込み、ページ・フキダシ・テキストへ反映します"
+    bl_description = (
+        "Meldex Scenarioの .mel-scenario / .scriptnote.json を読み込み、"
+        "ページ・フキダシ・テキストへ反映します。同じファイルの再読込では既存行を更新します"
+    )
     bl_options = {"REGISTER"}
 
     filename_ext = ".mel-scenario"

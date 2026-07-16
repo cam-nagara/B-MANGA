@@ -243,7 +243,7 @@ class BMANGA_OT_pages_merge_spread(Operator):
                 f"フキダシ: {len(first.balloons) + len(second.balloons)} / "
                 f"テキスト: {len(first.texts) + len(second.texts)} を保持"
             ),
-            icon="INFO",
+            icon="OUTLINER_COLLECTION",
         )
         column.separator()
         column.label(

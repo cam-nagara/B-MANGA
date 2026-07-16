@@ -112,7 +112,7 @@ def _local_tail_preset_enum_items(_self, context):
 class BMANGA_OT_balloon_tail_preset_apply(Operator):
     bl_idname = "bmanga.balloon_tail_preset_apply"
     bl_label = "しっぽプリセットを適用"
-    bl_description = "選んだプリセットの設定をこのしっぽへ適用します (位置とポイントは保持)"
+    bl_description = "選んだプリセットをこのしっぽだけへ即時適用します。位置とポイントは保持し、詳細設定のキャンセルでは戻りません"
     bl_options = {"REGISTER", "UNDO"}
 
     page_id: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
@@ -142,7 +142,7 @@ class BMANGA_OT_balloon_tail_preset_apply(Operator):
 class BMANGA_OT_balloon_tail_preset_save(Operator):
     bl_idname = "bmanga.balloon_tail_preset_save"
     bl_label = "しっぽプリセットとして保存"
-    bl_description = "このしっぽの設定一式を、全作品共通のしっぽプリセットとして保存します"
+    bl_description = "このしっぽの設定一式を全作品共通プリセットとして即時保存します。詳細設定のキャンセルでは戻りません"
     bl_options = {"REGISTER"}
 
     page_id: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
@@ -179,7 +179,7 @@ class BMANGA_OT_balloon_tail_preset_save(Operator):
 class BMANGA_OT_balloon_tail_preset_delete(Operator):
     bl_idname = "bmanga.balloon_tail_preset_delete"
     bl_label = "しっぽプリセットを削除"
-    bl_description = "共通保存したしっぽプリセットを削除します (同梱プリセットは削除できません)"
+    bl_description = "共通保存したしっぽプリセットを即時削除します。詳細設定のキャンセルでは戻らず、同梱プリセットは削除できません"
     bl_options = {"REGISTER"}
     bl_property = "preset_name"
 
@@ -339,7 +339,7 @@ def _selected_local_tail_preset(context) -> str:
 class BMANGA_OT_balloon_tail_detail_open(Operator):
     bl_idname = "bmanga.balloon_tail_detail_open"
     bl_label = "しっぽの詳細設定"
-    bl_description = "しっぽの形状・線種・プリセットを編集します"
+    bl_description = "しっぽの形状とプリセットを編集します。線の色・太さ・下地は親フキダシの設定に従います"
     bl_options = {"REGISTER", "UNDO"}
 
     page_id: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
@@ -392,12 +392,9 @@ class BMANGA_OT_balloon_tail_detail_open(Operator):
         add.balloon_id = str(getattr(entry, "id", "") or "")
         tails = list(getattr(entry, "tails", []) or [])
         if not tails:
-            layout.label(text="しっぽがありません。しっぽツールでも作成できます", icon="INFO")
+            layout.label(text="しっぽがありません。しっぽツールでも作成できます", icon="SHARPCURVE")
         for i, tail in enumerate(tails):
             _draw_tail_box(layout, context, page, entry, tail, i)
-        note = layout.box()
-        note.label(text="線の色・太さ・下地はフキダシの設定に従います", icon="INFO")
-        note.label(text="プリセットの保存・削除は即時確定します", icon="INFO")
 
     def check(self, context):
         session = getattr(self, "_detail_session", None)

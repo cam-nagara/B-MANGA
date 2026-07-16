@@ -52,7 +52,7 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
         _draw_global_display_controls(layout, context)
         if obj is None or obj.type != "MESH":
             layout.separator()
-            layout.label(text="メッシュオブジェクトを選択してください", icon="INFO")
+            layout.label(text="メッシュオブジェクトを選択してください", icon="MESH_DATA")
             return
         layout.separator()
         _draw_actions(layout, context, obj)
@@ -98,7 +98,7 @@ def _draw_presets(layout, context) -> None:
         row.operator("bmanga_line.preset_duplicate", icon="DUPLICATE")
         row.operator("bmanga_line.preset_delete", icon="TRASH")
     else:
-        col.label(text="保存されたプリセットはありません", icon="INFO")
+        col.label(text="保存されたプリセットはありません", icon="PRESET")
 
 
 def _draw_render_range_selection(layout, _context) -> None:
@@ -297,7 +297,6 @@ def _draw_bump_line(layout, context, settings) -> None:
     sub_label.alignment = "RIGHT"
     sub_label.label(text=_mm_to_px_label(settings.bump_line_thickness, dpi))
     sub.prop(settings, "bump_line_threshold")
-    sub.label(text="レンダリング結果にのみ反映されます（ビューポート非対応）", icon="INFO")
 
 
 def _draw_detail_cell(row, settings, prop_name: str | None) -> None:
@@ -460,7 +459,7 @@ def _draw_actions(layout, context, obj) -> None:
     if locked_count > 0:
         status = layout.row(align=True)
         status.scale_y = 0.8
-        status.label(text=f"ロック中: {locked_count}/{mesh_count}", icon="INFO")
+        status.label(text=f"ロック中: {locked_count}/{mesh_count}", icon="LOCKED")
 
     linked_line_count = sum(
         1 for linked_obj in context.scene.objects
@@ -485,7 +484,7 @@ def _draw_actions(layout, context, obj) -> None:
         info.scale_y = 0.8
         info.label(
             text=f"選択メッシュ: {mesh_count}  ライン適用済み: {outline_count}",
-            icon="INFO",
+            icon="MESH_DATA",
         )
         if is_settings_locked(obj):
             info.label(text="ロック中（設定・更新は変更されません）", icon="LOCKED")

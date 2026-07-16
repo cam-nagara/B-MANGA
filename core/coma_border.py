@@ -85,7 +85,7 @@ class BMangaComaBorder(bpy.types.PropertyGroup):
     )
     blur_amount: FloatProperty(  # type: ignore[valid-type]
         name="ボカシ量",
-        description="輪郭ぼかし線種のときの輪郭のボケ具合",
+        description="輪郭ぼかし線種のときの輪郭のボケ具合。ぼかしカーブは表示更新後に編集できます",
         default=0.5,
         min=0.0,
         max=1.0,

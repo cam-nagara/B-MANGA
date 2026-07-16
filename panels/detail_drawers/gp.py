@@ -23,7 +23,7 @@ def draw_gp_body(layout, _context, session, _mode) -> None:
 
     style = _grease_pencil_style(obj)
     if style is None:
-        layer_box.label(text="線と塗りの色を取得できません", icon="INFO")
+        layer_box.label(text="線と塗りの色を取得できません", icon="ERROR")
         return
     color_box = secondary.box()
     color_box.label(text="線と塗り")

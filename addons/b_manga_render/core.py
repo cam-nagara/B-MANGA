@@ -94,33 +94,33 @@ class BMangaRenderToolSettings(bpy.types.PropertyGroup):
 
 
 class BMangaRenderCommand(bpy.types.PropertyGroup):
-    name: StringProperty(name="コマンド名", default="レンダー")  # type: ignore[valid-type]
-    name_auto: BoolProperty(name="名前を自動生成", default=True)  # type: ignore[valid-type]
-    command_type: EnumProperty(name="種類", items=COMMAND_TYPE_ITEMS, default="RENDER")  # type: ignore[valid-type]
-    enabled: BoolProperty(name="有効", default=True)  # type: ignore[valid-type]
-    collapsed: BoolProperty(name="折りたたみ", default=False)  # type: ignore[valid-type]
+    name: StringProperty(name="コマンド名", description="コマンドリストに表示する名前", default="レンダー")  # type: ignore[valid-type]
+    name_auto: BoolProperty(name="名前を自動生成", description="設定内容からコマンド名を自動生成する", default=True)  # type: ignore[valid-type]
+    command_type: EnumProperty(name="種類", description="コマンドの処理内容。各候補にマウスを置くと対象と動作を確認できます", items=COMMAND_TYPE_ITEMS, default="RENDER")  # type: ignore[valid-type]
+    enabled: BoolProperty(name="有効", description="このコマンドをプリセット実行に含める", default=True)  # type: ignore[valid-type]
+    collapsed: BoolProperty(name="折りたたみ", description="出力ブロック内のコマンド表示を折りたたむ", default=False)  # type: ignore[valid-type]
 
-    view_layer_name: StringProperty(name="ビューレイヤー", default="")  # type: ignore[valid-type]
-    view_layer_enabled: BoolProperty(name="有効化", default=True)  # type: ignore[valid-type]
+    view_layer_name: StringProperty(name="ビューレイヤー", description="対象にするビューレイヤーの完全一致名", default="")  # type: ignore[valid-type]
+    view_layer_enabled: BoolProperty(name="有効化", description="対象ビューレイヤーを有効にする。オフでは無効にする", default=True)  # type: ignore[valid-type]
 
-    collection_name: StringProperty(name="コレクション", default="")  # type: ignore[valid-type]
-    exclude_collection: BoolProperty(name="除外", default=True)  # type: ignore[valid-type]
+    collection_name: StringProperty(name="コレクション", description="対象にするコレクションの完全一致名", default="")  # type: ignore[valid-type]
+    exclude_collection: BoolProperty(name="除外", description="対象コレクションを除外する。オフでは表示する", default=True)  # type: ignore[valid-type]
 
-    node_name: StringProperty(name="ノード名", default="")  # type: ignore[valid-type]
-    node_group_name: StringProperty(name="対象", default="")  # type: ignore[valid-type]
-    label_contains: StringProperty(name="検出ワード", default="")  # type: ignore[valid-type]
-    mute: BoolProperty(name="ミュート", default=False)  # type: ignore[valid-type]
+    node_name: StringProperty(name="ノード名", description="名前またはラベルが完全一致するノードを対象にする", default="")  # type: ignore[valid-type]
+    node_group_name: StringProperty(name="対象", description="対象ノードグループの完全一致名", default="")  # type: ignore[valid-type]
+    label_contains: StringProperty(name="検出ワード", description="名前またはラベルにこの文字列を含むノードを部分一致で対象にする", default="")  # type: ignore[valid-type]
+    mute: BoolProperty(name="ミュート", description="対象をミュートする。オフではミュートを解除する", default=False)  # type: ignore[valid-type]
 
-    input_name: StringProperty(name="入力名", default="")  # type: ignore[valid-type]
-    float_value: FloatProperty(name="値", default=0.0)  # type: ignore[valid-type]
-    text_value: StringProperty(name="文字列", default="")  # type: ignore[valid-type]
-    folder_path: StringProperty(name="フォルダ", subtype="DIR_PATH", default="//passes/")  # type: ignore[valid-type]
+    input_name: StringProperty(name="入力名", description="値を変更するノードグループ入力の完全一致名", default="")  # type: ignore[valid-type]
+    float_value: FloatProperty(name="値", description="対象入力へ設定する数値", default=0.0)  # type: ignore[valid-type]
+    text_value: StringProperty(name="文字列", description="出力画像名。魚眼出力用コマンドでは魚眼モード時のみ使用します", default="")  # type: ignore[valid-type]
+    folder_path: StringProperty(name="フォルダ", description="出力先フォルダ。魚眼出力用コマンドでは魚眼モード時のみ使用します", subtype="DIR_PATH", default="//passes/")  # type: ignore[valid-type]
 
-    sample_count: IntProperty(name="サンプル数", default=1, min=1, soft_max=1024)  # type: ignore[valid-type]
-    engine: EnumProperty(name="レンダーエンジン", items=ENGINE_ITEMS, default="CYCLES")  # type: ignore[valid-type]
-    operator_idname: StringProperty(name="オペレータ", default="")  # type: ignore[valid-type]
+    sample_count: IntProperty(name="サンプル数", description="レンダー時に使うサンプル数", default=1, min=1, soft_max=1024)  # type: ignore[valid-type]
+    engine: EnumProperty(name="レンダーエンジン", description="このコマンドで使うレンダーエンジン", items=ENGINE_ITEMS, default="CYCLES")  # type: ignore[valid-type]
+    operator_idname: StringProperty(name="オペレータ", description="実行するBlenderオペレーターの bl_idname", default="")  # type: ignore[valid-type]
 
-    target_preset_name: StringProperty(name="実行するプリセット", default="")  # type: ignore[valid-type]
+    target_preset_name: StringProperty(name="実行するプリセット", description="順番に実行する別プリセット。退避と復元は実行先プリセットが行います", default="")  # type: ignore[valid-type]
 
 
 # カテゴリはユーザー定義 (state.categories) で、各プリセットに category 名を

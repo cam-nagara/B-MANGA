@@ -91,7 +91,7 @@ class BMANGA_PT_work(Panel):
         row.operator("bmanga.open_current_folder", text="", icon="FILEBROWSER")
 
         if work is None or not work.loaded:
-            layout.label(text="作品が開かれていません", icon="INFO")
+            layout.label(text="作品が開かれていません", icon="FILE_FOLDER")
             box = layout.box()
             box.label(
                 text="ページ一覧でもコマでもない場合",
@@ -111,10 +111,6 @@ class BMANGA_PT_work(Panel):
             text="シナリオファイルを読み込む",
             icon="IMPORT",
         )
-        hint = box.column(align=True)
-        hint.scale_y = 0.85
-        hint.label(text=".mel-scenario / .scriptnote.json", icon="INFO")
-        hint.label(text="同じファイルを再読込すると既存行を更新")
 
         mode = get_mode(context)
         info = work.work_info
@@ -141,10 +137,6 @@ class BMANGA_PT_work(Panel):
         box.label(text="コマ用blendファイル (この作品のみ)", icon="FILE_BLEND")
         box.enabled = mode == MODE_PAGE
         box.prop(work, "coma_blend_template_path", text="")
-        sub = box.column(align=True)
-        sub.scale_y = 0.85
-        sub.label(text="コマごとの設定が空のときに使われる", icon="INFO")
-        sub.label(text="さらに空のときはプリファレンスの共通設定が使われる")
 
 
 class BMANGA_PT_coma_return(Panel):

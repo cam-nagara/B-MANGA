@@ -41,6 +41,7 @@ def _run_independent(operator, action):
 class BMANGA_OT_detail_raster_paint_enter(Operator):
     bl_idname = "bmanga.detail_raster_paint_enter"
     bl_label = "テクスチャペイントを開始"
+    bl_description = "詳細設定をOKまたはキャンセルで閉じてから、このラスターのテクスチャペイントを開始します"
     bl_options = {"INTERNAL"}
 
     session_token: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
@@ -69,6 +70,7 @@ class BMANGA_OT_detail_raster_paint_enter(Operator):
 class BMANGA_OT_detail_raster_save_png(Operator):
     bl_idname = "bmanga.detail_raster_save_png"
     bl_label = "ラスターPNGを保存"
+    bl_description = "現在のラスターをPNGへ即時保存します。詳細設定のキャンセルでは戻りません"
     bl_options = {"INTERNAL"}
 
     session_token: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
