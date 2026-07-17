@@ -88,6 +88,9 @@ _IME_SYSTEM_CARET_CREATED = False
 # インライン編集キャレットの Blender ウィンドウクライアント座標 (x, y_top, w, h)。
 # IME の変換候補ウィンドウ・変換中文字列ウィンドウの表示位置に使う。
 _IME_CARET_CLIENT_RECT: tuple[int, int, int, int] | None = None
+_IME_WINDOW_UPDATE_PENDING = False
+_IME_WINDOW_UPDATE_IN_PROGRESS = False
+_IME_CALLBACK_ERRORS: list[str] = []
 _IME_TEXT_QUEUE: list[str] = []
 _IME_LAST_APPEND = ("", 0.0)
 _IME_LAST_TOGGLE_TIME = 0.0
@@ -562,12 +565,74 @@ def set_ime_caret_client_rect(x: int, y_top: int, width: int, height: int) -> No
     IME の変換候補ウィンドウ・変換文字列ウィンドウの表示位置に使う。
     """
     global _IME_CARET_CLIENT_RECT
-    _IME_CARET_CLIENT_RECT = (int(x), int(y_top), max(1, int(width)), max(1, int(height)))
+    rect = (int(x), int(y_top), max(1, int(width)), max(1, int(height)))
+    if rect == _IME_CARET_CLIENT_RECT:
+        return
+    _IME_CARET_CLIENT_RECT = rect
+    _request_ime_window_update()
 
 
 def clear_ime_caret_client_rect() -> None:
-    global _IME_CARET_CLIENT_RECT
+    global _IME_CARET_CLIENT_RECT, _IME_WINDOW_UPDATE_PENDING
     _IME_CARET_CLIENT_RECT = None
+    _IME_WINDOW_UPDATE_PENDING = False
+
+
+def _request_ime_window_update() -> None:
+    """IME通知コールバック外で候補位置を更新するよう予約する."""
+    global _IME_WINDOW_UPDATE_PENDING
+    if not _IME_WINDOW_UPDATE_IN_PROGRESS:
+        _IME_WINDOW_UPDATE_PENDING = True
+
+
+def flush_ime_window_position() -> bool:
+    """予約された候補位置更新をBlenderのモーダル処理側で実行する.
+
+    ``ImmSetCandidateWindow`` は ``WM_IME_NOTIFY`` を再送するIMEがあるため、
+    サブクラス化したWndProcの通知処理中から同期呼び出ししてはならない。
+    再入ガードもここへ集約し、入れ子の通知は次の更新予約にしない。
+    """
+    global _IME_WINDOW_UPDATE_PENDING, _IME_WINDOW_UPDATE_IN_PROGRESS
+    if (
+        _IME_WINDOW_UPDATE_IN_PROGRESS
+        or not _IME_WINDOW_UPDATE_PENDING
+        or not _IME_CAPTURE_HWND
+        or _IME_CARET_CLIENT_RECT is None
+    ):
+        return False
+    _IME_WINDOW_UPDATE_PENDING = False
+    _IME_WINDOW_UPDATE_IN_PROGRESS = True
+    try:
+        _move_ime_windows(_IME_CAPTURE_HWND)
+    finally:
+        _IME_WINDOW_UPDATE_IN_PROGRESS = False
+    return True
+
+
+def recover_ime_after_focus_loss() -> None:
+    """フォーカス喪失時に未完了のIME状態をモーダル入力へ残さない."""
+    global _IME_WINDOW_UPDATE_PENDING
+    _end_ime_composition()
+    _IME_WINDOW_UPDATE_PENDING = False
+    _destroy_ime_system_caret()
+
+
+def _record_ime_callback_error(error: Exception) -> None:
+    """WndProc内ではログ出力せず、Blender側で読めるよう短く記録する."""
+    global _IME_WINDOW_UPDATE_PENDING
+    _IME_CALLBACK_ERRORS.append(f"{type(error).__name__}: {error}")
+    del _IME_CALLBACK_ERRORS[:-8]
+    _end_ime_composition()
+    _IME_WINDOW_UPDATE_PENDING = False
+
+
+def poll_ime_callback_error() -> str:
+    if not _IME_CALLBACK_ERRORS:
+        return ""
+    message = " | ".join(_IME_CALLBACK_ERRORS)
+    _IME_CALLBACK_ERRORS.clear()
+    recover_ime_after_focus_loss()
+    return message
 
 
 def _destroy_ime_system_caret() -> None:
@@ -654,6 +719,34 @@ def _handle_ime_keydown(hwnd: int, vk_code: int, lparam: int) -> bool:
     return bool(ok)
 
 
+def _handle_ime_window_message(hwnd: int, msg: int, wparam: int, lparam: int) -> bool:
+    """WndProcでIME状態だけを取り込み、OS APIの再入呼出しは行わない."""
+    if msg in {_WM_KEYDOWN, _WM_SYSKEYDOWN}:
+        return _handle_ime_keydown(hwnd, int(wparam), int(lparam))
+    if msg == _WM_IME_STARTCOMPOSITION:
+        _begin_ime_composition()
+        _request_ime_window_update()
+    elif msg == _WM_IME_ENDCOMPOSITION:
+        recover_ime_after_focus_loss()
+    elif msg == _WM_IME_COMPOSITION:
+        committed = _read_ime_string(hwnd, lparam, _GCS_RESULTSTR)
+        if committed:
+            _append_ime_text(committed)
+        else:
+            composition = _read_ime_string(hwnd, lparam, _GCS_COMPSTR)
+            if composition or int(lparam) & _GCS_COMPSTR:
+                _set_ime_composition_text(composition)
+        _request_ime_window_update()
+    elif msg == _WM_IME_NOTIFY:
+        if int(wparam) in {_IMN_OPENCANDIDATE, _IMN_CHANGECANDIDATE}:
+            _request_ime_window_update()
+    elif msg == _WM_CHAR:
+        char_code = int(wparam)
+        if char_code >= 128:
+            _append_ime_text(chr(char_code))
+    return False
+
+
 def begin_ime_capture() -> None:
     """Capture Windows IME committed text while inline text editing is active."""
     global _IME_CAPTURE_HWND, _IME_CAPTURE_OLD_PROC, _IME_CAPTURE_PROC
@@ -677,33 +770,10 @@ def begin_ime_capture() -> None:
 
     def _ime_wnd_proc(hwnd_arg, msg, wparam, lparam):
         try:
-            if msg in {_WM_KEYDOWN, _WM_SYSKEYDOWN}:
-                if _handle_ime_keydown(hwnd_arg, int(wparam), int(lparam)):
-                    return 0
-            elif msg == _WM_IME_STARTCOMPOSITION:
-                _begin_ime_composition()
-                _move_ime_windows(hwnd_arg)
-            elif msg == _WM_IME_ENDCOMPOSITION:
-                _end_ime_composition()
-                _destroy_ime_system_caret()
-            elif msg == _WM_IME_COMPOSITION:
-                committed = _read_ime_string(hwnd_arg, lparam, _GCS_RESULTSTR)
-                if committed:
-                    _append_ime_text(committed)
-                else:
-                    composition = _read_ime_string(hwnd_arg, lparam, _GCS_COMPSTR)
-                    if composition or int(lparam) & _GCS_COMPSTR:
-                        _set_ime_composition_text(composition)
-                _move_ime_windows(hwnd_arg)
-            elif msg == _WM_IME_NOTIFY:
-                if int(wparam) in {_IMN_OPENCANDIDATE, _IMN_CHANGECANDIDATE}:
-                    _move_ime_windows(hwnd_arg)
-            elif msg == _WM_CHAR:
-                char_code = int(wparam)
-                if char_code >= 128:
-                    _append_ime_text(chr(char_code))
-        except Exception:  # noqa: BLE001
-            pass
+            if _handle_ime_window_message(hwnd_arg, int(msg), int(wparam), int(lparam)):
+                return 0
+        except Exception as exc:  # noqa: BLE001
+            _record_ime_callback_error(exc)
         return _USER32.CallWindowProcW(_IME_CAPTURE_OLD_PROC, hwnd_arg, msg, wparam, lparam)
 
     callback = wndproc_type(_ime_wnd_proc)
@@ -721,8 +791,9 @@ def begin_ime_capture() -> None:
 def end_ime_capture() -> None:
     """Restore the Blender window procedure after inline text editing."""
     global _IME_CAPTURE_HWND, _IME_CAPTURE_OLD_PROC, _IME_CAPTURE_PROC, _IME_SUPPRESS_COUNT
+    global _IME_WINDOW_UPDATE_PENDING, _IME_WINDOW_UPDATE_IN_PROGRESS
     _IME_SUPPRESS_COUNT = 0
-    _destroy_ime_system_caret()
+    recover_ime_after_focus_loss()
     clear_ime_caret_client_rect()
     _release_capture_ime_context()
     if _USER32 is not None and _IME_CAPTURE_HWND and _IME_CAPTURE_OLD_PROC:
@@ -733,6 +804,9 @@ def end_ime_capture() -> None:
     _IME_CAPTURE_HWND = None
     _IME_CAPTURE_OLD_PROC = None
     _IME_CAPTURE_PROC = None
+    _IME_WINDOW_UPDATE_PENDING = False
+    _IME_WINDOW_UPDATE_IN_PROGRESS = False
+    _IME_CALLBACK_ERRORS.clear()
     _clear_ime_text_queue()
 
 

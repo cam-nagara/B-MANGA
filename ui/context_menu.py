@@ -387,6 +387,15 @@ def selection_command_items(context) -> list[dict]:
                 "enabled": has_item,
             },
         )
+        items.insert(
+            9,
+            {
+                "label": "拡大・縮小・回転をリセット",
+                "operator": "bmanga.reset_free_transform",
+                "icon": "LOOP_BACK",
+                "enabled": has_item and ft_has_transform,
+            },
+        )
         items.append(
             {
                 "label": "フキダシを結合",

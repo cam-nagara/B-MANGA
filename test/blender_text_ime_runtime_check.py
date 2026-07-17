@@ -261,6 +261,23 @@ def main() -> None:
         assert tool.finished
         assert routed == [(getattr(page, "id", ""), getattr(entry, "id", ""))]
 
+        # フキダシの有無にかかわらず、テキスト領域の案内枠は同じ青色。
+        guide_page = SimpleNamespace(
+            texts=[
+                SimpleNamespace(x_mm=0.0, y_mm=0.0, width_mm=10.0, height_mm=10.0, parent_balloon_id=""),
+                SimpleNamespace(x_mm=12.0, y_mm=0.0, width_mm=10.0, height_mm=10.0, parent_balloon_id="balloon"),
+            ]
+        )
+        guide_outlines = []
+        overlay_text.draw_text_guides(
+            guide_page,
+            context=None,
+            entry_visible=lambda _entry: True,
+            draw_rect_fill=lambda *_args, **_kwargs: None,
+            draw_rect_outline=lambda _rect, color, **_kwargs: guide_outlines.append(tuple(color)),
+        )
+        assert guide_outlines == [overlay_text._TEXT_GUIDE_COLOR] * 2, guide_outlines
+
         # IME 候補ウィンドウ位置用キャレット矩形 API
         text_edit_runtime.set_ime_caret_client_rect(120, 40, 3, 18)
         assert text_edit_runtime._IME_CARET_CLIENT_RECT == (120, 40, 3, 18)
@@ -268,6 +285,64 @@ def main() -> None:
         assert text_edit_runtime._IME_CARET_CLIENT_RECT == (5, 6, 1, 1), "最小1pxが保証されていない"
         text_edit_runtime.clear_ime_caret_client_rect()
         assert text_edit_runtime._IME_CARET_CLIENT_RECT is None
+
+        # 候補通知内で ImmSetCandidateWindow を同期呼び出すと、IMEによっては
+        # WM_IME_NOTIFY が再入してBlender全体が停止する。通知では予約だけ行い、
+        # モーダルTIMERから1回だけ更新されることを決定的に再現する。
+        original_move_ime_windows = text_edit_runtime._move_ime_windows
+        original_capture_hwnd = text_edit_runtime._IME_CAPTURE_HWND
+        move_calls = []
+
+        def _reentrant_move(hwnd):
+            move_calls.append(hwnd)
+            text_edit_runtime._handle_ime_window_message(
+                hwnd,
+                text_edit_runtime._WM_IME_NOTIFY,
+                text_edit_runtime._IMN_CHANGECANDIDATE,
+                0,
+            )
+
+        try:
+            text_edit_runtime._move_ime_windows = _reentrant_move
+            text_edit_runtime._IME_CAPTURE_HWND = 44001
+            text_edit_runtime.set_ime_caret_client_rect(30, 40, 2, 16)
+            text_edit_runtime._handle_ime_window_message(
+                44001,
+                text_edit_runtime._WM_IME_STARTCOMPOSITION,
+                0,
+                0,
+            )
+            assert move_calls == [], "IME通知内で候補位置APIが同期実行されました"
+            assert text_edit_runtime.flush_ime_window_position()
+            assert move_calls == [44001], move_calls
+            assert not text_edit_runtime._IME_WINDOW_UPDATE_PENDING, "再入通知が更新ループを再予約しました"
+            assert not text_edit_runtime.flush_ime_window_position(), "同じ候補位置が連続適用されました"
+            text_edit_runtime._handle_ime_window_message(
+                44001,
+                text_edit_runtime._WM_IME_NOTIFY,
+                text_edit_runtime._IMN_OPENCANDIDATE,
+                0,
+            )
+            assert text_edit_runtime.flush_ime_window_position()
+            assert move_calls == [44001, 44001], move_calls
+            assert text_edit_runtime.ime_composition_active()
+            text_edit_runtime.recover_ime_after_focus_loss()
+            assert not text_edit_runtime.ime_composition_active()
+            assert not text_edit_runtime._IME_WINDOW_UPDATE_PENDING
+        finally:
+            text_edit_runtime._move_ime_windows = original_move_ime_windows
+            text_edit_runtime._IME_CAPTURE_HWND = original_capture_hwnd
+            text_edit_runtime.clear_ime_caret_client_rect()
+
+        text_edit_runtime._begin_ime_composition()
+        deactivate_probe = SimpleNamespace(_select_dragging=False)
+        result = text_op.BMANGA_OT_text_tool._modal_editing(
+            deactivate_probe,
+            bpy.context,
+            Event("WINDOW_DEACTIVATE"),
+        )
+        assert result == {"PASS_THROUGH"}
+        assert not text_edit_runtime.ime_composition_active(), "フォーカス喪失後もIME入力捕捉が残っています"
 
         text_edit_runtime.set_ime_caret_client_rect(10, 20, 2, 16)
         text_edit_runtime.begin_ime_capture()

@@ -985,6 +985,9 @@ class BMANGA_OT_text_tool(Operator):
     def _modal_editing(self, context, event):
         if getattr(self, "_select_dragging", False):
             return self._modal_text_selection_drag(context, event)
+        if event.type == "WINDOW_DEACTIVATE":
+            text_edit_runtime.recover_ime_after_focus_loss()
+            return {"PASS_THROUGH"}
         history_result = text_edit_history.handle_undo_redo(self, context, event)
         if history_result is not None:
             return history_result
@@ -995,6 +998,10 @@ class BMANGA_OT_text_tool(Operator):
             # IME 候補ウィンドウの表示位置用に、キャレットのクライアント座標を
             # 常時更新する (ビューのパン/ズームや変換中の伸縮へ 50ms で追従)。
             self._publish_ime_caret_rect(context)
+            text_edit_runtime.flush_ime_window_position()
+            ime_error = text_edit_runtime.poll_ime_callback_error()
+            if ime_error:
+                _logger.error("text_tool: Windows IME callback failed: %s", ime_error)
             if text_edit_runtime.ime_composition_active():
                 layer_stack_utils.tag_view3d_redraw(context)
             return {"RUNNING_MODAL"}
@@ -1066,6 +1073,7 @@ class BMANGA_OT_text_tool(Operator):
     def _begin_inline_input(self, context) -> None:
         text_edit_runtime.begin_ime_capture()
         self._publish_ime_caret_rect(context)
+        text_edit_runtime.flush_ime_window_position()
         if getattr(self, "_ime_timer", None) is not None:
             return
         window = getattr(context, "window", None)

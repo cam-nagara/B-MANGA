@@ -481,6 +481,7 @@ def _assert_menu_items(context) -> bool:
             expected.append("自由変形をリセット")
             if kind == "balloon":
                 expected.append("拡大・縮小・回転")
+                expected.append("拡大・縮小・回転をリセット")
         elif kind == "text":
             expected.append("自由変形をリセット")
         expected.extend(["選択レイヤーをリンク", "リンクを解除"])

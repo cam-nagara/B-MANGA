@@ -436,6 +436,7 @@ def _check_right_click_matrix(targets) -> list[dict[str, Any]]:
             "自由変形": True,
             "自由変形をリセット": False,
             "拡大・縮小・回転": True,
+            "拡大・縮小・回転をリセット": False,
             "選択レイヤーをリンク": False,
             "リンクを解除": False,
             "フキダシを結合": False,

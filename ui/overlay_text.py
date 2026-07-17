@@ -9,6 +9,7 @@ from ..operators import text_edit_runtime
 
 EntryVisiblePredicate = Callable[[object], bool]
 _TEXT_HANDLE_SIZE_MM = 2.0
+_TEXT_GUIDE_COLOR = (0.2, 0.7, 1.0, 1.0)
 _TEXT_CARET_COLOR = (0.02, 0.02, 0.02, 1.0)
 _TEXT_SELECTION_COLOR_DEFAULT = (0.0, 0.7, 1.0, 0.45)
 
@@ -130,8 +131,7 @@ def draw_text_guides(
         # 重ねると、テキスト本体が常に白く霞んで見えてしまうため。
         if editing_op is not None or not _real_text_object_shown(context, page, entry):
             draw_rect_fill(rect, (1.0, 1.0, 1.0, 0.55))
-        color = (0.2, 0.7, 1.0, 1.0) if entry.parent_balloon_id else (0.95, 0.85, 0.1, 1.0)
-        draw_rect_outline(rect, color, width_mm=0.30)
+        draw_rect_outline(rect, _TEXT_GUIDE_COLOR, width_mm=0.30)
         # 選択時のピンク強調輪郭はここでは描画しない。選択フィードバックは
         # ハンドル描画側 (ui/overlay.py の _draw_object_tool_layer_bounds) に
         # 一本化する。ここで重ねて描くと青枠のすぐ外側にピンクの二重輪郭が

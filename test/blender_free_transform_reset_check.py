@@ -47,6 +47,8 @@ def main() -> None:
         mod = _load_addon()
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "FreeTransformReset.bmanga"))
         assert result == {"FINISHED"}, result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        assert result == {"FINISHED"}, result
 
         from bmanga_dev.operators import balloon_op, coma_modal_state, effect_line_op, text_op
         from bmanga_dev.utils import balloon_line_mesh, free_transform, layer_hierarchy, layer_stack as layer_stack_utils
@@ -107,10 +109,22 @@ def main() -> None:
         ) == {"FINISHED"}
         if not free_transform.entry_enabled(balloon):
             raise AssertionError("フキダシ回転で自由変形が有効になっていません")
+        from bmanga_dev.ui import context_menu
+
+        menu_state = {
+            str(item.get("label", "")): bool(item.get("enabled", False))
+            for item in context_menu.selection_command_items(context)
+        }
+        assert menu_state["拡大・縮小・回転をリセット"], menu_state
         assert bpy.ops.bmanga.reset_free_transform() == {"FINISHED"}
         assert not free_transform.entry_enabled(balloon)
         if abs(float(balloon.free_transform_line_width_scale) - 1.0) > 1.0e-6:
             raise AssertionError("自由変形リセットで線幅倍率が戻っていません")
+        menu_state = {
+            str(item.get("label", "")): bool(item.get("enabled", False))
+            for item in context_menu.selection_command_items(context)
+        }
+        assert not menu_state["拡大・縮小・回転をリセット"], menu_state
 
         text, missing = text_op._create_text_entry(
             context,

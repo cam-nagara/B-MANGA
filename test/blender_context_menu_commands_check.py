@@ -160,6 +160,7 @@ def _assert_menu_for_kind(kind: str) -> None:
         expected.append("自由変形をリセット")
     if kind == "balloon":
         expected.append("拡大・縮小・回転")
+        expected.append("拡大・縮小・回転をリセット")
     expected.append("選択レイヤーをリンク")
     expected.append("リンクを解除")
     if kind == "balloon":
@@ -186,6 +187,7 @@ def _assert_menu_for_kind(kind: str) -> None:
         assert "自由変形をリセット" in enabled, (kind, enabled)
     if kind == "balloon":
         assert enabled["拡大・縮小・回転"] is True, (kind, enabled)
+        assert enabled["拡大・縮小・回転をリセット"] is False, (kind, enabled)
     assert enabled["選択レイヤーをリンク"] is False, (kind, enabled)
     assert enabled["リンクを解除"] is False, (kind, enabled)
     if kind == "balloon":
