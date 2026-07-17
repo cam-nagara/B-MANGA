@@ -5,6 +5,7 @@ from __future__ import annotations
 import bpy
 
 from . import outline_setup, outline_width_attribute, plane_filter
+from .gn_socket_compat import set_gn_modifier_input
 from .core import (
     DEFAULT_LINE_WIDTH_REFERENCE_DISTANCE,
     MODIFIER_NAME,
@@ -338,7 +339,7 @@ def _update_existing_sheet_outline(
         double_sided=outline_setup._outline_double_sided(obj),
     )
     outline_setup._ensure_sheet_line_material_slot(obj, mat)
-    mod[sid_mat] = mat
+    set_gn_modifier_input(mod, sid_mat, mat)
 
     local_thickness = modifier_thickness_for_world_width(obj, thickness)
     outline_setup.sync_sheet_outline_width(obj, local_thickness)

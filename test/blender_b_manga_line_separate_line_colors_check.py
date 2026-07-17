@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / "test"))
 import b_manga_line  # noqa: E402
 from b_manga_line_test_utils import temporary_line_preset_store  # noqa: E402
 from b_manga_line import core  # noqa: E402
+from b_manga_line.gn_socket_compat import get_gn_modifier_input  # noqa: E402
 
 
 MATERIAL_SOCKET = "マテリアル"
@@ -60,7 +61,7 @@ def _modifier_material(mod: bpy.types.Modifier) -> bpy.types.Material:
     tree = mod.node_group
     if tree is None:
         raise AssertionError(f"node group missing: {mod.name}")
-    mat = mod[_socket_id(tree, MATERIAL_SOCKET)]
+    mat = get_gn_modifier_input(mod, _socket_id(tree, MATERIAL_SOCKET), None)
     if mat is None:
         raise AssertionError(f"material missing: {mod.name}")
     return mat

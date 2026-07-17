@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
 from b_manga_line import core, inner_lines, outline_setup, subdivision_lod  # noqa: E402
+from b_manga_line.gn_socket_compat import get_gn_modifier_input  # noqa: E402
 
 
 def _inner_count(obj: bpy.types.Object) -> int:
@@ -21,7 +22,7 @@ def _inner_count(obj: bpy.types.Object) -> int:
     assert mod is not None and mod.node_group is not None
     socket_id = inner_lines._find_socket_id(mod.node_group, "線の分割数")
     assert socket_id is not None
-    return int(mod[socket_id])
+    return int(get_gn_modifier_input(mod, socket_id, 0))
 
 
 def main() -> None:

@@ -21,6 +21,7 @@ from b_manga_line import (  # noqa: E402
     intersection_lines,
     presets,
 )
+from b_manga_line.gn_socket_compat import get_gn_modifier_input  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -89,7 +90,7 @@ def _evaluated_polygon_count(obj: bpy.types.Object) -> int:
 def _socket_value(mod: bpy.types.Modifier, socket_name: str):
     sid = inner_line_cache._find_socket_id(mod.node_group, socket_name)
     assert sid is not None, f"socket not found: {socket_name}"
-    return mod[sid]
+    return get_gn_modifier_input(mod, sid, None)
 
 
 def main() -> None:
@@ -183,7 +184,7 @@ def main() -> None:
         )
         assert offset_sid is not None, "保存済み交差線にオフセット入力がありません"
         assert intersection_lines.update_parameters(source, offset=0.35)
-        assert abs(float(mod[offset_sid]) - 0.35) < 1.0e-7
+        assert abs(float(get_gn_modifier_input(mod, offset_sid, 0.0)) - 0.35) < 1.0e-7
         assert camera_comp.refresh_objects(
             bpy.context,
             [source],

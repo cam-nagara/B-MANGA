@@ -1,7 +1,57 @@
 # CHANGELOG
 
 このファイルは B-MANGA の主要な変更履歴を記録します。
-Blender 5.1.2 を対象としています。
+Blender 5.2 LTS を対象としています（開発基準バージョン。5.1でも動作確認済み）。
+
+## 2026-07-18 — Blender 5.2 LTS 移行 (B-MANGA v0.6.544 / Liner v0.3.201 / Render v0.1.37)
+
+### 症状
+
+- Blender 5.2 LTS（2026-07-14リリース）上で B-MANGA を使うと、効果線・フキダシ形状生成が
+  `KeyError: 'B_INT'` で失敗し、B-MANGA Liner のアウトライン細分化・稜谷線・交差線が
+  `IndexError`（Compareノードのソケットが範囲外）で軒並み失敗した。
+- さらに調査の過程で、GNモディファイア入力の書込みが**エラーにならず黙って反映されない**
+  経路（try/exceptで握りつぶされていた箇所）と、交差線の「ビューポート表示を遅らせて
+  後で復帰させる」仕組みが5.2で丸ごと無効化される実害（例外を捕捉して早期returnしていた
+  ため）を発見した。
+
+### 原因
+
+- Blender 5.2 で Geometry Nodes モディファイア入力への `modifier[identifier] = value` 形式の
+  代入・読取（`[]`/`.get()`）が完全に廃止され、GNソケットに限らず**モディファイア上の
+  任意のカスタムプロパティ全般**が読み書き不能になった（他モディファイア種別でも同様と
+  実機確認）。新形式は `modifier.properties.inputs[identifier]` から項目を取得するが、
+  返り値の形がソケットの型によって RNA構造体（`.value`属性）と素の
+  `IDPropertyGroup`（`["value"]`添字）の2通りに分かれることも実機で判明した。
+- 同時に `FunctionNodeCompare`/`FunctionNodeRandomValue` ノードの型別ソケット
+  （`A_INT`/`B_INT`/`Min_002`等）が撤廃され、`A`/`B`・`Min`/`Max`等の共通ソケットへ
+  統合された。B-MANGA・Linerとも、この撤廃されたソケットをインデックス番号や
+  旧識別子文字列で直接指定していた箇所が軒並み影響を受けた。
+
+### 修正
+
+- `utils/geometry_nodes_bridge.py` に `set_gn_modifier_input`/`get_gn_modifier_input`
+  （5.1/5.2どちらの返り値の形でも吸収する書込読取ヘルパー）と、Compare/RandomValueの
+  ソケットを「有効なソケットを表示名で解決する」方式（型に依存せず5.1/5.2共通で動作）へ
+  統一する `_compare_operand_socket` を新設し、効果線・フキダシ生成の全経路を置換した。
+  ノードグループの世代番号を更新し、5.2上で一度でも構築に失敗した壊れたノードグループを
+  次回起動時に自動再構築させる。
+- B-MANGA Liner（`addons/b_manga_line/`）に新規共通モジュール `gn_socket_compat.py` を追加し、
+  内側線・交差線・アウトライン・自動スムーズ保存ガード等13ファイルの GNモディファイア
+  読み書きとCompare/RandomValueソケットアクセスを同モジュール経由へ統一した。
+  交差線のビューポート遅延表示（`intersection_lines.py`）は、書込失敗時に処理全体を
+  中断していた箇所を分離し、5.2でも表示の遅延・復帰が機能するよう修正した。
+- 3アドオン（B-MANGA本体／Liner／Render）の `blender_manifest.toml` と `bl_info` の
+  対応バージョンを `4.3.0` から `5.2.0` へ引き上げた。
+
+### 検証 (Blender 5.2.0 LTS 実機)
+
+- `addons/b_manga_line/` の自動テスト75本中74本がグリーン（残り1本は `--phase` 引数必須の
+  既存仕様で本修正と無関係）。効果線・フキダシ・自動スムーズ保存ガード・
+  Geometry Nodesブリッジの直接テストも合格。
+- 修正した全ファイルを Blender 5.1.2 実機でも再検証し、退行なし（互換ヘルパー方式のため
+  5.1/5.2どちらでも同一コードで動作）。
+- 詳細な実機確認事実・修正方針は `docs/blender_5_2_migration_plan_2026-07-18.md` 参照。
 
 ## 2026-07-18 — 起動時に標準ショートカットの無効化残りを自動復旧 (B-MANGA v0.6.543)
 

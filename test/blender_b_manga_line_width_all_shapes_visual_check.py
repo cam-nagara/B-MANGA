@@ -329,9 +329,12 @@ def _modifier_socket_value(mod: bpy.types.Modifier, preferred_names: tuple[str, 
         if getattr(item, "name", "") not in preferred_names:
             continue
         identifier = getattr(item, "identifier", "")
+        from b_manga_line.gn_socket_compat import get_gn_modifier_input
+
+        value = get_gn_modifier_input(mod, identifier, None)
         try:
-            return float(mod[identifier])
-        except Exception:
+            return float(value) if value is not None else None
+        except (TypeError, ValueError):
             return None
     return None
 

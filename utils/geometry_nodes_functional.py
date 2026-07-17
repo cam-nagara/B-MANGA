@@ -18,8 +18,8 @@ def _compare_int(gn, group, source_socket, value: int, *, operation: str = "EQUA
     node = gn._node(group, "FunctionNodeCompare", label=label, location=location)
     node.data_type = "INT"
     node.operation = operation
-    gn._link(group, source_socket, gn._socket_by_identifier(node.inputs, "A_INT"))
-    gn._set_default(gn._socket_by_identifier(node.inputs, "B_INT"), int(value))
+    gn._link(group, source_socket, gn._compare_operand_socket(node, "A"))
+    gn._set_default(gn._compare_operand_socket(node, "B"), int(value))
     return node.outputs["Result"]
 
 

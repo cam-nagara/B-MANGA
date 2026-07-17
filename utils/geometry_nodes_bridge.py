@@ -16,7 +16,7 @@ MODIFIER_NAME = "B-MANGA Geometry Nodes"
 GROUP_PREFIX = "BManga_GN_"
 PROP_GN_KIND = "bmanga_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bmanga_geometry_nodes_version"
-_GROUP_VERSION = 36
+_GROUP_VERSION = 37  # Blender 5.2 LTS: Compare ノードの識別子解決を型別ソケット依存から表示名解決へ変更
 _BALLOON_TAIL_SOCKET_COUNT = 8
 _SETTING_OUTPUT_PREFIX = "設定接続確認: "
 _COMMON_SHAPE_GROUP_NAME = f"{GROUP_PREFIX}CommonCloudThornShape"
@@ -493,6 +493,19 @@ def _socket_by_identifier(sockets, identifier: str):
     raise KeyError(identifier)
 
 
+def _compare_operand_socket(node, name: str):
+    """Compare ノードの A/B 等のオペランド入力を、有効なソケットの表示名で解決する.
+
+    Blender 5.1 以前は型ごとに専用ソケット (A_INT/B_INT 等) が常設され、対応する型だけ
+    enabled=True になる。5.2 以降は型ごとの専用ソケットが撤廃され A/B の2本だけになる。
+    どちらの版でも「有効なソケットの中から表示名で選ぶ」ことで同一コードが動く。
+    """
+    for socket in node.inputs:
+        if getattr(socket, "enabled", True) and str(getattr(socket, "name", "") or "") == name:
+            return socket
+    raise KeyError(name)
+
+
 def _link(group, output_socket, input_socket) -> None:
     try:
         group.links.new(output_socket, input_socket)
@@ -669,8 +682,8 @@ def _shape_compare(group, input_node, shape_code: int, *, label: str, location: 
     compare = _node(group, "FunctionNodeCompare", label=label, location=location)
     compare.data_type = "INT"
     compare.operation = "EQUAL"
-    _set_default(_socket_by_identifier(compare.inputs, "B_INT"), int(shape_code))
-    _link(group, input_node.outputs["形状"], _socket_by_identifier(compare.inputs, "A_INT"))
+    _set_default(_compare_operand_socket(compare, "B"), int(shape_code))
+    _link(group, input_node.outputs["形状"], _compare_operand_socket(compare, "A"))
     return compare.outputs["Result"]
 
 
@@ -678,8 +691,8 @@ def _compare_int_socket(group, source_socket, value: int, *, label: str, locatio
     compare = _node(group, "FunctionNodeCompare", label=label, location=location)
     compare.data_type = "INT"
     compare.operation = "EQUAL"
-    _set_default(_socket_by_identifier(compare.inputs, "B_INT"), int(value))
-    _link(group, source_socket, _socket_by_identifier(compare.inputs, "A_INT"))
+    _set_default(_compare_operand_socket(compare, "B"), int(value))
+    _link(group, source_socket, _compare_operand_socket(compare, "A"))
     return compare.outputs["Result"]
 
 
@@ -695,8 +708,8 @@ def _compare_float_socket(
     compare = _node(group, "FunctionNodeCompare", label=label, location=location)
     compare.data_type = "FLOAT"
     compare.operation = operation
-    _set_default(_socket_by_identifier(compare.inputs, "B"), float(value))
-    _link(group, source_socket, _socket_by_identifier(compare.inputs, "A"))
+    _set_default(_compare_operand_socket(compare, "B"), float(value))
+    _link(group, source_socket, _compare_operand_socket(compare, "A"))
     return compare.outputs["Result"]
 
 
@@ -712,8 +725,8 @@ def _compare_float_sockets(
     compare = _node(group, "FunctionNodeCompare", label=label, location=location)
     compare.data_type = "FLOAT"
     compare.operation = operation
-    _link(group, a_socket, _socket_by_identifier(compare.inputs, "A"))
-    _link(group, b_socket, _socket_by_identifier(compare.inputs, "B"))
+    _link(group, a_socket, _compare_operand_socket(compare, "A"))
+    _link(group, b_socket, _compare_operand_socket(compare, "B"))
     return compare.outputs["Result"]
 
 
@@ -2713,22 +2726,83 @@ def _socket_identifiers(group, kind: str) -> dict[str, tuple[str, SocketSpec]]:
     return out
 
 
+def set_gn_modifier_input(modifier, identifier: str, value: Any) -> bool:
+    """GN モディファイア入力への値書込み (Blender 5.1以前 / 5.2 LTS以降の両対応).
+
+    5.2 では `modifier[identifier] = value` の旧形式代入が完全廃止され TypeError になる。
+    新形式は `modifier.properties.inputs[identifier]` から項目を取り、型によって
+    RNA構造体 (`.value` 属性) か素の IDPropertyGroup (`["value"]` 添字) のどちらかで
+    返ってくる (5.2.0 実機で両方の形が確認できたため、両方を試す)。
+    """
+    if not identifier:
+        return False
+    properties = getattr(modifier, "properties", None)
+    if properties is not None:
+        try:
+            item = properties.inputs[identifier]
+        except Exception:  # noqa: BLE001
+            item = None
+        if item is not None:
+            try:
+                item.value = value
+                return True
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                item["value"] = value
+                return True
+            except Exception:  # noqa: BLE001
+                pass
+    try:
+        modifier[identifier] = value
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def get_gn_modifier_input(modifier, identifier: str, default: Any = None) -> Any:
+    """GN モディファイア入力の現在値読取り (5.1以前 / 5.2 LTS以降の両対応)."""
+    if not identifier:
+        return default
+    properties = getattr(modifier, "properties", None)
+    if properties is not None:
+        try:
+            item = properties.inputs[identifier]
+        except Exception:  # noqa: BLE001
+            item = None
+        if item is not None:
+            try:
+                return item.value
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                return item["value"]
+            except Exception:  # noqa: BLE001
+                pass
+    try:
+        return modifier[identifier]
+    except Exception:  # noqa: BLE001
+        return default
+
+
 def _set_modifier_value(modifier, identifier: str, spec: SocketSpec, value: Any) -> None:
     if not identifier:
         return
     try:
         if spec.socket_type in {"NodeSocketObject", "NodeSocketMaterial"}:
-            modifier[identifier] = value
+            ok = set_gn_modifier_input(modifier, identifier, value)
         elif spec.socket_type == "NodeSocketBool":
-            modifier[identifier] = bool(value)
+            ok = set_gn_modifier_input(modifier, identifier, bool(value))
         elif spec.socket_type == "NodeSocketInt":
-            modifier[identifier] = int(round(float(value or 0)))
+            ok = set_gn_modifier_input(modifier, identifier, int(round(float(value or 0))))
         elif spec.socket_type == "NodeSocketColor":
-            modifier[identifier] = tuple(value or (0.0, 0.0, 0.0, 1.0))
+            ok = set_gn_modifier_input(modifier, identifier, tuple(value or (0.0, 0.0, 0.0, 1.0)))
         elif spec.socket_type == "NodeSocketString":
-            modifier[identifier] = str(value or "")
+            ok = set_gn_modifier_input(modifier, identifier, str(value or ""))
         else:
-            modifier[identifier] = float(value or 0.0)
+            ok = set_gn_modifier_input(modifier, identifier, float(value or 0.0))
+        if not ok:
+            _logger.error("geometry nodes bridge: modifier input sync failed identifier=%s", identifier)
     except Exception:  # noqa: BLE001
         _logger.exception("geometry nodes bridge: modifier input sync failed")
 

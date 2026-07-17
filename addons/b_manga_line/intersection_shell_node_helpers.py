@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .gn_socket_compat import random_value_operand_socket, random_value_output_socket
+
 
 _ANGLE_SPLIT_MIN_SEGMENT_FRACTION = 0.04
 
@@ -230,15 +232,15 @@ def _add_jittered_midpoint_factor_from_output(
     random = nodes.new("FunctionNodeRandomValue")
     random.location = (x_offset - 760, y_offset + 440)
     random.data_type = "FLOAT"
-    random.inputs[2].default_value = -1.0
-    random.inputs[3].default_value = 1.0
+    random_value_operand_socket(random, "Min").default_value = -1.0
+    random_value_operand_socket(random, "Max").default_value = 1.0
     links.new(
         random_id_output if random_id_output is not None else spline.outputs["Index"],
         random.inputs["ID"],
     )
 
     offset = _math(nodes, "MULTIPLY", (x_offset - 220, y_offset + 340))
-    links.new(random.outputs[1], offset.inputs[0])
+    links.new(random_value_output_socket(random), offset.inputs[0])
     links.new(jitter_max.outputs[0], offset.inputs[1])
     center = _math(nodes, "ADD", (x_offset - 20, y_offset + 340), value0=0.5)
     center.label = jitter_center_label

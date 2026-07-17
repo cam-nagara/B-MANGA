@@ -1,7 +1,7 @@
 # B-MANGA Render マニュアル
 
-最終更新: 2026-05-20
-対象: B-MANGA Render 0.1.16 / Blender 5.1.1
+最終更新: 2026-05-20（Blender対応表記のみ 2026-07-18 更新。本体バージョン表記は要更新 — AGENT_INBOX.md参照）
+対象: B-MANGA Render 0.1.16 / Blender 5.2 LTS（開発基準バージョン）
 
 ## 概要
 

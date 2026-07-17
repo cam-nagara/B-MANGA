@@ -23,6 +23,7 @@ from b_manga_line import (  # noqa: E402
     outline_setup,
     presets,
 )
+from b_manga_line.gn_socket_compat import get_gn_modifier_input  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -206,7 +207,7 @@ def main() -> None:
     mod = source.modifiers.get(core.INTERSECTION_MODIFIER_NAME)
     assert mod is not None, "保存済み交差線モディファイアが作成されていません"
     sid_width = intersection_cache._find_socket_id(tree, "線の太さ")
-    assert sid_width is not None and float(mod[sid_width]) > 0.0, (
+    assert sid_width is not None and float(get_gn_modifier_input(mod, sid_width, 0.0)) > 0.0, (
         "交差線の太さが反映されていません"
     )
     cache_name = str(source.get(intersection_cache.CACHE_OBJECT_PROP, "") or "")

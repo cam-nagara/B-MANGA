@@ -7,6 +7,8 @@ import math
 import bpy
 from bpy.app.handlers import persistent
 
+from .gn_socket_compat import get_gn_modifier_input, set_gn_modifier_input
+
 
 AUTO_SMOOTH_NAME = "Smooth by Angle"
 ANGLE_SOCKET_ID = "Input_1"
@@ -64,10 +66,10 @@ def _modifier_index(obj: bpy.types.Object, mod: bpy.types.Modifier) -> int:
 
 def _remember_modifier_settings(obj: bpy.types.Object, mod: bpy.types.Modifier) -> None:
     try:
-        angle = float(mod.get(ANGLE_SOCKET_ID, math.radians(30.0)))
-        ignore_sharpness = bool(mod.get(IGNORE_SHARPNESS_SOCKET_ID, False))
-        mod[STORED_ANGLE_PROP] = angle
-        mod[STORED_IGNORE_SHARPNESS_PROP] = ignore_sharpness
+        angle = float(get_gn_modifier_input(mod, ANGLE_SOCKET_ID, math.radians(30.0)))
+        ignore_sharpness = bool(get_gn_modifier_input(mod, IGNORE_SHARPNESS_SOCKET_ID, False))
+        set_gn_modifier_input(mod, STORED_ANGLE_PROP, angle)
+        set_gn_modifier_input(mod, STORED_IGNORE_SHARPNESS_PROP, ignore_sharpness)
         obj[OBJ_STORED_ANGLE_PROP] = angle
         obj[OBJ_STORED_IGNORE_SHARPNESS_PROP] = ignore_sharpness
         obj[_angle_prop_name(mod.name)] = angle
@@ -103,9 +105,10 @@ def _repair_modifier(obj: bpy.types.Object, mod: bpy.types.Modifier, context) ->
             _angle_prop_name(name),
             obj.get(
                 OBJ_STORED_ANGLE_PROP,
-                mod.get(
+                get_gn_modifier_input(
+                    mod,
                     STORED_ANGLE_PROP,
-                    mod.get(ANGLE_SOCKET_ID, math.radians(30.0)),
+                    get_gn_modifier_input(mod, ANGLE_SOCKET_ID, math.radians(30.0)),
                 ),
             ),
         )
@@ -116,9 +119,10 @@ def _repair_modifier(obj: bpy.types.Object, mod: bpy.types.Modifier, context) ->
             _ignore_sharpness_prop_name(name),
             obj.get(
                 OBJ_STORED_IGNORE_SHARPNESS_PROP,
-                mod.get(
+                get_gn_modifier_input(
+                    mod,
                     STORED_IGNORE_SHARPNESS_PROP,
-                    mod.get(IGNORE_SHARPNESS_SOCKET_ID, False),
+                    get_gn_modifier_input(mod, IGNORE_SHARPNESS_SOCKET_ID, False),
                 ),
             ),
         )
@@ -142,8 +146,8 @@ def _repair_modifier(obj: bpy.types.Object, mod: bpy.types.Modifier, context) ->
         if new_mod is None or not _is_valid_smooth_modifier(new_mod):
             return False
         new_mod.name = name
-        new_mod[ANGLE_SOCKET_ID] = angle
-        new_mod[IGNORE_SHARPNESS_SOCKET_ID] = ignore_sharpness
+        set_gn_modifier_input(new_mod, ANGLE_SOCKET_ID, angle)
+        set_gn_modifier_input(new_mod, IGNORE_SHARPNESS_SOCKET_ID, ignore_sharpness)
         _remember_modifier_settings(obj, new_mod)
         new_mod.show_viewport = show_viewport
         new_mod.show_render = show_render

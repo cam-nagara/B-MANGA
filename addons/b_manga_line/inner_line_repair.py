@@ -5,6 +5,7 @@ from __future__ import annotations
 import bpy
 
 from .core import GN_MODIFIER_NAME, VG_INNER_LINE_WIDTH, inner_width_split_angle
+from .gn_socket_compat import get_gn_modifier_input
 
 
 _timer_running = False
@@ -71,9 +72,12 @@ def _modifier_float(mod: bpy.types.Modifier, tree: bpy.types.NodeTree, socket_na
     sid = inner_lines._find_socket_id(tree, socket_name)
     if sid is None:
         return fallback
+    value = get_gn_modifier_input(mod, sid, None)
+    if value is None:
+        return fallback
     try:
-        return float(mod[sid])
-    except (KeyError, TypeError, ValueError):
+        return float(value)
+    except (TypeError, ValueError):
         return fallback
 
 
@@ -83,10 +87,10 @@ def _modifier_bool(mod: bpy.types.Modifier, tree: bpy.types.NodeTree, socket_nam
     sid = inner_lines._find_socket_id(tree, socket_name)
     if sid is None:
         return fallback
-    try:
-        return bool(mod[sid])
-    except (KeyError, TypeError, ValueError):
+    value = get_gn_modifier_input(mod, sid, None)
+    if value is None:
         return fallback
+    return bool(value)
 
 
 def _refresh_chain_attribute(

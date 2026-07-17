@@ -16,6 +16,7 @@ from . import (
     modifier_stack,
     vertex_analysis,
 )
+from .gn_socket_compat import compare_operand_socket, get_gn_modifier_input, set_gn_modifier_input
 from .core import (
     GENERATED_LINE_ATTR,
     GN_MODIFIER_NAME,
@@ -212,8 +213,8 @@ def _create_display_tree() -> bpy.types.NodeTree:
     smoothing_enabled.data_type = "INT"
     smoothing_enabled.operation = "GREATER_THAN"
     smoothing_enabled.location = (-300, -420)
-    smoothing_enabled.inputs[3].default_value = 0
-    links.new(gin.outputs[_RESAMPLE_COUNT_SOCKET], smoothing_enabled.inputs[2])
+    compare_operand_socket(smoothing_enabled, "B").default_value = 0
+    links.new(gin.outputs[_RESAMPLE_COUNT_SOCKET], compare_operand_socket(smoothing_enabled, "A"))
     smooth_curve = curve_smoothing_nodes.add_corner_preserving_bezier(
         nodes,
         links,
@@ -364,13 +365,10 @@ def _set_modifier_input_if_changed(
 ) -> None:
     if socket_id is None:
         return
-    try:
-        old = mod[socket_id]
-    except (KeyError, TypeError):
-        old = None
+    old = get_gn_modifier_input(mod, socket_id, None)
     if old == value:
         return
-    mod[socket_id] = value
+    set_gn_modifier_input(mod, socket_id, value)
 
 
 def _ensure_material_slot(obj: bpy.types.Object, material: bpy.types.Material | None) -> None:

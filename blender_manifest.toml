@@ -1,13 +1,13 @@
 schema_version = "1.0.0"
 
 id = "b_manga"
-version = "0.6.543"
+version = "0.6.544"
 name = "B-MANGA"
 tagline = "Blender manga name/storyboard authoring addon"
 maintainer = "B-MANGA Project"
 type = "add-on"
 
-blender_version_min = "4.3.0"
+blender_version_min = "5.2.0"
 
 # Blender API (GPL) に依存するため GPL を仮置き。後段で再検討可。
 license = [
@@ -36,7 +36,7 @@ wheels = [
 platforms = ["windows-x64"]
 
 # Extensions Platform permissions
-# Blender 5.1.1 (schema_version 1.0.0) validates permissions as a table of strings.
+# Blender 5.2 LTS (schema_version 1.0.0) validates permissions as a table of strings.
 [permissions]
 network = "同期・外部連携でネットワーク接続を使用するため"
 files = "作品ファイル、画像、コマ用blendファイルを読み書きするため"

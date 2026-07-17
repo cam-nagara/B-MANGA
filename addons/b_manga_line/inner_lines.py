@@ -11,6 +11,13 @@ import math
 import bpy
 
 from . import inner_line_chains, modifier_stack
+from .gn_socket_compat import (
+    compare_operand_socket,
+    get_gn_modifier_input,
+    random_value_operand_socket,
+    random_value_output_socket,
+    set_gn_modifier_input,
+)
 from .core import (
     FREESTYLE_EDGE_ATTR,
     GENERATED_LINE_ATTR,
@@ -227,14 +234,14 @@ def _add_jittered_midpoint_factor(
     random = nodes.new("FunctionNodeRandomValue")
     random.location = (x_offset - 760, 680)
     random.data_type = "FLOAT"
-    random.inputs[2].default_value = -1.0
-    random.inputs[3].default_value = 1.0
+    random_value_operand_socket(random, "Min").default_value = -1.0
+    random_value_operand_socket(random, "Max").default_value = 1.0
     if random_id_output is None:
         random_id_output = spline.outputs["Index"]
     links.new(random_id_output, random.inputs["ID"])
 
     offset = _math(nodes, "MULTIPLY", (x_offset - 220, 580))
-    links.new(random.outputs[1], offset.inputs[0])
+    links.new(random_value_output_socket(random), offset.inputs[0])
     links.new(jitter_clamp_max.outputs[0], offset.inputs[1])
 
     center = _math(nodes, "ADD", (x_offset - 20, 580), value0=0.5)
@@ -387,8 +394,8 @@ def _create_node_tree(
     is_line_material.location = (-600, -420)
     is_line_material.data_type = "INT"
     is_line_material.operation = "GREATER_EQUAL"
-    links.new(mat_idx.outputs[0], is_line_material.inputs[2])
-    links.new(gin.outputs["ライン素材番号"], is_line_material.inputs[3])
+    links.new(mat_idx.outputs[0], compare_operand_socket(is_line_material, "A"))
+    links.new(gin.outputs["ライン素材番号"], compare_operand_socket(is_line_material, "B"))
 
     generated_attr = nodes.new("GeometryNodeInputNamedAttribute")
     generated_attr.location = (-440, -600)
@@ -448,8 +455,8 @@ def _create_node_tree(
     chain_selected.location = (-400, -600)
     chain_selected.data_type = "INT"
     chain_selected.operation = "GREATER_THAN"
-    links.new(chain_selection_attr.outputs["Attribute"], chain_selected.inputs[2])
-    chain_selected.inputs[3].default_value = 0
+    links.new(chain_selection_attr.outputs["Attribute"], compare_operand_socket(chain_selected, "A"))
+    compare_operand_socket(chain_selected, "B").default_value = 0
 
     chain_angle_filtered = nodes.new("FunctionNodeBooleanMath")
     chain_angle_filtered.label = _CHAIN_ANGLE_FILTER_LABEL
@@ -800,10 +807,7 @@ def _ensure_material_slot(
 
 
 def _modifier_float_prop(mod: bpy.types.Modifier, prop_name: str) -> float | None:
-    try:
-        value = mod.get(prop_name, None)
-    except TypeError:
-        return None
+    value = get_gn_modifier_input(mod, prop_name, None)
     if value is None:
         return None
     try:
@@ -813,10 +817,7 @@ def _modifier_float_prop(mod: bpy.types.Modifier, prop_name: str) -> float | Non
 
 
 def _modifier_bool_prop(mod: bpy.types.Modifier, prop_name: str) -> bool | None:
-    try:
-        value = mod.get(prop_name, None)
-    except TypeError:
-        return None
+    value = get_gn_modifier_input(mod, prop_name, None)
     if value is None:
         return None
     return bool(value)
@@ -827,9 +828,12 @@ def _modifier_socket_float(mod: bpy.types.Modifier, socket_name: str) -> float |
     sid = _find_socket_id(tree, socket_name) if tree is not None else None
     if sid is None:
         return None
+    value = get_gn_modifier_input(mod, sid, None)
+    if value is None:
+        return None
     try:
-        return float(mod[sid])
-    except (KeyError, TypeError, ValueError):
+        return float(value)
+    except (TypeError, ValueError):
         return None
 
 
@@ -838,10 +842,10 @@ def _modifier_socket_bool(mod: bpy.types.Modifier, socket_name: str) -> bool | N
     sid = _find_socket_id(tree, socket_name) if tree is not None else None
     if sid is None:
         return None
-    try:
-        return bool(mod[sid])
-    except (KeyError, TypeError, ValueError):
+    value = get_gn_modifier_input(mod, sid, None)
+    if value is None:
         return None
+    return bool(value)
 
 
 def _float_changed(current: float | None, requested: float | None) -> bool:
@@ -890,10 +894,10 @@ def _store_chain_inputs(
     use_marked_edges: bool,
     midpoint_angle: float | None,
 ) -> None:
-    mod[_CHAIN_ANGLE_PROP] = float(angle)
-    mod[_CHAIN_MARKED_PROP] = bool(use_marked_edges)
+    set_gn_modifier_input(mod, _CHAIN_ANGLE_PROP, float(angle))
+    set_gn_modifier_input(mod, _CHAIN_MARKED_PROP, bool(use_marked_edges))
     if midpoint_angle is not None:
-        mod[_CHAIN_MIDPOINT_ANGLE_PROP] = float(midpoint_angle)
+        set_gn_modifier_input(mod, _CHAIN_MIDPOINT_ANGLE_PROP, float(midpoint_angle))
 
 
 def _chain_inputs_changed(
@@ -1019,29 +1023,29 @@ def apply_inner_lines(
     sid_curve_50 = _find_socket_id(tree, _WIDTH_CURVE_50_SOCKET_NAME)
     sid_curve_75 = _find_socket_id(tree, _WIDTH_CURVE_75_SOCKET_NAME)
     if sid_angle is not None:
-        mod[sid_angle] = _node_angle_threshold(angle)
+        set_gn_modifier_input(mod, sid_angle, _node_angle_threshold(angle))
     if sid_thickness is not None:
-        mod[sid_thickness] = thickness
+        set_gn_modifier_input(mod, sid_thickness, thickness)
     if sid_offset is not None:
-        mod[sid_offset] = offset
+        set_gn_modifier_input(mod, sid_offset, offset)
     if sid_marked_only is not None:
-        mod[sid_marked_only] = bool(use_marked_edges)
+        set_gn_modifier_input(mod, sid_marked_only, bool(use_marked_edges))
     if sid_midpoint_factor is not None:
-        mod[sid_midpoint_factor] = float(midpoint_factor)
+        set_gn_modifier_input(mod, sid_midpoint_factor, float(midpoint_factor))
     if sid_midpoint_jitter is not None:
-        mod[sid_midpoint_jitter] = float(midpoint_jitter_percent)
+        set_gn_modifier_input(mod, sid_midpoint_jitter, float(midpoint_jitter_percent))
     if sid_resample_count is not None:
         if resample_count is None:
             from . import subdivision_lod
 
             resample_count = subdivision_lod.line_resample_count(obj)
-        mod[sid_resample_count] = max(1, int(resample_count))
+        set_gn_modifier_input(mod, sid_resample_count, max(1, int(resample_count)))
     if sid_curve_25 is not None:
-        mod[sid_curve_25] = float(width_curve_25)
+        set_gn_modifier_input(mod, sid_curve_25, float(width_curve_25))
     if sid_curve_50 is not None:
-        mod[sid_curve_50] = float(width_curve_50)
+        set_gn_modifier_input(mod, sid_curve_50, float(width_curve_50))
     if sid_curve_75 is not None:
-        mod[sid_curve_75] = float(width_curve_75)
+        set_gn_modifier_input(mod, sid_curve_75, float(width_curve_75))
 
     # マテリアル
     line_material_index = 999
@@ -1049,12 +1053,12 @@ def apply_inner_lines(
         line_material_index = _ensure_material_slot(obj, material)
         sid_mat = _find_socket_id(tree, "マテリアル")
         if sid_mat is not None:
-            mod[sid_mat] = material
+            set_gn_modifier_input(mod, sid_mat, material)
     else:
         line_material_index = _ensure_material_slot(obj, None)
     sid_line_material = _find_socket_id(tree, "ライン素材番号")
     if sid_line_material is not None:
-        mod[sid_line_material] = line_material_index
+        set_gn_modifier_input(mod, sid_line_material, line_material_index)
 
     from . import vertex_analysis
 
@@ -1223,51 +1227,51 @@ def update_parameters(
     if angle is not None:
         sid = _find_socket_id(tree, "検出角度")
         if sid is not None:
-            mod[sid] = _node_angle_threshold(angle)
+            set_gn_modifier_input(mod, sid, _node_angle_threshold(angle))
     if thickness is not None:
         sid = _find_socket_id(tree, "線の太さ")
         if sid is not None:
-            mod[sid] = thickness
+            set_gn_modifier_input(mod, sid, thickness)
     if offset is not None:
         sid = _find_socket_id(tree, _OFFSET_SOCKET_NAME)
         if sid is not None:
-            mod[sid] = offset
+            set_gn_modifier_input(mod, sid, offset)
     if use_marked_edges is not None:
         sid = _find_socket_id(tree, _MARKED_ONLY_SOCKET_NAME)
         if sid is not None:
-            mod[sid] = bool(use_marked_edges)
+            set_gn_modifier_input(mod, sid, bool(use_marked_edges))
     if midpoint_factor is not None:
         sid = _find_socket_id(tree, _MIDPOINT_FACTOR_SOCKET_NAME)
         if sid is not None:
-            mod[sid] = float(midpoint_factor)
+            set_gn_modifier_input(mod, sid, float(midpoint_factor))
     if midpoint_jitter_percent is not None:
         sid = _find_socket_id(tree, _MIDPOINT_JITTER_SOCKET_NAME)
         if sid is not None:
-            mod[sid] = float(midpoint_jitter_percent)
+            set_gn_modifier_input(mod, sid, float(midpoint_jitter_percent))
     if resample_count is not None:
         sid = _find_socket_id(tree, _RESAMPLE_COUNT_SOCKET_NAME)
         if sid is not None:
-            mod[sid] = max(1, int(resample_count))
+            set_gn_modifier_input(mod, sid, max(1, int(resample_count)))
     if width_curve_25 is not None:
         sid = _find_socket_id(tree, _WIDTH_CURVE_25_SOCKET_NAME)
         if sid is not None:
-            mod[sid] = float(width_curve_25)
+            set_gn_modifier_input(mod, sid, float(width_curve_25))
     if width_curve_50 is not None:
         sid = _find_socket_id(tree, _WIDTH_CURVE_50_SOCKET_NAME)
         if sid is not None:
-            mod[sid] = float(width_curve_50)
+            set_gn_modifier_input(mod, sid, float(width_curve_50))
     if width_curve_75 is not None:
         sid = _find_socket_id(tree, _WIDTH_CURVE_75_SOCKET_NAME)
         if sid is not None:
-            mod[sid] = float(width_curve_75)
+            set_gn_modifier_input(mod, sid, float(width_curve_75))
     if material is not None:
         line_material_index = _ensure_material_slot(obj, material)
         sid_mat = _find_socket_id(tree, "マテリアル")
         if sid_mat is not None:
-            mod[sid_mat] = material
+            set_gn_modifier_input(mod, sid_mat, material)
         sid_line_material = _find_socket_id(tree, "ライン素材番号")
         if sid_line_material is not None:
-            mod[sid_line_material] = line_material_index
+            set_gn_modifier_input(mod, sid_line_material, line_material_index)
     return True
 
 

@@ -21,6 +21,7 @@ from b_manga_line import (  # noqa: E402
     outline_setup,
     presets,
 )
+from b_manga_line.gn_socket_compat import get_gn_modifier_input  # noqa: E402
 
 
 THICKNESS_SOCKET = "線の太さ"
@@ -112,7 +113,7 @@ def _socket_value(mod: bpy.types.Modifier, name: str):
     tree = getattr(mod, "node_group", None)
     if tree is None:
         raise AssertionError(f"node group missing: {mod.name}")
-    return mod[_socket_id(tree, name)]
+    return get_gn_modifier_input(mod, _socket_id(tree, name), None)
 
 
 def _new_input_socket(

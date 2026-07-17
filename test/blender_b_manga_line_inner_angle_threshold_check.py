@@ -19,6 +19,7 @@ from b_manga_line import (  # noqa: E402
     outline_setup,
     subdivision_lod,
 )
+from b_manga_line.gn_socket_compat import get_gn_modifier_input  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -206,7 +207,9 @@ def _assert_node_tree_uses_inclusive_angle() -> None:
     )
     sid = inner_line_cache._find_socket_id(tree, inner_line_cache._MIDPOINT_JITTER_SOCKET)
     assert sid is not None
-    assert abs(float(obj.modifiers[inner_lines.GN_MODIFIER_NAME][sid]) - 37.5) < 1.0e-6
+    assert abs(
+        float(get_gn_modifier_input(obj.modifiers[inner_lines.GN_MODIFIER_NAME], sid, 0.0)) - 37.5
+    ) < 1.0e-6
 
 
 def _assert_stale_inner_tree_is_repaired() -> None:
@@ -240,7 +243,7 @@ def _assert_stale_inner_tree_is_repaired() -> None:
         inner_line_cache._MIDPOINT_JITTER_SOCKET,
     )
     assert sid is not None
-    assert abs(float(repaired[sid]) - 25.0) < 1.0e-6
+    assert abs(float(get_gn_modifier_input(repaired, sid, 0.0)) - 25.0) < 1.0e-6
 
 
 def main() -> None:

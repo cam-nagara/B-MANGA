@@ -8,6 +8,7 @@ from collections.abc import Mapping
 import bpy
 
 from . import curve_smoothing_nodes, intersection_shell_node_helpers
+from .gn_socket_compat import compare_operand_socket, get_gn_modifier_input, set_gn_modifier_input
 
 
 MODIFIER_NAME = "BML_OutlineLocalSubdivision"
@@ -220,8 +221,8 @@ def _silhouette_curve(nodes, links, geometry, camera):
     boundary.data_type = "INT"
     boundary.operation = "EQUAL"
     boundary.location = (280, -240)
-    boundary.inputs[3].default_value = 1
-    links.new(neighbors.outputs["Face Count"], boundary.inputs[2])
+    compare_operand_socket(boundary, "B").default_value = 1
+    links.new(neighbors.outputs["Face Count"], compare_operand_socket(boundary, "A"))
     to_curve = nodes.new("GeometryNodeMeshToCurve")
     to_curve.label = _GENERATION_LABEL + " Silhouette"
     to_curve.location = (280, 100)
@@ -511,7 +512,7 @@ def is_modifier(mod: bpy.types.Modifier | None) -> bool:
         mod is not None
         and getattr(mod, "type", None) == "NODES"
         and (
-            mod.get(_OWNER_KEY) == _TREE_GENERATION
+            get_gn_modifier_input(mod, _OWNER_KEY, None) == _TREE_GENERATION
             or getattr(getattr(mod, "node_group", None), "name", "") == TREE_NAME
         )
     )
@@ -543,7 +544,7 @@ def _value(settings, names: tuple[str, ...], default):
 def _set_input(mod: bpy.types.Modifier, name: str, value) -> None:
     identifier = _socket_id(mod.node_group, name)
     if identifier is not None:
-        mod[identifier] = value
+        set_gn_modifier_input(mod, identifier, value)
 
 
 def _ensure_material_slot(obj: bpy.types.Object, material: bpy.types.Material | None) -> None:
@@ -653,7 +654,7 @@ def ensure(
         if exact is not None and not is_modifier(exact):
             name = MODIFIER_NAME + "_Generated"
         mod = obj.modifiers.new(name=name, type="NODES")
-        mod[_OWNER_KEY] = _TREE_GENERATION
+        set_gn_modifier_input(mod, _OWNER_KEY, _TREE_GENERATION)
     mod.node_group = tree
     _ensure_material_slot(obj, material)
     _set_input(mod, _THICKNESS_SOCKET, max(0.0, float(local_thickness)))
@@ -706,9 +707,9 @@ def sync_scene_cameras(scene: bpy.types.Scene | None) -> int:
             continue
         camera = resolve_camera(obj, scene)
         identifier = _socket_id(mod.node_group, _CAMERA_SOCKET)
-        if identifier is None or mod.get(identifier) == camera:
+        if identifier is None or get_gn_modifier_input(mod, identifier, None) == camera:
             continue
-        mod[identifier] = camera
+        set_gn_modifier_input(mod, identifier, camera)
         changed += 1
     return changed
 
@@ -736,7 +737,7 @@ def local_thickness(obj: bpy.types.Object) -> float | None:
     if mod is None:
         return None
     identifier = _socket_id(mod.node_group, _THICKNESS_SOCKET)
-    return float(mod.get(identifier, 0.0)) if identifier is not None else None
+    return float(get_gn_modifier_input(mod, identifier, 0.0)) if identifier is not None else None
 
 
 def has_active(obj: bpy.types.Object) -> bool:

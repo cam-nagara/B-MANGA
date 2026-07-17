@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
 from b_manga_line import auto_smooth_guard, core, intersection_cache  # noqa: E402
+from b_manga_line.gn_socket_compat import get_gn_modifier_input  # noqa: E402
 
 
 ANGLE = math.radians(60.0)
@@ -99,7 +100,7 @@ def _assert_valid_smooth(obj: bpy.types.Object, expected_angle: float) -> None:
         raise AssertionError("自動スムーズのノードがありません")
     if mod.node_group.name != auto_smooth_guard.AUTO_SMOOTH_NAME:
         raise AssertionError(f"自動スムーズのノード名が不正です: {mod.node_group.name}")
-    actual = float(mod[auto_smooth_guard.ANGLE_SOCKET_ID])
+    actual = float(get_gn_modifier_input(mod, auto_smooth_guard.ANGLE_SOCKET_ID, 0.0))
     if abs(actual - expected_angle) > 1.0e-4:
         raise AssertionError(
             f"自動スムーズの角度が保持されていません: actual={actual} expected={expected_angle}"
@@ -157,7 +158,9 @@ def main() -> None:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         _clear_scene()
         obj = _make_line_target()
-        expected_angle = float(_smooth_modifier(obj)[auto_smooth_guard.ANGLE_SOCKET_ID])
+        expected_angle = float(
+            get_gn_modifier_input(_smooth_modifier(obj), auto_smooth_guard.ANGLE_SOCKET_ID, 0.0)
+        )
         _assert_valid_smooth(obj, expected_angle)
         _assert_line_stack_survived(obj)
         auto_smooth_guard.ensure_auto_smooth_nodes([obj], bpy.context)

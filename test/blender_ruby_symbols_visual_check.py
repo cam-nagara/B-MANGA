@@ -180,7 +180,7 @@ def _compose_board(items: list[dict]) -> None:
     thumb_size = (540, 430)
     canvas = Image.new("RGB", (thumb_size[0] * 2 + 54, thumb_size[1] * 3 + 110), (31, 32, 35))
     draw = ImageDraw.Draw(canvas)
-    draw.text((22, 18), "B-MANGA Blender 5.1.2 — 本文・ルビ記号 縦横実機", fill="white", font=font)
+    draw.text((22, 18), "B-MANGA Blender 5.2 — 本文・ルビ記号 縦横実機", fill="white", font=font)
     for index, item in enumerate(items):
         row, column = divmod(index, 2)
         x = 18 + column * (thumb_size[0] + 18)

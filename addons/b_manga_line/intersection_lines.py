@@ -30,6 +30,7 @@ import bpy
 from mathutils import Vector
 
 from . import modifier_stack, scale_utils
+from .gn_socket_compat import compare_operand_socket, get_gn_modifier_input, set_gn_modifier_input
 from .core import (
     GENERATED_LINE_ATTR,
     GN_MODIFIER_NAME,
@@ -90,8 +91,8 @@ def _add_shell_strip_nodes(nodes, links, gin):
     cmp_mat.location = (-1050, -250)
     cmp_mat.data_type = "INT"
     cmp_mat.operation = "EQUAL"
-    cmp_mat.inputs[3].default_value = 0
-    links.new(mat_idx.outputs[0], cmp_mat.inputs[2])
+    compare_operand_socket(cmp_mat, "B").default_value = 0
+    links.new(mat_idx.outputs[0], compare_operand_socket(cmp_mat, "A"))
 
     not_orig = nodes.new("FunctionNodeBooleanMath")
     not_orig.location = (-1050, -380)
@@ -1047,10 +1048,7 @@ def _modifier_target(mod: bpy.types.Modifier):
     sid = _find_socket_id(tree, _TARGET_SOCKET) if tree is not None else None
     if sid is None:
         return None
-    try:
-        return mod[sid]
-    except (KeyError, TypeError):
-        return None
+    return get_gn_modifier_input(mod, sid, None)
 
 
 def _is_grouped_modifier(mod: bpy.types.Modifier) -> bool:
@@ -1065,10 +1063,7 @@ def _is_shell_modifier(mod: bpy.types.Modifier) -> bool:
 
 def is_deferred_viewport_modifier(mod: bpy.types.Modifier) -> bool:
     """ビューポート表示の復帰待ち交差線か返す."""
-    try:
-        return bool(mod.get(_DEFERRED_VIEWPORT_PROP, False))
-    except TypeError:
-        return False
+    return bool(get_gn_modifier_input(mod, _DEFERRED_VIEWPORT_PROP, False))
 
 
 def _basic_deferred_visibility(obj: bpy.types.Object, settings) -> bool:
@@ -1099,20 +1094,20 @@ def _set_modifier_parameters(
         return
     sid_target = _find_socket_id(tree, _TARGET_SOCKET)
     if sid_target is not None and target is not None:
-        mod[sid_target] = target
+        set_gn_modifier_input(mod, sid_target, target)
     sid_thickness = _find_socket_id(tree, _THICKNESS_SOCKET)
     if sid_thickness is not None and thickness is not None:
-        mod[sid_thickness] = thickness
+        set_gn_modifier_input(mod, sid_thickness, thickness)
     sid_offset = _find_socket_id(tree, _OFFSET_SOCKET)
     if sid_offset is not None and offset is not None:
-        mod[sid_offset] = offset
+        set_gn_modifier_input(mod, sid_offset, offset)
     sid_target_thickness = _find_socket_id(tree, _TARGET_THICKNESS_SOCKET)
     if sid_target_thickness is not None and target is not None:
         source = getattr(mod, "id_data", None)
-        mod[sid_target_thickness] = _target_outline_thickness(source, target)
+        set_gn_modifier_input(mod, sid_target_thickness, _target_outline_thickness(source, target))
     sid_mat = _find_socket_id(tree, _MATERIAL_SOCKET)
     if sid_mat is not None and material is not None:
-        mod[sid_mat] = material
+        set_gn_modifier_input(mod, sid_mat, material)
 
 
 def _multi_modifier_targets(mod: bpy.types.Modifier) -> list[bpy.types.Object]:
@@ -1125,10 +1120,7 @@ def _multi_modifier_targets(mod: bpy.types.Modifier) -> list[bpy.types.Object]:
         sid = _find_socket_id(tree, _multi_target_socket_name(index))
         if sid is None:
             break
-        try:
-            target = mod[sid]
-        except (KeyError, TypeError):
-            target = None
+        target = get_gn_modifier_input(mod, sid, None)
         if getattr(target, "type", None) == "MESH":
             targets.append(target)
         index += 1
@@ -1150,19 +1142,19 @@ def _set_multi_modifier_parameters(
         for index, target in enumerate(targets):
             sid_target = _find_socket_id(tree, _multi_target_socket_name(index))
             if sid_target is not None:
-                mod[sid_target] = target
+                set_gn_modifier_input(mod, sid_target, target)
     sid_thickness = _find_socket_id(tree, _THICKNESS_SOCKET)
     if sid_thickness is not None and thickness is not None:
-        mod[sid_thickness] = thickness
+        set_gn_modifier_input(mod, sid_thickness, thickness)
     sid_offset = _find_socket_id(tree, _OFFSET_SOCKET)
     if sid_offset is not None and offset is not None:
-        mod[sid_offset] = offset
+        set_gn_modifier_input(mod, sid_offset, offset)
     sid_target_thickness = _find_socket_id(tree, _TARGET_THICKNESS_SOCKET)
     if sid_target_thickness is not None and target_thickness is not None:
-        mod[sid_target_thickness] = target_thickness
+        set_gn_modifier_input(mod, sid_target_thickness, target_thickness)
     sid_mat = _find_socket_id(tree, _MATERIAL_SOCKET)
     if sid_mat is not None and material is not None:
-        mod[sid_mat] = material
+        set_gn_modifier_input(mod, sid_mat, material)
 
 
 def _ensure_intersection_width_group(obj: bpy.types.Object) -> None:
@@ -1197,10 +1189,7 @@ def _queue_deferred_viewport_modifier(
     mod: bpy.types.Modifier,
 ) -> None:
     global _deferred_viewport_timer_running
-    try:
-        mod[_DEFERRED_VIEWPORT_PROP] = True
-    except TypeError:
-        return
+    set_gn_modifier_input(mod, _DEFERRED_VIEWPORT_PROP, True)
     mod.show_viewport = False
     item = (obj.name_full, mod.name)
     if item not in _deferred_viewport_queue:

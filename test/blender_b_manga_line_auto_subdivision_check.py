@@ -20,6 +20,7 @@ from b_manga_line import (  # noqa: E402
     presets,
     subdivision_lod,
 )
+from b_manga_line.gn_socket_compat import get_gn_modifier_input  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -158,18 +159,18 @@ def _assert_render_camera_switch_syncs_immediately() -> None:
         local.node_group,
         outline_local_subdivision._CAMERA_SOCKET,
     )
-    assert camera_socket is not None and local.get(camera_socket) == camera_a
+    assert camera_socket is not None and get_gn_modifier_input(local, camera_socket, None) == camera_a
 
     bpy.ops.object.camera_add(location=(-4.0, -6.0, 3.0))
     camera_b = bpy.context.object
     scene.camera = camera_b
     scene.bmanga_line_camera = None
     camera_comp._on_render_pre(scene)
-    assert local.get(camera_socket) == camera_b
+    assert get_gn_modifier_input(local, camera_socket, None) == camera_b
 
     scene.bmanga_line_camera = camera_a
     camera_comp._on_render_pre(scene)
-    assert local.get(camera_socket) == camera_a
+    assert get_gn_modifier_input(local, camera_socket, None) == camera_a
     scene.bmanga_line_camera = None
     scene.camera = camera_a
 

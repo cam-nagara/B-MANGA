@@ -31,6 +31,7 @@ from b_manga_line import (  # noqa: E402
     scale_utils,
     width_math,
 )
+from b_manga_line.gn_socket_compat import get_gn_modifier_input  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -114,7 +115,7 @@ def _inner_thickness(obj: bpy.types.Object) -> float:
     mod = obj.modifiers[core.GN_MODIFIER_NAME]
     sid = inner_lines._find_socket_id(mod.node_group, "線の太さ")
     assert sid is not None
-    return float(mod[sid])
+    return float(get_gn_modifier_input(mod, sid, 0.0))
 
 
 def _line_world_width(obj: bpy.types.Object) -> float:
@@ -133,7 +134,7 @@ def _intersection_thickness(obj: bpy.types.Object) -> float:
     assert mod is not None
     sid = intersection_lines._find_socket_id(mod.node_group, "線の太さ")
     assert sid is not None
-    return float(mod[sid])
+    return float(get_gn_modifier_input(mod, sid, 0.0))
 
 
 def _intersection_modifier(obj: bpy.types.Object) -> bpy.types.Modifier | None:
@@ -152,7 +153,7 @@ def _selection_thickness(obj: bpy.types.Object) -> float:
     assert mod is not None
     sid = inner_lines._find_socket_id(mod.node_group, "線の太さ")
     assert sid is not None
-    return float(mod[sid])
+    return float(get_gn_modifier_input(mod, sid, 0.0))
 
 
 def _mark_all_freestyle_edges(obj: bpy.types.Object) -> None:
@@ -955,7 +956,7 @@ def _test_linked_uniform_width_refresh_does_not_crash() -> None:
         pass
     # Replacing Blender's entire Main database adds unrelated GN teardown to
     # this linked-width check. Write only the source datablock so the test stays
-    # focused on the linked-library refresh path in Blender 5.1.2.
+    # focused on the linked-library refresh path in Blender 5.2.
     bpy.data.libraries.write(str(source_path), {source_obj})
     bpy.data.objects.remove(source_obj, do_unlink=True)
     _clear_scene()

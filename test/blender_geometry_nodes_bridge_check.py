@@ -28,12 +28,14 @@ def _load_addon():
 
 
 def _modifier_socket_value(modifier, name: str):
+    from bmanga_dev_gn_bridge.utils import geometry_nodes_bridge as gn
+
     group = modifier.node_group
     assert group is not None, "Geometry Nodes グループがありません"
     item = _modifier_socket_item(modifier, name)
     identifier = str(getattr(item, "identifier", "") or "")
     assert identifier, f"{name} の入力IDがありません"
-    return modifier[identifier]
+    return gn.get_gn_modifier_input(modifier, identifier, None)
 
 
 def _modifier_socket_item(modifier, name: str):

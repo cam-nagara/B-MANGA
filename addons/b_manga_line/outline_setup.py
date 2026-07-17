@@ -14,6 +14,7 @@ import bpy
 
 from . import curve_smoothing_nodes, intersection_shell_node_helpers
 from . import modifier_stack, plane_filter
+from .gn_socket_compat import get_gn_modifier_input, set_gn_modifier_input
 from .core import (
     AOV_NAME,
     AOV_INNER_LINES_NAME,
@@ -1271,12 +1272,12 @@ def ensure_sheet_outline(
         width_value = abs(float(thickness if thickness is not None else 0.0))
     sid_width = _find_socket_identifier(tree, _SHEET_TUBE_THICKNESS_SOCKET)
     if sid_width is not None:
-        mod[sid_width] = width_value
+        set_gn_modifier_input(mod, sid_width, width_value)
     if line_mat is not None:
         _ensure_sheet_line_material_slot(obj, line_mat)
         sid_mat = _find_socket_identifier(tree, _SHEET_TUBE_MATERIAL_SOCKET)
         if sid_mat is not None:
-            mod[sid_mat] = line_mat
+            set_gn_modifier_input(mod, sid_mat, line_mat)
     _sync_sheet_outline_midpoint_inputs(obj, mod)
 
     if solidify_mod is not None:
@@ -1329,8 +1330,8 @@ def sync_sheet_outline_width(
         value = abs(float(_sheet_outline_width_from_settings(obj)))
     else:
         value = abs(float(width))
-    if abs(float(mod.get(sid, 0.0)) - value) > 1.0e-12:
-        mod[sid] = value
+    if abs(float(get_gn_modifier_input(mod, sid, 0.0)) - value) > 1.0e-12:
+        set_gn_modifier_input(mod, sid, value)
     _sync_sheet_outline_midpoint_inputs(obj, mod)
 
 
@@ -1343,9 +1344,12 @@ def sheet_outline_world_width(obj: bpy.types.Object | None) -> float:
     sid = _find_socket_identifier(mod.node_group, _SHEET_TUBE_THICKNESS_SOCKET)
     if sid is None:
         return 0.0
+    value = get_gn_modifier_input(mod, sid, None)
+    if value is None:
+        return 0.0
     try:
-        width = float(mod[sid])
-    except (KeyError, TypeError, ValueError):
+        width = float(value)
+    except (TypeError, ValueError):
         return 0.0
     return world_width_from_modifier(obj, width)
 
@@ -1363,10 +1367,7 @@ def _set_node_input_if_changed(
     sid = _find_socket_identifier(tree, socket_name)
     if sid is None:
         return
-    try:
-        current = mod[sid]
-    except (KeyError, TypeError):
-        current = None
+    current = get_gn_modifier_input(mod, sid, None)
     if isinstance(value, float):
         try:
             if abs(float(current) - value) <= epsilon:
@@ -1375,7 +1376,7 @@ def _set_node_input_if_changed(
             pass
     elif current == value:
         return
-    mod[sid] = value
+    set_gn_modifier_input(mod, sid, value)
 
 
 def _sync_sheet_outline_midpoint_inputs(

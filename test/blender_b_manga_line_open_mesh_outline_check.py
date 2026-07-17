@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
 from b_manga_line import core, outline_setup, presets, scale_utils  # noqa: E402
+from b_manga_line.gn_socket_compat import get_gn_modifier_input  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -252,9 +253,16 @@ def main() -> None:
         )
         tube_mod = plane.modifiers.get(core.SHEET_OUTLINE_MODIFIER_NAME)
         assert tube_mod is not None
-        assert abs(tube_mod[_socket_id(tube_mod.node_group, "中間頂点の線幅調整")] + 0.75) < 1e-7
-        assert abs(tube_mod[_socket_id(tube_mod.node_group, "中間頂点の乱れ (%)")] - 12.0) < 1e-7
-        assert abs(tube_mod[_socket_id(tube_mod.node_group, "検出角度")] - math.radians(55.0)) < 1e-7
+        assert abs(
+            get_gn_modifier_input(tube_mod, _socket_id(tube_mod.node_group, "中間頂点の線幅調整"), 0.0) + 0.75
+        ) < 1e-7
+        assert abs(
+            get_gn_modifier_input(tube_mod, _socket_id(tube_mod.node_group, "中間頂点の乱れ (%)"), 0.0) - 12.0
+        ) < 1e-7
+        assert abs(
+            get_gn_modifier_input(tube_mod, _socket_id(tube_mod.node_group, "検出角度"), 0.0)
+            - math.radians(55.0)
+        ) < 1e-7
 
         bpy.ops.mesh.primitive_cube_add(size=1.0, location=(3.0, 0.0, 0.0))
         cube = bpy.context.object

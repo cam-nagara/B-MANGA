@@ -62,6 +62,8 @@ def _render_to(path: Path, *, width_px: int = 1600, height_px: int = 900) -> Non
 
 
 def _force_line_method_input(obj, *, filled_line_enabled: bool) -> None:
+    from bmanga_dev_thorn_native_check.utils import geometry_nodes_bridge as _gn
+
     for modifier in getattr(obj, "modifiers", []) or []:
         if modifier.type != "NODES":
             continue
@@ -77,7 +79,7 @@ def _force_line_method_input(obj, *, filled_line_enabled: bool) -> None:
                 break
         if target_identifier is None:
             continue
-        modifier[target_identifier] = bool(filled_line_enabled)
+        _gn.set_gn_modifier_input(modifier, target_identifier, bool(filled_line_enabled))
         try:
             obj.update_tag()
         except Exception:

@@ -89,7 +89,9 @@ def _force_line_method_input(obj, *, filled_line_enabled: bool) -> None:
                 break
         if target_identifier is None:
             continue
-        modifier[target_identifier] = bool(filled_line_enabled)
+        from bmanga_dev_cloud_native_check.utils import geometry_nodes_bridge as _gn
+
+        _gn.set_gn_modifier_input(modifier, target_identifier, bool(filled_line_enabled))
         try:
             obj.update_tag()
         except Exception:

@@ -25,6 +25,7 @@ from b_manga_line import (  # noqa: E402
     vertex_analysis,
     width_math,
 )
+from b_manga_line.gn_socket_compat import get_gn_modifier_input  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -148,7 +149,7 @@ def _inner_world_width(obj: bpy.types.Object) -> float:
     mod = obj.modifiers[core.GN_MODIFIER_NAME]
     sid = inner_lines._find_socket_id(mod.node_group, "線の太さ")
     assert sid is not None
-    return abs(float(mod[sid])) * scale_utils.object_width_scale(obj)
+    return abs(float(get_gn_modifier_input(mod, sid, 0.0))) * scale_utils.object_width_scale(obj)
 
 
 def _weights(obj: bpy.types.Object, target: str = "outline") -> list[float]:

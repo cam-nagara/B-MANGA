@@ -12,7 +12,7 @@ def command_type_label(command_type: str) -> str:
     return str(command_type or "")
 
 
-# コマンド種類 → 一覧アイコン。Blender 5.1 に存在する識別子のみ使用する。
+# コマンド種類 → 一覧アイコン。Blender 5.2 LTS に存在する識別子のみ使用する（5.1でも同一）。
 _COMMAND_ICONS = {
     "STATE_BEGIN": "REC",
     "STATE_END": "LOOP_BACK",

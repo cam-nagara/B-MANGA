@@ -7,6 +7,7 @@ import math
 import bpy
 
 from . import intersection_shell_node_helpers, modifier_stack
+from .gn_socket_compat import get_gn_modifier_input, set_gn_modifier_input
 from .core import (
     COLOR_ATTR_NAME,
     OUTLINE_WIDTH_ATTR_MODIFIER_NAME,
@@ -369,12 +370,13 @@ def ensure_outline_width_attribute(obj: bpy.types.Object, settings=None) -> bool
         sid = _find_socket_id(tree, socket_name)
         if sid is None:
             continue
+        raw = get_gn_modifier_input(mod, sid, None)
         try:
-            current = float(mod[sid])
-        except (KeyError, TypeError, ValueError):
+            current = float(raw) if raw is not None else None
+        except (TypeError, ValueError):
             current = None
         if current is None or abs(current - value) > 1.0e-9:
-            mod[sid] = value
+            set_gn_modifier_input(mod, sid, value)
             changed = True
 
     modifier_stack.reorder_line_modifiers(obj)

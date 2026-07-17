@@ -48,7 +48,7 @@ PowerShellから同じ監査を実行する場合:
 python test/bmanga_ai_audit_runner.py --profile standard --out-dir .codex/ai_audit/latest --keep-going
 ```
 
-既定のBlender実行ファイルは `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe` です。別の場所にある場合は `--blender` または `BMANGA_BLENDER_EXE` で指定します。
+既定のBlender実行ファイルは `C:\Program Files\Blender Foundation\Blender 5.2\blender.exe` です。別の場所にある場合は `--blender` または `BMANGA_BLENDER_EXE` で指定します。
 
 ## 生成物
 

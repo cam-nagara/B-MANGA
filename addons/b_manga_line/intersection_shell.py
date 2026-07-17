@@ -10,6 +10,7 @@ import bpy
 
 from . import intersection_lines, intersection_shell_node_helpers
 from . import modifier_stack, outline_setup, scale_utils
+from .gn_socket_compat import compare_operand_socket, get_gn_modifier_input, set_gn_modifier_input
 from .core import (
     INTERSECTION_MODIFIER_PREFIX,
     MODIFIER_NAME,
@@ -405,8 +406,8 @@ def _store_mesh_graph_split_attribute(nodes, links, mesh_output, loc):
     degree_not_two.location = (x + 220, y)
     degree_not_two.data_type = "INT"
     degree_not_two.operation = "NOT_EQUAL"
-    links.new(vertex_neighbors.outputs["Vertex Count"], degree_not_two.inputs[2])
-    degree_not_two.inputs[3].default_value = 2
+    links.new(vertex_neighbors.outputs["Vertex Count"], compare_operand_socket(degree_not_two, "A"))
+    compare_operand_socket(degree_not_two, "B").default_value = 2
 
     store = nodes.new("GeometryNodeStoreNamedAttribute")
     store.label = _SHELL_GRAPH_SPLIT_NODE_LABEL + "Store"
@@ -581,10 +582,7 @@ def _set_modifier_input_if_changed(
 ) -> bool:
     if sid is None:
         return False
-    try:
-        current = mod[sid]
-    except (KeyError, TypeError):
-        current = None
+    current = get_gn_modifier_input(mod, sid, None)
     if isinstance(value, float):
         try:
             if abs(float(current) - value) <= epsilon:
@@ -593,7 +591,7 @@ def _set_modifier_input_if_changed(
             pass
     elif current == value:
         return False
-    mod[sid] = value
+    set_gn_modifier_input(mod, sid, value)
     return True
 
 
@@ -1222,10 +1220,7 @@ def _modifier_target_collection(mod: bpy.types.Modifier) -> bpy.types.Collection
     sid = _find_socket_id(tree, _TARGET_COLLECTION_SOCKET) if tree is not None else None
     if sid is None:
         return None
-    try:
-        collection = mod[sid]
-    except (KeyError, TypeError):
-        return None
+    collection = get_gn_modifier_input(mod, sid, None)
     return collection if isinstance(collection, bpy.types.Collection) else None
 
 

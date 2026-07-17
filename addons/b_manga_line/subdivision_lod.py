@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import bpy
 
+from .gn_socket_compat import get_gn_modifier_input
+
 
 AUTO_SUBSURF_MODIFIER_NAME = "BML_MidpointSubsurf"
 AUTO_SUBSURF_CREASE_EDGES_PROP = "bml_auto_midpoint_subsurf_crease_edges"
@@ -224,9 +226,10 @@ def sync_generated_line_subdivision(
             )
             count = display_resample_count(needs_controls, count)
         count = max(count, _closed_loop_min_resample_count(obj))
+        raw_current = get_gn_modifier_input(mod, socket_id, None)
         try:
-            current = int(mod[socket_id])
-        except (KeyError, TypeError, ValueError):
+            current = int(raw_current) if raw_current is not None else -1
+        except (TypeError, ValueError):
             current = -1
         if current == count:
             return False

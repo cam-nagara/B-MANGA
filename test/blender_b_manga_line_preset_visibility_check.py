@@ -24,6 +24,7 @@ from b_manga_line import (  # noqa: E402
     subdivision_lod,
     update_state,
 )
+from b_manga_line.gn_socket_compat import get_gn_modifier_input  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -125,7 +126,7 @@ def _modifier_input(mod, socket_name: str):
             getattr(item, "name", None) == socket_name
             and getattr(item, "in_out", None) == "INPUT"
         ):
-            return mod[item.identifier]
+            return get_gn_modifier_input(mod, item.identifier, None)
     raise AssertionError(f"{mod.name}: {socket_name} socket not found")
 
 

@@ -20,7 +20,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BLENDER = Path(
-    os.environ.get("BMANGA_BLENDER_EXE", r"C:\Program Files\Blender Foundation\Blender 5.1\blender.exe")
+    os.environ.get("BMANGA_BLENDER_EXE", r"C:\Program Files\Blender Foundation\Blender 5.2\blender.exe")
 )
 DEFAULT_C00 = Path(os.environ.get("BMANGA_C00_BLEND", r"D:\TM Dropbox\Share\B-MANGA\c_file\c00.blend"))
 DEFAULT_EEVR = Path(

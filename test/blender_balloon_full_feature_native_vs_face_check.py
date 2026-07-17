@@ -72,6 +72,8 @@ def _configure_multiline(entry, *, direction="outside"):
 
 
 def _toggle_filled_line(obj, *, filled_line_enabled):
+    from bmanga_dev_full_feature_check.utils import geometry_nodes_bridge as _gn
+
     for modifier in getattr(obj, "modifiers", []) or []:
         if modifier.type != "NODES":
             continue
@@ -84,7 +86,7 @@ def _toggle_filled_line(obj, *, filled_line_enabled):
             if str(getattr(item, "name", "") or "") == "線を面で生成":
                 identifier = getattr(item, "identifier", None)
                 if identifier:
-                    modifier[identifier] = bool(filled_line_enabled)
+                    _gn.set_gn_modifier_input(modifier, identifier, bool(filled_line_enabled))
                 break
         try:
             obj.update_tag()

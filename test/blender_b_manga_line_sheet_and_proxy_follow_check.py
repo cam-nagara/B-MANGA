@@ -20,6 +20,7 @@ from b_manga_line import (  # noqa: E402
     plane_filter,
     presets,
 )
+from b_manga_line.gn_socket_compat import get_gn_modifier_input  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -158,9 +159,9 @@ def _test_sheet_outline_tube() -> None:
     sid = outline_setup._find_socket_identifier(
         tube_mod.node_group, "線の太さ"
     )
-    assert float(tube_mod[sid]) > 0.0, "境界チューブの太さが設定されていません"
+    assert float(get_gn_modifier_input(tube_mod, sid, 0.0)) > 0.0, "境界チューブの太さが設定されていません"
     outline_setup.update_modifier_thickness(plane, 0.123)
-    assert abs(float(tube_mod[sid]) - 0.123) < 1.0e-6
+    assert abs(float(get_gn_modifier_input(tube_mod, sid, 0.0)) - 0.123) < 1.0e-6
 
     # 評価済みメッシュにチューブのジオメトリが乗っている
     # （3m四方plane: 境界4辺 × 円周8分割 = 32面以上増える）
@@ -210,7 +211,7 @@ def _test_sheet_midpoint_adjustment_keeps_tube_visible() -> None:
         outline_setup._SHEET_TUBE_MIDPOINT_FACTOR_SOCKET,
     )
     assert factor_sid is not None
-    assert abs(float(tube_mod[factor_sid]) + 1.0) < 1.0e-7
+    assert abs(float(get_gn_modifier_input(tube_mod, factor_sid, 0.0)) + 1.0) < 1.0e-7
     assert _eval_material_poly_count(plane, outline_setup.MATERIAL_NAME) >= 32, (
         "中間頂点の線幅調整後に板ポリ境界チューブが評価されていません"
     )

@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / "test"))
 import b_manga_line  # noqa: E402
 from b_manga_line_test_utils import temporary_line_preset_store  # noqa: E402
 from b_manga_line import core, line_only_world  # noqa: E402
+from b_manga_line.gn_socket_compat import get_gn_modifier_input  # noqa: E402
 
 
 OFFSET_SOCKET = "オフセット"
@@ -50,7 +51,7 @@ def _socket_value(mod: bpy.types.Modifier, name: str) -> float:
     tree = getattr(mod, "node_group", None)
     if tree is None:
         raise AssertionError(f"node group missing: {mod.name}")
-    return float(mod[_socket_id(tree, name)])
+    return float(get_gn_modifier_input(mod, _socket_id(tree, name), 0.0))
 
 
 def _assert_close(actual: float, expected: float, label: str) -> None:
