@@ -3,6 +3,64 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.2 LTS を対象としています（開発基準バージョン。5.1でも動作確認済み）。
 
+## 2026-07-18 — コマとテキスト/フキダシの並べ替え解禁 + Meldex取込順の保証 (B-MANGA v0.6.546)
+
+### 症状
+
+- レイヤーリストの「最前面 / 前面へ / 背面へ / 最背面」で、コマレイヤーを
+  テキスト/フキダシレイヤーより背面 (下) へ動かせなかった。逆方向 (テキストを
+  コマより背面へ) も同様に不可。順序ボタンの移動単位が「同じ種類の行同士」に
+  限定されていたため。
+- コマ追加・コマ分割・枠線カット・フキダシしっぽ操作などが呼ぶ整列同期
+  (`align_coma_order=True`) が、ページ直下のテキスト/フキダシ行を毎回全コマの
+  背面へ落としていた (Meldex取込直後は前面でも、コマを操作すると背面へ落ちる。
+  ユーザー報告「テキストがコマより背面になり、直せない」の主経路)。
+- 順序ボタンでテキスト/フキダシをコマ領域上で背面へ動かすと、移動後の行選択が
+  UIList D&D と誤検知され、`_apply_stack_drop_hint` が「直上の行の親」への
+  親変更と解釈してテキストがコマの子に入ってしまう潜在バグ (同種移動のみの
+  旧仕様では無害だったが、異種移動の解禁で顕在化)。
+- 旧バージョンで取り込んだ作品などで、テキスト/フキダシのレイヤー行がコマ行より
+  背面に残っている場合、Meldexシナリオを再取込しても並び順が直らなかった
+  (再取込は既存行の並び位置を維持するため)。
+
+### 修正 (いずれも `utils/layer_stack.py` / `io/meldex_scenario_import.py`)
+
+- `_same_move_scope` を「同じ親コンテナ (ページ直下・コマ配下・フォルダ配下
+  など) の行は種類が違っても同じ移動単位」へ変更。コマ⇔テキスト/フキダシ⇔
+  フォルダ等を順序ボタンで相互に跨げるようにした。ページ行同士・ページ外
+  グループの扱いは従来どおり。
+- `_normalize_tree_order` の align モードを「コマ行同士の並びだけを実データ順に
+  揃え、非コマ行はコマ行スロットに対する前後位置を保つ」方式へ変更し、コマ
+  操作のたびにページ直下テキスト/フキダシが背面へ落ちる問題を解消。
+- `move_stack_item` で、行選択 (active index 更新コールバック) より前に正規化
+  同期と既知シグネチャ記録を行い、順序ボタン移動が D&D 誤検知→勝手な親変更に
+  つながらないようにした。
+- `move_stack_rows_in_front_of_comas` を追加し、Meldexシナリオ取込の後処理で、
+  今回取込したテキスト/フキダシ行を同じページの全コマ行より前面へ移すように
+  した。取込行同士の相対順と、既に前面にある行の位置は変えない。
+
+### テスト (Blender 5.2 LTS 実機)
+
+- 新規 `test/blender_layer_stack_cross_kind_move_check.py`: コマ行の
+  UP/FRONT/BACK でテキスト/フキダシ行を跨げること、コマ z_order とコマ
+  プレビュー行の追従、テキスト行の BACK、align 同期後も並びが崩れないこと、
+  旧データ相当 (全テキスト/フキダシがコマより背面) からの再取込で前面へ戻る
+  こと、ペア隣接の維持を確認。
+- 新規 `test/blender_layer_stack_cross_kind_visual_check.py` (UI実機 +
+  スクリーンショット画素検証): テキスト前面で文字が見える (5171px) → テキスト
+  最背面でコマ用紙面に隠れる (0px) → コマ最背面で再び見える (4334px) を実描画で
+  確認。移動後もテキストがページ直下のまま (コマへ吸着しない) ことも検証。
+  画像は `_verify/2026-07-18_layer_stack_coma_text_order/` (AI目視確認済み)。
+- 回帰: `blender_layer_stack_ui_behavior_check` /
+  `blender_layer_stack_dnd_reparent_check` / `blender_layer_folder_check` /
+  `blender_coma_knife_cut_layer_order_check` /
+  `blender_layer_stack_z_order_refresh_check` /
+  `blender_layer_panel_page_list_check` / `blender_coma_content_z_order_check` /
+  `blender_meldex_scenario_import_check` /
+  `blender_meldex_scenario_import_transaction_check` /
+  `blender_meldex_scenario_file_import_check` /
+  `blender_meldex_presentation_v2_check` すべて PASS。
+
 ## 2026-07-18 — コマファイルへのテキスト/フキダシ実体混入を修正 (B-MANGA v0.6.545)
 
 ### 症状

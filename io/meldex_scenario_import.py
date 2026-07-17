@@ -59,7 +59,7 @@ def _import_document(
         len(document.pages),
         save_payload_copy=payload_to_save is not None,
     ) as plan:
-        result, new_pairs = _apply_document(
+        result, new_pairs, touched_rows = _apply_document(
             context,
             work,
             document,
@@ -68,7 +68,7 @@ def _import_document(
         )
         if payload_to_save is not None:
             json_io.write_json(paths.scenario_file(work_dir), payload_to_save)
-    _post_import_sync(context, work, result["pagesAdded"], new_pairs)
+    _post_import_sync(context, work, result["pagesAdded"], new_pairs, touched_rows)
     return result
 
 
@@ -86,6 +86,9 @@ def _apply_document(context, work, document, plan, original_active):
     # 今回の取込で両方を新設したペアだけ、後段で隣接順へ揃える。
     # 既存要素の手動並び順は再取込でも維持する。
     new_pairs: list[tuple[str, str, str]] = []
+    # 取込対象になった全行 (新規+更新)。後段でコマより前面へ揃える
+    # (2026-07-18 ユーザー指示: Meldex読込のテキスト/フキダシはコマより前面)。
+    touched_rows: list[tuple[str, str, str]] = []
     with ExitStack() as stack:
         stack.enter_context(balloon_curve_object.defer_auto_sync())
         stack.enter_context(text_real_object.suspend_auto_sync())
@@ -115,6 +118,7 @@ def _apply_document(context, work, document, plan, original_active):
                     ) if apply_meldex_presentation else None,
                 )
                 result["created" if created else "updated"] += 1
+                touched_rows.append((page_key, balloon_id, text_id))
                 if pair_new:
                     new_pairs.append((page_key, balloon_id, text_id))
             page.coma_count = len(page.comas)
@@ -127,10 +131,10 @@ def _apply_document(context, work, document, plan, original_active):
             page_range.sync_end_number_to_page_count(work)
     page_io.save_pages_json(work_dir, work)
     work_io.save_work_json(work_dir, work)
-    return result, new_pairs
+    return result, new_pairs, touched_rows
 
 
-def _post_import_sync(context, work, added_pages: int, new_pairs) -> None:
+def _post_import_sync(context, work, added_pages: int, new_pairs, touched_rows) -> None:
     if added_pages:
         try:
             page_grid.apply_page_collection_transforms(context, work)
@@ -140,6 +144,16 @@ def _post_import_sync(context, work, added_pages: int, new_pairs) -> None:
         layer_stack.sync_layer_stack_after_data_change(context)
     except Exception:  # noqa: BLE001 - 次回読込で再構築できる表示同期はベストエフォート
         _logger.exception("meldex import: layer stack sync failed")
+    try:
+        touched_uids: list[str] = []
+        for page_key, balloon_id, text_id in touched_rows:
+            if text_id:
+                touched_uids.append(layer_stack.target_uid("text", f"{page_key}:{text_id}"))
+            if balloon_id:
+                touched_uids.append(layer_stack.target_uid("balloon", f"{page_key}:{balloon_id}"))
+        layer_stack.move_stack_rows_in_front_of_comas(context, touched_uids)
+    except Exception:  # noqa: BLE001 - 並び順の最終保証はベストエフォート
+        _logger.exception("meldex import: front-of-coma layer order failed")
     try:
         layer_stack.normalize_paired_layer_order(context, new_pairs)
     except Exception:  # noqa: BLE001 - 並び順の最終保証はベストエフォート

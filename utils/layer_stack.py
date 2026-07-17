@@ -1008,7 +1008,11 @@ def _normalize_tree_order(
         _append_uid(page_item)
         page_key = page_item.key
         if coma_key_order_by_page is not None:
-            # align モード: コマを実データ順に並べ、その後にページ直下子を出す.
+            # align モード: コマ行同士の並びだけを実データ順に揃える。ページ直下の
+            # 非コマ行 (テキスト/フキダシ等) は、コマ行の位置スロットに対する
+            # 前後関係を保つ (2026-07-18 ユーザー指示: 旧実装はコマを先に出して
+            # から非コマ行を出していたため、コマ追加/カット等の align 同期の
+            # たびにページ直下テキストが全コマの背面へ落ちていた)。
             panel_items = [
                 item
                 for item in stack
@@ -1019,18 +1023,37 @@ def _normalize_tree_order(
                 for key in coma_key_order_by_page.get(page_key, [])
             ]
             panel_items = _ordered_items_by_uid(panel_items, panel_uid_order)
-            for panel_item in panel_items:
+            page_children = [
+                (
+                    child.kind == COMA_KIND
+                    and split_child_key(getattr(child, "key", ""))[0] == page_key,
+                    child,
+                )
+                for child in stack
+                if (
+                    child.kind == COMA_KIND
+                    and split_child_key(getattr(child, "key", ""))[0] == page_key
+                )
+                or str(getattr(child, "parent_key", "") or "") == page_key
+            ]
+            panel_iter = iter(panel_items)
+            for is_page_coma, child in page_children:
+                if is_page_coma:
+                    # コマ行スロットへ、実データ順のコマを順番に流し込む
+                    panel_item = next(panel_iter, None)
+                    if panel_item is None:
+                        continue
+                    _append_uid(panel_item)
+                    _append_subtree_in_stack_order(panel_item.key)
+                    continue
+                _append_uid(child)
+                kind = getattr(child, "kind", "")
+                if kind in {"balloon_group", LAYER_FOLDER_KIND}:
+                    _append_subtree_in_stack_order(child.key)
+            for panel_item in panel_iter:
+                # 保険: スロット数が合わない場合も全コマを必ず出す
                 _append_uid(panel_item)
                 _append_subtree_in_stack_order(panel_item.key)
-            for child in stack:
-                if (
-                    str(getattr(child, "parent_key", "") or "") == page_key
-                    and child.kind != COMA_KIND
-                ):
-                    _append_uid(child)
-                    kind = getattr(child, "kind", "")
-                    if kind in {"balloon_group", LAYER_FOLDER_KIND}:
-                        _append_subtree_in_stack_order(child.key)
         else:
             # デフォルト: スタック順を尊重。ページ直下の子(ページ直下 GP, コマ等)
             # を出現順に append。これにより「ページとその第1コマの間に GP を
@@ -1203,34 +1226,29 @@ def _find_stack_item(stack, kind: str, key: str):
     return None
 
 
+def _move_container_key(item) -> str:
+    """順序ボタンの移動単位を決める親コンテナのキーを返す."""
+    if getattr(item, "kind", "") == COMA_KIND:
+        # コマ行は parent_key が空の旧データでも key のページ接頭辞で判定できる
+        page_key, _stem = split_child_key(getattr(item, "key", ""))
+        return page_key
+    return str(getattr(item, "parent_key", "") or "")
+
+
 def _same_move_scope(a, b) -> bool:
-    """右側の順序ボタンで同じ移動単位として扱える行かを返す."""
+    """右側の順序ボタンで同じ移動単位として扱える行かを返す.
+
+    2026-07-18 ユーザー指示: 同じ親コンテナ (ページ直下・コマ配下・フォルダ
+    配下など) に並ぶ行は、種類が違っても同じ移動単位にする。従来は同種の行
+    しか跨げず、コマ行をテキスト/フキダシ行より背面 (下) へ動かせなかった。
+    """
     a_kind = getattr(a, "kind", "")
     b_kind = getattr(b, "kind", "")
-    a_parent = str(getattr(a, "parent_key", "") or "")
-    b_parent = str(getattr(b, "parent_key", "") or "")
-    a_coma_child = a_kind in COMA_REORDER_KINDS and ":" in a_parent
-    b_coma_child = b_kind in COMA_REORDER_KINDS and ":" in b_parent
-    if a_coma_child or b_coma_child:
-        return a_coma_child and b_coma_child and a_parent == b_parent
     if a_kind == PAGE_KIND or b_kind == PAGE_KIND:
         return a_kind == b_kind == PAGE_KIND
-    if a_kind == COMA_KIND or b_kind == COMA_KIND:
-        return (
-            a_kind == b_kind == COMA_KIND
-            and split_child_key(getattr(a, "key", ""))[0]
-            == split_child_key(getattr(b, "key", ""))[0]
-        )
-    if a_kind == LAYER_FOLDER_KIND or b_kind == LAYER_FOLDER_KIND:
-        return (
-            a_kind == b_kind == LAYER_FOLDER_KIND
-            and str(getattr(a, "parent_key", "") or "")
-            == str(getattr(b, "parent_key", "") or "")
-        )
-    return (
-        a_kind == b_kind
-        and a_parent == b_parent
-    )
+    if a_kind == OUTSIDE_KIND or b_kind == OUTSIDE_KIND:
+        return False
+    return _move_container_key(a) == _move_container_key(b)
 
 
 def _move_scope_indices(stack, item) -> list[int]:
@@ -1640,6 +1658,64 @@ def normalize_paired_layer_order(context, pairs) -> None:
         _remember_stack_signature(context)
         _sync_real_objects_after_stack_order(context)
         tag_view3d_redraw(context)
+
+
+def move_stack_rows_in_front_of_comas(context, uids) -> bool:
+    """指定 uid のページ直下行を、同じページの全コマ行より前面 (上) へ移す.
+
+    Meldex取込 (2026-07-18 ユーザー指示) 用: 取込したテキスト/フキダシは
+    コマレイヤーより前面に置く。対象行同士の相対順と、既に前面にある行の
+    位置は変えない。
+    """
+    scene = getattr(context, "scene", None)
+    stack = getattr(scene, "bmanga_layer_stack", None) if scene is not None else None
+    if stack is None or not uids:
+        return False
+    uid_set = {str(uid) for uid in uids if uid}
+    if not uid_set:
+        return False
+    ordered_uids = [
+        stack_item_uid(item)
+        for item in stack
+        if stack_item_uid(item) in uid_set
+    ]
+    insert_at_by_page: dict[str, int] = {}
+    moved = False
+    for uid in ordered_uids:
+        idx = _find_stack_index_by_uid(stack, uid)
+        if idx < 0:
+            continue
+        item = stack[idx]
+        page_key = str(getattr(item, "parent_key", "") or "")
+        # ページ直下行だけが対象 (コマ配下・フォルダ配下・ページ外は動かさない)
+        if not page_key or ":" in page_key or page_key == OUTSIDE_STACK_KEY:
+            continue
+        insert_at = insert_at_by_page.get(page_key)
+        if insert_at is None:
+            insert_at = next(
+                (
+                    i
+                    for i, row in enumerate(stack)
+                    if row.kind == COMA_KIND
+                    and split_child_key(getattr(row, "key", ""))[0] == page_key
+                ),
+                -1,
+            )
+            if insert_at < 0:
+                # コマの無いページは並べ替え不要
+                insert_at_by_page[page_key] = len(stack)
+                continue
+            insert_at_by_page[page_key] = insert_at
+        if idx <= insert_at or insert_at >= len(stack):
+            continue
+        stack.move(idx, insert_at)
+        insert_at_by_page[page_key] = insert_at + 1
+        moved = True
+    if moved:
+        apply_stack_order(context)
+        _remember_stack_signature(context)
+        tag_view3d_redraw(context)
+    return moved
 
 
 def schedule_layer_stack_draw_maintenance(context) -> bool:
@@ -2860,6 +2936,13 @@ def move_stack_item(
     if moved_index >= 0:
         set_active_stack_index_silently(context, moved_index)
     apply_stack_order(context)
+    # 選択更新 (active index の update コールバック) より前に、木構造の正規化と
+    # 既知シグネチャの記録を済ませる。後回しにすると、コールバック内の
+    # apply_stack_order_if_ui_changed が順序ボタンの移動を UIList D&D と誤認し、
+    # _apply_stack_drop_hint が「直上の行の親」へ勝手に親変更してしまう
+    # (例: テキストを最背面へ→直上がコマ子行→テキストがコマへ入る)。
+    sync_layer_stack(context, preserve_active_index=True)
+    remember_layer_stack_signature(context)
     _select_stack_item_after_move(context, moved_uid)
     remember_layer_stack_signature(context)
     return True
