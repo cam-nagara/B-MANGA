@@ -174,6 +174,10 @@ def structural_page_filter(scene=None) -> set[str] | None:
     role, page_id_from_path, _coma_id = current_role(bpy.context)
     if role == ROLE_PAGE and paths.is_valid_page_id(page_id_from_path):
         return {page_id_from_path}
+    if role == ROLE_COMA and paths.is_valid_page_id(page_id_from_path):
+        # コマファイルは自身が属するページの構造(コマ枠)だけを持ち、他ページの
+        # Collectionは作らない。
+        return {page_id_from_path}
     page_id = current_page_id(scene)
     if page_id and is_page_edit_scene(scene):
         return {page_id}
@@ -187,6 +191,9 @@ def content_page_filter(scene=None) -> set[str] | None:
     role, page_id_from_path, _coma_id = current_role(bpy.context)
     if role == ROLE_PAGE and paths.is_valid_page_id(page_id_from_path):
         return {page_id_from_path}
+    if role == ROLE_COMA:
+        # コマファイルはテキスト/フキダシ/画像を実体化しない (overlay 表示のみ)。
+        return set()
     page_id = current_page_id(scene)
     if page_id and is_page_edit_scene(scene):
         return {page_id}
@@ -198,14 +205,17 @@ def content_page_filter(scene=None) -> set[str] | None:
 def coma_runtime_page_filter(scene=None) -> set[str] | None:
     """コマ枠実体を保持してよいページ ID。
 
-    作品ファイルはページプレビューだけを持つため空集合、ページ用blendは
-    現在ページだけを返す。判定できない旧ファイルでは None を返して従来通りにする。
+    作品ファイルはページプレビューだけを持つため空集合、ページ用blend・
+    コマ用blendはそれぞれ自身が属するページだけを返す。判定できない旧ファイル
+    では None を返して従来通りにする。
     """
     scene = scene or getattr(bpy.context, "scene", None)
     if scene is None:
         return None
     role, page_id_from_path, _coma_id = current_role(bpy.context)
     if role == ROLE_PAGE and paths.is_valid_page_id(page_id_from_path):
+        return {page_id_from_path}
+    if role == ROLE_COMA and paths.is_valid_page_id(page_id_from_path):
         return {page_id_from_path}
     page_id = current_page_id(scene)
     if page_id and is_page_edit_scene(scene):

@@ -449,7 +449,12 @@ def _fit_text_only(text) -> None:
 
 
 def _sync_current_page(context, work) -> None:
-    page_id = page_file_scene.current_page_id(getattr(context, "scene", None))
+    scene = getattr(context, "scene", None)
+    if not page_file_scene.is_page_edit_scene(scene):
+        # コマファイル/作品ファイルではテキスト・フキダシを実体化しない
+        # (overlay 表示のみ)。実体はページ用blend側でのみ ensure する。
+        return
+    page_id = page_file_scene.current_page_id(scene)
     if not page_id:
         return
     page = next((item for item in work.pages if item.id == page_id), None)

@@ -3,6 +3,53 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.2 LTS を対象としています（開発基準バージョン。5.1でも動作確認済み）。
 
+## 2026-07-18 — コマファイルへのテキスト/フキダシ実体混入を修正 (B-MANGA v0.6.545)
+
+### 症状
+
+- コマファイル(`pXXXX/cYY/cYY.blend`)を開くと、Outliner の「B-MANGA」コレクション配下
+  「text」コレクションに、本来ページ用blend側だけが持つはずのテキスト実体
+  （透明テキスト画像を貼ったMesh平面）が混入していた。コマファイルではテキスト/
+  フキダシは本来オーバーレイ表示のみで、実体を持たない設計。
+
+### 原因
+
+- `io/meldex_scenario_import.py` の `_sync_current_page` が、Meldexシナリオ取込直後の
+  実体反映処理で `page_file_scene.current_page_id(scene)` の真偽だけを見ており、
+  ファイルがコマファイルかどうかを判定していなかった。`utils/handlers.py` の
+  `_sync_active_from_blend_path` はコマファイルにも親ページIDを設定するため、
+  コマファイルを開いた状態でMeldex取込を行うと `ensure_text_real_object`/
+  `ensure_balloon_curve_object` が直接呼ばれ、テキスト/フキダシ実体が生成されていた。
+- 加えて `utils/page_file_scene.py` の `structural_page_filter`/`content_page_filter`/
+  `coma_runtime_page_filter` がコマファイル(`ROLE_COMA`)を明示的に扱っておらず、
+  「判定できない旧ファイル」用のフォールバック(`None`=無制限)に落ちていた。これにより
+  通常の全体同期(`mirror_work_to_outliner`)が走った場合も、本来ならコマファイルで
+  実体化してはいけない全ページ分のテキスト/フキダシ/画像が実体化しうる状態だった。
+
+### 修正
+
+- `io/meldex_scenario_import.py` の `_sync_current_page` に、`is_page_edit_scene(scene)`
+  が False（コマファイル・作品ファイル）の場合は即returnするガードを追加。
+- `utils/page_file_scene.py` の3フィルタ関数に `ROLE_COMA` の明示分岐を追加。
+  `content_page_filter` はコマファイルで常に空集合（実体化なし・overlay専用）を返し、
+  `structural_page_filter`/`coma_runtime_page_filter` は自身が属するページの分だけ
+  （コマ枠マスク描画に必要な最小限）を返すようにした。
+- 既存の壊れたコマファイルも、次回開いた際に `utils/coma_scene.py` の
+  `prepare_coma_blend_scene`（B-MANGAコレクション配下を無条件再構築する既存処理）に
+  より自動的にテキスト実体がパージされる。
+
+### 検証 (Blender 5.2.0 LTS 実機)
+
+- コマファイルパスに保存した状態で `content_page_filter` が空集合を返し
+  `is_page_edit_scene` が False になることを確認。
+- ページ用blend(`page.blend`)側の同フィルタの戻り値が変更前と同じであることを確認し、
+  既存の実体化フローに退行がないことを確認した
+  (`_verify/2026-07-18_koma_text_overlay_only/`)。
+- 徹底チェック: コマファイルの読込(`load_post`)・複数コマページでのマスク再生成・
+  Meldex取込・テキストツール操作・ファストパス判定の6経路を関数呼び出しチェーンを
+  追って確認し、通常運用では `MODE_COMA` 短絡や `load_post` スキップ、各operatorの
+  `is_page_edit_scene` ガードにより実害がないことを確認済み。
+
 ## 2026-07-18 — Blender 5.2 LTS 移行 (B-MANGA v0.6.544 / Liner v0.3.201 / Render v0.1.37)
 
 ### 症状
