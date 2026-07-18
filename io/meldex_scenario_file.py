@@ -488,7 +488,7 @@ def _normalize_presentation(
         "writingMode": normalized_writing_mode,
         "sizePercent": size_percent,
         "gapEm": gap_em,
-        "letterSpacingEm": _finite(source.get("letterSpacingEm"), 0.0, -0.9, 3.0),
+        "letterSpacingEm": _finite(source.get("letterSpacingEm"), 0.0, -2.0, 3.0),
         "lineHeight": _finite(source.get("lineHeight"), 1.8, 0.5, 5.0),
         "align": _choice(source.get("align"), {"center", "start"}, "center"),
         "smallKana": _choice(source.get("smallKana"), {"keep", "fullsize"}, "keep"),

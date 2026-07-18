@@ -138,6 +138,34 @@ def _placement_checks() -> None:
     _assert_close(latin_ruby[0].x_mm, 0.5, "欧文ルビ・中央配置")
     _assert_close(latin_ruby[1].x_mm, 1.0, "欧文ルビ・ベタ組")
 
+    # 字間マイナスはJIS配分をベタ組（中付き）へ詰め寄せる。-2でベタ到達。
+    condensed_half = compute_ruby_placements(
+        parents_h, [span], ruby_size_ratio=0.5, writing_mode="horizontal",
+        ruby_align="center", ruby_letter_spacing=-1.0,
+    )
+    _assert_close(condensed_half[0].x_mm, 0.375, "字間-1・先頭")
+    _assert_close(condensed_half[1].x_mm, 1.125, "字間-1・2字目")
+    condensed_beta = compute_ruby_placements(
+        parents_h, [span], ruby_size_ratio=0.5, writing_mode="horizontal",
+        ruby_align="center", ruby_letter_spacing=-2.0,
+    )
+    _assert_close(condensed_beta[0].x_mm, 0.5, "字間-2・ベタ先頭")
+    _assert_close(condensed_beta[1].x_mm, 1.0, "字間-2・ベタ2字目")
+
+    # 肩付きの自動圧縮で隣の親文字までに収めたルビは、字間マイナスの
+    # 詰め寄せ補間で再び広がらない（次の親文字開始1.0mmの内側を保つ）。
+    shoulder_spans = [
+        {"start": 0, "length": 1, "ruby_text": "とうきょうと", "style": "group"},
+        {"start": 1, "length": 1, "ruby_text": "おおさかし", "style": "group"},
+    ]
+    squeezed = compute_ruby_placements(
+        parents_h, shoulder_spans, ruby_size_ratio=0.5,
+        writing_mode="horizontal", ruby_align="start", ruby_letter_spacing=-1.0,
+    )
+    first_xs = [p.x_mm for p in squeezed[:6]]
+    assert all(b > a for a, b in zip(first_xs, first_xs[1:])), first_xs
+    assert first_xs[-1] <= 0.71, first_xs
+
 
 def _render_entry(entry, filename: str) -> None:
     from PIL import Image, ImageChops
@@ -175,7 +203,7 @@ def _visual_checks(page) -> None:
         entry.height_mm = 70.0
         assert entry.ruby_size_percent == 50.0
         assert entry.ruby_gap_em == 0.0
-        assert entry.ruby_letter_spacing == 0.0
+        assert entry.ruby_letter_spacing == -1.0
         assert entry.ruby_align == "center"
         assert entry.ruby_font_preset == "inherit"
         assert entry.ruby_default_style == "group"

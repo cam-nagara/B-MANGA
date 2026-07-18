@@ -114,7 +114,8 @@ def render_pad_mm_for_entry(entry, minimum: float = 1.5) -> float:
         base_em = 5.0
     ruby_em = base_em * ruby_size_ratio_from_entry(entry)
     gap = ruby_gap_mm_from_entry(entry)
-    spacing = max(0.1, 1.0 + ruby_letter_spacing_from_entry(entry))
+    # 負の字間は延べ幅を縮めない（ベタ組が下限）ため、余白見積もりも同じ床を使う
+    spacing = max(1.0, 1.0 + ruby_letter_spacing_from_entry(entry))
     max_count = 0
     for span in spans:
         max_count = max(max_count, len(str(_span_value(span, "ruby_text", "") or "")))
@@ -148,6 +149,7 @@ def _distributed_starts(
     group_style: bool = False,
     jis_group_distribution: bool = False,
     max_outer_space: float | None = None,
+    condense: float = 0.0,
 ) -> list[float]:
     count = int(count)
     if count <= 0:
@@ -158,13 +160,24 @@ def _distributed_starts(
         if align == "start":
             return [float(parent_start)]
         return [parent_center - ruby_em * 0.5]
+
+    def _condensed(starts: list[float]) -> list[float]:
+        return _condense_starts(
+            starts,
+            ruby_em=ruby_em,
+            parent_start=float(parent_start),
+            parent_end=float(parent_end),
+            align=align,
+            condense=condense,
+        )
+
     if target_extent is not None:
         # 重なり解決 (_resolve_ruby_overlaps) 後の延べ幅をそのまま使う。
         # eff_ls は負の字間を表現できず 0 でクランプされるため、字間から
         # 再計算すると圧縮結果が失われて隣のルビと重なる。
         natural_span = max(ruby_em, float(target_extent))
     else:
-        natural_pitch = ruby_em * max(0.1, 1.0 + float(letter_spacing))
+        natural_pitch = ruby_em * max(1.0, 1.0 + float(letter_spacing))
         natural_span = ruby_em + natural_pitch * (count - 1)
     if align == "start":
         # 肩付き: 親文字の先頭へ詰めたまま置く (親文字幅へ引き伸ばさない)。
@@ -181,7 +194,7 @@ def _distributed_starts(
                 outer = min(outer, max(0.0, float(max_outer_space)))
             inner_step = (parent_span - 2.0 * outer - ruby_em) / (count - 1)
             first = float(parent_start) + outer
-            return [first + inner_step * i for i in range(count)]
+            return _condensed([first + inner_step * i for i in range(count)])
         # 欧文の読みは語のまとまりを崩さず、字間を増やさず中央へ置く。
         span = natural_span
         first = parent_center - span * 0.5
@@ -189,14 +202,53 @@ def _distributed_starts(
         span = max(parent_span, natural_span)
         first = parent_center - span * 0.5
     step = 0.0 if count <= 1 else (span - ruby_em) / (count - 1)
-    return [first + step * i for i in range(count)]
+    return _condensed([first + step * i for i in range(count)])
 
 
 def _ruby_extent(ruby_em: float, count: int, letter_spacing: float) -> float:
+    """ルビの延べ幅。負の字間では縮めない（ベタ組が下限）。
+
+    負値の詰め寄せは _distributed_starts の condense 補間で行い、
+    隣接衝突判定 (_resolve_ruby_overlaps) が実占有幅を見失わないようにする。
+    """
     if count <= 1:
         return ruby_em
-    pitch = ruby_em * max(0.1, 1.0 + float(letter_spacing))
+    pitch = ruby_em * max(1.0, 1.0 + float(letter_spacing))
     return ruby_em + pitch * (count - 1)
+
+
+def _condense_ratio(letter_spacing: float) -> float:
+    """字間マイナス値の詰め寄せ係数。-2.0でベタ組（文字が隣接）へ到達する。"""
+    return min(1.0, max(0.0, -float(letter_spacing) / 2.0))
+
+
+def _condense_starts(
+    starts: list[float],
+    *,
+    ruby_em: float,
+    parent_start: float,
+    parent_end: float,
+    align: str,
+    condense: float,
+) -> list[float]:
+    """配置済みstartsをベタ組クラスタへcondense比率で線形補間する。
+
+    中付きは親中央、肩付きは親先頭へ寄せる。文字順は保たれ、
+    ベタ組より詰まることはない。
+    """
+    t = min(1.0, max(0.0, float(condense)))
+    if t <= 0.0 or len(starts) <= 1:
+        return starts
+    # 肩付きの自動圧縮などで既にベタ組以下へ詰まっている配置は広げない
+    # （ベタ組へ向けた補間が拡大方向に働き、収まりを壊すため）。
+    if starts[1] - starts[0] <= ruby_em + 1e-9:
+        return starts
+    if align == "start":
+        beta_first = float(parent_start)
+    else:
+        center = (float(parent_start) + float(parent_end)) * 0.5
+        beta_first = center - ruby_em * len(starts) * 0.5
+    return [s + t * (beta_first + ruby_em * i - s) for i, s in enumerate(starts)]
 
 
 def _ls_for_target_extent(
@@ -351,6 +403,9 @@ def compute_ruby_placements(
     隣接スパンのルビが重なる場合は字間を自動圧縮して回避する。
     """
     is_horiz = str(writing_mode or "horizontal") == "horizontal"
+    # ユーザー指定の字間マイナス値は、自動圧縮 (eff_ls) とは独立に
+    # 詰め寄せ係数として配置段階で適用する。
+    condense = _condense_ratio(ruby_letter_spacing)
 
     # ── Phase 1: スパン情報を収集 ──
     infos: list[dict] = []
@@ -426,6 +481,7 @@ def compute_ruby_placements(
                     info['style'] == "group" and _is_japanese_ruby_text(txt)
                 ),
                 max_outer_space=max(_glyph_em_mm(g) for g in info['covered']) * 0.5,
+                condense=condense,
             )
             ry = top_y + ruby_offset_mm
             for rch, rx in zip(txt, starts):
@@ -447,6 +503,7 @@ def compute_ruby_placements(
                     info['style'] == "group" and _is_japanese_ruby_text(txt)
                 ),
                 max_outer_space=max(_glyph_em_mm(g) for g in info['covered']) * 0.5,
+                condense=condense,
             )
             if align == "start" and starts:
                 shift = (top_y - em) - starts[-1]

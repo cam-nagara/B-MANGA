@@ -12,7 +12,7 @@
   "ruby_line_height": 1.8,
   "ruby_gap_mm": 0.0,
   "ruby_gap_em": 0.0,
-  "ruby_letter_spacing": 0.0,
+  "ruby_letter_spacing": -1.0,
   "ruby_size_percent": 50.0,
   "ruby_font": "",
   "ruby_font_preset": "inherit",

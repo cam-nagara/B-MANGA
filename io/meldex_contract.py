@@ -216,7 +216,7 @@ def _validate_ruby_presentation(ruby: Any) -> dict[str, Any]:
     if "gapEm" in ruby:
         checked["gapEm"] = _number(ruby["gapEm"], -2.0, 4.0, "gapEm")
     if "letterSpacingEm" in ruby:
-        checked["letterSpacingEm"] = _number(ruby["letterSpacingEm"], -0.9, 3.0, "letterSpacingEm")
+        checked["letterSpacingEm"] = _number(ruby["letterSpacingEm"], -2.0, 3.0, "letterSpacingEm")
     if "lineHeight" in ruby:
         checked["lineHeight"] = _number(ruby["lineHeight"], 0.5, 5.0, "lineHeight")
     if "align" in ruby:

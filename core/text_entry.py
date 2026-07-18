@@ -359,7 +359,7 @@ class BMangaTextEntry(bpy.types.PropertyGroup):
     ruby_line_height: FloatProperty(name="ルビ行の行間", default=1.8, min=0.5, max=5.0, step=10, description="ルビを含む行の行間（文字サイズに対する倍率）", update=_on_text_entry_changed)  # type: ignore[valid-type]
     ruby_gap_mm: FloatProperty(name="親文字との間隔", default=0.0, min=0.0, soft_max=5.0, description="親文字とルビの間隔（mm）", unit="LENGTH", update=_on_text_entry_changed)  # type: ignore[valid-type]
     ruby_gap_em: FloatProperty(name="親文字との間隔", default=0.0, min=-2.0, max=4.0, description="親文字の大きさに対する間隔。大きいほど離れます", get=_get_ruby_gap_em, set=_set_ruby_gap_em, update=_on_text_entry_changed)  # type: ignore[valid-type]
-    ruby_letter_spacing: FloatProperty(name="ルビの字間", default=0.0, min=-0.9, max=3.0, step=5, description="ルビ文字同士の間隔（文字サイズに対する倍率）", update=_on_text_entry_changed)  # type: ignore[valid-type]
+    ruby_letter_spacing: FloatProperty(name="ルビの字間", default=-1.0, min=-2.0, max=3.0, step=5, description="ルビ文字同士の間隔（文字サイズに対する倍率）。マイナスは広げ配分を詰め、-2でベタ組（文字が隣接）になります", update=_on_text_entry_changed)  # type: ignore[valid-type]
     ruby_size_percent: FloatProperty(name="サイズ（親文字比%）", default=50.0, min=5.0, max=200.0, step=5, description="ルビの文字サイズを親文字に対する割合(%)で指定", subtype="PERCENTAGE", update=_on_text_entry_changed)  # type: ignore[valid-type]
     ruby_font: StringProperty(name="ルビ用フォント", default="", description="ルビに使うフォント（空欄なら基本フォントを使用）", subtype="FILE_PATH", update=_on_text_entry_changed)  # type: ignore[valid-type]
     ruby_font_preset: EnumProperty(name="ルビ用フォント", items=_RUBY_FONT_PRESET_ITEMS, default="inherit", update=_on_text_entry_changed)  # type: ignore[valid-type]
