@@ -117,7 +117,7 @@ class BMANGA_OT_text_selection_style_popup(Operator):
     font_size_unit: EnumProperty(name="サイズ単位", items=_FONT_SIZE_UNIT_ITEMS, default="q")  # type: ignore[valid-type]
     font_size_value: FloatProperty(name="サイズ", default=20.0, min=0.1, soft_max=200.0, precision=3, get=_get_font_size_value, set=_set_font_size_value)  # type: ignore[valid-type]
     font_choice: EnumProperty(name="フォント", items=text_style.font_dropdown_items)  # type: ignore[valid-type]
-    ruby_text: StringProperty(name="ルビ", default="")  # type: ignore[valid-type]
+    ruby_text: StringProperty(name="ルビ", default="", description="選択した文字に付けるルビです。空のまま確定すると、その範囲のルビを外します")  # type: ignore[valid-type]
     ruby_style: EnumProperty(name="ルビ種類", items=_RUBY_STYLE_ITEMS, default="group")  # type: ignore[valid-type]
 
     @classmethod
@@ -184,7 +184,6 @@ class BMANGA_OT_text_selection_style_popup(Operator):
         layout.separator()
         layout.prop(self, "ruby_text")
         layout.prop(self, "ruby_style", text="")
-        layout.label(text="ルビを外す場合は、ルビ欄を空にします", icon="INFO")
 
     def check(self, context):
         page, entry, _idx = _find_text_entry(context, self.page_id, self.text_id)
