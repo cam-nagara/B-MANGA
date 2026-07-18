@@ -949,6 +949,12 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
                     _sidebar.schedule_open_bmanga_sidebar()
                 except Exception:  # noqa: BLE001
                     _logger.exception("load_post: B-MANGA sidebar open failed")
+                try:
+                    from ..operators import object_tool_op as _object_tool_op
+
+                    _object_tool_op.schedule_object_tool_relaunch_after_file_open()
+                except Exception:  # noqa: BLE001
+                    _logger.exception("load_post: object tool relaunch scheduling failed")
             elif (
                 len(rel.parts) == 2
                 and paths.is_valid_page_id(rel.parts[0])
@@ -1014,6 +1020,12 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
                     view_op.schedule_fit_active_page()
                 except Exception:  # noqa: BLE001
                     _logger.exception("load_post: page fit scheduling failed")
+                try:
+                    from ..operators import object_tool_op as _object_tool_op
+
+                    _object_tool_op.schedule_object_tool_relaunch_after_file_open()
+                except Exception:  # noqa: BLE001
+                    _logger.exception("load_post: object tool relaunch scheduling failed")
             elif (
                 len(rel.parts) == 3
                 and paths.is_valid_page_id(rel.parts[0])

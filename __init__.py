@@ -11,7 +11,7 @@ from __future__ import annotations
 bl_info = {
     "name": "B-MANGA",
     "author": "B-MANGA Project",
-    "version": (0, 6, 546),
+    "version": (0, 6, 547),
     "blender": (5, 2, 0),
     "description": "Blender manga name/storyboard authoring addon",
     "category": "Paint",

@@ -1166,6 +1166,14 @@ def sync_layer_stack(
     else:
         _sync_active_stack_index(context)
     sync_visible_layer_stack(context, stack=stack)
+    # 同期 (プログラム起因) の並び替えは、その場で「既知の並び」として記憶する。
+    # 記憶しないまま行選択 (active index の update コールバック) が走ると、
+    # apply_stack_order_if_ui_changed が同期起因の並び替えを UIList D&D と
+    # 誤検知し、選択しただけの行を隣の行の親 (例: コマ) へ勝手に親変更する
+    # (2026-07-18: Meldex取込作品でテキストがコマ配下へ入り込み、コマ行が
+    # 最前面扱いになる実害)。UIList の実 D&D は同期を経由せずに Collection を
+    # 並び替えるため、この記憶によって検知が失われることはない。
+    _remember_stack_signature(context)
     return stack
 
 
@@ -1551,6 +1559,22 @@ def _active_uid_from_signature(scene, signature: tuple[str, ...]) -> str:
     return ""
 
 
+def _is_single_row_reorder(
+    previous: tuple[str, ...],
+    current: tuple[str, ...],
+    uid: str,
+) -> bool:
+    """並び差分が「``uid`` の行を1本だけ動かした」ことと矛盾しないかを返す.
+
+    UIList の実 D&D は常に1行だけを動かすためこの検査を必ず満たす。複数行が
+    まとめて動いた差分 (同期・Undo など内部要因) は満たさないため、D&D 誤検知
+    の防波堤として使う。
+    """
+    if not uid or uid not in previous or uid not in current:
+        return False
+    return [u for u in previous if u != uid] == [u for u in current if u != uid]
+
+
 def apply_stack_order_if_ui_changed(context, *, moved_uid: str = "") -> bool:
     """UIList の D&D で変わった Collection 順を、同期で戻る前に実データへ適用する."""
     scene = getattr(context, "scene", None)
@@ -1574,7 +1598,12 @@ def apply_stack_order_if_ui_changed(context, *, moved_uid: str = "") -> bool:
         moved_uid = _active_uid_from_signature(scene, signature)
     if not moved_uid:
         moved_uid = _infer_moved_uid(previous, signature)
-    _apply_stack_drop_hint(context, moved_uid)
+    # 差分が「moved_uid の行を1本動かした」ことと矛盾する場合、これは UIList の
+    # 実 D&D ではなく同期・Undo など内部要因の並び替え。親変更ヒントを適用すると
+    # 選択しただけの行が隣の行の親へ勝手に入ってしまうため、順序適用だけ行う
+    # (2026-07-18: Meldex取込テキストがコマ配下へ勝手に入る不具合の再発防止)。
+    if _is_single_row_reorder(previous, signature, moved_uid):
+        _apply_stack_drop_hint(context, moved_uid)
     apply_stack_order(context)
     _remember_stack_signature(context)
     return True

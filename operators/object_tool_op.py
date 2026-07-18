@@ -802,11 +802,17 @@ def _uniform_scale_result(
     return new_x, new_y, new_w, new_h
 
 
-def _schedule_object_tool_relaunch(delay_seconds: float = 0.3) -> None:
+def _schedule_object_tool_relaunch(
+    delay_seconds: float = 0.3,
+    *,
+    require_object_mode: bool = False,
+) -> None:
     """取り消し処理などで一旦終了したオブジェクトツールを自動で再開する.
 
     timer から modal を起動するには 3D ビューのウィンドウ文脈が必要なため、
     temp_override で最初の 3D ビューを指して INVOKE する。
+    ``require_object_mode=True`` の場合、アクティブオブジェクトが OBJECT
+    モード以外 (グリースペンシル描画等) なら再開しない。
     """
 
     def _relaunch():
@@ -815,6 +821,15 @@ def _schedule_object_tool_relaunch(delay_seconds: float = 0.3) -> None:
 
             if _state.get_active("object_tool") is not None:
                 return None
+            if _state.any_tool_active():
+                # 再開待ちの間にユーザーが別の B-MANGA ツールを起動した場合は
+                # 奪わない (object_tool.invoke は他ツールを finish するため)。
+                return None
+            if require_object_mode:
+                objects = getattr(getattr(bpy.context, "view_layer", None), "objects", None)
+                active = getattr(objects, "active", None) if objects is not None else None
+                if active is not None and str(getattr(active, "mode", "") or "") != "OBJECT":
+                    return None
             wm = getattr(bpy.context, "window_manager", None)
             for window in getattr(wm, "windows", []) or []:
                 screen = getattr(window, "screen", None)
@@ -836,6 +851,20 @@ def _schedule_object_tool_relaunch(delay_seconds: float = 0.3) -> None:
         bpy.app.timers.register(_relaunch, first_interval=max(0.05, float(delay_seconds)), persistent=True)
     except Exception:  # noqa: BLE001
         _logger.exception("object tool relaunch scheduling failed")
+
+
+def schedule_object_tool_relaunch_after_file_open() -> None:
+    """作品/ページ用blendを開いた直後にオブジェクトツール常駐モーダルを再開する.
+
+    ファイルを開く経路 (open_page_file / exit_page_file / ダブルクリック遷移)
+    は必ず既存モーダルを終了させるが、ツールパネルにはオブジェクトツールが
+    選択状態のまま表示される。再開しないと「ツールはONに見えるのにドラッグで
+    移動できず、ツールを選び直すと直る」状態になる (2026-07-18 報告)。
+    描画モードで保存されたファイルでは何もしない (描画操作を奪わない)。
+    """
+    if bpy.app.background:
+        return
+    _schedule_object_tool_relaunch(delay_seconds=0.3, require_object_mode=True)
 
 
 class BMANGA_OT_object_tool(Operator):
