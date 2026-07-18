@@ -313,6 +313,12 @@ DETAIL_ACTION_SPECS: Mapping[str, DetailActionSpec] = MappingProxyType(
         "bmanga.detail_preset_apply": DetailActionSpec(
             "bmanga.detail_preset_apply", DetailActionBoundary.TRANSACTIONAL
         ),
+        # 線幅グラフの「適用」ボタン。確定先は開始時snapshotへ含まれる
+        # 対象自身のパラメータ (in_percent等) のため、親のCancelで通常の
+        # プロパティ編集と同じく復元される。
+        "bmanga.effect_profile_graph_apply": DetailActionSpec(
+            "bmanga.effect_profile_graph_apply", DetailActionBoundary.TRANSACTIONAL
+        ),
         # 親キャンセルとは独立して結果を残す明示操作。
         "bmanga.detail_raster_paint_enter": DetailActionSpec(
             "bmanga.detail_raster_paint_enter",

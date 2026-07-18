@@ -479,8 +479,11 @@ def _check_effect_detail_graph(package_name: str, context, scene, page) -> dict[
         node,
         ((0.0, 0.15), (0.25, 0.7), (0.45, 1.0), (0.75, 1.0), (1.0, 0.35)),
     )
+    # check() 相当の同期だけでは、重いメッシュ再生成を避けるためグラフの
+    # ドラッグ内容を確定しない (新契約)。「適用」ボタン相当の確定を明示的に呼ぶ。
     sync_actual_session(package_name, context, session)
     params = scene.bmanga_effect_line_params
+    effect_inout_curve.commit_profile_node_to_params(params)
     # 画面グラフは v0.6.482 以降「内端→外端」。保存・生成側の
     # 「入り→抜き」へ反転して同期されるため、左右の値も入れ替わる。
     _assert_close(params.in_percent, 35.0, "入り")

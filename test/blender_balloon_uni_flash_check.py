@@ -179,11 +179,17 @@ def _assert_detail_profile_graph_sync(context, entry, effect_inout_curve) -> Non
         node,
         ((0.0, 0.2), (0.35, 1.0), (0.65, 1.0), (1.0, 0.4)),
     )
+    # check() 相当の同期だけでは、重いメッシュ再生成を避けるためグラフの
+    # ドラッグ内容をパラメータへ確定しない(新契約)。
     sync_actual_session("bmanga_dev_balloon_uni_flash", context, session)
-    assert abs(float(entry.in_percent) - 40.0) < 1.0e-4, "線幅グラフの外端が入りへ反映されていません"
-    assert abs(float(entry.out_percent) - 20.0) < 1.0e-4, "線幅グラフの内端が抜きへ反映されていません"
-    assert abs(float(entry.in_start_percent) - 35.0) < 1.0e-4, "線幅グラフの入り始点が数値に反映されていません"
-    assert abs(float(entry.out_start_percent) - 35.0) < 1.0e-4, "線幅グラフの抜き始点が数値に反映されていません"
+    assert abs(float(entry.in_percent) - 0.0) < 1.0e-4, "check() だけで線幅グラフが確定されました"
+    assert abs(float(entry.out_percent) - 0.0) < 1.0e-4, "check() だけで線幅グラフが確定されました"
+    # 「適用」ボタン (bmanga.effect_profile_graph_apply) 相当の確定で初めて反映される。
+    effect_inout_curve.commit_profile_node_to_params(entry)
+    assert abs(float(entry.in_percent) - 40.0) < 1.0e-4, "線幅グラフの外端が入りへ確定されていません"
+    assert abs(float(entry.out_percent) - 20.0) < 1.0e-4, "線幅グラフの内端が抜きへ確定されていません"
+    assert abs(float(entry.in_start_percent) - 35.0) < 1.0e-4, "線幅グラフの入り始点が数値に確定されていません"
+    assert abs(float(entry.out_start_percent) - 35.0) < 1.0e-4, "線幅グラフの抜き始点が数値に確定されていません"
 
     entry.in_percent = 30.0
     entry.out_percent = 20.0

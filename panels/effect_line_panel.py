@@ -95,6 +95,12 @@ def draw_inout_curve_mapping(
         axis.label(text="線幅 0〜100%")
         axis.label(text="外端")
         layout.template_curve_mapping(node, "mapping", type="NONE")
+        # グラフのドラッグ操作は毎回メッシュを再生成しないため、確定は
+        # このボタンを押した時 (または詳細設定のOK確定時) だけ行う。
+        op = layout.operator(
+            "bmanga.effect_profile_graph_apply", text="適用", icon="CHECKMARK"
+        )
+        op.profile_key = profile_key
 
 
 def draw_effect_line_preset_management(layout, context) -> None:

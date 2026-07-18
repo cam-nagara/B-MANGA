@@ -300,7 +300,18 @@ def mark_preset_settings_saved(
     return True
 
 
-def sync_actual_session(context, session) -> None:
+def sync_actual_session(context, session, *, commit_graphs: bool = False) -> None:
+    """詳細設定ダイアログの ``check()`` から毎回呼ばれる同期処理。
+
+    ``commit_graphs=False`` (既定) では、線幅グラフ (線幅グラフ・白線幅
+    グラフ・黒線幅グラフ) の編集内容をパラメータへ確定しない。グラフの
+    ドラッグ操作のたびに重いメッシュ再生成が走るのを避けるため、確定は
+    「適用」ボタン (``bmanga.effect_profile_graph_apply``) か、
+    ``commit_graphs=True`` で呼ばれる ``commit_actual_session`` (OK確定)
+    だけが行う。数値スライダー等グラフ以外の設定はこの関数を通じて
+    従来どおり毎回反映される。
+    """
+
     session.validate_target()
     target = session.target
     if target.kind == "coma":
@@ -309,7 +320,8 @@ def sync_actual_session(context, session) -> None:
     if params is not None:
         _ensure_curve_nodes(params)
         _request_curve_sync(params)
-        _sync_curve_nodes(params)
+        if commit_graphs:
+            _sync_curve_nodes(params)
     elif target.kind == "balloon":
         # 線種をグラフ非対応へ変えた後は、旧線種の短周期同期を残さない。
         _release_curve_sync(target)
@@ -324,7 +336,8 @@ def sync_actual_session(context, session) -> None:
 
 def commit_actual_session(context, session) -> None:
     try:
-        sync_actual_session(context, session)
+        # OK確定時は、「適用」ボタンを押し忘れたグラフ編集も併せて確定する。
+        sync_actual_session(context, session, commit_graphs=True)
         detail_dialog_state.commit_detail_session(session)
     finally:
         # 対象削除・移動による生存確認失敗でも、以後の詳細設定を塞がない。
@@ -855,6 +868,43 @@ def _curve_params(target):
     return target.data if style in {"uni_flash", "white_outline"} else None
 
 
+def active_curve_params_for_scene(context, *, profile_key: str = "main"):
+    """「適用」ボタンが確定すべきパラメータを、現在開いている詳細設定から探す。
+
+    同じSceneで開いている詳細設定 (効果線・フキダシ・画像パス) のうち、
+    線幅グラフを持つ対象があればそのパラメータを返す。``profile_key`` が
+    "white"/"black" の場合、白抜き線関連の属性を持たない対象 (画像パス等)
+    は候補から除外する。開いている詳細設定が無い、または対象が
+    ``profile_key`` のグラフを持たない場合は ``None``。
+    """
+
+    from ..utils import effect_inout_curve
+
+    scene_key = _scene_session_key(context)
+    fields, _node_name, _source_prop, _label = effect_inout_curve.profile_spec_for_key(
+        profile_key
+    )
+    for token, session in tuple(_OPEN_ACTUAL_SESSIONS.items()):
+        if _OPEN_ACTUAL_SCENE_KEYS.get(token) != scene_key:
+            continue
+        if session.status not in {
+            detail_dialog.DetailSessionStatus.OPEN,
+            detail_dialog.DetailSessionStatus.RESTORE_FAILED,
+        }:
+            continue
+        try:
+            session.validate_target()
+        except Exception:  # noqa: BLE001
+            continue
+        params = _curve_params(session.target)
+        if params is None:
+            continue
+        if fields is not None and not all(hasattr(params, attr) for attr in fields.values()):
+            continue
+        return params
+    return None
+
+
 def _ensure_curve_nodes(params) -> None:
     from ..utils import balloon_shapes, effect_inout_curve
 
@@ -1022,6 +1072,7 @@ def cleanup_all_sessions(context=None) -> tuple[Exception, ...]:
 
 __all__ = [
     "abort_opening_actual_session",
+    "active_curve_params_for_scene",
     "available_dialog_width",
     "begin_actual_session",
     "cancel_actual_session",

@@ -17,7 +17,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "test"))
 
 from detail_dialog_public_test_support import (  # noqa: E402
-    close_actual_session,
     draw_all_actual_entry_points,
     open_actual_session,
     sync_actual_session,
@@ -328,11 +327,23 @@ def _assert_balloon_and_image_path_draw_are_read_only(
             balloon_node,
             ((0.0, 0.2), (0.35, 1.0), (0.65, 1.0), (1.0, 0.4)),
         )
+        # check() 相当の同期だけでは、線幅グラフのドラッグ内容を確定しない
+        # (重いメッシュ再生成を毎回走らせないための新契約)。
         runtime.sync_actual_session(context, balloon_session)
-        _assert_close(balloon.in_percent, 40.0, "フキダシのグラフ変更が入りへ同期されていません")
-        _assert_close(balloon.out_percent, 20.0, "フキダシのグラフ変更が抜きへ同期されていません")
-        _assert_close(balloon.in_start_percent, 35.0, "フキダシのグラフ変更が外端側位置へ同期されていません")
-        _assert_close(balloon.out_start_percent, 35.0, "フキダシのグラフ変更が内端側位置へ同期されていません")
+        assert (
+            float(balloon.in_percent),
+            float(balloon.out_percent),
+            float(balloon.in_start_percent),
+            float(balloon.out_start_percent),
+        ) == balloon_opening, (
+            "グラフのドラッグだけ (check()相当) でパラメータが確定されました"
+        )
+        # 「適用」ボタン相当の確定を呼んで初めてパラメータへ反映される。
+        effect_inout_curve.commit_profile_node_to_params(balloon)
+        _assert_close(balloon.in_percent, 40.0, "「適用」相当のグラフ変更が入りへ確定されていません")
+        _assert_close(balloon.out_percent, 20.0, "「適用」相当のグラフ変更が抜きへ確定されていません")
+        _assert_close(balloon.in_start_percent, 35.0, "「適用」相当のグラフ変更が外端側位置へ確定されていません")
+        _assert_close(balloon.out_start_percent, 35.0, "「適用」相当のグラフ変更が内端側位置へ確定されていません")
     finally:
         runtime.cancel_actual_session(context, balloon_session)
     assert (
@@ -388,11 +399,21 @@ def _assert_balloon_and_image_path_draw_are_read_only(
             image_node,
             ((0.0, 0.15), (0.3, 1.0), (0.55, 1.0), (1.0, 0.45)),
         )
+        # check() 相当の同期だけでは確定しない (新契約)。
         runtime.sync_actual_session(context, image_session)
-        _assert_close(image_path.in_percent, 45.0, "パターンカーブのグラフ変更が入りへ同期されていません")
-        _assert_close(image_path.out_percent, 15.0, "パターンカーブのグラフ変更が抜きへ同期されていません")
-        _assert_close(image_path.in_start_percent, 45.0, "パターンカーブのグラフ変更が入り側位置へ同期されていません")
-        _assert_close(image_path.out_start_percent, 30.0, "パターンカーブのグラフ変更が抜き側位置へ同期されていません")
+        assert (
+            float(image_path.in_percent),
+            float(image_path.out_percent),
+            float(image_path.in_start_percent),
+            float(image_path.out_start_percent),
+        ) == image_opening, (
+            "グラフのドラッグだけ (check()相当) でパラメータが確定されました"
+        )
+        effect_inout_curve.commit_profile_node_to_params(image_path)
+        _assert_close(image_path.in_percent, 45.0, "「適用」相当のグラフ変更が入りへ確定されていません")
+        _assert_close(image_path.out_percent, 15.0, "「適用」相当のグラフ変更が抜きへ確定されていません")
+        _assert_close(image_path.in_start_percent, 45.0, "「適用」相当のグラフ変更が入り側位置へ確定されていません")
+        _assert_close(image_path.out_start_percent, 30.0, "「適用」相当のグラフ変更が抜き側位置へ確定されていません")
     finally:
         runtime.cancel_actual_session(context, image_session)
     assert (
@@ -512,32 +533,114 @@ def _assert_graph_numeric_to_curve(effect_line_op, effect_inout_curve, context, 
     return node
 
 
-def _assert_graph_curve_to_numeric(effect_inout_curve, context, session, params, node) -> None:
+def _assert_graph_check_does_not_commit(
+    effect_inout_curve, effect_line_op, context, session, params, obj, layer, node
+) -> None:
+    """check() (ダイアログの毎フレーム同期) はグラフのドラッグを確定しない。
+
+    線幅グラフはドラッグのたびに重いメッシュ再生成を伴うため、v0.6系のある
+    時点からリアルタイム確定をやめ、「適用」ボタン (または詳細設定のOK確定)
+    を押した時だけ確定する契約へ変更した。ここでは、その契約どおり
+    check() 相当の同期・常駐タイマーのどちらもパラメータを変えないことを
+    確認する。
+    """
+
+    before = (
+        float(params.in_percent),
+        float(params.out_percent),
+        float(params.in_start_percent),
+        float(params.out_start_percent),
+    )
+    saved_before = effect_line_op._layer_params_data(obj, layer)
     effect_inout_curve._apply_points_to_node(
         node,
         ((0.0, 0.2), (0.2, 0.65), (0.35, 1.0), (0.65, 1.0), (0.85, 0.7), (1.0, 0.4)),
     )
     sync_actual_session(MOD_NAME, context, session)
-    _assert_close(params.in_percent, 40.0, "線幅グラフの外端が入り(%)へ反映されていません")
-    _assert_close(params.out_percent, 20.0, "線幅グラフの内端が抜き(%)へ反映されていません")
-    _assert_close(params.in_start_percent, 35.0, "線幅グラフの山位置が入り始点(%)へ反映されていません")
-    _assert_close(params.out_start_percent, 35.0, "線幅グラフの山位置が抜き始点(%)へ反映されていません")
+    after_check = (
+        float(params.in_percent),
+        float(params.out_percent),
+        float(params.in_start_percent),
+        float(params.out_start_percent),
+    )
+    assert after_check == before, "check() だけで線幅グラフの編集内容が確定されました"
+    for _tick in range(3):
+        effect_inout_curve._live_profile_sync_tick()
+    after_tick = (
+        float(params.in_percent),
+        float(params.out_percent),
+        float(params.in_start_percent),
+        float(params.out_start_percent),
+    )
+    assert after_tick == before, "常駐タイマーが線幅グラフの編集内容を確定しました(重い再生成の原因)"
+    saved_after = effect_line_op._layer_params_data(obj, layer)
+    assert saved_after["in_percent"] == saved_before["in_percent"], (
+        "未確定のグラフ編集で効果線の保存値(入り)が変わりました"
+    )
+    assert saved_after["out_percent"] == saved_before["out_percent"], (
+        "未確定のグラフ編集で効果線の保存値(抜き)が変わりました"
+    )
 
 
-def _assert_graph_live_sync(effect_inout_curve, effect_line_op, params, obj, layer, node) -> None:
+def _assert_graph_apply_commits(effect_inout_curve, context, session, params, node) -> None:
+    """「適用」ボタン (bmanga.effect_profile_graph_apply) 相当の確定を検証する。"""
+
+    changed = effect_inout_curve.commit_profile_node_to_params(params)
+    assert changed, "「適用」相当の確定でパラメータが変化しませんでした"
+    _assert_close(params.in_percent, 40.0, "線幅グラフの外端が入り(%)へ確定されていません")
+    _assert_close(params.out_percent, 20.0, "線幅グラフの内端が抜き(%)へ確定されていません")
+    _assert_close(params.in_start_percent, 35.0, "線幅グラフの山位置が入り始点(%)へ確定されていません")
+    _assert_close(params.out_start_percent, 35.0, "線幅グラフの山位置が抜き始点(%)へ確定されていません")
+    # 適用後はノード表示・保存テキストも正規化した点列へ揃う (last_source
+    # ガードを経由しない強制確定のため、次のcheck()で巻き戻らないことも兼ねて確認)。
+    sync_actual_session(MOD_NAME, context, session)
+    settled_points = effect_inout_curve.read_node_points(node)
+    expected_points = effect_inout_curve.flip_horizontal(
+        effect_inout_curve.profile_points_from_params(params)
+    )
+    assert len(settled_points) == len(expected_points), "適用後の線幅グラフ点数が正規化されていません"
+    for (ax, ay), (ex, ey) in zip(settled_points, expected_points):
+        _assert_close(ax, ex, "適用後の線幅グラフ位置(X)が正規化されていません")
+        _assert_close(ay, ey, "適用後の線幅グラフ位置(Y)が正規化されていません")
+
+
+def _assert_graph_live_sync_does_not_commit(
+    effect_inout_curve, effect_line_op, params, obj, layer, node
+) -> None:
+    """常駐タイマーは線幅グラフの表示更新だけを行い、パラメータへ確定しない。"""
+
+    before = (
+        float(params.in_percent),
+        float(params.out_percent),
+        float(params.in_start_percent),
+        float(params.out_start_percent),
+    )
     effect_inout_curve.request_live_profile_sync(params)
     effect_inout_curve._apply_points_to_node(
         node,
         ((0.0, 0.15), (0.25, 0.7), (0.45, 1.0), (0.75, 1.0), (1.0, 0.35)),
     )
-    effect_inout_curve._live_profile_sync_tick()
-    _assert_close(params.in_percent, 35.0, "線幅グラフの外端が入り(%)へ即時反映されていません")
-    _assert_close(params.out_percent, 15.0, "線幅グラフの内端が抜き(%)へ即時反映されていません")
-    _assert_close(params.in_start_percent, 25.0, "線幅グラフの外端側変化が即時反映されていません")
-    _assert_close(params.out_start_percent, 45.0, "線幅グラフの内端側変化が即時反映されていません")
+    for _tick in range(3):
+        effect_inout_curve._live_profile_sync_tick()
+    after = (
+        float(params.in_percent),
+        float(params.out_percent),
+        float(params.in_start_percent),
+        float(params.out_start_percent),
+    )
+    assert after == before, "常駐タイマーがドラッグ内容をパラメータへ確定しました(重い再生成の原因)"
     saved = effect_line_op._layer_params_data(obj, layer)
-    _assert_close(saved["in_percent"], 35.0, "同期タイマー後の入り(%)が効果線へ保存されていません")
-    _assert_close(saved["out_percent"], 15.0, "同期タイマー後の抜き(%)が効果線へ保存されていません")
+    _assert_close(saved["in_percent"], before[0], "未確定のグラフ編集で効果線の保存値が変わりました")
+
+    # 「適用」相当の確定を呼んで初めて反映され、効果線の保存値へも伝播する。
+    effect_inout_curve.commit_profile_node_to_params(params)
+    _assert_close(params.in_percent, 35.0, "「適用」相当の確定で入り(%)が反映されていません")
+    _assert_close(params.out_percent, 15.0, "「適用」相当の確定で抜き(%)が反映されていません")
+    _assert_close(params.in_start_percent, 25.0, "「適用」相当の確定で外端側変化が反映されていません")
+    _assert_close(params.out_start_percent, 45.0, "「適用」相当の確定で内端側変化が反映されていません")
+    saved_after = effect_line_op._layer_params_data(obj, layer)
+    _assert_close(saved_after["in_percent"], 35.0, "適用後の入り(%)が効果線へ保存されていません")
+    _assert_close(saved_after["out_percent"], 15.0, "適用後の抜き(%)が効果線へ保存されていません")
 
 
 def _assert_white_black_graphs(effect_inout_curve, context, session, params) -> None:
@@ -576,7 +679,27 @@ def _assert_white_black_graphs(effect_inout_curve, context, session, params) -> 
     effect_inout_curve._apply_points_to_node(
         black, ((0.0, 0.25), (0.10, 1.0), (0.65, 1.0), (1.0, 0.55))
     )
+    # check() だけでは白線・黒線のグラフも確定しない (新契約)。
     sync_actual_session(MOD_NAME, context, session)
+    assert math.isclose(
+        float(params.white_outline_white_in_percent), 30.0, abs_tol=1.0e-4
+    ), "check() だけで白線グラフが確定されました"
+    assert math.isclose(
+        float(params.white_outline_black_in_percent), 50.0, abs_tol=1.0e-4
+    ), "check() だけで黒線グラフが確定されました"
+    # 白線・黒線それぞれの「適用」ボタン相当の確定を個別に呼ぶ。
+    effect_inout_curve.commit_profile_node_to_params(
+        params,
+        fields=effect_inout_curve.WHITE_PROFILE_FIELDS,
+        node_name=effect_inout_curve.WHITE_PROFILE_NODE_NAME,
+        source_prop=effect_inout_curve.WHITE_PROFILE_SOURCE_PROP,
+    )
+    effect_inout_curve.commit_profile_node_to_params(
+        params,
+        fields=effect_inout_curve.BLACK_PROFILE_FIELDS,
+        node_name=effect_inout_curve.BLACK_PROFILE_NODE_NAME,
+        source_prop=effect_inout_curve.BLACK_PROFILE_SOURCE_PROP,
+    )
     _assert_close(params.white_outline_white_in_percent, 45.0, "白線グラフ外端")
     _assert_close(params.white_outline_white_out_percent, 15.0, "白線グラフ内端")
     _assert_close(params.white_outline_white_in_range_percent, 20.0, "白線グラフ外端側範囲")
@@ -585,6 +708,40 @@ def _assert_white_black_graphs(effect_inout_curve, context, session, params) -> 
     _assert_close(params.white_outline_black_out_percent, 25.0, "黒線グラフ内端")
     _assert_close(params.white_outline_black_in_range_percent, 35.0, "黒線グラフ外端側範囲")
     _assert_close(params.white_outline_black_out_range_percent, 10.0, "黒線グラフ内端側範囲")
+
+
+def _assert_ok_commits_pending_graph_edit(
+    effect_inout_curve, effect_line_op, context, session, params, obj, layer
+) -> None:
+    """「適用」ボタンを押し忘れても、詳細設定のOK確定時に線幅グラフを確定する。"""
+
+    node = effect_inout_curve.get_profile_node()
+    assert node is not None, "OK確定前提の線幅グラフが見つかりません"
+    before = (
+        float(params.in_percent),
+        float(params.out_percent),
+        float(params.in_start_percent),
+        float(params.out_start_percent),
+    )
+    effect_inout_curve._apply_points_to_node(
+        node,
+        ((0.0, 0.3), (0.4, 1.0), (0.6, 1.0), (1.0, 0.6)),
+    )
+    runtime = _sub("operators.detail_dialog_runtime")
+    runtime.sync_actual_session(context, session)
+    after_check = (
+        float(params.in_percent),
+        float(params.out_percent),
+        float(params.in_start_percent),
+        float(params.out_start_percent),
+    )
+    assert after_check == before, "check() だけでOK確定前にグラフが確定されました"
+    runtime.commit_actual_session(context, session)
+    _assert_close(params.in_percent, 60.0, "OK確定で未適用のグラフ編集(入り)が確定されていません")
+    _assert_close(params.out_percent, 30.0, "OK確定で未適用のグラフ編集(抜き)が確定されていません")
+    saved = effect_line_op._layer_params_data(obj, layer)
+    _assert_close(saved["in_percent"], 60.0, "OK確定後の入り(%)が効果線へ保存されていません")
+    _assert_close(saved["out_percent"], 30.0, "OK確定後の抜き(%)が効果線へ保存されていません")
 
 
 def _assert_graph_saved_and_generated(
@@ -673,7 +830,10 @@ def main() -> None:
             scene,
             session,
         )
-        _assert_graph_curve_to_numeric(effect_inout_curve, context, session, params, node)
+        _assert_graph_check_does_not_commit(
+            effect_inout_curve, effect_line_op, context, session, params, obj, layer, node
+        )
+        _assert_graph_apply_commits(effect_inout_curve, context, session, params, node)
         _assert_graph_saved_and_generated(
             effect_line_op,
             effect_line_gen,
@@ -683,10 +843,14 @@ def main() -> None:
             obj,
             layer,
         )
-        _assert_graph_live_sync(effect_inout_curve, effect_line_op, params, obj, layer, node)
+        _assert_graph_live_sync_does_not_commit(
+            effect_inout_curve, effect_line_op, params, obj, layer, node
+        )
         _assert_white_black_graphs(effect_inout_curve, context, session, params)
         assert session.layout.dialog_width == fixed_width, "編集途中で固定最大幅が変化しました"
-        close_actual_session(MOD_NAME, context, session)
+        _assert_ok_commits_pending_graph_edit(
+            effect_inout_curve, effect_line_op, context, session, params, obj, layer
+        )
         _assert_balloon_and_image_path_draw_are_read_only(
             context,
             page,

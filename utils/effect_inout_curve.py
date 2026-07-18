@@ -57,6 +57,11 @@ _DEFAULT_PROFILE_FIELDS = {
 _LIVE_PROFILE_REQUESTS: dict[str, tuple[object, dict[str, str], str, float]] = {}
 _LIVE_PROFILE_RUNNING = False
 _LIVE_PROFILE_TIMEOUT_SEC = 300.0
+_PROFILE_LABELS: dict[str, str] = {
+    PROFILE_NODE_NAME: "線幅グラフ",
+    WHITE_PROFILE_NODE_NAME: "白線幅グラフ",
+    BLACK_PROFILE_NODE_NAME: "黒線幅グラフ",
+}
 
 
 def parse_points(value: object) -> tuple[tuple[float, float], ...]:
@@ -283,6 +288,68 @@ def sync_profile_node_bidirectional(
     return changed
 
 
+def _profile_label_for_node(node_name: str) -> str:
+    return _PROFILE_LABELS.get(node_name, "線幅グラフ")
+
+
+def profile_spec_for_key(
+    profile_key: str,
+) -> tuple[Mapping[str, str] | None, str, str, str]:
+    """``profile_key`` ("main"/"white"/"black") から
+
+    (fields, node_name, source_prop, label) を返す。「適用」ボタンなど、
+    どの線幅グラフを確定するかをUI側の文字列だけで指定したい呼び出し元向け。
+    """
+    key = str(profile_key or "main")
+    if key == "white":
+        return (
+            WHITE_PROFILE_FIELDS,
+            WHITE_PROFILE_NODE_NAME,
+            WHITE_PROFILE_SOURCE_PROP,
+            "白線幅グラフ",
+        )
+    if key == "black":
+        return (
+            BLACK_PROFILE_FIELDS,
+            BLACK_PROFILE_NODE_NAME,
+            BLACK_PROFILE_SOURCE_PROP,
+            "黒線幅グラフ",
+        )
+    return None, PROFILE_NODE_NAME, PROFILE_SOURCE_PROP, "線幅グラフ"
+
+
+def commit_profile_node_to_params(
+    params,
+    *,
+    fields: Mapping[str, str] | None = None,
+    node_name: str = PROFILE_NODE_NAME,
+    source_prop: str = PROFILE_SOURCE_PROP,
+) -> bool:
+    """「適用」ボタン専用: 表示中グラフの編集点列を強制的にパラメータへ確定する。
+
+    ``sync_profile_node_to_params`` は直前に書き込んだ表示テキスト
+    (``mat[source_prop]``) と現在値が一致する間だけ確定するガードを持つ
+    (常駐タイマー中にドラッグ途中の値へ巻き戻さないための仕組み)。
+    適用ボタンはユーザーの明示操作のため、このガードを経由せず必ず確定し、
+    確定後の正規化点列へノード表示と保存テキストも揃える。
+    """
+    if bpy is None or params is None:
+        return False
+    mat = bpy.data.materials.get(MATERIAL_NAME)
+    nt = getattr(mat, "node_tree", None) if mat is not None else None
+    if nt is None:
+        return False
+    node = nt.nodes.get(node_name)
+    if node is None or node.bl_idname != "ShaderNodeFloatCurve":
+        return False
+    node_points = read_node_points(node)
+    changed = profile_points_to_params(params, flip_horizontal(node_points), fields)
+    normalized_display = flip_horizontal(profile_points_from_params(params, fields))
+    _apply_points_to_node(node, normalized_display)
+    mat[source_prop] = points_to_text(normalized_display)
+    return changed
+
+
 def sync_all_profile_nodes_to_params(params) -> bool:
     """全体・白線・黒線の表示中グラフを対応プロパティへ確定する。"""
     changed = sync_profile_node_to_params(params)
@@ -394,6 +461,16 @@ def sync_ui_nodes_to_params(params) -> bool:
 
 
 def _live_profile_sync_tick():
+    """常駐タイマー: パラメータ→グラフ表示の一方向更新のみを行う。
+
+    以前はここでグラフのドラッグ内容を毎回パラメータへ書き戻し、重い
+    メッシュ再生成を誘発していた。線幅グラフの確定は「適用」ボタン
+    (``commit_profile_node_to_params``) または OK 確定時だけに限定した
+    ため、このタイマーは ``ensure_profile_node`` によるパラメータ→ノード
+    の表示更新 (数値スライダー変更の反映・draw中に作れなかったノードの
+    遅延作成) だけを担う。
+    """
+
     global _LIVE_PROFILE_RUNNING
     if bpy is None:
         _LIVE_PROFILE_RUNNING = False
@@ -413,11 +490,12 @@ def _live_profile_sync_tick():
         for node_name, request in tuple(_LIVE_PROFILE_REQUESTS.items()):
             params, fields, source_prop, _last_request = request
             existed = get_profile_node(node_name) is not None
-            changed |= sync_profile_node_bidirectional(
+            ensure_profile_node(
                 params,
                 fields=fields,
                 node_name=node_name,
                 source_prop=source_prop,
+                label=_profile_label_for_node(node_name),
             )
             if not existed and get_profile_node(node_name) is not None:
                 # draw 中に作れなかったノードをここで新規作成できた。
