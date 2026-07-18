@@ -278,6 +278,7 @@ def _midpoint_angles(angles: Sequence[float]) -> list[float]:
 
 def _line_points_for_offset(
     effect_line_gen,
+    params,
     center_xy_mm: tuple[float, float],
     start_outline: Sequence[tuple[float, float]],
     end_outline: Sequence[tuple[float, float]],
@@ -287,11 +288,12 @@ def _line_points_for_offset(
     offset_mm: float,
     start_extend_mm: float,
 ) -> tuple[tuple[float, float], tuple[float, float]]:
+    start_rx, start_ry = effect_line_gen._start_shape_radii(params, radius_x_mm, radius_y_mm)
     base_start = effect_line_gen._point_on_outline_or_ellipse(
         center_xy_mm,
         start_outline,
-        radius_x_mm * 2.0,
-        radius_y_mm * 2.0,
+        start_rx,
+        start_ry,
         base_angle,
         extend_mm=start_extend_mm,
     )
@@ -300,8 +302,8 @@ def _line_points_for_offset(
     start_xy = effect_line_gen._point_on_outline_or_ellipse(
         center_xy_mm,
         start_outline,
-        radius_x_mm * 2.0,
-        radius_y_mm * 2.0,
+        start_rx,
+        start_ry,
         angle,
         extend_mm=start_extend_mm,
     )
@@ -515,6 +517,7 @@ def _append_band(
     # 0 で線の中心が内端形状上。束の基準長の半分を単位に内向きへずらす。
     center_start, center_end = _line_points_for_offset(
         effect_line_gen,
+        params,
         center_xy_mm,
         start_outline,
         end_outline,
@@ -544,6 +547,7 @@ def _append_band(
     for offset in white_offsets:
         start_xy, end_xy = _line_points_for_offset(
             effect_line_gen,
+            params,
             center_xy_mm,
             start_outline,
             end_outline,
@@ -593,6 +597,7 @@ def _append_band(
     for offset, norm in black_specs:
         start_xy, end_xy = _line_points_for_offset(
             effect_line_gen,
+            params,
             center_xy_mm,
             start_outline,
             end_outline,
@@ -656,7 +661,8 @@ def generate_white_outline_strokes(
     black_gap = max(0.0, float(getattr(params, "white_outline_black_spacing_mm", white_gap)))
     shape_center_xy_mm = end_center_xy_mm if end_center_xy_mm is not None else center_xy_mm
     if start_outline_mm is None:
-        start_rect = effect_line_gen._scaled_rect(shape_center_xy_mm[0], shape_center_xy_mm[1], radius_x_mm, radius_y_mm, 2.0)
+        start_rx, start_ry = effect_line_gen._start_shape_radii(params, radius_x_mm, radius_y_mm)
+        start_rect = effect_line_gen._scaled_rect(shape_center_xy_mm[0], shape_center_xy_mm[1], start_rx, start_ry, 1.0)
         start_outline = effect_line_gen._shape_outline(params, "start", start_rect, shape_center_xy_mm, seed=seed + 11)
         start_extend = 0.0
     else:

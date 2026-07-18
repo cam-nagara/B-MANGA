@@ -137,6 +137,14 @@ def _scaled_rect(cx: float, cy: float, rx: float, ry: float, scale: float) -> Re
     return Rect(cx - sx, cy - sy, sx * 2.0, sy * 2.0)
 
 
+def _start_shape_radii(params, rx: float, ry: float) -> tuple[float, float]:
+    """外端形状の半径。長さ指定オンなら内端半径+指定mm、オフは従来の2倍。"""
+    if bool(getattr(params, "start_distance_enabled", False)):
+        d = max(0.0, float(getattr(params, "start_distance_mm", 0.0) or 0.0))
+        return rx + d, ry + d
+    return rx * 2.0, ry * 2.0
+
+
 def _rotate_points(
     points: Sequence[tuple[float, float]],
     center: tuple[float, float],
@@ -660,9 +668,10 @@ def generate_focus_strokes(
     rng = random.Random(seed)
     out: list[EffectLineStroke] = []
     shape_center_xy_mm = end_center_xy_mm if end_center_xy_mm is not None else center_xy_mm
+    start_rx, start_ry = _start_shape_radii(params, radius_x_mm, radius_y_mm)
     if start_outline_mm is None:
         cx, cy = shape_center_xy_mm
-        start_rect = _scaled_rect(cx, cy, radius_x_mm, radius_y_mm, 2.0)
+        start_rect = _scaled_rect(cx, cy, start_rx, start_ry, 1.0)
         start_outline = _shape_outline(params, "start", start_rect, shape_center_xy_mm, seed=seed + 11)
         start_extend = 0.0
     else:
@@ -714,8 +723,8 @@ def generate_focus_strokes(
             x0, y0 = _point_on_outline_or_ellipse(
                 center_xy_mm,
                 start_outline,
-                radius_x_mm * 2.0,
-                radius_y_mm * 2.0,
+                start_rx,
+                start_ry,
                 angle,
                 extend_mm=start_extend,
             )
@@ -1200,7 +1209,8 @@ def generate_shape_guide_strokes(
         end_outline = [(float(x), float(y)) for x, y in end_outline_mm]
         end_smooth = False
     if start_outline_mm is None:
-        start_rect = _scaled_rect(cx, cy, rx, ry, 2.0)
+        start_rx, start_ry = _start_shape_radii(params, rx, ry)
+        start_rect = _scaled_rect(cx, cy, start_rx, start_ry, 1.0)
         start_outline = _shape_outline(params, "start", start_rect, shape_center_xy_mm, seed=seed + 11)
         start_smooth = _shape_guide_uses_smooth_bezier(params, "start")
     else:
@@ -1252,7 +1262,8 @@ def generate_shape_source_outlines(
     end_rect = _scaled_rect(cx, cy, rx, ry, 1.0)
     end_outline = _shape_outline(params, "end", end_rect, shape_center_xy_mm, seed=seed + 23)
     if start_outline_mm is None:
-        start_rect = _scaled_rect(cx, cy, rx, ry, 2.0)
+        start_rx, start_ry = _start_shape_radii(params, rx, ry)
+        start_rect = _scaled_rect(cx, cy, start_rx, start_ry, 1.0)
         start_outline = _shape_outline(params, "start", start_rect, shape_center_xy_mm, seed=seed + 11)
     else:
         start_outline = [(float(x), float(y)) for x, y in start_outline_mm]

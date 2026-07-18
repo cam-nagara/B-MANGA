@@ -21,6 +21,12 @@ def _draw_shape_settings(layout, params, prefix: str, label: str, *, frame_toggl
         content.enabled = not bool(params.start_to_coma_frame)
     shape_attr = f"{prefix}_shape"
     content.prop(params, shape_attr)
+    if prefix == "start":
+        row = content.row(align=True)
+        row.prop(params, "start_distance_enabled", text="外端までの長さを指定")
+        sub = row.row(align=True)
+        sub.enabled = bool(getattr(params, "start_distance_enabled", False))
+        sub.prop(params, "start_distance_mm", text="")
     shape = balloon_shapes.normalize_shape(getattr(params, shape_attr))
     if shape == "rect":
         corner_attr = f"{prefix}_corner_type"

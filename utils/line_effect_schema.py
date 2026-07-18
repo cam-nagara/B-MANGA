@@ -77,6 +77,8 @@ EFFECT_START_SHAPE_FIELDS = (
     "start_cloud_sub_width_jitter",
     "start_cloud_sub_height_ratio",
     "start_cloud_sub_height_jitter",
+    "start_distance_enabled",
+    "start_distance_mm",
 )
 
 EFFECT_END_SHAPE_FIELDS = (

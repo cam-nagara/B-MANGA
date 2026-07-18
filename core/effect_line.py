@@ -364,6 +364,8 @@ class BMangaEffectLineParams(bpy.types.PropertyGroup):
     start_cloud_sub_width_jitter: FloatProperty(name="小山幅 乱れ", description="外端形状の小山の幅をランダムに変化させる度合いです", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
     start_cloud_sub_height_ratio: FloatProperty(name="小山高 (%)", description="外端形状の小さい山の高さを、大きい山に対する割合で指定します。0% は自動 (50%) になります", default=0.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     start_cloud_sub_height_jitter: FloatProperty(name="小山高 乱れ", description="外端形状の小山の高さをランダムに変化させる度合いです", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
+    start_distance_enabled: BoolProperty(name="外端までの長さを指定", description="オンにすると内端形状から外端形状までの長さを指定できます。オフでは従来どおり内端形状の2倍の大きさになります", default=False, update=_on_params_changed)  # type: ignore[valid-type]
+    start_distance_mm: FloatProperty(name="長さ (mm)", description="内端形状から外端形状までの長さです（mm）", default=20.0, min=0.0, soft_max=300.0, update=_on_params_changed)  # type: ignore[valid-type]
 
     end_shape: EnumProperty(name="内端形状", description="線が向かう内側の形を選びます", items=_EFFECT_SHAPE_ITEMS, default="ellipse", update=_on_params_changed)  # type: ignore[valid-type]
     end_corner_type: EnumProperty(name="角", description="内端形状の角の処理方法（角丸など）を選びます", items=balloon._CORNER_TYPE_ITEMS, default="square", update=_on_end_corner_type_changed)  # type: ignore[valid-type]
