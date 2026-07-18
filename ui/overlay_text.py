@@ -117,6 +117,7 @@ def draw_text_guides(
     entry_visible: EntryVisiblePredicate,
     draw_rect_fill: Callable[..., None],
     draw_rect_outline: Callable[..., None],
+    entry_selected: EntryVisiblePredicate | None = None,
 ) -> None:
     texts = getattr(page, "texts", None)
     if texts is None:
@@ -131,7 +132,11 @@ def draw_text_guides(
         # 重ねると、テキスト本体が常に白く霞んで見えてしまうため。
         if editing_op is not None or not _real_text_object_shown(context, page, entry):
             draw_rect_fill(rect, (1.0, 1.0, 1.0, 0.55))
-        draw_rect_outline(rect, _TEXT_GUIDE_COLOR, width_mm=0.30)
+        # 青い案内枠は「選択中」または「編集中」のテキストだけに描画する。
+        # entry_selected が None の場合 (呼び出し側が選択状態を渡していない)
+        # は従来通り常時表示する後方互換を維持する。
+        if editing_op is not None or entry_selected is None or entry_selected(entry):
+            draw_rect_outline(rect, _TEXT_GUIDE_COLOR, width_mm=0.30)
         # 選択時のピンク強調輪郭はここでは描画しない。選択フィードバックは
         # ハンドル描画側 (ui/overlay.py の _draw_object_tool_layer_bounds) に
         # 一本化する。ここで重ねて描くと青枠のすぐ外側にピンクの二重輪郭が

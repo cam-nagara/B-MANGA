@@ -770,6 +770,7 @@ def _draw_shared_layers(work) -> None:
     except Exception:  # noqa: BLE001 - backgroundモード等GPU不在では素通しで描く
         prev_depth = None
     try:
+        _selected_keys = set(object_selection.get_keys(bpy.context))
         overlay_text.draw_text_guides(
             proxy,
             context=bpy.context,
@@ -778,6 +779,7 @@ def _draw_shared_layers(work) -> None:
             entry_visible=lambda entry: bool(getattr(entry, "visible", True)),
             draw_rect_fill=_draw_rect_fill,
             draw_rect_outline=_draw_rect_outline,
+            entry_selected=lambda entry: object_selection.text_key(None, entry) in _selected_keys,
         )
     finally:
         if prev_depth is not None:
@@ -1322,6 +1324,7 @@ def _draw_page_overlay(
         except Exception:  # noqa: BLE001 - backgroundモード等GPU不在では素通しで描く
             prev_depth = None
         try:
+            _selected_keys = set(object_selection.get_keys(context))
             overlay_text.draw_text_guides(
                 page,
                 context=context,
@@ -1330,6 +1333,7 @@ def _draw_page_overlay(
                 entry_visible=lambda entry: overlay_visibility.entry_in_visible_coma(page, entry),
                 draw_rect_fill=_draw_rect_fill,
                 draw_rect_outline=_draw_rect_outline,
+                entry_selected=lambda entry: object_selection.text_key(page, entry) in _selected_keys,
             )
         finally:
             if prev_depth is not None:
