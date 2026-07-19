@@ -1067,7 +1067,10 @@ class BMANGA_OT_raster_layer_add(Operator):
             coll.remove(len(coll) - 1)
             self.report({"ERROR"}, "ラスター実体の作成に失敗しました")
             return {"CANCELLED"}
-        save_raster_png(context, entry, force=True)
+        try:
+            save_raster_png(context, entry, force=True)
+        except Exception:  # noqa: BLE001
+            _logger.exception("raster_layer_add: initial PNG save failed (non-fatal)")
         layer_stack_utils.sync_layer_stack_after_data_change(context)
         stack = getattr(context.scene, "bmanga_layer_stack", None)
         uid = layer_stack_utils.target_uid("raster", raster_id)

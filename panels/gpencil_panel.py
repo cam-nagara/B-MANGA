@@ -1051,10 +1051,20 @@ class BMANGA_OT_gpencil_master_mode_set(bpy.types.Operator):
         if obj is None and self.mode == _GP_OBJECT_MODE:
             obj, _layer = _active_gp_layer_target(context)
         vl = context.view_layer
-        if vl is not None:
+        if vl is not None and obj is not None:
             try:
+                for selected in tuple(getattr(context, "selected_objects", []) or []):
+                    if selected is not obj:
+                        selected.select_set(False)
                 vl.objects.active = obj
                 obj.select_set(True)
+            except Exception:  # noqa: BLE001
+                pass
+        # 既に別オブジェクトで描画モードの場合は一旦 OBJECT へ戻す
+        if obj is not None and self.mode in {_GP_PAINT_MODE, _GP_EDIT_MODE}:
+            try:
+                if getattr(obj, "mode", "OBJECT") != "OBJECT":
+                    bpy.ops.object.mode_set(mode="OBJECT")
             except Exception:  # noqa: BLE001
                 pass
         try:
@@ -1062,6 +1072,22 @@ class BMANGA_OT_gpencil_master_mode_set(bpy.types.Operator):
         except Exception as exc:  # noqa: BLE001
             self.report({"WARNING"}, f"モード切替失敗: {exc}")
             return {"CANCELLED"}
+        # GP 描画モードではストロークが見えるよう Material Preview 以上に切替え
+        if self.mode == _GP_PAINT_MODE:
+            try:
+                for area in context.screen.areas if context.screen else ():
+                    if area.type != "VIEW_3D":
+                        continue
+                    space = area.spaces.active
+                    if space is None or space.type != "VIEW_3D":
+                        continue
+                    shading = getattr(space, "shading", None)
+                    if shading is None:
+                        continue
+                    if shading.type not in {"MATERIAL", "RENDERED"}:
+                        shading.type = "MATERIAL"
+            except Exception:  # noqa: BLE001
+                pass
         return {"FINISHED"}
 
 

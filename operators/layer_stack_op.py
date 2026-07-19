@@ -941,6 +941,7 @@ class BMANGA_OT_layer_stack_add(Operator, ImportHelper):
             dpi_preset="custom",
             dpi=int(getattr(self, "dpi", 300)),
             bit_depth=str(getattr(self, "bit_depth", "gray8") or "gray8"),
+            enter_paint=False,
         )
         if "FINISHED" not in result:
             return ""

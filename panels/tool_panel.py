@@ -190,6 +190,12 @@ class BMANGA_PT_tools(Panel):
             icon="CURVE_BEZCURVE",
             depress=coma_modal_state.is_active("image_path_tool"),
         )
+        row.separator()
+        row.operator(
+            "wm.call_menu",
+            text="",
+            icon="RIGHTARROW",
+        ).name = "BMANGA_MT_layer_context"
 
         _draw_tool_preset_list(layout, context)
 
