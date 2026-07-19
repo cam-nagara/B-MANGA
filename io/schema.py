@@ -1814,6 +1814,8 @@ def text_entry_to_dict(entry) -> dict[str, Any]:
         "meldexSourceRowId": str(getattr(entry, "meldex_source_row_id", "") or ""),
         "meldexType": str(getattr(entry, "meldex_type", "") or ""),
         "visible": bool(getattr(entry, "visible", True)),
+        "opacity": _opacity_to_data(float(getattr(entry, "opacity", 100.0))),
+        "opacityUnit": "percent",
         "body": entry.body,
         "speakerName": entry.speaker_name,
         "font": entry.font,
@@ -1895,6 +1897,8 @@ def text_entry_from_dict(entry, data: dict[str, Any]) -> None:
     entry.meldex_source_row_id = str(data.get("meldexSourceRowId", "") or "")
     entry.meldex_type = str(data.get("meldexType", "") or "")
     entry.visible = bool(data.get("visible", True))
+    if hasattr(entry, "opacity"):
+        entry.opacity = _opacity_from_data(data, "opacity", 100.0)
     entry.body = data.get("body", "")
     entry.speaker_name = data.get("speakerName", "")
     entry.font = data.get("font", "")

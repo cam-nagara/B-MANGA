@@ -289,6 +289,15 @@ class BMangaTextEntry(bpy.types.PropertyGroup):
         default=False,
         options={"SKIP_SAVE"},
     )
+    opacity: FloatProperty(  # type: ignore[valid-type]
+        name="不透明度",
+        description="テキスト全体の不透明度です (%)",
+        default=100.0,
+        min=0.0,
+        max=100.0,
+        subtype="PERCENTAGE",
+        update=_on_text_entry_changed,
+    )
     body: StringProperty(name="本文", default="", description="表示する本文（セリフ本文）", options={"TEXTEDIT_UPDATE"}, update=_on_text_entry_changed)  # type: ignore[valid-type]
 
     # ページローカル座標 (mm). overlay 描画時にページ grid offset を加算する。

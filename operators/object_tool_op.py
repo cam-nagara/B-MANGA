@@ -1741,17 +1741,32 @@ class BMANGA_OT_object_tool(Operator):
                 _idx, entry = _find_fill_by_key(context, item_id)
                 if entry is None:
                     continue
-                if bool(getattr(entry, "use_region", False)):
-                    snapshots.append({
-                        "kind": "fill",
-                        "item_id": item_id,
-                        "rect": (
-                            float(getattr(entry, "region_x_mm", 0.0)),
-                            float(getattr(entry, "region_y_mm", 0.0)),
-                            float(getattr(entry, "region_width_mm", 0.0)),
-                            float(getattr(entry, "region_height_mm", 0.0)),
-                        ),
-                    })
+                has_region = bool(getattr(entry, "use_region", False))
+                has_gradient_ep = (
+                    str(getattr(entry, "fill_type", "") or "") == "gradient"
+                    and bool(getattr(entry, "use_gradient_endpoints", False))
+                )
+                if not has_region and not has_gradient_ep:
+                    continue
+                snap = {"kind": "fill", "item_id": item_id}
+                if has_region:
+                    snap["rect"] = (
+                        float(getattr(entry, "region_x_mm", 0.0)),
+                        float(getattr(entry, "region_y_mm", 0.0)),
+                        float(getattr(entry, "region_width_mm", 0.0)),
+                        float(getattr(entry, "region_height_mm", 0.0)),
+                    )
+                    snap["lasso_json"] = str(getattr(entry, "lasso_points_json", "") or "")
+                if has_gradient_ep:
+                    snap["gradient_start"] = (
+                        float(getattr(entry, "gradient_start_x_mm", 0.0)),
+                        float(getattr(entry, "gradient_start_y_mm", 0.0)),
+                    )
+                    snap["gradient_end"] = (
+                        float(getattr(entry, "gradient_end_x_mm", 0.0)),
+                        float(getattr(entry, "gradient_end_y_mm", 0.0)),
+                    )
+                snapshots.append(snap)
             elif kind == "gp":
                 obj, layer = _find_gp_layer(item_id)
                 bounds = object_tool_selection.gp_layer_local_bounds(layer)
@@ -2065,11 +2080,36 @@ class BMANGA_OT_object_tool(Operator):
                 effect_line_op._write_effect_strokes(context, obj, layer, (nx, ny, nw, nh), center_xy_mm=center)
             elif kind == "fill":
                 _idx, entry = _find_fill_by_key(context, snapshot["item_id"])
-                if entry is None or not bool(getattr(entry, "use_region", False)):
+                if entry is None:
                     continue
                 if self._drag_action == "move":
-                    entry.region_x_mm = x + dx
-                    entry.region_y_mm = y + dy
+                    from ..utils import fill_real_object as _fro
+                    with _fro.suspend_auto_sync():
+                        if "rect" in snapshot:
+                            rx, ry = snapshot["rect"][0], snapshot["rect"][1]
+                            entry.region_x_mm = rx + dx
+                            entry.region_y_mm = ry + dy
+                            lasso_json = snapshot.get("lasso_json", "")
+                            if lasso_json:
+                                try:
+                                    pts = json.loads(lasso_json)
+                                    moved = [
+                                        [float(p[0]) + dx, float(p[1]) + dy]
+                                        for p in pts
+                                        if isinstance(p, (list, tuple)) and len(p) >= 2
+                                    ]
+                                    if moved:
+                                        entry.lasso_points_json = json.dumps(moved)
+                                except (TypeError, ValueError, json.JSONDecodeError):
+                                    pass
+                        if "gradient_start" in snapshot:
+                            sx, sy = snapshot["gradient_start"]
+                            entry.gradient_start_x_mm = sx + dx
+                            entry.gradient_start_y_mm = sy + dy
+                            ex, ey = snapshot["gradient_end"]
+                            entry.gradient_end_x_mm = ex + dx
+                            entry.gradient_end_y_mm = ey + dy
+                    _fro.on_fill_entry_changed(entry)
             elif kind == "image":
                 _idx, entry = _find_image_by_key(context, snapshot["item_id"])
                 if entry is None:

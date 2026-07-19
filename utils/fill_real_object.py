@@ -287,8 +287,17 @@ def _ensure_solid_material(
     except Exception:  # noqa: BLE001
         pass
     nt = mat.node_tree
+    # gradient→solid 切替時に詳細ダイアログの template_curve_mapping が
+    # Float Curve ノードへの C レベル参照を保持している場合がある。
+    # 破棄するとクラッシュするため、名前で保全して残す。
+    fc_name = None
+    for node in nt.nodes:
+        if node.type == "CURVE_FLOAT":
+            fc_name = node.name
+            break
     for node in list(nt.nodes):
-        nt.nodes.remove(node)
+        if node.name != fc_name:
+            nt.nodes.remove(node)
 
     out = nt.nodes.new("ShaderNodeOutputMaterial")
     out.location = (360, 0)
@@ -385,9 +394,25 @@ def _ensure_gradient_material(
     except Exception:  # noqa: BLE001
         pass
     nt = mat.node_tree
-    saved_curve = curve_points or _extract_curve_points(nt)
+    # 詳細設定ダイアログの template_curve_mapping が FloatCurve ノードへの
+    # C レベル参照を保持しているため、ノードを破棄するとクラッシュする。
+    # 既存の FloatCurve ノードを保存し、他ノードだけ再作成する。
+    # 詳細設定ダイアログの template_curve_mapping が FloatCurve ノードへの
+    # C レベル参照を保持しているため、ノードを破棄するとクラッシュする。
+    # Blender RNA は Python `is` で同一性比較できない (イテレーションの
+    # たびに新しいラッパーが生成される) ため、名前で識別する。
+    fc_name = None
+    for node in nt.nodes:
+        if node.type == "CURVE_FLOAT":
+            fc_name = node.name
+            break
+    if fc_name is None:
+        saved_curve = curve_points or _extract_curve_points(nt)
+    else:
+        saved_curve = curve_points
     for node in list(nt.nodes):
-        nt.nodes.remove(node)
+        if node.name != fc_name:
+            nt.nodes.remove(node)
 
     out = nt.nodes.new("ShaderNodeOutputMaterial")
     out.location = (700, 0)
@@ -405,13 +430,19 @@ def _ensure_gradient_material(
     mapping.vector_type = "TEXTURE"
     gradient = nt.nodes.new("ShaderNodeTexGradient")
     gradient.location = (-200, 0)
-    float_curve = nt.nodes.new("ShaderNodeFloatCurve")
-    float_curve.location = (-20, 0)
-    float_curve.label = "濃度カーブ"
+    if fc_name is not None:
+        float_curve = nt.nodes[fc_name]
+        float_curve.location = (-20, 0)
+        float_curve.label = "濃度カーブ"
+    else:
+        float_curve = nt.nodes.new("ShaderNodeFloatCurve")
+        float_curve.location = (-20, 0)
+        float_curve.label = "濃度カーブ"
     ramp = nt.nodes.new("ShaderNodeValToRGB")
     ramp.location = (60, 0)
 
-    _apply_curve_points(float_curve, saved_curve)
+    if saved_curve is not None:
+        _apply_curve_points(float_curve, saved_curve)
 
     if gradient_type == "radial":
         gradient.gradient_type = "SPHERICAL"

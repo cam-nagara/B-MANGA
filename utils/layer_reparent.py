@@ -264,6 +264,8 @@ def reparent_stack_item(
         return _reparent_image(context, item, target, new_parent_key, new_world_xy_mm)
     if kind == "image_path":
         return _reparent_image_path(context, item, target, new_parent_key, new_world_xy_mm)
+    if kind == "fill":
+        return _reparent_fill(context, item, target, new_parent_key)
     if kind == "raster":
         return _reparent_raster(context, item, target, new_parent_key)
     if kind in {"gp", "effect"}:
@@ -851,6 +853,66 @@ def _reparent_text(context, item, target: ClickTarget, new_parent_key: str, new_
     _set_entry_top_left_world(context, work, dst_page, new_entry, old_world)
     _move_entry_center_world(context, work, dst_page, new_entry, new_world_xy_mm)
     _remove_entry_by_id(src_page.texts, text_id)
+    return True
+
+
+def _reparent_fill(context, item, target: ClickTarget, new_parent_key: str) -> bool:
+    from ..core.work import get_work
+    from . import fill_real_object
+
+    scene = getattr(context, "scene", None)
+    if scene is None:
+        return False
+    coll = getattr(scene, "bmanga_fill_layers", None)
+    if coll is None:
+        return False
+    work = get_work(context)
+    fill_id = str(getattr(item, "key", "") or "")
+    entry = None
+    for e in coll:
+        if str(getattr(e, "id", "") or "") == fill_id:
+            entry = e
+            break
+    if entry is None:
+        return False
+    old_page = fill_real_object.page_for_entry(scene, work, entry)
+    old_ox, old_oy = fill_real_object.entry_page_offset_mm(scene, work, entry, old_page)
+    with fill_real_object.suspend_auto_sync():
+        if target.kind == "outside":
+            entry.parent_kind = "none"
+            entry.parent_key = ""
+            item.parent_key = OUTSIDE_STACK_KEY
+            new_page = None
+        else:
+            entry.parent_kind = "coma" if target.kind == "coma" else "page"
+            entry.parent_key = new_parent_key
+            item.parent_key = new_parent_key
+            new_page = target.page
+        new_ox, new_oy = fill_real_object.entry_page_offset_mm(scene, work, entry, new_page)
+        ddx = old_ox - new_ox
+        ddy = old_oy - new_oy
+        if bool(getattr(entry, "use_region", False)):
+            entry.region_x_mm = float(getattr(entry, "region_x_mm", 0.0)) + ddx
+            entry.region_y_mm = float(getattr(entry, "region_y_mm", 0.0)) + ddy
+            lasso_json = str(getattr(entry, "lasso_points_json", "") or "")
+            if lasso_json:
+                try:
+                    pts = json.loads(lasso_json)
+                    moved = [
+                        [float(p[0]) + ddx, float(p[1]) + ddy]
+                        for p in pts
+                        if isinstance(p, (list, tuple)) and len(p) >= 2
+                    ]
+                    if moved:
+                        entry.lasso_points_json = json.dumps(moved)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    pass
+        if bool(getattr(entry, "use_gradient_endpoints", False)):
+            entry.gradient_start_x_mm = float(getattr(entry, "gradient_start_x_mm", 0.0)) + ddx
+            entry.gradient_start_y_mm = float(getattr(entry, "gradient_start_y_mm", 0.0)) + ddy
+            entry.gradient_end_x_mm = float(getattr(entry, "gradient_end_x_mm", 0.0)) + ddx
+            entry.gradient_end_y_mm = float(getattr(entry, "gradient_end_y_mm", 0.0)) + ddy
+    fill_real_object.on_fill_entry_changed(entry)
     return True
 
 

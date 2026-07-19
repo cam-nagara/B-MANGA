@@ -1108,12 +1108,16 @@ def _render_text_layer(entry, canvas_height_px: int, dpi: int) -> ExportLayer | 
         center_y_px = canvas_height_px - int(round(mm_to_px(center_y_mm, dpi)))
         left_px = center_x_px - image.width // 2
         top_px = center_y_px - image.height // 2
+    raw_opacity = getattr(entry, "opacity", None)
+    opacity_255 = int(round((float(raw_opacity) if raw_opacity is not None else 100.0) / 100.0 * 255.0))
+    opacity_255 = max(0, min(255, opacity_255))
     return ExportLayer(
         str(getattr(entry, "id", "") or "text"),
         image,
         left_px,
         top_px,
         group_path=("texts",),
+        opacity=opacity_255,
     )
 
 

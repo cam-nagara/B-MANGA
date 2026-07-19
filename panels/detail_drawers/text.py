@@ -29,6 +29,7 @@ def draw_text_body(layout, _context, session, mode, *, preset_list_owner=None) -
         session,
         list_owner=preset_list_owner,
     )
+    prop_if(primary, entry, "opacity", text="不透明度", slider=True)
     _draw_typography(secondary, entry)
     _draw_stroke(secondary, entry)
     _draw_ruby(secondary, entry, preset_mode, session)

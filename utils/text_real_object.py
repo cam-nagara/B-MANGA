@@ -431,7 +431,7 @@ def _ensure_image_data(name: str, pil_image) -> Optional[bpy.types.Image]:
     return image
 
 
-def _ensure_material(name: str, image: Optional[bpy.types.Image], *, mask_info=None) -> bpy.types.Material:
+def _ensure_material(name: str, image: Optional[bpy.types.Image], *, mask_info=None, opacity: float = 100.0) -> bpy.types.Material:
     mat = bpy.data.materials.get(name)
     if mat is None:
         mat = bpy.data.materials.new(name)
@@ -462,22 +462,31 @@ def _ensure_material(name: str, image: Optional[bpy.types.Image], *, mask_info=N
     tex = nt.nodes.new("ShaderNodeTexImage")
     tex.location = (-340, 40)
     tex.image = image
+    alpha_frac = max(0.0, min(1.0, opacity / 100.0))
     try:
         emission.inputs["Strength"].default_value = 1.0
         nt.links.new(tex.outputs["Color"], emission.inputs["Color"])
+        alpha_source = tex.outputs["Alpha"]
+        if alpha_frac < 1.0 - 1e-6:
+            math_mul = nt.nodes.new("ShaderNodeMath")
+            math_mul.location = (-160, -60)
+            math_mul.operation = "MULTIPLY"
+            math_mul.inputs[1].default_value = alpha_frac
+            nt.links.new(tex.outputs["Alpha"], math_mul.inputs[0])
+            alpha_source = math_mul.outputs["Value"]
         if mask_info is not None:
             from . import material_opacity_mask
             alpha_out = material_opacity_mask.multiply_alpha_by_mask(
-                nt, tex.outputs["Alpha"],
+                nt, alpha_source,
                 mask_object=getattr(mask_info, "space_object", None),
                 mask_image=getattr(mask_info, "image", None),
             )
             if alpha_out is not None:
                 nt.links.new(alpha_out, mix.inputs["Fac"])
             else:
-                nt.links.new(tex.outputs["Alpha"], mix.inputs["Fac"])
+                nt.links.new(alpha_source, mix.inputs["Fac"])
         else:
-            nt.links.new(tex.outputs["Alpha"], mix.inputs["Fac"])
+            nt.links.new(alpha_source, mix.inputs["Fac"])
         nt.links.new(transparent.outputs["BSDF"], mix.inputs[1])
         nt.links.new(emission.outputs["Emission"], mix.inputs[2])
         nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
@@ -681,6 +690,37 @@ def unrotate_bottom_left_mm(
     return bl_x_mm - offset_x, bl_y_mm - offset_y
 
 
+def _update_text_opacity_node(obj: bpy.types.Object, entry) -> None:
+    raw_opacity = getattr(entry, "opacity", None)
+    alpha_frac = max(0.0, min(1.0, (float(raw_opacity) if raw_opacity is not None else 100.0) / 100.0))
+    mat = obj.active_material if obj is not None else None
+    nt = getattr(mat, "node_tree", None) if mat is not None else None
+    if nt is None:
+        return
+    for node in nt.nodes:
+        if node.type == "MATH" and node.operation == "MULTIPLY":
+            node.inputs[1].default_value = alpha_frac
+            return
+    if alpha_frac < 1.0 - 1e-6:
+        tex = None
+        mix = None
+        for node in nt.nodes:
+            if node.type == "TEX_IMAGE":
+                tex = node
+            elif node.type == "MIX_SHADER":
+                mix = node
+        if tex is not None and mix is not None:
+            math_mul = nt.nodes.new("ShaderNodeMath")
+            math_mul.location = (-160, -60)
+            math_mul.operation = "MULTIPLY"
+            math_mul.inputs[1].default_value = alpha_frac
+            nt.links.new(tex.outputs["Alpha"], math_mul.inputs[0])
+            for link in list(nt.links):
+                if link.to_socket == mix.inputs["Fac"] and link.from_node is tex:
+                    nt.links.remove(link)
+            nt.links.new(math_mul.outputs["Value"], mix.inputs["Fac"])
+
+
 def _apply_text_object_state(
     scene: bpy.types.Scene,
     page,
@@ -725,6 +765,8 @@ def _apply_text_object_state(
         obj.hide_viewport = preview_hidden or not bool(getattr(entry, "visible", True))
         obj.hide_render = obj.hide_viewport
         obj.hide_select = False
+
+    _update_text_opacity_node(obj, entry)
 
 
 def ensure_text_real_object(
@@ -775,7 +817,9 @@ def ensure_text_real_object(
             )
         except Exception:  # noqa: BLE001
             pass
-    mat = _ensure_material(_material_name(page_id, text_id), image, mask_info=mask_info)
+    raw_opacity = getattr(entry, "opacity", None)
+    text_opacity = float(raw_opacity) if raw_opacity is not None else 100.0
+    mat = _ensure_material(_material_name(page_id, text_id), image, mask_info=mask_info, opacity=text_opacity)
 
     mesh = bpy.data.meshes.get(_mesh_name(page_id, text_id))
     if mesh is None:

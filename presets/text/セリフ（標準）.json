@@ -25,5 +25,6 @@
   "stroke_enabled": false,
   "stroke_width_mm": 0.2,
   "stroke_color": [1.0, 1.0, 1.0, 1.0],
-  "linked_balloon_preset": ""
+  "linked_balloon_preset": "",
+  "opacity": 100.0
 }

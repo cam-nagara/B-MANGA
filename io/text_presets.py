@@ -23,6 +23,7 @@ PRESET_SUFFIX = ".json"
 PRESET_INDEX_FILENAME = "_preset_index.json"
 
 _TEXT_KEYS = (
+    "opacity",
     "font",
     "font_size_unit",
     "font_size_value",
