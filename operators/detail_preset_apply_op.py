@@ -234,17 +234,24 @@ def sync_detail_preset_list(owner, context, session, preset_type: str) -> int:
     target = session.target
     selected_identifier = selected
     if preset_type == "balloon":
+        # フキダシは形状/線種/色などスタイル全体がプリセット保存対象
+        # (2026-07-20 拡張) のため、custom_preset_name が shape の値に
+        # 関わらず「現在適用中の保存済みプリセット」を一貫して指す
+        # (apply_balloon_preset_reference が custom_preset_name を設定し、
+        # style適用が shape を書き換えても custom_preset_name は保持される)。
+        # 組み込み形状を直接選んだ場合は custom_preset_name が空になるため
+        # "shape:xxx" 側を選択済み扱いにする。
+        custom_name = str(getattr(target.data, "custom_preset_name", "") or "")
         shape = str(getattr(target.data, "shape", "") or "")
-        selected_identifier = (
-            selected if shape == "custom" and selected else f"shape:{shape}"
-        )
-        if shape != "custom":
-            # フキダシの「プリセット保存対象値」は形状そのものなので、
-            # 「形状」フィールドの直接編集は組み込み形状プリセットを選ぶの
-            # と同義であり、「プリセット未保存の変更」ではない。基準値を
-            # 現在値へ追従させ、一覧が追従選択した際にプリセット切り替え
-            # 確認ダイアログが誤発動 (連続表示含む) しないようにする。
-            # カスタム形状の輪郭編集だけは従来どおり確認の対象に残す。
+        selected_identifier = custom_name or f"shape:{shape}"
+        if shape != "custom" and not custom_name:
+            # 保存済みプリセットに紐付いていない (組み込み形状を直接編集した
+            # だけの) フキダシは、切り替え時に失う保存対象値が実質無いため
+            # 基準値を現在値へ追従させ、「プリセット未保存」確認の誤発動を
+            # 防ぐ (2026-07-17 修正の意図を custom_preset_name 基準へ一般化
+            # して維持)。custom_preset_name が付いている間 (保存済みプリセット
+            # 適用後にスタイルを上書き編集した場合を含む) や shape=="custom"
+            # (輪郭データが他に控えを持たない) の場合は、従来どおり保護する。
             from ..utils import detail_preset_change_guard
 
             current = detail_preset_change_guard.capture_preset_settings(
@@ -551,6 +558,15 @@ def _apply_balloon(context, target, name: str) -> str:
             f"custom:{preset.name}",
             preset=preset,
         )
+        # v2プリセット (2026-07-20拡張) は形状/線種/色などのスタイルも保存する。
+        # style.shape が custom 以外なら、直後の適用でカスタム参照を上書きし
+        # 実形状もその値になる (custom_preset_name はそのまま保持され、
+        # 「このフキダシが最後に読み込んだプリセット名」として管理UIから
+        # 参照される)。旧v1プリセット (styleキーなし) は従来どおり頂点参照
+        # のみを適用する。
+        style_data = preset.data.get("style") if isinstance(preset.data, dict) else None
+        if isinstance(style_data, dict):
+            balloon_presets.apply_style_to_entry(target.data, style_data)
         text_balloon_link.fit_balloon_to_linked_text(get_work(context), target.data)
     balloon_curve_object.on_balloon_entry_changed(target.data)
     return str(preset.name)

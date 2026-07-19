@@ -49,6 +49,8 @@ def capture_preset_settings(target, preset_type: str) -> tuple[str, Any]:
 
         payload = image_path_presets.preset_dict_from_entry(target.data, "", "")
     elif kind == "balloon":
+        from ..io import balloon_presets
+
         shape = str(getattr(target.data, "shape", "") or "")
         payload = {
             "shape": shape,
@@ -57,6 +59,10 @@ def capture_preset_settings(target, preset_type: str) -> tuple[str, Any]:
                 if shape == "custom"
                 else None
             ),
+            # 形状/線種/色などスタイル全体もプリセット保存対象 (2026-07-20 拡張)。
+            # これが無いと shape=="custom" 以外のスタイル変更 (線色・角丸など)
+            # が「未保存の変更」として検知できない。
+            "style": balloon_presets.snapshot_style_from_entry(target.data),
         }
     else:
         raise ValueError(f"変更検知に未対応のプリセット種別です: {kind}")

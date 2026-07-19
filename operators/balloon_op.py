@@ -1966,12 +1966,14 @@ class BMANGA_OT_balloon_save_preset(Operator):
                     (float(x) + float(entry.x_mm), float(y) + float(entry.y_mm))
                     for x, y in verts
                 ]
+            extras = balloon_presets.linked_text_settings_from_entry(entry)
+            extras["style"] = balloon_presets.snapshot_style_from_entry(entry)
             out = balloon_presets.save_global_preset(
                 self.preset_name,
                 self.description,
                 verts,
                 self.absolute_coords,
-                extras=balloon_presets.linked_text_settings_from_entry(entry),
+                extras=extras,
             )
         except Exception as exc:  # noqa: BLE001
             _logger.exception("balloon_save_preset failed")

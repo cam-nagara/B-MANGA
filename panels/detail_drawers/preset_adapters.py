@@ -426,10 +426,12 @@ def _draw_selected_management(layout, context, session, spec: PresetUiSpec) -> N
 def _manageable_selection(session, spec: PresetUiSpec) -> str:
     if spec.preset_type != "balloon":
         return str(getattr(session, "preset_selection", "") or "")
-    target = session.target
-    if str(value(target.data, "shape", "") or "") != "custom":
-        return ""
-    return str(value(target.data, "custom_preset_name", "") or "")
+    # フキダシは形状/線種/色などスタイル全体がプリセット保存対象
+    # (2026-07-20 拡張) のため、custom_preset_name が現在適用中のプリセット名を
+    # shape の値に関わらず一貫して指す (shape=="custom" に限定していた旧仕様を
+    # 廃止)。組み込み形状を直接選んだ場合は apply_balloon_preset_reference が
+    # custom_preset_name を空にするため、その場合は管理対象なしになる。
+    return str(value(session.target.data, "custom_preset_name", "") or "")
 
 
 __all__ = ["PresetUiSpec", "draw_preset_management", "preset_spec_for_target"]

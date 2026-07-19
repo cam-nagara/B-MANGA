@@ -3,6 +3,31 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.2 LTS を対象としています（開発基準バージョン。5.1でも動作確認済み）。
 
+## 2026-07-20 — フキダシプリセットにスタイル保存を追加 (B-MANGA v0.6.556)
+
+### 新機能
+
+- フキダシプリセットが形状・線種・線色・塗り色・ボカシ・グラデーション・
+  白フチ・合成モード・不透明度・形状パラメータ・ウニフラ/白抜き設定を
+  保存するようになった（従来はカスタム頂点座標とリンクテキスト設定のみ）。
+- プリセット適用時にスタイル全体が反映される。
+- 旧形式（schemaVersion 1）のプリセットも引き続き正常に読み込み可能
+  （後方互換）。
+- 組み込み形状（楕円・矩形・雲等）でもプリセット管理ボタンが機能するよう
+  改善。
+
+### 変更ファイル
+
+- `io/balloon_presets.py` — `BALLOON_STYLE_KEYS`, `snapshot_style_from_entry`,
+  `apply_style_to_entry`, `reset_entry_style_to_defaults` 追加
+- `operators/balloon_op.py` — 保存時に style を extras に含める
+- `operators/detail_preset_apply_op.py` — 適用時に style を反映、
+  変更検出の custom_preset_name 基準化
+- `operators/detail_preset_management_op.py` — コンパクト管理UIの保存に
+  style を含める
+- `panels/detail_drawers/preset_adapters.py` — 全形状でプリセット管理可能に
+- `utils/detail_preset_change_guard.py` — 未保存検出にスタイルを追加
+
 ## 2026-07-20 — 「書き出し」セクション新設・書き出しプリセット対応・ページ/コマ単体書き出し (B-MANGA v0.6.555)
 
 ### 新機能

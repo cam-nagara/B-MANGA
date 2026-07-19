@@ -248,13 +248,15 @@ def _save_new_preset(context, preset_type: str, target, name: str, description: 
             name, description, module.snapshot_from_entry(target.data)
         )
     if preset_type == "balloon":
+        extras = module.linked_text_settings_from_entry(target.data)
+        extras["style"] = module.snapshot_style_from_entry(target.data)
         return module.save_local_preset(
             work_dir,
             name,
             description,
             _balloon_outline(target.data),
             False,
-            extras=module.linked_text_settings_from_entry(target.data),
+            extras=extras,
         )
     raise ValueError("このプリセット種別は追加できません")
 

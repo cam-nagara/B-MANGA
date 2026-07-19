@@ -51,6 +51,223 @@ def apply_linked_text_settings(entry, data: dict | None) -> None:
         setattr(entry, attr, value)
 
 
+# ---------- スタイル (形状・線種・色など) の保存/適用 (計画書 2026-07-20) ----------
+#
+# BMangaBalloonEntry (core/balloon.py) のフラット属性名タプル。値は必ず
+# core/balloon.py の実プロパティ定義と突き合わせて確認済み (存在しない
+# 属性名を書くとプリセット保存/適用が静かに失敗する)。
+# インスタンス固有 (配置・本文・meldex連携・しっぽ等) は含めない。
+BALLOON_STYLE_KEYS = (
+    # 形状
+    "shape",
+    "corner_type",
+    "rounded_corner_enabled",
+    "rounded_corner_radius_mm",
+    "rounded_corner_radius_unit",
+    "rounded_corner_radius_percent",
+    # 線種・線幅
+    "line_style",
+    "line_width_mm",
+    "dashed_segment_length_mm",
+    "dashed_gap_mm",
+    "dotted_gap_mm",
+    "line_shape_kind",
+    "line_shape_spacing_mm",
+    "line_shape_angle_deg",
+    "line_shape_orient",
+    "line_shape_jitter",
+    "line_shape_seed",
+    "line_image_path",
+    "line_image_interval_mm",
+    "line_image_angle_deg",
+    "line_image_jitter",
+    "multi_line_count",
+    "multi_line_direction",
+    "multi_line_width_mm",
+    "multi_line_spacing_mm",
+    "multi_line_width_scale_percent",
+    "multi_line_spacing_scale_percent",
+    "thorn_multi_line_valley_width_pct",
+    "thorn_multi_line_peak_width_pct",
+    "thorn_multi_line_length_scale_near_percent",
+    "thorn_multi_line_length_scale_far_percent",
+    "thorn_multi_line_cross_enabled",
+    "line_valley_width_pct",
+    "line_peak_width_pct",
+    "flash_line_count",
+    "flash_line_spacing_mm",
+    # 色・塗り
+    "line_color",
+    "fill_color",
+    "fill_opacity",
+    "fill_material_name",
+    "line_material_name",
+    "line_material_mapping",
+    "line_material_stretch_single",
+    "line_material_seam_fix",
+    # ボカシ・グラデーション
+    "fill_blur_amount",
+    "fill_blur_axis",
+    "fill_blur_dither",
+    "fill_gradient_enabled",
+    "fill_gradient_start_color",
+    "fill_gradient_end_color",
+    "fill_gradient_angle_deg",
+    # フチ
+    "outer_white_margin_enabled",
+    "outer_white_margin_width_mm",
+    "outer_white_margin_color",
+    "inner_white_margin_enabled",
+    "inner_white_margin_width_mm",
+    "inner_white_margin_color",
+    # その他
+    "blend_mode",
+    "opacity",
+)
+
+# FloatVectorProperty(subtype="COLOR") のキー。list[float] へ変換して保存する。
+_BALLOON_COLOR_KEYS = frozenset(
+    {
+        "line_color",
+        "fill_color",
+        "fill_gradient_start_color",
+        "fill_gradient_end_color",
+        "outer_white_margin_color",
+        "inner_white_margin_color",
+    }
+)
+
+# BMangaBalloonShapeParams (entry.shape_params) のフラット属性名タプル。
+# core/balloon.py に "Legacy parameters kept for older B-MANGA files" と
+# 明記されている互換専用フィールドは新規保存の対象に含めない。
+BALLOON_SHAPE_PARAM_KEYS = (
+    "cloud_bump_width_mm",
+    "cloud_bump_width_jitter",
+    "cloud_bump_height_mm",
+    "cloud_bump_height_jitter",
+    "cloud_offset_percent",
+    "shape_seed",
+    "cloud_sub_width_ratio",
+    "cloud_sub_width_jitter",
+    "cloud_sub_height_ratio",
+    "cloud_sub_height_jitter",
+    "cloud_valley_sharp",
+    "dynamic_shape_base_kind",
+    "dynamic_base_rounded_corner_enabled",
+    "dynamic_base_rounded_corner_radius_mm",
+    "dynamic_base_rounded_corner_radius_unit",
+    "dynamic_base_rounded_corner_radius_percent",
+)
+
+
+def _style_value_for_json(val: Any) -> Any:
+    try:
+        return round(float(val), 4) if isinstance(val, float) else val
+    except (TypeError, ValueError):
+        return str(val)
+
+
+def snapshot_style_from_entry(entry) -> dict[str, Any]:
+    """BMangaBalloonEntry から保存用のスタイル辞書 (形状・線種・色など) を作成.
+
+    io/text_presets.py の ``snapshot_from_entry`` と同じパターン
+    (getattr + float丸め + Color→list変換) に、shape_params のサブdict化と
+    ウニフラ/白抜き用パラメータ (既存 core/balloon.py の
+    ``uni_flash_params_to_dict``) を加えたもの。
+    """
+
+    snap: dict[str, Any] = {}
+    for key in BALLOON_STYLE_KEYS:
+        val = getattr(entry, key, None)
+        if val is None:
+            continue
+        if key in _BALLOON_COLOR_KEYS:
+            snap[key] = [round(float(c), 4) for c in val[:4]]
+        else:
+            snap[key] = _style_value_for_json(val)
+
+    shape_params = getattr(entry, "shape_params", None)
+    if shape_params is not None:
+        params_snap: dict[str, Any] = {}
+        for key in BALLOON_SHAPE_PARAM_KEYS:
+            val = getattr(shape_params, key, None)
+            if val is None:
+                continue
+            params_snap[key] = _style_value_for_json(val)
+        snap["shape_params"] = params_snap
+
+    from ..core import balloon as balloon_core
+
+    snap["uni_flash_params"] = balloon_core.uni_flash_params_to_dict(entry)
+    return snap
+
+
+def apply_style_to_entry(entry, data: dict[str, Any] | None) -> None:
+    """スタイル辞書を BMangaBalloonEntry へ適用.
+
+    未知キーは無視 (旧プリセット・新旧アドオン間の後方互換)。Color系は
+    list→Color変換、shape_params はサブdictから、ウニフラ/白抜きパラメータは
+    既存の ``uni_flash_params_from_dict`` から、それぞれ適用する。
+    """
+
+    if not isinstance(data, dict):
+        return
+    for key in BALLOON_STYLE_KEYS:
+        if key not in data:
+            continue
+        val = data[key]
+        if key in _BALLOON_COLOR_KEYS:
+            try:
+                prop = getattr(entry, key)
+                for i, c in enumerate(val[:4]):
+                    prop[i] = float(c)
+            except Exception:  # noqa: BLE001
+                pass
+        else:
+            try:
+                setattr(entry, key, val)
+            except Exception:  # noqa: BLE001
+                pass
+
+    params_data = data.get("shape_params")
+    shape_params = getattr(entry, "shape_params", None)
+    if isinstance(params_data, dict) and shape_params is not None:
+        for key in BALLOON_SHAPE_PARAM_KEYS:
+            if key not in params_data:
+                continue
+            try:
+                setattr(shape_params, key, params_data[key])
+            except Exception:  # noqa: BLE001
+                pass
+
+    uni_flash_data = data.get("uni_flash_params")
+    if isinstance(uni_flash_data, dict):
+        from ..core import balloon as balloon_core
+
+        balloon_core.uni_flash_params_from_dict(entry, uni_flash_data)
+
+
+def reset_entry_style_to_defaults(entry) -> None:
+    """プリセット対象のスタイル属性だけをRNA既定値へ戻す (配置・本文等は変更しない)."""
+
+    properties = getattr(getattr(entry, "bl_rna", None), "properties", None)
+    if properties is None:
+        return
+    for key in BALLOON_STYLE_KEYS:
+        prop = properties.get(key)
+        if prop is None or bool(getattr(prop, "is_readonly", False)):
+            continue
+        default = (
+            getattr(prop, "default_array", None)
+            if bool(getattr(prop, "is_array", False))
+            else getattr(prop, "default", None)
+        )
+        try:
+            setattr(entry, key, default)
+        except (AttributeError, TypeError, ValueError):
+            continue
+
+
 @dataclass(frozen=True)
 class BalloonPreset:
     name: str
@@ -122,7 +339,10 @@ def save_preset(
 ) -> Path:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     data: dict[str, Any] = {
-        "schemaVersion": 1,
+        # v1 = 頂点 (+ リンクテキスト余白) のみ, v2 = 形状/線種/色などスタイル
+        # 全般を含む (2026-07-20 拡張)。旧アドオンで v2 を読んでも未知キーは
+        # 無視されるため安全 (「プリセット非対象」参照)。
+        "schemaVersion": 2,
         "presetType": "balloon",
         "presetName": name,
         "description": description,
