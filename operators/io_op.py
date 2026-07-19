@@ -690,10 +690,233 @@ class BMANGA_OT_export_pdf(Operator):
         return {"FINISHED"}
 
 
+class BMANGA_OT_export_current_page(Operator):
+    """ページファイルから現在のページを書き出し."""
+
+    bl_idname = "bmanga.export_current_page"
+    bl_label = "このページを書き出し"
+    bl_options = {"REGISTER"}
+
+    format: EnumProperty(name="形式", items=_FORMAT_ITEMS, default="png")  # type: ignore[valid-type]
+    color_mode: EnumProperty(name="カラーモード", items=_COLOR_MODE_ITEMS, default="rgb")  # type: ignore[valid-type]
+    area: EnumProperty(name="範囲", items=_AREA_ITEMS, default="finish")  # type: ignore[valid-type]
+    scale_percent: FloatProperty(  # type: ignore[valid-type]
+        name="出力サイズ",
+        default=100.0,
+        min=1.0,
+        soft_max=400.0,
+        subtype="PERCENTAGE",
+    )
+    dpi_override: IntProperty(name="DPI 上書き (0 で既定)", default=0, min=0, soft_max=1200)  # type: ignore[valid-type]
+    include_border: BoolProperty(name="コマ枠線", default=True)  # type: ignore[valid-type]
+    include_white_margin: BoolProperty(name="フチ", default=True)  # type: ignore[valid-type]
+    include_nombre: BoolProperty(name="ノンブル", default=True)  # type: ignore[valid-type]
+    include_work_info: BoolProperty(name="作品情報", default=True)  # type: ignore[valid-type]
+    include_tombo: BoolProperty(name="トンボ", default=False)  # type: ignore[valid-type]
+    include_paper_color: BoolProperty(name="用紙色", default=True)  # type: ignore[valid-type]
+
+    @classmethod
+    def poll(cls, context):
+        from ..utils import page_file_scene as pfs
+        w = get_work(context)
+        return (
+            w is not None
+            and w.loaded
+            and pfs.is_page_edit_scene(context.scene)
+            and export_pipeline.has_pillow()
+        )
+
+    def invoke(self, context, event):
+        return detail_popup.invoke_props_dialog(context, event, self)
+
+    def draw(self, _context):
+        layout = self.layout
+        layout.prop(self, "format")
+        layout.prop(self, "color_mode")
+        layout.prop(self, "area")
+        layout.prop(self, "scale_percent")
+        box = layout.box()
+        box.prop(self, "include_border")
+        box.prop(self, "include_white_margin")
+        box.prop(self, "include_nombre")
+        box.prop(self, "include_work_info")
+        box.prop(self, "include_tombo")
+        box.prop(self, "include_paper_color")
+
+    def execute(self, context):
+        work = get_work(context)
+        page = get_active_page(context)
+        if work is None or page is None:
+            self.report({"ERROR"}, "ページが見つかりません")
+            return {"CANCELLED"}
+        if self.format == "psd" and not export_pipeline.can_write_layered_psd():
+            self.report({"ERROR"}, "PSD レイヤー出力を利用できません")
+            return {"CANCELLED"}
+        options = ExportOptions(
+            color_mode=self.color_mode,
+            format=self.format,
+            area=self.area,
+            dpi_override=int(self.dpi_override) if int(self.dpi_override) > 0 else _scaled_dpi(work, self.scale_percent),
+            include_border=self.include_border,
+            include_white_margin=self.include_white_margin,
+            include_nombre=self.include_nombre,
+            include_work_info=self.include_work_info,
+            include_tombo=self.include_tombo,
+            include_paper_color=self.include_paper_color,
+        )
+        try:
+            work_dir = Path(work.work_dir)
+            out_dir = paths.exports_dir(work_dir) / datetime.now().strftime("%Y-%m-%d_%H%M%S")
+            out_dir.mkdir(parents=True, exist_ok=True)
+            page_number, page_end = _page_number_for_page(work, page)
+            name = _resolve_filename("{workName}_{episode}_{page}", work, page, page_number, page_end=page_end)
+            ext = self.format.replace("jpeg", "jpg")
+            out = out_dir / f"{name}.{ext}"
+            if self.format == "psd":
+                export_pipeline.save_page_as_psd(work, page, options, out)
+            else:
+                img = export_pipeline.render_page(work, page, options)
+                if img is None:
+                    self.report({"ERROR"}, "レンダリングに失敗しました")
+                    return {"CANCELLED"}
+                _save_image(img, out, self.format)
+        except Exception as exc:  # noqa: BLE001
+            _logger.exception("export_current_page failed")
+            self.report({"ERROR"}, f"書き出し失敗: {exc}")
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"書き出し完了: {out}")
+        return {"FINISHED"}
+
+
+class BMANGA_OT_export_current_coma(Operator):
+    """コマファイルから現在のコマを書き出し."""
+
+    bl_idname = "bmanga.export_current_coma"
+    bl_label = "このコマを書き出し"
+    bl_options = {"REGISTER"}
+
+    format: EnumProperty(name="形式", items=_FORMAT_ITEMS, default="png")  # type: ignore[valid-type]
+    color_mode: EnumProperty(name="カラーモード", items=_COLOR_MODE_ITEMS, default="rgb")  # type: ignore[valid-type]
+    scale_percent: FloatProperty(  # type: ignore[valid-type]
+        name="出力サイズ",
+        default=100.0,
+        min=1.0,
+        soft_max=400.0,
+        subtype="PERCENTAGE",
+    )
+    dpi_override: IntProperty(name="DPI 上書き (0 で既定)", default=0, min=0, soft_max=1200)  # type: ignore[valid-type]
+    include_border: BoolProperty(name="コマ枠線", default=True)  # type: ignore[valid-type]
+    include_paper_color: BoolProperty(name="背景色", default=True)  # type: ignore[valid-type]
+
+    @classmethod
+    def poll(cls, context):
+        from ..utils import page_file_scene as pfs
+        w = get_work(context)
+        role, _pid, _cid = pfs.current_role(context)
+        return (
+            w is not None
+            and w.loaded
+            and role == pfs.ROLE_COMA
+            and export_pipeline.has_pillow()
+        )
+
+    def invoke(self, context, event):
+        return detail_popup.invoke_props_dialog(context, event, self)
+
+    def draw(self, _context):
+        layout = self.layout
+        layout.prop(self, "format")
+        layout.prop(self, "color_mode")
+        layout.prop(self, "scale_percent")
+        box = layout.box()
+        box.prop(self, "include_border")
+        box.prop(self, "include_paper_color")
+
+    def execute(self, context):
+        from ..utils import coma_content_mask, page_file_scene as pfs
+        work = get_work(context)
+        if work is None:
+            return {"CANCELLED"}
+        page = get_active_page(context)
+        if page is None:
+            self.report({"ERROR"}, "ページが見つかりません")
+            return {"CANCELLED"}
+        _role, _page_id, coma_id = pfs.current_role(context)
+        coma_entry = None
+        for coma in getattr(page, "comas", []) or []:
+            if str(getattr(coma, "coma_id", "") or getattr(coma, "id", "")) == coma_id:
+                coma_entry = coma
+                break
+        if coma_entry is None:
+            scene = context.scene
+            scene_coma_id = str(getattr(scene, "bmanga_current_coma_id", "") or "")
+            if scene_coma_id:
+                for coma in getattr(page, "comas", []) or []:
+                    if str(getattr(coma, "id", "")) == scene_coma_id:
+                        coma_entry = coma
+                        break
+        if coma_entry is None:
+            self.report({"ERROR"}, "コマが見つかりません")
+            return {"CANCELLED"}
+        if self.format == "psd" and not export_pipeline.can_write_layered_psd():
+            self.report({"ERROR"}, "PSD レイヤー出力を利用できません")
+            return {"CANCELLED"}
+        bbox = coma_content_mask.mask_bbox_mm(coma_entry)
+        if bbox is None:
+            self.report({"ERROR"}, "コマの領域を取得できません")
+            return {"CANCELLED"}
+        options = ExportOptions(
+            color_mode=self.color_mode,
+            format=self.format,
+            area="canvas",
+            dpi_override=int(self.dpi_override) if int(self.dpi_override) > 0 else _scaled_dpi(work, self.scale_percent),
+            include_border=self.include_border,
+            include_white_margin=False,
+            include_nombre=False,
+            include_work_info=False,
+            include_tombo=False,
+            include_paper_color=self.include_paper_color,
+        )
+        try:
+            from ..utils.geom import mm_to_px
+            dpi = options.dpi_override if options.dpi_override > 0 else int(work.paper.dpi)
+            canvas_h = int(round(mm_to_px(float(work.paper.canvas_height_mm), dpi)))
+            x1_px = int(round(mm_to_px(bbox[0], dpi)))
+            y1_px = canvas_h - int(round(mm_to_px(bbox[3], dpi)))
+            x2_px = int(round(mm_to_px(bbox[2], dpi)))
+            y2_px = canvas_h - int(round(mm_to_px(bbox[1], dpi)))
+            crop_box = (max(0, x1_px), max(0, y1_px), x2_px, y2_px)
+
+            work_dir = Path(work.work_dir)
+            out_dir = paths.exports_dir(work_dir) / datetime.now().strftime("%Y-%m-%d_%H%M%S")
+            out_dir.mkdir(parents=True, exist_ok=True)
+            coma_name = str(getattr(coma_entry, "title", "") or getattr(coma_entry, "coma_id", "") or "coma")
+            safe_name = _safe_filename(coma_name)
+            ext = self.format.replace("jpeg", "jpg")
+            out = out_dir / f"{safe_name}.{ext}"
+
+            if self.format == "psd":
+                export_pipeline.save_coma_as_psd(work, page, coma_entry, options, crop_box, out)
+            else:
+                img = export_pipeline.render_coma(work, page, coma_entry, options, crop_box)
+                if img is None:
+                    self.report({"ERROR"}, "レンダリングに失敗しました")
+                    return {"CANCELLED"}
+                _save_image(img, out, self.format)
+        except Exception as exc:  # noqa: BLE001
+            _logger.exception("export_current_coma failed")
+            self.report({"ERROR"}, f"書き出し失敗: {exc}")
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"書き出し完了: {out}")
+        return {"FINISHED"}
+
+
 _CLASSES = (
     BMANGA_OT_export_page,
     BMANGA_OT_export_all_pages,
     BMANGA_OT_export_pdf,
+    BMANGA_OT_export_current_page,
+    BMANGA_OT_export_current_coma,
 )
 
 

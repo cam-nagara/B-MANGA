@@ -2322,3 +2322,32 @@ def convert_to_cmyk(img, icc_profile_path: str = "") -> "Image.Image | None":
         except Exception as exc:  # noqa: BLE001
             _logger.warning("ImageCms transform failed, fallback: %s", exc)
     return img.convert("CMYK")
+
+
+def render_coma(work, page, coma_entry, options: ExportOptions, crop_box: tuple[int, int, int, int]) -> Any:
+    """コマ領域をクロップして統合画像として返す."""
+    if not _HAS_PIL:
+        return None
+    layers = build_page_layers(work, page, options)
+    group_masks = _coma_group_masks(work, page, options)
+    layers, size = _crop_layers(layers, crop_box)
+    group_masks = export_group_masks.crop_group_masks(group_masks, crop_box, ExportMask)
+    layers = export_group_masks.apply_group_masks_to_layers(layers, group_masks, Image, ImageChops)
+    image = _flatten_layers(layers, size)
+    return _convert_flatten_mode(image, options)
+
+
+def save_coma_as_psd(work, page, coma_entry, options: ExportOptions, crop_box: tuple[int, int, int, int], out_path: Path) -> bool:
+    """コマ領域をクロップしてレイヤー付きPSDとして保存する."""
+    if not _HAS_PIL:
+        raise RuntimeError("Pillow が利用できません")
+    if not export_psd.can_write_layered_psd():
+        raise RuntimeError("PSD レイヤー出力を利用できません")
+    layers = build_page_layers(work, page, options)
+    group_masks = _coma_group_masks(work, page, options)
+    layers = [_convert_layer_mode_rgba(layer, options.color_mode) for layer in layers]
+    layers, size = _crop_layers(layers, crop_box)
+    group_masks = export_group_masks.crop_group_masks(group_masks, crop_box, ExportMask)
+    if not layers:
+        layers = [ExportLayer("empty", _empty_rgba(size), 0, 0)]
+    return export_psd.save_layers_as_psd(layers, size, out_path, group_masks=group_masks)

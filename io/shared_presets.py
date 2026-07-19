@@ -25,6 +25,7 @@ PRESET_CATEGORIES = {
     "image_paths": "image_paths",
     "fills": "fills",
     "gradients": "gradients",
+    "exports": "exports",
 }
 
 

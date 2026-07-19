@@ -96,6 +96,15 @@ _PRESET_CONFIGS = {
         "has_move": False,
         "has_save": False,
     },
+    "export": {
+        "label": "書き出しプリセット",
+        "icon": "RENDER_STILL",
+        "selector_attr": "bmanga_export_preset_selector",
+        "op_prefix": "bmanga.export_preset",
+        "has_move": True,
+        "has_save": True,
+        "save_op": "bmanga.export_preset_save",
+    },
 }
 
 

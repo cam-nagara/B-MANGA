@@ -20,6 +20,7 @@ _TYPE_ICON = {
     "gradient": "NODE_TEXTURE",
     "image_path": "CURVE_BEZCURVE",
     "tail": "SHARPCURVE",
+    "export": "RENDER_STILL",
 }
 
 
@@ -53,7 +54,7 @@ class BMANGA_UL_presets(UIList):
                     if preset_name.startswith("custom:")
                     else ""
                 )
-            if preset_name and preset_name not in {"NONE", "DEFAULT"}:
+            if preset_name and preset_name not in {"NONE", "DEFAULT"} and preset_type != "export":
                 op = row.operator(
                     "bmanga.preset_detail_edit",
                     text="",
@@ -78,6 +79,7 @@ _SELECTOR_ATTRS = {
     "gradient": "bmanga_gradient_tool_preset_selector",
     "image_path": "bmanga_image_path_tool_preset_selector",
     "tail": "bmanga_tail_preset_selector",
+    "export": "bmanga_export_preset_selector",
 }
 
 _ENUM_ITEM_GETTERS: dict | None = None
@@ -87,7 +89,7 @@ def _ensure_getters():
     global _ENUM_ITEM_GETTERS
     if _ENUM_ITEM_GETTERS is not None:
         return
-    from ..operators import balloon_tail_detail_op, effect_line_preset_op, preset_op
+    from ..operators import balloon_tail_detail_op, effect_line_preset_op, export_preset_op, preset_op
 
     _ENUM_ITEM_GETTERS = {
         "border": preset_op._border_preset_enum_items,
@@ -98,6 +100,7 @@ def _ensure_getters():
         "image_path": preset_op._image_path_tool_preset_enum_items,
         "effect_line": effect_line_preset_op._effect_line_tool_preset_enum_items,
         "tail": balloon_tail_detail_op._tail_preset_enum_items,
+        "export": export_preset_op._export_preset_enum_items,
     }
 
 
