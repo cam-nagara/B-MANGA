@@ -63,35 +63,81 @@ def draw_detail_dialog(
 
     preset_spec = preset_adapters.preset_spec_for_target(target)
     if preset_spec is not None:
-        top_left, top_right = basic.equal_columns(layout, 2, 2)
-    else:
-        top_left, top_right = layout.column(align=True), None
+        _draw_preset_target_dialog(
+            layout,
+            context,
+            session,
+            normalized_mode,
+            target,
+            drawer,
+            description_owner=description_owner,
+            preset_list_owner=preset_list_owner,
+        )
+        return True
+
+    top_left = layout.column(align=True)
     draw_detail_header(top_left, target, normalized_mode)
     if normalized_mode.value == "actual":
         draw_target_placement(top_left, target)
     elif description_owner is not None:
         top_left.prop(description_owner, "description_text")
-    if top_right is not None:
-        preset_adapters.draw_preset_management(
-            top_right,
-            context,
-            session,
-            normalized_mode,
-            list_owner=preset_list_owner,
-        )
     layout.separator()
+    drawer(layout, context, session, normalized_mode)
+    draw_linked_layers(layout, context, target, normalized_mode)
+    return True
+
+
+def _draw_preset_target_dialog(
+    layout,
+    context,
+    session,
+    mode,
+    target,
+    drawer,
+    *,
+    description_owner,
+    preset_list_owner,
+) -> None:
+    """プリセット保存対象を持つ種別の共通レイアウト。
+
+    左列(サイドバー)にヘッダ・配置・種別固有の非プリセット設定・プリセット
+    一覧・リンクレイヤーを積み、残り列(ボディ)へプリセット保存対象の設定を
+    描画する。列数は種別ごとの固定 ``max_columns`` を常に全て使う (段階的な
+    列の間引きは行わない。空になり得るのは balloon_shape の 1 列構成のみで、
+    その場合ボディは空タプルになるが balloon.draw_balloon_body 側がボディへ
+    触れる前に処理を終える)。
+    """
+
+    max_columns = session.layout.max_columns
+    columns = basic.equal_columns(layout, max_columns, max_columns)
+    sidebar, body_cols = columns[0], columns[1:]
+
+    draw_detail_header(sidebar, target, mode)
+    if mode.value == "actual":
+        draw_target_placement(sidebar, target)
+    elif description_owner is not None:
+        sidebar.prop(description_owner, "description_text")
+
     if target.kind == "text":
         drawer(
-            layout,
+            sidebar,
+            body_cols,
             context,
             session,
-            normalized_mode,
+            mode,
             preset_list_owner=preset_list_owner,
         )
     else:
-        drawer(layout, context, session, normalized_mode)
-    draw_linked_layers(layout, context, target, normalized_mode)
-    return True
+        drawer(sidebar, body_cols, context, session, mode)
+
+    preset_adapters.draw_preset_management(
+        sidebar,
+        context,
+        session,
+        mode,
+        list_owner=preset_list_owner,
+    )
+    draw_linked_layers(sidebar, context, target, mode)
 
 
 def _validate_session(session, mode) -> None:

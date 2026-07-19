@@ -189,26 +189,28 @@ def draw_page_body(layout, _context, session, _mode) -> None:
     )
 
 
-def draw_coma_body(layout, context, session, mode) -> None:
-    """コマ設定。選択依存ボタンを避け、固定済みentryだけを描画する。"""
+def draw_coma_body(sidebar, body_cols, context, session, mode) -> None:
+    """コマ設定。選択依存ボタンを避け、固定済みentryだけを描画する。
+
+    左列(サイドバー)=このコマ限定のblendファイル・形状 (非プリセット)、
+    右列(body_cols)=枠線・フチのプリセット保存対象設定。
+    """
 
     from .. import coma_detail_panel
 
     entry = session.target.data
-    columns = body_columns(layout, session)
-    primary = columns[0]
-    secondary = columns[min(1, len(columns) - 1)]
+    primary = body_cols[0]
     preset_mode = str(getattr(mode, "value", mode)) == "preset"
     if not preset_mode:
-        blend_box = primary.box()
+        blend_box = sidebar.box()
         blend_box.label(text="コマ用blendファイル (このコマのみ)", icon="FILE_BLEND")
         prop_if(blend_box, entry, "coma_blend_template_path", text="")
 
-        shape_box = primary.box()
+        shape_box = sidebar.box()
         shape_box.label(text="形状")
         _draw_coma_shape(shape_box, entry)
 
-    border_box = secondary.box()
+    border_box = primary.box()
     border_box.label(text="枠線")
     coma_detail_panel.draw_coma_border_settings(
         border_box,
@@ -218,7 +220,7 @@ def draw_coma_body(layout, context, session, mode) -> None:
         preset_mode=True,
     )
 
-    white_box = secondary.box()
+    white_box = primary.box()
     white_box.label(text="フチ")
     coma_detail_panel.draw_coma_white_margin_settings(white_box, entry)
 

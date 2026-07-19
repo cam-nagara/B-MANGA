@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from .basic import (
-    body_columns,
     detail_operator,
     detail_operator_menu_enum,
     prop_if,
@@ -15,24 +14,24 @@ from .basic import (
 )
 
 
-def draw_text_body(layout, _context, session, mode, *, preset_list_owner=None) -> None:
+def draw_text_body(sidebar, body_cols, context, session, mode, *, preset_list_owner=None) -> None:
+    """テキストは全設定がプリセット保存対象なので、左列(サイドバー)は使わない。"""
+
     entry = session.target.data
     preset_mode = str(getattr(mode, "value", mode)) == "preset"
-    columns = body_columns(layout, session)
-    primary = columns[0]
-    secondary = columns[min(1, len(columns) - 1)]
+    primary = body_cols[0]
 
     _draw_linked_balloon_preset(
         primary,
-        _context,
+        context,
         entry,
         session,
         list_owner=preset_list_owner,
     )
     prop_if(primary, entry, "opacity", text="不透明度", slider=True)
-    _draw_typography(secondary, entry)
-    _draw_stroke(secondary, entry)
-    _draw_ruby(secondary, entry, preset_mode, session)
+    _draw_typography(primary, entry)
+    _draw_stroke(primary, entry)
+    _draw_ruby(primary, entry, preset_mode, session)
 
 
 def _draw_linked_balloon_preset(layout, context, entry, session, *, list_owner=None) -> None:

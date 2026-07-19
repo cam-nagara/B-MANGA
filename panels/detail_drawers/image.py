@@ -31,11 +31,13 @@ def draw_image_body(layout, _context, session, _mode) -> None:
     prop_if(threshold, entry, "binarize_threshold", text="しきい値")
 
 
-def draw_image_path_body(layout, _context, session, mode) -> None:
+def draw_image_path_body(sidebar, body_cols, context, session, mode) -> None:
+    """パターンカーブは内容・描画とも全てプリセット保存対象のため、
+    左列(サイドバー)は使わず、右列(body_cols)へ全て描画する。
+    """
+
     entry = session.target.data
-    columns = body_columns(layout, session)
-    primary = columns[0]
-    secondary = columns[min(1, len(columns) - 1)]
+    primary = body_cols[0]
     preset_mode = str(getattr(mode, "value", mode)) == "preset"
     source = str(value(entry, "content_source", "image") or "image")
 
@@ -44,7 +46,7 @@ def draw_image_path_body(layout, _context, session, mode) -> None:
     prop_if(content, entry, "content_source", text="内容")
     _draw_source(content, entry, source)
 
-    brush = secondary.box()
+    brush = primary.box()
     brush.label(text="描画")
     prop_if(brush, entry, "opacity", text="不透明度", slider=True)
     prop_if(brush, entry, "draw_mode", text="表示方法")
@@ -67,7 +69,7 @@ def draw_image_path_body(layout, _context, session, mode) -> None:
     prop_if(brush, entry, "color", text="色")
     _draw_direction(brush, entry, source)
 
-    _draw_inout(secondary, entry, preset_mode)
+    _draw_inout(primary, entry, preset_mode)
 
 
 def _draw_source(layout, entry, source: str) -> None:

@@ -3,6 +3,32 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.2 LTS を対象としています（開発基準バージョン。5.1でも動作確認済み）。
 
+## 2026-07-20 — 詳細設定ダイアログのレイアウト再設計 (B-MANGA v0.6.557)
+
+### 改善
+
+- プリセット対象種別（フキダシ・テキスト・コマ・効果線・囲い塗り・パターン
+  カーブ）の詳細設定ダイアログのレイアウトを再構成。
+  - 左列（サイドバー）: ヘッダ・配置・非プリセット固有設定・プリセットリスト・
+    リンクレイヤー
+  - 右列（ボディ）: プリセット保存対象の設定
+- プリセットを持たない種別（ページ・フォルダー・ラスター等）のレイアウトは
+  変更なし。
+
+### 変更ファイル
+
+- `panels/detail_drawers/dispatcher.py` — `_draw_preset_target_dialog()` 新設。
+  全列を一度に確保し左列をサイドバー、残りをボディに振り分け
+- `panels/detail_drawers/balloon.py` — 左列: リンクテキスト・しっぽ、
+  右列: 形状・線/塗り
+- `panels/detail_drawers/text.py` — 全設定を右列に描画
+- `panels/detail_drawers/basic.py` — 左列: blend_path・形状、右列: 枠線
+- `panels/detail_drawers/effect.py` — 全パラメータを右列に描画
+- `panels/detail_drawers/raster_fill.py` — 左列: 回転・端点・領域、
+  右列: 不透明度・色・グラデーション
+- `panels/detail_drawers/image.py` — 全設定を右列に描画
+- `test/test_detail_drawer_order.py` — 新シグネチャ対応、8件の新規テスト追加
+
 ## 2026-07-20 — フキダシプリセットにスタイル保存を追加 (B-MANGA v0.6.556)
 
 ### 新機能

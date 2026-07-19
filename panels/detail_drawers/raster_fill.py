@@ -41,11 +41,13 @@ def draw_raster_body(layout, _context, session, _mode) -> None:
         target_id=stable_id,
     )
 
-def draw_fill_body(layout, _context, session, mode) -> None:
+def draw_fill_body(sidebar, body_cols, context, session, mode) -> None:
+    """左列(サイドバー)=回転・端点指定・塗り範囲 (配置依存の非プリセット設定)、
+    右列(body_cols)=不透明度・色・グラデーションのプリセット保存対象設定。
+    """
+
     entry = session.target.data
-    columns = body_columns(layout, session)
-    primary = columns[0]
-    secondary = columns[min(1, len(columns) - 1)]
+    primary = body_cols[0]
     preset_mode = str(getattr(mode, "value", mode)) == "preset"
     namespace = str(getattr(session.target, "namespace", "") or "")
     fill_type = (
@@ -54,17 +56,20 @@ def draw_fill_body(layout, _context, session, mode) -> None:
         else str(value(entry, "fill_type", "solid") or "solid")
     )
 
-    basic = primary.box()
-    basic.label(text="グラデーション" if fill_type == "gradient" else "ベタ塗り")
-    prop_if(basic, entry, "opacity", text="不透明度", slider=True)
     if not preset_mode:
-        _draw_actual_fill_controls(basic, entry, fill_type)
-    prop_if(basic, entry, "color", text="色")
+        placement_box = sidebar.box()
+        placement_box.label(text="配置")
+        _draw_actual_fill_controls(placement_box, entry, fill_type)
+        if bool(value(entry, "use_region", False)):
+            _draw_fill_region(sidebar, entry)
+
+    basic_box = primary.box()
+    basic_box.label(text="グラデーション" if fill_type == "gradient" else "ベタ塗り")
+    prop_if(basic_box, entry, "opacity", text="不透明度", slider=True)
+    prop_if(basic_box, entry, "color", text="色")
 
     if fill_type == "gradient":
-        _draw_gradient(secondary, session, entry, preset_mode)
-    if not preset_mode and bool(value(entry, "use_region", False)):
-        _draw_fill_region(secondary, entry)
+        _draw_gradient(primary, session, entry, preset_mode)
 
 
 def _draw_actual_fill_controls(layout, entry, fill_type: str) -> None:

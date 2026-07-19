@@ -127,31 +127,84 @@ def test_fixed_max_slots_keep_two_column_width_when_visible_columns_change(visib
     assert all(slot.blanks == [""] for slot in layout.grid.slots[visible:])
 
 
-def test_every_supported_body_drawer_enters_the_fixed_slot_layout():
+def _function_nodes(filename: str) -> dict[str, ast.AST]:
+    drawer_root = ROOT / "panels" / "detail_drawers"
+    tree = ast.parse((drawer_root / filename).read_text(encoding="utf-8"))
+    return {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+
+def _called_names(node: ast.AST) -> set[str]:
+    """呼び出された関数名の集合を返す。``foo()`` と ``module.foo()`` の両方を拾う。"""
+
+    names: set[str] = set()
+    for call in ast.walk(node):
+        if not isinstance(call, ast.Call):
+            continue
+        if isinstance(call.func, ast.Name):
+            names.add(call.func.id)
+        elif isinstance(call.func, ast.Attribute):
+            names.add(call.func.attr)
+    return names
+
+
+def test_every_non_preset_body_drawer_enters_the_fixed_slot_layout():
+    """プリセットを持たない種別のdrawerは、今も自分で body_columns() を呼ぶ。"""
+
     expected = {
-        "basic.py": {"draw_page_body", "draw_coma_body", "draw_layer_folder_body"},
+        "basic.py": {"draw_page_body", "draw_layer_folder_body"},
         "gp.py": {"draw_gp_body"},
-        "image.py": {"draw_image_body", "draw_image_path_body"},
-        "raster_fill.py": {"draw_raster_body", "draw_fill_body"},
-        "balloon.py": {"draw_balloon_body", "draw_tail_body"},
+        "image.py": {"draw_image_body"},
+        "raster_fill.py": {"draw_raster_body"},
+        "balloon.py": {"draw_tail_body"},
+    }
+    for filename, function_names in expected.items():
+        functions = _function_nodes(filename)
+        for function_name in function_names:
+            calls = _called_names(functions[function_name])
+            assert "body_columns" in calls, f"{filename}:{function_name}"
+
+
+def test_every_preset_body_drawer_relies_on_dispatcher_provided_columns():
+    """プリセットを持つ種別のdrawerは、dispatcherが渡すsidebar/body_colsを使うだけで、
+    自分で equal_columns()/body_columns() を呼び直さない (固定スロットの生成元は
+    dispatcher.draw_detail_dialog に一本化されている)。
+    """
+
+    expected = {
+        "basic.py": {"draw_coma_body"},
+        "image.py": {"draw_image_path_body"},
+        "raster_fill.py": {"draw_fill_body"},
+        "balloon.py": {"draw_balloon_body"},
         "text.py": {"draw_text_body"},
         "effect.py": {"draw_effect_body"},
     }
-    drawer_root = ROOT / "panels" / "detail_drawers"
     for filename, function_names in expected.items():
-        tree = ast.parse((drawer_root / filename).read_text(encoding="utf-8"))
-        functions = {
-            node.name: node
-            for node in tree.body
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        }
+        functions = _function_nodes(filename)
         for function_name in function_names:
-            calls = {
-                node.func.id
-                for node in ast.walk(functions[function_name])
-                if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-            }
-            assert "body_columns" in calls, f"{filename}:{function_name}"
+            calls = _called_names(functions[function_name])
+            assert "body_columns" not in calls, f"{filename}:{function_name}"
+            assert "equal_columns" not in calls, f"{filename}:{function_name}"
+
+
+def test_dispatcher_creates_fixed_slot_columns_for_preset_targets():
+    """dispatcher側は max_columns 固定で equal_columns() を呼び、
+    プリセットを持つ種別のsidebar/body列を一括生成する。"""
+
+    dispatcher_source = (ROOT / "panels" / "detail_drawers" / "dispatcher.py").read_text(
+        encoding="utf-8"
+    )
+    tree = ast.parse(dispatcher_source)
+    functions = {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    calls = _called_names(functions["_draw_preset_target_dialog"])
+    assert "equal_columns" in calls
 
 
 def test_fill_type_change_clears_the_other_preset_category_selection():
@@ -441,10 +494,12 @@ def test_preset_description_is_after_common_header_and_before_body(
     layout = RecordingLayout()
     description = Data(description_text="説明")
     original = dispatcher._BODY_DRAWERS[kind]
+    # プリセットを持つ種別は drawer(sidebar, body_cols, context, session, mode) で
+    # 呼ばれ、持たない種別 (balloon_tail) は旧来の drawer(layout, context, session,
+    # mode) のまま呼ばれる。どちらの呼び出しでも先頭引数が「本文を描く列」なので
+    # *args で受けて args[0] へ描画すれば両方のシグネチャに対応できる。
     dispatcher._BODY_DRAWERS[kind] = (
-        lambda body_layout, _context, _session, _mode, **_kwargs: body_layout.label(
-            text="本文"
-        )
+        lambda *args, **_kwargs: args[0].label(text="本文")
     )
     try:
         DRAWERS.draw_detail_dialog(
@@ -505,3 +560,222 @@ def test_raster_actions_carry_the_fixed_target_and_hide_unimplemented_dpi_action
         spec = DETAIL.get_detail_action_spec(operator_id)
         assert spec.boundary is DETAIL.DetailActionBoundary.INDEPENDENT_IMMEDIATE
         assert spec.closes_parent_before_run is False
+
+
+# --- 実際のdrawer (スタブ差し替えなし) を使ったサイドバー/本文振分けの検証 ---
+#
+# 上のいくつかのテストは dispatcher._BODY_DRAWERS を差し替えて構造だけを見る。
+# ここでは実際の balloon/coma/fill/image_path の drawer を直接呼び、
+# sidebar (非プリセット設定) と body_cols (プリセット保存対象) の振分けが
+# 例外なく動き、意図した列へ描画されることを確認する。
+#
+# effect は effect_line_panel が呼び出し無条件で bpy に依存するため、この
+# bpy非依存ハーネスでは対象外 (structural な検証は上の
+# test_preset_description_is_after_common_header_and_before_body で行う)。
+# image_path はACTUALモードだと _draw_inout が effect_line_panel を無条件
+# import するため、ここでは preset_mode=True 側だけを検証する。
+# fill は fill_type=="gradient" にすると _draw_gradient 経由で bpy 依存の
+# fill_real_object を import するため、fill_type="solid" のみ検証する。
+
+
+def _balloon_data():
+    return Data(
+        title="フキダシ1",
+        visible=True,
+        locked=False,
+        x_mm=10.0,
+        y_mm=10.0,
+        width_mm=40.0,
+        height_mm=30.0,
+        rotation_deg=0.0,
+        flip_h=False,
+        flip_v=False,
+        linked_text_offset_x_mm=0.0,
+        linked_text_offset_y_mm=0.0,
+        linked_text_padding_x_mm=0.0,
+        linked_text_padding_y_mm=0.0,
+        tails=(),
+        shape="rect",
+        corner_type="square",
+        custom_preset_name="",
+        line_style="solid",
+        line_width_mm=0.3,
+        line_color=(0.0, 0.0, 0.0, 1.0),
+        fill_color=(1.0, 1.0, 1.0, 1.0),
+        fill_opacity=100.0,
+        opacity=100.0,
+    )
+
+
+def test_balloon_actual_body_puts_non_preset_settings_in_the_sidebar():
+    data = _balloon_data()
+    target = DETAIL.DetailTarget("balloon", "balloon-1", "balloon:balloon-1", data)
+    mode = DETAIL.DetailMode.ACTUAL
+    layout = RecordingLayout()
+    DRAWERS.draw_detail_dialog(layout, SimpleNamespace(), _session(target, mode, "balloon"), mode)
+
+    labels = [record[1] for record in layout.records if record[0] == "label"]
+    # サイドバー (ヘッダ→配置→非プリセット設定→プリセット→リンクレイヤー) が
+    # 本文 (形状→線・塗り) を挟んで先に描かれる。
+    assert labels.index("フキダシ") < labels.index("配置 (mm)")
+    assert labels.index("配置 (mm)") < labels.index("リンクテキストに合わせる")
+    assert labels.index("リンクテキストに合わせる") < labels.index("しっぽ (0)")
+    assert labels.index("しっぽ (0)") < labels.index("形状")
+    assert labels.index("形状") < labels.index("線・塗り")
+    assert labels.index("線・塗り") < labels.index("フキダシプリセット")
+    assert labels.index("フキダシプリセット") < labels.index("リンク中のレイヤー")
+
+
+def test_balloon_shape_preset_body_only_uses_sidebar_when_body_columns_is_empty():
+    """balloon_shape (フキダシプリセット編集) は max_columns=1 のため
+    body_cols が空タプルになるが、preset_mode+namespace=="balloon" の早期returnが
+    body_cols へ触れる前に完了するため例外にならない (壊れやすい前提の固定用)。
+    """
+
+    data = Data(
+        linked_text_offset_x_mm=0.0,
+        linked_text_offset_y_mm=0.0,
+        linked_text_padding_x_mm=0.0,
+        linked_text_padding_y_mm=0.0,
+    )
+    target = DETAIL.resolve_preset_detail_target("balloon", "形状確認", data)
+    assert target.kind == "balloon_shape"
+    mode = DETAIL.DetailMode.PRESET
+    layout = RecordingLayout()
+    DRAWERS.draw_detail_dialog(
+        layout, SimpleNamespace(), _session(target, mode, "balloon-shape-preset"), mode
+    )
+
+    labels = [record[1] for record in layout.records if record[0] == "label"]
+    assert labels[0] == "フキダシ形状プリセット"
+    assert "リンクテキストに合わせる" in labels
+
+
+def _coma_data():
+    return Data(
+        title="コマ1",
+        visible=True,
+        locked=False,
+        coma_blend_template_path="",
+        shape_type="rect",
+        rect_x_mm=0.0,
+        rect_y_mm=0.0,
+        rect_width_mm=80.0,
+        rect_height_mm=60.0,
+        paper_visible=True,
+        background_color=(1.0, 1.0, 1.0, 1.0),
+        border=Data(
+            visible=True,
+            style="normal",
+            width_mm=1.0,
+            color=(0.0, 0.0, 0.0, 1.0),
+            corner_type="square",
+            corner_radius_mm=0.0,
+        ),
+        white_margin=Data(
+            enabled=False,
+            placement="outside",
+            width_mm=1.0,
+            outer_color=(1.0, 1.0, 1.0, 1.0),
+            inner_color=(1.0, 1.0, 1.0, 1.0),
+        ),
+    )
+
+
+def test_coma_actual_body_puts_non_preset_settings_in_the_sidebar():
+    data = _coma_data()
+    target = DETAIL.DetailTarget("coma", "coma-1", "coma:coma-1", data)
+    mode = DETAIL.DetailMode.ACTUAL
+    layout = RecordingLayout()
+    DRAWERS.draw_detail_dialog(layout, SimpleNamespace(), _session(target, mode, "coma"), mode)
+
+    labels = [record[1] for record in layout.records if record[0] == "label"]
+    assert labels.index("コマ") < labels.index("コマ用blendファイル (このコマのみ)")
+    assert labels.index("コマ用blendファイル (このコマのみ)") < labels.index("形状")
+    assert labels.index("形状") < labels.index("枠線")
+    assert labels.index("枠線") < labels.index("フチ")
+    assert labels.index("フチ") < labels.index("枠線プリセット")
+    assert labels.index("枠線プリセット") < labels.index("リンク中のレイヤー")
+
+
+def test_coma_preset_body_hides_non_preset_sidebar_content():
+    data = _coma_data()
+    target = DETAIL.resolve_preset_detail_target("border", "枠線確認", data)
+    assert target.kind == "coma"
+    mode = DETAIL.DetailMode.PRESET
+    layout = RecordingLayout()
+    DRAWERS.draw_detail_dialog(layout, SimpleNamespace(), _session(target, mode, "coma-preset"), mode)
+
+    labels = [record[1] for record in layout.records if record[0] == "label"]
+    assert labels[0] == "コマプリセット"
+    assert "コマ用blendファイル (このコマのみ)" not in labels
+    assert "形状" not in labels
+    assert "枠線" in labels
+    assert "フチ" in labels
+    assert labels.index("枠線") < labels.index("フチ")
+
+
+def _fill_data():
+    return Data(
+        title="塗り1",
+        visible=True,
+        locked=False,
+        fill_type="solid",
+        rotation_deg=0.0,
+        use_gradient_endpoints=False,
+        use_region=False,
+        opacity=100.0,
+        color=(0.0, 0.0, 0.0, 1.0),
+    )
+
+
+def test_fill_actual_body_puts_non_preset_settings_in_the_sidebar():
+    data = _fill_data()
+    target = DETAIL.DetailTarget("fill", "fill-1", "fill:fill-1", data)
+    mode = DETAIL.DetailMode.ACTUAL
+    layout = RecordingLayout()
+    DRAWERS.draw_detail_dialog(layout, SimpleNamespace(), _session(target, mode, "fill"), mode)
+
+    labels = [record[1] for record in layout.records if record[0] == "label"]
+    assert labels.index("囲い塗り") < labels.index("配置")
+    assert labels.index("配置") < labels.index("ベタ塗り")
+    assert labels.index("ベタ塗り") < labels.index("囲い塗りプリセット")
+
+
+def _image_path_data():
+    return Data(
+        title="パターン1",
+        content_source="image",
+        filepath="",
+        opacity=100.0,
+        draw_mode="stamp",
+        brush_size_mm=5.0,
+        aspect_ratio=1.0,
+        image_angle_deg=0.0,
+        spacing_percent=100.0,
+        color=(0.0, 0.0, 0.0, 1.0),
+        stamp_angle_mode="fixed",
+        inout_size_enabled=False,
+        inout_opacity_enabled=False,
+        inout_color_enabled=False,
+        in_percent=0.0,
+        out_percent=0.0,
+        inout_start_color=(0.0, 0.0, 0.0, 1.0),
+        inout_end_color=(0.0, 0.0, 0.0, 1.0),
+    )
+
+
+def test_image_path_preset_body_stays_on_the_right_column():
+    data = _image_path_data()
+    target = DETAIL.resolve_preset_detail_target("image_path", "パターン確認", data)
+    mode = DETAIL.DetailMode.PRESET
+    layout = RecordingLayout()
+    DRAWERS.draw_detail_dialog(
+        layout, SimpleNamespace(), _session(target, mode, "image-path-preset"), mode
+    )
+
+    labels = [record[1] for record in layout.records if record[0] == "label"]
+    assert labels[0] == "パターンカーブプリセット"
+    assert labels.index("パターンカーブプリセット") < labels.index("内容")
+    assert labels.index("内容") < labels.index("描画")
+    assert "入り抜き" in labels

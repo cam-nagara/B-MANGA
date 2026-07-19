@@ -14,28 +14,35 @@ from .basic import (
 )
 
 
-def draw_balloon_body(layout, context, session, mode) -> None:
+def draw_balloon_body(sidebar, body_cols, context, session, mode) -> None:
+    """左列(サイドバー)=非プリセット設定、右列(body_cols)=プリセット保存対象。"""
+
     preset_mode = str(getattr(mode, "value", mode)) == "preset"
     kind = session.target.kind
     if kind == "balloon_tail":
-        draw_tail_body(layout, context, session, mode)
+        # balloon_tail はプリセットを持たないため通常はこの関数へ到達しないが、
+        # 直接呼ばれた場合に備えて旧インターフェースの draw_tail_body へ委譲する。
+        draw_tail_body(sidebar, context, session, mode)
         return
     if preset_mode and str(getattr(session.target, "namespace", "") or "") == "balloon":
-        _draw_linked_text_fit(layout, session.target.data)
+        # フキダシプリセット編集: 現状はリンクテキスト設定のみが保存対象。
+        _draw_linked_text_fit(sidebar, session.target.data)
         return
 
     from ...utils import balloon_shapes
 
     entry = session.target.data
-    columns = body_columns(layout, session)
-    shape_column = columns[0]
-    line_column = columns[min(1, len(columns) - 1)]
-    effect_columns = columns[1:] if len(columns) > 1 else columns
+    shape_column = body_cols[0]
+    line_column = body_cols[min(1, len(body_cols) - 1)]
+    effect_columns = body_cols
 
-    _draw_linked_text_fit(shape_column, entry)
+    # 左列: インスタンス固有の非プリセット設定。
+    _draw_linked_text_fit(sidebar, entry)
+    _draw_tails(sidebar, context, session, entry, preset_mode)
+
+    # 右列: プリセット保存対象の形状・線・塗り設定。
     _draw_shape(shape_column, entry, balloon_shapes)
     _draw_line(line_column, entry, balloon_shapes, effect_columns, preset_mode)
-    _draw_tails(shape_column, context, session, entry, preset_mode)
 
 
 def _draw_linked_text_fit(layout, entry) -> None:
