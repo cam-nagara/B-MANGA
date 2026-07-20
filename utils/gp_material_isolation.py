@@ -10,6 +10,9 @@ _logger = log.get_logger(__name__)
 
 MATERIAL_OWNER_PROP = "bmanga_gp_material_owner_id"
 _LAYER_MATERIAL_PROP = "bmanga_material_name"
+# GP v3 レイヤーは ID プロパティを持てないため、対応表は Object 側へ置く。
+OBJECT_MATERIAL_MAP_PROP = "bmanga_layer_material_names"
+_OBJECT_MATERIAL_MAP_PROP = OBJECT_MATERIAL_MAP_PROP
 
 
 def _safe_suffix(name: str) -> str:
@@ -42,13 +45,38 @@ def _material_used_by_other_object(obj, material) -> bool:
     return False
 
 
-def _refresh_layer_material_names(gp_data, renamed: dict[str, str]) -> None:
+def _refresh_layer_material_names(obj, gp_data, renamed: dict[str, str]) -> None:
+    """材質複製で改名が起きた際、レイヤー→マテリアル名の対応表を追従させる.
+
+    GP v3 レイヤーは ID プロパティを保持できないため、正となる対応表は Object
+    側 (``bmanga_layer_material_names``) にある。旧ファイル互換でレイヤー側も
+    可能なら更新する。
+    """
     if not renamed:
         return
+    mapping = {}
+    try:
+        stored = obj.get(_OBJECT_MATERIAL_MAP_PROP, None)
+        if stored is not None:
+            mapping = {str(k): str(v) for k, v in dict(stored).items()}
+    except Exception:  # noqa: BLE001
+        mapping = {}
+    changed = False
+    for key, old_name in list(mapping.items()):
+        new_name = renamed.get(old_name)
+        if new_name:
+            mapping[key] = new_name
+            changed = True
+    if changed:
+        try:
+            obj[_OBJECT_MATERIAL_MAP_PROP] = mapping
+        except Exception:  # noqa: BLE001
+            _logger.exception("layer material map refresh failed: %s", getattr(obj, "name", ""))
     for layer in getattr(gp_data, "layers", ()):
         try:
             old_name = str(layer.get(_LAYER_MATERIAL_PROP, "") or "")
         except Exception:  # noqa: BLE001
+            # GP v3 レイヤーは ID プロパティ非対応。Object 側の対応表が正となる。
             continue
         new_name = renamed.get(old_name)
         if not new_name:
@@ -117,7 +145,7 @@ def ensure_unique_object_materials(obj) -> int:
             replacements[pointer] = replacement
         if replacement is not material:
             slots[index] = replacement
-    _refresh_layer_material_names(data, renamed)
+    _refresh_layer_material_names(obj, data, renamed)
     if len(slots):
         try:
             obj.active_material_index = max(0, min(active_material_index, len(slots) - 1))

@@ -547,6 +547,9 @@ def _scene_from_work(work):
 
 def raster_layer_to_dict(entry) -> dict[str, Any]:
     rgb = color_space.linear_to_srgb_rgb(tuple(float(c) for c in entry.line_color[:3]))
+    # 旧データ互換: セカンダリカラー未導入の作品では白 (従来の見た目) を既定にする。
+    fill_rgba = tuple(float(c) for c in getattr(entry, "fill_color", (1.0, 1.0, 1.0, 1.0)))
+    fill_rgb = color_space.linear_to_srgb_rgb(fill_rgba[:3])
     return {
         "id": entry.id,
         "title": entry.title,
@@ -556,6 +559,8 @@ def raster_layer_to_dict(entry) -> dict[str, Any]:
         "bit_depth": entry.bit_depth,
         "line_color": color_to_hex((*rgb, 1.0)),
         "line_color_alpha": round(float(entry.line_color[3]), 3),
+        "fill_color": color_to_hex((*fill_rgb, 1.0)),
+        "fill_color_alpha": round(float(fill_rgba[3]), 3),
         "opacity": _opacity_to_data(entry.opacity),
         "opacityUnit": "percent",
         "visible": bool(entry.visible),
@@ -579,6 +584,11 @@ def raster_layer_from_dict(entry, data: dict[str, Any], *, opacity_percent: bool
     alpha = float(data.get("line_color_alpha", 1.0))
     rgba = hex_to_rgba(str(data.get("line_color", "#000000")), alpha)
     entry.line_color = (*color_space.srgb_to_linear_rgb(rgba[:3]), rgba[3])
+    if hasattr(entry, "fill_color"):
+        # 旧データ互換: キーが無ければ白 = 従来と同じ見た目。
+        fill_alpha = float(data.get("fill_color_alpha", 1.0))
+        fill_rgba = hex_to_rgba(str(data.get("fill_color", "#FFFFFF")), fill_alpha)
+        entry.fill_color = (*color_space.srgb_to_linear_rgb(fill_rgba[:3]), fill_rgba[3])
     entry.opacity = _opacity_from_data(data, "opacity", 100.0, percent_schema=opacity_percent)
     entry.visible = bool(data.get("visible", True))
     entry.locked = bool(data.get("locked", False))

@@ -42,9 +42,16 @@ RASTER_Z_LIFT_M = 0.0
 # 描画中だけマスクがバイパスされる問題が判明。 案 1 (coma_mask 専用 Object +
 # Boolean Intersect) に切替えるため shader マスクを撤回し simple な構成に
 # 戻す。 マスクは Boolean Modifier (mask_apply 経由) で実現する。
-RASTER_MATERIAL_VERSION = 6
+# version 7: セカンダリカラー (fill_color) 追加に伴い、グレー画像の Color 出力
+# (t: 0=黒/1=白) を Fac として line_color (t=0側) ↔ fill_color (t=1側) を
+# 2色 mix する ShaderNodeMixRGB (RASTER_COLOR_MIX_NODE) を追加。 alpha 側の
+# 計算式 (tex.Alpha × opacity × line_color.a) は一切変更しない
+# (fill_color は既定 (1,1,1,1) の白なので、既存ファイルを開いた時に t=0 で
+# 塗られている画素は従来と完全に同じ見た目になる)。
+RASTER_MATERIAL_VERSION = 7
 RASTER_MATERIAL_VERSION_PROP = "bmanga_raster_material_version"
 RASTER_IMAGE_NODE = "BManga Raster Image"
+RASTER_COLOR_MIX_NODE = "BManga Raster Color Mix"
 RASTER_EMISSION_NODE = "BManga Raster Emission"
 RASTER_TRANSPARENT_NODE = "BManga Raster Transparent"
 RASTER_ALPHA_SCALE_NODE = "BManga Raster Alpha Scale"
@@ -121,6 +128,24 @@ def active_raster_entry(context):
     if coll is None or not (0 <= idx < len(coll)):
         return None, -1
     return coll[idx], idx
+
+
+def _entry_for_painting_object(context):
+    """今アクティブな Object (Texture Paint 中の Plane) に対応する entry を返す.
+
+    active index は描画中でも UI 操作で書き換わり得るため、実際に編集して
+    いる Plane の ``bmanga_raster_id`` から entry を逆引きし、保存対象の
+    取り違えを防ぐ。
+    """
+    obj = getattr(getattr(context, "view_layer", None), "objects", None)
+    obj = getattr(obj, "active", None) if obj is not None else None
+    if obj is None:
+        return None
+    raster_id = str(obj.get("bmanga_raster_id", "") or "")
+    if not raster_id:
+        return None
+    entry, _idx = find_raster_entry(getattr(context, "scene", None), raster_id)
+    return entry
 
 
 def _allocate_raster_id(scene, work_dir: Path) -> str:
@@ -323,6 +348,8 @@ def _build_raster_material_nodes(mat, mask_info=None) -> dict[str, object]:
 
     tex = nodes.new("ShaderNodeTexImage")
     tex.name = RASTER_IMAGE_NODE
+    color_mix = nodes.new("ShaderNodeMixRGB")
+    color_mix.name = RASTER_COLOR_MIX_NODE
     emission = nodes.new("ShaderNodeEmission")
     emission.name = RASTER_EMISSION_NODE
     transparent = nodes.new("ShaderNodeBsdfTransparent")
@@ -336,6 +363,14 @@ def _build_raster_material_nodes(mat, mask_info=None) -> dict[str, object]:
     mix.name = RASTER_MIX_NODE
     out = nodes.new("ShaderNodeOutputMaterial")
     out.name = RASTER_OUTPUT_NODE
+
+    # グレー画像の Color 出力 (t: 0=黒/1=白) を Fac にして、Color1=line_color
+    # (濃い側) ↔ Color2=fill_color (薄い側) の2色を mix し emission へ渡す。
+    # 既定 fill_color=白 (Color2=白) のとき、既存データは t≈0 で塗られている
+    # ため Color1=line_color がそのまま出力され、従来と同じ見た目になる。
+    if tex.outputs.get("Color") is not None:
+        links.new(tex.outputs["Color"], color_mix.inputs["Fac"])
+    links.new(color_mix.outputs["Color"], emission.inputs["Color"])
 
     if tex.outputs.get("Alpha") is not None:
         links.new(tex.outputs["Alpha"], alpha_mul.inputs[0])
@@ -360,6 +395,7 @@ def _build_raster_material_nodes(mat, mask_info=None) -> dict[str, object]:
     mat[RASTER_MATERIAL_VERSION_PROP] = RASTER_MATERIAL_VERSION
     return {
         "tex": tex,
+        "color_mix": color_mix,
         "emission": emission,
         "alpha_scale": alpha_scale,
     }
@@ -384,6 +420,7 @@ def _ensure_raster_material_nodes(mat, mask_info=None) -> dict[str, object]:
 
     required_nodes = {
         "tex": (RASTER_IMAGE_NODE, "ShaderNodeTexImage"),
+        "color_mix": (RASTER_COLOR_MIX_NODE, "ShaderNodeMixRGB"),
         "emission": (RASTER_EMISSION_NODE, "ShaderNodeEmission"),
         "transparent": (RASTER_TRANSPARENT_NODE, "ShaderNodeBsdfTransparent"),
         "alpha_scale": (RASTER_ALPHA_SCALE_NODE, "ShaderNodeValue"),
@@ -400,6 +437,7 @@ def _ensure_raster_material_nodes(mat, mask_info=None) -> dict[str, object]:
     tree.nodes.active = resolved["tex"]
     return {
         "tex": resolved["tex"],
+        "color_mix": resolved["color_mix"],
         "emission": resolved["emission"],
         "alpha_scale": resolved["alpha_scale"],
     }
@@ -412,6 +450,7 @@ def ensure_raster_material(entry, image, mask_info=None):
         mat = bpy.data.materials.new(raster_material_name(raster_id))
     mat.use_nodes = True
     line_color = getattr(entry, "line_color", (0.0, 0.0, 0.0, 1.0))
+    fill_color = getattr(entry, "fill_color", (1.0, 1.0, 1.0, 1.0))
     try:
         mat.diffuse_color = (
             float(line_color[0]),
@@ -440,18 +479,31 @@ def ensure_raster_material(entry, image, mask_info=None):
     nodes = _ensure_raster_material_nodes(mat, mask_info=mask_info)
     tex = nodes["tex"]
     tex.image = image
-    emission = nodes["emission"]
+    color_mix = nodes["color_mix"]
     try:
-        emission.inputs["Color"].default_value = (
+        # Color1 = line_color (t=0/黒側)、Color2 = fill_color (t=1/白側)。
+        # Fac は _build_raster_material_nodes 側で tex の Color 出力に固定リンク
+        # 済みなので、ここでは2色の値だけを更新すればよい。
+        color_mix.inputs["Color1"].default_value = (
             float(line_color[0]),
             float(line_color[1]),
             float(line_color[2]),
+            1.0,
+        )
+        color_mix.inputs["Color2"].default_value = (
+            float(fill_color[0]),
+            float(fill_color[1]),
+            float(fill_color[2]),
             1.0,
         )
     except Exception:  # noqa: BLE001
         pass
     alpha_scale = nodes["alpha_scale"]
     try:
+        # alpha は従来通り opacity × line_color.a のみで決める (fill_color.a は
+        # 合成に含めない)。 t (グレー値) に応じて alpha も変えると、fill_color
+        # が既定の白のままでも line_color.a != 1.0 の既存データで見た目が変わって
+        # しまうため、後方互換のためにここは変更しない。
         alpha_scale.outputs[0].default_value = (
             percentage.percent_to_factor(getattr(entry, "opacity", 100.0), 100.0)
             * max(0.0, min(1.0, float(line_color[3]) if len(line_color) > 3 else 1.0))
@@ -1213,9 +1265,21 @@ class BMANGA_OT_raster_layer_paint_exit(Operator):
     bl_options = {"REGISTER"}
 
     def execute(self, context):
-        entry, _idx = active_raster_entry(context)
+        # 保存対象は「今まさに Texture Paint 中の Plane」を最優先で特定する。
+        # active index だけに頼ると、描画中に別レイヤー行を選ぶと未保存のまま
+        # 取り違えて捨ててしまう。
+        entry = _entry_for_painting_object(context)
+        if entry is None:
+            entry, _idx = active_raster_entry(context)
         if entry is not None:
-            save_raster_png(context, entry, force=True)
+            try:
+                save_raster_png(context, entry, force=True)
+            except Exception as exc:  # noqa: BLE001
+                # 保存失敗を握り潰すと描画が無言で消える。必ず通知しつつ、
+                # dirty フラグは残して次の保存機会で再挑戦させる。
+                _logger.exception("raster paint exit save failed: %s", getattr(entry, "id", ""))
+                mark_raster_dirty(entry)
+                self.report({"WARNING"}, f"ラスター画像を保存できませんでした: {exc}")
         try:
             if getattr(context.object, "mode", "") != "OBJECT":
                 bpy.ops.object.mode_set(mode="OBJECT")

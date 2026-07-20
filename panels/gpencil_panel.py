@@ -393,11 +393,18 @@ def _draw_lock_slot(row, item, resolved, index: int) -> None:
     op.index = index
 
 
-def _gp_color_style(layer):
+def _gp_color_style(obj, layer):
+    """レイヤー行のカラースウォッチが編集するマテリアル設定を返す.
+
+    ``bpy.data.materials`` を名前で引くと、全レイヤーの内部名が ``content`` で
+    共通なため同じマテリアルへ集中してしまう (別レイヤーの色を書き換える)。
+    必ず当該Objectのスロットから解決する。
+    """
     mat = None
     try:
-        mat = bpy.data.materials.get(gp_utils._layer_material_name(layer))
+        mat = gp_utils.resolve_layer_material(obj, layer)
     except Exception:  # noqa: BLE001
+        _logger.exception("layer material resolve failed")
         mat = None
     return getattr(mat, "grease_pencil", None) if mat is not None else None
 
@@ -424,7 +431,7 @@ def _draw_right_aux_coma_enter(row, index: int) -> None:
 
 
 def _draw_right_controls(row, controls, index: int) -> None:
-    if not controls.get("gp_style") and not controls.get("aux"):
+    if not controls.get("gp_style") and not controls.get("raster") and not controls.get("aux"):
         return
     slots = row.row(align=True)
     slots.alignment = "RIGHT"
@@ -433,6 +440,13 @@ def _draw_right_controls(row, controls, index: int) -> None:
     if gp_style is not None:
         _draw_square_color_prop(slots, gp_style, "color")
         _draw_square_color_prop(slots, gp_style, "fill_color")
+
+    raster = controls.get("raster")
+    if raster is not None:
+        # カラー = line_color (濃い側)、セカンダリカラー = fill_color (薄い側)。
+        # GP レイヤーの「線色/塗り色」とスウォッチの並びを揃える。
+        _draw_square_color_prop(slots, raster, "line_color")
+        _draw_square_color_prop(slots, raster, "fill_color")
 
     aux = controls.get("aux")
     if aux == "coma_enter":
@@ -451,7 +465,7 @@ def _draw_stack_gp_row(row, controls, item, resolved, index: int) -> None:
         name = item.label or item.name or item.key or "レイヤー"
     _select_name(row, index, name, item=item, target=target)
     if item.kind == "gp":
-        controls["gp_style"] = _gp_color_style(target)
+        controls["gp_style"] = _gp_color_style(resolved.get("object"), target)
 
 
 def _draw_stack_page_row(row, item, resolved, index: int, work=None) -> None:
@@ -505,6 +519,8 @@ def _draw_stack_data_row(row, controls, item, resolved, index: int) -> None:
     elif item.kind == "raster":
         _draw_type_icon(row, index, "BRUSH_DATA", item=item, target=target)
         _select_name(row, index, getattr(target, "title", "") or item.label, item=item, target=target)
+        if hasattr(target, "line_color") and hasattr(target, "fill_color"):
+            controls["raster"] = target
     elif item.kind == "fill":
         _draw_type_icon(row, index, "NODE_TEXTURE", item=item, target=target)
         _select_name(row, index, getattr(target, "title", "") or item.label, item=item, target=target)

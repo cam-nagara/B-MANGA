@@ -78,11 +78,21 @@ class BMangaRasterLayer(bpy.types.PropertyGroup):
         default="gray8",
     )
     line_color: FloatVectorProperty(  # type: ignore[valid-type]
-        name="線色",
-        description="描画に使う線の色です",
+        name="カラー",
+        description="グレースケール画像の濃い側 (黒) に適用する色です",
         subtype="COLOR",
         size=4,
         default=(0.0, 0.0, 0.0, 1.0),
+        min=0.0,
+        max=1.0,
+        update=_on_raster_runtime_display_changed,
+    )
+    fill_color: FloatVectorProperty(  # type: ignore[valid-type]
+        name="セカンダリカラー",
+        description="グレースケール画像の薄い側 (白) に適用する色です。既定の白のままなら見た目は変わりません",
+        subtype="COLOR",
+        size=4,
+        default=(1.0, 1.0, 1.0, 1.0),
         min=0.0,
         max=1.0,
         update=_on_raster_runtime_display_changed,

@@ -22,6 +22,7 @@ import bpy
 
 from ..utils import log
 from .gp_material_isolation import MATERIAL_OWNER_PROP
+from .gp_material_isolation import OBJECT_MATERIAL_MAP_PROP
 from .gp_material_isolation import ensure_unique_object_materials
 from .gp_material_isolation import material_owner_id
 
@@ -96,6 +97,7 @@ def ensure_layer(gp_data, layer_name: str):
 _DEFAULT_STROKE_MAT_NAME = "BManga_Pen_Black"
 _LAYER_MATERIAL_PROP = "bmanga_material_name"
 _LAYER_MATERIAL_PREFIX = "BManga_GP_Layer_"
+_OBJECT_MATERIAL_MAP_PROP = OBJECT_MATERIAL_MAP_PROP
 
 
 def ensure_default_stroke_material(
@@ -181,21 +183,108 @@ def _safe_material_suffix(name: str) -> str:
     return cleaned or "Layer"
 
 
-def _layer_material_name(layer) -> str:
+def _object_material_map(obj) -> dict:
+    """Object 側に持つ「レイヤー名 → マテリアル名」対応表を読む."""
+    try:
+        stored = obj.get(_OBJECT_MATERIAL_MAP_PROP, None)
+    except Exception:  # noqa: BLE001
+        return {}
+    if stored is None:
+        return {}
+    try:
+        return {str(k): str(v) for k, v in dict(stored).items()}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _layer_material_name(layer, obj=None) -> str:
+    """レイヤーが使うマテリアル名を返す.
+
+    Blender 5.x の ``GreasePencilLayer`` は ID プロパティを保持できないため
+    (``bpy_struct[key] = val: id properties not supported for this type``)、
+    対応表は Object 側へ持つ。旧ファイル互換のためレイヤー側の値も読む。
+    """
+    if obj is not None:
+        name = _object_material_map(obj).get(str(getattr(layer, "name", "") or ""), "")
+        if name:
+            return name
     try:
         value = layer.get(_LAYER_MATERIAL_PROP, "")
         if value:
             return str(value)
     except Exception:  # noqa: BLE001
+        # GP v3 レイヤーは ID プロパティ非対応。旧ファイル以外では常にここへ来る。
         pass
     return f"{_LAYER_MATERIAL_PREFIX}{_safe_material_suffix(getattr(layer, 'name', 'Layer'))}"
 
 
-def _store_layer_material_name(layer, material_name: str) -> None:
+def _store_layer_material_name(layer, material_name: str, obj=None) -> None:
+    if obj is not None:
+        mapping = _object_material_map(obj)
+        mapping[str(getattr(layer, "name", "") or "")] = str(material_name)
+        try:
+            obj[_OBJECT_MATERIAL_MAP_PROP] = mapping
+        except Exception:  # noqa: BLE001
+            _logger.exception("layer material map store failed: %s", material_name)
     try:
         layer[_LAYER_MATERIAL_PROP] = material_name
     except Exception:  # noqa: BLE001
+        # GP v3 レイヤーは ID プロパティ非対応。Object 側の対応表が正となる。
         pass
+
+
+def _layer_stroke_material_index(layer) -> int | None:
+    """レイヤー内の既存ストロークが実際に使っている material_index を返す."""
+    for frame in getattr(layer, "frames", None) or ():
+        drawing = getattr(frame, "drawing", None)
+        for stroke in getattr(drawing, "strokes", None) or ():
+            try:
+                return int(stroke.material_index)
+            except Exception:  # noqa: BLE001
+                continue
+    return None
+
+
+def _existing_layer_material_in_object(obj, mat_name: str):
+    """自Objectのスロットから、このレイヤー用マテリアルの実体を探す.
+
+    ``ensure_unique_object_materials`` はObject毎に ``<名前>__<owner>`` へ
+    複製するため、元の名前そのままでは一致しない。接頭辞で照合する。
+    """
+    slots = getattr(getattr(obj, "data", None), "materials", None)
+    if not slots:
+        return None
+    for mat in slots:
+        if mat is None:
+            continue
+        if mat.name == mat_name or mat.name.startswith(f"{mat_name}__"):
+            return mat
+    return None
+
+
+def resolve_layer_material(obj, layer):
+    """レイヤーが実際に描画へ使うマテリアルを Object のスロットから解決する.
+
+    ``bpy.data.materials`` の名前検索に頼ると、``ensure_unique_object_materials``
+    がObject毎に複製したマテリアル (``..._<owner>.001`` 等) と食い違い、別レイヤー
+    のマテリアルを掴んでしまう。必ず当該Objectのスロット内から選ぶ。
+    """
+    slots = getattr(getattr(obj, "data", None), "materials", None)
+    if not slots or layer is None:
+        return None
+    name = _layer_material_name(layer, obj)
+    for mat in slots:
+        if mat is not None and mat.name == name:
+            return mat
+    index = _layer_stroke_material_index(layer)
+    if index is None:
+        try:
+            index = int(getattr(obj, "active_material_index", 0) or 0)
+        except Exception:  # noqa: BLE001
+            return None
+    if 0 <= index < len(slots):
+        return slots[index]
+    return None
 
 
 def _material_slot_index(obj, mat) -> int:
@@ -247,9 +336,13 @@ def ensure_layer_material(
     if obj is None or layer is None or getattr(obj, "type", "") != "GREASEPENCIL":
         return None
 
-    mat_name = _layer_material_name(layer)
+    mat_name = _layer_material_name(layer, obj)
     created = False
-    mat = bpy.data.materials.get(mat_name)
+    # 同名マテリアルを bpy.data から拾うと、他Objectのレイヤー用マテリアルを
+    # 掴んで複製が増える。まず自Objectのスロット内を優先して探す。
+    mat = _existing_layer_material_in_object(obj, mat_name)
+    if mat is None:
+        mat = bpy.data.materials.get(mat_name)
     if mat is None:
         mat = bpy.data.materials.new(name=mat_name)
         created = True
@@ -266,7 +359,7 @@ def ensure_layer_material(
     if slots is None or material_index < 0 or material_index >= len(slots):
         return None
     mat = slots[material_index]
-    _store_layer_material_name(layer, mat.name)
+    _store_layer_material_name(layer, mat.name, obj)
 
     style_missing = getattr(mat, "grease_pencil", None) is None
     gp_style = _ensure_gp_material_data(mat)

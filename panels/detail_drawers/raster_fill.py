@@ -17,7 +17,10 @@ def draw_raster_body(layout, _context, session, _mode) -> None:
     prop_if(settings, entry, "opacity", text="不透明度", slider=True)
     dpi = int(value(entry, "dpi", 0) or 0)
     settings.label(text=f"DPI: {dpi}")
-    prop_if(settings, entry, "line_color", text="線色")
+    # カラー(濃い側) と セカンダリカラー(薄い側) を対で並べる。
+    # レイヤー一覧のスウォッチと同じ2色をこの詳細パネルからも編集できる。
+    prop_if(settings, entry, "line_color", text="カラー")
+    prop_if(settings, entry, "fill_color", text="セカンダリカラー")
 
     depth = primary.box()
     depth.label(text="保存する階調")

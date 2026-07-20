@@ -50,12 +50,18 @@ def _render_raster_entry(Image, entry, work, canvas_size: tuple[int, int]):
     if str(getattr(entry, "bit_depth", "") or "gray8") == "gray1":
         ink = ink.point(lambda value: 255 if value >= 128 else 0)
     line_rgba = _srgb255_from_linear_color(getattr(entry, "line_color", (0, 0, 0, 1)))
+    fill_rgba = _srgb255_from_linear_color(getattr(entry, "fill_color", (1, 1, 1, 1)))
     opacity = percentage.percent_to_factor(getattr(entry, "opacity", 100.0), 100.0)
     mask = Image.eval(alpha, lambda value: int(value * opacity * (line_rgba[3] / 255.0)))
-    # グレー値は線色の濃度として使い、アルファは描画済みピクセルの形状として維持する。
+    # グレー値で カラー(濃い側) と セカンダリカラー(薄い側) を混ぜる。
+    # ビューポート側の MixRGB (Fac=グレー値) と同じ式にして表示と出力を一致させる。
+    # ink = 255 - gray なので、ink=255 (黒) でカラー、ink=0 (白) でセカンダリカラー。
     density_rgb = Image.merge(
         "RGB",
-        tuple(ink.point(lambda value, c=c: int(c * (value / 255.0))) for c in line_rgba[:3]),
+        tuple(
+            ink.point(lambda value, c=c, f=f: int(c * (value / 255.0) + f * (1.0 - value / 255.0)))
+            for c, f in zip(line_rgba[:3], fill_rgba[:3])
+        ),
     )
     color = Image.merge("RGBA", (*density_rgb.split(), mask))
     return color
