@@ -28,6 +28,7 @@ from ..utils import (
     page_file_scene,
     page_range,
     shortcut_visibility,
+    text_layout_bounds,
     text_real_object,
     text_style,
     undo_transaction,
@@ -38,9 +39,8 @@ from . import object_rotation_text  # noqa: F401  (import時にテキストの�
 
 _logger = log.get_logger(__name__)
 
-_TEXT_DEFAULT_WIDTH_MM = 20.0
-_TEXT_DEFAULT_HEIGHT_MM = 20.0
-_TEXT_DEFAULT_LONG_SIDE_SCALE = 1.5
+_TEXT_DEFAULT_CHARS_PER_LINE = 9
+_TEXT_DEFAULT_LINES = 3
 _TEXT_HANDLE_HIT_MM = 2.5
 _TEXT_MIN_SIZE_MM = 2.0
 _TEXT_DRAG_EPS_MM = 0.05
@@ -69,20 +69,84 @@ def _text_tool_initial_writing_mode(context) -> str:
         return "vertical"
 
 
+def _selected_text_preset_metrics(context) -> tuple[float, float, float]:
+    """選択中テキストプリセットの (文字サイズmm, 行間, 字間) を返す.
+
+    プリセット未選択・読込失敗時は TextEntry の既定値 (20Q=5mm / 1.4 / 0.0)。
+    初期テキスト枠のサイズ計算用で、エントリ作成前に参照できる値だけを拾う。
+    """
+    em_mm = 5.0
+    line_height = 1.4
+    letter_spacing = 0.0
+    try:
+        name = preset_op.selected_text_preset_name(context)
+        if name:
+            from pathlib import Path
+
+            from ..io import text_presets
+            from ..utils.geom import q_to_mm
+
+            work = get_work(context)
+            work_dir = Path(str(getattr(work, "work_dir", "") or "")) if work is not None else None
+            for preset in text_presets.list_all_presets(work_dir if work_dir and str(work_dir) else None):
+                if preset.name != name:
+                    continue
+                data = preset.data
+                value = float(data.get("font_size_value", 20.0) or 20.0)
+                if text_presets.normalize_font_size_unit(data.get("font_size_unit")) == "pt":
+                    em_mm = value * 25.4 / 72.0
+                else:
+                    em_mm = q_to_mm(value)
+                line_height = float(data.get("line_height", line_height) or line_height)
+                letter_spacing = float(data.get("letter_spacing", 0.0) or 0.0)
+                break
+    except Exception:  # noqa: BLE001
+        pass
+    return max(0.25, em_mm), max(0.1, line_height), letter_spacing
+
+
+def _default_text_rect_for_metrics(
+    writing_mode: str,
+    x_mm: float,
+    y_mm: float,
+    *,
+    em_mm: float,
+    line_height: float,
+    letter_spacing: float,
+) -> tuple[float, float, float, float]:
+    """クリック位置を中心に 9 文字 × 3 行ぶんの初期テキスト枠を返す.
+
+    書字方向に 9 文字・行送り方向に 3 行を確保するため、横書きは横長、
+    縦書きは縦長になる。パディングは編集時の内側余白と同じ値を足す。
+    """
+    pad = text_layout_bounds.TEXT_CONTENT_PADDING_MM * 2.0
+    char_pitch = em_mm * max(0.1, 1.0 + letter_spacing)
+    length = char_pitch * (_TEXT_DEFAULT_CHARS_PER_LINE - 1) + em_mm + pad
+    cross = em_mm * max(0.1, line_height) * (_TEXT_DEFAULT_LINES - 1) + em_mm + pad
+    if writing_mode == "horizontal":
+        width, height = length, cross
+    else:
+        width, height = cross, length
+    width = max(_TEXT_MIN_SIZE_MM, width)
+    height = max(_TEXT_MIN_SIZE_MM, height)
+    return x_mm - width / 2.0, y_mm - height / 2.0, width, height
+
+
 def _default_text_rect_for_click(
+    context,
     writing_mode: str,
     x_mm: float,
     y_mm: float,
 ) -> tuple[float, float, float, float]:
-    base_w = _TEXT_DEFAULT_WIDTH_MM
-    base_h = _TEXT_DEFAULT_HEIGHT_MM
-    if writing_mode == "horizontal":
-        width = base_w * _TEXT_DEFAULT_LONG_SIDE_SCALE
-        height = base_h
-        return x_mm - base_w / 2.0, y_mm - base_h / 2.0, width, height
-    width = base_w
-    height = base_h * _TEXT_DEFAULT_LONG_SIDE_SCALE
-    return x_mm - base_w / 2.0, y_mm + base_h / 2.0 - height, width, height
+    em_mm, line_height, letter_spacing = _selected_text_preset_metrics(context)
+    return _default_text_rect_for_metrics(
+        writing_mode,
+        x_mm,
+        y_mm,
+        em_mm=em_mm,
+        line_height=line_height,
+        letter_spacing=letter_spacing,
+    )
 
 
 def _allocate_text_id(page) -> str:
@@ -936,6 +1000,7 @@ class BMANGA_OT_text_tool(Operator):
         if not can_create or lx is None or ly is None:
             return {"PASS_THROUGH"}
         x_mm, y_mm, width, height = _default_text_rect_for_click(
+            context,
             _text_tool_initial_writing_mode(context),
             lx,
             ly,
@@ -1035,7 +1100,18 @@ class BMANGA_OT_text_tool(Operator):
             return self._insert_current_text(context, text)
         if event.value != "PRESS":
             return {"PASS_THROUGH"}
-        if event.type in {"ESC", "RIGHTMOUSE"}:
+        if event.type == "RIGHTMOUSE":
+            # 右クリックをキャンセル扱いにすると、新規作成中のテキストは
+            # エントリごと削除され「入力中のフィールドが消滅する」。入力済み
+            # 本文があれば確定として扱い、未入力のときだけキャンセルする
+            # (空のテキスト枠を残さないため)。
+            _page, entry, _idx = self._current_text_entry(context)
+            if entry is not None and text_edit_runtime.text_body(entry):
+                self._finish_current_text_edit(context)
+            else:
+                self._cancel_current_text_edit(context)
+            return {"RUNNING_MODAL"}
+        if event.type == "ESC":
             self._cancel_current_text_edit(context)
             return {"RUNNING_MODAL"}
         if event.type in {"RET", "NUMPAD_ENTER"}:
@@ -1304,7 +1380,7 @@ class BMANGA_OT_text_tool(Operator):
         self._clear_click_state()
         text_real_object.set_text_object_preview_hidden(entry, page, hidden=True)
         self._begin_inline_input(context)
-        self.report({"INFO"}, "本文を入力してください (Enter: 改行 / Ctrl+Enter: 確定 / Esc: キャンセル)")
+        self.report({"INFO"}, "本文を入力してください (Enter: 改行 / Ctrl+Enter・右クリック: 確定 / Esc: キャンセル)")
         layer_stack_utils.tag_view3d_redraw(context)
 
     def _start_editing_created(self, context, page, entry) -> None:
@@ -1324,7 +1400,7 @@ class BMANGA_OT_text_tool(Operator):
         self._clear_click_state()
         text_real_object.set_text_object_preview_hidden(entry, page, hidden=True)
         self._begin_inline_input(context)
-        self.report({"INFO"}, "本文を入力してください (Enter: 改行 / Ctrl+Enter: 確定 / Esc: キャンセル)")
+        self.report({"INFO"}, "本文を入力してください (Enter: 改行 / Ctrl+Enter・右クリック: 確定 / Esc: キャンセル)")
         layer_stack_utils.tag_view3d_redraw(context)
 
     def _start_text_drag(self, page, entry, part: str, x_mm: float, y_mm: float) -> None:

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from ..utils.geom import Rect
-from ..operators import text_edit_runtime
+from ..operators import text_caret_layout, text_edit_runtime
 
 EntryVisiblePredicate = Callable[[object], bool]
 _TEXT_HANDLE_SIZE_MM = 2.0
@@ -50,14 +50,6 @@ def _text_handle_rects(rect: Rect) -> list[Rect]:
     ]
 
 
-def _text_em_mm(entry) -> float:
-    return text_edit_runtime.text_em_mm(entry)
-
-
-def _text_letter_spacing(entry) -> float:
-    return text_edit_runtime.text_letter_spacing(entry)
-
-
 def text_caret_rect(entry, rect: Rect, cursor_index: int | None = None) -> Rect | None:
     if cursor_index is None:
         cursor_index = len(text_edit_runtime.text_body(entry))
@@ -88,24 +80,8 @@ def _selection_rects(entry, rect: Rect, cursor_index: int, selection_anchor: int
     if bounds is None:
         return []
     start, end = bounds
-    em = _text_em_mm(entry)
-    char_pitch = em * max(0.1, 1.0 + _text_letter_spacing(entry))
-    rects: list[Rect] = []
-    body = text_edit_runtime.text_body(entry)
-    vertical = getattr(entry, "writing_mode", "vertical") != "horizontal"
-    for index in range(start, min(end, len(body))):
-        if body[index] == "\n":
-            continue
-        caret = text_edit_runtime.caret_rect(entry, rect, index)
-        if caret is None:
-            continue
-        if vertical:
-            # caret_rect は字列中心を挟んだ左右対称バーを返すため、選択矩形は
-            # caret.x をそのまま左端に使えば字列と一致する。
-            rects.append(Rect(caret.x, caret.y - char_pitch, caret.width, char_pitch))
-        else:
-            rects.append(Rect(caret.x, caret.y, char_pitch, caret.height))
-    return rects
+    # 描画と同じ typeset 配置から文字ごとの矩形を得る (縦中横・サイズ混在対応)。
+    return text_caret_layout.selection_rects(entry, rect, start, end)
 
 
 def draw_text_guides(

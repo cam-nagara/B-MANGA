@@ -130,7 +130,7 @@ def _make_visual(state: dict) -> Path:
 
     for i, title in enumerate(
         (
-            "初期入力欄: 縦書きは下へ1.5倍 / 横書きは右へ1.5倍",
+            "初期入力欄: 9文字×3行 (縦書きは縦長 / 横書きは横長)",
             "横書き: 入力中(青)と確定後(赤)の文字位置",
             "縦書き: 入力中(青)と確定後(赤)の文字位置",
             "確定後: 改行に合わせて本文ぴったり",
@@ -203,10 +203,21 @@ def main() -> None:
         from bmanga_dev.operators import text_edit_runtime, text_op
         from bmanga_dev.utils import text_real_object
 
-        initial_vertical = text_op._default_text_rect_for_click("vertical", 50.0, 60.0)
-        initial_horizontal = text_op._default_text_rect_for_click("horizontal", 50.0, 60.0)
-        assert initial_vertical == (40.0, 40.0, 20.0, 30.0), initial_vertical
-        assert initial_horizontal == (40.0, 50.0, 30.0, 20.0), initial_horizontal
+        # 初期テキスト枠は 9 文字 × 3 行ぶん (既定 20Q=5mm / 行間1.4 / 字間0)。
+        # 書字方向 9 文字 = 45mm、行送り 3 行 = 19mm、+ 内側余白 2.5mm × 2。
+        initial_vertical = text_op._default_text_rect_for_metrics(
+            "vertical", 50.0, 60.0, em_mm=5.0, line_height=1.4, letter_spacing=0.0
+        )
+        initial_horizontal = text_op._default_text_rect_for_metrics(
+            "horizontal", 50.0, 60.0, em_mm=5.0, line_height=1.4, letter_spacing=0.0
+        )
+        assert initial_vertical == (38.0, 35.0, 24.0, 50.0), initial_vertical
+        assert initial_horizontal == (25.0, 48.0, 50.0, 24.0), initial_horizontal
+        # プリセット経由の入口でも縦書きは縦長・横書きは横長になる。
+        cx, cy, cw, ch = text_op._default_text_rect_for_click(bpy.context, "vertical", 50.0, 60.0)
+        assert ch > cw, (cw, ch)
+        cx, cy, cw, ch = text_op._default_text_rect_for_click(bpy.context, "horizontal", 50.0, 60.0)
+        assert cw > ch, (cw, ch)
 
         horizontal = _entry(page, "horizontal_fit", "ABCDEF\nGH", "horizontal", 10.0, 10.0, 100.0, 80.0)
         vertical = _entry(page, "vertical_fit", "日本\n語", "vertical", 10.0, 10.0, 100.0, 80.0)

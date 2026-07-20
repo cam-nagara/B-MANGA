@@ -130,11 +130,16 @@ def _assert_shift_enter_does_not_move_up_or_right(entry, *, body: str, mode: str
 def _assert_text_tool_initial_field_size():
     from bmanga_dev.operators import text_op
 
-    x, y, width, height = text_op._default_text_rect_for_click("vertical", 50.0, 60.0)
-    assert (x, y, width, height) == (40.0, 40.0, 20.0, 30.0)
+    # 初期テキスト枠は 9 文字 × 3 行ぶん (既定 20Q=5mm / 行間1.4 / 字間0)。
+    x, y, width, height = text_op._default_text_rect_for_metrics(
+        "vertical", 50.0, 60.0, em_mm=5.0, line_height=1.4, letter_spacing=0.0
+    )
+    assert (x, y, width, height) == (38.0, 35.0, 24.0, 50.0)
 
-    x, y, width, height = text_op._default_text_rect_for_click("horizontal", 50.0, 60.0)
-    assert (x, y, width, height) == (40.0, 50.0, 30.0, 20.0)
+    x, y, width, height = text_op._default_text_rect_for_metrics(
+        "horizontal", 50.0, 60.0, em_mm=5.0, line_height=1.4, letter_spacing=0.0
+    )
+    assert (x, y, width, height) == (25.0, 48.0, 50.0, 24.0)
 
 
 def _assert_pillow_text_origin_matches_layout_top():

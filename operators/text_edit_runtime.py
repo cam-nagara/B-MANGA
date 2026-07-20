@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-import math
 import time
 from types import SimpleNamespace
 
@@ -35,9 +34,9 @@ else:  # pragma: no cover - Windows IME bridge is only available on Windows.
 
 from ..utils import text_layout_bounds, text_style
 from ..utils.geom import Rect, q_to_mm
+from . import text_caret_layout
 
 _TEXT_PADDING_MM = text_layout_bounds.TEXT_CONTENT_PADDING_MM
-_TEXT_CARET_MIN_THICKNESS_MM = 0.18
 _IME_CONTROL_TYPES = {
     "ACCENT_GRAVE",
     "GRLESS",
@@ -1109,78 +1108,17 @@ def fit_text_rect_to_body(
     return True
 
 
-def _layout_cursor_state(entry, rect: Rect, cursor_index: int) -> tuple[Rect, float, float, int, int]:
-    region = text_inner_rect(rect)
-    em = text_em_mm(entry)
-    line_pitch = em * text_line_height(entry)
-    char_pitch = em * max(0.1, 1.0 + text_letter_spacing(entry))
-    cursor_index = clamp_cursor(entry, cursor_index)
-    col = 0
-    row = 0
-    writing_mode = getattr(entry, "writing_mode", "vertical")
-    for ch in text_body(entry)[:cursor_index]:
-        if ch == "\n":
-            if writing_mode == "horizontal":
-                row += 1
-                col = 0
-            else:
-                col += 1
-                row = 0
-            continue
-        if writing_mode == "horizontal":
-            col += 1
-            if region.x + col * char_pitch > region.x2:
-                row += 1
-                col = 0
-        else:
-            row += 1
-            if region.y2 - row * char_pitch < region.y:
-                col += 1
-                row = 0
-    return region, em, char_pitch, row, col
-
-
 def caret_rect(entry, rect: Rect, cursor_index: int) -> Rect | None:
-    region, em, char_pitch, row, col = _layout_cursor_state(entry, rect, cursor_index)
-    line_pitch = em * text_line_height(entry)
-    thickness = max(_TEXT_CARET_MIN_THICKNESS_MM, em * 0.08)
-    if getattr(entry, "writing_mode", "vertical") == "horizontal":
-        x = region.x + col * char_pitch
-        y = region.y2 - em - row * line_pitch
-        if y < region.y - em:
-            return None
-        x = max(region.x, min(region.x2, x)) - thickness * 0.5
-        y = max(region.y, min(region.y2 - em, y))
-        return Rect(x, y, thickness, min(em, region.height))
+    """テキスト描画と同じ typeset 配置からキャレット矩形を求める.
 
-    x_center = region.x2 - em * 0.5 - col * line_pitch
-    y = region.y2 - row * char_pitch
-    if x_center < region.x - em:
-        return None
-    half_width = min(em * 0.45, max(0.6, region.width * 0.5))
-    # キャレットバーは字列 (グリフの em ボックス) の中心 x_center を挟んで
-    # 左右対称に置く。x_center をそのまま Rect.x (左端) に使うと、バーが
-    # half_width ぶん右へはみ出し、縦書きでキャレットだけ文字列より右に
-    # 見える (blender_text_ime_runtime_check.py の回帰対象)。
-    x = max(region.x, min(region.x2, x_center)) - half_width
-    y = max(region.y, min(region.y2, y)) - thickness * 0.5
-    return Rect(x, y, half_width * 2.0, thickness)
+    縦中横・禁則ぶら下げ・文字サイズ混在でも描画グリフとズレないよう、
+    実装は operators/text_caret_layout.py に集約している。
+    """
+    return text_caret_layout.caret_rect(entry, rect, cursor_index)
 
 
 def cursor_index_from_point(entry, x_mm: float, y_mm: float) -> int:
-    rect = text_rect(entry)
-    best_index = 0
-    best_distance = math.inf
-    for index in range(len(text_body(entry)) + 1):
-        caret = caret_rect(entry, rect, index)
-        if caret is None:
-            continue
-        cx, cy = caret.center
-        distance = math.hypot(float(x_mm) - cx, float(y_mm) - cy)
-        if distance < best_distance:
-            best_distance = distance
-            best_index = index
-    return best_index
+    return text_caret_layout.cursor_index_from_point(entry, text_rect(entry), x_mm, y_mm)
 
 
 def _is_cjk_char(ch: str) -> bool:

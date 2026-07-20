@@ -123,8 +123,58 @@ def main() -> None:
         selection_rect = overlay_text._selection_rects(entry, vertical_rect, 1, 0)[0]
         assert abs(selection_rect.x - vertical_caret.x) < 1e-6, (selection_rect.x, vertical_caret.x)
 
+        # 縦中横 ("12" が 1 セルに横並び) があってもキャレットが描画セルと
+        # 一致する (旧実装は縦中横以降のキャレットが文字数ぶん下へズレた)。
+        entry.body = "第12話"
+        entry.writing_mode = "vertical"
+        entry.x_mm = 0.0
+        entry.y_mm = 0.0
+        entry.width_mm = 40.0
+        entry.height_mm = 30.0
+        tcy_rect = text_edit_runtime.text_rect(entry)
+        tcy_region = text_edit_runtime.text_inner_rect(tcy_rect)
+        tcy_result = text_layout.typeset(
+            entry, tcy_region.x, tcy_region.y, tcy_region.width, tcy_region.height
+        )
+        tcy_by_index = {p.index: p for p in tcy_result.placements}
+        tcy_em = text_edit_runtime.text_em_mm(entry)
+        # "12" は 1 セルに収まるため "話" (index 3) は上から 3 セル目
+        assert abs((tcy_by_index[3].y_mm + tcy_em) - (tcy_region.y2 - 2.0 * tcy_em)) < 1e-6
+        caret3 = text_edit_runtime.caret_rect(entry, tcy_rect, 3)
+        caret3_center_y = caret3.y + caret3.height * 0.5
+        assert abs(caret3_center_y - (tcy_by_index[3].y_mm + tcy_em)) < 1e-6, (
+            caret3_center_y,
+            tcy_by_index[3].y_mm + tcy_em,
+        )
+        # 末尾キャレット (index 4) は「話」セルのすぐ下
+        caret4 = text_edit_runtime.caret_rect(entry, tcy_rect, 4)
+        caret4_center_y = caret4.y + caret4.height * 0.5
+        assert abs(caret4_center_y - tcy_by_index[3].y_mm) < 1e-6, (
+            caret4_center_y,
+            tcy_by_index[3].y_mm,
+        )
+        # 縦中横セル内 (1 と 2 の間) は桁の間に立つ縦バーになる
+        caret_mid = text_edit_runtime.caret_rect(entry, tcy_rect, 2)
+        assert caret_mid.height > caret_mid.width, caret_mid
+        mid_center_x = caret_mid.x + caret_mid.width * 0.5
+        assert tcy_by_index[1].x_mm <= mid_center_x <= tcy_by_index[2].x_mm + tcy_em, caret_mid
+        # 選択ハイライトも配置基準で 4 文字ぶん生成される
+        tcy_selection = overlay_text._selection_rects(entry, tcy_rect, 4, 0)
+        assert len(tcy_selection) == 4, tcy_selection
+        # クリック位置からのカーソル決定も縦中横セルを考慮する
+        tcy_click_index = text_edit_runtime.cursor_index_from_point(
+            entry,
+            tcy_by_index[3].x_mm + tcy_em * 0.5,
+            tcy_by_index[3].y_mm + tcy_em,
+        )
+        assert tcy_click_index == 3, tcy_click_index
+
         entry.body = "abcdef"
         entry.writing_mode = "horizontal"
+        entry.x_mm = 0.0
+        entry.y_mm = 0.0
+        entry.width_mm = 40.0
+        entry.height_mm = 20.0
 
         text_edit_runtime._set_ime_composition_text("語")
         preview, caret, bounds = text_edit_runtime.preview_entry_with_composition(entry, 4, 1)
@@ -348,6 +398,49 @@ def main() -> None:
         text_edit_runtime.begin_ime_capture()
         text_edit_runtime.end_ime_capture()
         assert text_edit_runtime._IME_CARET_CLIENT_RECT is None, "end_ime_capture がキャレット矩形を掃除していない"
+
+        # 編集中の右クリック: 入力済みなら確定、未入力ならキャンセル
+        # (旧実装はキャンセル固定で、新規作成中のテキストが消滅した)。
+        class _RightClickProbe:
+            _select_dragging = False
+
+            def __init__(self, body: str) -> None:
+                self.entry = SimpleNamespace(body=body)
+                self.calls: list[str] = []
+
+            def _current_text_entry(self, _context):
+                return None, self.entry, 0
+
+            def _finish_current_text_edit(self, _context):
+                self.calls.append("finish")
+
+            def _cancel_current_text_edit(self, _context):
+                self.calls.append("cancel")
+
+        from bmanga_dev.operators import view_event_region as _ver
+
+        text_edit_runtime._clear_ime_text_queue()
+        original_in_view = text_op._event_in_view3d_window
+        original_nav = _ver.modal_navigation_ui_passthrough
+        text_op._event_in_view3d_window = lambda _c, _e: True
+        _ver.modal_navigation_ui_passthrough = lambda _s, _c, _e: False
+        try:
+            probe_typed = _RightClickProbe("こんにちは")
+            result = text_op.BMANGA_OT_text_tool._modal_editing(
+                probe_typed, bpy.context, Event("RIGHTMOUSE")
+            )
+            assert result == {"RUNNING_MODAL"}
+            assert probe_typed.calls == ["finish"], probe_typed.calls
+            probe_empty = _RightClickProbe("")
+            text_op.BMANGA_OT_text_tool._modal_editing(probe_empty, bpy.context, Event("RIGHTMOUSE"))
+            assert probe_empty.calls == ["cancel"], probe_empty.calls
+            probe_esc = _RightClickProbe("こんにちは")
+            text_op.BMANGA_OT_text_tool._modal_editing(probe_esc, bpy.context, Event("ESC"))
+            assert probe_esc.calls == ["cancel"], probe_esc.calls
+        finally:
+            text_op._event_in_view3d_window = original_in_view
+            _ver.modal_navigation_ui_passthrough = original_nav
+
         print("BMANGA_TEXT_IME_RUNTIME_OK")
     finally:
         if mod is not None:
