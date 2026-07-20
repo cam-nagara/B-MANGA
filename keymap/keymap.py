@@ -45,6 +45,16 @@ BMANGA_REGION_TYPE = "WINDOW"
 # (type, shift, ctrl, alt) のタプル列挙。Blender のプリセット (Blender /
 # Industry Compatible / Blender 27x 等) や idname は多岐にわたるため、
 # idname ではなく「キー組み合わせ全部」で一括退避する。
+# B-MANGA が絶対に横取り (無効化) してはいけないイベント種別。
+# 描画・選択・視点操作の根幹であり、ここを奪うと「何も描けない/選べない」に直結する。
+_NEVER_STEAL_EVENT_TYPES: frozenset = frozenset({
+    "LEFTMOUSE", "RIGHTMOUSE", "MIDDLEMOUSE",
+    "BUTTON4MOUSE", "BUTTON5MOUSE", "BUTTON6MOUSE", "BUTTON7MOUSE",
+    "PEN", "ERASER", "MOUSEMOVE",
+    "TRACKPADPAN", "TRACKPADZOOM",
+    "WHEELUPMOUSE", "WHEELDOWNMOUSE", "WHEELINMOUSE", "WHEELOUTMOUSE",
+})
+
 _BMANGA_EXCLUSIVE_COMBOS: tuple = (
     ("SPACE", False, False, False),  # Space
     ("SPACE", True, False, False),   # Shift + Space
@@ -634,6 +644,38 @@ class KeymapState:
             bool(getattr(kmi, "oskey", False)),
         )
 
+    # 退避項目の照合は **アドレス (as_pointer) を使ってはならない**。
+    # Blender が keyconfig を組み直すとアドレスが再利用され、過去に退避した
+    # 項目とは無関係な kmi が「退避済み」と誤判定されて、combo/value 判定を
+    # 迂回したまま無効化される。2026-07-20 の調査で、この経路が無関係な項目を
+    # 復元不能に無効化し得ることを実測で確認した (ペン描画が一切効かなくなる
+    # 事故と同じ症状)。以降は下記の識別署名で照合する。
+    @staticmethod
+    def _signature_for_kmi(km_name: str, kmi) -> tuple:
+        """アドレスに依存しない kmi の識別署名 (keymap名 + idname + キー組合せ)."""
+        return (
+            str(km_name or ""),
+            str(getattr(kmi, "idname", "") or ""),
+            str(getattr(kmi, "type", "")),
+            bool(getattr(kmi, "shift", False)),
+            bool(getattr(kmi, "ctrl", False)),
+            bool(getattr(kmi, "alt", False)),
+            bool(getattr(kmi, "oskey", False)),
+        )
+
+    @staticmethod
+    def _signature_for_saved(saved: "_SavedItem") -> tuple:
+        """``_SavedItem`` から ``_signature_for_kmi`` と同形式の署名を作る."""
+        return (
+            str(getattr(saved, "keymap_name", "") or ""),
+            str(getattr(saved, "idname", "") or ""),
+            str(getattr(saved, "key_type", "") or ""),
+            bool(getattr(saved, "shift", False)),
+            bool(getattr(saved, "ctrl", False)),
+            bool(getattr(saved, "alt", False)),
+            bool(getattr(saved, "oskey", False)),
+        )
+
     @staticmethod
     def _keymap_can_steal_view3d_shortcut(km) -> bool:
         """B-MANGA の 3Dビュー操作を奪い得るキーマップだけを対象にする."""
@@ -669,7 +711,10 @@ class KeymapState:
                 continue
         for key in self._BMANGA_RESERVED_SINGLE_KEYS:
             combos.add((key, False, False, False, False))
-        return combos
+        # マウス/ペン系は絶対に横取り対象にしない。preferences の key_* は
+        # 検証なしの StringProperty なので、"LEFTMOUSE" 等が入ると全キーマップの
+        # 左クリック (= 描画・選択の根幹) が一括で無効化される構造的な穴になる。
+        return {combo for combo in combos if combo[0] not in _NEVER_STEAL_EVENT_TYPES}
 
     def disable_conflicting_keys(self) -> int:
         """B-MANGA パネル表示中に同じキーを奪う kmi を一時的に無効化.
@@ -699,9 +744,8 @@ class KeymapState:
             return 0
         target_combos = self._exclusive_conflict_combos()
         bmanga_ptrs = {ptr for ptr in (self._ptr(kmi) for kmi in self.bmanga_items) if ptr is not None}
-        saved_ptrs = {
-            ptr for ptr in (self._ptr(s.item_ref) for s in self.saved_conflicts) if ptr is not None
-        }
+        # 退避済み判定はアドレスではなく識別署名で行う (_signature_for_kmi の注記参照)
+        saved_keys = {self._signature_for_saved(s) for s in self.saved_conflicts}
         disabled = 0
         for kc_name, kc in keyconfigs:
             # iterator 内で modify すると C ref が破綻するため、まず list 化
@@ -724,13 +768,16 @@ class KeymapState:
                         item_ptr = self._ptr(kmi)
                         if item_ptr is not None and item_ptr in bmanga_ptrs:
                             continue
-                        if item_ptr is not None and item_ptr in saved_ptrs:
-                            if bool(getattr(kmi, "active", False)):
-                                kmi.active = False
-                            continue
                         if str(getattr(kmi, "value", "PRESS")) != "PRESS":
                             continue
                         if self._combo_for_kmi(kmi) not in target_combos:
+                            continue
+                        sig = self._signature_for_kmi(km.name, kmi)
+                        if sig in saved_keys:
+                            # 既に退避済みの項目 (タブ再表示時の再無効化)。
+                            # combo/value 判定を通過済みなのでここで無効化してよい。
+                            if bool(getattr(kmi, "active", False)):
+                                kmi.active = False
                             continue
                         if not bool(getattr(kmi, "active", False)):
                             continue
@@ -748,8 +795,7 @@ class KeymapState:
                             prev_active=True,
                             item_ref=kmi,
                         ))
-                        if item_ptr is not None:
-                            saved_ptrs.add(item_ptr)
+                        saved_keys.add(sig)
                         kmi.active = False
                         disabled += 1
                         print(
@@ -861,6 +907,10 @@ _SUSPEND_UNTIL = 0.0
 _SUSPEND_REASON = ""
 # タブ非表示の確定待ち tick 数 (1 tick だけの判定不能で常駐ツールを殺さない)
 _DISABLE_PENDING_TICKS = 0
+# ペイントストローク定常修復の間引き。_WATCH_INTERVAL の N 倍ごとに 1 回実行する
+# (毎tickだと keymaps 全走査が無駄に重い)。
+_PAINT_REPAIR_EVERY_TICKS = 20
+_PAINT_REPAIR_TICKS = 0
 # 監視がオブジェクトツールを終了させた場合 True (タブ復帰時に自動再開)
 _WATCHER_KILLED_OBJECT_TOOL = False
 
@@ -908,11 +958,17 @@ def ensure_standard_view_toggles_enabled() -> int:
     return repaired
 
 
+# ブラシストロークを発火させ得る入力イベント種別。
+# ERASER はペンタブのお尻の消しゴム、PEN はペン先。LEFTMOUSE だけを見ていると
+# 「マウスでは描けるがペンのお尻で消せない」状態を取りこぼす。
+_PAINT_EVENT_TYPES: frozenset = frozenset({"LEFTMOUSE", "PEN", "ERASER"})
+
+
 def ensure_paint_brush_strokes_enabled() -> int:
-    """ペイント系キーマップの LEFTMOUSE ブラシストロークが無効なら修復する.
+    """ペイント系キーマップのブラシストロークが無効なら修復する.
 
     user keyconfig で paint.image_paint / grease_pencil.brush_stroke 等の
-    LEFTMOUSE エントリが inactive になると、ペン/マウスで一切描画できなくなる。
+    ストローク項目が inactive になると、ペン/マウスで一切描画できなくなる。
     default keyconfig では active なのに user 側で inactive になっている項目を
     修復する。原因は userpref.blend への不正な保存や他アドオンの干渉。
     """
@@ -949,7 +1005,10 @@ def ensure_paint_brush_strokes_enabled() -> int:
             continue
         for kmi in km_user.keymap_items:
             try:
-                if kmi.type != "LEFTMOUSE" or kmi.active:
+                # LEFTMOUSE だけでなく PEN / ERASER も対象にする。
+                # ペンタブのお尻の消しゴム (ERASER) が無効化されたまま残る事故を
+                # 2026-07-20 に実測で確認したため (LEFTMOUSE 限定では直らなかった)。
+                if kmi.type not in _PAINT_EVENT_TYPES or kmi.active:
                     continue
                 if kmi.idname not in _PAINT_IDNAMES:
                     continue
@@ -1019,17 +1078,15 @@ def repair_stale_disabled_shortcuts() -> int:
         return 0
     state = _state
     combos: set[tuple[str, bool, bool, bool, bool]] = set()
-    saved_ptrs: set[int] = set()
+    saved_keys: set[tuple] = set()
     if state is not None:
         try:
             combos |= state._exclusive_conflict_combos()
         except Exception:  # noqa: BLE001
             pass
-        saved_ptrs = {
-            ptr
-            for ptr in (KeymapState._ptr(s.item_ref) for s in state.saved_conflicts)
-            if ptr is not None
-        }
+        # 今セッションで意図的に退避中の項目は復元対象から外す。
+        # ここもアドレス照合を使わない (_signature_for_kmi の注記参照)。
+        saved_keys = {KeymapState._signature_for_saved(s) for s in state.saved_conflicts}
     for key in KeymapState._BMANGA_RESERVED_SINGLE_KEYS:
         combos.add((key, False, False, False, False))
     repaired = 0
@@ -1050,8 +1107,7 @@ def repair_stale_disabled_shortcuts() -> int:
                     continue
                 if KeymapState._combo_for_kmi(kmi) not in combos:
                     continue
-                item_ptr = KeymapState._ptr(kmi)
-                if item_ptr is not None and item_ptr in saved_ptrs:
+                if KeymapState._signature_for_kmi(km.name, kmi) in saved_keys:
                     continue
                 if not _default_counterpart_active(default_km, kmi, idname):
                     continue
@@ -1066,6 +1122,92 @@ def repair_stale_disabled_shortcuts() -> int:
     if repaired:
         _logger.info("re-enabled %d stale disabled shortcut kmi", repaired)
     return repaired
+
+
+def restore_all_standard_shortcuts(*, dry_run: bool = False) -> tuple[int, list[str]]:
+    """user keyconfig を default と突き合わせ、無効化された標準キーを一括復旧する.
+
+    ``repair_stale_disabled_shortcuts`` は B-MANGA の予約キー (O/F/K/T 等) しか
+    見ないため、それ以外の理由で userpref.blend へ焼き付いた無効化 (2026-07-20
+    の実測で N / A / X / 左ドラッグ移動 / ペンのお尻消しゴム など 373 件) は
+    どの自己修復にも拾われず永久に死んだままになる。これはユーザーが手動で
+    直すには件数が多すぎるため、明示的な一括復旧の口を用意する。
+
+    復元条件は「default keyconfig に **完全一致** (idname + キー + 修飾 +
+    value) する項目が存在し、それが active であること」。default に無い項目や
+    default 側でも無効な項目には触れないので、ユーザー独自の追加設定は壊さない。
+
+    ``bmanga.*`` の項目と、今セッションで B-MANGA が意図的に退避中の項目は
+    対象外にする (前者は表示状態で正当に切り替わる。後者は復元すると B-MANGA の
+    ショートカットが効かなくなる)。
+
+    Returns:
+        ``(復元件数, 復元した項目の説明リスト)``。``dry_run=True`` なら
+        件数とリストだけ返し、実際には書き換えない。
+    """
+    wm = bpy.context.window_manager
+    if wm is None:
+        return 0, []
+    user_kc = getattr(wm.keyconfigs, "user", None)
+    default_kc = getattr(wm.keyconfigs, "default", None)
+    if user_kc is None or default_kc is None:
+        return 0, []
+
+    saved_keys: set[tuple] = set()
+    state = _state
+    if state is not None:
+        saved_keys = {KeymapState._signature_for_saved(s) for s in state.saved_conflicts}
+
+    restored = 0
+    details: list[str] = []
+    for km_user in user_kc.keymaps:
+        km_default = default_kc.keymaps.get(km_user.name)
+        if km_default is None:
+            continue
+        # default 側の (idname, type, shift, ctrl, alt, oskey, value) -> active
+        default_active: dict[tuple, bool] = {}
+        try:
+            for kmi_d in km_default.keymap_items:
+                default_active[(
+                    str(getattr(kmi_d, "idname", "") or ""),
+                    str(getattr(kmi_d, "type", "")),
+                    bool(getattr(kmi_d, "shift", False)),
+                    bool(getattr(kmi_d, "ctrl", False)),
+                    bool(getattr(kmi_d, "alt", False)),
+                    bool(getattr(kmi_d, "oskey", False)),
+                    str(getattr(kmi_d, "value", "")),
+                )] = bool(getattr(kmi_d, "active", False))
+        except Exception:  # noqa: BLE001
+            continue
+        for kmi in list(km_user.keymap_items):
+            try:
+                idname = str(getattr(kmi, "idname", "") or "")
+                if not idname or idname.startswith("bmanga."):
+                    continue
+                if bool(getattr(kmi, "active", True)):
+                    continue
+                if KeymapState._signature_for_kmi(km_user.name, kmi) in saved_keys:
+                    continue
+                key = (
+                    idname,
+                    str(getattr(kmi, "type", "")),
+                    bool(getattr(kmi, "shift", False)),
+                    bool(getattr(kmi, "ctrl", False)),
+                    bool(getattr(kmi, "alt", False)),
+                    bool(getattr(kmi, "oskey", False)),
+                    str(getattr(kmi, "value", "")),
+                )
+                if not default_active.get(key, False):
+                    continue
+                if not dry_run:
+                    kmi.active = True
+                restored += 1
+                details.append(f"{km_user.name} / {idname} / {kmi.type} ({kmi.value})")
+            except (ReferenceError, AttributeError):
+                continue
+    if restored and not dry_run:
+        _logger.info("restored %d standard shortcut kmi (bulk)", restored)
+    return restored, details
 
 
 def suspend_visibility_updates(
@@ -1141,7 +1283,7 @@ def _watch_bmanga_tab() -> Optional[float]:
     確定 off になった場合は即時に終了し、ツール未稼働時だけ連続 2 tick
     待ってから無効化する。
     """
-    global _DISABLE_PENDING_TICKS
+    global _DISABLE_PENDING_TICKS, _PAINT_REPAIR_TICKS
     state = _state
     if state is None:
         return None  # タイマー停止
@@ -1153,6 +1295,25 @@ def _watch_bmanga_tab() -> Optional[float]:
         prefs = get_preferences()
         keymap_pref_enabled = True if prefs is None else bool(prefs.keymap_enabled)
         enabled = bool(keymap_pref_enabled and _any_bmanga_tab_active())
+
+        # ペイントストロークの定常自己修復。
+        # register / startup_repair (2/10/30秒) だけでは「起動30秒より後に
+        # 無効化された」ケースを誰も直せず、描画不能のまま作業不能になる
+        # (2026-07-20 の実害)。ここで低頻度に監視し続ける。
+        # ※ repair_stale_disabled_shortcuts はここに入れてはいけない:
+        #   O/F/K/T は B-MANGA 自身が退避中で、毎tick復元すると退避が
+        #   即座に打ち消されて自機能が壊れる。
+        _PAINT_REPAIR_TICKS += 1
+        if _PAINT_REPAIR_TICKS >= _PAINT_REPAIR_EVERY_TICKS:
+            _PAINT_REPAIR_TICKS = 0
+            try:
+                fixed = ensure_paint_brush_strokes_enabled()
+                if fixed:
+                    print(
+                        f"[B-MANGA][KEYMAP] periodic paint repair: {fixed} kmi restored"
+                    )
+            except Exception:  # noqa: BLE001
+                _logger.exception("periodic paint repair failed")
 
         # キーマップ未作成 (register 時に wm/addon keyconfig が None だった等) なら再試行
         if not state.bmanga_items:
@@ -1281,6 +1442,14 @@ def _unregister_watcher() -> None:
 def register() -> None:
     global _state
     print("[B-MANGA][KEYMAP] register() called")
+    # unregister 漏れ・二重 register で前 state が残っている場合、そのまま
+    # 作り直すと退避中 (active=False) の標準キーが復元されないまま孤児化し、
+    # 無効化が累積する。作り直す前に必ず復元しておく。
+    if _state is not None:
+        try:
+            _state.restore_conflicting_keys()
+        except Exception:  # noqa: BLE001
+            _logger.exception("stale state restore on re-register failed")
     _state = KeymapState()
     preset = KeymapState.detect_preset_name()
     print(f"[B-MANGA][KEYMAP] detected preset: {preset or '(unknown)'}")

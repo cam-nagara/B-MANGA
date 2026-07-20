@@ -29,6 +29,13 @@
 - 同梱 wheel: `wheels/` 配下 (`PyPSD`, `Pillow` 等、cp313含む)。 Blender Extensions の wheel ロード経由で import 可能
 - **5.2移行の経緯**: 2026-07-18 に Geometry Nodes モディファイア入力API・Compare/Random Valueノードのソケット仕様が5.2で破壊的変更されたため、`utils/geometry_nodes_bridge.py` と `addons/b_manga_line/`（新設 `gn_socket_compat.py` 経由）を両バージョン互換ヘルパー方式で修正済み。詳細・実機確認済み事実は `docs/blender_5_2_migration_plan_2026-07-18.md` 参照。5.1でも同一コードが動作することを実機確認済み。
 
+### 1.1 ユーザー実機への配備 (2026-07-19 記録)
+
+- ユーザーが対話的に使う Blender は `C:\Users\niken\AppData\Roaming\Blender Foundation\Blender\5.2\extensions\vscode_development\b_manga` のコピーを読み込む。**「vscode_development」はフォルダ名の名残で、VSCode はもう使われていない。更新は AI セッションがファイルコピーで行う**（ユーザーに VSCode 起動を案内しない）。
+- 配備はアドオン関連のみ同期する: ディレクトリ `core, io, keymap, operators, panels, presets, typography, ui, utils, wheels, assets`（`__pycache__`・`wheels/_installed` は除外）+ ルートの `__init__.py`, `preferences.py`, `blender_manifest.toml`。同期後に配備先の `__pycache__` を削除する。リポジトリ全体（`.git`・`_verify` 等）をコピーしない。
+- 動作反映にはユーザーによる Blender 再起動が必要（PropertyGroup 変更時は特に）。配備したらチャットで再起動を依頼する。
+- **プリファレンスの「Policy violation」警告が出た場合**: Blender の wheel 同期キャッシュ切れが原因。`blender_manifest.toml` を touch → 実行中 Blender で `addon_utils.extensions_refresh(ensure_wheels=True)` → 再起動で解消（2026-07-19 解決済み。詳細は utils/python_deps.py の docstring と `_deps_already_importable()` を参照）。
+
 ---
 
 ## 2. 現在進行形のアーキテクチャ状態 (Snapshot: 2026-05-28)

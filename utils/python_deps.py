@@ -21,9 +21,17 @@ _DLL_DIR_HANDLES: list[object] = []
 
 
 def ensure_bundled_wheels_on_path() -> None:
-    """現在の Python と互換性がある同梱 wheel を import 可能にする."""
+    """現在の Python と互換性がある同梱 wheel を import 可能にする.
+
+    Blender Extension として正規インストールされている場合は
+    blender_manifest.toml の wheels 宣言により Blender 自身が wheel を
+    処理済みなので、sys.path を触らずスキップする。
+    """
     global _READY
     if _READY:
+        return
+    if _deps_already_importable():
+        _READY = True
         return
     wheels_dir = _wheels_dir()
     if not wheels_dir.is_dir():
@@ -38,6 +46,16 @@ def ensure_bundled_wheels_on_path() -> None:
         _prepend_sys_path(install_dir)
         _add_dll_dirs(install_dir)
     _READY = True
+
+
+def _deps_already_importable() -> bool:
+    """必須パッケージが既に import 可能か確認する."""
+    for mod_name in ("shapely", "PIL", "mapbox_earcut"):
+        try:
+            __import__(mod_name)
+        except ImportError:
+            return False
+    return True
 
 
 def _wheels_dir() -> Path:

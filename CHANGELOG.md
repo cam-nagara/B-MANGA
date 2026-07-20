@@ -3,6 +3,83 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.2 LTS を対象としています（開発基準バージョン。5.1でも動作確認済み）。
 
+## 2026-07-20 — ショートカット無効化の根本原因を修正、標準キー一括復旧を追加 (B-MANGA v0.6.563)
+
+### 症状
+
+- v0.6.562 で GP/ラスターの描画は復活したが、調査の結果 **Blender 標準の
+  ショートカットが 371 件も無効化されたまま**焼き付いていることが判明した。
+  N (サイドバー開閉) / A (全選択) / X (削除) / 左ドラッグ移動 / ペンタブの
+  お尻の消しゴム など、日常操作の中核が広範囲に死んでいた。
+- ユーザーが以前から報告していた「B-MANGA開発開始以降ちょくちょく
+  ショートカットが使えなくなる」の実態がこれ。
+
+### 原因 (確定分)
+
+- `KeymapState.disable_conflicting_keys()` に、退避済み項目の判定を
+  **`as_pointer()` のメモリアドレスで行う経路**があり、しかもその経路は
+  キー組合せ (`combo`) と `value` の検証を**迂回**していた。Blender が
+  keyconfig を組み直すとアドレスが再利用されるため、過去に退避した項目とは
+  **無関係な kmi が「退避済み」と誤判定されて無効化**され、さらに
+  `saved_conflicts` へ追記されないため `restore_conflicting_keys()` の
+  復元対象に永久に入らない (= 復元不能になる)。同じアドレス照合が
+  `repair_stale_disabled_shortcuts()` にも存在した。
+- なお「無効化件数が 446→489 に増え続けている」という当初の観測は**誤り**
+  だった。無効エントリのうち 52 件は `bmanga.*` 自身で、B-MANGA タブの
+  表示状態に応じて正当に増減する。総件数の観測は指標にならない。
+- **描画不能の直接の引き金が上記経路だったかは未確定。** 他アドオンによる
+  無効化の可能性も排除できていない (`AGENT_INBOX.md` に追跡事項として記録)。
+
+### 修正
+
+- `keymap/keymap.py`:
+  - 退避項目の照合を**アドレスから識別署名** (keymap名 + idname + キー +
+    修飾キー) へ全面的に置換 (`_signature_for_kmi` / `_signature_for_saved`)。
+    `saved_ptrs` は全廃した。
+  - `_NEVER_STEAL_EVENT_TYPES` を新設し、マウス/ペン系イベント
+    (LEFTMOUSE / RIGHTMOUSE / PEN / ERASER / ホイール等) を横取り対象から
+    機械的に除外。preferences の `key_*` は検証なしの `StringProperty` の
+    ため、`"LEFTMOUSE"` を入力すると全キーマップの左クリックが消える構造的な
+    穴が現存していた。
+  - `ensure_paint_brush_strokes_enabled()` の対象を `LEFTMOUSE` 限定から
+    `_PAINT_EVENT_TYPES` (LEFTMOUSE / PEN / ERASER) へ拡張。ペンタブの
+    お尻の消しゴムが修復されず残る実害があった。
+  - watcher に**定常的なペイント修復**を追加 (約10秒ごと)。従来は
+    register と startup_repair (2/10/30秒) のみで、起動30秒より後に
+    無効化されると誰も修復しなかった。
+  - `register()` が旧 `_state` を破棄する前に `restore_conflicting_keys()`
+    を実行するようにした (unregister 漏れ・二重 register での孤児化を防ぐ)。
+  - `restore_all_standard_shortcuts()` を新設。user keyconfig を default と
+    突き合わせ、**完全一致 (idname + キー + 修飾 + value) かつ default 側が
+    有効**な項目だけを復旧する。ユーザー独自の追加設定と、B-MANGA が現在
+    退避中の項目には触れない。
+- `keymap/startup_repair.py`: 遅延修復タイマーに
+  `ensure_paint_brush_strokes_enabled()` を追加。**これが無いと再起動のたびに
+  描画不能が再発する**（register 時点では userpref のキーマップ無効化が
+  まだ適用されておらず修復が空振りするため）。
+- `operators/keymap_restore_op.py` (新設): `bmanga.restore_standard_shortcuts`
+  オペレーター。`dry_run` で件数確認も可能。
+- `panels/outliner_layer_panel.py`: メンテナンス欄に「標準ショートカットを
+  復旧」ボタンを追加。
+
+### 検証
+
+- headless 実機テストで、偽の退避レコードを混ぜてもペイント系 LEFTMOUSE が
+  巻き添えで無効化されないこと (アドレス照合廃止の効果)、default に存在しない
+  独自項目に触れないこと、退避中の項目を一括復旧が戻さないこと、
+  マウス系がキー横取り対象に入らないことを確認。
+- ユーザー実機の実データに対する試算で、371 件が復旧対象として検出され、
+  B-MANGA が退避中の 15 件が正しく除外されること、および N / A / X /
+  左ドラッグ移動 / ペン消しゴムがすべて復旧対象に含まれることを確認。
+
+### 変更ファイル
+
+- `keymap/keymap.py` — 署名照合への置換、マウス系除外、ERASER対応、定常修復、
+  再register時の復元、`restore_all_standard_shortcuts()` 新設
+- `keymap/startup_repair.py` — 遅延タイマーへペイント修復を追加
+- `operators/keymap_restore_op.py` (新設) / `operators/__init__.py` — 登録
+- `panels/outliner_layer_panel.py` — 復旧ボタン追加
+
 ## 2026-07-20 — GP/ラスター両レイヤーで描画が一切できない不具合を修正 (B-MANGA v0.6.562)
 
 ### 症状

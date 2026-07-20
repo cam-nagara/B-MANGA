@@ -49,11 +49,17 @@ def _repair_tick() -> Optional[float]:
     try:
         repaired_sidebar = keymap_mod.ensure_standard_view_toggles_enabled()
         repaired_stale = keymap_mod.repair_stale_disabled_shortcuts()
-        if repaired_sidebar or repaired_stale:
+        # ペイント系ストローク (paint.image_paint / grease_pencil.brush_stroke 等)
+        # も同じタイミングの穴に嵌まる。register() 内の修復だけでは userpref の
+        # 無効化状態が適用される前に空振りし、「GP/ラスターに一切描けない」状態が
+        # 再起動のたびに復活する (2026-07-20 実測)。ここでも必ず再実行する。
+        repaired_paint = keymap_mod.ensure_paint_brush_strokes_enabled()
+        if repaired_sidebar or repaired_stale or repaired_paint:
             print(
                 "[B-MANGA][KEYMAP] startup repair pass"
                 f" {_pass_index + 1}/{len(_REPAIR_PASS_DELAYS)}:"
                 f" sidebar={repaired_sidebar} stale={repaired_stale}"
+                f" paint={repaired_paint}"
             )
     except Exception:  # noqa: BLE001
         _logger.exception("startup repair pass failed")

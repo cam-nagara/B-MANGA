@@ -48,6 +48,10 @@ class BMANGA_PT_outliner_layers(Panel):
         elif role == page_file_scene.ROLE_WORK:
             col.operator("bmanga.organize_data_names", icon="FILE_REFRESH")
 
+        # ショートカットが効かなくなった時の駆け込み口 (どのファイル種でも出す)
+        col.separator()
+        col.operator("bmanga.restore_standard_shortcuts", icon="KEYINGSET")
+
 
 _CLASSES = (BMANGA_PT_outliner_layers,)
 
