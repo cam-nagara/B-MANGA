@@ -3,6 +3,54 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.2 LTS を対象としています（開発基準バージョン。5.1でも動作確認済み）。
 
+## 2026-07-20 — コマ割り時の所属コマと表示のズレ (コマID重複) を修正 (B-MANGA v0.6.559)
+
+### 症状
+
+- コマ内に効果線・グラデーション等がある状態で枠線カットツールでコマを
+  割ると、レイヤーリスト上は元のコマ (読み順で先=右上側) にレイヤーが
+  含まれているのに、ビューポートでは左下側のコマの中に表示されることが
+  あった。実データ (test063) で同一ページに同じID (c04) のコマが2つ
+  存在する状態を確認。
+
+### 原因
+
+- 新規コマIDの採番がディスク上の cNN フォルダしか見ておらず、一度も
+  保存されていない「データのみのコマ」と同じIDを払い出していた。ID重複が
+  起きると、コマ内容の切り抜きマスク画像が同名で共有され、親コマの解決も
+  先勝ちになるため、所属 (リスト) と切り抜き形状 (表示) が食い違う。
+- さらにコマIDの整理 (読み順への再採番) がID重複ページを処理する際、
+  子レイヤーの親キーとコマ用フォルダを2つ目の重複コマ側へ誤って
+  付け替えていた。
+
+### 修正
+
+- 採番 (`allocate_new_coma_id`) がページデータ上のコマIDも使用済みとして
+  扱うようにし、枠線カット・コマ複製/分割/移動・コマ作成・アセット取込の
+  全入口で重複IDが生まれないようにした。
+- コマIDの整理でID重複を検出した場合、子レイヤーの親キーとフォルダは
+  読み順で最初の同IDコマ (元のコマ) に残し、2つ目以降だけを新IDへ
+  改名して治癒するようにした。既存のID重複データも次回の枠線カット時に
+  自動的に一意なIDへ直る。
+
+### 変更ファイル
+
+- `io/coma_io.py` — 採番へ `page` (データ上のID集合) を追加
+- `operators/coma_knife_cut_op.py` / `operators/coma_op.py` /
+  `operators/coma_split_op.py` / `utils/asset_bundle_extended.py` — 採番呼出更新
+- `utils/data_name_organizer.py` — ID重複時の親キー・フォルダ付け替え防止
+- `test/blender_coma_id_duplicate_check.py` — 新設 (予防・治癒の回帰テスト)
+- `test/bmanga_ai_audit_runner.py` — 上記テストを常設監査ケースへ追加
+
+### 検証 (Blender 5.2 LTS 実機)
+
+- `test/blender_coma_id_duplicate_check.py` — PASS (採番がデータのみのコマを
+  避ける / 整理がID重複を治癒し子レイヤーが元のコマに残る)
+- `test/blender_coma_knife_cut_finalize_check.py` /
+  `test/blender_coma_knife_cut_layer_order_check.py` /
+  `test/blender_coma_knife_cut_reading_order_check.py` /
+  `test/blender_coma_content_opacity_mask_check.py` — PASS (回帰なし)
+
 ## 2026-07-20 — テキスト入力: 右クリック消滅・初期枠9文字×3行・縦中横キャレット修正 (B-MANGA v0.6.558)
 
 ### 症状

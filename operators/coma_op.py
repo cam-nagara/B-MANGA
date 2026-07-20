@@ -383,7 +383,7 @@ def create_rect_coma(
 
     pages.json の保存は呼出側の責務。新規 entry を返す。
     """
-    stem = coma_io.allocate_new_coma_id(work_dir, page.id)
+    stem = coma_io.allocate_new_coma_id(work_dir, page.id, page=page)
     entry = page.comas.add()
     entry.coma_id = stem
     entry.id = stem
@@ -570,7 +570,7 @@ class BMANGA_OT_coma_duplicate(Operator):
         src = page.comas[idx]
         work_dir = Path(work.work_dir)
         try:
-            new_stem = coma_io.allocate_new_coma_id(work_dir, page.id)
+            new_stem = coma_io.allocate_new_coma_id(work_dir, page.id, page=page)
             coma_io.copy_coma_files(work_dir, page.id, page.id, src.coma_id, new_stem)
             # entry を複製
             new_entry = page.comas.add()
@@ -690,7 +690,7 @@ class BMANGA_OT_coma_move_to_page(Operator):
         work_dir = Path(work.work_dir)
         try:
             # 移動先で衝突しないファイル名を採番
-            dst_stem = coma_io.allocate_new_coma_id(work_dir, target_page.id)
+            dst_stem = coma_io.allocate_new_coma_id(work_dir, target_page.id, page=target_page)
             coma_io.move_coma_files(
                 work_dir, page.id, target_page.id, src_entry.coma_id, dst_stem
             )
@@ -1024,7 +1024,7 @@ class BMANGA_OT_coma_split_template(Operator):
             # 行は上から下へ (漫画は右→左の読み順だが、ここでは配列順のみ)
             for r in range(rows):
                 for c in range(cols):
-                    stem = coma_io.allocate_new_coma_id(work_dir, page.id)
+                    stem = coma_io.allocate_new_coma_id(work_dir, page.id, page=page)
                     entry = page.comas.add()
                     schema.coma_entry_from_dict(entry, src_template)
                     entry.coma_id = stem

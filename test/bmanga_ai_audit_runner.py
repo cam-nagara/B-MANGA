@@ -68,6 +68,7 @@ def _audit_cases() -> list[AuditCase]:
         AuditCase("bmanga_effect_frame_spacing", "B-MANGA 効果線間隔監査", "test/blender_effect_line_frame_spacing_check.py", "B-MANGA", ("standard", "regression")),
         AuditCase("bmanga_balloon_uni_flash", "B-MANGA フキダシ形状監査", "test/blender_balloon_uni_flash_check.py", "B-MANGA", ("standard", "regression")),
         AuditCase("bmanga_coma_edge_highlight", "B-MANGA コマ枠辺ハイライト監査", "test/blender_coma_edge_highlight_check.py", "B-MANGA", ("standard", "regression")),
+        AuditCase("bmanga_coma_id_duplicate", "B-MANGA コマID重複の予防・治癒監査", "test/blender_coma_id_duplicate_check.py", "B-MANGA", ("standard", "regression")),
         AuditCase("bmanga_layer_detail_mask", "B-MANGA 詳細設定/マスク契約監査", "test/blender_layer_detail_and_mask_check.py", "B-MANGA", ("standard", "regression")),
         AuditCase("bmanga_detail_dialog_unification", "B-MANGA 詳細設定共通契約監査", "test/blender_detail_dialog_unification_check.py", "B-MANGA", ("standard", "regression")),
         AuditCase("bmanga_detail_content_conversion", "B-MANGA 個別レイヤー変換監査", "test/blender_detail_dialog_content_conversion_check.py", "B-MANGA", ("standard", "persistence")),

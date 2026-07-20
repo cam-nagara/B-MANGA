@@ -261,7 +261,7 @@ def instantiate_coma(
     data = dict(entry.get("data") or {})
     panel = page.comas.add()
     schema.coma_entry_from_dict(panel, data)
-    stem = coma_io.allocate_new_coma_id(Path(work.work_dir), page.id)
+    stem = coma_io.allocate_new_coma_id(Path(work.work_dir), page.id, page=page)
     panel.coma_id = stem
     panel.id = stem
     _offset_coma_geometry(panel, dx, dy)

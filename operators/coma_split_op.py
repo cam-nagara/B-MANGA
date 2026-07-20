@@ -187,7 +187,7 @@ def _do_split(
     read_dir = str(getattr(getattr(work, "paper", None), "read_direction", "left") or "left")
     first_poly, second_poly = _ordered_split_polygons(result[0], result[1], read_dir)
 
-    new_stem = coma_io.allocate_new_coma_id(work_dir, page.id)
+    new_stem = coma_io.allocate_new_coma_id(work_dir, page.id, page=page)
     try:
         coma_io.copy_coma_files(work_dir, page.id, page.id, panel.coma_id, new_stem)
     except Exception:  # noqa: BLE001

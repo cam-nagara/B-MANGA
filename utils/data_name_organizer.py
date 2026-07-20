@@ -50,6 +50,11 @@ class _ComaRename:
     page_id: str
     old_id: str
     new_id: str
+    # 旧IDがページ内で重複していた場合、子レイヤーの親キーとコマ用フォルダは
+    # 読み順で最初の同IDコマ (元のコマ) に残す。2つ目以降の重複エントリの
+    # リネームではキーの付け替え・フォルダ改名を行わない (行うと元のコマの
+    # 子レイヤーとファイルが分割後の新コマへ誤って移ってしまう)。
+    retarget: bool = True
 
 
 def _format_coma_id(index: int) -> str:
@@ -319,9 +324,10 @@ def _page_retarget_phases(remaps: list[_PageRename]) -> list[tuple[str, str, boo
 
 def _coma_retarget_phases(remaps: list[_ComaRename]) -> list[tuple[str, str, bool]]:
     phases: list[tuple[str, str, bool]] = []
-    for index, remap in enumerate(remaps):
+    targets = [remap for remap in remaps if remap.retarget]
+    for index, remap in enumerate(targets):
         phases.append((f"{remap.page_id}:{remap.old_id}", f"{remap.page_id}:{_TEMP_COMA_PREFIX}{index}", False))
-    for index, remap in enumerate(remaps):
+    for index, remap in enumerate(targets):
         phases.append((f"{remap.page_id}:{_TEMP_COMA_PREFIX}{index}", f"{remap.page_id}:{remap.new_id}", False))
     return phases
 
@@ -392,12 +398,18 @@ def _collect_and_apply_coma_remaps(
             str(getattr(coma, "coma_id", "") or getattr(coma, "id", "") or "")
             for coma in comas
         ]
-        remaps_for_page: list[tuple[int, str, str]] = []
+        remaps_for_page: list[tuple[int, str, str, bool]] = []
+        seen_old_ids: set[str] = set()
         for target_index, original_index in enumerate(ordered_indices):
             old_id = old_stems[original_index]
             new_id = _format_coma_id(target_index + 1)
+            # 旧IDがページ内で重複している場合、子レイヤーの親キーと
+            # コマ用フォルダを持てるのは読み順で最初の同IDコマだけ。
+            retarget = bool(old_id) and old_id not in seen_old_ids
+            if old_id:
+                seen_old_ids.add(old_id)
             if old_id and old_id != new_id:
-                remaps_for_page.append((original_index, old_id, new_id))
+                remaps_for_page.append((original_index, old_id, new_id, retarget))
 
         _move_comas_to_order(page, ordered_indices)
         if active_original in ordered_indices:
@@ -414,8 +426,16 @@ def _collect_and_apply_coma_remaps(
             coma.coma_id = new_id
             if current_coma_id and current_coma_id == old_id:
                 scene.bmanga_current_coma_id = new_id
-        for _original_index, old_id, new_id in remaps_for_page:
-            all_remaps.append(_ComaRename(page=page, page_id=page_id, old_id=old_id, new_id=new_id))
+        for _original_index, old_id, new_id, retarget in remaps_for_page:
+            all_remaps.append(
+                _ComaRename(
+                    page=page,
+                    page_id=page_id,
+                    old_id=old_id,
+                    new_id=new_id,
+                    retarget=retarget,
+                )
+            )
     return all_remaps, reorder_count
 
 
@@ -427,6 +447,10 @@ def _rename_page_dirs(work_dir: Path, remaps: list[_PageRename]) -> int:
 def _rename_coma_dirs(work_dir: Path, remaps: list[_ComaRename]) -> int:
     by_page: dict[str, list[_ComaRename]] = {}
     for remap in remaps:
+        if not remap.retarget:
+            # 旧IDが重複していた2つ目以降のコマ: フォルダは読み順で最初の
+            # 同IDコマ (元のコマ) の持ち物なので改名しない。
+            continue
         by_page.setdefault(remap.page_id, []).append(remap)
     renamed_count = 0
     for page_id, page_remaps in by_page.items():

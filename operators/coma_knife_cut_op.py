@@ -445,7 +445,7 @@ def _apply_cut_to_coma(
     )
 
     # 新規コマを追加し、小さい番号を読む順で先の形に割り当てる。
-    new_stem = coma_io.allocate_new_coma_id(work_dir, page.id)
+    new_stem = coma_io.allocate_new_coma_id(work_dir, page.id, page=page)
     try:
         coma_io.copy_coma_files(
             work_dir, page.id, page.id, panel.coma_id, new_stem

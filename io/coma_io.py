@@ -31,9 +31,29 @@ def existing_coma_ids(work_dir: Path, page_id: str) -> list[str]:
     return sorted(ids)
 
 
-def allocate_new_coma_id(work_dir: Path, page_id: str) -> str:
-    existing = existing_coma_ids(work_dir, page_id)
-    idx = paths.next_available_coma_index(existing)
+def page_data_coma_ids(page) -> set[str]:
+    """ページデータ上のコマIDの集合 (ディスクにフォルダが無いコマも含む)."""
+    ids: set[str] = set()
+    for coma in getattr(page, "comas", []) or []:
+        for attr in ("coma_id", "id"):
+            value = str(getattr(coma, attr, "") or "")
+            if value:
+                ids.add(value)
+    return ids
+
+
+def allocate_new_coma_id(work_dir: Path, page_id: str, *, page=None) -> str:
+    """新規コマIDを採番する.
+
+    ディスク上の cNN フォルダに加え、``page`` を渡された場合はページデータ上の
+    コマIDも使用済みとして扱う。フォルダだけを見ると、まだ一度も保存されて
+    いないコマ (データのみのコマ) と同じIDを払い出してしまい、ID重複で
+    マスク・親子付け・ファイルが同名衝突する (枠線カットで実際に発生)。
+    """
+    existing = set(existing_coma_ids(work_dir, page_id))
+    if page is not None:
+        existing.update(page_data_coma_ids(page))
+    idx = paths.next_available_coma_index(sorted(existing))
     return paths.format_coma_id(idx)
 
 
