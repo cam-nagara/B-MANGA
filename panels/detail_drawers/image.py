@@ -31,7 +31,7 @@ def draw_image_body(layout, _context, session, _mode) -> None:
     prop_if(threshold, entry, "binarize_threshold", text="しきい値")
 
 
-def draw_image_path_body(sidebar, body_cols, context, session, mode) -> None:
+def draw_image_path_body(_sidebar_top, _sidebar_below, body_cols, context, session, mode) -> None:
     """パターンカーブは内容・描画とも全てプリセット保存対象のため、
     左列(サイドバー)は使わず、右列(body_cols)へ全て描画する。
     """

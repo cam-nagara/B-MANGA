@@ -328,11 +328,14 @@ def _profile_factor(
     out_curve,
 ) -> float:
     start_value = 1.0
-    if in_range_mm > 1.0e-6 and s_mm < in_range_mm:
+    # 境界 s == in_range_mm を含める。従来カーブは終端 y=1 のため挙動は
+    # 変わらず、範囲100%の可逆エンコード (終端 y≠1 のカーブ) では終端の
+    # 線幅が正しく反映される。
+    if in_range_mm > 1.0e-6 and s_mm <= in_range_mm:
         start_value = in_frac + (1.0 - in_frac) * effect_inout_curve.evaluate(in_curve, s_mm / in_range_mm)
     end_value = 1.0
     end_start = max(0.0, length_mm - out_range_mm)
-    if out_range_mm > 1.0e-6 and s_mm > end_start:
+    if out_range_mm > 1.0e-6 and s_mm >= end_start:
         end_value = out_frac + (1.0 - out_frac) * effect_inout_curve.evaluate(out_curve, (length_mm - s_mm) / out_range_mm)
     return _clamp01(min(start_value, end_value))
 

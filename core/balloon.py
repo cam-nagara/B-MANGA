@@ -131,6 +131,13 @@ _SPACING_MODE_ITEMS = (
 _INOUT_APPLY_ITEMS = line_effect_schema.INOUT_APPLY_ITEMS
 _INOUT_RANGE_MODE_ITEMS = line_effect_schema.INOUT_RANGE_MODE_ITEMS
 UNI_FLASH_PARAM_FIELDS = line_effect_schema.BALLOON_UNI_FLASH_PARAM_FIELDS
+# パス線 (2026-07-20 追加): 効果線 (core/effect_line.py) と同じ選択肢を使う。
+_LINE_IMAGE_SOURCE_ITEMS = line_effect_schema.PATH_CONTENT_SOURCE_ITEMS
+_LINE_IMAGE_SHAPE_ITEMS = line_effect_schema.PATH_GENERATED_SHAPE_ITEMS
+_LINE_IMAGE_DRAW_MODE_ITEMS = line_effect_schema.PATH_IMAGE_DRAW_MODE_ITEMS
+_LINE_IMAGE_STAMP_ANGLE_MODE_ITEMS = line_effect_schema.PATH_IMAGE_STAMP_ANGLE_MODE_ITEMS
+_LINE_IMAGE_RIBBON_REPEAT_MODE_ITEMS = line_effect_schema.PATH_IMAGE_RIBBON_REPEAT_MODE_ITEMS
+PATH_IMAGE_FIELDS = line_effect_schema.BALLOON_PATH_IMAGE_FIELDS
 
 
 def _color_value(value) -> list[float]:
@@ -726,6 +733,27 @@ class BMangaBalloonEntry(bpy.types.PropertyGroup):
     line_image_interval_mm: FloatProperty(name="画像の間隔 (mm)", description="画像 1 枚分を線に沿って繰り返す長さ", default=20.0, min=0.5, soft_max=200.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     line_image_angle_deg: FloatProperty(name="画像の角度 (度)", description="線に貼り付ける画像1つ1つに加える追加回転角", default=0.0, soft_min=-360.0, soft_max=360.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     line_image_jitter: FloatProperty(name="画像の乱れ", description="線に対する画像の揺らぎ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    # パス線 (2026-07-20 追加): フキダシ本体の輪郭に沿って画像・生成形状を
+    # スタンプ/リボン表示する。有効な間は主線の帯メッシュの代わりにこちらが
+    # 描画される (utils/balloon_path_line.py)。画像パス・画像の角度は既存の
+    # 線種「画像」用 line_image_path / line_image_angle_deg をそのまま共有
+    # する (効果線の同名プロパティと意味を揃えるため)。
+    line_image_source: EnumProperty(name="内容", description="パス線に使う内容を画像ファイルか生成形状かで選びます", items=_LINE_IMAGE_SOURCE_ITEMS, default="image", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_image_shape_kind: EnumProperty(name="生成形状", description="パス線に使う生成形状の種類を選びます", items=_LINE_IMAGE_SHAPE_ITEMS, default="circle", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_image_shape_sides: IntProperty(name="角数", description="多角形の角の数です", default=6, min=3, max=16, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_image_color: FloatVectorProperty(name="色", description="パス線に使う画像・生成形状の色です", subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_image_draw_mode: EnumProperty(name="画像の表示方法", description="パスに沿って画像をスタンプ状に並べるか、リボン状に変形するかを選びます", items=_LINE_IMAGE_DRAW_MODE_ITEMS, default="ribbon", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_image_brush_size_mm: FloatProperty(name="画像ブラシサイズ", description="パス線の画像・生成形状の大きさです（mm）", default=3.0, min=0.1, soft_max=100.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_image_aspect_ratio: FloatProperty(name="画像の縦横比", description="パス線の画像・生成形状の縦横比です", default=1.0, min=0.01, soft_min=0.1, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_image_spacing_percent: FloatProperty(name="画像の間隔 (%)", description="パスに並べる画像・生成形状の間隔です（ブラシサイズに対する割合）", default=100.0, min=1.0, soft_max=400.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_image_stamp_angle_mode: EnumProperty(name="画像の角度", description="スタンプ表示時の画像の向きを、固定角度・線の向き・指定オブジェクトの向きから選びます", items=_LINE_IMAGE_STAMP_ANGLE_MODE_ITEMS, default="line", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_image_stamp_angle_object_name: StringProperty(name="方向オブジェクト", description="画像の向きの基準にするオブジェクトの名前です", default="", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_image_ribbon_repeat_mode: EnumProperty(name="リボン", description="リボン表示時に、画像をブラシサイズ基準で繰り返すか、始点から終点まで1枚を伸ばすかを選びます", items=_LINE_IMAGE_RIBBON_REPEAT_MODE_ITEMS, default="repeat", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_image_inout_size_enabled: BoolProperty(name="サイズ", description="入り抜きでパス線のサイズを変化させます", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_image_inout_opacity_enabled: BoolProperty(name="不透明度", description="入り抜きでパス線の不透明度を変化させます", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_image_inout_color_enabled: BoolProperty(name="色", description="入り抜きでパス線の色を変化させます", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_image_inout_start_color: FloatVectorProperty(name="入り色", description="入り側で使うパス線の色です", subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_image_inout_end_color: FloatVectorProperty(name="抜き色", description="抜き側で使うパス線の色です", subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     # 自由形状 (登録カーブ / 手編集) の輪郭キャッシュ。出力・プレビューが
     # カーブ実体の無いファイルでも実形状を描けるよう JSON で保持する。
     custom_outline_json: StringProperty(name="自由形状輪郭", default="", options={"HIDDEN"})  # type: ignore[valid-type]

@@ -122,6 +122,16 @@ EFFECT_PATH_IMAGE_FIELDS = (
     "line_image_inout_end_color",
 )
 
+# フキダシのパス線 (2026-07-20 追加) が保存対象とするフィールド名。効果線の
+# EFFECT_PATH_IMAGE_FIELDS から、フキダシには不要な基準パス関連の2項目
+# (base_path_enabled / base_path_points_json) を除いたもの。フキダシ本体の
+# 輪郭がそのままパスになるため基準パスの概念自体が要らない。
+BALLOON_PATH_IMAGE_FIELDS = tuple(
+    field
+    for field in EFFECT_PATH_IMAGE_FIELDS
+    if field not in {"base_path_enabled", "base_path_points_json"}
+)
+
 EFFECT_STROKE_FIELDS = (
     "brush_size_mm",
     "brush_jitter_enabled",

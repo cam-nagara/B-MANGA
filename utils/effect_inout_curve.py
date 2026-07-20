@@ -167,7 +167,14 @@ def profile_points_to_params(
     points: Sequence[tuple[float, float]],
     fields: Mapping[str, str] | None = None,
 ) -> bool:
-    """線幅グラフ点列から入り抜き数値と左右カーブを更新する."""
+    """線幅グラフ点列から入り抜き数値と左右カーブを更新する.
+
+    まず従来の「入り%・抜き% + 左右カーブ」への分解を試し、その分解が
+    元のグラフ形状を再現できるか検証する。再現できない形 (両端100%で
+    中央に谷がある・どこも100%に届かない山など) は、従来はプラトー部が
+    強制的に100%へ潰れていたため、グラフ全体を入り側カーブ1本へ可逆に
+    写して形をそのまま保存する。
+    """
     if params is None:
         return False
     attrs = _profile_fields(fields)
@@ -177,14 +184,67 @@ def profile_points_to_params(
     in_frac = _clamp01(profile[0][1])
     out_frac = _clamp01(profile[-1][1])
     in_start, out_start = _profile_start_factors(profile)
+    in_curve_text = _in_curve_from_profile(profile, in_frac, in_start)
+    out_curve_text = _out_curve_from_profile(profile, out_frac, out_start)
+    if not _decomposition_matches_profile(
+        profile, in_frac, out_frac, in_start, out_start, in_curve_text, out_curve_text
+    ):
+        in_frac, out_frac, in_start, out_start, in_curve_text, out_curve_text = (
+            _lossless_profile_encoding(profile)
+        )
     changed = False
     changed |= _set_percent_attr(params, attrs["in_percent"], in_frac * 100.0)
     changed |= _set_percent_attr(params, attrs["out_percent"], out_frac * 100.0)
     changed |= _set_range_attr(params, attrs, "in", in_start)
     changed |= _set_range_attr(params, attrs, "out", out_start)
-    changed |= _set_text_attr(params, attrs["in_curve"], _in_curve_from_profile(profile, in_frac, in_start))
-    changed |= _set_text_attr(params, attrs["out_curve"], _out_curve_from_profile(profile, out_frac, out_start))
+    changed |= _set_text_attr(params, attrs["in_curve"], in_curve_text)
+    changed |= _set_text_attr(params, attrs["out_curve"], out_curve_text)
     return changed
+
+
+def _decomposition_matches_profile(
+    profile: Sequence[tuple[float, float]],
+    in_frac: float,
+    out_frac: float,
+    in_start: float,
+    out_start: float,
+    in_curve_text: str,
+    out_curve_text: str,
+    tol: float = 0.02,
+) -> bool:
+    """入り抜き分解から復元した線幅グラフが元の形状と一致するか検証する."""
+    in_curve = parse_points(in_curve_text)
+    out_curve = parse_points(out_curve_text)
+    xs = sorted({x for x, _y in profile})
+    samples = set(xs)
+    samples.update((x0 + x1) * 0.5 for x0, x1 in zip(xs, xs[1:]))
+    samples.update(v for v in (in_start, 1.0 - out_start) if 0.0 < v < 1.0)
+    for x in samples:
+        expected = evaluate(profile, x)
+        actual = _profile_value(in_frac, out_frac, in_start, out_start, in_curve, out_curve, x)
+        if abs(actual - expected) > tol:
+            return False
+    return True
+
+
+def _lossless_profile_encoding(
+    profile: Sequence[tuple[float, float]],
+) -> tuple[float, float, float, float, str, str]:
+    """線幅グラフ全体を入り側カーブ1本で表す可逆な分解を返す.
+
+    入り範囲=100%・抜き範囲=0% とし、入り% を最小値、入り側カーブを
+    (y - 最小値) / (1 - 最小値) の正規化点列にすると、復元式
+    ``in_frac + (1 - in_frac) * evaluate(in_curve, x)`` が元のグラフと
+    厳密に一致する (生成側・表示側とも同じ式を使う)。
+    """
+    base = _clamp01(min(y for _x, y in profile))
+    out_frac = _clamp01(profile[-1][1])
+    if 1.0 - base <= _EPSILON:
+        return 1.0, out_frac, 1.0, 0.0, DEFAULT_CURVE_TEXT, DEFAULT_CURVE_TEXT
+    in_curve_text = points_to_text(
+        [(x, _clamp01((y - base) / (1.0 - base))) for x, y in profile]
+    )
+    return base, out_frac, 1.0, 0.0, in_curve_text, DEFAULT_CURVE_TEXT
 
 
 def ensure_ui_nodes(params):
@@ -573,14 +633,22 @@ def _ensure_node(nt, node_name: str, label: str, stored_points: object, mat, sou
     if node is not None and node.bl_idname != "ShaderNodeFloatCurve":
         nt.nodes.remove(node)
         node = None
+    created = False
     if node is None:
         node = nt.nodes.new("ShaderNodeFloatCurve")
         node.name = node_name
+        created = True
     node.label = label
     stored_text = points_to_text(parse_points(stored_points))
     last_source = str(mat.get(source_prop, "") or "")
-    points = read_node_points(node) if last_source == stored_text else parse_points(stored_text)
-    _apply_points_to_node(node, points)
+    if created or last_source != stored_text:
+        # パラメータ側が変わった (または新規ノード) 時だけ表示を作り直す。
+        _apply_points_to_node(node, parse_points(stored_text))
+    # last_source == stored_text の間はユーザーがグラフをドラッグ編集中の
+    # 可能性があるため、ノードの点列には一切触れない。以前はここで
+    # read → normalize (ソート・結合) → 再適用しており、ドラッグ中の点が
+    # 隣の点を跨いだ瞬間に並べ替えが走って、掴んでいた点が別の点 (中央の
+    # 点など) にすり替わる不具合の原因だった。
     mat[source_prop] = stored_text
     return node
 

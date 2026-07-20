@@ -14,35 +14,42 @@ from .basic import (
 )
 
 
-def draw_balloon_body(sidebar, body_cols, context, session, mode) -> None:
-    """左列(サイドバー)=非プリセット設定、右列(body_cols)=プリセット保存対象。"""
+def draw_balloon_body(sidebar_top, sidebar_below, body_cols, context, session, mode) -> None:
+    """列1(サイドバー)=非プリセット設定+形状、列2=線・塗り、列3=パス。
+
+    サイドバーはプリセット一覧より上(``sidebar_top``、リンクテキストに
+    合わせる/しっぽ)と、プリセット一覧より下(``sidebar_below``、形状)に
+    分かれる。body_cols[0]は線・塗り、body_cols[-1](一番右)はパス。
+    """
 
     preset_mode = str(getattr(mode, "value", mode)) == "preset"
     kind = session.target.kind
     if kind == "balloon_tail":
         # balloon_tail はプリセットを持たないため通常はこの関数へ到達しないが、
         # 直接呼ばれた場合に備えて旧インターフェースの draw_tail_body へ委譲する。
-        draw_tail_body(sidebar, context, session, mode)
+        draw_tail_body(sidebar_top, context, session, mode)
         return
     if preset_mode and str(getattr(session.target, "namespace", "") or "") == "balloon":
-        # フキダシプリセット編集: 現状はリンクテキスト設定のみが保存対象。
-        _draw_linked_text_fit(sidebar, session.target.data)
+        # フキダシ形状プリセット編集: 現状はリンクテキスト設定のみが保存対象。
+        _draw_linked_text_fit(sidebar_top, session.target.data)
         return
 
     from ...utils import balloon_shapes
 
     entry = session.target.data
-    shape_column = body_cols[0]
-    line_column = body_cols[min(1, len(body_cols) - 1)]
-    effect_columns = body_cols
+    content_column = body_cols[0] if body_cols else sidebar_below
+    path_column = body_cols[min(1, len(body_cols) - 1)] if body_cols else sidebar_below
 
-    # 左列: インスタンス固有の非プリセット設定。
-    _draw_linked_text_fit(sidebar, entry)
-    _draw_tails(sidebar, context, session, entry, preset_mode)
+    # サイドバー(プリセット一覧の上): インスタンス固有の非プリセット設定。
+    _draw_linked_text_fit(sidebar_top, entry)
+    _draw_tails(sidebar_top, context, session, entry, preset_mode)
 
-    # 右列: プリセット保存対象の形状・線・塗り設定。
-    _draw_shape(shape_column, entry, balloon_shapes)
-    _draw_line(line_column, entry, balloon_shapes, effect_columns, preset_mode)
+    # サイドバー(プリセット一覧の下): 形状。
+    _draw_shape(sidebar_below, entry, balloon_shapes)
+
+    # 列2: 線・塗り。列3(一番右): パス。
+    _draw_line(content_column, entry, balloon_shapes, None, preset_mode)
+    _draw_path(path_column, entry, preset_mode)
 
 
 def _draw_linked_text_fit(layout, entry) -> None:
@@ -193,6 +200,24 @@ def _draw_white_outline(layout, entry, columns) -> None:
     from .. import balloon_panel
 
     balloon_panel.draw_white_outline_line_settings(layout, entry, columns=columns)
+
+
+def _draw_path(layout, entry, preset_mode: bool) -> None:
+    """パス線 box (フキダシ本体の輪郭に沿ったスタンプ/リボン表示)。
+
+    フキダシ本体の輪郭が常にパスになるため、効果線のような基準パスの
+    明示指定 (「基準パス」box) は不要 (show_base_path=False)。
+    """
+
+    from .. import effect_line_panel
+
+    effect_line_panel.draw_effect_path_settings(
+        layout,
+        entry,
+        preset_mode=preset_mode,
+        allow_path_edit=False,
+        show_base_path=False,
+    )
 
 
 def _draw_double_line(layout, entry, balloon_shapes, shape: str) -> None:

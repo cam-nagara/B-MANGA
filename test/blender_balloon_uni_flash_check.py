@@ -452,7 +452,15 @@ def main() -> None:
                     "white_outline_white_out_percent",
                     "line_peak_width_pct",
                 }
-                forbidden_white_outline_props = set(effect_line_core.line_effect_schema.EFFECT_PATH_IMAGE_FIELDS) | {
+                # 2026-07-20: フキダシにも「パス線」box (輪郭に沿ったスタンプ/リボン
+                # 表示、utils/balloon_path_line.py) が線種によらず常に描画されるように
+                # なったため、effect_line_core.line_effect_schema.EFFECT_PATH_IMAGE_FIELDS
+                # のうち line_image_* はもう「効果線専用」ではない (フキダシ自身の
+                # プロパティとして共有・再利用している)。フキダシには基準パスの概念が
+                # 無い (show_base_path=False) ため、その2項目だけ引き続き禁止する。
+                forbidden_white_outline_props = {
+                    "base_path_enabled",
+                    "base_path_points_json",
                     "white_outline_white_brush_mm",
                     "white_outline_black_inout_range_mode",
                     "white_outline_black_in_range_percent",

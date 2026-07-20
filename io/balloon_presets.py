@@ -81,6 +81,24 @@ BALLOON_STYLE_KEYS = (
     "line_image_interval_mm",
     "line_image_angle_deg",
     "line_image_jitter",
+    # パス線 (2026-07-20 追加)。line_image_path / line_image_angle_deg は
+    # 上の「線種「画像」用」の項目と共有 (core/balloon.py 参照)。
+    "line_image_source",
+    "line_image_shape_kind",
+    "line_image_shape_sides",
+    "line_image_draw_mode",
+    "line_image_brush_size_mm",
+    "line_image_aspect_ratio",
+    "line_image_spacing_percent",
+    "line_image_color",
+    "line_image_ribbon_repeat_mode",
+    "line_image_stamp_angle_mode",
+    "line_image_stamp_angle_object_name",
+    "line_image_inout_size_enabled",
+    "line_image_inout_opacity_enabled",
+    "line_image_inout_color_enabled",
+    "line_image_inout_start_color",
+    "line_image_inout_end_color",
     "multi_line_count",
     "multi_line_direction",
     "multi_line_width_mm",
@@ -134,6 +152,9 @@ _BALLOON_COLOR_KEYS = frozenset(
         "fill_gradient_end_color",
         "outer_white_margin_color",
         "inner_white_margin_color",
+        "line_image_color",
+        "line_image_inout_start_color",
+        "line_image_inout_end_color",
     }
 )
 

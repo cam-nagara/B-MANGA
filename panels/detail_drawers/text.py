@@ -14,7 +14,9 @@ from .basic import (
 )
 
 
-def draw_text_body(sidebar, body_cols, context, session, mode, *, preset_list_owner=None) -> None:
+def draw_text_body(
+    _sidebar_top, _sidebar_below, body_cols, context, session, mode, *, preset_list_owner=None
+) -> None:
     """テキストは全設定がプリセット保存対象なので、左列(サイドバー)は使わない。"""
 
     entry = session.target.data

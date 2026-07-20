@@ -119,17 +119,26 @@ def draw_effect_path_settings(
     *,
     preset_mode: bool = False,
     allow_path_edit: bool = True,
+    show_base_path: bool = True,
 ) -> None:
-    path_box = layout.box()
-    path_box.label(text="パス")
-    row = path_box.row(align=True)
-    row.prop(params, "base_path_enabled", text="基準パス")
-    if not preset_mode and allow_path_edit:
-        # 編集ボタンは選択中の実効果線オブジェクトを操作するモーダル操作の
-        # ため、実オブジェクトを持たないプリセット編集では出さない。
-        edit = row.row(align=True)
-        edit.enabled = bool(getattr(params, "base_path_enabled", False))
-        edit.operator("bmanga.effect_line_base_path_edit", text="編集", icon="CURVE_BEZCURVE")
+    """「パス」(基準パス) + 「パス線」box を描画する。
+
+    ``show_base_path=False`` で「基準パス」box を省き「パス線」box だけを
+    出す (フキダシ用。フキダシ本体の輪郭が常にパスになるため、効果線のよう
+    な基準パスの明示指定は不要)。
+    """
+
+    if show_base_path:
+        path_box = layout.box()
+        path_box.label(text="パス")
+        row = path_box.row(align=True)
+        row.prop(params, "base_path_enabled", text="基準パス")
+        if not preset_mode and allow_path_edit:
+            # 編集ボタンは選択中の実効果線オブジェクトを操作するモーダル操作の
+            # ため、実オブジェクトを持たないプリセット編集では出さない。
+            edit = row.row(align=True)
+            edit.enabled = bool(getattr(params, "base_path_enabled", False))
+            edit.operator("bmanga.effect_line_base_path_edit", text="編集", icon="CURVE_BEZCURVE")
 
     image_box = layout.box()
     image_box.label(text="パス線")
@@ -198,6 +207,8 @@ def draw_effect_params(
     columns=None,
     preset_mode: bool = False,
     show_end_shape: bool = True,
+    type_layout=None,
+    path_layout=None,
 ) -> None:
     """効果線パラメータを ``layout`` に描画 (パネル / 詳細設定ダイアログ共通).
 
@@ -215,6 +226,12 @@ def draw_effect_params(
 
     ``show_end_shape=False`` で内端形状ボックスを出さない (フキダシの
     ウニフラは内端輪郭にフキダシ本体の形状を使うため設定不要)。
+
+    ``type_layout`` / ``path_layout`` を渡すと、「種類」(または「向き」) box
+    と「パス」boxをそれぞれ専用のlayoutへ描画する (詳細設定ダイアログの
+    3列レイアウト用。列1サイドバーの「種類」・列3の「パス」に振り分ける)。
+    どちらも ``None`` なら従来どおり ``columns`` 側の列 (Nパネルでは
+    ``layout`` 一列) に収める。
     """
     if params is None:
         layout.label(text="未初期化", icon="ERROR")
@@ -231,14 +248,16 @@ def draw_effect_params(
     inout_col = 2 if len(cols) > 2 else line_col
     side_col = 3 if len(cols) > 3 else line_col
     path_col = 4 if len(cols) > 4 else (3 if len(cols) > 3 else inout_col)
+    type_target = type_layout if type_layout is not None else _col(0)
+    path_target = path_layout if path_layout is not None else _col(path_col)
     if show_type:
-        box = _col(0).box()
+        box = type_target.box()
         box.label(text="種類")
         box.prop(params, "effect_type")
         if effect_type != "speed" and show_rotation:
             box.prop(params, "rotation_deg")
     elif effect_type != "speed" and show_rotation:
-        box = _col(0).box()
+        box = type_target.box()
         box.label(text="向き")
         box.prop(params, "rotation_deg")
 
@@ -260,7 +279,7 @@ def draw_effect_params(
         )
         if show_path_settings:
             draw_effect_path_settings(
-                _col(path_col),
+                path_target,
                 params,
                 preset_mode=preset_mode,
                 allow_path_edit=allow_path_edit,
@@ -334,7 +353,7 @@ def draw_effect_params(
         draw_inout_curve_mapping(box, params)
     if show_path_settings:
         draw_effect_path_settings(
-            _col(path_col),
+            path_target,
             params,
             preset_mode=preset_mode,
             allow_path_edit=allow_path_edit,

@@ -3,6 +3,73 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.2 LTS を対象としています（開発基準バージョン。5.1でも動作確認済み）。
 
+## 2026-07-20 — 線幅グラフ2件修正・フキダシ/効果線詳細の3列化・フキダシパス線追加 (B-MANGA v0.6.560)
+
+### 症状 (線幅グラフ)
+
+- ポイントをドラッグすると、掴んでいた点ではなく別の点 (中央の点など) が
+  動いてしまうことがあった。
+- グラフの形状によっては「適用」を押すと 0〜100 の全区間の Y 値が
+  100% に潰れてしまうことがあった (両端100%で中央に谷がある形など)。
+
+### 原因と修正 (線幅グラフ)
+
+- 常駐の表示同期がドラッグ中の点列を正規化 (並べ替え・結合) して書き戻して
+  いたため、点が隣を跨いだ瞬間に掴んでいた点がすり替わっていた。設定値が
+  変わっていない間はグラフの点へ一切触れないよう修正。
+- 「入り%・抜き%+左右カーブ」への分解では表現できない形が強制的に
+  100% プラトーへ潰れていた。分解結果が元の形を再現できるか検証し、
+  できない形はグラフ全体を可逆な形 (入り側カーブ1本) で保存する方式へ
+  変更。従来どおり表現できる形は今までと同じ分解を維持。白抜き線の
+  白線・黒線グラフも同様。
+
+### 変更 (詳細設定ダイアログの3列化)
+
+- 効果線: 列1=サイドバー (ヘッダ/配置/プリセット一覧/種類/リンクレイヤー)、
+  列2=外端形状・内端形状・線・まとまり・入り抜き・色、列3=パス。
+- フキダシ: 列1=サイドバー (ヘッダ/配置/リンクテキストに合わせる/しっぽ/
+  プリセット一覧/形状/リンクレイヤー)、列2=線・塗り、列3=パス。
+- どちらも「種類」「形状」セクションはプリセット一覧の直下に配置。
+
+### 新機能 (フキダシのパス線)
+
+- フキダシの詳細設定に効果線と同様の「パス」セクションを追加。フキダシ
+  本体の輪郭に沿って、画像または生成形状をスタンプ/リボンで並べる
+  「パス線」を設定できる (閉じた輪郭でも継ぎ目が出ない)。設定はフキダシ
+  スタイルプリセットの保存・適用にも含まれる。フキダシは本体の形が
+  そのままパスになるため「基準パス」項目はない。
+
+### 変更ファイル
+
+- `utils/effect_inout_curve.py` — ドラッグ保護 / 可逆な適用エンコード
+- `operators/effect_line_white_outline.py` — 範囲境界の終端値を正しく評価
+- `panels/detail_drawers/dispatcher.py` ほか detail_drawers 各種 —
+  プリセット直下スロット付きの新レイアウト契約
+- `panels/effect_line_panel.py` — 種類/パスの配置指定・基準パス表示切替
+- `core/balloon.py` / `utils/line_effect_schema.py` /
+  `utils/balloon_path_line.py` (新設) / `utils/balloon_curve_object.py` /
+  `io/balloon_presets.py` — フキダシパス線
+- `test/blender_balloon_path_line_check.py` (新設) /
+  `test/blender_effect_line_detail_graph_check.py` (ドラッグ・適用の回帰
+  検証を追加、新レイアウト契約へ更新) / `test/test_detail_drawer_order.py` /
+  `test/blender_balloon_uni_flash_check.py`
+- `test/bmanga_ai_audit_runner.py` — 上記2テストを常設監査ケースへ追加
+
+### 検証 (Blender 5.2 LTS 実機)
+
+- `test/blender_effect_line_detail_graph_check.py` — PASS (ドラッグ中の点の
+  同一性 / 谷・山形状の適用保存 / 従来分解の互換 / 白線・黒線 / OK確定)
+- `test/blender_balloon_path_line_check.py` — PASS (生成形状・画像リボン・
+  プリセット往復・削除掃除)
+- `test/blender_detail_dialog_unification_check.py` /
+  `test/blender_balloon_uni_flash_check.py` /
+  `test/blender_linked_balloon_preset_padding_check.py` /
+  `test/blender_ui_micro_behavior_matrix_check.py` /
+  `test/blender_effect_line_end_fill_check.py` /
+  `test/blender_effect_line_frame_spacing_check.py` /
+  `test/blender_effect_line_path_image_check.py` — PASS
+- `python -m pytest test/test_detail_drawer_order.py` — 28件 PASS
+
 ## 2026-07-20 — コマ割り時の所属コマと表示のズレ (コマID重複) を修正 (B-MANGA v0.6.559)
 
 ### 症状

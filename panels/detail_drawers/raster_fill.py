@@ -41,9 +41,10 @@ def draw_raster_body(layout, _context, session, _mode) -> None:
         target_id=stable_id,
     )
 
-def draw_fill_body(sidebar, body_cols, context, session, mode) -> None:
-    """左列(サイドバー)=回転・端点指定・塗り範囲 (配置依存の非プリセット設定)、
-    右列(body_cols)=不透明度・色・グラデーションのプリセット保存対象設定。
+def draw_fill_body(sidebar_top, _sidebar_below, body_cols, context, session, mode) -> None:
+    """左列(サイドバー、プリセット一覧より上)=回転・端点指定・塗り範囲
+    (配置依存の非プリセット設定)、右列(body_cols)=不透明度・色・グラデー
+    ションのプリセット保存対象設定。プリセット一覧より下の列は使わない。
     """
 
     entry = session.target.data
@@ -57,11 +58,11 @@ def draw_fill_body(sidebar, body_cols, context, session, mode) -> None:
     )
 
     if not preset_mode:
-        placement_box = sidebar.box()
+        placement_box = sidebar_top.box()
         placement_box.label(text="配置")
         _draw_actual_fill_controls(placement_box, entry, fill_type)
         if bool(value(entry, "use_region", False)):
-            _draw_fill_region(sidebar, entry)
+            _draw_fill_region(sidebar_top, entry)
 
     basic_box = primary.box()
     basic_box.label(text="グラデーション" if fill_type == "gradient" else "ベタ塗り")

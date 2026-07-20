@@ -189,11 +189,12 @@ def draw_page_body(layout, _context, session, _mode) -> None:
     )
 
 
-def draw_coma_body(sidebar, body_cols, context, session, mode) -> None:
+def draw_coma_body(sidebar_top, _sidebar_below, body_cols, context, session, mode) -> None:
     """コマ設定。選択依存ボタンを避け、固定済みentryだけを描画する。
 
-    左列(サイドバー)=このコマ限定のblendファイル・形状 (非プリセット)、
-    右列(body_cols)=枠線・フチのプリセット保存対象設定。
+    左列(サイドバー、プリセット一覧より上)=このコマ限定のblendファイル・
+    形状 (非プリセット)、右列(body_cols)=枠線・フチのプリセット保存対象設定。
+    プリセット一覧より下の列は使わない。
     """
 
     from .. import coma_detail_panel
@@ -202,11 +203,11 @@ def draw_coma_body(sidebar, body_cols, context, session, mode) -> None:
     primary = body_cols[0]
     preset_mode = str(getattr(mode, "value", mode)) == "preset"
     if not preset_mode:
-        blend_box = sidebar.box()
+        blend_box = sidebar_top.box()
         blend_box.label(text="コマ用blendファイル (このコマのみ)", icon="FILE_BLEND")
         prop_if(blend_box, entry, "coma_blend_template_path", text="")
 
-        shape_box = sidebar.box()
+        shape_box = sidebar_top.box()
         shape_box.label(text="形状")
         _draw_coma_shape(shape_box, entry)
 

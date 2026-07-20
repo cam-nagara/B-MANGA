@@ -425,11 +425,26 @@ def _assert_balloon_and_image_path_draw_are_read_only(
 
 
 def _assert_detail_layout(effect_line_op, context, scene, session) -> None:
+    """v0.6.557以降の3列契約: 列1=サイドバー(種類含む)、列2=外端形状・内端形状・
+
+    線・まとまり・入り抜き・色、列3(一番右)=パス。段階的な列の間引きは
+    行わず、種類 (集中線/白抜き線) によらず常に3列とも使う。
+    """
+
     layout = _Layout()
     _draw_session(context, session, layout)
     assert 3 in layout.grid_columns, f"集中線の詳細設定が3列で描画されていません: {layout.grid_columns}"
     assert scene.bmanga_active_layer_kind == "effect", "効果線詳細設定の編集対象が選択されていません"
     assert scene.bmanga_active_effect_layer_name, "効果線詳細設定の対象レイヤー名が設定されていません"
+    assert "effect_type" in layout.props_by_column.get("col0", ()), "種類がサイドバー(1列目)にありません"
+    for prop_name in ("start_shape", "end_shape", "brush_size_mm", "in_percent", "line_color"):
+        assert prop_name in layout.props_by_column.get("col1", ()), (
+            f"外端形状・内端形状・線・入り抜き・色が2列目にまとまっていません: {prop_name}"
+        )
+    for prop_name in ("line_image_source", "base_path_enabled"):
+        assert prop_name in layout.props_by_column.get("col2", ()), (
+            f"パス設定が3列目(一番右)にありません: {prop_name}"
+        )
 
     def white_outline_values(p):
         p.effect_type = "white_outline"
@@ -438,29 +453,22 @@ def _assert_detail_layout(effect_line_op, context, scene, session) -> None:
     sync_actual_session(MOD_NAME, context, session)
     layout = _Layout()
     _draw_session(context, session, layout)
-    assert "white_outline_count" in layout.props_by_column.get("col1", ()), (
-        "白抜き線の基本設定が線列に分割されていません"
+    assert "effect_type" in layout.props_by_column.get("col0", ()), (
+        "白抜き線でも種類がサイドバー(1列目)にありません"
     )
     for prop_name in (
+        "white_outline_count",
         "white_outline_white_ratio_percent",
         "white_outline_black_ratio_percent",
         "white_outline_length_percent",
-    ):
-        assert prop_name in layout.props_by_column.get("col1", ()), (
-            f"白線割合・黒線割合・長さが白抜き線セクションにありません: {prop_name}"
-        )
-    assert "white_outline_white_brush_mm" in layout.props_by_column.get("col1", ()), (
-        "白線設定が設定列にありません"
-    )
-    assert "white_outline_black_direction" in layout.props_by_column.get("col2", ()), (
-        "黒線設定が3列目にありません"
-    )
-    for prop_name in (
+        "white_outline_white_brush_mm",
+        "white_outline_black_direction",
         "white_outline_black_in_percent",
         "white_outline_black_out_percent",
+        "line_color",
     ):
-        assert prop_name in layout.props_by_column.get("col2", ()), (
-            f"黒線入り抜き設定が設定列にありません: {prop_name}"
+        assert prop_name in layout.props_by_column.get("col1", ()), (
+            f"白抜き線の設定 (線・まとまり・入り抜き・色相当) が2列目にまとまっていません: {prop_name}"
         )
     for prop_name in (
         "white_outline_black_inout_range_mode",
@@ -473,12 +481,10 @@ def _assert_detail_layout(effect_line_op, context, scene, session) -> None:
             f"線幅グラフに統合した範囲設定が表示されています: {prop_name}"
         )
     assert layout.labels.count("線幅グラフ") >= 3, "主線・黒線・白線の線幅グラフが揃っていません"
-    assert "line_image_source" in layout.props_by_column.get("col2", ()), (
-        "パス線設定が3列目にありません"
-    )
-    assert "line_color" in layout.props_by_column.get("col1", ()), (
-        "白抜き線の線色が設定列にありません"
-    )
+    for prop_name in ("line_image_source", "base_path_enabled"):
+        assert prop_name in layout.props_by_column.get("col2", ()), (
+            f"白抜き線でもパス設定が3列目(一番右)にありません: {prop_name}"
+        )
 
 
 def _assert_all_entry_layouts_match(
@@ -641,6 +647,72 @@ def _assert_graph_live_sync_does_not_commit(
     saved_after = effect_line_op._layer_params_data(obj, layer)
     _assert_close(saved_after["in_percent"], 35.0, "適用後の入り(%)が効果線へ保存されていません")
     _assert_close(saved_after["out_percent"], 15.0, "適用後の抜き(%)が効果線へ保存されていません")
+
+
+def _assert_drag_reorder_keeps_point_identity(effect_inout_curve, params, node) -> None:
+    """ドラッグ中 (パラメータ未変更) の常駐同期はノードの点へ一切触れない。
+
+    以前は ensure_profile_node がドラッグ中の点列を正規化 (ソート・結合) して
+    書き戻していたため、点が隣の点を跨いだ瞬間に並べ替えが走り、掴んでいた
+    点が別の点 (中央の点など) にすり替わる不具合があった。
+    """
+    effect_inout_curve._apply_points_to_node(
+        node,
+        ((0.0, 0.2), (0.3, 0.6), (0.5, 1.0), (0.7, 1.0), (1.0, 0.4)),
+    )
+    curve = node.mapping.curves[0]
+    # ユーザーのドラッグ相当: 2番目の点を右隣 (x=0.5) を跨ぐ位置まで動かす
+    curve.points[1].location = (0.55, 0.62)
+    dragged = [(float(p.location.x), float(p.location.y)) for p in curve.points]
+    for _ in range(3):
+        effect_inout_curve.ensure_profile_node(params)
+        effect_inout_curve._live_profile_sync_tick()
+    after = [(float(p.location.x), float(p.location.y)) for p in curve.points]
+    assert after == dragged, (
+        f"ドラッグ中の線幅グラフ点列が常駐同期で書き換えられました: {dragged} -> {after}"
+    )
+    assert math.isclose(after[1][0], 0.55, abs_tol=1.0e-5), (
+        "掴んでいた点が別の点にすり替わりました"
+    )
+
+
+def _assert_apply_preserves_unrepresentable_shapes(
+    effect_inout_curve, effect_line_gen, params, node
+) -> None:
+    """入り抜き分解で表せない形を適用しても、Y値が100%へ潰れない。"""
+
+    # 両端100%・中央に谷: 以前は適用で全区間が100%へ潰れた
+    effect_inout_curve._apply_points_to_node(
+        node, ((0.0, 1.0), (0.5, 0.2), (1.0, 1.0))
+    )
+    changed = effect_inout_curve.commit_profile_node_to_params(params)
+    assert changed, "谷形状の適用でパラメータが変化しませんでした"
+    display = effect_inout_curve.flip_horizontal(
+        effect_inout_curve.profile_points_from_params(params)
+    )
+    assert abs(effect_inout_curve.evaluate(display, 0.5) - 0.2) <= 0.02, (
+        f"両端100%の谷が適用で失われました: {display}"
+    )
+    assert abs(effect_inout_curve.evaluate(display, 0.0) - 1.0) <= 0.02, display
+    assert abs(effect_inout_curve.evaluate(display, 1.0) - 1.0) <= 0.02, display
+    profile, _d_in, _d_out = effect_line_gen._inout_profile(params, 1.0)
+    assert abs(profile(0.5) - 0.2) <= 0.02, "生成側プロファイルへ谷が伝わっていません"
+
+    # どこも100%に届かない山も保存される
+    effect_inout_curve._apply_points_to_node(
+        node, ((0.0, 0.0), (0.5, 0.8), (1.0, 0.0))
+    )
+    effect_inout_curve.commit_profile_node_to_params(params)
+    display = effect_inout_curve.flip_horizontal(
+        effect_inout_curve.profile_points_from_params(params)
+    )
+    assert abs(effect_inout_curve.evaluate(display, 0.5) - 0.8) <= 0.02, (
+        f"100%未満の山が適用で失われました: {display}"
+    )
+    assert abs(effect_inout_curve.evaluate(display, 0.0) - 0.0) <= 0.02, display
+    assert abs(effect_inout_curve.evaluate(display, 1.0) - 0.0) <= 0.02, display
+    profile, _d_in, _d_out = effect_line_gen._inout_profile(params, 1.0)
+    assert abs(profile(0.5) - 0.8) <= 0.02, "生成側プロファイルへ山が伝わっていません"
 
 
 def _assert_white_black_graphs(effect_inout_curve, context, session, params) -> None:
@@ -845,6 +917,10 @@ def main() -> None:
         )
         _assert_graph_live_sync_does_not_commit(
             effect_inout_curve, effect_line_op, params, obj, layer, node
+        )
+        _assert_drag_reorder_keeps_point_identity(effect_inout_curve, params, node)
+        _assert_apply_preserves_unrepresentable_shapes(
+            effect_inout_curve, effect_line_gen, params, node
         )
         _assert_white_black_graphs(effect_inout_curve, context, session, params)
         assert session.layout.dialog_width == fixed_width, "編集途中で固定最大幅が変化しました"

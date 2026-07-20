@@ -106,6 +106,14 @@ def _draw_preset_target_dialog(
     列の間引きは行わない。空になり得るのは balloon_shape の 1 列構成のみで、
     その場合ボディは空タプルになるが balloon.draw_balloon_body 側がボディへ
     触れる前に処理を終える)。
+
+    サイドバー内では ``header → 配置 → drawer用top列 → プリセット管理 →
+    drawer用below列 → リンクレイヤー`` の順で列を確保する。Blender の
+    UILayout は「呼び出し順」ではなく「作成順」で画面上に配置されるため、
+    top列・below列のプレースホルダを先に ``sidebar.column()`` で確保して
+    おき、実際の描画 (drawer呼び出し) は後回しにしても正しい位置に収まる。
+    全 drawer は ``(sidebar_top, sidebar_below, body_cols, context, session,
+    mode)`` を受け取る統一シグネチャに従う (使わない列は無視してよい)。
     """
 
     max_columns = session.layout.max_columns
@@ -118,18 +126,7 @@ def _draw_preset_target_dialog(
     elif description_owner is not None:
         sidebar.prop(description_owner, "description_text")
 
-    if target.kind == "text":
-        drawer(
-            sidebar,
-            body_cols,
-            context,
-            session,
-            mode,
-            preset_list_owner=preset_list_owner,
-        )
-    else:
-        drawer(sidebar, body_cols, context, session, mode)
-
+    sidebar_top = sidebar.column(align=True)
     preset_adapters.draw_preset_management(
         sidebar,
         context,
@@ -137,6 +134,21 @@ def _draw_preset_target_dialog(
         mode,
         list_owner=preset_list_owner,
     )
+    sidebar_below = sidebar.column(align=True)
+
+    if target.kind == "text":
+        drawer(
+            sidebar_top,
+            sidebar_below,
+            body_cols,
+            context,
+            session,
+            mode,
+            preset_list_owner=preset_list_owner,
+        )
+    else:
+        drawer(sidebar_top, sidebar_below, body_cols, context, session, mode)
+
     draw_linked_layers(sidebar, context, target, mode)
 
 

@@ -568,11 +568,16 @@ def _remove_balloon_object(obj: bpy.types.Object) -> None:
     if obj.get(on.PROP_KIND) == "balloon":
         balloon_id = str(obj.get(on.PROP_ID, "") or "")
         if balloon_id:
+            # balloon_path_line は effect_line_path 経由で layer_object_sync (本
+            # モジュールへ局所importで依存) を辿るため、モジュール先頭で import
+            # すると utils パッケージ初期化中に循環importになる。局所import で回避する。
+            from . import balloon_path_line
             balloon_line_mesh.remove_all_balloon_band_meshes(balloon_id)
             balloon_flash_effect_line_mesh.remove_balloon_flash_effect_line_mesh(balloon_id)
             balloon_tail_ellipse_mesh.remove_balloon_tail_ellipse_meshes(balloon_id)
             balloon_tail_stroke_mesh.remove_balloon_tail_stroke_meshes(balloon_id)
             balloon_line_decor_mesh.remove_balloon_line_decor_meshes(balloon_id)
+            balloon_path_line.remove_balloon_path_line_mesh(balloon_id)
     data = getattr(obj, "data", None)
     try:
         bpy.data.objects.remove(obj, do_unlink=True)
@@ -816,6 +821,11 @@ def _apply_page_world_offset(scene: bpy.types.Scene, work, page, entry, obj: bpy
 
 def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, mask_info) -> None:
     """フキダシ塗り面・主線・外側フチ・内側フチ・多重線の Mesh オブジェクトを ensure する."""
+    # balloon_path_line は effect_line_path 経由で layer_object_sync (本モジュールへ
+    # 局所importで依存) を辿るため、モジュール先頭で import すると utils パッケージ
+    # 初期化中に循環importになる。局所import で回避する。
+    from . import balloon_path_line
+
     materials = list(getattr(obj.data, "materials", []) or [])
     fill_mat = materials[render_contract.MATERIAL_SLOT_FILL] if len(materials) > render_contract.MATERIAL_SLOT_FILL else None
     line_mat = materials[_MATERIAL_SLOT_LINE] if len(materials) > _MATERIAL_SLOT_LINE else None
@@ -824,6 +834,17 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
     balloon_id = str(getattr(entry, "id", "") or "")
     is_flash_line_style = balloon_shapes.is_flash_line_style(str(getattr(entry, "line_style", "") or ""))
     line_style = balloon_shapes.normalize_line_style(str(getattr(entry, "line_style", "") or ""))
+    # パス線 (2026-07-20 追加): 線種「図形」「画像」やウニフラ/白抜き線は
+    # それぞれ専用の描画方式を既に持つため対象外にし、それ以外の主線
+    # (実線・破線・点線・多重線・マテリアル・線なし) だけをパス線に置き換え
+    # 可能にする。既存の線種「画像」利用者が line_image_path を設定済みでも、
+    # is_flash_line_style/shape/image のどれかであれば従来描画を維持する。
+    path_line_active = (
+        line_mat is not None
+        and not is_flash_line_style
+        and line_style not in {"shape", "image"}
+        and balloon_path_line.line_image_active(entry)
+    )
     # ジオメトリ署名: 一致すれば各帯メッシュの再構築 (shapely/earcut) を丸ごと
     # スキップし、親子付け・可視性・マスクの反映だけ行う (色変更などが高速になる)
     band_sig = _band_geometry_signature(entry, obj)
@@ -920,6 +941,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
         balloon_line_mesh.remove_balloon_multi_line_mesh(balloon_id)
         balloon_line_mesh.remove_balloon_tail_main_line_mesh(balloon_id)
         balloon_line_decor_mesh.remove_balloon_line_decor_meshes(balloon_id)
+        balloon_path_line.remove_balloon_path_line_mesh(balloon_id)
         return
     balloon_flash_effect_line_mesh.remove_balloon_flash_effect_line_mesh(balloon_id)
     if line_style == "shape" and line_mat is not None:
@@ -938,6 +960,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
         balloon_line_mesh.remove_balloon_flash_white_line_mesh(balloon_id)
         balloon_line_mesh.remove_balloon_line_mesh(balloon_id)
         balloon_line_mesh.remove_balloon_tail_main_line_mesh(balloon_id)
+        balloon_path_line.remove_balloon_path_line_mesh(balloon_id)
     elif line_style == "image":
         # 線種「画像」: 主線の帯の代わりに画像を貼った帯メッシュを描く
         balloon_line_decor_mesh.ensure_balloon_line_image_mesh(
@@ -953,7 +976,23 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
         balloon_line_mesh.remove_balloon_flash_white_line_mesh(balloon_id)
         balloon_line_mesh.remove_balloon_line_mesh(balloon_id)
         balloon_line_mesh.remove_balloon_tail_main_line_mesh(balloon_id)
+        balloon_path_line.remove_balloon_path_line_mesh(balloon_id)
+    elif path_line_active:
+        # パス線: 主線の帯の代わりに輪郭に沿ったスタンプ/リボンを描く
+        balloon_line_decor_mesh.remove_balloon_line_decor_meshes(balloon_id)
+        balloon_line_mesh.remove_balloon_flash_white_line_mesh(balloon_id)
+        balloon_line_mesh.remove_balloon_line_mesh(balloon_id)
+        balloon_line_mesh.remove_balloon_tail_main_line_mesh(balloon_id)
+        balloon_path_line.ensure_balloon_path_line_mesh(
+            scene=scene,
+            work=work,
+            page=page,
+            entry=entry,
+            body_object=obj,
+            mask_info=mask_info,
+        )
     elif line_mat is not None:
+        balloon_path_line.remove_balloon_path_line_mesh(balloon_id)
         balloon_line_decor_mesh.remove_balloon_line_decor_meshes(balloon_id)
         flash_white_mat = _ensure_color_material(
             f"{BALLOON_FLASH_WHITE_LINE_MATERIAL_PREFIX}{balloon_id}",
@@ -984,6 +1023,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
         balloon_line_decor_mesh.remove_balloon_line_decor_meshes(balloon_id)
         balloon_line_mesh.remove_balloon_flash_white_line_mesh(balloon_id)
         balloon_line_mesh.remove_balloon_line_mesh(balloon_id)
+        balloon_path_line.remove_balloon_path_line_mesh(balloon_id)
     if outer_mat is not None:
         balloon_line_mesh.ensure_balloon_outer_edge_mesh(
             scene=scene,
@@ -1023,7 +1063,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
         )
     else:
         balloon_line_mesh.remove_balloon_multi_line_mesh(balloon_id)
-    if line_mat is not None and line_style not in {"shape", "image"}:
+    if line_mat is not None and line_style not in {"shape", "image"} and not path_line_active:
         balloon_line_mesh.ensure_balloon_tail_main_line_mesh(
             scene=scene,
             work=work,
@@ -1946,6 +1986,11 @@ def remove_balloon_objects_by_id(balloon_id: str) -> bool:
     """Explicit user delete path for a balloon and its generated display meshes."""
     if not balloon_id:
         return False
+    # balloon_path_line は effect_line_path 経由で layer_object_sync (本モジュールへ
+    # 局所importで依存) を辿るため、モジュール先頭で import すると utils パッケージ
+    # 初期化中に循環importになる。局所import で回避する。
+    from . import balloon_path_line
+
     removed = False
     for obj in list(bpy.data.objects):
         if object_preserve.is_preserved(obj):
@@ -1968,6 +2013,7 @@ def remove_balloon_objects_by_id(balloon_id: str) -> bool:
     balloon_tail_stroke_mesh.remove_balloon_tail_stroke_meshes(balloon_id)
     balloon_line_decor_mesh.remove_balloon_line_decor_meshes(balloon_id)
     balloon_fill_mesh.remove_balloon_fill_mesh(balloon_id)
+    balloon_path_line.remove_balloon_path_line_mesh(balloon_id)
     return removed
 
 

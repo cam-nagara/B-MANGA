@@ -38,6 +38,7 @@ def _load_drawer_api():
     sys.modules[panels.__name__] = panels
 
     _install_link_stubs(utils)
+    _install_effect_line_panel_stub(panels)
     drawer_name = f"{PACKAGE}.panels.detail_drawers"
     drawer_spec = importlib.util.spec_from_file_location(
         drawer_name,
@@ -65,6 +66,37 @@ def _install_link_stubs(utils_package) -> None:
     sys.modules[display.__name__] = display
     utils_package.layer_links = links
     utils_package.layer_display = display
+
+
+def _install_effect_line_panel_stub(panels_package) -> None:
+    """panels.effect_line_panel は ``import bpy`` を伴う実パネルモジュールの
+
+    ため、bpy非依存のこのハーネスでは軽量スタブに差し替える。
+    balloon.py の ``_draw_path`` (パス線box) が
+    ``from .. import effect_line_panel`` で無条件に参照するため必要。
+    """
+
+    module = ModuleType(f"{PACKAGE}.panels.effect_line_panel")
+
+    def draw_effect_path_settings(
+        layout,
+        params,
+        *,
+        preset_mode: bool = False,
+        allow_path_edit: bool = True,
+        show_base_path: bool = True,
+    ) -> None:
+        if show_base_path:
+            path_box = layout.box()
+            path_box.label(text="パス")
+            path_box.prop(params, "base_path_enabled", text="基準パス")
+        image_box = layout.box()
+        image_box.label(text="パス線")
+        image_box.prop(params, "line_image_source", text="内容")
+
+    module.draw_effect_path_settings = draw_effect_path_settings
+    sys.modules[module.__name__] = module
+    panels_package.effect_line_panel = module
 
 
 DETAIL, DRAWERS = _load_drawer_api()
@@ -300,23 +332,37 @@ class Data:
 
 
 class OperatorProxy:
-    def __init__(self, records, operator_id):
-        object.__setattr__(self, "records", records)
+    def __init__(self, layout, operator_id):
+        object.__setattr__(self, "_layout", layout)
         object.__setattr__(self, "operator_id", operator_id)
 
     def __setattr__(self, name, value):
-        self.records.append(("operator_property", self.operator_id, name, value))
+        self._layout._items.append(("operator_property", self.operator_id, name, value))
         object.__setattr__(self, name, value)
 
 
 class RecordingLayout:
-    def __init__(self, records=None):
-        self.records = records if records is not None else []
+    """Blenderの実UILayoutと同じ「作成順に配置」を再現する記録用レイアウト。
+
+    ``box()``/``row()``/``column()``/``grid_flow()`` は呼ばれた時点で親の
+    タイムライン (``_items``) へ即座に自分の位置を確保する (プレースホルダ)。
+    実際に ``.label()``/``.prop()`` を書き込むのが後回しになっても、
+    ``records`` を読んだ時点でのフラット化は「確保した位置」の順に並ぶ。
+    これは dispatcher._draw_preset_target_dialog の
+    「top列→プリセット管理→below列の順で確保し、実描画(drawer呼び出し)は
+    後回しにしても正しい位置に収まる」という契約と同じ仕組みで、
+    ここで正しく検証できる。
+    """
+
+    def __init__(self):
+        self._items: list = []
         self.enabled = True
         self.active = True
 
     def _child(self, *_args, **_kwargs):
-        return RecordingLayout(self.records)
+        child = RecordingLayout()
+        self._items.append(child)
+        return child
 
     box = _child
     row = _child
@@ -324,21 +370,35 @@ class RecordingLayout:
     grid_flow = _child
 
     def label(self, text="", **_kwargs):
-        self.records.append(("label", text))
+        self._items.append(("label", text))
 
     def separator(self, **_kwargs):
-        self.records.append(("separator",))
+        self._items.append(("separator",))
 
     def prop(self, _owner, name, **_kwargs):
-        self.records.append(("prop", name))
+        self._items.append(("prop", name))
 
     def operator(self, operator_id, **_kwargs):
-        self.records.append(("operator", operator_id))
-        return OperatorProxy(self.records, operator_id)
+        self._items.append(("operator", operator_id))
+        return OperatorProxy(self, operator_id)
 
     def operator_menu_enum(self, operator_id, enum_name, **_kwargs):
-        self.records.append(("operator_menu_enum", operator_id, enum_name))
-        return OperatorProxy(self.records, operator_id)
+        self._items.append(("operator_menu_enum", operator_id, enum_name))
+        return OperatorProxy(self, operator_id)
+
+    @property
+    def records(self):
+        flat: list = []
+
+        def _walk(node: "RecordingLayout") -> None:
+            for item in node._items:
+                if isinstance(item, RecordingLayout):
+                    _walk(item)
+                else:
+                    flat.append(item)
+
+        _walk(self)
+        return flat
 
 
 def _text_data():
@@ -494,9 +554,10 @@ def test_preset_description_is_after_common_header_and_before_body(
     layout = RecordingLayout()
     description = Data(description_text="説明")
     original = dispatcher._BODY_DRAWERS[kind]
-    # プリセットを持つ種別は drawer(sidebar, body_cols, context, session, mode) で
-    # 呼ばれ、持たない種別 (balloon_tail) は旧来の drawer(layout, context, session,
-    # mode) のまま呼ばれる。どちらの呼び出しでも先頭引数が「本文を描く列」なので
+    # プリセットを持つ種別は drawer(sidebar_top, sidebar_below, body_cols,
+    # context, session, mode) で呼ばれ、持たない種別 (balloon_tail) は旧来の
+    # drawer(layout, context, session, mode) のまま呼ばれる。どちらの呼び出し
+    # でも先頭引数が「ヘッダ直後・プリセット一覧より上に描く列」なので
     # *args で受けて args[0] へ描画すれば両方のシグネチャに対応できる。
     dispatcher._BODY_DRAWERS[kind] = (
         lambda *args, **_kwargs: args[0].label(text="本文")
@@ -608,6 +669,19 @@ def _balloon_data():
 
 
 def test_balloon_actual_body_puts_non_preset_settings_in_the_sidebar():
+    """v0.6.557以降の3列契約 (2026-07-20 さらに再設計):
+
+    列1(サイドバー)=ヘッダ→配置→(プリセット一覧より上)リンクテキストに
+    合わせる→しっぽ→プリセット一覧→(プリセット一覧より下)形状→
+    リンクレイヤー。列2=線・塗り、列3(一番右)=パス線。
+
+    RecordingLayout は「作成順に配置」(プレースホルダ) を再現するため、
+    列1の一連の項目はその列内で正しい順序になる。列2/列3はそれぞれ別列
+    (別のプレースホルダ) なので、列1側の項目との前後関係はここでは検証
+    しない (実際の画面でも左右に並ぶ別列であり、前後関係に意味が無い)。
+    列2→列3の順序 (dispatcherが body_cols を作成した順) だけ検証する。
+    """
+
     data = _balloon_data()
     target = DETAIL.DetailTarget("balloon", "balloon-1", "balloon:balloon-1", data)
     mode = DETAIL.DetailMode.ACTUAL
@@ -615,15 +689,17 @@ def test_balloon_actual_body_puts_non_preset_settings_in_the_sidebar():
     DRAWERS.draw_detail_dialog(layout, SimpleNamespace(), _session(target, mode, "balloon"), mode)
 
     labels = [record[1] for record in layout.records if record[0] == "label"]
-    # サイドバー (ヘッダ→配置→非プリセット設定→プリセット→リンクレイヤー) が
-    # 本文 (形状→線・塗り) を挟んで先に描かれる。
     assert labels.index("フキダシ") < labels.index("配置 (mm)")
     assert labels.index("配置 (mm)") < labels.index("リンクテキストに合わせる")
     assert labels.index("リンクテキストに合わせる") < labels.index("しっぽ (0)")
-    assert labels.index("しっぽ (0)") < labels.index("形状")
-    assert labels.index("形状") < labels.index("線・塗り")
-    assert labels.index("線・塗り") < labels.index("フキダシプリセット")
-    assert labels.index("フキダシプリセット") < labels.index("リンク中のレイヤー")
+    assert labels.index("しっぽ (0)") < labels.index("フキダシプリセット")
+    assert labels.index("フキダシプリセット") < labels.index("形状")
+    assert labels.index("形状") < labels.index("リンク中のレイヤー")
+    assert "線・塗り" in labels, "線・塗りが本文列にありません"
+    assert "パス線" in labels, "パス線が一番右の列にありません"
+    assert labels.index("線・塗り") < labels.index("パス線"), (
+        "線・塗り(列2)がパス線(列3、一番右)より後になっています"
+    )
 
 
 def test_balloon_shape_preset_body_only_uses_sidebar_when_body_columns_is_empty():
@@ -683,6 +759,12 @@ def _coma_data():
 
 
 def test_coma_actual_body_puts_non_preset_settings_in_the_sidebar():
+    """サイドバー列 (col0) 内: コマ→blendファイル→形状→枠線プリセット→
+
+    リンクレイヤー。本文列 (col1、別列) は枠線→フチの順だけを検証する
+    (別列どうしの前後関係には意味が無い。RecordingLayout の説明を参照)。
+    """
+
     data = _coma_data()
     target = DETAIL.DetailTarget("coma", "coma-1", "coma:coma-1", data)
     mode = DETAIL.DetailMode.ACTUAL
@@ -692,10 +774,11 @@ def test_coma_actual_body_puts_non_preset_settings_in_the_sidebar():
     labels = [record[1] for record in layout.records if record[0] == "label"]
     assert labels.index("コマ") < labels.index("コマ用blendファイル (このコマのみ)")
     assert labels.index("コマ用blendファイル (このコマのみ)") < labels.index("形状")
-    assert labels.index("形状") < labels.index("枠線")
-    assert labels.index("枠線") < labels.index("フチ")
-    assert labels.index("フチ") < labels.index("枠線プリセット")
+    assert labels.index("形状") < labels.index("枠線プリセット")
     assert labels.index("枠線プリセット") < labels.index("リンク中のレイヤー")
+    assert "枠線" in labels
+    assert "フチ" in labels
+    assert labels.index("枠線") < labels.index("フチ")
 
 
 def test_coma_preset_body_hides_non_preset_sidebar_content():
@@ -730,6 +813,12 @@ def _fill_data():
 
 
 def test_fill_actual_body_puts_non_preset_settings_in_the_sidebar():
+    """サイドバー列 (col0) 内: 囲い塗り→配置→囲い塗りプリセット。本文列
+
+    (col1、別列) の「ベタ塗り」は存在確認だけ行う (別列どうしの前後関係
+    には意味が無い)。
+    """
+
     data = _fill_data()
     target = DETAIL.DetailTarget("fill", "fill-1", "fill:fill-1", data)
     mode = DETAIL.DetailMode.ACTUAL
@@ -738,8 +827,8 @@ def test_fill_actual_body_puts_non_preset_settings_in_the_sidebar():
 
     labels = [record[1] for record in layout.records if record[0] == "label"]
     assert labels.index("囲い塗り") < labels.index("配置")
-    assert labels.index("配置") < labels.index("ベタ塗り")
-    assert labels.index("ベタ塗り") < labels.index("囲い塗りプリセット")
+    assert labels.index("配置") < labels.index("囲い塗りプリセット")
+    assert "ベタ塗り" in labels
 
 
 def _image_path_data():
