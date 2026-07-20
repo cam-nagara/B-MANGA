@@ -124,6 +124,8 @@ def _hit_test_page(page, x_mm: float, y_mm: float) -> int | None:
     best_idx: int | None = None
     best_z: int | None = None
     for j, entry in enumerate(page.comas):
+        if bool(getattr(entry, "locked", False)):
+            continue
         if not _hit_test_coma(entry, x_mm, y_mm):
             continue
         z = int(entry.z_order)
@@ -274,7 +276,7 @@ def _iter_coma_edge_screen_candidates(context, work, area, region, rv3d):
     for page_index, page in _iter_pickable_pages(context, work, area):
         ox, oy = _page_offset_for_area(context, work, area, page_index)
         for coma_index, panel in enumerate(getattr(page, "comas", [])):
-            if not bool(getattr(panel, "visible", True)):
+            if not bool(getattr(panel, "visible", True)) or bool(getattr(panel, "locked", False)):
                 continue
             poly = _coma_polygon(panel)
             if len(poly) < 2:

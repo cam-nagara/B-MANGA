@@ -593,7 +593,10 @@ def _find_coma_at_world(
             key=lambda j: -page.comas[j].z_order,
         )
         for coma_idx in sorted_comas:
-            poly = _coma_polygon(page.comas[coma_idx])
+            panel = page.comas[coma_idx]
+            if bool(getattr(panel, "locked", False)):
+                continue
+            poly = _coma_polygon(panel)
             if not poly:
                 continue
             if _point_in_polygon((local_x, local_y), poly):

@@ -521,6 +521,8 @@ def _hit_text_entry(page, x_mm: float, y_mm: float):
     indices.extend(i for i in reversed(range(len(page.texts))) if i != active_idx)
     for idx in indices:
         entry = page.texts[idx]
+        if bool(getattr(entry, "locked", False)):
+            continue
         if not coma_hit_visibility.local_point_visible_in_entry_parent(page, entry, x_mm, y_mm):
             continue
         # フキダシと同じ仕様: 選択中のテキストだけハンドルリング分の判定域を広げる。

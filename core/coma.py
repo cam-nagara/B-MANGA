@@ -274,6 +274,11 @@ class BMangaComaEntry(bpy.types.PropertyGroup):
         default=False,
         options={"SKIP_SAVE"},
     )
+    locked: BoolProperty(  # type: ignore[valid-type]
+        name="ロック",
+        description="このコマの編集をロックします",
+        default=False,
+    )
     background_color: FloatVectorProperty(  # type: ignore[valid-type]
         name="背景色",
         description="コマ内側に敷く背景色",

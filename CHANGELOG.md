@@ -3,6 +3,83 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.2 LTS を対象としています（開発基準バージョン。5.1でも動作確認済み）。
 
+## 2026-07-20 — 全レイヤー種のロック機能を追加 (B-MANGA v0.6.561)
+
+### 症状
+
+- ロック機能がグラデーション/囲い塗り (fill)・画像・ラスター・フォルダ
+  にしかなく、フキダシ・テキスト・コマ・GP (手描き)・効果線はロックできず、
+  作業中に誤って選択・移動してしまう事故を防げなかった。
+
+### 修正
+
+- フキダシ (`core/balloon.py`)・テキスト (`core/text_entry.py`)・コマ
+  (`core/coma.py`) に `locked` プロパティを追加し、`io/schema.py` の保存・
+  読込 (JSON往復) に対応。旧作品データに `locked` キーが無い場合は False
+  として読み込む。
+- 種別横断のロックアクセサ `utils/layer_lock.py` を新設。balloon / text /
+  image / image_path / raster / fill / layer_folder / coma は
+  `target.locked`、gp / effect はオブジェクトのカスタムプロパティ
+  `bmanga_user_locked` (`utils/layer_object_model.py`) を共通インターフェース
+  で読み書きする。
+- レイヤー一覧のカード上、リンクアイコンの直後にロックアイコンを追加
+  (`panels/gpencil_panel.py` の `_draw_lock_slot`)。ロック非対応の行
+  (ページ等) も同じ幅の空スロットで桁を揃える。従来レイヤー種ごとにバラバラ
+  だった右端のロックボタン (`_draw_right_aux_lock`) は廃止し、この新スロット
+  へ一本化した。
+- レイヤーリスト右側のツール列、リンクボタンの直下に「選択レイヤーの
+  ロック切替」ボタンを追加。選択中に1件でも未ロックがあれば全ロック、
+  全ロック済みなら全解除する
+  (`operators/layer_stack_lock_op.py`: `bmanga.layer_stack_toggle_lock`
+  単一行用 / `bmanga.layer_stack_lock_selected` 一括用)。
+- ロック中のレイヤーがビューポートの選択・移動・編集対象から外れるよう、
+  各ツールの当たり判定へ `locked` 除外を追加:
+  `operators/balloon_op.py` (`_hit_balloon_collection`) /
+  `operators/text_op.py` (`_hit_text_entry`) /
+  `operators/object_tool_selection.py` (矩形選択候補・パターンカーブ当たり
+  判定) / `operators/coma_picker.py` (コマクリック判定・辺ピック候補) /
+  `operators/coma_edge_move_op.py` (`_all_coma_edges_world` 経由で辺移動・
+  隣接辺追従) / `operators/coma_vertex_edit_op.py` (ロック中コマでの起動を
+  拒否) / `operators/coma_knife_cut_op.py` (`_find_coma_at_world` 経由で
+  カット対象から除外) / `operators/effect_line_op.py`
+  (`_hit_effect_layer`)。GP は既存の `bmanga_user_locked` 連動 (`layer.lock`
+  / `hide_select`) をそのまま利用。
+
+### 変更ファイル
+
+- `core/balloon.py` / `core/text_entry.py` / `core/coma.py` — `locked`
+  プロパティ追加
+- `io/schema.py` — balloon/text/coma の `locked` 保存・読込
+- `utils/layer_lock.py` (新設) — 種別横断ロックアクセサ
+- `operators/layer_stack_lock_op.py` (新設) — 単一行/一括ロック切替
+  オペレーター、`operators/__init__.py` へ登録
+- `panels/gpencil_panel.py` — カードのロックスロット追加、旧右端ロックUI
+  廃止、ツール列にロック切替ボタン追加
+- `operators/balloon_op.py` / `operators/text_op.py` /
+  `operators/object_tool_selection.py` / `operators/coma_picker.py` /
+  `operators/coma_edge_move_op.py` / `operators/coma_vertex_edit_op.py` /
+  `operators/coma_knife_cut_op.py` / `operators/effect_line_op.py` —
+  ロック中レイヤーの選択・当たり判定除外
+- `test/blender_layer_lock_check.py` (新設) — 全種別のロック存在・スキーマ
+  往復・一括ロックの混在選択トグル・当たり判定除外・カード描画順序の回帰
+  テスト
+- `test/bmanga_ai_audit_runner.py` — 上記テストを常設監査ケースへ追加
+
+### 検証 (Blender 5.2 LTS 実機)
+
+- `test/blender_layer_lock_check.py` — PASS (新設)
+- `test/blender_layer_stack_ui_behavior_check.py` — PASS
+- `test/blender_ui_micro_behavior_matrix_check.py` — PASS (276 items, 0
+  failures)
+- `test/blender_balloon_uni_flash_check.py` — PASS
+- `test/blender_text_ime_runtime_check.py` — PASS
+- `test/blender_layer_folder_check.py` — PASS
+- `test/blender_coma_edge_highlight_check.py` — PASS
+- `test/blender_border_preset_coma_tool_check.py` — PASS
+- `test/blender_layer_stack_select_no_reparent_check.py` — PASS
+- `test/test_detail_drawer_order.py` (pytest) — 未実行 (下記「未対応事項」
+  参照。本体の実機テストで代替確認済み)
+
 ## 2026-07-20 — 線幅グラフ2件修正・フキダシ/効果線詳細の3列化・フキダシパス線追加 (B-MANGA v0.6.560)
 
 ### 症状 (線幅グラフ)

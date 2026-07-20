@@ -416,6 +416,8 @@ def _hit_balloon_collection(collection, active_idx: int, x_mm: float, y_mm: floa
         entry = collection[idx]
         if getattr(entry, "shape", "rect") == "none":
             continue
+        if bool(getattr(entry, "locked", False)):
+            continue
         if not coma_hit_visibility.local_point_visible_in_entry_parent(page, entry, x_mm, y_mm):
             continue
         part = _balloon_tail_hit_part(entry, x_mm, y_mm)

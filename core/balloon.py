@@ -959,6 +959,7 @@ class BMangaBalloonEntry(bpy.types.PropertyGroup):
     parent_key: StringProperty(name="親キー", description="レイヤー階層上の親を指すID", default="", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     folder_key: StringProperty(name="レイヤーフォルダ", description="所属するレイヤーフォルダのID (未所属なら空)", default="", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     selected: BoolProperty(name="選択", description="レイヤー一覧やビューポートでの複数選択状態 (内部管理用)", default=False, options={"SKIP_SAVE"})  # type: ignore[valid-type]
+    locked: BoolProperty(name="ロック", description="このフキダシの編集をロックします", default=False)  # type: ignore[valid-type]
 
     # 反転 / 不透明度 (Meldex flipH/flipV/opacity 相当)
     flip_h: BoolProperty(name="水平反転", description="ONでフキダシを左右反転する", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]

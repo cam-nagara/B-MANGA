@@ -837,7 +837,7 @@ def hit_image_path_at_world(context, x_mm: float, y_mm: float) -> dict | None:
     if coll is None:
         return None
     for entry in reversed(list(coll)):
-        if not bool(getattr(entry, "visible", True)):
+        if not bool(getattr(entry, "visible", True)) or bool(getattr(entry, "locked", False)):
             continue
         key = object_selection.image_path_key(entry)
         rect = selection_bounds_for_key(context, key)
@@ -939,6 +939,8 @@ def selection_bounds_for_key(context, key: str) -> Rect | None:
 
 def _iter_effect_layers_for_selection():
     for obj in layer_stack_utils._iter_effect_objects():
+        if layer_object_model.user_locked(obj):
+            continue
         layer = layer_object_model.content_layer(obj)
         if layer is not None:
             yield layer
@@ -967,6 +969,8 @@ def _iter_rect_select_candidates(context):
             }
         for text_index, entry in enumerate(reversed(list(getattr(page, "texts", []) or []))):
             actual_index = len(page.texts) - 1 - text_index
+            if bool(getattr(entry, "locked", False)):
+                continue
             key = object_selection.text_key(page, entry)
             yield {
                 "key": key,
@@ -981,6 +985,8 @@ def _iter_rect_select_candidates(context):
             }
         for balloon_index, entry in enumerate(reversed(list(getattr(page, "balloons", []) or []))):
             actual_index = len(page.balloons) - 1 - balloon_index
+            if bool(getattr(entry, "locked", False)):
+                continue
             key = object_selection.balloon_key(page, entry)
             yield {
                 "key": key,
@@ -995,7 +1001,7 @@ def _iter_rect_select_candidates(context):
             }
     for text_index, entry in enumerate(reversed(list(getattr(work, "shared_texts", []) or []))):
         actual_index = len(work.shared_texts) - 1 - text_index
-        if not bool(getattr(entry, "visible", True)):
+        if not bool(getattr(entry, "visible", True)) or bool(getattr(entry, "locked", False)):
             continue
         key = object_selection.text_key(None, entry)
         yield {
@@ -1011,7 +1017,7 @@ def _iter_rect_select_candidates(context):
         }
     for balloon_index, entry in enumerate(reversed(list(getattr(work, "shared_balloons", []) or []))):
         actual_index = len(work.shared_balloons) - 1 - balloon_index
-        if not bool(getattr(entry, "visible", True)):
+        if not bool(getattr(entry, "visible", True)) or bool(getattr(entry, "locked", False)):
             continue
         key = object_selection.balloon_key(None, entry)
         yield {
@@ -1042,7 +1048,7 @@ def _iter_rect_select_candidates(context):
         }
     scene = getattr(context, "scene", None)
     for entry in reversed(list(getattr(scene, "bmanga_image_layers", []) or [])):
-        if not bool(getattr(entry, "visible", True)):
+        if not bool(getattr(entry, "visible", True)) or bool(getattr(entry, "locked", False)):
             continue
         key = object_selection.image_key(entry)
         rect = selection_bounds_for_key(context, key)
@@ -1050,7 +1056,7 @@ def _iter_rect_select_candidates(context):
             continue
         yield {"key": key, "rect": rect, "hit": {"kind": "image", "part": "move", "key": key}}
     for entry in reversed(list(getattr(scene, "bmanga_image_path_layers", []) or [])):
-        if not bool(getattr(entry, "visible", True)):
+        if not bool(getattr(entry, "visible", True)) or bool(getattr(entry, "locked", False)):
             continue
         key = object_selection.image_path_key(entry)
         rect = selection_bounds_for_key(context, key)
@@ -1058,6 +1064,8 @@ def _iter_rect_select_candidates(context):
             continue
         yield {"key": key, "rect": rect, "hit": {"kind": "image_path", "part": "move", "key": key}}
     for obj in layer_object_model.iter_layer_objects("gp"):
+        if layer_object_model.user_locked(obj):
+            continue
         key = object_selection.gp_key(obj)
         rect = selection_bounds_for_key(context, key)
         if rect is None:
@@ -1073,7 +1081,7 @@ def _iter_rect_select_candidates(context):
             },
         }
     for entry in reversed(list(getattr(scene, "bmanga_raster_layers", []) or [])):
-        if not bool(getattr(entry, "visible", True)):
+        if not bool(getattr(entry, "visible", True)) or bool(getattr(entry, "locked", False)):
             continue
         key = object_selection.raster_key(entry)
         rect = selection_bounds_for_key(context, key)
@@ -1081,7 +1089,7 @@ def _iter_rect_select_candidates(context):
             continue
         yield {"key": key, "rect": rect, "hit": {"kind": "raster", "part": "move", "key": key}}
     for entry in reversed(list(getattr(scene, "bmanga_fill_layers", []) or [])):
-        if not bool(getattr(entry, "visible", True)):
+        if not bool(getattr(entry, "visible", True)) or bool(getattr(entry, "locked", False)):
             continue
         key = object_selection.fill_key(entry)
         rect = selection_bounds_for_key(context, key)
@@ -1093,6 +1101,8 @@ def _iter_rect_select_candidates(context):
             continue
         for coma_index, panel in enumerate(reversed(list(getattr(page, "comas", []) or []))):
             actual_index = len(page.comas) - 1 - coma_index
+            if bool(getattr(panel, "locked", False)):
+                continue
             key = object_selection.coma_key(page, panel)
             yield {
                 "key": key,
@@ -1107,7 +1117,7 @@ def _iter_rect_select_candidates(context):
             }
     for coma_index, panel in enumerate(reversed(list(getattr(work, "shared_comas", []) or []))):
         actual_index = len(work.shared_comas) - 1 - coma_index
-        if not bool(getattr(panel, "visible", True)):
+        if not bool(getattr(panel, "visible", True)) or bool(getattr(panel, "locked", False)):
             continue
         key = object_selection.coma_key(None, panel)
         yield {

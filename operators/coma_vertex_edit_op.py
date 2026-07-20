@@ -220,6 +220,9 @@ class BMANGA_OT_coma_edit_vertices(Operator):
             self.report({"WARNING"}, "コマを選択してください")
             return {"CANCELLED"}
         entry = page.comas[page.active_coma_index]
+        if bool(getattr(entry, "locked", False)):
+            self.report({"WARNING"}, "このコマはロックされています")
+            return {"CANCELLED"}
 
         # VIEW_3D の WINDOW リージョンを明示的に探して保持する.
         # N パネルのボタンから invoke すると context.region は UI リージョン

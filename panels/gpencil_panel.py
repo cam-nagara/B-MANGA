@@ -370,6 +370,29 @@ def _draw_link_state_icon(row, item) -> None:
         _draw_square_label(row)
 
 
+def _draw_lock_slot(row, item, resolved, index: int) -> None:
+    """リンクアイコンのすぐ右に固定幅で描画するロックアイコン.
+
+    ロック非対応の種別 (page 等) も同じ幅の placeholder を描画し、桁を
+    揃える (``_draw_visibility_slot`` と同じ考え方)。
+    """
+    from ..utils import layer_lock
+
+    if not layer_lock.is_lockable(item, resolved):
+        _draw_square_label(row)
+        return
+    locked = layer_lock.get_locked(item, resolved)
+    cell = row.row(align=True)
+    cell.ui_units_x = 1.0
+    op = cell.operator(
+        "bmanga.layer_stack_toggle_lock",
+        text="",
+        icon="LOCKED" if locked else "UNLOCKED",
+        emboss=False,
+    )
+    op.index = index
+
+
 def _gp_color_style(layer):
     mat = None
     try:
@@ -386,28 +409,6 @@ def _draw_square_color_prop(row, owner, prop_name: str | None = None) -> None:
         cell.label(text="")
         return
     cell.prop(owner, prop_name, text="", icon_only=True)
-
-
-def _draw_square_placeholder(row) -> None:
-    cell = row.row(align=True)
-    cell.ui_units_x = 1.0
-    cell.label(text="")
-
-
-def _draw_right_aux_lock(row, target, prop_name: str = "lock") -> None:
-    if target is None or not hasattr(target, prop_name):
-        _draw_square_placeholder(row)
-        return
-    locked = bool(getattr(target, prop_name))
-    cell = row.row(align=True)
-    cell.ui_units_x = 1.0
-    cell.prop(
-        target,
-        prop_name,
-        text="",
-        emboss=False,
-        icon="LOCKED" if locked else "UNLOCKED",
-    )
 
 
 def _draw_right_aux_coma_enter(row, index: int) -> None:
@@ -436,8 +437,6 @@ def _draw_right_controls(row, controls, index: int) -> None:
     aux = controls.get("aux")
     if aux == "coma_enter":
         _draw_right_aux_coma_enter(slots, index)
-    elif aux == "lock":
-        _draw_right_aux_lock(slots, controls.get("lock_target"), controls.get("lock_prop", "lock"))
 
 
 def _draw_stack_gp_row(row, controls, item, resolved, index: int) -> None:
@@ -453,10 +452,6 @@ def _draw_stack_gp_row(row, controls, item, resolved, index: int) -> None:
     _select_name(row, index, name, item=item, target=target)
     if item.kind == "gp":
         controls["gp_style"] = _gp_color_style(target)
-    if item.kind == "gp" and hasattr(target, "lock"):
-        controls["aux"] = "lock"
-        controls["lock_target"] = target
-        controls["lock_prop"] = "lock"
 
 
 def _draw_stack_page_row(row, item, resolved, index: int, work=None) -> None:
@@ -501,30 +496,18 @@ def _draw_stack_data_row(row, controls, item, resolved, index: int) -> None:
     if item.kind == "layer_folder":
         _draw_type_icon(row, index, "FILE_FOLDER", item=item, target=target)
         _select_name(row, index, getattr(target, "title", "") or item.label, item=item, target=target)
-        controls["aux"] = "lock"
-        controls["lock_target"] = target
-        controls["lock_prop"] = "locked"
     elif item.kind == "balloon_group":
         _draw_type_icon(row, index, "FILE_FOLDER", item=item, target=target)
         _select_name(row, index, item.label or "フキダシ結合", item=item, target=target)
     elif item.kind == "image":
         _draw_type_icon(row, index, "IMAGE_DATA", item=item, target=target)
         _select_name(row, index, getattr(target, "title", "") or item.label, item=item, target=target)
-        controls["aux"] = "lock"
-        controls["lock_target"] = target
-        controls["lock_prop"] = "locked"
     elif item.kind == "raster":
         _draw_type_icon(row, index, "BRUSH_DATA", item=item, target=target)
         _select_name(row, index, getattr(target, "title", "") or item.label, item=item, target=target)
-        controls["aux"] = "lock"
-        controls["lock_target"] = target
-        controls["lock_prop"] = "locked"
     elif item.kind == "fill":
         _draw_type_icon(row, index, "NODE_TEXTURE", item=item, target=target)
         _select_name(row, index, getattr(target, "title", "") or item.label, item=item, target=target)
-        controls["aux"] = "lock"
-        controls["lock_target"] = target
-        controls["lock_prop"] = "locked"
     elif item.kind == "balloon":
         _draw_type_icon(row, index, "MOD_FLUID", item=item, target=target)
         _select_name(
@@ -617,6 +600,7 @@ class BMANGA_UL_layer_stack(UIList):
         target = resolved.get("target") if resolved is not None else None
         _draw_visibility_slot(row, item, target, index)
         _draw_link_state_icon(row, item)
+        _draw_lock_slot(row, item, resolved, index)
         _draw_hierarchy_slot(row, item, target, index)
         left = row.row(align=True)
         left.alignment = "LEFT"
@@ -764,6 +748,7 @@ def _draw_layer_stack_box(layout, context) -> None:
         add_menu.name = "BMANGA_MT_layer_stack_add"
         tools.operator("bmanga.layer_stack_duplicate", text="", icon="DUPLICATE")
         tools.operator("bmanga.layer_stack_link_selected", text="", icon="LINKED")
+        tools.operator("bmanga.layer_stack_lock_selected", text="", icon="LOCKED")
         tools.operator("bmanga.asset_register_layers", text="", icon="ASSET_MANAGER")
         tools.operator("bmanga.layer_stack_delete", text="", icon="REMOVE")
         tools.separator()
@@ -830,6 +815,7 @@ def _draw_layer_stack_rows(layout, context, stack) -> None:
         target = resolved.get("target") if resolved is not None else None
         _draw_visibility_slot(row, item, target, index)
         _draw_link_state_icon(row, item)
+        _draw_lock_slot(row, item, resolved, index)
         _draw_hierarchy_slot(row, item, target, index)
         left = row.row(align=True)
         left.alignment = "LEFT"

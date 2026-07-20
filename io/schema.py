@@ -1230,6 +1230,7 @@ def coma_entry_to_dict(entry) -> dict[str, Any]:
         "zOrder": int(entry.z_order),
         "overlapClipping": bool(entry.overlap_clipping),
         "visible": bool(getattr(entry, "visible", True)),
+        "locked": bool(getattr(entry, "locked", False)),
         "paperVisible": bool(getattr(entry, "paper_visible", True)),
         "backgroundColor": color_to_hex(entry.background_color),
         "backgroundColorAlpha": round(entry.background_color[3], 3),
@@ -1284,6 +1285,8 @@ def coma_entry_from_dict(entry, data: dict[str, Any]) -> None:
     entry.overlap_clipping = bool(data.get("overlapClipping", True))
     if hasattr(entry, "visible"):
         entry.visible = bool(data.get("visible", True))
+    if hasattr(entry, "locked"):
+        entry.locked = bool(data.get("locked", False))
     if hasattr(entry, "paper_visible"):
         entry.paper_visible = bool(data.get("paperVisible", True))
     # 既定値を opaque (1.0) に変更 (2026-05-02 リアーキ: コマ平面 Mesh が
@@ -1346,6 +1349,7 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "meldexSourceRowId": str(getattr(entry, "meldex_source_row_id", "") or ""),
         "meldexType": str(getattr(entry, "meldex_type", "") or ""),
         "visible": bool(getattr(entry, "visible", True)),
+        "locked": bool(getattr(entry, "locked", False)),
         "shape": balloon_shapes.normalize_shape(entry.shape),
         "customPresetName": entry.custom_preset_name,
         "xMm": round(entry.x_mm, 3),
@@ -1528,6 +1532,8 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     entry.meldex_source_row_id = str(data.get("meldexSourceRowId", "") or "")
     entry.meldex_type = str(data.get("meldexType", "") or "")
     entry.visible = bool(data.get("visible", True))
+    if hasattr(entry, "locked"):
+        entry.locked = bool(data.get("locked", False))
     raw_shape = data.get("shape", entry.shape)
     legacy_flash_line_style = balloon_shapes.legacy_flash_shape_to_line_style(raw_shape)
     entry.shape = balloon_shapes.normalize_shape(raw_shape)
@@ -1814,6 +1820,7 @@ def text_entry_to_dict(entry) -> dict[str, Any]:
         "meldexSourceRowId": str(getattr(entry, "meldex_source_row_id", "") or ""),
         "meldexType": str(getattr(entry, "meldex_type", "") or ""),
         "visible": bool(getattr(entry, "visible", True)),
+        "locked": bool(getattr(entry, "locked", False)),
         "opacity": _opacity_to_data(float(getattr(entry, "opacity", 100.0))),
         "opacityUnit": "percent",
         "body": entry.body,
@@ -1897,6 +1904,8 @@ def text_entry_from_dict(entry, data: dict[str, Any]) -> None:
     entry.meldex_source_row_id = str(data.get("meldexSourceRowId", "") or "")
     entry.meldex_type = str(data.get("meldexType", "") or "")
     entry.visible = bool(data.get("visible", True))
+    if hasattr(entry, "locked"):
+        entry.locked = bool(data.get("locked", False))
     if hasattr(entry, "opacity"):
         entry.opacity = _opacity_from_data(data, "opacity", 100.0)
     entry.body = data.get("body", "")

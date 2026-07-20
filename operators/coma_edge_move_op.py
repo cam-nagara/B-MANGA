@@ -392,6 +392,8 @@ def _all_coma_edges_world(
             ox += add_x
             oy += add_y
         for panel_i, panel in enumerate(page.comas):
+            if bool(getattr(panel, "locked", False)):
+                continue
             poly = _coma_polygon(panel)
             if len(poly) < 2:
                 continue
@@ -618,6 +620,8 @@ def pick_selected_coma_edge_or_vertex(
             if key not in selected_keys:
                 continue
             if not overlay_visibility.coma_visible(panel, page=page):
+                continue
+            if bool(getattr(panel, "locked", False)):
                 continue
             poly = _coma_polygon(panel)
             if len(poly) < 2:

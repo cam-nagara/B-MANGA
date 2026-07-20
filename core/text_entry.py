@@ -289,6 +289,7 @@ class BMangaTextEntry(bpy.types.PropertyGroup):
         default=False,
         options={"SKIP_SAVE"},
     )
+    locked: BoolProperty(name="ロック", description="このテキストの編集をロックします", default=False)  # type: ignore[valid-type]
     opacity: FloatProperty(  # type: ignore[valid-type]
         name="不透明度",
         description="テキスト全体の不透明度です (%)",

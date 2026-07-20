@@ -1304,6 +1304,8 @@ def _hit_effect_layer(context, x_mm: float, y_mm: float):
 
     candidates: list[bpy.types.Object] = []
     for o in layer_object_model.iter_layer_objects("effect"):
+        if layer_object_model.user_locked(o):
+            continue
         display = None
         try:
             from ..utils import effect_line_object as _elo
