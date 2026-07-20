@@ -1263,6 +1263,41 @@ def _move_scope_indices(stack, item) -> list[int]:
     return [i for i, candidate in enumerate(stack) if _same_move_scope(item, candidate)]
 
 
+# 順序ボタンで全階層 (コマ内への出し入れ含む) を跨いで動かせる行の種類。
+# 2026-07-21 ユーザー指示: 通常レイヤーは同階層内に限定せず、レイヤーリスト上の
+# 順番だけで1行ずつ移動させ、上下の位置に応じてコマへ出し入れする。コマ/ページ
+# 行は従来どおり同階層内での並べ替えを維持する (フラット移動の対象外)。
+_FLAT_MOVE_KINDS = PAGE_COMA_CHILD_KINDS | {LAYER_FOLDER_KIND}
+
+
+def _flat_move_target_index(
+    stack,
+    from_index: int,
+    to_index: int | None = None,
+    direction: str = "",
+) -> int:
+    """全階層フラット移動 (1行送り) での着地インデックスを返す.
+
+    「前面へ (UP) / 背面へ (DOWN)」専用。呼び出し側 (``move_stack_item``) で
+    UP/DOWN 以外は従来の同階層移動へ振り分けるため、ここでは扱わない。
+    """
+    if stack is None or not (0 <= from_index < len(stack)):
+        return -1
+    n = len(stack)
+    if not direction:
+        if to_index is None:
+            return -1
+        direction = _direction_from_target_index(from_index, int(to_index), n)
+    direction = str(direction or "").upper()
+    # 移動する行がコンテナ (フォルダ) の場合、配下の子行ごと1つの塊として扱う。
+    block_end = _stack_subtree_end_index(stack, from_index)
+    if direction == "UP":
+        return from_index - 1 if from_index > 0 else -1
+    if direction == "DOWN":
+        return block_end + 1 if block_end < n - 1 else -1
+    return -1
+
+
 def _direction_from_target_index(from_index: int, to_index: int, stack_len: int) -> str:
     if to_index <= 0:
         return "FRONT"
@@ -1450,7 +1485,7 @@ def _apply_stack_drop_hint(context, moved_uid: str, *, nesting_delta: int = 0) -
     kind = getattr(item, "kind", "")
     if kind == COMA_PREVIEW_KIND:
         return False
-    if kind not in {COMA_KIND, "gp", "effect", "raster", "image", "image_path", "balloon", "text", LAYER_FOLDER_KIND}:
+    if kind not in ({COMA_KIND, LAYER_FOLDER_KIND} | PAGE_COMA_CHILD_KINDS):
         return False
     parent_key = _drop_parent_from_nesting_delta(stack, item, moved_index, nesting_delta)
     old_parent_key = str(getattr(item, "parent_key", "") or "")
@@ -2956,7 +2991,22 @@ def move_stack_item(
         return False
     if not (0 <= from_index < len(stack)):
         return False
-    target_index = _target_index_for_stack_move(stack, from_index, to_index, direction)
+    moved_kind = str(getattr(stack[from_index], "kind", "") or "")
+    if direction:
+        eff_dir = str(direction).upper()
+    elif to_index is not None:
+        eff_dir = _direction_from_target_index(from_index, int(to_index), len(stack))
+    else:
+        eff_dir = ""
+    # 「前面へ / 背面へ」(1行送り) のみ、通常レイヤーを全階層リスト順で動かし、
+    # 着地位置に応じてコマへ出し入れする。「最前面 / 最背面」は従来どおり
+    # そのレイヤーの階層内の端まで移動 (コマ背面へ送る操作を残し、レイヤーが
+    # 意図せずアウトサイドへ抜けるのも防ぐ。2026-07-21 ユーザー指示)。
+    flat = moved_kind in _FLAT_MOVE_KINDS and eff_dir in {"UP", "DOWN"}
+    if flat:
+        target_index = _flat_move_target_index(stack, from_index, to_index, direction)
+    else:
+        target_index = _target_index_for_stack_move(stack, from_index, to_index, direction)
     if target_index < 0 or from_index == target_index:
         return False
     moved_uid = stack_item_uid(stack[from_index])
@@ -2964,12 +3014,16 @@ def move_stack_item(
     moved_index = _find_stack_index_by_uid(stack, moved_uid)
     if moved_index >= 0:
         set_active_stack_index_silently(context, moved_index)
+    if flat:
+        # 新しい平坦位置 (直上の行) から親を推定して付け替える。これにより
+        # レイヤーをコマの中へ入れたり、コマの外へ出したりできる (UIList D&D と
+        # 同じ親推定ロジックを再利用)。
+        _apply_stack_drop_hint(context, moved_uid, nesting_delta=0)
     apply_stack_order(context)
     # 選択更新 (active index の update コールバック) より前に、木構造の正規化と
     # 既知シグネチャの記録を済ませる。後回しにすると、コールバック内の
     # apply_stack_order_if_ui_changed が順序ボタンの移動を UIList D&D と誤認し、
-    # _apply_stack_drop_hint が「直上の行の親」へ勝手に親変更してしまう
-    # (例: テキストを最背面へ→直上がコマ子行→テキストがコマへ入る)。
+    # _apply_stack_drop_hint が二重に走って想定外の親変更を招く。
     sync_layer_stack(context, preserve_active_index=True)
     remember_layer_stack_signature(context)
     _select_stack_item_after_move(context, moved_uid)

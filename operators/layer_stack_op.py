@@ -598,6 +598,10 @@ class BMANGA_MT_layer_stack_add(Menu):
     def draw(self, _context):
         layout = self.layout
         for kind, label, _desc in _ADD_KIND_ITEMS:
+            # レイヤーリストの＋からはページを追加させない (ページ追加はページ
+            # パネル側の操作に限定する。2026-07-21 ユーザー指示)。
+            if kind == "page":
+                continue
             if kind == "raster":
                 layout.menu(
                     "BMANGA_MT_layer_stack_add_raster",

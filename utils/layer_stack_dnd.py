@@ -86,6 +86,7 @@ def child_can_use_semantic_parent(child_kind: str) -> bool:
         "raster",
         "image",
         "image_path",
+        "fill",
         "balloon",
         "text",
     }
