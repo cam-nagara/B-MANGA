@@ -3,6 +3,53 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.2 LTS を対象としています（開発基準バージョン。5.1でも動作確認済み）。
 
+## 2026-07-20 — GP/ラスター両レイヤーで描画が一切できない不具合を修正 (B-MANGA v0.6.562)
+
+### 症状
+
+- グリースペンシルレイヤー・ラスターレイヤーのどちらでも、ペン/マウスで
+  何も描画できなくなっていた（EXEC 経由のプログラム的な描画は成功するが、
+  対話的なクリック/ドラッグ操作だけが効かない状態）。
+
+### 原因
+
+- Blender のユーザーキーコンフィグ (userpref.blend) 側で、ペイント系
+  キーマップの LEFTMOUSE エントリが `active=False` (無効) のまま保存されて
+  いた。影響を受けていたのは `Image Paint` の `paint.image_paint`
+  （ラスター描画）、`Grease Pencil Brush Stroke` の
+  `grease_pencil.brush_stroke`（GP描画）ほか、GP の Sculpt/Vertex/Weight/
+  Fill 系ストロークも含む計 41 件。default keyconfig では全て有効だった
+  ため、B-MANGA 自体のキーマップ登録処理が原因ではなく、他アドオンの干渉
+  または過去の保存タイミングでの破損と推定される（根本原因は未特定 —
+  `AGENT_INBOX.md` に追跡事項として記録)。
+- 副次的に、ラスター描画への入場処理 (`raster_layer_paint_enter`) が
+  `image_paint.mode` を明示的に `'IMAGE'` へ設定しておらず、既定の
+  `'MATERIAL'` のままだった点も、対話的な描画が正しいキャンバスに反映され
+  ない一因になり得たため合わせて修正した。
+
+### 修正
+
+- `keymap/keymap.py`: 新設 `ensure_paint_brush_strokes_enabled()` が
+  `Image Paint` / `Grease Pencil Brush Stroke` / `Grease Pencil Draw Mode`
+  ほか GP 系ペイントキーマップの LEFTMOUSE エントリを、default keyconfig
+  と照合して不整合なら自動修復する。既存の
+  `ensure_standard_view_toggles_enabled` / `repair_stale_disabled_shortcuts`
+  と同じ 3 箇所 (`register()` / watcher のキーマップ再作成時 /
+  `rebuild_keymap_from_prefs()`) から呼び出し、アドオン読込のたびに自己
+  修復する。
+- `operators/raster_layer_op.py`: `BMANGA_OT_raster_layer_paint_enter` で
+  `image_paint.canvas` の設定を `TEXTURE_PAINT` モード切替後に移動し、
+  `image_paint.mode = 'IMAGE'` と `image_paint.use_occlude = False` を
+  明示設定するよう変更 (`BMANGA_OT_raster_layer_mode_set` 経由の切替にも
+  同じ修正が適用される)。
+
+### 変更ファイル
+
+- `keymap/keymap.py` — `ensure_paint_brush_strokes_enabled()` 新設・3箇所
+  から呼び出し
+- `operators/raster_layer_op.py` — `BMANGA_OT_raster_layer_paint_enter`
+  のペイント設定順序・明示値を修正
+
 ## 2026-07-20 — 全レイヤー種のロック機能を追加 (B-MANGA v0.6.561)
 
 ### 症状

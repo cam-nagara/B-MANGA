@@ -1171,23 +1171,22 @@ class BMANGA_OT_raster_layer_paint_enter(Operator):
         obj.select_set(True)
         context.scene.bmanga_active_raster_layer_index = idx
         context.scene.bmanga_active_layer_kind = "raster"
-        paint = getattr(context.tool_settings, "image_paint", None)
-        if paint is not None:
-            try:
-                paint.canvas = image
-            except Exception:  # noqa: BLE001
-                pass
         force_active_brush_grayscale(context)
         try:
             bpy.ops.object.mode_set(mode="TEXTURE_PAINT")
         except Exception as exc:  # noqa: BLE001
             self.report({"WARNING"}, f"Texture Paintへ切替できません: {exc}")
             return {"CANCELLED"}
+        paint = getattr(context.tool_settings, "image_paint", None)
+        if paint is not None:
+            try:
+                paint.mode = "IMAGE"
+                paint.canvas = image
+                paint.use_occlude = False
+            except Exception:  # noqa: BLE001
+                pass
         force_active_brush_grayscale(context)
         _start_brush_grayscale_timer()
-        # 3D ビューをマテリアルプレビューに切替えて、Image Texture (= 描いた
-        # ピクセル) が即座に見える状態にする。Solid モードでは Image Texture
-        # が反映されず「描いても見えない」状態になるため。
         try:
             for area in context.screen.areas if context.screen else ():
                 if area.type != "VIEW_3D":

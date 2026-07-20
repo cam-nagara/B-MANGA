@@ -908,6 +908,65 @@ def ensure_standard_view_toggles_enabled() -> int:
     return repaired
 
 
+def ensure_paint_brush_strokes_enabled() -> int:
+    """ペイント系キーマップの LEFTMOUSE ブラシストロークが無効なら修復する.
+
+    user keyconfig で paint.image_paint / grease_pencil.brush_stroke 等の
+    LEFTMOUSE エントリが inactive になると、ペン/マウスで一切描画できなくなる。
+    default keyconfig では active なのに user 側で inactive になっている項目を
+    修復する。原因は userpref.blend への不正な保存や他アドオンの干渉。
+    """
+    wm = bpy.context.window_manager
+    if wm is None:
+        return 0
+    user_kc = getattr(wm.keyconfigs, "user", None)
+    default_kc = getattr(wm.keyconfigs, "default", None)
+    if user_kc is None or default_kc is None:
+        return 0
+    _PAINT_KEYMAPS = {
+        "Image Paint",
+        "Grease Pencil Brush Stroke",
+        "Grease Pencil Draw Mode",
+        "Grease Pencil Sculpt Mode",
+        "Grease Pencil Vertex Paint",
+        "Grease Pencil Weight Paint",
+        "Grease Pencil Fill Tool",
+    }
+    _PAINT_IDNAMES = {
+        "paint.image_paint",
+        "grease_pencil.brush_stroke",
+        "grease_pencil.sculpt_paint",
+        "grease_pencil.vertex_brush_stroke",
+        "grease_pencil.weight_brush_stroke",
+        "grease_pencil.fill",
+    }
+    repaired = 0
+    for km_user in user_kc.keymaps:
+        if km_user.name not in _PAINT_KEYMAPS:
+            continue
+        km_default = default_kc.keymaps.get(km_user.name)
+        if km_default is None:
+            continue
+        for kmi in km_user.keymap_items:
+            try:
+                if kmi.type != "LEFTMOUSE" or kmi.active:
+                    continue
+                if kmi.idname not in _PAINT_IDNAMES:
+                    continue
+                if _default_counterpart_active(km_default, kmi, kmi.idname):
+                    kmi.active = True
+                    repaired += 1
+                    _logger.info(
+                        "re-enabled paint stroke: km=%r idname=%r",
+                        km_user.name, kmi.idname,
+                    )
+            except (ReferenceError, AttributeError):
+                continue
+    if repaired:
+        _logger.info("re-enabled %d paint stroke kmi", repaired)
+    return repaired
+
+
 def _default_counterpart_active(default_km, kmi, idname: str) -> bool:
     """default keyconfig 側の同一キー項目が Blender 既定で有効かを返す.
 
@@ -1101,6 +1160,7 @@ def _watch_bmanga_tab() -> Optional[float]:
             if km is not None:
                 ensure_standard_view_toggles_enabled()
                 repair_stale_disabled_shortcuts()
+                ensure_paint_brush_strokes_enabled()
                 _logger.info(
                     "bmanga keymap recreated by watcher (items=%d)",
                     len(state.bmanga_items),
@@ -1250,6 +1310,9 @@ def register() -> None:
     # 過去セッションの衝突退避 (F/K/O/T 等) が userpref.blend に焼き付いて
     # いれば有効へ戻す。編集モードの F/K/O が効かなくなる事故の自己修復。
     repair_stale_disabled_shortcuts()
+    # ペイント系 LEFTMOUSE ストロークが userpref.blend に inactive で保存
+    # されていると GP/ラスター描画が一切できなくなる — default に合わせて修復。
+    ensure_paint_brush_strokes_enabled()
     # register 時点でもサイドバー状態を見て active を合わせる。
     # B-MANGA タブが表示されていない間は Blender 標準キーへ戻す。
     _apply_visibility_state(_state, bool(keymap_enabled and _any_bmanga_tab_active()))
@@ -1311,6 +1374,7 @@ def rebuild_keymap_from_prefs() -> None:
         state.create_bmanga_keymap()
         ensure_standard_view_toggles_enabled()
         repair_stale_disabled_shortcuts()
+        ensure_paint_brush_strokes_enabled()
         from ..preferences import get_preferences
         prefs = get_preferences()
         keymap_enabled = True if prefs is None else bool(prefs.keymap_enabled)
