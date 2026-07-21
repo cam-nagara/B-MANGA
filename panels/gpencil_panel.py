@@ -21,6 +21,7 @@ from . import layer_stack_detail_ui
 B_NAME_CATEGORY = "B-MANGA"
 _GP_OBJECT_TYPE = "GREASEPENCIL"
 _GP_PAINT_MODE = "PAINT_GREASE_PENCIL"
+_GP_SCULPT_MODE = "SCULPT_GREASE_PENCIL"
 _GP_EDIT_MODE = "EDIT"
 _GP_OBJECT_MODE = "OBJECT"
 _LAYER_STACK_DEFAULT_ROWS = 6
@@ -1014,6 +1015,8 @@ class BMANGA_OT_gpencil_master_mode_set(bpy.types.Operator):
             return "オブジェクトツールに切り替えます"
         if mode == "PAINT_GREASE_PENCIL":
             return "描画ツールに切り替えます"
+        if mode == "SCULPT_GREASE_PENCIL":
+            return "グリースペンシルスカルプトモードに切り替えます"
         if mode == "EDIT":
             return "グリースペンシル編集モードに切り替えます"
         return "B-MANGAツールを切り替えます"
@@ -1043,7 +1046,7 @@ class BMANGA_OT_gpencil_master_mode_set(bpy.types.Operator):
                     coma_modal_state.exit_drawing_mode(context)
         except Exception:  # noqa: BLE001
             pass
-        if self.mode in {_GP_PAINT_MODE, _GP_EDIT_MODE}:
+        if self.mode in {_GP_PAINT_MODE, _GP_SCULPT_MODE, _GP_EDIT_MODE}:
             obj = _activate_gp_layer_for_tool(context)
             if obj is None:
                 self.report({"WARNING"}, "グリースペンシルレイヤーを選択してください")
@@ -1063,7 +1066,7 @@ class BMANGA_OT_gpencil_master_mode_set(bpy.types.Operator):
             except Exception:  # noqa: BLE001
                 pass
         # 既に別オブジェクトで描画モードの場合は一旦 OBJECT へ戻す
-        if obj is not None and self.mode in {_GP_PAINT_MODE, _GP_EDIT_MODE}:
+        if obj is not None and self.mode in {_GP_PAINT_MODE, _GP_SCULPT_MODE, _GP_EDIT_MODE}:
             try:
                 if getattr(obj, "mode", "OBJECT") != "OBJECT":
                     bpy.ops.object.mode_set(mode="OBJECT")
@@ -1074,8 +1077,8 @@ class BMANGA_OT_gpencil_master_mode_set(bpy.types.Operator):
         except Exception as exc:  # noqa: BLE001
             self.report({"WARNING"}, f"モード切替失敗: {exc}")
             return {"CANCELLED"}
-        # GP 描画モードではストロークが見えるよう Material Preview 以上に切替え
-        if self.mode == _GP_PAINT_MODE:
+        # GP 描画・スカルプトモードではストロークが見えるよう Material Preview 以上に切替え
+        if self.mode in {_GP_PAINT_MODE, _GP_SCULPT_MODE}:
             try:
                 for area in context.screen.areas if context.screen else ():
                     if area.type != "VIEW_3D":

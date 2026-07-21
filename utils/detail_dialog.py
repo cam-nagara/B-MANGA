@@ -92,6 +92,7 @@ _PROFILE_COLUMNS = {
     "page": 1,
     "coma": 2,
     "gp": 2,
+    "gp_tool": 2,
     "layer_folder": 1,
     "image": 2,
     "image_path": 2,
@@ -128,6 +129,7 @@ PRESET_KIND_TO_DETAIL_KIND: Mapping[str, str] = MappingProxyType(
         "image_path": "image_path",
         "balloon": "balloon_shape",
         "tail": "balloon_tail",
+        "gp_tool": "gp_tool",
     }
 )
 

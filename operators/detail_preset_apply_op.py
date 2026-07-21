@@ -169,6 +169,7 @@ def _list_presets(context, preset_type: str):
         border_presets,
         effect_line_presets,
         fill_presets,
+        gp_tool_presets,
         gradient_presets,
         image_path_presets,
         text_presets,
@@ -183,6 +184,7 @@ def _list_presets(context, preset_type: str):
         "gradient": lambda: gradient_presets.list_all_presets(work_dir),
         "image_path": lambda: image_path_presets.list_all_presets(work_dir),
         "balloon": lambda: balloon_presets.list_all_presets(work_dir),
+        "gp_tool": lambda: gp_tool_presets.list_all_presets(work_dir),
     }
     callback = callbacks.get(preset_type)
     return list(callback() if callback is not None else ())

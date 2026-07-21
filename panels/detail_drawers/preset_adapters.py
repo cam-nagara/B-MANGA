@@ -41,6 +41,12 @@ _SPECS = {
         "FORCE_FORCE",
         "bmanga.effect_line_preset",
     ),
+    "gp_tool": PresetUiSpec(
+        "gp_tool",
+        "グリースペンシルツールプリセット",
+        "GREASEPENCIL",
+        "bmanga.gp_tool_preset",
+    ),
 }
 
 

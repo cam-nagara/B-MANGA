@@ -393,6 +393,11 @@ class BMangaPreferences(bpy.types.AddonPreferences):
         default="集中線",
         options={"HIDDEN"},
     )
+    last_gp_tool_preset: StringProperty(  # type: ignore[valid-type]
+        name="前回のグリースペンシルツールプリセット",
+        default="ブラシ（標準）",
+        options={"HIDDEN"},
+    )
 
     page_preview_resolution_percentage: FloatProperty(  # type: ignore[valid-type]
         name="プレビュー画像縮小率",

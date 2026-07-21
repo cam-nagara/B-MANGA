@@ -39,7 +39,21 @@ _TOOL_TO_PRESET_TYPE = {
     "fill_tool": "fill",
     "gradient_tool": "gradient",
     "image_path_tool": "image_path",
+    # "gp_tool" はモーダルツールではなく GP 描画/スカルプトモードで判定する
+    # (_gp_tool_mode_active)。この表は表示するプリセット種別の解決にも使う。
+    "gp_tool": "gp_tool",
 }
+
+_GP_TOOL_MODES = {"PAINT_GREASE_PENCIL", "SCULPT_GREASE_PENCIL"}
+
+
+def _gp_tool_mode_active(context) -> bool:
+    """GP描画ツール (描画/スカルプトモード) が使用中かを返す."""
+    view_objects = getattr(getattr(context, "view_layer", None), "objects", None)
+    obj = getattr(view_objects, "active", None) if view_objects is not None else None
+    if obj is None or getattr(obj, "type", "") != "GREASEPENCIL":
+        return False
+    return str(getattr(obj, "mode", "") or "") in _GP_TOOL_MODES
 
 _last_preset_tool: str = ""
 
@@ -207,9 +221,13 @@ def _draw_tool_preset_list(layout, context) -> None:
     # 現在アクティブなツールを検出し記憶する
     current_tool = ""
     for tool_name in _TOOL_TO_PRESET_TYPE:
+        if tool_name == "gp_tool":
+            continue
         if coma_modal_state.is_active(tool_name):
             current_tool = tool_name
             break
+    if not current_tool and _gp_tool_mode_active(context):
+        current_tool = "gp_tool"
 
     if current_tool:
         _last_preset_tool = current_tool

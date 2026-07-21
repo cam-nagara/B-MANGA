@@ -96,6 +96,15 @@ _PRESET_CONFIGS = {
         "has_move": False,
         "has_save": False,
     },
+    "gp_tool": {
+        "label": "グリースペンシルツールプリセット",
+        "icon": "GREASEPENCIL",
+        "selector_attr": "bmanga_gp_tool_preset_selector",
+        "op_prefix": "bmanga.gp_tool_preset",
+        "has_move": True,
+        "has_save": True,
+        "save_op": "bmanga.gp_tool_preset_save",
+    },
     "export": {
         "label": "書き出しプリセット",
         "icon": "RENDER_STILL",

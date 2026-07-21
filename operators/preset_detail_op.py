@@ -43,6 +43,7 @@ from ..core.balloon import BMangaBalloonTail
 from ..core.coma_border import BMangaComaBorder, BMangaComaWhiteMargin
 from ..core.effect_line import BMangaEffectLineParams
 from ..core.fill_layer import BMangaFillLayer
+from ..core.gp_tool import BMangaGpToolSettings
 from ..core.image_path_layer import BMangaImagePathLayer
 from ..core.text_entry import BMangaTextEntry
 from ..utils import detail_popup, log
@@ -134,6 +135,7 @@ _SCRATCH_WM_PROPS: tuple[tuple[str, type], ...] = (
     ("bmanga_preset_scratch_gradient", BMangaFillLayer),
     ("bmanga_preset_scratch_image_path", BMangaImagePathLayer),
     ("bmanga_preset_scratch_tail", BMangaBalloonTail),
+    ("bmanga_preset_scratch_gp_tool", BMangaGpToolSettings),
 )
 
 
@@ -300,6 +302,26 @@ def _save_image_path(context, preset_name: str, description: str) -> None:
     image_path_presets.save_local_preset(None, scratch, preset_name, description)
 
 
+def _load_gp_tool(context, preset_name: str) -> str | None:
+    from ..io import gp_tool_presets
+
+    preset = gp_tool_presets.load_preset_by_name(preset_name, None)
+    if preset is None:
+        return None
+    scratch = context.window_manager.bmanga_preset_scratch_gp_tool
+    _reset_props(scratch)
+    gp_tool_presets.apply_to_entry(scratch, preset.data)
+    return str(preset.data.get("description", "") or "")
+
+
+def _save_gp_tool(context, preset_name: str, description: str) -> None:
+    from ..io import gp_tool_presets
+
+    scratch = context.window_manager.bmanga_preset_scratch_gp_tool
+    data = gp_tool_presets.snapshot_from_entry(scratch)
+    gp_tool_presets.save_local_preset(preset_name, description, data)
+
+
 def _load_tail(context, preset_name: str) -> str | None:
     from ..io import tail_presets
 
@@ -357,6 +379,7 @@ _LOADERS: dict[str, _LoaderFn] = {
     "gradient": _load_gradient,
     "image_path": _load_image_path,
     "tail": _load_tail,
+    "gp_tool": _load_gp_tool,
 }
 _SAVERS: dict[str, _SaverFn] = {
     "border": _save_border,
@@ -366,6 +389,7 @@ _SAVERS: dict[str, _SaverFn] = {
     "gradient": _save_gradient,
     "image_path": _save_image_path,
     "tail": _save_tail,
+    "gp_tool": _save_gp_tool,
 }
 
 
@@ -378,6 +402,7 @@ _PRESET_SCRATCH_ATTRS = {
     "gradient": "bmanga_preset_scratch_gradient",
     "image_path": "bmanga_preset_scratch_image_path",
     "tail": "bmanga_preset_scratch_tail",
+    "gp_tool": "bmanga_preset_scratch_gp_tool",
 }
 
 

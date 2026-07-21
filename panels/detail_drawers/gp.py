@@ -1,8 +1,8 @@
-"""1オブジェクト＝1レイヤーのGP詳細描画。"""
+"""1オブジェクト＝1レイヤーのGP詳細描画と、GPツールプリセット詳細描画。"""
 
 from __future__ import annotations
 
-from .basic import body_columns, has_field, prop_if
+from .basic import body_columns, has_field, prop_if, value
 
 
 def draw_gp_body(layout, _context, session, _mode) -> None:
@@ -50,4 +50,81 @@ def _grease_pencil_style(obj):
     return style
 
 
-__all__ = ["draw_gp_body"]
+def _size_strength_rows(box, settings) -> None:
+    row = box.row(align=True)
+    prop_if(row, settings, "size", text="サイズ")
+    prop_if(row, settings, "use_size_pressure", text="", icon="STYLUS_PRESSURE")
+    row = box.row(align=True)
+    prop_if(row, settings, "strength", text="強さ", slider=True)
+    prop_if(row, settings, "use_strength_pressure", text="", icon="STYLUS_PRESSURE")
+
+
+def draw_gp_tool_body(sidebar_top, _sidebar_below, body_cols, _context, session, _mode) -> None:
+    """グリースペンシルツールプリセットの機能選択と詳細設定を描画する。
+
+    他ツールのプリセットと違い、保存対象はレイヤー設定ではなく Blender の
+    ドローモード各ツール (ブラシ / フィル / トリム / 消しゴム / グラブ) の
+    設定である。適用するとモード・ツール・ブラシが切り替わる。
+    """
+
+    settings = session.target.data
+    body = body_cols[0] if body_cols else sidebar_top
+
+    tool_box = body.box()
+    tool_box.label(text="機能", icon="TOOL_SETTINGS")
+    tool_column = tool_box.column(align=True)
+    tool_column.prop(settings, "tool", expand=True)
+
+    tool = str(value(settings, "tool", "brush") or "brush")
+    detail_box = body.box()
+    if tool == "brush":
+        detail_box.label(text="ブラシ設定", icon="BRUSH_DATA")
+        prop_if(detail_box, settings, "brush_asset", text="使用ブラシ")
+        _size_strength_rows(detail_box, settings)
+        prop_if(detail_box, settings, "stroke_type", text="ストロークタイプ")
+        row = detail_box.row(align=True)
+        row.label(text="キャップ")
+        prop_if(row, settings, "caps_type", text="キャップ", expand=True)
+        prop_if(detail_box, settings, "hardness", text="硬さ", slider=True)
+        prop_if(detail_box, settings, "use_smooth_stroke", text="手ブレ補正")
+        smooth_row = detail_box.row(align=True)
+        smooth_row.active = bool(value(settings, "use_smooth_stroke", False))
+        prop_if(smooth_row, settings, "smooth_stroke_factor", text="補正の強さ", slider=True)
+    elif tool == "fill":
+        detail_box.label(text="フィル設定", icon="SNAP_FACE")
+        row = detail_box.row(align=True)
+        row.label(text="方向")
+        prop_if(row, settings, "fill_direction", text="方向", expand=True)
+        prop_if(detail_box, settings, "fill_solver", text="計算方式")
+        if str(value(settings, "fill_solver", "DELAUNAY") or "") == "PIXEL":
+            prop_if(detail_box, settings, "fill_factor", text="精度")
+            prop_if(detail_box, settings, "fill_dilate", text="拡張")
+        prop_if(detail_box, settings, "size", text="線の太さ")
+        prop_if(detail_box, settings, "fill_extend_factor", text="すき間閉じサイズ")
+        extend_row = detail_box.row(align=True)
+        extend_row.active = float(value(settings, "fill_extend_factor", 0.0) or 0.0) > 0.0
+        prop_if(extend_row, settings, "fill_extend_mode", text="閉じ方")
+    elif tool == "trim":
+        detail_box.label(text="トリム設定", icon="GREASEPENCIL")
+        prop_if(detail_box, settings, "use_active_layer_only", text="アクティブレイヤーのみ")
+        prop_if(detail_box, settings, "use_keep_caps", text="キャップを保持")
+        note = detail_box.column(align=True)
+        note.enabled = False
+        note.label(text="ドラッグした線でストロークを切り取ります")
+    elif tool == "erase":
+        detail_box.label(text="消しゴム設定", icon="GREASEPENCIL")
+        row = detail_box.row(align=True)
+        prop_if(row, settings, "eraser_mode", text="消しゴムモード", expand=True)
+        _size_strength_rows(detail_box, settings)
+        prop_if(detail_box, settings, "use_active_layer_only", text="アクティブレイヤーのみ")
+        if str(value(settings, "eraser_mode", "HARD") or "") in {"HARD", "SOFT"}:
+            prop_if(detail_box, settings, "use_keep_caps", text="キャップを保持")
+    elif tool == "grab":
+        detail_box.label(text="グラブ設定", icon="VIEW_PAN")
+        _size_strength_rows(detail_box, settings)
+        note = detail_box.column(align=True)
+        note.enabled = False
+        note.label(text="スカルプトモードでストロークをつかんで動かします")
+
+
+__all__ = ["draw_gp_body", "draw_gp_tool_body"]

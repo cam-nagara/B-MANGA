@@ -20,6 +20,7 @@ _TYPE_ICON = {
     "gradient": "NODE_TEXTURE",
     "image_path": "CURVE_BEZCURVE",
     "tail": "SHARPCURVE",
+    "gp_tool": "GREASEPENCIL",
     "export": "RENDER_STILL",
 }
 
@@ -79,6 +80,7 @@ _SELECTOR_ATTRS = {
     "gradient": "bmanga_gradient_tool_preset_selector",
     "image_path": "bmanga_image_path_tool_preset_selector",
     "tail": "bmanga_tail_preset_selector",
+    "gp_tool": "bmanga_gp_tool_preset_selector",
     "export": "bmanga_export_preset_selector",
 }
 
@@ -98,6 +100,7 @@ def _ensure_getters():
         "fill": preset_op._fill_tool_preset_enum_items,
         "gradient": preset_op._gradient_tool_preset_enum_items,
         "image_path": preset_op._image_path_tool_preset_enum_items,
+        "gp_tool": preset_op._gp_tool_preset_enum_items,
         "effect_line": effect_line_preset_op._effect_line_tool_preset_enum_items,
         "tail": balloon_tail_detail_op._tail_preset_enum_items,
         "export": export_preset_op._export_preset_enum_items,

@@ -1092,6 +1092,42 @@ def _image_path_tool_preset_enum_items(_self, context):
     return _IMAGE_PATH_TOOL_ENUM_CACHE
 
 
+_GP_TOOL_ENUM_CACHE: list[tuple[str, str, str]] = []
+
+
+def _gp_tool_preset_enum_items(_self, _context):
+    global _GP_TOOL_ENUM_CACHE
+    try:
+        from ..io import gp_tool_presets
+        items = [(p.name, p.name, p.description or "") for p in gp_tool_presets.list_all_presets()]
+    except Exception:  # noqa: BLE001
+        items = []
+    if not items:
+        items.append(("NONE", "—", ""))
+    _GP_TOOL_ENUM_CACHE = items
+    return _GP_TOOL_ENUM_CACHE
+
+
+def _on_gp_tool_preset_selector_change(self, context):
+    value = str(getattr(self, "bmanga_gp_tool_preset_selector", "") or "")
+    _remember_tool_preset(context, "last_gp_tool_preset", value)
+    _apply_gp_tool_preset_to_context(context, value)
+
+
+def _apply_gp_tool_preset_to_context(context, name: str) -> None:
+    """選択したグリースペンシルツールプリセットを Blender のツール状態へ適用する."""
+    if _selector_apply_suppressed() or not name or name == "NONE":
+        return
+    try:
+        from . import gp_tool_preset_op
+
+        gp_tool_preset_op.apply_gp_tool_preset(context, name)
+    except Exception:  # noqa: BLE001
+        _logger.exception("gp tool preset apply via selector failed")
+        return
+    _logger.info("gp tool preset applied via selector: %s", name)
+
+
 def _on_fill_tool_preset_selector_change(self, context):
     value = str(getattr(self, "bmanga_fill_tool_preset_selector", "") or "")
     _remember_tool_preset(context, "last_fill_tool_preset", value)
@@ -1501,6 +1537,12 @@ def restore_tool_preset_selectors(context) -> None:
             getattr(prefs, "last_image_path_tool_preset", ""),
             _image_path_tool_preset_enum_items,
         )
+        _restore_selector_if_valid(
+            context,
+            "bmanga_gp_tool_preset_selector",
+            getattr(prefs, "last_gp_tool_preset", ""),
+            _gp_tool_preset_enum_items,
+        )
     finally:
         _SUPPRESS_TOOL_PRESET_REMEMBER = False
 
@@ -1550,6 +1592,12 @@ def register() -> None:
         items=_image_path_tool_preset_enum_items,
         update=_on_image_path_tool_preset_selector_change,
     )
+    bpy.types.WindowManager.bmanga_gp_tool_preset_selector = EnumProperty(
+        name="グリースペンシルツールプリセット",
+        description="グリースペンシルの機能 (ブラシ / フィル / トリム / 消しゴム / グラブ) とツール設定を選択して即時適用",
+        items=_gp_tool_preset_enum_items,
+        update=_on_gp_tool_preset_selector_change,
+    )
     try:
         restore_tool_preset_selectors(bpy.context)
     except Exception:  # noqa: BLE001
@@ -1583,6 +1631,10 @@ def unregister() -> None:
         pass
     try:
         del bpy.types.WindowManager.bmanga_image_path_tool_preset_selector
+    except AttributeError:
+        pass
+    try:
+        del bpy.types.WindowManager.bmanga_gp_tool_preset_selector
     except AttributeError:
         pass
     for cls in reversed(_CLASSES):
