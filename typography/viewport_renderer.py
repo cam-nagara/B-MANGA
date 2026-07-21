@@ -13,6 +13,7 @@ import math
 import blf
 
 from ..utils import log
+from ..utils.blf_safety import finite_xy, safe_text_px_size
 from ..utils.geom import mm_to_pt, pt_to_mm
 from .layout import TypesetResult
 
@@ -37,12 +38,14 @@ def render_placements(
     blf.color(font_id, color[0], color[1], color[2], color[3])
     rotated = False
     for g in result.placements:
-        size_px = g.size_pt * view_to_screen_px_per_mm * 25.4 / 72.0
-        if size_px <= 0:
+        size_px = safe_text_px_size(g.size_pt * view_to_screen_px_per_mm * 25.4 / 72.0)
+        if size_px is None:
             continue
         blf.size(font_id, max(1, int(size_px)))
         screen_x = origin_screen_xy[0] + (g.x_mm + g.offset_x_mm) * view_to_screen_px_per_mm
         screen_y = origin_screen_xy[1] + (g.y_mm + g.offset_y_mm) * view_to_screen_px_per_mm
+        if not finite_xy(screen_x, screen_y):
+            continue
         if g.rotation_deg != 0.0:
             blf.enable(font_id, blf.ROTATION)
             theta = math.radians(g.rotation_deg)

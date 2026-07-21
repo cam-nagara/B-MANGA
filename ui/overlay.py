@@ -28,6 +28,7 @@ from ..core.mode import MODE_PAGE, MODE_COMA, get_mode
 from ..core.work import get_active_page, get_work
 from ..utils import (
     balloon_shapes,
+    blf_safety,
     border_geom,
     free_transform,
     log,
@@ -957,7 +958,9 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
         )
         if coord is None:
             continue
-        size_px = glyph.size_pt * px_per_mm * 25.4 / 72.0
+        size_px = blf_safety.safe_text_px_size(glyph.size_pt * px_per_mm * 25.4 / 72.0)
+        if size_px is None:
+            continue
         entry_color = text_style.color_for_index(entry, glyph.index)
         x_px = float(coord.x) + float(getattr(glyph, "offset_x_mm", 0.0)) * px_per_mm
         y_px = float(coord.y) + float(getattr(glyph, "offset_y_mm", 0.0)) * px_per_mm
@@ -979,6 +982,8 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
             sin_t = math.sin(theta)
             x_px = x_px + half_em - (m_x * cos_t - m_y * sin_t)
             y_px = y_px + half_em - (m_x * sin_t + m_y * cos_t)
+        if not blf_safety.finite_xy(x_px, y_px):
+            continue
         draw_records.append({
             "font_id": glyph_font_id, "ch": glyph.ch, "x": x_px, "y": y_px,
             "size": size_px, "rotation": float(glyph.rotation_deg), "color": entry_color,
@@ -1002,7 +1007,9 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
         )
         if coord is None:
             continue
-        size_px = ruby_glyph.size_pt * px_per_mm * 25.4 / 72.0
+        size_px = blf_safety.safe_text_px_size(ruby_glyph.size_pt * px_per_mm * 25.4 / 72.0)
+        if size_px is None:
+            continue
         x_px = float(coord.x)
         y_px = float(coord.y)
         rotation_deg = float(getattr(ruby_glyph, "rotation_deg", 0.0) or 0.0)
@@ -1019,6 +1026,8 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
             sin_t = math.sin(theta)
             x_px = x_px + half_em - (m_x * cos_t - m_y * sin_t)
             y_px = y_px + half_em - (m_x * sin_t + m_y * cos_t)
+        if not blf_safety.finite_xy(x_px, y_px):
+            continue
         draw_records.append({
             "font_id": ruby_font_id, "ch": ruby_glyph.ch, "x": x_px, "y": y_px,
             "size": size_px, "rotation": rotation_deg, "color": ruby_color,

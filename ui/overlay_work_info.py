@@ -6,6 +6,7 @@ import blf
 
 from . import overlay_shared
 from ..utils import page_range, text_style
+from ..utils.blf_safety import finite_xy, safe_text_px_size
 from ..utils.geom import mm_to_m, q_to_mm
 
 _FONT_ID_CACHE: dict[str, int] = {}
@@ -129,6 +130,11 @@ def _draw_text_item_pixel(
     font_id, text, px_x, px_y,
     px_size, color, align_x, align_y,
 ) -> None:
+    # ビュー回転でカメラがページ平面すれすれになると投影が発散し、
+    # px_size が数十万px級になって blf のグリフ確保がクラッシュする。
+    px_size = safe_text_px_size(px_size)
+    if px_size is None or not finite_xy(px_x, px_y):
+        return
     try:
         blf.size(font_id, px_size)
     except Exception:  # noqa: BLE001
