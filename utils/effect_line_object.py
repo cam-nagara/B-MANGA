@@ -53,6 +53,18 @@ def _configure_line_material_nodes(
     mat.use_nodes = True
     mat.blend_method = "BLEND"
     mat.show_transparent_back = False
+    # blend_method="BLEND" は surface_render_method を副作用で "BLENDED"
+    # (順序依存の疑似合成) に変える。グラデーション塗り等の他の半透明
+    # レイヤーと重なった際に深度を無視して隠れてしまうため、深度を
+    # 尊重する "DITHERED" へ明示的に上書きする。
+    # 実機確認: この代入は逆方向にも副作用があり、最終的に
+    # mat.blend_method は "HASHED" になる (直前の "BLEND" 代入は
+    # surface_render_method 側の上書きで打ち消される)。HASHED/DITHERED
+    # のペアが深度を尊重する最終状態として正しい。
+    try:
+        mat.surface_render_method = "DITHERED"
+    except (AttributeError, TypeError):
+        pass
     nodes = mat.node_tree.nodes
     links = mat.node_tree.links
     nodes.clear()
@@ -84,6 +96,10 @@ def _configure_line_material_nodes(
     except Exception:  # noqa: BLE001
         mat.use_nodes = False
         mat.blend_method = "BLEND" if rgba[3] < 1.0 else "OPAQUE"
+        try:
+            mat.surface_render_method = "DITHERED"
+        except (AttributeError, TypeError):
+            pass
     try:
         mat.update_tag()
     except Exception:  # noqa: BLE001

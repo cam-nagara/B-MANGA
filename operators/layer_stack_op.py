@@ -1175,6 +1175,8 @@ class BMANGA_OT_layer_stack_duplicate(Operator):
             return self._duplicate_balloon(context, item)
         if item.kind == "text":
             return self._duplicate_text(context, item)
+        if item.kind == "fill":
+            return self._duplicate_fill(context, item)
         return False
 
     def _duplicate_gp_layer(self, context, item) -> bool:
@@ -1305,6 +1307,32 @@ class BMANGA_OT_layer_stack_duplicate(Operator):
         dst.y_mm -= 5.0
         page.active_text_index = len(page.texts) - 1
         context.scene.bmanga_active_layer_kind = "text"
+        return True
+
+    def _duplicate_fill(self, context, item) -> bool:
+        from ..io import schema
+        from ..utils import fill_real_object
+
+        resolved = layer_stack_utils.resolve_stack_item(context, item)
+        src = resolved.get("target") if resolved is not None else None
+        coll = getattr(context.scene, "bmanga_fill_layers", None)
+        if src is None or coll is None:
+            return False
+        used = {entry.id for entry in coll}
+        i = 1
+        while f"fill_{i:04d}" in used:
+            i += 1
+        dst = coll.add()
+        with fill_real_object.suspend_auto_sync():
+            schema.fill_layer_from_dict(dst, schema.fill_layer_to_dict(src))
+            dst.id = f"fill_{i:04d}"
+            dst.title = _unique_name(
+                {entry.title for entry in coll if entry is not dst},
+                f"{getattr(src, 'title', '') or '塗り'} 複製",
+            )
+        fill_real_object.on_fill_entry_changed(dst)
+        context.scene.bmanga_active_fill_layer_index = len(coll) - 1
+        context.scene.bmanga_active_layer_kind = "fill"
         return True
 
 

@@ -158,7 +158,13 @@ def setup_flat_emission_material(
     nt.links.new(mix.outputs["Shader"], output.inputs["Surface"])
     try:
         mat.blend_method = "BLEND" if mask_image is not None or float(rgba[3]) < 0.999 else "OPAQUE"
-        mat.surface_render_method = "BLENDED" if mat.blend_method == "BLEND" else "DITHERED"
+        # blend_method="BLEND" は surface_render_method を副作用で "BLENDED"
+        # (順序依存の疑似合成、深度を無視する) に変えてしまう。効果線の
+        # fill/underlay がグラデーション塗り等の他の半透明レイヤーと重なった
+        # 際に深度を無視して隠れてしまうため、深度を尊重する "DITHERED" へ
+        # 明示的に上書きする (fill_real_object.py/effect_line_object.py の
+        # line マテリアルと同一パターン)。
+        mat.surface_render_method = "DITHERED"
         mat.show_transparent_back = True
     except Exception:  # noqa: BLE001
         pass

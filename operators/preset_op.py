@@ -1158,8 +1158,11 @@ def _apply_fill_preset_to_selection(context, name: str) -> None:
         return
     try:
         from ..io import fill_presets
+        from ..utils import fill_real_object
 
-        fill_presets.apply_to_entry(entry, data)
+        with fill_real_object.suspend_auto_sync():
+            fill_presets.apply_to_entry(entry, data)
+        fill_real_object.on_fill_entry_changed(entry)
     except Exception:  # noqa: BLE001
         _logger.exception("fill preset apply to selection failed")
         return
@@ -1179,8 +1182,11 @@ def _apply_gradient_preset_to_selection(context, name: str) -> None:
         return
     try:
         from ..io import gradient_presets
+        from ..utils import fill_real_object
 
-        gradient_presets.apply_to_entry(entry, data)
+        with fill_real_object.suspend_auto_sync():
+            gradient_presets.apply_to_entry(entry, data)
+        fill_real_object.on_fill_entry_changed(entry)
     except Exception:  # noqa: BLE001
         _logger.exception("gradient preset apply to selection failed")
         return

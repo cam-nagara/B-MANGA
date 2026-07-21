@@ -284,6 +284,17 @@ def _ensure_solid_material(
     try:
         mat.blend_method = "BLEND"
         mat.show_transparent_back = True
+        # blend_method="BLEND" は surface_render_method を副作用で
+        # "BLENDED" (順序依存の疑似合成、他の半透明レイヤーと重なると
+        # 深度を無視して不正な前後関係になる) に変えてしまう。コマ内の
+        # 他レイヤー(効果線・ラスター等)と正しい重なり順で描画するため、
+        # 深度を尊重する "DITHERED" へ明示的に上書きする。
+        # 実機確認: この代入は逆方向にも副作用があり、最終的に
+        # mat.blend_method は "HASHED" になる (直前の "BLEND" 代入は
+        # surface_render_method 側の上書きで打ち消される)。blend_method
+        # と surface_render_method のペアとしては HASHED/DITHERED が
+        # 最終状態であり、これが深度を尊重する正しい組み合わせ。
+        mat.surface_render_method = "DITHERED"
     except Exception:  # noqa: BLE001
         pass
     nt = mat.node_tree
@@ -391,6 +402,9 @@ def _ensure_gradient_material(
     try:
         mat.blend_method = "BLEND"
         mat.show_transparent_back = True
+        # _ensure_solid_material と同じ理由 (surface_render_method の
+        # 副作用による誤った前後関係を防ぐため DITHERED を明示する)。
+        mat.surface_render_method = "DITHERED"
     except Exception:  # noqa: BLE001
         pass
     nt = mat.node_tree

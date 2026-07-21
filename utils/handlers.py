@@ -777,6 +777,40 @@ def _reconcile_gpencil_collections(context, work, *, include_page_content: bool 
             _logger.exception("load_post: page content visibility sync failed")
 
 
+_LEGACY_BLEND_METHOD_MATERIAL_PREFIXES = (
+    "BManga_Fill_",
+    "BManga_Effect_Display_Line_",
+    "BManga_Effect_Display_Fill_",
+    "BManga_Effect_Display_Underlay_",
+)
+
+
+def _refresh_legacy_material_render_methods() -> None:
+    """旧バージョンで保存された fill/effect マテリアルの surface_render_method
+    を現行の修正 (DITHERED) へ揃える。
+
+    mat.blend_method = "BLEND" は副作用で surface_render_method を
+    "BLENDED" (描画順依存・深度無視) にしてしまう。過去バージョンで保存
+    された .blend にはこの副作用のままのマテリアルが残っており、
+    layer_object_sync.mirror_work_to_outliner の高速パスは既存実体が
+    揃っていれば再生成をスキップするため、ファイルを開いただけでは
+    修正が再適用されない。ここでファイル読込のたびに既存マテリアルを
+    直接スイープして揃える (対象は少数のため負荷は無視できる)。
+    """
+    try:
+        for mat in bpy.data.materials:
+            name = str(getattr(mat, "name", "") or "")
+            if not name.startswith(_LEGACY_BLEND_METHOD_MATERIAL_PREFIXES):
+                continue
+            try:
+                if str(getattr(mat, "surface_render_method", "")) == "BLENDED":
+                    mat.surface_render_method = "DITHERED"
+            except Exception:  # noqa: BLE001
+                continue
+    except Exception:  # noqa: BLE001
+        _logger.exception("load_post: legacy material render method refresh failed")
+
+
 @persistent
 def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender handlers
     """.blend ロード直後に B-MANGA 作品のメタ情報を再同期."""
@@ -843,6 +877,7 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
             _logger.exception("load_post: failed to sync work/pages json")
             return
         _sync_active_from_blend_path(scene, work, work_dir, blend_path)
+        _refresh_legacy_material_render_methods()
         try:
             _capture_native_save_baseline(work, work_dir, blend_path)
         except Exception:  # noqa: BLE001

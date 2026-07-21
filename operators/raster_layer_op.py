@@ -467,6 +467,11 @@ def ensure_raster_material(entry, image, mask_info=None):
         # が coma_plane (Z=0.05) より明確に前 (Z=0.1+) にあれば、 OPAQUE 白の
         # coma_plane に隠されず正常に描画される (ensure_raster_plane の最後で
         # assign_per_page_z_ranks を呼んで Z を保証している)。
+        # 備考 (実機検証済み): 効果線など他の半透明レイヤーと重なった際の
+        # 隠れ方は DITHERED に変えても改善しないことを確認済み (raster の
+        # マテリアルグラフ・メッシュサイズ・マスク有無いずれを揃えても
+        # 差が出なかった)。原因は別にあるため、ここでは実害のある
+        # ズーム時ジラジラ副作用を避けて BLENDED のままにする。
         mat.blend_method = "BLEND"
         mat.use_screen_refraction = False
         mat.show_transparent_back = True
