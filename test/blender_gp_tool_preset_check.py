@@ -158,6 +158,7 @@ def main() -> None:
         {
             "tool": "brush",
             "brushAsset": "Ink Pen",
+            "sizeMode": "VIEW",
             "size": 22,
             "useSizePressure": False,
             "strength": 0.5,
@@ -181,18 +182,16 @@ def main() -> None:
     _check(order.index("テストペン3") < order.index("テストペン2"), "並べ替えできた")
     gp_tool_presets.delete_preset("テストペン3")
     _check(gp_tool_presets.load_preset_by_name("テストペン3") is None, "削除できた")
-    gp_tool_presets.delete_preset("ブラシ（標準）")
+    gp_tool_presets.delete_preset("トリム（標準）")
     _check(
-        gp_tool_presets.load_preset_by_name("ブラシ（標準）") is None,
+        gp_tool_presets.load_preset_by_name("トリム（標準）") is None,
         "同梱プリセットも一覧から削除 (非表示) にできた",
     )
-    order_before = [p.name for p in gp_tool_presets.list_all_presets()]
-    gp_tool_presets.save_local_preset("ブラシ（標準）", "", {"tool": "brush"})
+    gp_tool_presets.save_local_preset("トリム（標準）", "", {"tool": "trim"})
     _check(
-        gp_tool_presets.load_preset_by_name("ブラシ（標準）") is not None,
+        gp_tool_presets.load_preset_by_name("トリム（標準）") is not None,
         "同名で再追加すると再び表示される",
     )
-    del order_before
 
     # ── (3) スクラッチ往復 ─────────────────────────────────
     scratch = bpy.context.window_manager.bmanga_preset_scratch_gp_tool
@@ -201,6 +200,7 @@ def main() -> None:
     gp_tool_presets.apply_to_entry(scratch, src.data)
     _check(scratch.tool == "brush", "スクラッチ適用 (tool)")
     _check(scratch.brush_asset == "Ink Pen", "スクラッチ適用 (brush_asset)")
+    _check(scratch.size_mode == "VIEW", "スクラッチ適用 (size_mode)")
     _check(scratch.size == 22, "スクラッチ適用 (size)")
     _check(scratch.stroke_type == "BOTH", "スクラッチ適用 (stroke_type)")
     _check(scratch.use_smooth_stroke is True, "スクラッチ適用 (use_smooth_stroke)")
@@ -221,6 +221,7 @@ def main() -> None:
     brush = _paint_brush("gpencil_paint")
     _check(brush is not None and brush.name.startswith("Ink Pen"), "Ink Pen ブラシへ切替")
     if brush is not None:
+        _check(brush.use_locked_size == "VIEW", "画面基準サイズが適用された")
         _check(int(brush.size) == 22, "ブラシサイズが適用された")
         _check(brush.use_pressure_size is False, "筆圧サイズOFFが適用された")
         _check(abs(float(brush.strength) - 0.5) < 1e-4, "強さが適用された")
@@ -229,6 +230,18 @@ def main() -> None:
         _check(settings is not None and settings.stroke_type == "BOTH", "ストロークタイプが適用された")
         _check(settings is not None and settings.caps_type == "FLAT", "キャップが適用された")
         _check(settings is not None and abs(float(settings.hardness) - 0.8) < 1e-4, "硬さが適用された")
+
+    # ページ基準 (mm) サイズの適用 — Blender 5.2 の同梱ブラシ既定に対応
+    ok = gp_tool_preset_op.apply_gp_tool_preset(bpy.context, "ブラシ（標準）")
+    _check(ok, "ブラシ（標準）の適用が成功")
+    brush = _paint_brush("gpencil_paint")
+    _check(brush is not None and brush.name.startswith("Pencil"), "Pencil ブラシへ切替")
+    if brush is not None:
+        _check(brush.use_locked_size == "SCENE", "ページ基準サイズが適用された")
+        _check(
+            abs(float(brush.unprojected_size) - 0.001) < 1e-6,
+            "ページ上1mmの太さが適用された",
+        )
 
     gp_tool_presets.save_local_preset(
         "テストフィル",
@@ -260,6 +273,16 @@ def main() -> None:
         _check(abs(float(settings.extend_stroke_factor) - 1.5) < 1e-4, "すき間閉じサイズが適用された")
         _check(settings.fill_extend_mode == "RADIUS", "すき間閉じモードが適用された")
 
+    ok = gp_tool_preset_op.apply_gp_tool_preset(bpy.context, "フィル（標準）")
+    _check(ok, "フィル（標準）の適用が成功")
+    brush = _paint_brush("gpencil_paint")
+    if brush is not None:
+        _check(brush.use_locked_size == "SCENE", "フィルにページ基準サイズが適用された")
+        _check(
+            abs(float(brush.unprojected_size) - 0.001) < 1e-6,
+            "フィル境界線のページ上1mmが適用された",
+        )
+
     gp_tool_presets.save_local_preset(
         "テスト消しゴム",
         "",
@@ -281,6 +304,7 @@ def main() -> None:
     if brush is not None and brush.gpencil_settings is not None:
         settings = brush.gpencil_settings
         _check(settings.eraser_mode == "STROKE", "消しゴムモードが適用された")
+        _check(brush.use_locked_size == "VIEW", "消しゴムは画面基準サイズへ固定")
         _check(int(brush.size) == 80, "消しゴムサイズが適用された")
         _check(settings.use_active_layer_only is True, "アクティブレイヤーのみが適用された")
 
@@ -299,8 +323,14 @@ def main() -> None:
         "グラブブラシへ切替",
     )
     if sbrush is not None:
+        _check(sbrush.use_locked_size == "VIEW", "グラブは画面基準サイズへ固定")
         _check(int(sbrush.size) == 120, "グラブサイズが適用された")
         _check(abs(float(sbrush.strength) - 0.9) < 1e-4, "グラブ強さが適用された")
+        sculpt_paint = getattr(bpy.context.scene.tool_settings, "gpencil_sculpt_paint", None)
+        ups = getattr(sculpt_paint, "unified_paint_settings", None)
+        if ups is not None and bool(getattr(ups, "use_unified_size", False)):
+            _check(int(ups.size) == 120, "グラブの統一サイズにも適用された (画面の実効値)")
+            _check(str(ups.use_locked_size) == "VIEW", "グラブの統一サイズ基準も画面基準")
 
     # トリム: ツール切替はヘッドレスで失敗し得るため、設定書込のみ確認
     gp_tool_presets.save_local_preset(
@@ -352,8 +382,13 @@ def main() -> None:
         return _props(records)
 
     props = _draw_records("brush")
-    _check({"tool", "brush_asset", "size", "strength", "stroke_type", "caps_type", "hardness"} <= props,
-           "ブラシ機能の詳細項目が描画される")
+    _check({"tool", "brush_asset", "size_mode", "size", "strength", "stroke_type", "caps_type", "hardness"} <= props,
+           "ブラシ機能の詳細項目が描画される (画面基準)")
+    _check("size_mm" not in props, "画面基準ではmmサイズ項目を出さない")
+    scratch2.size_mode = "SCENE"
+    props = _draw_records("brush")
+    _check("size_mm" in props and "size" not in props, "ページ基準ではmmサイズ項目だけを出す")
+    scratch2.size_mode = "VIEW"
     props = _draw_records("fill")
     _check({"fill_direction", "fill_solver", "size", "fill_extend_factor"} <= props,
            "フィル機能の詳細項目が描画される")

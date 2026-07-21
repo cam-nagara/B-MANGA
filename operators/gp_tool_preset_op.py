@@ -179,25 +179,77 @@ def _brush_asset_identifier(data: dict) -> str | None:
     return None  # trim はブラシを切り替えない
 
 
-def _apply_common_size_strength(brush, data: dict) -> None:
-    if "size" in data and hasattr(brush, "size"):
-        brush.size = max(1, int(data.get("size") or 1))
+def _unified_settings(paint):
+    return getattr(paint, "unified_paint_settings", None) if paint is not None else None
+
+
+def _apply_brush_size(brush, data: dict, *, honor_size_mode: bool, ups=None) -> None:
+    """サイズを適用する。
+
+    Blender 5.2 の同梱GPブラシは既定で「シーン基準サイズ」(unprojected_size)
+    のため、px の size だけを書いても画面の太さは変わらない。ブラシ/フィルは
+    プリセットの「サイズの基準」に従って基準ごと適用し、消しゴム/グラブは
+    画面px基準へ固定して px を確実に効かせる。スカルプトモードは既定で
+    「統一サイズ設定」を使うため、有効な場合は統一設定側へも同じ値を書く。
+    """
+    size_mode = gp_tool_presets.enum_value("sizeMode", data.get("sizeMode"), "SCENE")
+    if not honor_size_mode:
+        size_mode = "VIEW"
+    use_unified = bool(getattr(ups, "use_unified_size", False)) if ups is not None else False
+    if size_mode == "SCENE" and "sizeMm" in data:
+        size_mm = max(0.01, float(data.get("sizeMm") or 1.0))
+        if hasattr(brush, "use_locked_size"):
+            brush.use_locked_size = "SCENE"
+        if hasattr(brush, "unprojected_size"):
+            # 注意: この後に px の size を書くと Blender が連動値を再計算して
+            # mm 指定が上書きされるため、ページ基準では unprojected_size のみ書く。
+            brush.unprojected_size = size_mm * 0.001
+        if use_unified:
+            if hasattr(ups, "use_locked_size"):
+                ups.use_locked_size = "SCENE"
+            if hasattr(ups, "unprojected_size"):
+                ups.unprojected_size = size_mm * 0.001
+        return
+    size_px = max(1, int(data.get("size") or 1)) if "size" in data else None
+    if hasattr(brush, "use_locked_size"):
+        brush.use_locked_size = "VIEW"
+    if size_px is not None and hasattr(brush, "size"):
+        brush.size = size_px
+    if use_unified:
+        if hasattr(ups, "use_locked_size"):
+            ups.use_locked_size = "VIEW"
+        if size_px is not None and hasattr(ups, "size"):
+            ups.size = size_px
+
+
+def _apply_common_size_strength(
+    brush, data: dict, *, honor_size_mode: bool = False, ups=None
+) -> None:
+    _apply_brush_size(brush, data, honor_size_mode=honor_size_mode, ups=ups)
     if "useSizePressure" in data and hasattr(brush, "use_pressure_size"):
         brush.use_pressure_size = bool(data.get("useSizePressure"))
     if "strength" in data and hasattr(brush, "strength"):
-        brush.strength = max(0.0, min(10.0, float(data.get("strength") or 0.0)))
+        strength = max(0.0, min(10.0, float(data.get("strength") or 0.0)))
+        brush.strength = strength
+        if ups is not None and bool(getattr(ups, "use_unified_strength", False)) and hasattr(ups, "strength"):
+            ups.strength = strength
     if "useStrengthPressure" in data and hasattr(brush, "use_pressure_strength"):
         brush.use_pressure_strength = bool(data.get("useStrengthPressure"))
 
 
-def _apply_settings_to_brush(brush, data: dict) -> None:
+def _apply_settings_to_brush(brush, data: dict, *, paint=None) -> None:
     """アクティブブラシへプリセットの詳細設定を書き込む."""
     if brush is None:
         return
     tool = gp_tool_presets.tool_id(data)
     settings = getattr(brush, "gpencil_settings", None)
     if tool != "trim":
-        _apply_common_size_strength(brush, data)
+        _apply_common_size_strength(
+            brush,
+            data,
+            honor_size_mode=tool in {"brush", "fill"},
+            ups=_unified_settings(paint),
+        )
     if tool == "brush":
         if "useSmoothStroke" in data and hasattr(brush, "use_smooth_stroke"):
             brush.use_smooth_stroke = bool(data.get("useSmoothStroke"))
@@ -270,7 +322,7 @@ def apply_gp_tool_preset(context, name: str, *, report=None) -> bool:
         _activate_brush_asset(context, identifier)
     paint = _paint_container(context, required_mode)
     brush = getattr(paint, "brush", None) if paint is not None else None
-    _apply_settings_to_brush(brush, data)
+    _apply_settings_to_brush(brush, data, paint=paint)
     _logger.info("gp tool preset applied: %s (%s)", name, tool)
     return True
 
@@ -286,7 +338,8 @@ def snapshot_current_tool_settings(context) -> dict:
         paint = _paint_container(context, _GP_SCULPT_MODE)
         brush = getattr(paint, "brush", None) if paint is not None else None
         data["tool"] = "grab"
-        _snapshot_size_strength(brush, data)
+        # スカルプトは統一サイズ設定が既定のため、実際に効いている値を拾う
+        _snapshot_size_strength(brush, data, ups=_unified_settings(paint))
         return data
 
     paint = _paint_container(context, _GP_PAINT_MODE)
@@ -312,7 +365,7 @@ def snapshot_current_tool_settings(context) -> dict:
     brush_type = str(getattr(brush, "gpencil_brush_type", "") or "") if brush is not None else ""
     if brush_type == "FILL" and settings is not None:
         data["tool"] = "fill"
-        _snapshot_size_strength(brush, data)
+        _snapshot_size_strength(brush, data, capture_size_mode=True)
         data["fillDirection"] = str(settings.fill_direction)
         data["fillSolver"] = str(settings.fill_solver)
         data["fillFactor"] = round(float(settings.fill_factor), 4)
@@ -332,7 +385,7 @@ def snapshot_current_tool_settings(context) -> dict:
     if brush is not None:
         name = str(getattr(brush, "name", "") or "")
         data["brushAsset"] = name if name in _KNOWN_DRAW_BRUSHES else "Pencil"
-        _snapshot_size_strength(brush, data)
+        _snapshot_size_strength(brush, data, capture_size_mode=True)
         if hasattr(brush, "use_smooth_stroke"):
             data["useSmoothStroke"] = bool(brush.use_smooth_stroke)
         if hasattr(brush, "smooth_stroke_factor"):
@@ -344,17 +397,32 @@ def snapshot_current_tool_settings(context) -> dict:
     return data
 
 
-def _snapshot_size_strength(brush, data: dict) -> None:
+def _snapshot_size_strength(
+    brush, data: dict, *, capture_size_mode: bool = False, ups=None
+) -> None:
     if brush is None:
         return
     if hasattr(brush, "size"):
         data["size"] = int(brush.size)
+    if capture_size_mode:
+        locked = str(getattr(brush, "use_locked_size", "") or "")
+        data["sizeMode"] = "SCENE" if locked == "SCENE" else "VIEW"
+        if hasattr(brush, "unprojected_size"):
+            data["sizeMm"] = round(float(brush.unprojected_size) * 1000.0, 3)
     if hasattr(brush, "use_pressure_size"):
         data["useSizePressure"] = bool(brush.use_pressure_size)
     if hasattr(brush, "strength"):
         data["strength"] = round(float(brush.strength), 4)
     if hasattr(brush, "use_pressure_strength"):
         data["useStrengthPressure"] = bool(brush.use_pressure_strength)
+    if ups is not None and bool(getattr(ups, "use_unified_size", False)) and hasattr(ups, "size"):
+        data["size"] = int(ups.size)
+    if (
+        ups is not None
+        and bool(getattr(ups, "use_unified_strength", False))
+        and hasattr(ups, "strength")
+    ):
+        data["strength"] = round(float(ups.strength), 4)
 
 
 class BMANGA_OT_gp_tool_preset_add_local(Operator):

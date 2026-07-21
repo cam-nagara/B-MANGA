@@ -44,12 +44,15 @@ _ENUM_VALUES = {
     "fillSolver": ("DELAUNAY", "PIXEL"),
     "fillExtendMode": ("EXTEND", "RADIUS"),
     "eraserMode": ("HARD", "SOFT", "STROKE"),
+    "sizeMode": ("SCENE", "VIEW"),
 }
 
 # JSONキー ↔ BMangaGpToolSettings 属性の対応表 (適用・保存の唯一の正)
 _FIELDS: tuple[tuple[str, str, str], ...] = (
     ("tool", "tool", "enum"),
     ("brushAsset", "brush_asset", "enum"),
+    ("sizeMode", "size_mode", "enum"),
+    ("sizeMm", "size_mm", "float"),
     ("size", "size", "int"),
     ("useSizePressure", "use_size_pressure", "bool"),
     ("strength", "strength", "float"),
@@ -73,9 +76,11 @@ _FIELDS: tuple[tuple[str, str, str], ...] = (
 _BUILTIN_PRESETS: list[dict[str, Any]] = [
     {
         "label": "ブラシ（標準）",
-        "description": "鉛筆ブラシで描く標準設定",
+        "description": "鉛筆ブラシでページ上1mmの太さで描く標準設定",
         "tool": "brush",
         "brushAsset": "Pencil",
+        "sizeMode": "SCENE",
+        "sizeMm": 1.0,
         "size": 14,
         "useSizePressure": True,
         "strength": 1.0,
@@ -83,8 +88,10 @@ _BUILTIN_PRESETS: list[dict[str, Any]] = [
     },
     {
         "label": "フィル（標準）",
-        "description": "囲まれた領域を塗りつぶす標準設定",
+        "description": "囲まれた領域を塗りつぶす標準設定 (境界線はページ上1mm)",
         "tool": "fill",
+        "sizeMode": "SCENE",
+        "sizeMm": 1.0,
         "size": 10,
         "strength": 1.0,
     },

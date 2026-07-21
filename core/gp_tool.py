@@ -67,6 +67,19 @@ GP_FILL_EXTEND_MODE_ITEMS = (
     ("RADIUS", "半径", "線の端点同士を円で閉じます"),
 )
 
+GP_SIZE_MODE_ITEMS = (
+    (
+        "SCENE",
+        "ページ基準 (mm)",
+        "ズームに関係なく、ページ上で常に同じ太さで描きます (Blender同梱ブラシの既定)",
+    ),
+    (
+        "VIEW",
+        "画面基準 (px)",
+        "画面上のピクセル数で太さを決めます (ズームすると描かれる太さが変わります)",
+    ),
+)
+
 
 class BMangaGpToolSettings(PropertyGroup):
     """グリースペンシルツールプリセット1件分の編集用設定."""
@@ -83,8 +96,23 @@ class BMangaGpToolSettings(PropertyGroup):
         items=GP_DRAW_BRUSH_ITEMS,
         default="Pencil",
     )
+    size_mode: EnumProperty(  # type: ignore[valid-type]
+        name="サイズの基準",
+        description="ブラシ・フィルの太さをページ基準 (mm) と画面基準 (px) のどちらで決めるか",
+        items=GP_SIZE_MODE_ITEMS,
+        default="SCENE",
+    )
+    size_mm: FloatProperty(  # type: ignore[valid-type]
+        name="サイズ (mm)",
+        description="ページ上での太さ (ミリメートル)",
+        default=1.0,
+        min=0.01,
+        soft_max=50.0,
+        max=1000.0,
+        precision=2,
+    )
     size: IntProperty(  # type: ignore[valid-type]
-        name="サイズ",
+        name="サイズ (px)",
         description="ブラシの太さ (画面ピクセル)",
         default=14,
         min=1,
@@ -225,6 +253,7 @@ __all__ = [
     "GP_FILL_DIRECTION_ITEMS",
     "GP_FILL_EXTEND_MODE_ITEMS",
     "GP_FILL_SOLVER_ITEMS",
+    "GP_SIZE_MODE_ITEMS",
     "GP_STROKE_TYPE_ITEMS",
     "GP_TOOL_ITEMS",
     "register",

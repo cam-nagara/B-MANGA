@@ -50,13 +50,24 @@ def _grease_pencil_style(obj):
     return style
 
 
-def _size_strength_rows(box, settings) -> None:
+def _size_row(box, settings, *, honor_size_mode: bool) -> None:
     row = box.row(align=True)
-    prop_if(row, settings, "size", text="サイズ")
+    if honor_size_mode and str(value(settings, "size_mode", "SCENE") or "") == "SCENE":
+        prop_if(row, settings, "size_mm", text="サイズ (mm)")
+    else:
+        prop_if(row, settings, "size", text="サイズ (px)")
     prop_if(row, settings, "use_size_pressure", text="", icon="STYLUS_PRESSURE")
+
+
+def _strength_row(box, settings) -> None:
     row = box.row(align=True)
     prop_if(row, settings, "strength", text="強さ", slider=True)
     prop_if(row, settings, "use_strength_pressure", text="", icon="STYLUS_PRESSURE")
+
+
+def _size_strength_rows(box, settings, *, honor_size_mode: bool = False) -> None:
+    _size_row(box, settings, honor_size_mode=honor_size_mode)
+    _strength_row(box, settings)
 
 
 def draw_gp_tool_body(sidebar_top, _sidebar_below, body_cols, _context, session, _mode) -> None:
@@ -80,7 +91,8 @@ def draw_gp_tool_body(sidebar_top, _sidebar_below, body_cols, _context, session,
     if tool == "brush":
         detail_box.label(text="ブラシ設定", icon="BRUSH_DATA")
         prop_if(detail_box, settings, "brush_asset", text="使用ブラシ")
-        _size_strength_rows(detail_box, settings)
+        prop_if(detail_box, settings, "size_mode", text="サイズの基準")
+        _size_strength_rows(detail_box, settings, honor_size_mode=True)
         prop_if(detail_box, settings, "stroke_type", text="ストロークタイプ")
         row = detail_box.row(align=True)
         row.label(text="キャップ")
@@ -99,7 +111,13 @@ def draw_gp_tool_body(sidebar_top, _sidebar_below, body_cols, _context, session,
         if str(value(settings, "fill_solver", "DELAUNAY") or "") == "PIXEL":
             prop_if(detail_box, settings, "fill_factor", text="精度")
             prop_if(detail_box, settings, "fill_dilate", text="拡張")
-        prop_if(detail_box, settings, "size", text="線の太さ")
+            prop_if(detail_box, settings, "size", text="線の太さ (px)")
+        else:
+            prop_if(detail_box, settings, "size_mode", text="サイズの基準")
+            if str(value(settings, "size_mode", "SCENE") or "") == "SCENE":
+                prop_if(detail_box, settings, "size_mm", text="線の太さ (mm)")
+            else:
+                prop_if(detail_box, settings, "size", text="線の太さ (px)")
         prop_if(detail_box, settings, "fill_extend_factor", text="すき間閉じサイズ")
         extend_row = detail_box.row(align=True)
         extend_row.active = float(value(settings, "fill_extend_factor", 0.0) or 0.0) > 0.0
