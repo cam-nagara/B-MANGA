@@ -1841,6 +1841,8 @@ def text_entry_to_dict(entry) -> dict[str, Any]:
         "fontSizeUnit": str(getattr(entry, "font_size_unit", "q") or "q"),
         "color": color_to_hex(entry.color),
         "colorAlpha": round(entry.color[3], 3),
+        "fontBold": bool(getattr(entry, "font_bold", False)),
+        "fontItalic": bool(getattr(entry, "font_italic", False)),
         "writingMode": entry.writing_mode,
         "lineHeight": round(entry.line_height, 3),
         "letterSpacing": round(entry.letter_spacing, 3),
@@ -1936,6 +1938,10 @@ def text_entry_from_dict(entry, data: dict[str, Any]) -> None:
         entry.font_size_unit = unit
     alpha = float(data.get("colorAlpha", 1.0))
     entry.color = hex_to_rgba(data.get("color", "#000000"), alpha)
+    if hasattr(entry, "font_bold"):
+        entry.font_bold = bool(data.get("fontBold", False))
+    if hasattr(entry, "font_italic"):
+        entry.font_italic = bool(data.get("fontItalic", False))
     entry.writing_mode = data.get("writingMode", "vertical")
     entry.line_height = float(data.get("lineHeight", 1.4))
     entry.letter_spacing = float(data.get("letterSpacing", 0.0))

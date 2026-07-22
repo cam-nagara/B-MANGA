@@ -123,8 +123,12 @@ def _apply_document(context, work, document, plan, original_active):
                     new_pairs.append((page_key, balloon_id, text_id))
             page.coma_count = len(page.comas)
             page_io.save_page_json(work_dir, page)
-            if str(page.id) not in plan.originally_loaded_page_ids:
-                page_detail.clear_page_detail(page)
+            # 取込は作品ファイル (ページ一覧) でのみ実行され、作品ファイルは
+            # ページ詳細をメモリへ持たない規約 (utils/page_detail.py 参照)。
+            # 取込前から読み込まれていたページ (work_new 直後の先頭ページ等)
+            # の詳細を残すと、一覧でそのページのテキストだけクリック選択
+            # できてしまう (2026-07-22 実測)。JSON へ保存済みなので常に解放する。
+            page_detail.clear_page_detail(page)
     work.active_page_index = original_active if -1 <= original_active < len(work.pages) else -1
     if added_pages:
         with suppress_page_number_range_update():

@@ -130,8 +130,21 @@ def main() -> None:
 
         from bmanga_dev_meldex_scenario_file.utils import page_detail
 
-        page_detail.ensure_page_detail(work, work.pages[0])
-        page_detail.ensure_page_detail(work, work.pages[1])
+        # 取込は作品ファイル上で行われ、成功後はページ詳細がメモリへ残らない
+        # (残すと一覧でそのページのテキストだけ選択できてしまう)。検証は
+        # JSON から読み戻してから行う。
+        def _ensure_all_details():
+            for page in work.pages:
+                page_detail.ensure_page_detail(work, page)
+
+        def _loaded_counts():
+            _ensure_all_details()
+            return [(len(page.balloons), len(page.texts)) for page in work.pages]
+
+        assert all(
+            not bool(page.detail_loaded) for page in work.pages
+        ), "取込後にページ詳細がメモリへ残っています"
+        _ensure_all_details()
         first = next(item for item in work.pages[0].texts if item.meldex_source_row_id == "r1")
         second = next(item for item in work.pages[1].texts if item.meldex_source_row_id == "r2")
         assert first.body == "東京です"
@@ -162,6 +175,7 @@ def main() -> None:
             "EXEC_DEFAULT", filepath=str(scenario_path)
         )
         assert result == {"FINISHED"}, result
+        _ensure_all_details()
         first = next(item for item in work.pages[0].texts if item.meldex_source_row_id == "r1")
         assert first.writing_mode == "vertical"
         assert abs(first.font_size_q - 18.0 * 127.0 / 120.0) < 1.0e-5
@@ -174,7 +188,7 @@ def main() -> None:
             meldex_apply_text_presentation=False
         )
 
-        counts = [(len(page.balloons), len(page.texts)) for page in work.pages]
+        counts = _loaded_counts()
         scenario_path.write_text(
             json.dumps(_document("{東京|とうきょう}を更新"), ensure_ascii=False),
             encoding="utf-8",
@@ -183,7 +197,7 @@ def main() -> None:
             "EXEC_DEFAULT", filepath=str(scenario_path)
         )
         assert result == {"FINISHED"}, result
-        assert counts == [(len(page.balloons), len(page.texts)) for page in work.pages]
+        assert counts == _loaded_counts()
         first = next(item for item in work.pages[0].texts if item.meldex_source_row_id == "r1")
         assert first.body == "東京を更新"
 
@@ -207,6 +221,7 @@ def main() -> None:
             "EXEC_DEFAULT", filepath=str(legacy_path)
         )
         assert result == {"FINISHED"}, result
+        _ensure_all_details()
         legacy = next(
             item
             for item in work.pages[0].texts
@@ -227,6 +242,7 @@ def main() -> None:
             "EXEC_DEFAULT", filepath=str(horizontal_path)
         )
         assert result == {"FINISHED"}, result
+        _ensure_all_details()
         horizontal = next(
             item
             for item in work.pages[0].texts
@@ -239,7 +255,7 @@ def main() -> None:
 
         bad_path = temp_root / "broken.mel-scenario"
         bad_path.write_text("{broken", encoding="utf-8")
-        counts_before = [(len(page.balloons), len(page.texts)) for page in work.pages]
+        counts_before = _loaded_counts()
         try:
             result = bpy.ops.bmanga.meldex_scenario_file_import(
                 "EXEC_DEFAULT", filepath=str(bad_path)
@@ -248,7 +264,7 @@ def main() -> None:
             assert "JSONが壊れています" in str(exc)
         else:
             assert result == {"CANCELLED"}, result
-        assert counts_before == [(len(page.balloons), len(page.texts)) for page in work.pages]
+        assert counts_before == _loaded_counts()
         print("BMANGA_MELDEX_SCENARIO_FILE_IMPORT_OK")
     finally:
         if addon is not None:

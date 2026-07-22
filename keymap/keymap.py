@@ -230,7 +230,7 @@ class KeymapState:
         """Grease Pencil Paint / Edit モードキーマップに先取り登録.
 
         - Space → bmanga.view_navigate (ブラシ Asset Shelf の先取り)
-        - C     → wm.call_asset_shelf_popover (元の機能を C 側に移設)
+        - C     → bmanga.toggle_asset_shelf (元の機能を C 側に移設)
         - E     → bmanga.toggle_eraser_brush (Eraser Hard / Stroke 切替)
         - K     → bmanga.layer_move_tool (レイヤー移動ツール)
         - Ctrl+Alt+LMB → bmanga.brush_size_drag (ブラシサイズ調整)
@@ -261,22 +261,11 @@ class KeymapState:
                 return None
 
         _add("bmanga.view_navigate", nav_key)
-        shelf_name = None
-        if "Weight" in km_name:
-            shelf_name = "VIEW3D_AST_brush_gpencil_weight"
-        elif "Vertex" in km_name:
-            shelf_name = "VIEW3D_AST_brush_gpencil_vertex"
-        elif "Draw" in km_name or "Paint" in km_name:
-            shelf_name = "VIEW3D_AST_brush_gpencil_paint"
-        if shelf_name is not None:
-            kmi = _add("wm.call_asset_shelf_popover", "C")
-            if kmi is not None:
-                try:
-                    kmi.properties.name = shelf_name
-                except Exception as exc:  # noqa: BLE001
-                    print(f"[B-MANGA][KEYMAP] set asset shelf name failed: {exc!r}")
-        else:
-            _add("bmanga.toggle_asset_shelf", "C")
+        # C → ブラシ Asset Shelf。wm.call_asset_shelf_popover + kmi.properties.name
+        # の直接登録はしない (プロパティ入り kmi はキーマップ再構築時の
+        # クラッシュ要因)。bmanga.toggle_asset_shelf が context.mode から
+        # シェルフ名を自動判定して同じ popover を呼ぶ。
+        _add("bmanga.toggle_asset_shelf", "C")
         _add("bmanga.toggle_eraser_brush", "E")
         _add("bmanga.layer_move_tool", "K")
         _add("bmanga.brush_size_drag", "LEFTMOUSE", ctrl=True, alt=True)
@@ -325,13 +314,10 @@ class KeymapState:
                 return None
 
         _add("bmanga.view_navigate", nav_key)
-        # SPACE がブラシシェルフを開いていた機能を C に移設
-        kmi = _add("wm.call_asset_shelf_popover", "C")
-        if kmi is not None:
-            try:
-                kmi.properties.name = "VIEW3D_AST_brush_texture_paint"
-            except Exception as exc:  # noqa: BLE001
-                print(f"[B-MANGA][KEYMAP] set asset shelf name failed: {exc!r}")
+        # SPACE がブラシシェルフを開いていた機能を C に移設。
+        # プロパティ入り kmi (wm.call_asset_shelf_popover + name) は使わず、
+        # context.mode からシェルフ名を自動判定する中継オペレーターを載せる。
+        _add("bmanga.toggle_asset_shelf", "C")
         _add("bmanga.brush_size_drag", "LEFTMOUSE", ctrl=True, alt=True)
 
     def _populate_object_mode_overrides(self, kc) -> None:
@@ -546,19 +532,13 @@ class KeymapState:
         # 紙面編集モード中は両方とも False になり Blender 既定の Esc 動作が走る。
         _add("bmanga.exit_coma_mode_safe", "ESC")
 
-        # Ctrl + ホイール → 1 ステップズーム (固定)
-        kmi = _add("bmanga.view_zoom_step", "WHEELUPMOUSE", ctrl=True)
-        if kmi is not None:
-            try:
-                kmi.properties.direction = "IN"
-            except Exception as exc:  # noqa: BLE001
-                print(f"[B-MANGA][KEYMAP] set direction IN failed: {exc!r}")
-        kmi = _add("bmanga.view_zoom_step", "WHEELDOWNMOUSE", ctrl=True)
-        if kmi is not None:
-            try:
-                kmi.properties.direction = "OUT"
-            except Exception as exc:  # noqa: BLE001
-                print(f"[B-MANGA][KEYMAP] set direction OUT failed: {exc!r}")
+        # Ctrl + ホイール → 1 ステップズーム (固定)。
+        # kmi.properties へ direction を書き込む方式は使わない: プロパティ
+        # 入りの kmi は mainfile 切替後のキーマップ再構築 (WM_keymap_clear)
+        # でプロパティ解放クラッシュを起こした実測があるため、方向別の
+        # プロパティ無しオペレーターを keymap に載せる。
+        _add("bmanga.view_zoom_step_in", "WHEELUPMOUSE", ctrl=True)
+        _add("bmanga.view_zoom_step_out", "WHEELDOWNMOUSE", ctrl=True)
 
         # Ctrl+Alt+ドラッグ → ブラシサイズ変更 (固定)
         _add("bmanga.brush_size_drag", "LEFTMOUSE", ctrl=True, alt=True)

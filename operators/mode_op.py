@@ -24,11 +24,15 @@ _logger = log.get_logger(__name__)
 _PENDING_ENTER_COMA: tuple[int, int, bool] | None = None
 
 
-def _suspend_keymap_visibility_updates(seconds: float = 4.0) -> None:
+def _suspend_keymap_visibility_updates(
+    seconds: float = 4.0, *, disable_now: bool = True
+) -> None:
     try:
         from ..keymap import keymap as _keymap
 
-        _keymap.suspend_visibility_updates(seconds, reason="blend switch")
+        _keymap.suspend_visibility_updates(
+            seconds, reason="blend switch", disable_now=disable_now
+        )
     except Exception:  # noqa: BLE001
         pass
 
@@ -203,7 +207,12 @@ def schedule_open_page_file(page_index: int) -> bool:
     if index < 0:
         return False
     _PENDING_OPEN_PAGE = index
-    _suspend_keymap_visibility_updates()
+    # クリックイベント処理の最中に kmi.active を一括で書き換えると、同じ
+    # イベント末尾の Blender キーマップ再構築 (WM_keyconfig_update) が旧
+    # キーマップ解放でアクセス違反を起こす (2026-07-22 実測クラッシュ)。
+    # ここでは watcher 停止 (時間ガード) だけ行い、B-MANGA キーの無効化と
+    # モーダルツール終了は遅延タイマー側 (open_page_file 実行直前) に任せる。
+    _suspend_keymap_visibility_updates(disable_now=False)
     if not bpy.app.timers.is_registered(_run_deferred_open_page_file):
         bpy.app.timers.register(_run_deferred_open_page_file, first_interval=0.12)
     return True
@@ -251,7 +260,9 @@ def schedule_enter_coma_mode(
         coma_index,
         bool(prompt_template_if_missing),
     )
-    _suspend_keymap_visibility_updates()
+    # schedule_open_page_file と同じ理由で、クリックイベント内では
+    # キーマップに触らない (watcher の時間ガードのみ)。
+    _suspend_keymap_visibility_updates(disable_now=False)
     if not bpy.app.timers.is_registered(_run_deferred_enter_coma_mode):
         bpy.app.timers.register(_run_deferred_enter_coma_mode, first_interval=0.15)
     return True

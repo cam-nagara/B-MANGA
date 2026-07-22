@@ -335,6 +335,20 @@ def hit_object_at_event(context, event) -> dict | None:
     area, region, rv3d, mx, my = view
     world_x_mm, world_y_mm = _event_world_xy_mm(context, event)
 
+    # 作品ファイル (ページ一覧) ではレイヤー実体の選択・ハンドル表示を行わ
+    # ない。ページ詳細 (texts 等) がシナリオ取込直後などで一時的にメモリへ
+    # 残っていても、ページ一覧で扱うのはページ/コマの選択だけ (2026-07-22
+    # ユーザー報告: 1ページ目のテキストだけクリックで選択できてしまう)。
+    allow_layer_hits = True
+    try:
+        from ..utils import page_file_scene
+
+        allow_layer_hits = not page_file_scene.is_work_list_scene(
+            getattr(context, "scene", None)
+        )
+    except Exception:  # noqa: BLE001
+        allow_layer_hits = True
+
     def _hit_visible(hit: dict | None) -> bool:
         if hit is None:
             return False
@@ -348,11 +362,12 @@ def hit_object_at_event(context, event) -> dict | None:
             return True
         return object_tool_selection.hit_visible_at_world(context, hit, world_x_mm, world_y_mm)
 
-    selected_handle = object_handle_priority.hit_visible_selected_handle(
-        context, event, _event_world_xy_mm,
-    )
-    if _hit_visible(selected_handle):
-        return selected_handle
+    if allow_layer_hits:
+        selected_handle = object_handle_priority.hit_visible_selected_handle(
+            context, event, _event_world_xy_mm,
+        )
+        if _hit_visible(selected_handle):
+            return selected_handle
     # 選択中/アクティブなコマの辺/頂点はレイヤーオブジェクトより先にチェック
     # （ハンドルが描画されているのに背面オブジェクトに負けるのを防ぐ）
     active_coma_edge = _pick_selected_coma_edge_or_vertex(
@@ -360,22 +375,23 @@ def hit_object_at_event(context, event) -> dict | None:
     )
     if active_coma_edge is not None:
         return active_coma_edge
-    for resolver in (
-        _hit_gradient_handle_at_event,
-        _hit_text_at_event,
-        _hit_shared_text_at_event,
-        _hit_balloon_at_event,
-        _hit_shared_balloon_at_event,
-        _hit_effect_at_event,
-        _hit_image_at_event,
-        _hit_image_path_at_event,
-        _hit_gp_at_event,
-        _hit_raster_at_event,
-        _hit_fill_at_event,
-    ):
-        hit = resolver(context, event)
-        if _hit_visible(hit):
-            return hit
+    if allow_layer_hits:
+        for resolver in (
+            _hit_gradient_handle_at_event,
+            _hit_text_at_event,
+            _hit_shared_text_at_event,
+            _hit_balloon_at_event,
+            _hit_shared_balloon_at_event,
+            _hit_effect_at_event,
+            _hit_image_at_event,
+            _hit_image_path_at_event,
+            _hit_gp_at_event,
+            _hit_raster_at_event,
+            _hit_fill_at_event,
+        ):
+            hit = resolver(context, event)
+            if _hit_visible(hit):
+                return hit
     edge_hit = coma_edge_move_op._pick_edge_or_vertex(
         work,
         region,

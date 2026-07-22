@@ -36,7 +36,6 @@ class ScenarioImportTransactionError(RuntimeError):
 class ScenarioImportPlan:
     work_dir: Path
     new_page_ids: tuple[str, ...]
-    originally_loaded_page_ids: frozenset[str]
     page_json_paths: tuple[Path, ...]
 
 
@@ -150,9 +149,6 @@ def _prepare_plan(work, work_dir: Path, required_pages: int) -> ScenarioImportPl
     return ScenarioImportPlan(
         work_dir=work_dir,
         new_page_ids=new_page_ids,
-        originally_loaded_page_ids=frozenset(
-            str(page.id) for page in work.pages if bool(page.detail_loaded)
-        ),
         page_json_paths=tuple(paths.page_meta_path(work_dir, page_id) for page_id in affected_ids),
     )
 

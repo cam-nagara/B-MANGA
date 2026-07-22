@@ -841,6 +841,52 @@ class BMANGA_OT_view_rotate(Operator):
 # ---------- 1 ステップズーム (ホイール系) ----------
 
 
+def _view_zoom_step_invoke(context, event, direction: str):
+    if not _shortcuts_allowed(context):
+        return {"PASS_THROUGH"}
+    print(f"[B-MANGA][OP] view_zoom_step.invoke direction={direction}"
+          f" event.type={event.type} ctrl={event.ctrl}")
+    area, region, rv3d = _find_view3d_window_region(context)
+    if area is None or rv3d is None:
+        print("[B-MANGA][OP] view_zoom_step: VIEW_3D not found -> CANCELLED")
+        return {"CANCELLED"}
+    # Ctrl+ホイールではマウス位置ピボットでズーム
+    mx, my = _to_region_local(region, event.mouse_x, event.mouse_y)
+    # 1 ステップ倍率
+    factor = 1.15 if direction == "IN" else 1.0 / 1.15
+    try:
+        if camera_view_navigation.step_zoom(rv3d, direction):
+            region.tag_redraw()
+            return {"FINISHED"}
+        pivot_world = _region_to_world(region, rv3d, mx, my).copy()
+        rv3d.view_distance = max(1e-4, rv3d.view_distance / factor)
+        new_pivot_world = _region_to_world(region, rv3d, mx, my)
+        rv3d.view_location += (pivot_world - new_pivot_world)
+    except Exception:  # noqa: BLE001
+        _logger.exception("view_zoom_step failed")
+        return {"CANCELLED"}
+    region.tag_redraw()
+    return {"FINISHED"}
+
+
+def _view_zoom_step_execute(context, direction: str):
+    # Ctrl+ホイールのキーマップは PRESS で invoke を呼ぶが、非インタラクティブ
+    # 呼出時は viewport 中心ピボット扱い
+    area, region, rv3d = _find_view3d_window_region(context)
+    if area is None or rv3d is None:
+        return {"CANCELLED"}
+    factor = 1.15 if direction == "IN" else 1.0 / 1.15
+    try:
+        if camera_view_navigation.step_zoom(rv3d, direction):
+            region.tag_redraw()
+            return {"FINISHED"}
+        rv3d.view_distance = max(1e-4, rv3d.view_distance / factor)
+    except Exception:  # noqa: BLE001
+        return {"CANCELLED"}
+    region.tag_redraw()
+    return {"FINISHED"}
+
+
 class BMANGA_OT_view_zoom_step(Operator):
     """Ctrl+ホイールで 1 ステップズーム (方向引数)."""
 
@@ -854,48 +900,44 @@ class BMANGA_OT_view_zoom_step(Operator):
     )
 
     def invoke(self, context, event):
-        if not _shortcuts_allowed(context):
-            return {"PASS_THROUGH"}
-        print(f"[B-MANGA][OP] view_zoom_step.invoke direction={self.direction}"
-              f" event.type={event.type} ctrl={event.ctrl}")
-        area, region, rv3d = _find_view3d_window_region(context)
-        if area is None or rv3d is None:
-            print("[B-MANGA][OP] view_zoom_step: VIEW_3D not found -> CANCELLED")
-            return {"CANCELLED"}
-        # Ctrl+ホイールではマウス位置ピボットでズーム
-        mx, my = _to_region_local(region, event.mouse_x, event.mouse_y)
-        # 1 ステップ倍率
-        factor = 1.15 if self.direction == "IN" else 1.0 / 1.15
-        try:
-            if camera_view_navigation.step_zoom(rv3d, self.direction):
-                region.tag_redraw()
-                return {"FINISHED"}
-            pivot_world = _region_to_world(region, rv3d, mx, my).copy()
-            rv3d.view_distance = max(1e-4, rv3d.view_distance / factor)
-            new_pivot_world = _region_to_world(region, rv3d, mx, my)
-            rv3d.view_location += (pivot_world - new_pivot_world)
-        except Exception:  # noqa: BLE001
-            _logger.exception("view_zoom_step failed")
-            return {"CANCELLED"}
-        region.tag_redraw()
-        return {"FINISHED"}
+        return _view_zoom_step_invoke(context, event, self.direction)
 
     def execute(self, context):
-        # Ctrl+ホイールのキーマップは PRESS で invoke を呼ぶが、非インタラクティブ
-        # 呼出時は viewport 中心ピボット扱い
-        area, region, rv3d = _find_view3d_window_region(context)
-        if area is None or rv3d is None:
-            return {"CANCELLED"}
-        factor = 1.15 if self.direction == "IN" else 1.0 / 1.15
-        try:
-            if camera_view_navigation.step_zoom(rv3d, self.direction):
-                region.tag_redraw()
-                return {"FINISHED"}
-            rv3d.view_distance = max(1e-4, rv3d.view_distance / factor)
-        except Exception:  # noqa: BLE001
-            return {"CANCELLED"}
-        region.tag_redraw()
-        return {"FINISHED"}
+        return _view_zoom_step_execute(context, self.direction)
+
+
+class BMANGA_OT_view_zoom_step_in(Operator):
+    """Ctrl+ホイールアップの 1 ステップズームイン.
+
+    keymap 登録専用のプロパティ無し版。kmi.properties へ enum を書き込むと、
+    mainfile 切替とキーマップ再構築が重なった時に Blender 本体が
+    プロパティ解放でクラッシュする事故 (2026-07-22 実測) があるため、
+    keymap には direction プロパティを持つ ``view_zoom_step`` を載せない。
+    """
+
+    bl_idname = "bmanga.view_zoom_step_in"
+    bl_label = "B-MANGA ビューズームイン (1 ステップ)"
+    bl_options = {"REGISTER"}
+
+    def invoke(self, context, event):
+        return _view_zoom_step_invoke(context, event, "IN")
+
+    def execute(self, context):
+        return _view_zoom_step_execute(context, "IN")
+
+
+class BMANGA_OT_view_zoom_step_out(Operator):
+    """Ctrl+ホイールダウンの 1 ステップズームアウト (プロパティ無し版)."""
+
+    bl_idname = "bmanga.view_zoom_step_out"
+    bl_label = "B-MANGA ビューズームアウト (1 ステップ)"
+    bl_options = {"REGISTER"}
+
+    def invoke(self, context, event):
+        return _view_zoom_step_invoke(context, event, "OUT")
+
+    def execute(self, context):
+        return _view_zoom_step_execute(context, "OUT")
 
 
 # ---------- レイヤー選択 (既存) ----------
@@ -1104,6 +1146,8 @@ _CLASSES = (
     BMANGA_OT_view_rotate,
     BMANGA_OT_view_zoom_drag,
     BMANGA_OT_view_zoom_step,
+    BMANGA_OT_view_zoom_step_in,
+    BMANGA_OT_view_zoom_step_out,
     BMANGA_OT_view_layer_pick,
     BMANGA_OT_view_context_menu,
     BMANGA_OT_view_eyedropper,
