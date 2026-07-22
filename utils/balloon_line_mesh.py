@@ -69,9 +69,10 @@ SHARP_THRESHOLD_RAD = math.radians(30.0)
 ARC_STEP_DEG = 12.0
 LINE_Z_OFFSET_M = 0.00010
 
-# 「角を尖らせる」(mitre join) で鋭角頂点が太線時に bevel 切りされないよう、
-# Shapely の mitre_limit を十分大きく取る。50 で約 1.15° まで保持される。
-_SHARP_MITRE_LIMIT = 50.0
+# 「角を尖らせる」(mitre join) のミター上限。2026-07-23 確定仕様: 全帯統一の
+# 鋭角維持 (50 ≈ 1.15° まで先端を尖ったまま保持)。正本は
+# balloon_tail_boolean.SHARP_TIP_MITRE_LIMIT (書き出しと共有)。
+_SHARP_MITRE_LIMIT = balloon_tail_boolean.SHARP_TIP_MITRE_LIMIT
 _ROUND_MITRE_LIMIT = 5.0
 OUTER_EDGE_Z_OFFSET_M = 0.000020
 INNER_EDGE_Z_OFFSET_M = 0.000040
@@ -354,6 +355,14 @@ def _build_body_polygon(samples):
         body_poly = Polygon(body_pts)
         if not body_poly.is_valid:
             body_poly = body_poly.buffer(0)
+        if body_poly.geom_type == "MultiPolygon":
+            # 自己交差の治癒 (buffer(0)) で複数片に分かれた場合は最大片を本体として
+            # 採用する (幅の狭い小山でトゲ曲線のふくらみ同士が谷で交差した時に
+            # できる微小ローブ等)。.exterior を使う下流処理を Polygon 前提に保つ。
+            geoms = [g for g in body_poly.geoms if not g.is_empty and g.area > 0]
+            if not geoms:
+                return None
+            body_poly = max(geoms, key=lambda g: g.area)
         if body_poly.is_empty or body_poly.area <= 0:
             return None
         return body_poly
@@ -1076,7 +1085,7 @@ def stroke_variable_width(
     closed: bool,
     round_joins: bool = True,
     quad_segs: int = 8,
-    mitre_limit: float = 8.0,
+    mitre_limit: float = _SHARP_MITRE_LIMIT,
 ):
     """中心線に沿った可変幅ストロークを Shapely の union だけで構築する (堅牢プリミティブ).
 
@@ -1108,31 +1117,72 @@ def stroke_variable_width(
             return None
         return (-dy / L, dx / L)
 
-    # 各頂点の ±side コーナー (round=半幅オフセット点, sharp=隣接辺オフセット交点=mitre)
-    def _corner(i, side):
+    # 各頂点の ±side コーナー情報。
+    #   ("pt", P)          : 単一コーナー点 (mitre 交点 / 丸オフセット点 / 端点)
+    #   ("bevel", PA, PB)  : ミター上限超過。Shapely の bevel 切りと同じく、上限距離の
+    #                        垂直カット線と前辺/次辺オフセットの交点 PA, PB で平らに切る。
+    corner_cache: dict = {}
+
+    def _corner_info(i, side):
+        key = (i, side)
+        cached = corner_cache.get(key)
+        if cached is not None:
+            return cached
         p = centerline[i]
         h = max(0.0, float(half_widths[i]))
         nb_prev = _seg_normal((i - 1) % n, i) if (closed or i > 0) else None
         nb_next = _seg_normal(i, (i + 1) % n) if (closed or i < n - 1) else None
         n_use = nb_next or nb_prev
         if n_use is None:
-            return p
-        if round_joins or nb_prev is None or nb_next is None:
-            return (p[0] + side * n_use[0] * h, p[1] + side * n_use[1] * h)
-        # mitre: 2 本のオフセット辺の交点
-        a0 = (p[0] + side * nb_prev[0] * h, p[1] + side * nb_prev[1] * h)
-        a1 = (centerline[(i - 1) % n][0] + side * nb_prev[0] * h,
-              centerline[(i - 1) % n][1] + side * nb_prev[1] * h)
-        b0 = (p[0] + side * nb_next[0] * h, p[1] + side * nb_next[1] * h)
-        b1 = (centerline[(i + 1) % n][0] + side * nb_next[0] * h,
-              centerline[(i + 1) % n][1] + side * nb_next[1] * h)
-        hit = _line_intersection(a1, a0, b0, b1)
-        if hit is None:
-            return (p[0] + side * n_use[0] * h, p[1] + side * n_use[1] * h)
-        if math.hypot(hit[0] - p[0], hit[1] - p[1]) > h * mitre_limit + 1.0e-9:
-            # mitre が伸びすぎ → bevel (頂点で2点に分けるが、ここでは近い方の辺点)
-            return (p[0] + side * n_use[0] * h, p[1] + side * n_use[1] * h)
-        return hit
+            result = ("pt", p)
+        elif round_joins or nb_prev is None or nb_next is None:
+            result = ("pt", (p[0] + side * n_use[0] * h, p[1] + side * n_use[1] * h))
+        else:
+            # mitre: 2 本のオフセット辺の交点
+            a0 = (p[0] + side * nb_prev[0] * h, p[1] + side * nb_prev[1] * h)
+            a1 = (centerline[(i - 1) % n][0] + side * nb_prev[0] * h,
+                  centerline[(i - 1) % n][1] + side * nb_prev[1] * h)
+            b0 = (p[0] + side * nb_next[0] * h, p[1] + side * nb_next[1] * h)
+            b1 = (centerline[(i + 1) % n][0] + side * nb_next[0] * h,
+                  centerline[(i + 1) % n][1] + side * nb_next[1] * h)
+            hit = _line_intersection(a1, a0, b0, b1)
+            if hit is None:
+                result = ("pt", (p[0] + side * n_use[0] * h, p[1] + side * n_use[1] * h))
+            else:
+                distance = math.hypot(hit[0] - p[0], hit[1] - p[1])
+                if distance <= h * mitre_limit + 1.0e-9:
+                    result = ("pt", hit)
+                else:
+                    # ミター上限超過 → 上限距離の位置でミター方向に垂直な線で切り、
+                    # 前辺/次辺オフセットとの交点 PA/PB を bevel 端点にする
+                    # (Shapely buffer の bevel 切りと同じ形。旧: 辺点まで潰していた
+                    # ため静的経路より先端が過剰に短くなり、谷/山線幅%を 100 から
+                    # 動かした瞬間に先端が縮む不連続が出ていた)。
+                    scale = (h * mitre_limit) / distance
+                    cut = (p[0] + (hit[0] - p[0]) * scale, p[1] + (hit[1] - p[1]) * scale)
+                    direction = ((hit[0] - p[0]) / distance, (hit[1] - p[1]) / distance)
+                    perp = (-direction[1], direction[0])
+                    span = h * mitre_limit * 4.0 + 1.0e-6
+                    cut_a = (cut[0] - perp[0] * span, cut[1] - perp[1] * span)
+                    cut_b = (cut[0] + perp[0] * span, cut[1] + perp[1] * span)
+                    pa = _line_intersection(a1, a0, cut_a, cut_b)
+                    pb = _line_intersection(b0, b1, cut_a, cut_b)
+                    if pa is None or pb is None:
+                        result = ("pt", cut)
+                    else:
+                        result = ("bevel", pa, pb)
+        corner_cache[key] = result
+        return result
+
+    def _segment_start(i, side):
+        info = _corner_info(i, side)
+        # bevel のとき、この頂点から出ていく辺 (= 次辺) 上の端点は PB
+        return info[1] if info[0] == "pt" else info[2]
+
+    def _segment_end(j, side):
+        info = _corner_info(j, side)
+        # bevel のとき、この頂点へ入ってくる辺 (= 前辺) 上の端点は PA
+        return info[1]
 
     pieces = []
     for i in range(seg_count):
@@ -1143,10 +1193,10 @@ def stroke_variable_width(
             continue
         if _seg_normal(i, j) is None:
             continue
-        pa_plus = _corner(i, +1) if ha >= 1.0e-9 else centerline[i]
-        pa_minus = _corner(i, -1) if ha >= 1.0e-9 else centerline[i]
-        pb_plus = _corner(j, +1) if hb >= 1.0e-9 else centerline[j]
-        pb_minus = _corner(j, -1) if hb >= 1.0e-9 else centerline[j]
+        pa_plus = _segment_start(i, +1) if ha >= 1.0e-9 else centerline[i]
+        pa_minus = _segment_start(i, -1) if ha >= 1.0e-9 else centerline[i]
+        pb_plus = _segment_end(j, +1) if hb >= 1.0e-9 else centerline[j]
+        pb_minus = _segment_end(j, -1) if hb >= 1.0e-9 else centerline[j]
         trap = Polygon([pa_plus, pb_plus, pb_minus, pa_minus])
         if not trap.is_valid:
             trap = trap.buffer(0)
@@ -1159,6 +1209,18 @@ def stroke_variable_width(
                 pieces.append(Point(a).buffer(ha, quad_segs=quad_segs))
             if hb >= 1.0e-9:
                 pieces.append(Point(b).buffer(hb, quad_segs=quad_segs))
+    # bevel コーナーの切り欠き (PA-PB-頂点の三角形) を充填し、平らな bevel 切りにする
+    if not round_joins:
+        for i in range(n if closed else max(0, n - 1)):
+            for side in (+1, -1):
+                info = corner_cache.get((i, side))
+                if info is None or info[0] != "bevel":
+                    continue
+                triangle = Polygon([centerline[i], info[1], info[2]])
+                if not triangle.is_valid:
+                    triangle = triangle.buffer(0)
+                if (not triangle.is_empty) and triangle.area > 1.0e-15:
+                    pieces.append(triangle)
     if not pieces:
         return None
     geom = unary_union(pieces)
@@ -1856,13 +1918,11 @@ def _build_variable_width_band_from_buffer(
         from shapely.geometry import Polygon  # type: ignore
     except Exception:  # noqa: BLE001
         return None
-    # centerline 用 buffer の mitre_limit:
-    # - 低すぎる (4.0): フキダシ形状の鋭い谷/山が bevel カットされて丸く見える
-    # - 高すぎる (50.0): 山頂が外向きに過剰なヒゲ状スパイクとして mitre 延長される
-    # 中間値 (10.0) で、 thorn の典型的な鋭角 (30〜60 度) を sharp に保ちつつ、
-    # 過剰スパイクを抑える。 角を尖らせる OFF では _ROUND_MITRE_LIMIT を使う。
+    # centerline 用 buffer の mitre_limit: 全帯共通の _SHARP_MITRE_LIMIT に統一
+    # (2026-07-23 確定仕様: 先端の伸びはオフセットの2倍まで)。
+    # 角を尖らせる OFF では _ROUND_MITRE_LIMIT を使う。
     join = 2 if valley_sharp else 1
-    mitre = 10.0 if valley_sharp else _ROUND_MITRE_LIMIT
+    mitre = _SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT
     try:
         center_buf = body_poly.buffer(signed_offset_m, join_style=join, mitre_limit=mitre)
     except Exception:  # noqa: BLE001
@@ -3360,11 +3420,10 @@ def ensure_balloon_outer_edge_mesh(
         remove_balloon_outer_edge_mesh(balloon_id)
         return None
 
-    # mitre_limit は 主線アウトラインの細いスパイク先端で過剰延長を起こさないよう、
-    # 主線 dynamic と同じ 10.0 を上限とする (sharp は保ちつつ、 外向きにヒゲ状に
-    # 飛び出さない)。
+    # mitre_limit は全帯共通の _SHARP_MITRE_LIMIT に統一 (2026-07-23 確定仕様:
+    # 先端の伸びはオフセットの2倍まで)。
     join = 2 if valley_sharp else 1
-    mitre = 10.0 if valley_sharp else _ROUND_MITRE_LIMIT
+    mitre = _SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT
     try:
         outer_buffer = outline.buffer(edge_width_m, join_style=join, mitre_limit=mitre)
         outer_band = outer_buffer.difference(outline)

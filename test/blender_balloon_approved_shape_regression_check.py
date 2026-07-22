@@ -405,23 +405,51 @@ def _assert_shape_quality_contract(balloon_shapes, rect) -> None:
     params_30_50 = _shape_kwargs(30.0, 50.0)
     params_50_50 = _shape_kwargs(50.0, 50.0)
 
-    # トゲ系は現在のUI初期値30x50を保存したまま、承認済み50x50で描く。
+    # 2026-07-23 確定仕様: 小山幅・小山高は UI 表記どおり独立して効く。
+    # 旧契約 (2026-07-15「30x50を保存したまま承認済み50x50で描く」= 実効小山幅を
+    # max(小山幅, 小山高) に丸める) は、①小山幅スライダーが無効になる ②小山高で
+    # 山の配置がズレる、というユーザー報告の不具合であったため撤回。
     for shape in ("thorn", "thorn-curve"):
         current = _outline_signature(
             balloon_shapes.outline_with_corners_for_shape(shape, rect, **params_30_50)
         )
-        approved = _outline_signature(
+        widened = _outline_signature(
             balloon_shapes.outline_with_corners_for_shape(shape, rect, **params_50_50)
         )
-        assert current == approved, f"{shape}: 30x50が承認済み50x50の輪郭と一致しません"
+        assert current != widened, f"{shape}: 小山幅30と50で輪郭が変わりません (スライダー無効)"
 
-    current_curve = _bezier_signature(
-        balloon_shapes.bezier_loop_for_shape("thorn-curve", rect, **params_30_50)
-    )
-    approved_curve = _bezier_signature(
-        balloon_shapes.bezier_loop_for_shape("thorn-curve", rect, **params_50_50)
-    )
-    assert current_curve == approved_curve, "トゲ（曲線）の30x50 Bezierが承認形状と一致しません"
+    # 小山高は「山の高さだけ」を変え、山の本数・谷の位置 (配置) を変えない。
+    for shape in ("thorn", "thorn-curve"):
+        low = balloon_shapes.outline_with_corners_for_shape(
+            shape, rect, **_shape_kwargs(30.0, 30.0)
+        )
+        high = balloon_shapes.outline_with_corners_for_shape(
+            shape, rect, **_shape_kwargs(30.0, 70.0)
+        )
+        assert len(low[1]) == len(high[1]), (
+            f"{shape}: 小山高の変更で山の本数が変わっています "
+            f"(配置ズレ): {len(low[1])} vs {len(high[1])}"
+        )
+        assert _outline_signature(low) != _outline_signature(high), (
+            f"{shape}: 小山高30と70で輪郭が変わりません (スライダー無効)"
+        )
+
+    # トゲ（直線）は輪郭が [谷, 山, 谷, 山, ...] の交互構造なので、
+    # 谷の座標そのものが小山高の変更で1点も動かないことまで確認する。
+    low_thorn = balloon_shapes.outline_with_corners_for_shape(
+        "thorn", rect, **_shape_kwargs(30.0, 30.0)
+    )[0]
+    high_thorn = balloon_shapes.outline_with_corners_for_shape(
+        "thorn", rect, **_shape_kwargs(30.0, 70.0)
+    )[0]
+    assert len(low_thorn) == len(high_thorn)
+    for index in range(0, len(low_thorn), 2):
+        a = low_thorn[index]
+        b = high_thorn[index]
+        drift = math.hypot(float(a[0]) - float(b[0]), float(a[1]) - float(b[1]))
+        assert drift <= 1.0e-9, (
+            f"thorn: 小山高の変更で谷{index // 2}の位置が動いています: {drift}mm"
+        )
 
     # もやもや30x50は、固定goldenの承認26アンカー曲線をDe Casteljauで
     # 52アンカーへ正確に分割したもの。アンカー数ではなく密サンプル曲線を比べる。

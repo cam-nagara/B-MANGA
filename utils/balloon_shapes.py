@@ -999,24 +999,17 @@ def _bump_segments(
     return base_angle, [(is_sub, span * scale, h_mul) for is_sub, span, h_mul in segments]
 
 
-def _quality_sub_width_percent(opts: _DynamicOpts) -> float:
-    """多重線で輪にならない、縦横比を保った小山幅を返す."""
-
-    sub_width = opts.sub_w if opts.sub_w > 0.0 else 50.0
-    sub_height = opts.sub_h if opts.sub_h > 0.0 else 50.0
-    return max(sub_width, sub_height)
-
-
 def _thorn_bump_segments(rx: float, ry: float, opts: _DynamicOpts, *, min_slots: int):
-    """細長すぎる小山を避けたトゲ用の山列を返す."""
+    """トゲ用の山列を返す.
 
-    return _bump_segments(
-        rx,
-        ry,
-        opts,
-        min_slots=min_slots,
-        effective_sub_width_percent=_quality_sub_width_percent(opts),
-    )
+    2026-07-23 確定仕様: 小山幅 (sub_w) と小山高 (sub_h) は UI 表記どおりに独立して
+    効かせる。旧実装 (2026-07-15) は「実効小山幅 = max(小山幅, 小山高)」に丸めており、
+    ①小山幅スライダーが max 以下で完全に無効、②小山高を変えるとスロット幅→山の
+    本数・配置が変わり全体の角度がズレて見える、という不具合の原因だった。
+    小山高はスロット割りに影響させず、山の高さだけを変える。
+    """
+
+    return _bump_segments(rx, ry, opts, min_slots=min_slots)
 
 
 def _sample_cubic(

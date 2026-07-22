@@ -8,6 +8,16 @@ from . import python_deps
 _OVERLAP_M = 1.0e-6
 _BOUNDARY_TOUCH_EPS_M = 2.0e-4
 
+# 「角を尖らせる」ON のミター上限 (Shapely mitre_limit)。
+# 2026-07-23 確定仕様: 全帯 (主線・外側フチ・内側フチ・多重線・書き出し) を
+# 「拡大した基準形状から内側フチと同じ規則で切り出す」統一則で描く。この統一則の
+# 先端は基準形状のミター角そのもので、鋭さを一切損なわないよう上限は 50
+# (約1.15°まで鋭角を保持) に統一する。旧実装は外側フチ=10・動的幅経路=8/10 と
+# バラバラで、鋭いトゲの外側フチだけ先端が截断される不整合 (統一則からの逸脱)
+# があった。※上限を小さくして先端の伸びを切り詰める案 (2.0) は、先端が平らに
+# 切り落とされ理想形 (鋭い折り返し) と異なるため 2026-07-23 に試作の上で撤回。
+SHARP_TIP_MITRE_LIMIT = 50.0
+
 
 def _validate_polygon(poly):
     if poly is None:
@@ -126,12 +136,12 @@ def mitre_band_polygons(
     join = 2 if sharp else 1
     try:
         outer = (
-            poly.buffer(outer_offset, join_style=join, mitre_limit=50.0)
+            poly.buffer(outer_offset, join_style=join, mitre_limit=SHARP_TIP_MITRE_LIMIT)
             if abs(outer_offset) > 1.0e-12
             else poly
         )
         inner = (
-            poly.buffer(inner_offset, join_style=join, mitre_limit=50.0)
+            poly.buffer(inner_offset, join_style=join, mitre_limit=SHARP_TIP_MITRE_LIMIT)
             if abs(inner_offset) > 1.0e-12
             else poly
         )
@@ -255,8 +265,10 @@ def apply_sharp_tail_tips(
                         # 補強用のミター帯もそれに合わせて対称に作る。
                         half = w * 0.5
                         mitre_band_geom = outline_poly.buffer(
-                            half, join_style=2, mitre_limit=50.0
-                        ).difference(outline_poly.buffer(-half, join_style=2, mitre_limit=50.0))
+                            half, join_style=2, mitre_limit=SHARP_TIP_MITRE_LIMIT
+                        ).difference(
+                            outline_poly.buffer(-half, join_style=2, mitre_limit=SHARP_TIP_MITRE_LIMIT)
+                        )
                     band = band.union(
                         mitre_band_geom.intersection(
                             region_poly.buffer(w * 2.0, join_style=1).difference(corridor)
