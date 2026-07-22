@@ -803,8 +803,13 @@ def _assert_actual_four_line_topology(balloon_shapes, line_mesh, rect) -> None:
     from shapely.geometry import Polygon
     from shapely.ops import unary_union
 
+    # 2026-07-23 確定仕様: 主線は中心アライメント (signed_offset=0, 本体を挟んで
+    # ±width/2 に対称展開) に統一。トゲ曲線+尖角の先端曲線キャップも廃止したため、
+    # 主線・多重線とも全形状で `_strict_offset_band` (buffer(offset±half)の差)
+    # と厳密に一致する (旧: 主線だけ外側アライメント signed=width/2、トゲ曲線だけ
+    # 先端曲線化で strict と不一致だった)。
     specs = (
-        ("main", 0.8, 1.6),
+        ("main", 0.0, 1.6),
         ("multi-1", 2.8, 1.0),
         ("multi-2", 4.5, 1.0),
         ("multi-3", 6.2, 1.0),
@@ -820,7 +825,7 @@ def _assert_actual_four_line_topology(balloon_shapes, line_mesh, rect) -> None:
         bands = []
         for label, signed_mm, width_mm in specs:
             if label == "main":
-                result = line_mesh._stroke_band_outside_union(  # noqa: SLF001
+                result = line_mesh._stroke_band_centered(  # noqa: SLF001
                     samples,
                     line_width_m=width_mm * 0.001,
                     valley_sharp=True,
@@ -836,9 +841,6 @@ def _assert_actual_four_line_topology(balloon_shapes, line_mesh, rect) -> None:
                     _body_poly=body_poly,
                 )
             assert result is not None, f"{shape}/{label}: 実多重線経路が帯を生成できません"
-            if shape == "thorn-curve":
-                result = line_mesh._curve_thorn_peak_polygons(  # noqa: SLF001
-                    SimpleNamespace(shape=shape), True, [result], samples)[0]
             actual = Polygon(result[0], result[1])
             strict = _strict_offset_band(
                 body_poly,
@@ -854,14 +856,13 @@ def _assert_actual_four_line_topology(balloon_shapes, line_mesh, rect) -> None:
                 f"{shape}/{label}: 閉線の内側以外に輪・穴があります: {len(strict.interiors)}"
             )
             assert actual.is_valid and len(actual.interiors) == 1
-            if shape != "thorn-curve":
-                assert abs(actual.area - strict.area) <= max(1.0e-12, strict.area * 1.0e-8)
+            assert abs(actual.area - strict.area) <= max(1.0e-12, strict.area * 1.0e-8), (
+                f"{shape}/{label}: 実経路が strict なオフセット帯と一致しません"
+            )
             bands.append(actual)
         for index, first in enumerate(bands):
             for second in bands[index + 1 :]:
                 assert first.disjoint(second), f"{shape}: 4線の帯同士が重なっています"
-                # 2026-07-15 確定仕様: トゲ曲線+尖角は先端付近で内外輪郭とも曲線化
-                # され線間隔が細くなってよい (接触・融合は不可)
                 assert first.distance(second) >= 0.00040, f"{shape}: 多重線の間隔が失われています"
         combined = unary_union(bands)
         assert combined.geom_type == "MultiPolygon" and len(combined.geoms) == 4, (

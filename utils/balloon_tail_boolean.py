@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from . import balloon_thorn_curve_stroke
 from . import python_deps
 
 
@@ -113,15 +112,10 @@ def mitre_band_polygons(
     inner_offset: float,
     *,
     sharp: bool = True,
-    curve_thorn_peaks: bool = False,
-    curve_reference_points: Sequence[tuple[float, float]] | None = None,
-    curve_thorn_holes: bool = False,
 ):
     """輪郭から outer_offset / inner_offset (符号付き) のオフセット帯を返す。
 
     sharp=True で mitre join (角が尖る)、False で round join (角が丸い)。
-    curve_thorn_peaks=True なら、mitre先端を保ったまま外周だけを曲線化する。
-    curve_thorn_holes=True は外側フチの共有内周にも同じ曲線を適用する。
     「角を尖らせる」やフチをページ出力・サムネイルへ正確に反映するために使う。
     戻り値: [(outer_ring, holes), ...] (失敗時は空リスト)
     """
@@ -160,10 +154,6 @@ def mitre_band_polygons(
             if len(ring) >= 3:
                 holes.append(ring)
         out.append((outer_ring, holes))
-    if sharp and curve_thorn_peaks and curve_reference_points:
-        return balloon_thorn_curve_stroke.curve_thorn_peak_band_polygons(
-            out, curve_reference_points, curve_holes=curve_thorn_holes
-        )
     return out
 
 
@@ -198,7 +188,8 @@ def apply_sharp_tail_tips(
 ):
     """「角を尖らせる」しっぽの先端を、ペンの抜きのように細く絞った帯へ加工する。
 
-    band_rings: 主線の帯 [(outer, holes), ...] (本体輪郭の外側 0..line_width)。
+    band_rings: 主線の帯 [(outer, holes), ...] (2026-07-23: 本体輪郭を中心に
+    ±line_width/2 で対称展開した帯)。
     sharp_tails: [(centerline_pts, halfwidths, region_pts), ...]
       - centerline_pts: しっぽ中心線 (band と同じ座標系・単位)
       - halfwidths: 各点のくさび半幅 (同単位)
@@ -260,17 +251,22 @@ def apply_sharp_tail_tips(
                 region_poly = polygon_from_points(region_pts)
                 if region_poly is not None:
                     if mitre_band_geom is None:
+                        # 2026-07-23: 主線帯は中心アライメント (outline ± w/2) なので、
+                        # 補強用のミター帯もそれに合わせて対称に作る。
+                        half = w * 0.5
                         mitre_band_geom = outline_poly.buffer(
-                            w, join_style=2, mitre_limit=50.0
-                        ).difference(outline_poly)
+                            half, join_style=2, mitre_limit=50.0
+                        ).difference(outline_poly.buffer(-half, join_style=2, mitre_limit=50.0))
                     band = band.union(
                         mitre_band_geom.intersection(
                             region_poly.buffer(w * 2.0, join_style=1).difference(corridor)
                         )
                     )
-            # 先端から短く「抜く」: 切断面の幅 → 0 へ絞る延長を付ける (ペンの抜き)
+            # 先端から短く「抜く」: 切断面の幅 → 0 へ絞る延長を付ける (ペンの抜き)。
+            # start_half は「くさび半幅 + 主線帯の外側張り出し量」。 主線帯は中心
+            # アライメントなので張り出しは w/2 (2026-07-23: 旧 w から変更)。
             ext_len = w * 2.5
-            start_half = tip_half + w
+            start_half = tip_half + w * 0.5
             ext_pts = [tip, (tip[0] + dir_x * ext_len, tip[1] + dir_y * ext_len)]
             taper_pts = _variable_width_stroke_polygon(
                 ext_pts, [0.0, ext_len], ext_len, lambda t: max(0.0, start_half * (1.0 - t))

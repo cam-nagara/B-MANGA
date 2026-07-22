@@ -25,7 +25,6 @@ import bpy
 from . import object_preserve
 
 from . import balloon_tail_boolean
-from . import balloon_thorn_curve_stroke
 from . import free_transform
 from . import balloon_shapes
 from . import line_pattern
@@ -584,7 +583,7 @@ def _resample_clean_offset(
     return out
 
 
-def _stroke_band_outside_union(
+def _stroke_band_centered(
     samples: Sequence[tuple[float, float, float]],
     *,
     line_width_m: float,
@@ -592,10 +591,16 @@ def _stroke_band_outside_union(
     miter_limit: float = _SHARP_MITRE_LIMIT,
     peaks_rounded: bool = False,
 ) -> Optional[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
-    """主線 (外側アライメント) の線バンドを Shapely buffer で構築する."""
+    """主線 (中心アライメント。線幅の中心 = 本体輪郭) の線バンドを Shapely buffer で構築する.
+
+    2026-07-23 確定仕様: 内側フチと同じ「基準輪郭からのオフセット対で挟む」構築に
+    統一し、山・谷とも等幅のまま鋭角に折り返す形状にする (旧: 本体の外側にのみ
+    線幅ぶん成長させる外側アライメントで、山頂がミター延長により先端へ向けて
+    幅0まで痩せる針状になっていた)。
+    """
     return build_offset_band_polygon(
         samples,
-        signed_offset_m=line_width_m * 0.5,
+        signed_offset_m=0.0,
         band_width_m=line_width_m,
         valley_sharp=valley_sharp,
         miter_limit=miter_limit,
@@ -697,10 +702,11 @@ def _build_dashed_band_polygons(
     """主線を破線または点線として、複数の独立バンドポリゴンとして構築する.
 
     実装手順:
-    1. body 多角形を `line_width/2` だけ外側 buffer して、主線中心線のリングを得る
+    1. body 多角形そのものを主線中心線のリングとして使う (2026-07-23: 主線は
+       中心アライメントに統一されたため、中心線 = body、幅は ±line_width/2)
     2. リング外周を arc length 軸でサンプリング
     3. dash 周期に従って区間を切り出し、各区間を LineString として `line_width/2` で
-       buffer すれば、外側アライメント主線の dash バンドが得られる
+       buffer すれば、中心アライメント主線の dash バンドが得られる
     4. 各 dash バンドを (outer_ring, holes) のタプルとして返す
     """
     python_deps.ensure_bundled_wheels_on_path()
@@ -716,7 +722,7 @@ def _build_dashed_band_polygons(
     join = 2 if valley_sharp else 1
     try:
         centerline_poly = body_poly.buffer(
-            line_width_m * 0.5,
+            0.0,
             join_style=join,
             mitre_limit=_SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT,
         )
@@ -1533,52 +1539,6 @@ def _build_dynamic_multi_line_polygons(
             # 帯のアウトラインも直線のまま (曲がらない)。 vw/pw は小山/小谷の
             # prominence で浅くした実効幅 (主山/主谷は peak_w/valley_w のまま)。
             widths.append(vw + (pw - vw) * t_segment)
-
-    # 凸の山頂・凹の谷とも、 頂点を「隣接2辺を頂点幅ぶん外側へ平行移動した直線の
-    # 交点 (= mitre)」に置く。 anchor-only では各辺が単一直線セグメントなので、 両隣の
-    # 辺がこの mitre 点を共有し、 先端が折れずに 基準 (均一線 = body.buffer の mitre)
-    # と同じ鋭さ・同じ垂直線幅になる。 単純な法線オフセットだと頂点が mitre より内側
-    # に来て、 辺に対する垂直線幅が base×cos(φ) (≈半分) に痩せる。 山頂だけでなく谷
-    # にも適用しないと、 山を 0% にしたとき太いはずの谷まで細く見える。 幅 0 の頂点
-    # (pinch) は対象外。 過剰スパイクは mitre_limit で頭打ち。
-    if outside_align and use_anchor_only and (width_peaks or width_valleys) and len(widths) == n:
-        cbx, cby = balloon_center_m
-
-        def _edge_offset_line(i, j, w):
-            ax, ay = centerline[i]
-            bx, by = centerline[j]
-            ex, ey = bx - ax, by - ay
-            elen = math.hypot(ex, ey)
-            if elen < 1.0e-12:
-                return None
-            nx, ny = -ey / elen, ex / elen
-            mx, my = (ax + bx) * 0.5 - cbx, (ay + by) * 0.5 - cby
-            if nx * mx + ny * my < 0.0:
-                nx, ny = -nx, -ny
-            return ((ax + nx * w, ay + ny * w), (bx + nx * w, by + ny * w))
-
-        for ci in (*width_peaks, *width_valleys):
-            w_ci = widths[ci]
-            if w_ci <= 1.0e-9:
-                continue
-            la = _edge_offset_line(ci, (ci + 1) % n, w_ci)
-            lb = _edge_offset_line(ci, (ci - 1) % n, w_ci)
-            if la is None or lb is None:
-                continue
-            hit = _line_intersection(la[0], la[1], lb[0], lb[1])
-            if hit is None:
-                continue
-            px, py = centerline[ci]
-            dx = hit[0] - px
-            dy = hit[1] - py
-            dist = math.hypot(dx, dy)
-            if dist <= 1.0e-9:
-                continue
-            # balloon 中心から離れる外向きでなければ無視
-            if dx * (px - cbx) + dy * (py - cby) <= 0.0:
-                continue
-            normals[ci] = (dx / dist, dy / dist)
-            widths[ci] = min(dist, w_ci * _SHARP_MITRE_LIMIT)
 
     # length cut は大山ベースだけで行う (= 大山周りで切って valley から伸ばす)
     segments = _ring_kept_index_segments(n, peaks, valleys, length_scale)
@@ -3080,10 +3040,12 @@ def ensure_balloon_line_mesh(
         return None
     elif main_line_dynamic:
         # 主線を可変幅で構築 (谷/山の line width を辺全体で線形補間)。
-        # outside_align=True で外側アライメント (inner=body, outer=body+width)。
-        # width=0 の頂点で outer=inner=body となり、 body の鋭い谷/山頂で
-        # 鋭く pinch off して 帯終端が尖る (中心アライメントだと body から
-        # line_width/2 離れた位置で円弧状に丸まってしまう)。
+        # 2026-07-23: 中心アライメント (centerline=body, 帯は body±width/2 に対称展開)
+        # に統一。 centerline は body 自身 (signed_offset_m=0) のままなので、
+        # width=0 の頂点では従来どおり outer=inner=body に一致して鋭く pinch off する。
+        # stroke_variable_width() 内部のミター結合はセグメント法線ベースで対称
+        # オフセットでも正しい鋭角交点を計算するため、 outside_align=False (中心
+        # アライメント) でも 100% 均一幅時と同じ鋭い山頂・谷になる。
         body_center_m = _balloon_center_m_from_samples(samples)
         sub_polys = _build_dynamic_multi_line_polygons(
             body_samples=samples,
@@ -3095,18 +3057,15 @@ def ensure_balloon_line_mesh(
             valley_sharp=valley_sharp,
             balloon_center_m=body_center_m,
             peak_extension_m=0.0,
-            outside_align=True,
+            outside_align=False,
             peaks_rounded=peaks_rounded,
         )
         if not sub_polys:
             remove_balloon_line_mesh(balloon_id)
             return None
-        sub_polys = _curve_thorn_peak_polygons(
-            entry, valley_sharp, sub_polys, body_samples
-        )
         _build_band_mesh_from_polygons(mesh, sub_polys, LINE_Z_OFFSET_M)
     else:
-        union_result = _stroke_band_outside_union(
+        union_result = _stroke_band_centered(
             samples,
             line_width_m=line_width_m,
             valley_sharp=valley_sharp,
@@ -3129,9 +3088,6 @@ def ensure_balloon_line_mesh(
                     sharp_tails,
                     add_bend_mitre=not valley_sharp,
                 )
-        rings = _curve_thorn_peak_polygons(
-            entry, valley_sharp, rings, body_samples
-        )
         _build_band_mesh_from_polygons(mesh, rings, LINE_Z_OFFSET_M)
 
     _apply_ribbon_uv(mesh, entry, [samples], line_width_m)
@@ -3153,20 +3109,6 @@ def ensure_balloon_line_mesh(
 def _valley_sharp_for_entry(entry) -> bool:
     sp = getattr(entry, "shape_params", None)
     return bool(getattr(sp, "cloud_valley_sharp", False))
-
-
-def _curve_thorn_peak_polygons(
-    entry, sharp: bool, polygons, reference_outline, *, curve_holes: bool = False
-):
-    """トゲ曲線＋尖角だけ、現行先端を保った曲線キャップへ置換する。"""
-    shape = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
-    if not sharp or shape != "thorn-curve":
-        return list(polygons)
-    return balloon_thorn_curve_stroke.curve_thorn_peak_band_polygons(
-        polygons,
-        [(float(point[0]), float(point[1])) for point in reference_outline],
-        curve_holes=curve_holes,
-    )
 
 
 def _line_dynamic_width_params(entry) -> tuple[bool, float, float, bool]:
@@ -3206,6 +3148,7 @@ def _compute_main_line_polygon(
 ):
     """主線の Shapely polygon を返す (dynamic / 均一どちらも対応).
 
+    2026-07-23: 主線は中心アライメント (body ± line_width/2 に対称展開) に統一。
     フキダシのアウトラインを 主線が太く描いた領域として算出するため、 外側フチ
     の buffer 基準として使う。 主線が dynamic で 谷で 0% / 山頂で 0% のときも
     主線が実際に塗る範囲を返す。 帯全体が無効化される設定では None。
@@ -3237,7 +3180,7 @@ def _compute_main_line_polygon(
             valley_sharp=valley_sharp,
             balloon_center_m=balloon_center_m,
             peak_extension_m=0.0,
-            outside_align=True,
+            outside_align=False,
             peaks_rounded=peaks_rounded,
         )
         if not sub_polys:
@@ -3258,17 +3201,47 @@ def _compute_main_line_polygon(
             return unary_union(polys)
         except Exception:  # noqa: BLE001
             return None
-    # 均一幅主線: body の外側に line_width_m まで膨らんだ帯
+    # 均一幅主線: body を中心に ±line_width_m/2 で対称展開した帯
     body_poly = _build_body_polygon(samples)
     if body_poly is None:
         return None
     join = 2 if valley_sharp else 1
     mitre = _SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT
+    half = line_width_m * 0.5
     try:
-        outline = body_poly.buffer(line_width_m, join_style=join, mitre_limit=mitre)
-        return outline.difference(body_poly)
+        outer = body_poly.buffer(half, join_style=join, mitre_limit=mitre)
+        inner = body_poly.buffer(-half, join_style=join, mitre_limit=mitre)
+        return outer.difference(inner)
     except Exception:  # noqa: BLE001
         return None
+
+
+def _compute_main_line_inner_boundary(
+    entry,
+    samples,
+    balloon_center_m: tuple[float, float],
+    line_width_m: float,
+    valley_sharp: bool,
+):
+    """主線の内側境界 (= body から主線の内側半分を除いた形) を返す.
+
+    中心アライメントの主線は body の内側にも line_width/2 だけ食い込むため、
+    内側フチはこの境界からさらに内側へ均一幅で描く必要がある。
+    主線が無効 (幅0 等) のときは body そのものを返す。
+    """
+    body_poly = _build_body_polygon(samples)
+    if body_poly is None:
+        return None
+    line_poly = _compute_main_line_polygon(entry, samples, balloon_center_m, line_width_m, valley_sharp)
+    if line_poly is None or line_poly.is_empty:
+        return body_poly
+    try:
+        result = body_poly.difference(line_poly)
+        if result.is_empty:
+            return None
+        return result
+    except Exception:  # noqa: BLE001
+        return body_poly
 
 
 def _compute_balloon_outer_outline(
@@ -3405,9 +3378,6 @@ def ensure_balloon_outer_edge_mesh(
     if not polys:
         remove_balloon_outer_edge_mesh(balloon_id)
         return None
-    polys = _curve_thorn_peak_polygons(
-        entry, valley_sharp, polys, body_samples, curve_holes=True
-    )
 
     mesh_name = _outer_edge_mesh_data_name(balloon_id)
     mesh = bpy.data.meshes.get(mesh_name)
@@ -3477,23 +3447,29 @@ def ensure_balloon_inner_edge_mesh(
     samples, _tails_merged = _outline_samples_with_tails(entry, samples)
 
     valley_sharp = _valley_sharp_for_entry(entry)
+    line_width_m = line_width_mm * 0.001
     edge_width_m = edge_width_mm * 0.001
+    body_center_m = _balloon_center_m_from_samples(samples)
 
-    # 主線は外側アライメントなので body 内側には主線が無い。 内側フチは body の内側に
-    # 均一幅 edge_width で描く。 主線の谷/山幅変動とは独立 (フチは常に均一幅)。
-    body_poly = _build_body_polygon(samples)
-    if body_poly is None:
+    # 2026-07-23: 主線は中心アライメント (body ± line_width/2) なので、
+    # body の内側 line_width/2 までは主線が占める。 内側フチはその内側境界
+    # (= body から主線の内側半分を除いた形) からさらに内側へ均一幅で描く。
+    # 主線が無効 (幅0・none) のときは従来どおり body そのものが基準になる。
+    inner_boundary = _compute_main_line_inner_boundary(
+        entry, samples, body_center_m, line_width_m, valley_sharp
+    )
+    if inner_boundary is None or inner_boundary.is_empty:
         remove_balloon_inner_edge_mesh(balloon_id)
         return None
 
     join = 2 if valley_sharp else 1
     mitre = _SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT
     try:
-        inner_shrunk = body_poly.buffer(-edge_width_m, join_style=join, mitre_limit=mitre)
+        inner_shrunk = inner_boundary.buffer(-edge_width_m, join_style=join, mitre_limit=mitre)
         if inner_shrunk.is_empty:
-            inner_band = body_poly
+            inner_band = inner_boundary
         else:
-            inner_band = body_poly.difference(inner_shrunk)
+            inner_band = inner_boundary.difference(inner_shrunk)
     except Exception:  # noqa: BLE001
         inner_band = None
     if inner_band is None or inner_band.is_empty:
@@ -3638,8 +3614,11 @@ def ensure_balloon_multi_line_mesh(
         (sum(s[1] for s in samples) / len(samples)),
     )
     polygons: list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]] = []
-    running_outside_mm = line_width_mm  # 主線外側エッジ (body curve からの距離)
-    running_inside_mm = 0.0  # body 境界 (body curve からの絶対距離; 内側方向では本体に主線無し)
+    # 2026-07-23: 主線は中心アライメント (body ± line_width/2) に統一されたため、
+    # 主線の外側エッジは body から line_width/2、内側エッジも body から line_width/2
+    # (body curve からの絶対距離)。
+    running_outside_mm = line_width_mm * 0.5  # 主線外側エッジ (body curve からの距離)
+    running_inside_mm = line_width_mm * 0.5  # 主線内側エッジ (body curve からの絶対距離)
     # 曲線形状 (雲/フワフワ/トゲ曲線) は外側アライメントで帯を作る (内側オフセットの
     # 凸頂点自己交差 = くさび を避ける)。 トゲ直線は従来の中心アライメント。
     ml_straight = _is_straight_edged(
@@ -3730,9 +3709,6 @@ def ensure_balloon_multi_line_mesh(
     if not polygons:
         remove_balloon_multi_line_mesh(balloon_id)
         return None
-    polygons = _curve_thorn_peak_polygons(
-        entry, valley_sharp, polygons, body_samples
-    )
 
     mesh_name = _multi_line_mesh_data_name(balloon_id)
     mesh = bpy.data.meshes.get(mesh_name)
