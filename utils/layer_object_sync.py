@@ -276,7 +276,10 @@ def _stack_uid_for_coma_object(obj: bpy.types.Object, page_id: str) -> str:
     return ""
 
 
-def _coma_stack_order(scene, work, coma_key: str) -> tuple[list[str], str]:
+def coma_stack_order(scene, work, coma_key: str) -> tuple[list[str], str]:
+    """指定コマ配下のレイヤー一覧順 (stack_uid のリスト) と、そのコマの
+    コマプレビュー行 uid を返す。io/export_stack_order.py が
+    レイヤーリスト順→書き出し合成順の変換に使う公開API。"""
     try:
         from . import layer_stack as ls
 
@@ -322,7 +325,7 @@ def _assign_coma_item_z(scene, work, coma_key: str, coma, items: list[tuple[int,
     from . import layer_folder as lf
 
     page_id = coma_key.split(":", 1)[0]
-    order, preview_uid = _coma_stack_order(scene, work, coma_key)
+    order, preview_uid = coma_stack_order(scene, work, coma_key)
     if not order:
         items.sort(key=lambda x: (x[0], x[1].name))
         count = len(items)

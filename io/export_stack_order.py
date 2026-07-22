@@ -109,7 +109,7 @@ def apply_coma_preview_order(work, page, layers, *, side: str = "all"):
     if stack is None:
         return result
     for panel in getattr(page, "comas", ()):
-        order, preview_uid = layer_object_sync._coma_stack_order(
+        order, preview_uid = layer_object_sync.coma_stack_order(
             scene, work, coma_stack_key(page, panel),
         )
         index_by_uid = {uid: index for index, uid in enumerate(order)}

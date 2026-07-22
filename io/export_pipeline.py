@@ -989,34 +989,31 @@ def _render_fill_layer(
         grad_type = str(getattr(entry, "gradient_type", "linear") or "linear")
         c1 = _to_srgb_byte(tuple(entry.color))
         c2 = _to_srgb_byte(tuple(entry.color2))
-        img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         import math
 
+        import numpy as np
+
+        ys, xs = np.mgrid[0:h, 0:w]
         if grad_type == "radial":
             cx, cy = w / 2.0, h / 2.0
             max_r = math.hypot(cx, cy)
-            for y in range(h):
-                for x in range(w):
-                    d = math.hypot(x - cx, y - cy) / max_r if max_r > 0 else 0.0
-                    t = max(0.0, min(1.0, d))
-                    r = int(c1[0] + (c2[0] - c1[0]) * t)
-                    g = int(c1[1] + (c2[1] - c1[1]) * t)
-                    b = int(c1[2] + (c2[2] - c1[2]) * t)
-                    a = int(c1[3] + (c2[3] - c1[3]) * t)
-                    img.putpixel((x, y), (r, g, b, a))
+            if max_r > 0:
+                t = np.hypot(xs - cx, ys - cy) / max_r
+            else:
+                t = np.zeros((h, w), dtype=np.float64)
         else:
             angle = float(getattr(entry, "gradient_angle", 0.0) or 0.0)
             dx = math.cos(angle)
             dy = -math.sin(angle)
-            for y in range(h):
-                for x in range(w):
-                    nx = (x / w - 0.5) * dx + (y / h - 0.5) * dy + 0.5
-                    t = max(0.0, min(1.0, nx))
-                    r = int(c1[0] + (c2[0] - c1[0]) * t)
-                    g = int(c1[1] + (c2[1] - c1[1]) * t)
-                    b = int(c1[2] + (c2[2] - c1[2]) * t)
-                    a = int(c1[3] + (c2[3] - c1[3]) * t)
-                    img.putpixel((x, y), (r, g, b, a))
+            t = (xs / w - 0.5) * dx + (ys / h - 0.5) * dy + 0.5
+        np.clip(t, 0.0, 1.0, out=t)
+        # putpixel版と同じ int() 切り捨て (c1/c2 は常に0-255なので負にはならない)。
+        channels = [
+            (c1[i] + (c2[i] - c1[i]) * t).astype(np.uint8)
+            for i in range(4)
+        ]
+        arr = np.stack(channels, axis=-1)
+        img = Image.fromarray(arr, "RGBA")
 
     return ExportLayer(
         str(getattr(entry, "title", "") or entry.id),
@@ -1975,6 +1972,55 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
                     layers.append(layer)
 
     try:
+        image_path_layers_coll = getattr(bpy.context.scene, "bmanga_image_path_layers", None)
+    except Exception:  # pragma: no cover
+        image_path_layers_coll = None
+    _image_path_layers_by_coma: dict[str, list[ExportLayer]] = {}
+    if image_path_layers_coll is not None:
+        from . import export_image_path
+
+        for entry in image_path_layers_coll:
+            if not getattr(entry, "visible", True):
+                continue
+            entry_parent_kind = str(getattr(entry, "parent_kind", "") or "page")
+            entry_parent_key = str(getattr(entry, "parent_key", "") or "")
+            if entry_parent_kind in {"none", "outside"}:
+                continue
+            if entry_parent_kind in {"page", "coma"} and entry_parent_key:
+                entry_page_id = entry_parent_key.split(":", 1)[0]
+                if entry_page_id and page_id_for_filter and entry_page_id != page_id_for_filter:
+                    continue
+            try:
+                layer = export_image_path.render_image_path_layer(
+                    entry,
+                    canvas_size[1],
+                    dpi,
+                    group_path=_group_path_for_parent(
+                        page,
+                        entry_parent_kind,
+                        entry_parent_key,
+                        ("image_path_layers",),
+                    ),
+                )
+            except Exception:  # noqa: BLE001
+                _logger.exception(
+                    "image path layer export failed: %s", getattr(entry, "id", "")
+                )
+                layer = None
+            if layer is not None:
+                layer = replace(
+                    layer,
+                    stack_uid=layer_stack_utils.target_uid(
+                        "image_path", str(getattr(entry, "id", "") or "")
+                    ),
+                )
+                if entry_parent_kind == "coma" and ":" in entry_parent_key:
+                    coma_id = entry_parent_key.split(":", 1)[1]
+                    _image_path_layers_by_coma.setdefault(coma_id, []).append(layer)
+                else:
+                    layers.append(layer)
+
+    try:
         raster_layers = export_raster.page_raster_layers(
             bpy.context.scene,
             work,
@@ -2048,6 +2094,8 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
             layers.append(il)
         for fl in _fill_layers_by_coma.get(coma_id, []):
             layers.append(fl)
+        for pl in _image_path_layers_by_coma.get(coma_id, []):
+            layers.append(pl)
         for rl in _raster_layers_by_coma.get(coma_gn, []):
             layers.append(rl)
         if options.include_border and getattr(panel.border, "visible", False):
