@@ -218,7 +218,7 @@ def selection_command_items(context) -> list[dict]:
         has_tail_clipboard = layer_clipboard_op.has_tail_clipboard(context)
         balloon_has_tails = layer_clipboard_op.active_balloon_has_tails(context)
         selected_linkable_count = layer_links.selected_linkable_count(context)
-        selected_any_linked = layer_links.selected_any_linked(context)
+        selected_any_linked = layer_links.selected_any_related(context)
     except Exception:  # noqa: BLE001
         selected_linkable_count = 0
         selected_any_linked = False

@@ -499,15 +499,13 @@ class BMANGA_OT_layer_stack_multi_select(Operator):
             return {"FINISHED"}
 
         if self.mode == "TOGGLE":
-            from ..utils import layer_links
-
+            # Ctrl+クリックは対象の1行だけをトグルする。以前はリンクグループ全体を
+            # まとめてトグルしていたため、リンク中のグループから1つだけを選んで
+            # 解除することができなかった (単独クリック=SET はグループ全体を選ぶ挙動を
+            # 維持しているので、Ctrl+クリックで他メンバーを外して1つに絞れる)。
             target = stack[self.index]
             target_uid = layer_stack_utils.stack_item_uid(target)
-            target_uids = (
-                set(layer_links.linked_uids_for_uid(context, target_uid))
-                if layer_links.is_linkable_item(target)
-                else {target_uid}
-            )
+            target_uids = {target_uid}
             selected_uids = _selected_stack_uids(context, stack)
             currently = layer_stack_utils.is_item_selected(context, target)
             if currently:

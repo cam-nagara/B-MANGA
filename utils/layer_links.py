@@ -168,6 +168,112 @@ def unlink_uids(context, uids: list[str]) -> int:
     return removed
 
 
+def _entries_for_page(context, page):
+    """page が指すページ (None は共有) の balloons/texts コレクションを返す."""
+    if page is not None:
+        return getattr(page, "balloons", ()) or (), getattr(page, "texts", ()) or ()
+    from ..core.work import get_work
+
+    work = get_work(context)
+    if work is None:
+        return (), ()
+    return getattr(work, "shared_balloons", ()) or (), getattr(work, "shared_texts", ()) or ()
+
+
+def detach_text_balloon_for_uids(context, uids: list[str], *, stack=None) -> int:
+    """選択 uid のうちテキスト⇔フキダシ紐付け (``parent_balloon_id`` / ``text_id``)
+    を持つものを外す。片側 (テキストだけ / フキダシだけ) を選んでいても、対応する
+    相手側の参照も同時にクリアする。リンクグループ (``bmanga_layer_link_groups``)
+    には手を付けない (それは :func:`unlink_uids` の担当)。
+
+    戻り値は紐付けを外したレイヤー数 (テキストとフキダシの両方を選んでいれば 2)。
+    """
+    from . import layer_stack as layer_stack_utils
+
+    if stack is None:
+        stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
+    if stack is None:
+        return 0
+    selected = {str(uid) for uid in uids if str(uid or "")}
+    if not selected:
+        return 0
+    detached = 0
+    for item in stack:
+        kind = str(getattr(item, "kind", "") or "")
+        if kind not in _TEXT_BALLOON_KINDS:
+            continue
+        if layer_stack_utils.stack_item_uid(item) not in selected:
+            continue
+        resolved = layer_stack_utils.resolve_stack_item(context, item)
+        if resolved is None:
+            continue
+        target = resolved.get("target")
+        page = resolved.get("page")
+        if target is None:
+            continue
+        balloons, texts = _entries_for_page(context, page)
+        if kind == "text":
+            balloon_id = str(getattr(target, "parent_balloon_id", "") or "")
+            if not balloon_id:
+                continue
+            text_id = str(getattr(target, "id", "") or "")
+            target.parent_balloon_id = ""
+            for balloon in balloons:
+                if (
+                    str(getattr(balloon, "id", "") or "") == balloon_id
+                    and str(getattr(balloon, "text_id", "") or "") == text_id
+                ):
+                    balloon.text_id = ""
+            detached += 1
+        elif kind == "balloon":
+            balloon_id = str(getattr(target, "id", "") or "")
+            changed = False
+            if str(getattr(target, "text_id", "") or ""):
+                target.text_id = ""
+                changed = True
+            for text in texts:
+                if str(getattr(text, "parent_balloon_id", "") or "") == balloon_id:
+                    text.parent_balloon_id = ""
+                    changed = True
+            if changed:
+                detached += 1
+    return detached
+
+
+def unlink_selected_full(context, uids: list[str], *, stack=None) -> int:
+    """選択レイヤーのリンクを外す。リンクグループとテキスト⇔フキダシ紐付けの
+    両方を解除し、外した件数の合計を返す。"""
+    removed = unlink_uids(context, uids)
+    detached = detach_text_balloon_for_uids(context, uids, stack=stack)
+    return removed + detached
+
+
+def item_has_link(context, item) -> bool:
+    """スタック行 item がリンクグループまたはテキスト⇔フキダシ紐付けの
+    相手を持つ (＝解除対象になり得る) なら True."""
+    return bool(related_uids_for_item(context, item))
+
+
+def selected_any_related(context, stack=None) -> bool:
+    """選択中の linkable 行に、解除できるリンク (グループ or テキスト⇔フキダシ)
+    が1つでもあれば True。「リンクを解除」メニュー/オペレーターの有効判定に使う。"""
+    from . import layer_stack as layer_stack_utils
+
+    if stack is None:
+        scene = _scene(context)
+        stack = getattr(scene, "bmanga_layer_stack", None) if scene is not None else None
+    if stack is None:
+        return False
+    for item in stack:
+        if not is_linkable_item(item):
+            continue
+        if not layer_stack_utils.is_item_selected(context, item):
+            continue
+        if related_uids_for_item(context, item):
+            return True
+    return False
+
+
 def set_item_and_linked_selected(context, item, value: bool, *, stack=None) -> bool:
     from . import layer_stack as layer_stack_utils
 

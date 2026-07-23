@@ -115,8 +115,22 @@ class BMANGA_OT_layer_stack_link_selected(Operator):
     def execute(self, context):
         stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
         uids = layer_links.selected_linkable_uids(context, stack=stack)
-        if uids and all(layer_links.is_uid_linked(context, uid) for uid in uids):
-            removed = layer_links.unlink_uids(context, uids)
+        # 選択がすべて「リンク済み」(グループ or テキスト⇔フキダシ紐付け) の
+        # ときはトグルで解除する。従来はグループ (is_uid_linked) だけを見ていた
+        # ため、シナリオ読込などで作られたテキスト⇔フキダシ紐付けはトグルで
+        # 重複グループを足すだけで解除できなかった。
+        item_by_uid = {
+            layer_stack_utils.stack_item_uid(item): item
+            for item in stack or []
+            if layer_stack_utils.stack_item_uid(item)
+        }
+
+        def _has_link(uid: str) -> bool:
+            item = item_by_uid.get(uid)
+            return bool(item is not None and layer_links.item_has_link(context, item))
+
+        if uids and all(_has_link(uid) for uid in uids):
+            removed = layer_links.unlink_selected_full(context, uids, stack=stack)
             if removed:
                 layer_stack_utils.tag_view3d_redraw(context)
                 self.report({"INFO"}, f"{removed}件のレイヤーのリンクを解除しました")
@@ -135,17 +149,20 @@ class BMANGA_OT_layer_stack_link_selected(Operator):
 class BMANGA_OT_layer_stack_unlink_selected(Operator):
     bl_idname = "bmanga.layer_stack_unlink_selected"
     bl_label = "リンクを解除"
-    bl_description = "選択中のレイヤーをリンクグループから外します"
+    bl_description = (
+        "選択中のレイヤーをリンクグループから外し、"
+        "テキストとフキダシの紐付けも解除します"
+    )
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, context):
-        return layer_links.selected_any_linked(context)
+        return layer_links.selected_any_related(context)
 
     def execute(self, context):
         stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
         uids = layer_links.selected_linkable_uids(context, stack=stack)
-        removed = layer_links.unlink_uids(context, uids)
+        removed = layer_links.unlink_selected_full(context, uids, stack=stack)
         if not removed:
             self.report({"WARNING"}, "リンクされているレイヤーが選択されていません")
             return {"CANCELLED"}

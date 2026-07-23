@@ -243,6 +243,172 @@ def _assert_link_selected_menu() -> None:
     assert not layer_links.selected_any_linked(bpy.context), "リンク解除オペレーターが効いていません"
 
 
+def _text_balloon_uids(work):
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.utils.layer_hierarchy import page_stack_key
+
+    page = work.pages[0]
+    page_key = page_stack_key(page)
+    balloon = next(b for b in page.balloons if str(b.id) == "menu_balloon")
+    text = next(t for t in page.texts if str(t.id) == "menu_text")
+    b_uid = layer_stack_utils.target_uid("balloon", f"{page_key}:{balloon.id}")
+    t_uid = layer_stack_utils.target_uid("text", f"{page_key}:{text.id}")
+    return balloon, text, b_uid, t_uid
+
+
+def _attach_text_to_balloon(balloon, text) -> None:
+    text.parent_balloon_id = str(balloon.id)
+    balloon.text_id = str(text.id)
+
+
+def _select_only_uids(uids: set[str]):
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
+
+    _clear_layer_selection()
+    stack = layer_stack_utils.sync_layer_stack(bpy.context)
+    assert stack is not None
+    for item in stack:
+        layer_stack_utils.set_item_selected(
+            bpy.context, item, layer_stack_utils.stack_item_uid(item) in uids
+        )
+    return layer_stack_utils.sync_layer_stack(bpy.context)
+
+
+def _assert_text_balloon_unlink(work) -> None:
+    """テキスト⇔フキダシ紐付け (parent_balloon_id/text_id) を『リンクを解除』で
+    切れること。片側だけ選んでも両側の参照が消えること。トグルでも切れること。"""
+    from bmanga_dev.ui import context_menu
+    from bmanga_dev.utils import layer_links
+
+    balloon, text, b_uid, t_uid = _text_balloon_uids(work)
+
+    def _both_cleared() -> bool:
+        return (
+            str(getattr(text, "parent_balloon_id", "") or "") == ""
+            and str(getattr(balloon, "text_id", "") or "") == ""
+        )
+
+    def _menu_enabled(labels_uids: set[str]) -> dict:
+        _select_only_uids(labels_uids)
+        items = context_menu.selection_command_items(bpy.context)
+        return {str(i.get("label", "")): bool(i.get("enabled", False)) for i in items}
+
+    # (1) 両方選択 → マーク表示・メニュー有効・解除で両側クリア
+    _attach_text_to_balloon(balloon, text)
+    _select_only_uids({b_uid, t_uid})
+    marks = layer_links.related_uids_for_selection(bpy.context)
+    assert b_uid in marks and t_uid in marks, marks
+    assert layer_links.selected_any_related(bpy.context)
+    enabled = _menu_enabled({b_uid, t_uid})
+    assert enabled.get("リンクを解除") is True, enabled
+    result = bpy.ops.bmanga.layer_stack_unlink_selected("EXEC_DEFAULT")
+    assert result == {"FINISHED"}, result
+    assert _both_cleared(), (text.parent_balloon_id, balloon.text_id)
+    _select_only_uids({b_uid, t_uid})
+    assert not layer_links.selected_any_related(bpy.context)
+    assert b_uid not in layer_links.related_uids_for_selection(bpy.context)
+
+    # (2) テキストだけ選択 → 解除でフキダシ側 text_id もクリア
+    _attach_text_to_balloon(balloon, text)
+    _select_only_uids({t_uid})
+    assert layer_links.selected_any_related(bpy.context)
+    assert bpy.ops.bmanga.layer_stack_unlink_selected("EXEC_DEFAULT") == {"FINISHED"}
+    assert _both_cleared(), (text.parent_balloon_id, balloon.text_id)
+
+    # (3) フキダシだけ選択 → 解除でテキスト側 parent_balloon_id もクリア
+    _attach_text_to_balloon(balloon, text)
+    _select_only_uids({b_uid})
+    assert layer_links.selected_any_related(bpy.context)
+    assert bpy.ops.bmanga.layer_stack_unlink_selected("EXEC_DEFAULT") == {"FINISHED"}
+    assert _both_cleared(), (text.parent_balloon_id, balloon.text_id)
+
+    # (4) トグル (リンクボタン) でも紐付けが切れる
+    _attach_text_to_balloon(balloon, text)
+    _select_only_uids({b_uid, t_uid})
+    assert bpy.ops.bmanga.layer_stack_link_selected("EXEC_DEFAULT") == {"FINISHED"}
+    assert _both_cleared(), (text.parent_balloon_id, balloon.text_id)
+
+
+def _assert_group_unlink_one(work) -> None:
+    """リンクグループの1メンバーだけを Ctrl+クリック相当で選び、
+    その1つだけを解除できる (残りはリンク維持) こと。"""
+    from bmanga_dev.utils import layer_links
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.utils.layer_hierarchy import page_stack_key
+
+    page = work.pages[0]
+    page_key = page_stack_key(page)
+    added_ids = ["grp_b1", "grp_b2", "grp_b3"]
+    for k, bid in enumerate(added_ids):
+        b = page.balloons.add()
+        b.id = bid
+        b.x_mm = 10.0 + k * 20.0
+        b.y_mm = 120.0
+        b.width_mm = 15.0
+        b.height_mm = 15.0
+        b.parent_kind = "page"
+        b.parent_key = page_key
+    layer_stack_utils.sync_layer_stack_after_data_change(bpy.context)
+    uids = [
+        layer_stack_utils.target_uid("balloon", f"{page_key}:{bid}") for bid in added_ids
+    ]
+
+    # 3つを選択してリンク
+    _select_only_uids(set(uids))
+    assert bpy.ops.bmanga.layer_stack_link_selected("EXEC_DEFAULT") == {"FINISHED"}
+    assert all(layer_links.is_uid_linked(bpy.context, u) for u in uids)
+
+    def _index_of(uid: str) -> int:
+        stack = layer_stack_utils.sync_layer_stack(bpy.context)
+        for i, item in enumerate(stack):
+            if layer_stack_utils.stack_item_uid(item) == uid:
+                return i
+        raise AssertionError(f"uid not in stack: {uid}")
+
+    # 単独クリック(SET)は従来どおりグループ全体を選ぶ
+    _clear_layer_selection()
+    assert bpy.ops.bmanga.layer_stack_multi_select(
+        "EXEC_DEFAULT", index=_index_of(uids[0]), mode="SET"
+    ) == {"FINISHED"}
+    stack = layer_stack_utils.sync_layer_stack(bpy.context)
+    selected = {
+        layer_stack_utils.stack_item_uid(it)
+        for it in stack
+        if layer_stack_utils.is_item_selected(bpy.context, it)
+    }
+    assert set(uids) <= selected, ("SETはグループ全体を選ぶ", selected)
+
+    # Ctrl+クリック(TOGGLE)は1メンバーだけ外れる → 1つに絞れる
+    assert bpy.ops.bmanga.layer_stack_multi_select(
+        "EXEC_DEFAULT", index=_index_of(uids[0]), mode="TOGGLE"
+    ) == {"FINISHED"}
+    assert bpy.ops.bmanga.layer_stack_multi_select(
+        "EXEC_DEFAULT", index=_index_of(uids[1]), mode="TOGGLE"
+    ) == {"FINISHED"}
+    stack = layer_stack_utils.sync_layer_stack(bpy.context)
+    selected = {
+        layer_stack_utils.stack_item_uid(it)
+        for it in stack
+        if layer_stack_utils.is_item_selected(bpy.context, it)
+        and layer_stack_utils.stack_item_uid(it) in uids
+    }
+    assert selected == {uids[2]}, ("1つに絞れていない", selected)
+
+    # その1つだけ解除 → 残り2つはリンク維持
+    assert bpy.ops.bmanga.layer_stack_unlink_selected("EXEC_DEFAULT") == {"FINISHED"}
+    assert not layer_links.is_uid_linked(bpy.context, uids[2])
+    assert layer_links.is_uid_linked(bpy.context, uids[0])
+    assert layer_links.is_uid_linked(bpy.context, uids[1])
+
+    # 後片付け: 追加したフキダシとリンクを消す
+    for bid in added_ids:
+        for i in range(len(page.balloons) - 1, -1, -1):
+            if str(page.balloons[i].id) == bid:
+                page.balloons.remove(i)
+    bpy.context.scene["bmanga_layer_link_groups"] = ""
+    layer_stack_utils.sync_layer_stack_after_data_change(bpy.context)
+
+
 class _FakeLayout:
     def __init__(self):
         self.operator_context = "EXEC_DEFAULT"
@@ -535,6 +701,8 @@ def main() -> None:
             _assert_menu_for_kind(kind)
         assert hasattr(bpy.types, "BMANGA_OT_view_context_menu")
         _assert_link_selected_menu()
+        _assert_text_balloon_unlink(work)
+        _assert_group_unlink_one(work)
         _assert_menu_draw_does_not_resync()
         _assert_context_menu_uses_invisible_synchronous_warp()
         _assert_viewport_tool_menu_paths(work)
