@@ -1510,6 +1510,15 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
             "cloudSubWidthJitter": round(entry.shape_params.cloud_sub_width_jitter, 3),
             "cloudSubHeightJitter": round(entry.shape_params.cloud_sub_height_jitter, 3),
             "cloudValleySharp": bool(entry.shape_params.cloud_valley_sharp),
+            "sharpCornerMethod": str(
+                getattr(entry.shape_params, "sharp_corner_method", "miter") or "miter"
+            ),
+            "sharpPeakWidthScale": round(
+                float(getattr(entry.shape_params, "sharp_peak_width_scale", 1.5) or 1.5), 3
+            ),
+            "sharpValleyWidthScale": round(
+                float(getattr(entry.shape_params, "sharp_valley_width_scale", 0.5) or 0.5), 3
+            ),
             "dynamicShapeBaseKind": str(getattr(entry.shape_params, "dynamic_shape_base_kind", "ellipse") or "ellipse"),
             "dynamicBaseRoundedCornerEnabled": bool(
                 getattr(entry.shape_params, "dynamic_base_rounded_corner_enabled", False)
@@ -1776,6 +1785,12 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     entry.shape_params.cloud_sub_width_jitter = float(sp.get("cloudSubWidthJitter", 0.0))
     entry.shape_params.cloud_sub_height_jitter = float(sp.get("cloudSubHeightJitter", 0.0))
     entry.shape_params.cloud_valley_sharp = bool(sp.get("cloudValleySharp", False))
+    method = str(sp.get("sharpCornerMethod", "miter") or "miter")
+    if method not in {"miter", "anchor"}:
+        method = "miter"
+    entry.shape_params.sharp_corner_method = method
+    entry.shape_params.sharp_peak_width_scale = float(sp.get("sharpPeakWidthScale", 1.5) or 1.5)
+    entry.shape_params.sharp_valley_width_scale = float(sp.get("sharpValleyWidthScale", 0.5) or 0.5)
     base_kind = str(sp.get("dynamicShapeBaseKind", "ellipse") or "ellipse")
     if base_kind not in {"ellipse", "rect"}:
         base_kind = "ellipse"

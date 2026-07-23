@@ -122,14 +122,29 @@ def mitre_band_polygons(
     inner_offset: float,
     *,
     sharp: bool = True,
+    anchor_cfg: tuple[float, float] | None = None,
 ):
     """輪郭から outer_offset / inner_offset (符号付き) のオフセット帯を返す。
 
     sharp=True で mitre join (角が尖る)、False で round join (角が丸い)。
     「角を尖らせる」やフチをページ出力・サムネイルへ正確に反映するために使う。
+    anchor_cfg=(山倍率, 谷倍率) を渡すと新方式J (頂点距離方式) で帯を構築する
+    (2026-07-23 承認仕様。アンカー検出に失敗した場合は従来方式へフォールバック)。
     戻り値: [(outer_ring, holes), ...] (失敗時は空リスト)
     """
     python_deps.ensure_bundled_wheels_on_path()
+    if anchor_cfg is not None and sharp:
+        from . import balloon_anchor_band
+
+        polys = balloon_anchor_band.anchor_band_outer_holes_list(
+            list(outline_points),
+            float(inner_offset),
+            float(outer_offset),
+            float(anchor_cfg[0]),
+            float(anchor_cfg[1]),
+        )
+        if polys:
+            return polys
     poly = polygon_from_points(outline_points)
     if poly is None or outer_offset <= inner_offset:
         return []

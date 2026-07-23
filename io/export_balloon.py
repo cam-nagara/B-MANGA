@@ -299,6 +299,7 @@ def _multi_ring_band_polygons(
     # 主線の外側/内側エッジはどちらも body から line_w_mm/2 (絶対距離)。
     running_outside = line_w_mm * 0.5
     running_inside = line_w_mm * 0.5
+    anchor_cfg = _anchor_cfg_for_export(entry)
     band_groups = []
     for ring_index in range(1, count + 1):
         ring_w = ring_w_base * (width_scale ** max(0, ring_index - 1))
@@ -310,12 +311,14 @@ def _multi_ring_band_polygons(
                 inner = running_inside + spacing
                 band = _mitre_band_polygons_mm(
                     outline, -inner, -(inner + ring_w), sharp=sharp,
+                    anchor_cfg=anchor_cfg,
                 )
                 running_inside = inner + ring_w
             else:
                 inner = running_outside + spacing
                 band = _mitre_band_polygons_mm(
                     outline, inner + ring_w, inner, sharp=sharp,
+                    anchor_cfg=anchor_cfg,
                 )
                 running_outside = inner + ring_w
             if band:
@@ -513,8 +516,12 @@ def _mitre_band_polygons_mm(
     inner_off_mm: float,
     *,
     sharp: bool = True,
+    anchor_cfg: tuple[float, float] | None = None,
 ):
-    """輪郭のオフセット帯 (mm 座標) を返す。sharp=True で角が尖る."""
+    """輪郭のオフセット帯 (mm 座標) を返す。sharp=True で角が尖る.
+
+    anchor_cfg 指定時は新方式J (頂点距離方式) で構築する (ビューポートと同一)。
+    """
     if len(outline) < 3:
         return []
     try:
@@ -525,9 +532,20 @@ def _mitre_band_polygons_mm(
             float(outer_off_mm),
             float(inner_off_mm),
             sharp=sharp,
+            anchor_cfg=anchor_cfg,
         )
     except Exception:  # noqa: BLE001
         return []
+
+
+def _anchor_cfg_for_export(entry) -> tuple[float, float] | None:
+    """新方式J (頂点距離方式) の設定。標準方式なら None (正典は balloon_anchor_band)."""
+    try:
+        from ..utils import balloon_anchor_band
+
+        return balloon_anchor_band.anchor_cfg_for_entry(entry)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _body_sharp_corners(entry) -> bool:
@@ -1183,6 +1201,7 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
         else 0.0
     )
     body_sharp = _body_sharp_corners(entry)
+    export_anchor_cfg = _anchor_cfg_for_export(entry)
     band_line_styles = {"solid", "double", "material"}
     outer_band_rings = []
     inner_band_rings = []
@@ -1195,6 +1214,7 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
                 half_line_w_mm + outer_w_mm,
                 half_line_w_mm,
                 sharp=body_sharp,
+                anchor_cfg=export_anchor_cfg,
             )
         if inner_enabled and inner_w_mm > 1.0e-6:
             inner_band_rings = _mitre_band_polygons_mm(
@@ -1202,6 +1222,7 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
                 -half_line_w_mm,
                 -half_line_w_mm - inner_w_mm,
                 sharp=body_sharp,
+                anchor_cfg=export_anchor_cfg,
             )
         if str(line_style or "") in band_line_styles:
             if str(line_style or "") == "double":
@@ -1215,8 +1236,10 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
                 half_line_w_mm,
                 -half_line_w_mm,
                 sharp=body_sharp,
+                anchor_cfg=export_anchor_cfg,
             )
-            if merged_outline is not None and sharp_tail_infos:
+            # 新方式J ではしっぽ先端もアンカーとして頂点距離規則で処理される
+            if merged_outline is not None and sharp_tail_infos and export_anchor_cfg is None:
                 try:
                     from ..utils import balloon_tail_boolean
 

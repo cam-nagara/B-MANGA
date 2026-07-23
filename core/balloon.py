@@ -630,6 +630,36 @@ class BMangaBalloonShapeParams(bpy.types.PropertyGroup):
         default=False,
         update=_on_balloon_shape_params_changed,
     )
+    sharp_corner_method: EnumProperty(  # type: ignore[valid-type]
+        name="角の方式",
+        description="「角を尖らせる」ONのときの角の作り方",
+        items=(
+            ("miter", "標準", "全帯が等幅のまま折り返す (先端は角度なりに伸びる)"),
+            (
+                "anchor",
+                "頂点距離",
+                "山と谷の頂点だけを角とし、角の位置で外側輪郭と内側輪郭の距離を線幅×倍率にする。先端は伸びず、線の太さは山と谷の間でなだらかに変わる",
+            ),
+        ),
+        default="miter",
+        update=_on_balloon_shape_params_changed,
+    )
+    sharp_peak_width_scale: FloatProperty(  # type: ignore[valid-type]
+        name="山の線幅倍率",
+        description="頂点距離方式で、山の頂点での線幅を指定線幅の何倍にするか",
+        default=1.5,
+        min=0.05,
+        soft_max=4.0,
+        update=_on_balloon_shape_params_changed,
+    )
+    sharp_valley_width_scale: FloatProperty(  # type: ignore[valid-type]
+        name="谷の線幅倍率",
+        description="頂点距離方式で、谷の頂点での線幅を指定線幅の何倍にするか",
+        default=0.5,
+        min=0.05,
+        soft_max=4.0,
+        update=_on_balloon_shape_params_changed,
+    )
     dynamic_shape_base_kind: EnumProperty(  # type: ignore[valid-type]
         name="ベース形状",
         description="雲・モフモフ・トゲ系のベース輪郭を 楕円 / 矩形 から選ぶ",

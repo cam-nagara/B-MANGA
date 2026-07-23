@@ -24,6 +24,7 @@ import bpy
 
 from . import object_preserve
 
+from . import balloon_anchor_band
 from . import balloon_tail_boolean
 from . import free_transform
 from . import balloon_shapes
@@ -486,6 +487,7 @@ def build_offset_band_polygon(
     valley_sharp: bool,
     miter_limit: float = _SHARP_MITRE_LIMIT,
     peaks_rounded: bool = False,
+    anchor_cfg: tuple[float, float] | None = None,
     _body_poly=None,
 ) -> Optional[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
     """本体多角形から signed_offset_m を中心に幅 band_width_m の帯を構築する.
@@ -501,6 +503,18 @@ def build_offset_band_polygon(
     """
     if band_width_m <= 1.0e-9:
         return None
+    # 新方式J (頂点距離方式): アンカー変位カーブの帯。失敗時は従来方式へ。
+    if anchor_cfg is not None and valley_sharp:
+        half_j = band_width_m * 0.5
+        rings = balloon_anchor_band.anchor_band_rings(
+            [(float(s[0]), float(s[1])) for s in body_samples],
+            signed_offset_m - half_j,
+            signed_offset_m + half_j,
+            float(anchor_cfg[0]),
+            float(anchor_cfg[1]),
+        )
+        if rings is not None:
+            return rings
     body_poly = _body_poly if _body_poly is not None else _build_body_polygon(body_samples)
     if body_poly is None:
         return None
@@ -599,6 +613,7 @@ def _stroke_band_centered(
     valley_sharp: bool,
     miter_limit: float = _SHARP_MITRE_LIMIT,
     peaks_rounded: bool = False,
+    anchor_cfg: tuple[float, float] | None = None,
 ) -> Optional[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
     """主線 (中心アライメント。線幅の中心 = 本体輪郭) の線バンドを Shapely buffer で構築する.
 
@@ -606,6 +621,7 @@ def _stroke_band_centered(
     統一し、山・谷とも等幅のまま鋭角に折り返す形状にする (旧: 本体の外側にのみ
     線幅ぶん成長させる外側アライメントで、山頂がミター延長により先端へ向けて
     幅0まで痩せる針状になっていた)。
+    anchor_cfg 指定時は新方式J (頂点距離方式) で構築する。
     """
     return build_offset_band_polygon(
         samples,
@@ -614,6 +630,7 @@ def _stroke_band_centered(
         valley_sharp=valley_sharp,
         miter_limit=miter_limit,
         peaks_rounded=peaks_rounded,
+        anchor_cfg=anchor_cfg,
     )
 
 
@@ -3064,6 +3081,7 @@ def ensure_balloon_line_mesh(
         return None
     samples, tails_merged = _outline_samples_with_tails(entry, body_samples)
     valley_sharp = _valley_sharp_for_entry(entry)
+    anchor_cfg = _anchor_cfg_for_entry(entry)
     # 山頂が丸い形状 (雲/フワフワ) は、 外側へ広げた均一バンドの山頂を round join で
     # 丸める。 トゲ/トゲ曲線は山頂が尖る形状なので従来通り mitre のまま。
     peaks_rounded = balloon_shapes.normalize_shape(
@@ -3094,11 +3112,13 @@ def ensure_balloon_line_mesh(
             remove_balloon_line_mesh(balloon_id)
             return None
         _build_band_mesh_from_polygons(mesh, dash_polys, LINE_Z_OFFSET_M)
-    elif main_line_both_zero:
+    elif main_line_both_zero and anchor_cfg is None:
         # 両方 0 = 主線全体を非表示
         remove_balloon_line_mesh(balloon_id)
         return None
-    elif main_line_dynamic:
+    elif main_line_dynamic and anchor_cfg is None:
+        # 新方式J は谷/山の線幅% (動的幅) の代わりに山・谷の線幅倍率を持つため、
+        # J 選択時は動的幅経路を使わない (J の帯構築へフォールスルー)。
         # 主線を可変幅で構築 (谷/山の line width を辺全体で線形補間)。
         # 2026-07-23: 中心アライメント (centerline=body, 帯は body±width/2 に対称展開)
         # に統一。 centerline は body 自身 (signed_offset_m=0) のままなので、
@@ -3125,20 +3145,36 @@ def ensure_balloon_line_mesh(
             return None
         _build_band_mesh_from_polygons(mesh, sub_polys, LINE_Z_OFFSET_M)
     else:
-        union_result = _stroke_band_centered(
-            samples,
-            line_width_m=line_width_m,
-            valley_sharp=valley_sharp,
-            peaks_rounded=peaks_rounded,
-        )
-        if union_result is None:
-            remove_balloon_line_mesh(balloon_id)
-            return None
-        outer_ring, holes = union_result
-        rings = [(outer_ring, holes)]
+        rings = None
+        if anchor_cfg is not None and valley_sharp:
+            # 新方式J: 帯は谷などで正当に複数ピースへ分割されうるため、
+            # 最大ピースだけでなく全ピースをメッシュ化する
+            half_j = line_width_m * 0.5
+            pieces = balloon_anchor_band.anchor_band_outer_holes_list(
+                [(float(s[0]), float(s[1])) for s in samples],
+                -half_j,
+                half_j,
+                anchor_cfg[0],
+                anchor_cfg[1],
+            )
+            if pieces:
+                rings = pieces
+        if rings is None:
+            union_result = _stroke_band_centered(
+                samples,
+                line_width_m=line_width_m,
+                valley_sharp=valley_sharp,
+                peaks_rounded=peaks_rounded,
+            )
+            if union_result is None:
+                remove_balloon_line_mesh(balloon_id)
+                return None
+            outer_ring, holes = union_result
+            rings = [(outer_ring, holes)]
         # 「角を尖らせる」しっぽ: 結合された帯の折れ角を尖らせ、先端を
-        # ペンの抜きのように細く絞る
-        if tails_merged:
+        # ペンの抜きのように細く絞る (新方式J ではしっぽ先端もアンカーとして
+        # 頂点距離規則で処理されるため、この追加加工は行わない)
+        if tails_merged and anchor_cfg is None:
             sharp_tails = sharp_tail_tip_infos_local_m(entry)
             if sharp_tails:
                 rings = balloon_tail_boolean.apply_sharp_tail_tips(
@@ -3169,6 +3205,15 @@ def ensure_balloon_line_mesh(
 def _valley_sharp_for_entry(entry) -> bool:
     sp = getattr(entry, "shape_params", None)
     return bool(getattr(sp, "cloud_valley_sharp", False))
+
+
+def _anchor_cfg_for_entry(entry) -> tuple[float, float] | None:
+    """「角を尖らせる」新方式J (頂点距離方式) の設定を返す。標準方式なら None.
+
+    戻り値: (山の線幅倍率, 谷の線幅倍率)。2026-07-23 承認仕様の既定は 1.5 / 0.5。
+    正典実装は balloon_anchor_band 側 (書き出しと共用)。
+    """
+    return balloon_anchor_band.anchor_cfg_for_entry(entry)
 
 
 def _line_dynamic_width_params(entry) -> tuple[bool, float, float, bool]:
@@ -3408,32 +3453,48 @@ def ensure_balloon_outer_edge_mesh(
     samples, _tails_merged = _outline_samples_with_tails(entry, body_samples)
 
     valley_sharp = _valley_sharp_for_entry(entry)
+    anchor_cfg = _anchor_cfg_for_entry(entry)
     line_width_m = line_width_mm * 0.001
     edge_width_m = edge_width_mm * 0.001
     body_center_m = _balloon_center_m_from_samples(samples)
 
-    # 「主線が描く変わったアウトライン」 (body + 主線 polygon の union) を取得し、
-    # その外側に均一幅 edge_width で buffer する。 主線が dynamic (谷/山幅変動) でも
-    # アウトラインの形状追従だけが反映され、 フチ自身は常に均一幅で描かれる。
-    outline = _compute_balloon_outer_outline(entry, samples, body_center_m, line_width_m, valley_sharp)
-    if outline is None or outline.is_empty:
-        remove_balloon_outer_edge_mesh(balloon_id)
-        return None
+    polys = None
+    if anchor_cfg is not None:
+        # 新方式J: 主線外端 (body + 線幅/2) からさらに外へ edge_width の帯。
+        # 全境界がアンカー変位カーブなので主線との継ぎ目も一致する。
+        base_out = line_width_m * 0.5 if line_width_m > 1.0e-9 else 0.0
+        band_geom = balloon_anchor_band.anchor_band_geometry(
+            [(float(s[0]), float(s[1])) for s in samples],
+            base_out,
+            base_out + edge_width_m,
+            anchor_cfg[0],
+            anchor_cfg[1],
+        )
+        if band_geom is not None:
+            polys = _shapely_geom_to_outer_holes_list(band_geom)
+    if not polys:
+        # 「主線が描く変わったアウトライン」 (body + 主線 polygon の union) を取得し、
+        # その外側に均一幅 edge_width で buffer する。 主線が dynamic (谷/山幅変動) でも
+        # アウトラインの形状追従だけが反映され、 フチ自身は常に均一幅で描かれる。
+        outline = _compute_balloon_outer_outline(entry, samples, body_center_m, line_width_m, valley_sharp)
+        if outline is None or outline.is_empty:
+            remove_balloon_outer_edge_mesh(balloon_id)
+            return None
 
-    # mitre_limit は全帯共通の _SHARP_MITRE_LIMIT に統一 (2026-07-23 確定仕様:
-    # 先端の伸びはオフセットの2倍まで)。
-    join = 2 if valley_sharp else 1
-    mitre = _SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT
-    try:
-        outer_buffer = outline.buffer(edge_width_m, join_style=join, mitre_limit=mitre)
-        outer_band = outer_buffer.difference(outline)
-    except Exception:  # noqa: BLE001
-        outer_band = None
-    if outer_band is None or outer_band.is_empty:
-        remove_balloon_outer_edge_mesh(balloon_id)
-        return None
+        # mitre_limit は全帯共通の _SHARP_MITRE_LIMIT に統一 (2026-07-23 確定仕様:
+        # 先端の伸びはオフセットの2倍まで)。
+        join = 2 if valley_sharp else 1
+        mitre = _SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT
+        try:
+            outer_buffer = outline.buffer(edge_width_m, join_style=join, mitre_limit=mitre)
+            outer_band = outer_buffer.difference(outline)
+        except Exception:  # noqa: BLE001
+            outer_band = None
+        if outer_band is None or outer_band.is_empty:
+            remove_balloon_outer_edge_mesh(balloon_id)
+            return None
 
-    polys = _shapely_geom_to_outer_holes_list(outer_band)
+        polys = _shapely_geom_to_outer_holes_list(outer_band)
     if not polys:
         remove_balloon_outer_edge_mesh(balloon_id)
         return None
@@ -3514,28 +3575,43 @@ def ensure_balloon_inner_edge_mesh(
     # body の内側 line_width/2 までは主線が占める。 内側フチはその内側境界
     # (= body から主線の内側半分を除いた形) からさらに内側へ均一幅で描く。
     # 主線が無効 (幅0・none) のときは従来どおり body そのものが基準になる。
-    inner_boundary = _compute_main_line_inner_boundary(
-        entry, samples, body_center_m, line_width_m, valley_sharp
-    )
-    if inner_boundary is None or inner_boundary.is_empty:
-        remove_balloon_inner_edge_mesh(balloon_id)
-        return None
+    anchor_cfg = _anchor_cfg_for_entry(entry)
+    polys = None
+    if anchor_cfg is not None:
+        # 新方式J: 主線内端 (body − 線幅/2) からさらに内へ edge_width の帯
+        base_in = line_width_m * 0.5 if line_width_m > 1.0e-9 else 0.0
+        band_geom = balloon_anchor_band.anchor_band_geometry(
+            [(float(s[0]), float(s[1])) for s in samples],
+            -(base_in + edge_width_m),
+            -base_in,
+            anchor_cfg[0],
+            anchor_cfg[1],
+        )
+        if band_geom is not None:
+            polys = _shapely_geom_to_outer_holes_list(band_geom)
+    if not polys:
+        inner_boundary = _compute_main_line_inner_boundary(
+            entry, samples, body_center_m, line_width_m, valley_sharp
+        )
+        if inner_boundary is None or inner_boundary.is_empty:
+            remove_balloon_inner_edge_mesh(balloon_id)
+            return None
 
-    join = 2 if valley_sharp else 1
-    mitre = _SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT
-    try:
-        inner_shrunk = inner_boundary.buffer(-edge_width_m, join_style=join, mitre_limit=mitre)
-        if inner_shrunk.is_empty:
-            inner_band = inner_boundary
-        else:
-            inner_band = inner_boundary.difference(inner_shrunk)
-    except Exception:  # noqa: BLE001
-        inner_band = None
-    if inner_band is None or inner_band.is_empty:
-        remove_balloon_inner_edge_mesh(balloon_id)
-        return None
+        join = 2 if valley_sharp else 1
+        mitre = _SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT
+        try:
+            inner_shrunk = inner_boundary.buffer(-edge_width_m, join_style=join, mitre_limit=mitre)
+            if inner_shrunk.is_empty:
+                inner_band = inner_boundary
+            else:
+                inner_band = inner_boundary.difference(inner_shrunk)
+        except Exception:  # noqa: BLE001
+            inner_band = None
+        if inner_band is None or inner_band.is_empty:
+            remove_balloon_inner_edge_mesh(balloon_id)
+            return None
 
-    polys = _shapely_geom_to_outer_holes_list(inner_band)
+        polys = _shapely_geom_to_outer_holes_list(inner_band)
     if not polys:
         remove_balloon_inner_edge_mesh(balloon_id)
         return None
@@ -3619,6 +3695,11 @@ def ensure_balloon_multi_line_mesh(
             or cross_enabled
         )
     )
+    # 新方式J は山・谷の線幅倍率を自前で持つため、谷/山線幅%・長さ変化・交差の
+    # 動的特性は使わない (均一リングを J の帯構築で描く)
+    ml_anchor_cfg = _anchor_cfg_for_entry(entry)
+    if ml_anchor_cfg is not None:
+        dynamic_features_active = False
     if multi_width_mm <= 1.0e-6:
         remove_balloon_multi_line_mesh(balloon_id)
         return None
@@ -3749,6 +3830,18 @@ def ensure_balloon_multi_line_mesh(
                     peaks_rounded=(shape_norm in _ROUNDED_PEAK_SHAPES),
                 )
                 polygons.extend(sub_polys)
+            elif ml_anchor_cfg is not None:
+                # 新方式J: リング帯の全ピースを採用 (谷で分割されても欠かさない)
+                half_ring_m = ring_width_mm * 0.001 * 0.5
+                center_m = signed_offset_mm * 0.001
+                pieces = balloon_anchor_band.anchor_band_outer_holes_list(
+                    [(float(s[0]), float(s[1])) for s in samples],
+                    center_m - half_ring_m,
+                    center_m + half_ring_m,
+                    ml_anchor_cfg[0],
+                    ml_anchor_cfg[1],
+                )
+                polygons.extend(pieces)
             else:
                 band = build_offset_band_polygon(
                     samples,

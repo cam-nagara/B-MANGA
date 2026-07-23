@@ -283,6 +283,12 @@ class BMANGA_PT_balloons(Panel):
             # 雲・もやもやでは効かない確定仕様のためトゲ系でだけ表示する。
             if balloon_shapes.normalize_shape(str(entry.shape or "")) in {"thorn", "thorn-curve"}:
                 box.prop(sp, "cloud_valley_sharp")
+                if bool(getattr(sp, "cloud_valley_sharp", False)):
+                    box.prop(sp, "sharp_corner_method", text="角の方式")
+                    if str(getattr(sp, "sharp_corner_method", "miter") or "miter") == "anchor":
+                        scales = box.column(align=True)
+                        scales.prop(sp, "sharp_peak_width_scale", text="山の線幅倍率")
+                        scales.prop(sp, "sharp_valley_width_scale", text="谷の線幅倍率")
 
         # 尻尾 (個別の設定は「しっぽの詳細設定」ダイアログに集約)
         box = layout.box()

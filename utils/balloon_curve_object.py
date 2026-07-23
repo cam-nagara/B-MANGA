@@ -1539,6 +1539,9 @@ def _geometry_key_for_entry(entry) -> str:
         "cloud_sub_height_ratio": float(getattr(sp, "cloud_sub_height_ratio", 0.0) or 0.0),
         "cloud_sub_height_jitter": float(getattr(sp, "cloud_sub_height_jitter", 0.0) or 0.0),
         "cloud_valley_sharp": bool(getattr(sp, "cloud_valley_sharp", False)),
+        "sharp_corner_method": str(getattr(sp, "sharp_corner_method", "miter") or "miter"),
+        "sharp_peak_width_scale": float(getattr(sp, "sharp_peak_width_scale", 1.5) or 1.5),
+        "sharp_valley_width_scale": float(getattr(sp, "sharp_valley_width_scale", 0.5) or 0.5),
         "dynamic_shape_base_kind": str(getattr(sp, "dynamic_shape_base_kind", "ellipse") or "ellipse"),
         "dynamic_base_rounded_corner_enabled": bool(
             getattr(sp, "dynamic_base_rounded_corner_enabled", False)

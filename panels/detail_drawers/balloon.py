@@ -107,6 +107,12 @@ def _draw_dynamic_shape(layout, params, shape: str) -> None:
     _draw_shape_jitter_fields(box, params)
     if shape in {"thorn", "thorn-curve"}:
         prop_if(box, params, "cloud_valley_sharp", text="角を尖らせる")
+        if bool(value(params, "cloud_valley_sharp", False)):
+            prop_if(box, params, "sharp_corner_method", text="角の方式")
+            if str(value(params, "sharp_corner_method", "miter")) == "anchor":
+                scales = box.column(align=True)
+                prop_if(scales, params, "sharp_peak_width_scale", text="山の線幅倍率")
+                prop_if(scales, params, "sharp_valley_width_scale", text="谷の線幅倍率")
 
 
 def _draw_shape_jitter_fields(layout, params) -> None:
