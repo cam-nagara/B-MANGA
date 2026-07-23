@@ -73,10 +73,22 @@ def _mock_context(
     raise_on_prefs: bool = False,
     region_width: int = 800,
     region_height: int = 600,
+    n_panel_width: int = 0,
 ):
     window = SimpleNamespace(type="WINDOW", x=100, y=50, width=region_width, height=region_height)
     space = SimpleNamespace(region_3d=object(), show_gizmo=True, show_gizmo_navigate=True)
-    area = SimpleNamespace(type="VIEW_3D", regions=[window], spaces=SimpleNamespace(active=space))
+    regions = [window]
+    if n_panel_width > 0:
+        # Nパネル (UIリージョン) は WINDOW の右端に重なって描画され、
+        # region.width 自体は縮まない (実測に基づく再現構成)。
+        regions.append(SimpleNamespace(
+            type="UI",
+            x=window.x + region_width - n_panel_width,
+            y=window.y,
+            width=n_panel_width,
+            height=region_height,
+        ))
+    area = SimpleNamespace(type="VIEW_3D", regions=regions, spaces=SimpleNamespace(active=space))
 
     if raise_on_prefs:
         class _BoomView:
@@ -249,6 +261,48 @@ def _run_check() -> None:
         _check(
             "view_event_region.is_view3d_navigation_ui_event" in coma_camera_src,
             "coma_camera_op にナビゲーションUIガードが追加されていません",
+        )
+
+        # --- 6. Nパネル展開時、当たり判定がNパネルの左隣 (実ギズモの実際の
+        #        位置) へ寄ること (根本原因報告の実測値: ui_scale=1.5,
+        #        gizmo_size=80, region_width=3150, Nパネル幅420px オーバー
+        #        ラップ時、実ギズモは region-local x≈[2555, 2710] にあった) ---
+        context6, region6 = _mock_context(
+            gizmo_size=80.0, ui_scale=1.5, region_width=3150, region_height=1400,
+            n_panel_width=420,
+        )
+        width6, height6, margin6 = view_event_region._navigation_ui_hitbox_px(context6)
+        _check(
+            abs(width6 - 168.0) < 1e-6 and abs(height6 - 348.0) < 1e-6 and abs(margin6 - 12.0) < 1e-6,
+            f"ui_scale=1.5環境のヒットボックス寸法が想定と一致しません: {(width6, height6, margin6)!r}",
+        )
+        # 実ギズモの実測位置 (Nパネルの左隣) はナビゲーションUIとして判定される
+        real_gizmo_event = _event(
+            "LEFTMOUSE", region6.x + 2650, region6.y + region6.height - 50,
+        )
+        _check(
+            view_event_region.is_view3d_navigation_ui_event(context6, real_gizmo_event),
+            "Nパネル展開時、実ギズモの実測位置 (Nパネル左隣) がナビゲーションUI"
+            "として判定されません (region.width基準のままの不具合が再発)",
+        )
+        # 旧実装のヒットボックス (region.width基準、Nパネルの背後) は、
+        # Nパネル自身のリージョンに属するためウィンドウイベントとして扱われない
+        behind_panel_event = _event(
+            "LEFTMOUSE", region6.x + 3000, region6.y + region6.height - 50,
+        )
+        _check(
+            view_event_region.view3d_window_under_event(context6, behind_panel_event) is None,
+            "旧ヒットボックス座標がNパネル自身のリージョンと重ならなくなっています"
+            " (テスト前提の崩れ)",
+        )
+        # Nパネルが無い場合は従来どおり region.width 基準で判定される (回帰なし)
+        context6b, region6b = _mock_context(gizmo_size=80.0, ui_scale=1.5, region_width=3150, region_height=1400)
+        no_panel_event = _event(
+            "LEFTMOUSE", region6b.x + region6b.width - 50, region6b.y + region6b.height - 50,
+        )
+        _check(
+            view_event_region.is_view3d_navigation_ui_event(context6b, no_panel_event),
+            "Nパネル非展開時に region.width 基準の判定が回帰しています",
         )
 
         if FAILURES:

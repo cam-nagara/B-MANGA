@@ -169,6 +169,52 @@ def _navigation_ui_hitbox_px(context) -> tuple[float, float, float]:
     return width, height, margin
 
 
+def _visible_rect_insets(area, window_region) -> tuple[float, float]:
+    """Return (right_inset, top_inset) in pixels that shrink the WINDOW region's
+    navigation-UI anchor to match Blender's actual visible rect.
+
+    Blender draws the navigation gizmo (and other corner overlays) relative to
+    ED_region_visible_rect, not the WINDOW region's raw width/height. When the
+    N-panel (a "UI" region) is open it overlaps the right edge of the WINDOW
+    region without shrinking region.width, so the gizmo is redrawn further left
+    to stay clear of it -- but a hitbox anchored to raw region.width still sits
+    over the now-dead area behind the N-panel, letting a modal B-MANGA tool
+    steal the click instead of passing it through (this is the bug this
+    function exists to fix). The same geometric-overlap approach also covers a
+    HEADER/TOOL_HEADER stacked along the top edge, in case a given Blender
+    layout overlaps there too; for the common tiled-header layout the overlap
+    is naturally zero so this is a no-op.
+
+    Uses actual rect overlap (not region.type alone) so a region that doesn't
+    truly overlap the WINDOW region never contributes a false inset.
+    """
+    win_x = float(getattr(window_region, "x", 0))
+    win_y = float(getattr(window_region, "y", 0))
+    win_right = win_x + float(getattr(window_region, "width", 0))
+    win_top = win_y + float(getattr(window_region, "height", 0))
+    right_inset = 0.0
+    top_inset = 0.0
+    for region in getattr(area, "regions", []) or []:
+        if region is window_region:
+            continue
+        r_type = str(getattr(region, "type", "") or "")
+        r_w = float(getattr(region, "width", 0))
+        r_h = float(getattr(region, "height", 0))
+        if r_w <= 0.0 or r_h <= 0.0:
+            continue
+        r_x = float(getattr(region, "x", 0))
+        r_y = float(getattr(region, "y", 0))
+        if r_type == "UI":
+            overlap = min(r_x + r_w, win_right) - max(r_x, win_x)
+            if overlap > right_inset:
+                right_inset = overlap
+        elif r_type in ("HEADER", "TOOL_HEADER"):
+            overlap = min(r_y + r_h, win_top) - max(r_y, win_y)
+            if overlap > 0.0:
+                top_inset += overlap
+    return right_inset, top_inset
+
+
 def is_view3d_navigation_ui_event(context, event) -> bool:
     """Return True when a mouse event is over Blender's top-right navigation UI.
 
@@ -186,9 +232,12 @@ def is_view3d_navigation_ui_event(context, event) -> bool:
     if not _navigation_ui_visible(context, area):
         return False
     hitbox_width, hitbox_height, hitbox_margin = _navigation_ui_hitbox_px(context)
+    right_inset, top_inset = _visible_rect_insets(area, region)
+    vis_right = float(region.width) - right_inset
+    vis_top = float(region.height) - top_inset
     return (
-        float(mouse_x) >= float(region.width) - hitbox_width - hitbox_margin
-        and float(mouse_y) >= float(region.height) - hitbox_height - hitbox_margin
+        float(mouse_x) >= vis_right - hitbox_width - hitbox_margin
+        and float(mouse_y) >= vis_top - hitbox_height - hitbox_margin
     )
 
 

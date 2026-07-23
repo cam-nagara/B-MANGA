@@ -69,6 +69,63 @@ def test_navigation_ui_respects_blender_visibility_settings():
         )
 
 
+def test_navigation_ui_hitbox_shifts_left_of_open_n_panel():
+    """Nパネル(UIリージョン)が開いている間、ナビゲーションギズモの当たり判定を
+    Nパネルの左隣 (Blenderの実際の可視矩形) へ寄せる (推奨A の回帰防止)。
+
+    Nパネルは region.width を縮めずに WINDOW リージョンの右端へ重なって描画
+    されるため、素の region.width 基準の当たり判定は実ギズモの左シフトに
+    追従できず、Nパネルの背後の死領域を指し続けてしまう (今回の不具合)。
+    """
+    region_mod = _load_view_event_region()
+    context, region = _context()
+    ui_region = Obj(type="UI", x=700, y=50, width=200, height=600)
+    context.screen.areas[0].regions.append(ui_region)
+
+    # 実ギズモの位置 (可視矩形の右上隅基準、Nパネルの左隣) はナビゲーションUI
+    # として判定される: region.width(800) - Nパネル幅(200) = 可視幅600、
+    # 既定(フォールバック)ヒットボックス160+margin8 の範囲は local x>=432
+    real_gizmo_event = _event("LEFTMOUSE", region.x + 500, region.y + region.height - 50)
+    assert region_mod.is_view3d_navigation_ui_event(context, real_gizmo_event), (
+        "Nパネル左隣の実ギズモ位置がナビゲーションUIとして判定されません "
+        "(region.width基準のまま = 今回の不具合の再発)"
+    )
+
+    # Nパネルより手前 (可視矩形の外) はナビゲーションUIとして判定されない
+    outside_event = _event("LEFTMOUSE", region.x + 400, region.y + region.height - 50)
+    assert not region_mod.is_view3d_navigation_ui_event(context, outside_event), (
+        "可視矩形より内側の位置まで誤ってナビゲーションUI扱いになっています"
+    )
+
+    # 旧実装のヒットボックス (region.width基準) が指していた座標は、Nパネル
+    # 自身のリージョンに属するため、そもそもウィンドウイベントとして扱われない
+    # (Nパネルの背後の死領域であることの確認)
+    behind_panel_event = _event("LEFTMOUSE", region.x + 750, region.y + region.height - 50)
+    assert region_mod.view3d_window_under_event(context, behind_panel_event) is None, (
+        "旧ヒットボックス座標がNパネル自身のリージョンと重ならなくなっています"
+        " (テストの前提が崩れています)"
+    )
+
+
+def test_navigation_ui_hitbox_shifts_down_for_overlapping_header():
+    """HEADER/TOOL_HEADERがWINDOWの上端に重なる場合も、当たり判定の上限を
+    その重なり分だけ下げる (推奨Aの副次対応。通常のタイル配置では重ならず
+    無効化されるため、この関数は幾何的な重なりの有無だけで判定する)。
+    """
+    region_mod = _load_view_event_region()
+    context, region = _context()
+    header = Obj(type="TOOL_HEADER", x=region.x, y=600, width=800, height=50)
+    context.screen.areas[0].regions.append(header)
+
+    # WINDOW上端との重なりは50px (top_inset=50) → 可視高さ 600-50=550
+    # フォールバックヒットボックス高さ280+margin8 の範囲は local y>=262 であり、
+    # 旧実装 (top_inset無視、閾値312) では判定されなかった位置が判定される
+    shifted_event = _event("LEFTMOUSE", region.x + region.width - 50, region.y + 300)
+    assert region_mod.is_view3d_navigation_ui_event(context, shifted_event), (
+        "上端に重なるヘッダー分だけ当たり判定が下がっていません"
+    )
+
+
 def test_view3d_panel_region_does_not_count_as_viewport_click():
     region_mod = _load_view_event_region()
     context, region = _context()
@@ -149,6 +206,8 @@ def test_modal_sidebar_close_finishes_bmanga_tools():
 if __name__ == "__main__":
     test_navigation_ui_hitbox_matches_top_right_viewport_controls()
     test_navigation_ui_respects_blender_visibility_settings()
+    test_navigation_ui_hitbox_shifts_left_of_open_n_panel()
+    test_navigation_ui_hitbox_shifts_down_for_overlapping_header()
     test_view3d_panel_region_does_not_count_as_viewport_click()
     test_panel_launched_modal_still_accepts_viewport_drag_events()
     test_modal_navigation_passthrough_stays_active_until_release()
