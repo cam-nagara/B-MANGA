@@ -14,7 +14,9 @@ from __future__ import annotations
 import time
 
 import bpy
+import gpu
 from bpy.types import Operator
+from gpu_extras.batch import batch_for_shader
 
 from ..core.work import get_active_page, get_work
 from ..utils import geom, layer_stack as layer_stack_utils, log, page_file_scene, page_grid
@@ -26,6 +28,79 @@ _logger = log.get_logger(__name__)
 _DOUBLE_CLICK_INTERVAL_SEC = 0.4
 _DOUBLE_CLICK_DISTANCE_PX = 8.0
 TOOL_NAME = "balloon_nurbs_tool"
+
+# 作成中の輪郭ポイントを示すマーカー色。用紙 (白) の上でも art の上でも視認できる
+# よう、暗いリング (外側) の中に明るいオレンジの芯 (内側) を重ねて描く。
+_POINT_RING_COLOR = (0.0, 0.0, 0.0, 1.0)
+_POINT_CORE_COLOR = (1.0, 0.6, 0.05, 1.0)
+_PREVIEW_LINE_COLOR = (0.1, 0.55, 0.95, 0.9)
+
+
+def _draw_callback(op: "BMANGA_OT_balloon_nurbs_tool") -> None:
+    """作成中にクリックした輪郭ポイントと閉曲線プレビューをビューポートへ描く.
+
+    ポイントは world (ページ) 座標で保持しているため、 描画のたびに現在の
+    リージョン/視点で region 2D へ射影する。 これでビューをパン/ズームしても
+    ポイントは用紙に貼り付いたまま追従する。
+    """
+    pts_world = getattr(op, "_points_world_mm", None)
+    if not pts_world:
+        return
+    region = getattr(bpy.context, "region", None)
+    rv3d = getattr(bpy.context, "region_data", None)
+    if region is None or rv3d is None or getattr(region, "type", "") != "WINDOW":
+        return
+    from bpy_extras.view3d_utils import location_3d_to_region_2d
+    from mathutils import Vector
+
+    screen: list[tuple[float, float]] = []
+    for x_mm, y_mm in pts_world:
+        co = location_3d_to_region_2d(
+            region, rv3d, Vector((geom.mm_to_m(x_mm), geom.mm_to_m(y_mm), 0.0))
+        )
+        if co is None:
+            continue
+        screen.append((float(co[0]), float(co[1])))
+    if not screen:
+        return
+    shader = gpu.shader.from_builtin("UNIFORM_COLOR")
+    shader.bind()
+    try:
+        gpu.state.blend_set("ALPHA")
+        # 閉曲線プレビュー (最後→最初を含めて輪郭の閉じ方を示す)
+        if len(screen) >= 2:
+            try:
+                gpu.state.line_width_set(1.5)
+            except Exception:  # noqa: BLE001
+                pass
+            line_verts: list[tuple[float, float]] = []
+            for i in range(len(screen) - 1):
+                line_verts.append(screen[i])
+                line_verts.append(screen[i + 1])
+            line_verts.append(screen[-1])
+            line_verts.append(screen[0])
+            shader.uniform_float("color", _PREVIEW_LINE_COLOR)
+            batch_for_shader(shader, "LINES", {"pos": line_verts}).draw(shader)
+        # ポイント: 暗いリング → 明るい芯 の 2 パスで白背景でも視認できるようにする
+        try:
+            gpu.state.point_size_set(11.0)
+        except Exception:  # noqa: BLE001
+            pass
+        shader.uniform_float("color", _POINT_RING_COLOR)
+        batch_for_shader(shader, "POINTS", {"pos": screen}).draw(shader)
+        try:
+            gpu.state.point_size_set(7.0)
+        except Exception:  # noqa: BLE001
+            pass
+        shader.uniform_float("color", _POINT_CORE_COLOR)
+        batch_for_shader(shader, "POINTS", {"pos": screen}).draw(shader)
+    finally:
+        try:
+            gpu.state.point_size_set(1.0)
+            gpu.state.line_width_set(1.0)
+            gpu.state.blend_set("NONE")
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _interpolating_controls(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
@@ -106,6 +181,9 @@ class BMANGA_OT_balloon_nurbs_tool(Operator):
         self._last_press_time = 0.0
         self._last_press_xy = (-1.0e9, -1.0e9)
         self._cursor_modal_set = coma_modal_state.set_modal_cursor(context, "CROSSHAIR")
+        self._draw_handler = bpy.types.SpaceView3D.draw_handler_add(
+            _draw_callback, (self,), "WINDOW", "POST_PIXEL",
+        )
         context.window_manager.modal_handler_add(self)
         coma_modal_state.set_active(TOOL_NAME, self, context)
         self.report({"INFO"}, "NURBSフキダシ: クリックで輪郭ポイントを追加、ダブルクリックで決定 (3点以上)")
@@ -113,6 +191,7 @@ class BMANGA_OT_balloon_nurbs_tool(Operator):
 
     def modal(self, context, event):
         if getattr(self, "_externally_finished", False):
+            self._remove_draw_handler()
             coma_modal_state.clear_active(TOOL_NAME, self, context)
             return {"FINISHED", "PASS_THROUGH"}
         from . import handle_intercept, object_rotation
@@ -140,6 +219,7 @@ class BMANGA_OT_balloon_nurbs_tool(Operator):
         if event.type == "ESC" and event.value == "PRESS":
             if self._points_world_mm:
                 self._points_world_mm = []
+                layer_stack_utils.tag_view3d_redraw(context)
                 self.report({"INFO"}, "作成中の輪郭を取り消しました")
                 return {"RUNNING_MODAL"}
             return self._finish(context)
@@ -194,6 +274,7 @@ class BMANGA_OT_balloon_nurbs_tool(Operator):
             return {"RUNNING_MODAL"}
         ox, oy = page_grid.page_total_offset_mm(work, context.scene, page_index)
         self._points_world_mm.append((ox + float(lx), oy + float(ly)))
+        layer_stack_utils.tag_view3d_redraw(context)
         self.report({"INFO"}, f"輪郭ポイント {len(self._points_world_mm)} 点")
         return {"RUNNING_MODAL"}
 
@@ -273,15 +354,27 @@ class BMANGA_OT_balloon_nurbs_tool(Operator):
             entry.parent_kind = "page"
             entry.parent_key = page_stack_key(page)
 
+    def _remove_draw_handler(self) -> None:
+        handler = getattr(self, "_draw_handler", None)
+        if handler is not None:
+            try:
+                bpy.types.SpaceView3D.draw_handler_remove(handler, "WINDOW")
+            except Exception:  # noqa: BLE001
+                pass
+            self._draw_handler = None
+
     def _finish(self, context):
+        self._remove_draw_handler()
         if getattr(self, "_cursor_modal_set", False):
             coma_modal_state.restore_modal_cursor(context)
         self._rotate_cursor_active = False
+        layer_stack_utils.tag_view3d_redraw(context)
         coma_modal_state.clear_active(TOOL_NAME, self, context)
         return {"FINISHED"}
 
     def finish_from_external(self, context, *, keep_selection: bool = True) -> None:
         del keep_selection
+        self._remove_draw_handler()
         if getattr(self, "_cursor_modal_set", False):
             coma_modal_state.restore_modal_cursor(context)
         self._rotate_cursor_active = False

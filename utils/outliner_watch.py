@@ -470,7 +470,23 @@ def _on_depsgraph_update_post(scene, depsgraph) -> None:
             if not isinstance(obj_id, bpy.types.Object):
                 continue
             if update.is_updated_geometry and not update.is_updated_transform:
-                if str(obj_id.get("bmanga_kind", "") or "") != "effect_base_path":
+                geom_kind = str(obj_id.get("bmanga_kind", "") or "")
+                if geom_kind == "balloon":
+                    # フキダシ本体カーブを Blender の編集モードで手編集した
+                    # (制御点の移動・追加・削除) → 主線・フチ・多重線・塗りの
+                    # 帯メッシュを現在の制御点から作り直す (デバウンス予約)。
+                    real_curve = bpy.data.objects.get(obj_id.name)
+                    if real_curve is not None and getattr(real_curve, "type", "") == "CURVE":
+                        try:
+                            from . import balloon_curve_object as _bco
+
+                            _bco.request_band_rebuild_from_edit(scene, real_curve)
+                        except Exception:  # noqa: BLE001
+                            _logger.exception(
+                                "depsgraph_update_post balloon edit rebuild request failed"
+                            )
+                    continue
+                if geom_kind != "effect_base_path":
                     continue
             if not object_state_sync.is_sync_candidate(obj_id):
                 continue

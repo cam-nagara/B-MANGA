@@ -1927,6 +1927,105 @@ def sync_balloon_object_transform_only(scene, work, page, entry) -> bool:
     return True
 
 
+PROP_BALLOON_EDIT_SYNC_SIG = "bmanga_balloon_edit_sync_sig"
+_EDIT_REBUILD_DIRTY_IDS: set[str] = set()
+_EDIT_REBUILD_TIMER_ACTIVE = False
+_EDIT_REBUILD_DELAY_SEC = 0.12
+
+
+def request_band_rebuild_from_edit(scene, obj: bpy.types.Object | None) -> None:
+    """Blender の編集モードでカーブ本体を手編集したフキダシを検知し、
+    主線・フチ・多重線・塗りなどの帯メッシュ再構築をデバウンス予約する.
+
+    ``outliner_watch`` の ``depsgraph_update_post`` から、フキダシ本体カーブの
+    ジオメトリ更新 (制御点の移動・追加・削除) を検知したときに呼ばれる。
+    連続ドラッグ中は 1 回のドラッグごとに何度も呼ばれるため、 短い timer で
+    まとめて 1 回だけ再構築する (再構築は shapely を使うため毎フレームは重い)。
+    """
+    global _EDIT_REBUILD_TIMER_ACTIVE
+    try:
+        if obj is None:
+            return
+        balloon_id = str(obj.get(on.PROP_ID, "") or "")
+        if not balloon_id:
+            return
+        _EDIT_REBUILD_DIRTY_IDS.add(balloon_id)
+        if _EDIT_REBUILD_TIMER_ACTIVE:
+            return
+        _EDIT_REBUILD_TIMER_ACTIVE = True
+        try:
+            bpy.app.timers.register(
+                _edit_rebuild_tick, first_interval=_EDIT_REBUILD_DELAY_SEC
+            )
+        except Exception:  # noqa: BLE001
+            _EDIT_REBUILD_TIMER_ACTIVE = False
+            _logger.exception("balloon: edit rebuild timer register failed")
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon: request_band_rebuild_from_edit failed")
+
+
+def _edit_rebuild_tick() -> float | None:
+    global _EDIT_REBUILD_TIMER_ACTIVE
+    from . import history_runtime
+
+    # Undo/Redo の復元中や他の sync 実行中は、 データを触らず後で再試行する
+    # (dirty id は保持したまま。 depsgraph ハンドラ側と同じガードで、 復元中の
+    #  RNA 差し替えと帯再構築が重なるのを避ける)。
+    if los.is_sync_in_progress() or history_runtime.is_restoring():
+        return _EDIT_REBUILD_DELAY_SEC
+    _EDIT_REBUILD_TIMER_ACTIVE = False
+    ids = list(_EDIT_REBUILD_DIRTY_IDS)
+    _EDIT_REBUILD_DIRTY_IDS.clear()
+    scene = getattr(bpy.context, "scene", None)
+    if scene is None:
+        return None
+    for balloon_id in ids:
+        try:
+            _rebuild_bands_for_edited_balloon(scene, balloon_id)
+        except Exception:  # noqa: BLE001
+            _logger.exception("balloon: edited-curve band rebuild failed (%s)", balloon_id)
+    return None
+
+
+def _rebuild_bands_for_edited_balloon(scene, balloon_id: str) -> None:
+    obj = find_balloon_object(balloon_id)
+    if obj is None or getattr(obj, "type", "") != "CURVE":
+        return
+    page, entry = find_balloon_entry(scene, balloon_id)
+    if entry is None:
+        return
+    # 制御点が実際に変化したときだけ再構築する (署名一致ならスキップし、
+    # マテリアル更新が誘発する追加の depsgraph 更新で無限ループになるのを防ぐ)。
+    signature = _band_geometry_signature(entry, obj)
+    if signature and signature == str(obj.get(PROP_BALLOON_EDIT_SYNC_SIG, "") or ""):
+        return
+    # 手編集された制御点でカーブ状態 (manual / freeform) を確定させる。
+    state = balloon_curve_source_state.detect_state(obj)
+    if state == balloon_curve_source_state.STATE_GENERATED:
+        # 生成形状のまま (ユーザーが編集していない)。 通常の生成・再生成が
+        # 誘発したジオメトリ更新であり、 帯は既に最新なので作り直さない。
+        # 署名だけ記録して以降の空振りを止める。
+        try:
+            obj[PROP_BALLOON_EDIT_SYNC_SIG] = signature
+        except Exception:  # noqa: BLE001
+            pass
+        return
+    # freeform / manual の間は _sync_generated_shape_if_needed が本体カーブを
+    # 再生成しないため、 編集した形状はそのまま保たれ、 帯メッシュだけが
+    # 現在の制御点から作り直される。
+    ensure_balloon_curve_object(scene=scene, entry=entry, page=page)
+    try:
+        obj[PROP_BALLOON_EDIT_SYNC_SIG] = signature
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from . import layer_stack as _layer_stack
+
+        _layer_stack.tag_view3d_redraw(bpy.context)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def source_state_for_entry(entry) -> str:
     balloon_id = str(getattr(entry, "id", "") or "")
     obj = find_balloon_object(balloon_id)
