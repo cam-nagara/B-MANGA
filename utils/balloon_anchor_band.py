@@ -189,6 +189,154 @@ def anchor_offset_outline(
     return out
 
 
+def anchor_offset_outline_indexed(
+    detected: dict,
+    delta: float,
+    peak_scale: float,
+    valley_scale: float,
+) -> Optional[list[tuple[float, float]]]:
+    """anchor_offset_outline の添字対応版.
+
+    戻り値は detected["pts"] と同じ長さのリストで、i 番目の要素が pts[i] の像。
+    (anchor_offset_outline と同じ写像だが、出力順を入力添字に揃える。keep 区間
+    [a..b] を切り出して開いた帯を作る用途で、外縁/内縁の対応点を添字で引ける。)
+    アンカー間 chord が縮退した区間は元の点をそのまま使う。
+    """
+    pts = detected["pts"]
+    anchors = detected["anchors"]
+    bis = detected["bis"]
+    is_peak = detected["is_peak"]
+    n = len(pts)
+    m = len(anchors)
+    if m < 3:
+        return None
+    out: list[Optional[tuple[float, float]]] = [None] * n
+    for a_idx in range(m):
+        vi = anchors[a_idx]
+        vj = anchors[(a_idx + 1) % m]
+        f1 = peak_scale if is_peak[vi] else valley_scale
+        f2 = peak_scale if is_peak[vj] else valley_scale
+        p0 = complex(*pts[vi])
+        p1 = complex(*pts[vj])
+        q0 = p0 + delta * f1 * complex(*bis[vi])
+        q1 = p1 + delta * f2 * complex(*bis[vj])
+        chord = p1 - p0
+        if abs(chord) < 1.0e-12:
+            j = vi
+            while j != vj:
+                out[j] = pts[j]
+                j = (j + 1) % n
+            continue
+        M = (q1 - q0) / chord
+        j = vi
+        while j != vj:
+            z = complex(*pts[j])
+            w = q0 + M * (z - p0)
+            out[j] = (w.real, w.imag)
+            j = (j + 1) % n
+    return [o if o is not None else pts[i] for i, o in enumerate(out)]
+
+
+def peaks_valleys_from_detected(detected: dict) -> tuple[list[int], list[int]]:
+    """detected のアンカーを (山の添字列, 谷の添字列) に分解する.
+
+    添字は detected["pts"] の空間。keep 区間計算
+    (balloon_line_mesh._ring_kept_index_segments) へそのまま渡せる。
+    """
+    is_peak = detected["is_peak"]
+    peaks = [i for i in detected["anchors"] if is_peak[i]]
+    valleys = [i for i in detected["anchors"] if not is_peak[i]]
+    return peaks, valleys
+
+
+def _extend_open_polyline(
+    pts_list: list[tuple[float, float]], ext: float
+) -> list[tuple[float, float]]:
+    """開いたポリラインの両端を端セグメントの接線方向へ ext だけ延長する."""
+    if len(pts_list) < 2 or ext <= 1.0e-12:
+        return list(pts_list)
+    out = list(pts_list)
+    ax, ay = out[0]
+    bx, by = out[1]
+    dx, dy = ax - bx, ay - by
+    h = math.hypot(dx, dy)
+    if h > 1.0e-12:
+        out.insert(0, (ax + dx / h * ext, ay + dy / h * ext))
+    ax, ay = out[-1]
+    bx, by = out[-2]
+    dx, dy = ax - bx, ay - by
+    h = math.hypot(dx, dy)
+    if h > 1.0e-12:
+        out.append((ax + dx / h * ext, ay + dy / h * ext))
+    return out
+
+
+def anchor_band_kept_pieces(
+    points: Sequence,
+    d_lo: float,
+    d_hi: float,
+    peak_scale: float,
+    valley_scale: float,
+    kept_segments: Sequence[Sequence[int]],
+    *,
+    peak_scale_lo: Optional[float] = None,
+    valley_scale_lo: Optional[float] = None,
+    detected: Optional[dict] = None,
+    cross_extension: float = 0.0,
+) -> list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
+    """keep 区間ごとの開いた帯ピース群を [(outer, holes), ...] で返す.
+
+    多重線の「長さ変化」「山谷を延ばして交差」のJ対応 (2026-07-23)。全周の
+    hi−lo 差分ではなく、外縁 hi / 内縁 lo の添字対応点列から kept_segments
+    (detected["pts"] の添字空間。_ring_kept_index_segments の戻り値) の区間だけを
+    切り出し、両輪郭を端で繋いだ閉ポリゴンにする。切り口はその位置の帯幅のまま
+    (Jの「なだらかな太さ変化」を保つ)。cross_extension > 0 なら各ピースの両端を
+    接線方向へ延長し、隣接ピースが谷をまたいで交差する形にする。
+    構築に失敗した場合は [] (呼び出し側で全周帯へフォールバックする)。
+    """
+    det = detected if detected is not None else detect_anchors(points)
+    if det is None:
+        return []
+    p_lo = peak_scale if peak_scale_lo is None else peak_scale_lo
+    v_lo = valley_scale if valley_scale_lo is None else valley_scale_lo
+    hi = anchor_offset_outline_indexed(det, d_hi, peak_scale, valley_scale)
+    lo = anchor_offset_outline_indexed(det, d_lo, p_lo, v_lo)
+    if hi is None or lo is None:
+        return []
+    try:
+        from shapely.geometry import Polygon  # type: ignore
+    except Exception:  # noqa: BLE001
+        return []
+    out: list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]] = []
+    for seg in kept_segments:
+        if len(seg) < 2:
+            continue
+        hi_pts = [hi[i] for i in seg]
+        lo_pts = [lo[i] for i in seg]
+        if cross_extension > 1.0e-12:
+            hi_pts = _extend_open_polyline(hi_pts, cross_extension)
+            lo_pts = _extend_open_polyline(lo_pts, cross_extension)
+        ring = hi_pts + list(reversed(lo_pts))
+        if len(ring) < 3:
+            continue
+        try:
+            poly = Polygon(ring)
+            if not poly.is_valid:
+                poly = poly.buffer(0)
+        except Exception:  # noqa: BLE001
+            continue
+        if poly.is_empty:
+            continue
+        # 自己交差で複数ローブに割れたピースは全ローブを残す (最大のみ取る
+        # _heal_polygon と違い、細い帯の分割片も描画対象)。
+        geoms = list(poly.geoms) if poly.geom_type == "MultiPolygon" else [poly]
+        for g in geoms:
+            if g.geom_type != "Polygon" or g.is_empty or g.area <= 1.0e-14:
+                continue
+            out.append((list(g.exterior.coords), [list(r.coords) for r in g.interiors]))
+    return out
+
+
 def edge_scale_for_width_pct(
     delta: float,
     shrink_ref: float,

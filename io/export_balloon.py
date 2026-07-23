@@ -455,11 +455,13 @@ def _multi_ring_band_polygons(
                     running_outside += ring_spacing + ring_extent
         return band_groups
 
-    # --- 非動的 / 新方式J: 従来のミター帯 (全長リング) ---
+    # --- 非動的 / 新方式J: ミター帯 (全長リング) + J の長さ変化/交差ピース ---
     # 谷/山の線幅% は J でも有効: リング帯のエッジ倍率補正として乗せる
     # (balloon_line_mesh.ensure_balloon_multi_line_mesh と同一規則)。動的形状で
     # ないか pct が既定 100% のときは edge_scale_for_width_pct が恒等変換になる
     # ため、常時計算してよい (shape 分岐を複製する必要がない)。
+    # 「長さ変化」「山谷を延ばして交差」も J で有効 (2026-07-23): リング別の
+    # 長さ% が 100% 未満なら keep 区間ピース (_j_kept_ring_band_mm) で描く。
     ml_shape_dynamic = shape_norm in blm._DYNAMIC_WIDTH_SHAPES
     ml_eff_peak_pct = peak_pct if ml_shape_dynamic else 100.0
     ml_eff_valley_pct = valley_pct if ml_shape_dynamic else 100.0
@@ -469,11 +471,33 @@ def _multi_ring_band_polygons(
         and valley_pct <= 1.0e-3
         and peak_pct <= 1.0e-3
     )
+    j_len_active = (
+        anchor_cfg is not None
+        and ml_shape_dynamic
+        and (length_near < 0.999 or length_far < 0.999)
+    )
+    j_detected = None
+    if j_len_active:
+        try:
+            from ..utils import balloon_anchor_band
+
+            dense_mm = _densify_closed_outline_mm(outline)
+            if len(dense_mm) >= 6:
+                j_detected = balloon_anchor_band.detect_anchors(dense_mm)
+        except Exception:  # noqa: BLE001
+            j_detected = None
     for ring_index in range(1, count + 1):
         ring_w = ring_w_base * (width_scale ** max(0, ring_index - 1))
         spacing = spacing_base * (spacing_scale ** max(0, ring_index - 1))
         if ring_w <= 1.0e-6:
             continue
+        # 「長さ変化」near/far のリング別補間 (メッシュ側と同一)
+        if count <= 1:
+            ring_len = length_near
+        else:
+            t = float(ring_index - 1) / float(count - 1)
+            ring_len = length_near + (length_far - length_near) * t
+        ring_len = max(0.0, min(1.0, ring_len))
         for side in sides:
             band = None
             if side == "inside":
@@ -486,10 +510,19 @@ def _multi_ring_band_polygons(
                         ring_anchor_cfg, ring_anchor_cfg_lo = _multi_ring_anchor_scales(
                             anchor_cfg, center_mm, ring_w, ml_eff_peak_pct, ml_eff_valley_pct,
                         )
-                    band = _mitre_band_polygons_mm(
-                        outline, -inner, -(inner + ring_w), sharp=sharp,
-                        anchor_cfg=ring_anchor_cfg, anchor_cfg_lo=ring_anchor_cfg_lo,
-                    )
+                    j_band = None
+                    if anchor_cfg is not None and j_len_active:
+                        j_band = _j_kept_ring_band_mm(
+                            j_detected, center_mm, ring_w, spacing, ring_len,
+                            cross_enabled, ring_anchor_cfg, ring_anchor_cfg_lo,
+                        )
+                    if j_band is not None:
+                        band = j_band
+                    else:
+                        band = _mitre_band_polygons_mm(
+                            outline, -inner, -(inner + ring_w), sharp=sharp,
+                            anchor_cfg=ring_anchor_cfg, anchor_cfg_lo=ring_anchor_cfg_lo,
+                        )
                 running_inside = inner + ring_w
             else:
                 inner = running_outside + spacing
@@ -501,10 +534,19 @@ def _multi_ring_band_polygons(
                         ring_anchor_cfg, ring_anchor_cfg_lo = _multi_ring_anchor_scales(
                             anchor_cfg, center_mm, ring_w, ml_eff_peak_pct, ml_eff_valley_pct,
                         )
-                    band = _mitre_band_polygons_mm(
-                        outline, inner + ring_w, inner, sharp=sharp,
-                        anchor_cfg=ring_anchor_cfg, anchor_cfg_lo=ring_anchor_cfg_lo,
-                    )
+                    j_band = None
+                    if anchor_cfg is not None and j_len_active:
+                        j_band = _j_kept_ring_band_mm(
+                            j_detected, center_mm, ring_w, spacing, ring_len,
+                            cross_enabled, ring_anchor_cfg, ring_anchor_cfg_lo,
+                        )
+                    if j_band is not None:
+                        band = j_band
+                    else:
+                        band = _mitre_band_polygons_mm(
+                            outline, inner + ring_w, inner, sharp=sharp,
+                            anchor_cfg=ring_anchor_cfg, anchor_cfg_lo=ring_anchor_cfg_lo,
+                        )
                 running_outside = inner + ring_w
             if band:
                 band_groups.append(band)
@@ -810,6 +852,55 @@ def _multi_ring_anchor_scales(
             balloon_anchor_band.edge_scale_for_width_pct(delta, shrink, anchor_cfg[1], valley_pct),
         ))
     return scales[0], scales[1]
+
+
+def _j_kept_ring_band_mm(
+    j_detected,
+    center_mm: float,
+    ring_w_mm: float,
+    spacing_mm: float,
+    ring_len: float,
+    cross_enabled: bool,
+    ring_anchor_cfg: tuple[float, float],
+    ring_anchor_cfg_lo: tuple[float, float] | None,
+):
+    """新方式J + 長さ変化/交差 のリング帯 (keep 区間ピース) を mm 座標で返す.
+
+    balloon_line_mesh.ensure_balloon_multi_line_mesh のJ分岐と同一規則
+    (谷を基準に山の頂点側を削り、交差ONなら両端を接線方向へ延長)。
+    戻り値: [(outer, holes), ...] / [] = 意図的にこのリングを描かない /
+    None = 全周ミター帯で描くべき (長さ100%・山なし・構築失敗)。
+    """
+    if j_detected is None or ring_len >= 0.999:
+        return None
+    try:
+        from ..utils import balloon_anchor_band
+        from ..utils import balloon_line_mesh as blm
+
+        peaks, valleys = balloon_anchor_band.peaks_valleys_from_detected(j_detected)
+        n_det = len(j_detected["pts"])
+        kept = blm._ring_kept_index_segments(n_det, peaks, valleys, ring_len)
+        if not kept:
+            return []  # 全カット (長さ 0% 近傍)
+        if len(kept) == 1 and len(kept[0]) >= n_det:
+            return None  # 山が無い等で全周のまま
+        half = ring_w_mm * 0.5
+        lo_cfg = ring_anchor_cfg_lo if ring_anchor_cfg_lo is not None else ring_anchor_cfg
+        built = balloon_anchor_band.anchor_band_kept_pieces(
+            [],
+            center_mm - half,
+            center_mm + half,
+            ring_anchor_cfg[0],
+            ring_anchor_cfg[1],
+            kept,
+            peak_scale_lo=lo_cfg[0],
+            valley_scale_lo=lo_cfg[1],
+            detected=j_detected,
+            cross_extension=(spacing_mm + ring_w_mm) if cross_enabled else 0.0,
+        )
+        return built if built else None
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _body_sharp_corners(entry) -> bool:

@@ -3746,9 +3746,10 @@ def ensure_balloon_multi_line_mesh(
             or cross_enabled
         )
     )
-    # 新方式J は山・谷の線幅倍率を自前で持つため、長さ変化・交差の動的特性は
-    # 使わない (J の帯構築で描く。長さ変化・交差のJ対応は未実装の既知の制限)。
-    # 谷/山の線幅% だけは J でも有効: リング帯のエッジ倍率補正として乗せる。
+    # 新方式J は山・谷の頂点変位で帯を作るため、標準方式の可変幅パス
+    # (_build_dynamic_multi_line_polygons) は使わない。谷/山の線幅% はエッジ倍率
+    # 補正として (v0.6.580)、「長さ変化」「山谷を延ばして交差」は keep 区間ピース
+    # 構築 (anchor_band_kept_pieces) として、それぞれJの帯構築に乗せる (v0.6.582)。
     ml_anchor_cfg = _anchor_cfg_for_entry(entry)
     ml_j_pct_active = (
         ml_anchor_cfg is not None
@@ -3757,6 +3758,11 @@ def ensure_balloon_multi_line_mesh(
             abs(valley_width_pct - 100.0) > 1.0e-3
             or abs(peak_width_pct - 100.0) > 1.0e-3
         )
+    )
+    ml_j_length_active = (
+        ml_anchor_cfg is not None
+        and shape_norm in _DYNAMIC_WIDTH_SHAPES
+        and (length_near < 0.999 or length_far < 0.999)
     )
     if ml_anchor_cfg is not None:
         dynamic_features_active = False
@@ -3824,17 +3830,20 @@ def ensure_balloon_multi_line_mesh(
     ml_straight = _is_straight_edged(
         [(float(s[0]), float(s[1])) for s in samples], SAMPLES_PER_SEGMENT
     )
+    # 新方式J + 長さ変化: アンカー検出は全リング共通なので 1 回だけ行い使い回す
+    ml_j_detected = None
+    if ml_j_length_active:
+        ml_j_detected = balloon_anchor_band.detect_anchors(
+            [(float(s[0]), float(s[1])) for s in samples]
+        )
     for ring_index in range(1, count + 1):
         ring_width_mm = multi_width_mm * (width_scale ** max(0, ring_index - 1))
         ring_spacing_mm = spacing_mm * (spacing_scale ** max(0, ring_index - 1))
         if ring_width_mm <= 1.0e-6:
             continue
-        if dynamic_features_active:
-            ring_valley_width_mm = valley_width_mm * (width_scale ** max(0, ring_index - 1))
-            ring_peak_width_mm = peak_width_mm * (width_scale ** max(0, ring_index - 1))
-            ring_extent_mm = max(ring_width_mm, ring_valley_width_mm, ring_peak_width_mm)
-            # 「長さ変化」を near (主線寄り) と far (最も遠い) で別々に。リング 1 = near、
-            # リング N = far として線形補間。
+        # 「長さ変化」を near (主線寄り) と far (最も遠い) で別々に。リング 1 = near、
+        # リング N = far として線形補間 (標準方式・新方式J 共通)。
+        if dynamic_features_active or ml_j_length_active:
             if count <= 1:
                 ring_length_scale = length_near
             else:
@@ -3842,10 +3851,15 @@ def ensure_balloon_multi_line_mesh(
                 ring_length_scale = length_near + (length_far - length_near) * t
             ring_length_scale = max(0.0, min(1.0, ring_length_scale))
         else:
+            ring_length_scale = 1.0
+        if dynamic_features_active:
+            ring_valley_width_mm = valley_width_mm * (width_scale ** max(0, ring_index - 1))
+            ring_peak_width_mm = peak_width_mm * (width_scale ** max(0, ring_index - 1))
+            ring_extent_mm = max(ring_width_mm, ring_valley_width_mm, ring_peak_width_mm)
+        else:
             ring_valley_width_mm = ring_width_mm
             ring_peak_width_mm = ring_width_mm
             ring_extent_mm = ring_width_mm
-            ring_length_scale = 1.0
         for side in sides:
             if side == "inside":
                 ring_inner_mm = running_inside_mm + ring_spacing_mm
@@ -3919,15 +3933,57 @@ def ensure_balloon_multi_line_mesh(
                 else:
                     hi_peak_j, hi_valley_j = ml_anchor_cfg
                     lo_peak_j, lo_valley_j = ml_anchor_cfg
-                pieces = balloon_anchor_band.anchor_band_outer_holes_list(
-                    [(float(s[0]), float(s[1])) for s in samples],
-                    d_lo_j,
-                    d_hi_j,
-                    hi_peak_j,
-                    hi_valley_j,
-                    peak_scale_lo=lo_peak_j,
-                    valley_scale_lo=lo_valley_j,
-                )
+                # 「長さ変化」「山谷を延ばして交差」(J対応): 標準方式と同じ規則
+                # (谷を基準に山の頂点側を削る) で keep 区間を求め、外縁/内縁の
+                # 添字対応点列から区間ピースを組み立てる。pieces の意味:
+                # None = 全周帯で描く / [] = 意図的にこのリングを描かない。
+                pieces = None
+                if (
+                    ml_j_length_active
+                    and ring_length_scale < 0.999
+                    and ml_j_detected is not None
+                ):
+                    j_peaks, j_valleys = balloon_anchor_band.peaks_valleys_from_detected(
+                        ml_j_detected
+                    )
+                    n_det = len(ml_j_detected["pts"])
+                    kept = _ring_kept_index_segments(
+                        n_det, j_peaks, j_valleys, ring_length_scale
+                    )
+                    if not kept:
+                        pieces = []  # 全カット (長さ 0% 近傍): リングを描かない
+                    elif len(kept) == 1 and len(kept[0]) >= n_det:
+                        pieces = None  # 山が無い等で全周のまま: 通常の全周帯で描く
+                    else:
+                        cross_ext_m = (
+                            (ring_spacing_mm + ring_width_mm) * 0.001
+                            if cross_enabled
+                            else 0.0
+                        )
+                        built = balloon_anchor_band.anchor_band_kept_pieces(
+                            [],
+                            d_lo_j,
+                            d_hi_j,
+                            hi_peak_j,
+                            hi_valley_j,
+                            kept,
+                            peak_scale_lo=lo_peak_j,
+                            valley_scale_lo=lo_valley_j,
+                            detected=ml_j_detected,
+                            cross_extension=cross_ext_m,
+                        )
+                        # 構築失敗時のみ全周帯へフォールバック (描画を止めない)
+                        pieces = built if built else None
+                if pieces is None:
+                    pieces = balloon_anchor_band.anchor_band_outer_holes_list(
+                        [(float(s[0]), float(s[1])) for s in samples],
+                        d_lo_j,
+                        d_hi_j,
+                        hi_peak_j,
+                        hi_valley_j,
+                        peak_scale_lo=lo_peak_j,
+                        valley_scale_lo=lo_valley_j,
+                    )
                 polygons.extend(pieces)
             else:
                 band = build_offset_band_polygon(
