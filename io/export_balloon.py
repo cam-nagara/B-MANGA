@@ -271,6 +271,33 @@ def _split_ellipse_outlines_by_body(
         return [], polys
 
 
+def _densify_closed_outline_mm(outline, *, min_total: int = 120):
+    """閉じたアウトラインを、頂点 (谷/山) を保ったまま各辺を線形分割して密度を上げる.
+
+    トゲ直線のように ``outline_for_entry`` が谷/山頂点だけの疎なポリゴンを返す形状でも、
+    ビューポートのメッシュ (spline を SAMPLES_PER_SEGMENT 分割した密サンプル) と同程度の
+    密度にそろえ、動的多重線生成器の谷/山検出とリング再サンプルを安定させる。既に十分
+    密なら (曲線形状など) そのまま返す。線形分割なので直線辺の形状は変わらない。
+    """
+    from ..utils.balloon_line_mesh import SAMPLES_PER_SEGMENT
+
+    src = [(float(x), float(y)) for x, y in outline]
+    if len(src) >= 3 and math.hypot(src[0][0] - src[-1][0], src[0][1] - src[-1][1]) <= 1.0e-9:
+        src = src[:-1]
+    n = len(src)
+    if n < 3 or n >= min_total:
+        return src
+    out: list[tuple[float, float]] = []
+    for i in range(n):
+        a = src[i]
+        b = src[(i + 1) % n]
+        out.append(a)
+        for k in range(1, SAMPLES_PER_SEGMENT):
+            t = k / SAMPLES_PER_SEGMENT
+            out.append((a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t))
+    return out
+
+
 def _multi_ring_band_polygons(
     outline,
     entry,
@@ -281,6 +308,11 @@ def _multi_ring_band_polygons(
 
     本体の線の外側 (または内側) に「隙間 = 間隔」で帯を順に並べる。
     幅スケール・間隔スケール・方向 (外側/内側/両方向) に対応する。
+
+    動的形状 (雲/フワフワ/トゲ/トゲ曲線) で「長さ変化 (主線寄り/遠い側)」「谷/山の
+    線幅」「山谷を延ばして交差」が効いているときは、ビューポートのメッシュと同一の
+    生成器 (``balloon_line_mesh._build_dynamic_multi_line_polygons``) をメートル単位で
+    呼び、画面と出力を一致させる。新方式J・非動的形状は従来のミター帯 (全長リング)。
     """
     line_w_mm = _scaled_width_mm(entry, "line_width_mm", 0.3)
     ring_w_base = _scaled_width_mm(entry, "multi_line_width_mm", 0.3)
@@ -300,7 +332,130 @@ def _multi_ring_band_polygons(
     running_outside = line_w_mm * 0.5
     running_inside = line_w_mm * 0.5
     anchor_cfg = _anchor_cfg_for_export(entry)
-    band_groups = []
+
+    # --- 動的形状で 長さ変化 / 谷山線幅 / 交差 が効いているか (メッシュ側と同一条件) ---
+    from ..utils import balloon_line_mesh as blm
+
+    shape_norm = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
+    valley_pct = max(0.0, min(100.0, float(getattr(entry, "thorn_multi_line_valley_width_pct", 100.0) or 0.0)))
+    peak_pct = max(0.0, min(100.0, float(getattr(entry, "thorn_multi_line_peak_width_pct", 100.0) or 0.0)))
+    # 「長さ変化」は 主線寄り(near) / 遠い側(far)。旧 _percent は far のフォールバック。
+    length_near_pct = float(getattr(entry, "thorn_multi_line_length_scale_near_percent", 100.0))
+    length_far_pct = float(getattr(entry, "thorn_multi_line_length_scale_far_percent", 100.0))
+    legacy_len_pct = float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0))
+    if abs(length_far_pct - 100.0) < 1.0e-3 and abs(legacy_len_pct - 100.0) > 1.0e-3:
+        length_far_pct = legacy_len_pct
+    length_near = max(0.0, min(1.0, length_near_pct / 100.0))
+    length_far = max(0.0, min(1.0, length_far_pct / 100.0))
+    cross_enabled = bool(getattr(entry, "thorn_multi_line_cross_enabled", False))
+    dynamic = (
+        anchor_cfg is None
+        and shape_norm in blm._DYNAMIC_WIDTH_SHAPES
+        and (
+            length_near < 0.999
+            or length_far < 0.999
+            or abs(valley_pct - 100.0) > 1.0e-3
+            or abs(peak_pct - 100.0) > 1.0e-3
+            or cross_enabled
+        )
+    )
+
+    band_groups: list[list] = []
+
+    if dynamic:
+        dense_mm = _densify_closed_outline_mm(outline)
+        if len(dense_mm) < 6:
+            return []
+        pts_m = [(x * 0.001, y * 0.001, 1.0) for (x, y) in dense_mm]
+        center_m = (
+            sum(p[0] for p in pts_m) / len(pts_m),
+            sum(p[1] for p in pts_m) / len(pts_m),
+        )
+        # 動的形状で直線辺なのは「トゲ (直線)」のみ。密度補完後の線形サブセグメントで
+        # _is_straight_edged が曲線形状 (雲/フワフワ/トゲ曲線) を直線と誤判定するのを避け、
+        # 形状種別で判定する (メッシュ側の実効結果と一致)。
+        ml_straight = (shape_norm == "thorn")
+        peaks_rounded = shape_norm in blm._ROUNDED_PEAK_SHAPES
+        valley_sharp = bool(sharp)  # = cloud_valley_sharp (_body_sharp_corners と同一)
+        valley_w_base = ring_w_base * valley_pct / 100.0
+        peak_w_base = ring_w_base * peak_pct / 100.0
+        for ring_index in range(1, count + 1):
+            ring_w = ring_w_base * (width_scale ** max(0, ring_index - 1))
+            ring_spacing = spacing_base * (spacing_scale ** max(0, ring_index - 1))
+            if ring_w <= 1.0e-6:
+                continue
+            ring_valley = valley_w_base * (width_scale ** max(0, ring_index - 1))
+            ring_peak = peak_w_base * (width_scale ** max(0, ring_index - 1))
+            ring_extent = max(ring_w, ring_valley, ring_peak)
+            if count <= 1:
+                ring_len = length_near
+            else:
+                t = float(ring_index - 1) / float(count - 1)
+                ring_len = length_near + (length_far - length_near) * t
+            ring_len = max(0.0, min(1.0, ring_len))
+            for side in sides:
+                if side == "inside":
+                    ring_inner = running_inside + ring_spacing
+                    ring_center = ring_inner + ring_extent * 0.5
+                    signed_offset_mm = -ring_center
+                else:
+                    ring_inner = running_outside + ring_spacing
+                    ring_center = ring_inner + ring_extent * 0.5
+                    signed_offset_mm = ring_center
+                if cross_enabled and ring_len < 0.999:
+                    cross_ext_mm = ring_spacing + ring_w
+                else:
+                    cross_ext_mm = 0.0
+                # 曲線 + 外向きリングは外側アライメント (内側オフセットの凸頂点くさび回避)。
+                if (not ml_straight) and side == "outside":
+                    outside_align = True
+                    offset_mm = ring_inner
+                else:
+                    outside_align = False
+                    offset_mm = signed_offset_mm
+                polys_m = None
+                raised = False
+                try:
+                    polys_m = blm._build_dynamic_multi_line_polygons(
+                        body_samples=pts_m,
+                        signed_offset_m=offset_mm * 0.001,
+                        base_width_m=ring_w * 0.001,
+                        valley_width_m=ring_valley * 0.001,
+                        peak_width_m=ring_peak * 0.001,
+                        length_scale=ring_len,
+                        valley_sharp=valley_sharp,
+                        balloon_center_m=center_m,
+                        cross_extension_m=cross_ext_mm * 0.001,
+                        peak_extension_m=0.0,
+                        outside_align=outside_align,
+                        peaks_rounded=peaks_rounded,
+                    )
+                except Exception:  # noqa: BLE001
+                    raised = True
+                if polys_m:
+                    band_groups.append([
+                        (
+                            [(px * 1000.0, py * 1000.0) for (px, py) in outer],
+                            [[(hx * 1000.0, hy * 1000.0) for (hx, hy) in hole] for hole in holes],
+                        )
+                        for (outer, holes) in polys_m
+                    ])
+                elif raised:
+                    # 生成器が想定外に失敗しても書き出し全体を落とさない。従来のミター帯
+                    # (全長リング) にフォールバック。None/[] (谷山幅0 等の意図的な空) は尊重する。
+                    if side == "inside":
+                        fb = _mitre_band_polygons_mm(outline, -ring_inner, -(ring_inner + ring_w), sharp=sharp)
+                    else:
+                        fb = _mitre_band_polygons_mm(outline, ring_inner + ring_w, ring_inner, sharp=sharp)
+                    if fb:
+                        band_groups.append(fb)
+                if side == "inside":
+                    running_inside += ring_spacing + ring_extent
+                else:
+                    running_outside += ring_spacing + ring_extent
+        return band_groups
+
+    # --- 非動的 / 新方式J: 従来のミター帯 (全長リング) ---
     for ring_index in range(1, count + 1):
         ring_w = ring_w_base * (width_scale ** max(0, ring_index - 1))
         spacing = spacing_base * (spacing_scale ** max(0, ring_index - 1))

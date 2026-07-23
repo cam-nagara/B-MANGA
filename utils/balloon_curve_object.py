@@ -1634,6 +1634,10 @@ def _geometry_key_for_entry(entry) -> str:
         "thorn_multi_line_valley_width_pct": float(getattr(entry, "thorn_multi_line_valley_width_pct", 100.0) or 0.0),
         "thorn_multi_line_peak_width_pct": float(getattr(entry, "thorn_multi_line_peak_width_pct", 100.0) or 0.0),
         "thorn_multi_line_length_scale": float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0) or 0.0),
+        # 「長さ変化」は主線寄り(near)/遠い側(far)の2値がUIの実体。旧 _percent だけを
+        # 署名に含めるとスライダー変更でメッシュキャッシュが無効化されず反映されない。
+        "thorn_multi_line_length_scale_near": float(getattr(entry, "thorn_multi_line_length_scale_near_percent", 100.0) or 0.0),
+        "thorn_multi_line_length_scale_far": float(getattr(entry, "thorn_multi_line_length_scale_far_percent", 100.0) or 0.0),
         "thorn_multi_line_cross": bool(getattr(entry, "thorn_multi_line_cross_enabled", False)),
         "outer_edge_enabled": bool(getattr(entry, "outer_white_margin_enabled", False)),
         "outer_edge_width": float(getattr(entry, "outer_white_margin_width_mm", 1.0) or 0.0),
