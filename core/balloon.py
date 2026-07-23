@@ -791,7 +791,7 @@ class BMangaBalloonEntry(bpy.types.PropertyGroup):
     multi_line_width_mm: FloatProperty(name="多重線幅 (mm)", description="多重線1本ごとの太さ", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     multi_line_spacing_mm: FloatProperty(name="多重線間隔 (mm)", description="多重線どうしの間隔", default=0.4, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     multi_line_width_scale_percent: FloatProperty(name="線幅変化 (%)", description="外側の線ほど太さをどれだけ変化させるか (100% で変化なし)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    multi_line_spacing_scale_percent: FloatProperty(name="間隔変化 (%)", description="外側の線ほど間隔をどれだけ変化させるか (100% で変化なし)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    multi_line_spacing_scale_percent: FloatProperty(name="間隔変化 (%)", description="外側の線ほど間隔をどれだけ変化させるか (100% で変化なし)", default=100.0, min=0.0, max=500.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     # 主線の谷/山の線幅: 主線の基本線幅 (line_width_mm) を 100% として % 指定。
     # 100% = 同じ太さ, 0% = その頂点で消える。辺全体で線形補間。
     line_valley_width_pct: FloatProperty(name="主線・谷の線幅 (%)", description="輪郭の谷 (へこみ) での主線の太さを、通常幅に対する割合で指定 (0% で消える)", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
@@ -809,12 +809,12 @@ class BMangaBalloonEntry(bpy.types.PropertyGroup):
     white_outline_position_percent: FloatProperty(name="位置 (%)", description="内端形状に対する位置。100% で線の長さ分ぴったり内端形状の外側、0% で線の中心が内端形状上", default=100.0, min=-200.0, max=200.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     flash_white_outline_width_mm: FloatProperty(name="束の太さ (mm)", description="白抜き線1束分の太さ", default=10.0, min=0.01, soft_max=100.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     flash_white_outline_spacing_mm: FloatProperty(name="間隔 (mm)", description="束の中の白線どうしの間隔", default=0.2, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    white_outline_white_spacing_scale_percent: FloatProperty(name="間隔変化 (%)", description="外側の白線ほど間隔をどれだけ変化させるか (100% で変化なし)", default=100.0, min=0.0, max=300.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    white_outline_white_spacing_scale_percent: FloatProperty(name="間隔変化 (%)", description="外側の白線ほど間隔をどれだけ変化させるか (100% で変化なし)", default=100.0, min=0.0, max=500.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     flash_white_outline_white_brush_mm: FloatProperty(name="太さ (mm)", description="束の中の白線1本の太さ", default=0.3, min=0.01, soft_max=5.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     flash_white_outline_white_line_count: IntProperty(name="本数", description="束の中に並べる白線の本数", default=24, min=1, max=200, soft_max=80, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     flash_white_outline_black_line_count: IntProperty(name="本数", description="束の中に並べる黒線の本数", default=3, min=1, max=50, soft_max=12, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     flash_white_outline_black_spacing_mm: FloatProperty(name="間隔 (mm)", description="束の中の黒線どうしの間隔", default=0.2, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    white_outline_black_spacing_scale_percent: FloatProperty(name="間隔変化 (%)", description="外側の黒線ほど間隔をどれだけ変化させるか (100% で変化なし)", default=100.0, min=0.0, max=300.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    white_outline_black_spacing_scale_percent: FloatProperty(name="間隔変化 (%)", description="外側の黒線ほど間隔をどれだけ変化させるか (100% で変化なし)", default=100.0, min=0.0, max=500.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     # 白抜き線の詳細 (効果線の白抜き線と同じ項目)。新規作成は共通の
     # 初期値を使い、旧作品は io の設定版移行で当時の実効値を復元する。
     white_outline_angle_deg: FloatProperty(name="角度", description="白抜き線の束1つ1つに加える追加回転角", default=0.0, soft_min=-360.0, soft_max=360.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]

@@ -123,6 +123,7 @@ def mitre_band_polygons(
     *,
     sharp: bool = True,
     anchor_cfg: tuple[float, float] | None = None,
+    anchor_cfg_lo: tuple[float, float] | None = None,
 ):
     """輪郭から outer_offset / inner_offset (符号付き) のオフセット帯を返す。
 
@@ -130,18 +131,24 @@ def mitre_band_polygons(
     「角を尖らせる」やフチをページ出力・サムネイルへ正確に反映するために使う。
     anchor_cfg=(山倍率, 谷倍率) を渡すと新方式J (頂点距離方式) で帯を構築する
     (2026-07-23 承認仕様。アンカー検出に失敗した場合は従来方式へフォールバック)。
+    anchor_cfg_lo は inner_offset 側だけ別倍率にしたいとき (谷/山の線幅%をフチ・
+    多重線リングの外縁/内縁で別々に効かせる場合) に指定する。省略時は
+    outer_offset 側 (anchor_cfg) と同じ倍率を両側へ使う。
     戻り値: [(outer_ring, holes), ...] (失敗時は空リスト)
     """
     python_deps.ensure_bundled_wheels_on_path()
     if anchor_cfg is not None and sharp:
         from . import balloon_anchor_band
 
+        lo = anchor_cfg if anchor_cfg_lo is None else anchor_cfg_lo
         polys = balloon_anchor_band.anchor_band_outer_holes_list(
             list(outline_points),
             float(inner_offset),
             float(outer_offset),
             float(anchor_cfg[0]),
             float(anchor_cfg[1]),
+            peak_scale_lo=float(lo[0]),
+            valley_scale_lo=float(lo[1]),
         )
         if polys:
             return polys

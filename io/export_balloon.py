@@ -456,25 +456,55 @@ def _multi_ring_band_polygons(
         return band_groups
 
     # --- 非動的 / 新方式J: 従来のミター帯 (全長リング) ---
+    # 谷/山の線幅% は J でも有効: リング帯のエッジ倍率補正として乗せる
+    # (balloon_line_mesh.ensure_balloon_multi_line_mesh と同一規則)。動的形状で
+    # ないか pct が既定 100% のときは edge_scale_for_width_pct が恒等変換になる
+    # ため、常時計算してよい (shape 分岐を複製する必要がない)。
+    ml_shape_dynamic = shape_norm in blm._DYNAMIC_WIDTH_SHAPES
+    ml_eff_peak_pct = peak_pct if ml_shape_dynamic else 100.0
+    ml_eff_valley_pct = valley_pct if ml_shape_dynamic else 100.0
+    ml_both_zero = (
+        anchor_cfg is not None
+        and ml_shape_dynamic
+        and valley_pct <= 1.0e-3
+        and peak_pct <= 1.0e-3
+    )
     for ring_index in range(1, count + 1):
         ring_w = ring_w_base * (width_scale ** max(0, ring_index - 1))
         spacing = spacing_base * (spacing_scale ** max(0, ring_index - 1))
         if ring_w <= 1.0e-6:
             continue
         for side in sides:
+            band = None
             if side == "inside":
                 inner = running_inside + spacing
-                band = _mitre_band_polygons_mm(
-                    outline, -inner, -(inner + ring_w), sharp=sharp,
-                    anchor_cfg=anchor_cfg,
-                )
+                if not ml_both_zero:
+                    center_mm = -(inner + ring_w * 0.5)
+                    ring_anchor_cfg = anchor_cfg
+                    ring_anchor_cfg_lo = None
+                    if anchor_cfg is not None:
+                        ring_anchor_cfg, ring_anchor_cfg_lo = _multi_ring_anchor_scales(
+                            anchor_cfg, center_mm, ring_w, ml_eff_peak_pct, ml_eff_valley_pct,
+                        )
+                    band = _mitre_band_polygons_mm(
+                        outline, -inner, -(inner + ring_w), sharp=sharp,
+                        anchor_cfg=ring_anchor_cfg, anchor_cfg_lo=ring_anchor_cfg_lo,
+                    )
                 running_inside = inner + ring_w
             else:
                 inner = running_outside + spacing
-                band = _mitre_band_polygons_mm(
-                    outline, inner + ring_w, inner, sharp=sharp,
-                    anchor_cfg=anchor_cfg,
-                )
+                if not ml_both_zero:
+                    center_mm = inner + ring_w * 0.5
+                    ring_anchor_cfg = anchor_cfg
+                    ring_anchor_cfg_lo = None
+                    if anchor_cfg is not None:
+                        ring_anchor_cfg, ring_anchor_cfg_lo = _multi_ring_anchor_scales(
+                            anchor_cfg, center_mm, ring_w, ml_eff_peak_pct, ml_eff_valley_pct,
+                        )
+                    band = _mitre_band_polygons_mm(
+                        outline, inner + ring_w, inner, sharp=sharp,
+                        anchor_cfg=ring_anchor_cfg, anchor_cfg_lo=ring_anchor_cfg_lo,
+                    )
                 running_outside = inner + ring_w
             if band:
                 band_groups.append(band)
@@ -672,10 +702,13 @@ def _mitre_band_polygons_mm(
     *,
     sharp: bool = True,
     anchor_cfg: tuple[float, float] | None = None,
+    anchor_cfg_lo: tuple[float, float] | None = None,
 ):
     """輪郭のオフセット帯 (mm 座標) を返す。sharp=True で角が尖る.
 
     anchor_cfg 指定時は新方式J (頂点距離方式) で構築する (ビューポートと同一)。
+    anchor_cfg_lo は inner_off_mm 側だけ別倍率にしたいとき (谷/山の線幅%を
+    フチ・多重線リングの外縁/内縁で別々に効かせる場合) に指定する。
     """
     if len(outline) < 3:
         return []
@@ -688,6 +721,7 @@ def _mitre_band_polygons_mm(
             float(inner_off_mm),
             sharp=sharp,
             anchor_cfg=anchor_cfg,
+            anchor_cfg_lo=anchor_cfg_lo,
         )
     except Exception:  # noqa: BLE001
         return []
@@ -701,6 +735,81 @@ def _anchor_cfg_for_export(entry) -> tuple[float, float] | None:
         return balloon_anchor_band.anchor_cfg_for_entry(entry)
     except Exception:  # noqa: BLE001
         return None
+
+
+def _main_line_anchor_scale(
+    anchor_cfg: tuple[float, float],
+    half_width_mm: float,
+    peak_pct: float,
+    valley_pct: float,
+) -> tuple[float, float]:
+    """主線帯 ([-half, +half] 対称) のアンカー倍率 (山, 谷) を返す.
+
+    両端が同じ shrink_ref=half_width_mm を使うため hi/lo で同じ値になり
+    (edge_scale_for_width_pct 参照)、呼び出し側は anchor_cfg 一つだけ渡せばよい。
+    balloon_line_mesh.ensure_balloon_line_mesh の新方式J分岐と同一規則。
+    """
+    from ..utils import balloon_anchor_band
+
+    return (
+        balloon_anchor_band.edge_scale_for_width_pct(half_width_mm, half_width_mm, anchor_cfg[0], peak_pct),
+        balloon_anchor_band.edge_scale_for_width_pct(half_width_mm, half_width_mm, anchor_cfg[1], valley_pct),
+    )
+
+
+def _edge_fringe_anchor_scales(
+    anchor_cfg: tuple[float, float],
+    base_mm: float,
+    width_mm: float,
+    peak_pct: float,
+    valley_pct: float,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """フチ帯 (主線の外端/内端に接する near 側、さらに width ぶん離れた far 側) の
+    アンカー倍率を返す。 (near, far) それぞれ (山, 谷)。
+
+    near 側は主線の縮み比 (pct/100) に一致させて密着させ、far 側はフチ自身の
+    幅をJの比例則のまま保つ (balloon_line_mesh.ensure_balloon_outer/inner_edge_mesh
+    と同一規則。ビューポートと書き出しの一致に必須)。
+    """
+    from ..utils import balloon_anchor_band
+
+    near = (
+        balloon_anchor_band.edge_scale_for_width_pct(base_mm, base_mm, anchor_cfg[0], peak_pct),
+        balloon_anchor_band.edge_scale_for_width_pct(base_mm, base_mm, anchor_cfg[1], valley_pct),
+    )
+    far = (
+        balloon_anchor_band.edge_scale_for_width_pct(base_mm + width_mm, base_mm, anchor_cfg[0], peak_pct),
+        balloon_anchor_band.edge_scale_for_width_pct(base_mm + width_mm, base_mm, anchor_cfg[1], valley_pct),
+    )
+    return near, far
+
+
+def _multi_ring_anchor_scales(
+    anchor_cfg: tuple[float, float],
+    center_mm: float,
+    ring_width_mm: float,
+    peak_pct: float,
+    valley_pct: float,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """多重線リング帯 (中心 center_mm, 全幅 ring_width_mm) のアンカー倍率を返す.
+
+    リング中心の位置はJの比例則のまま保ち、リング幅だけをpctぶん細らせる:
+    本体から遠い縁 shrink_ref=+半幅 / 近い縁 shrink_ref=-半幅 (どちらもリング
+    中心へ寄る向き)。balloon_line_mesh.ensure_balloon_multi_line_mesh の
+    新方式J分岐と同一規則。戻り値は (hi, lo) で hi=本体から遠い縁 / lo=近い縁、
+    各要素は (山, 谷)。
+    """
+    from ..utils import balloon_anchor_band
+
+    half = ring_width_mm * 0.5
+    scales = []
+    for delta in (center_mm + half, center_mm - half):
+        shrink = half if abs(delta) >= abs(center_mm) else -half
+        scales.append((
+            balloon_anchor_band.edge_scale_for_width_pct(delta, shrink, anchor_cfg[0], peak_pct),
+            balloon_anchor_band.edge_scale_for_width_pct(delta, shrink, anchor_cfg[1], valley_pct),
+        ))
+    return scales[0], scales[1]
 
 
 def _body_sharp_corners(entry) -> bool:
@@ -1357,6 +1466,14 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
     )
     body_sharp = _body_sharp_corners(entry)
     export_anchor_cfg = _anchor_cfg_for_export(entry)
+    # 新方式Jの谷/山線幅%: ビューポート (balloon_line_mesh) と共用の正典ヘルパーで
+    # 主線・フチのアンカー倍率へ適用する (2026-07-23。標準方式・非J形状では
+    # 100/100 が返るため以下の計算は恒等変換になる)。
+    line_valley_pct = line_peak_pct = 100.0
+    if export_anchor_cfg is not None:
+        from ..utils import balloon_line_mesh as blm
+
+        line_valley_pct, line_peak_pct, _ml_valley_pct, _ml_peak_pct = blm.dynamic_width_pcts(entry)
     band_line_styles = {"solid", "double", "material"}
     outer_band_rings = []
     inner_band_rings = []
@@ -1364,20 +1481,36 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
     main_band_rings = []
     if line_w_mm > 1.0e-6 and not is_flash:
         if outer_enabled and outer_w_mm > 1.0e-6:
+            outer_anchor_cfg = export_anchor_cfg
+            outer_anchor_cfg_lo = None
+            if export_anchor_cfg is not None:
+                near, far = _edge_fringe_anchor_scales(
+                    export_anchor_cfg, half_line_w_mm, outer_w_mm, line_peak_pct, line_valley_pct
+                )
+                outer_anchor_cfg, outer_anchor_cfg_lo = far, near
             outer_band_rings = _mitre_band_polygons_mm(
                 outline,
                 half_line_w_mm + outer_w_mm,
                 half_line_w_mm,
                 sharp=body_sharp,
-                anchor_cfg=export_anchor_cfg,
+                anchor_cfg=outer_anchor_cfg,
+                anchor_cfg_lo=outer_anchor_cfg_lo,
             )
         if inner_enabled and inner_w_mm > 1.0e-6:
+            inner_anchor_cfg = export_anchor_cfg
+            inner_anchor_cfg_lo = None
+            if export_anchor_cfg is not None:
+                near, far = _edge_fringe_anchor_scales(
+                    export_anchor_cfg, half_line_w_mm, inner_w_mm, line_peak_pct, line_valley_pct
+                )
+                inner_anchor_cfg, inner_anchor_cfg_lo = near, far
             inner_band_rings = _mitre_band_polygons_mm(
                 outline,
                 -half_line_w_mm,
                 -half_line_w_mm - inner_w_mm,
                 sharp=body_sharp,
-                anchor_cfg=export_anchor_cfg,
+                anchor_cfg=inner_anchor_cfg,
+                anchor_cfg_lo=inner_anchor_cfg_lo,
             )
         if str(line_style or "") in band_line_styles:
             if str(line_style or "") == "double":
@@ -1386,27 +1519,44 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
                     entry,
                     sharp=body_sharp,
                 )
-            main_band_rings = _mitre_band_polygons_mm(
-                outline,
-                half_line_w_mm,
-                -half_line_w_mm,
-                sharp=body_sharp,
-                anchor_cfg=export_anchor_cfg,
+            # 谷/山の線幅%が両方0% (新方式Jのみ): 主線全体を非表示にする。J の帯
+            # 構築へ落とすと帯が空になり従来方式の均一幅へフォールバックして
+            # しまうため、mitre_band_polygons を呼ぶ前に抜ける (balloon_line_mesh
+            # の main_line_both_zero ガードと同一の理由)。
+            main_both_zero = (
+                export_anchor_cfg is not None
+                and line_valley_pct <= 1.0e-3
+                and line_peak_pct <= 1.0e-3
             )
-            # 新方式J ではしっぽ先端もアンカーとして頂点距離規則で処理される
-            if merged_outline is not None and sharp_tail_infos and export_anchor_cfg is None:
-                try:
-                    from ..utils import balloon_tail_boolean
-
-                    main_band_rings = balloon_tail_boolean.apply_sharp_tail_tips(
-                        main_band_rings,
-                        list(outline),
-                        line_w_mm,
-                        sharp_tail_infos,
-                        add_bend_mitre=not body_sharp,
+            if main_both_zero:
+                main_band_rings = []
+            else:
+                main_anchor_cfg = export_anchor_cfg
+                if export_anchor_cfg is not None:
+                    main_anchor_cfg = _main_line_anchor_scale(
+                        export_anchor_cfg, half_line_w_mm, line_peak_pct, line_valley_pct
                     )
-                except Exception:  # noqa: BLE001
-                    pass
+                main_band_rings = _mitre_band_polygons_mm(
+                    outline,
+                    half_line_w_mm,
+                    -half_line_w_mm,
+                    sharp=body_sharp,
+                    anchor_cfg=main_anchor_cfg,
+                )
+                # 新方式J ではしっぽ先端もアンカーとして頂点距離規則で処理される
+                if merged_outline is not None and sharp_tail_infos and export_anchor_cfg is None:
+                    try:
+                        from ..utils import balloon_tail_boolean
+
+                        main_band_rings = balloon_tail_boolean.apply_sharp_tail_tips(
+                            main_band_rings,
+                            list(outline),
+                            line_w_mm,
+                            sharp_tail_infos,
+                            add_bend_mitre=not body_sharp,
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
         # 尖角は線幅より大きく張り出すため、固定padでは切れる。実際に描く
         # 主線・フチ・多重線の全頂点をbboxへ含め、ページ端でも先端を欠かさない。
         for patches in (outer_band_rings, inner_band_rings, main_band_rings):

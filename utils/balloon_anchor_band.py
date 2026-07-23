@@ -189,6 +189,34 @@ def anchor_offset_outline(
     return out
 
 
+def edge_scale_for_width_pct(
+    delta: float,
+    shrink_ref: float,
+    anchor_scale: float,
+    pct: float,
+) -> float:
+    """谷/山の線幅% (0..100) をJの帯エッジへ乗せるためのアンカー倍率補正.
+
+    帯エッジの基準変位 |delta| のうち、基準幅 shrink_ref ぶんだけを pct 倍へ
+    細らせた位置を目標変位とする: 目標 = |delta| − shrink_ref × (1 − pct/100)。
+    shrink_ref が正なら変位を内向きへ縮め、負なら外向きへ押し出す (リング帯の
+    内縁がリング中心へ寄る側)。戻り値は anchor_offset_outline へ渡す倍率。
+
+    - 主線 (帯 [−w/2, +w/2]): 両エッジとも shrink_ref=w/2 → 倍率×pct と等価
+    - フチ (帯 [w/2, w/2+e]): 両エッジとも shrink_ref=w/2 → 細った主線の外端に
+      密着し、フチ自身の幅はJの比例則を保つ
+    - 多重線リング (帯 [c−h, c+h]): 外縁 shrink_ref=+h / 内縁 shrink_ref=−h →
+      リング中心はJの比例則のまま、リング幅だけが pct 倍になる
+    """
+    a = abs(float(delta))
+    if a <= 1.0e-9:
+        return float(anchor_scale)
+    target = a - float(shrink_ref) * (1.0 - float(pct) / 100.0)
+    if target < 0.0:
+        target = 0.0
+    return float(anchor_scale) * (target / a)
+
+
 def _heal_polygon(coords: list[tuple[float, float]]):
     from shapely.geometry import Polygon  # type: ignore
 
@@ -211,18 +239,25 @@ def anchor_band_geometry(
     peak_scale: float,
     valley_scale: float,
     *,
+    peak_scale_lo: Optional[float] = None,
+    valley_scale_lo: Optional[float] = None,
     detected: Optional[dict] = None,
 ):
     """[d_lo, d_hi] (符号付き。d_hi > d_lo) の帯の Shapely ジオメトリを返す.
 
+    peak_scale / valley_scale は d_hi 側輪郭の倍率。d_lo 側は peak_scale_lo /
+    valley_scale_lo (未指定なら d_hi 側と同じ)。谷/山の線幅%のように帯の
+    外縁と内縁で変位倍率が異なる帯 (edge_scale_for_width_pct 参照) を作れる。
     アンカーが検出できない場合や構築に失敗した場合は None (呼び出し側で
     従来方式へフォールバックする)。
     """
     det = detected if detected is not None else detect_anchors(points)
     if det is None:
         return None
+    p_lo = peak_scale if peak_scale_lo is None else peak_scale_lo
+    v_lo = valley_scale if valley_scale_lo is None else valley_scale_lo
     hi = anchor_offset_outline(det, d_hi, peak_scale, valley_scale)
-    lo = anchor_offset_outline(det, d_lo, peak_scale, valley_scale)
+    lo = anchor_offset_outline(det, d_lo, p_lo, v_lo)
     if hi is None or lo is None:
         return None
     try:
@@ -245,11 +280,20 @@ def anchor_band_rings(
     peak_scale: float,
     valley_scale: float,
     *,
+    peak_scale_lo: Optional[float] = None,
+    valley_scale_lo: Optional[float] = None,
     detected: Optional[dict] = None,
 ) -> Optional[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
     """帯を (outer_ring, holes) 形式で返す (build_offset_band_polygon と同じ契約)."""
     band = anchor_band_geometry(
-        points, d_lo, d_hi, peak_scale, valley_scale, detected=detected
+        points,
+        d_lo,
+        d_hi,
+        peak_scale,
+        valley_scale,
+        peak_scale_lo=peak_scale_lo,
+        valley_scale_lo=valley_scale_lo,
+        detected=detected,
     )
     if band is None:
         return None
@@ -271,11 +315,20 @@ def anchor_band_outer_holes_list(
     peak_scale: float,
     valley_scale: float,
     *,
+    peak_scale_lo: Optional[float] = None,
+    valley_scale_lo: Optional[float] = None,
     detected: Optional[dict] = None,
 ) -> list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
     """帯を [(outer_ring, holes), ...] 形式で返す (複数ピース対応)."""
     band = anchor_band_geometry(
-        points, d_lo, d_hi, peak_scale, valley_scale, detected=detected
+        points,
+        d_lo,
+        d_hi,
+        peak_scale,
+        valley_scale,
+        peak_scale_lo=peak_scale_lo,
+        valley_scale_lo=valley_scale_lo,
+        detected=detected,
     )
     if band is None:
         return []

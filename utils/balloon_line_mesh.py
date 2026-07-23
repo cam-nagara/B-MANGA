@@ -3112,8 +3112,9 @@ def ensure_balloon_line_mesh(
             remove_balloon_line_mesh(balloon_id)
             return None
         _build_band_mesh_from_polygons(mesh, dash_polys, LINE_Z_OFFSET_M)
-    elif main_line_both_zero and anchor_cfg is None:
-        # 両方 0 = 主線全体を非表示
+    elif main_line_both_zero:
+        # 両方 0 = 主線全体を非表示 (新方式J でも同様。J の帯構築へ落とすと
+        # 帯が空になり従来方式の均一幅へフォールバックしてしまうため先に抜ける)
         remove_balloon_line_mesh(balloon_id)
         return None
     elif main_line_dynamic and anchor_cfg is None:
@@ -3148,14 +3149,22 @@ def ensure_balloon_line_mesh(
         rings = None
         if anchor_cfg is not None and valley_sharp:
             # 新方式J: 帯は谷などで正当に複数ピースへ分割されうるため、
-            # 最大ピースだけでなく全ピースをメッシュ化する
+            # 最大ピースだけでなく全ピースをメッシュ化する。
+            # 谷/山の線幅% は J でも有効: 帯 [−w/2, +w/2] は shrink_ref=w/2 の
+            # エッジ倍率補正で「アンカーでの帯幅 = 線幅 × 倍率 × %」になる。
             half_j = line_width_m * 0.5
+            j_peak = balloon_anchor_band.edge_scale_for_width_pct(
+                half_j, half_j, anchor_cfg[0], line_peak_width_pct
+            )
+            j_valley = balloon_anchor_band.edge_scale_for_width_pct(
+                half_j, half_j, anchor_cfg[1], line_valley_width_pct
+            )
             pieces = balloon_anchor_band.anchor_band_outer_holes_list(
                 [(float(s[0]), float(s[1])) for s in samples],
                 -half_j,
                 half_j,
-                anchor_cfg[0],
-                anchor_cfg[1],
+                j_peak,
+                j_valley,
             )
             if pieces:
                 rings = pieces
@@ -3235,6 +3244,22 @@ def _line_dynamic_width_params(entry) -> tuple[bool, float, float, bool]:
     is_dynamic = abs(valley_pct - 100.0) > 1.0e-3 or abs(peak_pct - 100.0) > 1.0e-3
     both_zero = is_dynamic and valley_pct <= 1.0e-3 and peak_pct <= 1.0e-3
     return (is_dynamic, valley_pct, peak_pct, both_zero)
+
+
+def dynamic_width_pcts(entry) -> tuple[float, float, float, float]:
+    """(主線谷%, 主線山%, 多重線谷%, 多重線山%) を 0..100 で返す.
+
+    動的形状 (cloud/fluffy/thorn/thorn-curve) 以外は 100 固定。ページ書き出し
+    (io/export_balloon) が新方式Jの帯へ谷/山の線幅%を乗せるときに共用する。
+    """
+    shape_norm = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
+    if shape_norm not in _DYNAMIC_WIDTH_SHAPES:
+        return (100.0, 100.0, 100.0, 100.0)
+    line_valley = max(0.0, min(100.0, float(getattr(entry, "line_valley_width_pct", 100.0))))
+    line_peak = max(0.0, min(100.0, float(getattr(entry, "line_peak_width_pct", 100.0))))
+    ml_valley = max(0.0, min(100.0, float(getattr(entry, "thorn_multi_line_valley_width_pct", 100.0))))
+    ml_peak = max(0.0, min(100.0, float(getattr(entry, "thorn_multi_line_peak_width_pct", 100.0))))
+    return (line_valley, line_peak, ml_valley, ml_peak)
 
 
 def _balloon_center_m_from_samples(samples: Sequence[tuple[float, float, float]]) -> tuple[float, float]:
@@ -3462,13 +3487,26 @@ def ensure_balloon_outer_edge_mesh(
     if anchor_cfg is not None:
         # 新方式J: 主線外端 (body + 線幅/2) からさらに外へ edge_width の帯。
         # 全境界がアンカー変位カーブなので主線との継ぎ目も一致する。
+        # 主線が谷/山の線幅%で細るときは shrink_ref=線幅/2 のエッジ倍率補正で
+        # フチを細った主線の外端へ密着させる (フチ自身の幅はJの比例則のまま)。
         base_out = line_width_m * 0.5 if line_width_m > 1.0e-9 else 0.0
+        _, edge_valley_pct, edge_peak_pct, _ = _line_dynamic_width_params(entry)
         band_geom = balloon_anchor_band.anchor_band_geometry(
             [(float(s[0]), float(s[1])) for s in samples],
             base_out,
             base_out + edge_width_m,
-            anchor_cfg[0],
-            anchor_cfg[1],
+            balloon_anchor_band.edge_scale_for_width_pct(
+                base_out + edge_width_m, base_out, anchor_cfg[0], edge_peak_pct
+            ),
+            balloon_anchor_band.edge_scale_for_width_pct(
+                base_out + edge_width_m, base_out, anchor_cfg[1], edge_valley_pct
+            ),
+            peak_scale_lo=balloon_anchor_band.edge_scale_for_width_pct(
+                base_out, base_out, anchor_cfg[0], edge_peak_pct
+            ),
+            valley_scale_lo=balloon_anchor_band.edge_scale_for_width_pct(
+                base_out, base_out, anchor_cfg[1], edge_valley_pct
+            ),
         )
         if band_geom is not None:
             polys = _shapely_geom_to_outer_holes_list(band_geom)
@@ -3578,14 +3616,27 @@ def ensure_balloon_inner_edge_mesh(
     anchor_cfg = _anchor_cfg_for_entry(entry)
     polys = None
     if anchor_cfg is not None:
-        # 新方式J: 主線内端 (body − 線幅/2) からさらに内へ edge_width の帯
+        # 新方式J: 主線内端 (body − 線幅/2) からさらに内へ edge_width の帯。
+        # 谷/山の線幅%で主線が細るときは shrink_ref=線幅/2 の補正で細った
+        # 主線の内端へ密着させる (外側フチと同じ規則)。
         base_in = line_width_m * 0.5 if line_width_m > 1.0e-9 else 0.0
+        _, edge_valley_pct, edge_peak_pct, _ = _line_dynamic_width_params(entry)
         band_geom = balloon_anchor_band.anchor_band_geometry(
             [(float(s[0]), float(s[1])) for s in samples],
             -(base_in + edge_width_m),
             -base_in,
-            anchor_cfg[0],
-            anchor_cfg[1],
+            balloon_anchor_band.edge_scale_for_width_pct(
+                base_in, base_in, anchor_cfg[0], edge_peak_pct
+            ),
+            balloon_anchor_band.edge_scale_for_width_pct(
+                base_in, base_in, anchor_cfg[1], edge_valley_pct
+            ),
+            peak_scale_lo=balloon_anchor_band.edge_scale_for_width_pct(
+                base_in + edge_width_m, base_in, anchor_cfg[0], edge_peak_pct
+            ),
+            valley_scale_lo=balloon_anchor_band.edge_scale_for_width_pct(
+                base_in + edge_width_m, base_in, anchor_cfg[1], edge_valley_pct
+            ),
         )
         if band_geom is not None:
             polys = _shapely_geom_to_outer_holes_list(band_geom)
@@ -3695,9 +3746,18 @@ def ensure_balloon_multi_line_mesh(
             or cross_enabled
         )
     )
-    # 新方式J は山・谷の線幅倍率を自前で持つため、谷/山線幅%・長さ変化・交差の
-    # 動的特性は使わない (均一リングを J の帯構築で描く)
+    # 新方式J は山・谷の線幅倍率を自前で持つため、長さ変化・交差の動的特性は
+    # 使わない (J の帯構築で描く。長さ変化・交差のJ対応は未実装の既知の制限)。
+    # 谷/山の線幅% だけは J でも有効: リング帯のエッジ倍率補正として乗せる。
     ml_anchor_cfg = _anchor_cfg_for_entry(entry)
+    ml_j_pct_active = (
+        ml_anchor_cfg is not None
+        and shape_norm in _DYNAMIC_WIDTH_SHAPES
+        and (
+            abs(valley_width_pct - 100.0) > 1.0e-3
+            or abs(peak_width_pct - 100.0) > 1.0e-3
+        )
+    )
     if ml_anchor_cfg is not None:
         dynamic_features_active = False
     if multi_width_mm <= 1.0e-6:
@@ -3745,7 +3805,7 @@ def ensure_balloon_multi_line_mesh(
     # 非デフォルトの場合は、ring polyline を可変幅で帯化するパスに切り替える。
     # 谷幅・山幅が両方 0 のときは多重線全体を非表示にする (= polygons 追加しない)。
     both_widths_zero = (
-        dynamic_features_active
+        (dynamic_features_active or ml_j_pct_active)
         and valley_width_pct <= 1.0e-3
         and peak_width_pct <= 1.0e-3
     )
@@ -3831,15 +3891,42 @@ def ensure_balloon_multi_line_mesh(
                 )
                 polygons.extend(sub_polys)
             elif ml_anchor_cfg is not None:
-                # 新方式J: リング帯の全ピースを採用 (谷で分割されても欠かさない)
+                # 新方式J: リング帯の全ピースを採用 (谷で分割されても欠かさない)。
+                # 谷/山の線幅%はリング位置 (中心) をJの比例則のまま維持し、
+                # リング幅だけを細らせる: 本体から遠い縁 shrink_ref=+半幅 /
+                # 近い縁 −半幅 (どちらもリング中心へ寄る向き)。
                 half_ring_m = ring_width_mm * 0.001 * 0.5
                 center_m = signed_offset_mm * 0.001
+                d_lo_j = center_m - half_ring_m
+                d_hi_j = center_m + half_ring_m
+                if ml_j_pct_active:
+                    scales = []
+                    for delta_j in (d_hi_j, d_lo_j):
+                        shrink = (
+                            half_ring_m
+                            if abs(delta_j) >= abs(center_m)
+                            else -half_ring_m
+                        )
+                        scales.append((
+                            balloon_anchor_band.edge_scale_for_width_pct(
+                                delta_j, shrink, ml_anchor_cfg[0], peak_width_pct
+                            ),
+                            balloon_anchor_band.edge_scale_for_width_pct(
+                                delta_j, shrink, ml_anchor_cfg[1], valley_width_pct
+                            ),
+                        ))
+                    (hi_peak_j, hi_valley_j), (lo_peak_j, lo_valley_j) = scales
+                else:
+                    hi_peak_j, hi_valley_j = ml_anchor_cfg
+                    lo_peak_j, lo_valley_j = ml_anchor_cfg
                 pieces = balloon_anchor_band.anchor_band_outer_holes_list(
                     [(float(s[0]), float(s[1])) for s in samples],
-                    center_m - half_ring_m,
-                    center_m + half_ring_m,
-                    ml_anchor_cfg[0],
-                    ml_anchor_cfg[1],
+                    d_lo_j,
+                    d_hi_j,
+                    hi_peak_j,
+                    hi_valley_j,
+                    peak_scale_lo=lo_peak_j,
+                    valley_scale_lo=lo_valley_j,
                 )
                 polygons.extend(pieces)
             else:
