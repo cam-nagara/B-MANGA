@@ -1447,19 +1447,10 @@ class BMANGA_OT_effect_line_tool(Operator):
         )
 
     def invoke(self, context, _event):
-        active = coma_modal_state.get_active("effect_line_tool")
-        if active is not None:
-            active.finish_from_external(context, keep_selection=True)
+        if coma_modal_state.toggle_off_and_return(context, "effect_line_tool"):
             return {"FINISHED"}
         coma_modal_state.exit_drawing_mode(context)
-        coma_modal_state.finish_active("coma_vertex_edit", context, keep_selection=True)
-        coma_modal_state.finish_active("knife_cut", context, keep_selection=False)
-        coma_modal_state.finish_active("edge_move", context, keep_selection=True)
-        coma_modal_state.finish_active("layer_move", context, keep_selection=True)
-        coma_modal_state.finish_active("balloon_tool", context, keep_selection=True)
-        coma_modal_state.finish_active("text_tool", context, keep_selection=True)
-        coma_modal_state.finish_active("balloon_tail_tool", context, keep_selection=True)
-        coma_modal_state.finish_active("balloon_nurbs_tool", context, keep_selection=True)
+        coma_modal_state.finish_all(context, except_tool="effect_line_tool")
         self._externally_finished = False
         self._cursor_modal_set = coma_modal_state.set_modal_cursor(context, "CROSSHAIR")
         self._clear_drag_state()
@@ -1472,6 +1463,9 @@ class BMANGA_OT_effect_line_tool(Operator):
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active("effect_line_tool", self, context)
             return {"FINISHED", "PASS_THROUGH"}
+        # 純ナビゲーション用マウス操作はドラッグ中でも常にビューポートへ通す。
+        if view_event_region.is_navigation_mouse_event(event):
+            return {"PASS_THROUGH"}
         from . import handle_intercept, object_rotation
         if handle_intercept.is_dragging(self):
             if event.type == "MOUSEMOVE":

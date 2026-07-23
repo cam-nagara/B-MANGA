@@ -289,6 +289,9 @@ class BMANGA_OT_coma_edit_vertices(Operator):
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active("coma_vertex_edit", self, context)
             return {"FINISHED", "PASS_THROUGH"}
+        # 純ナビゲーション用マウス操作はドラッグ中でも常にビューポートへ通す。
+        if view_event_region.is_navigation_mouse_event(event):
+            return {"PASS_THROUGH"}
         try:
             _ = self._entry.coma_id
         except Exception:  # noqa: BLE001

@@ -131,12 +131,62 @@ def set_active(tool_name: str, op, context=None) -> None:
     tag_tool_ui_redraw(context)
 
 
+_object_tool_resume_scheduled = False
+
+
+def _schedule_object_tool_resume() -> None:
+    """特殊ツール終了後、他ツールが起動しなければオブジェクトツールを常駐復帰させる.
+
+    B-MANGA のツールは「常に 1 つだけ稼働し、何も選ばれていなければ選択用の
+    オブジェクトツールが常駐する」という単一稼働モデルで統一している。ESC・
+    右クリック・トグルOFF・別ツールへの切替など、どの経路で特殊ツールが終了
+    しても、この関数がオブジェクトツールの復帰を予約する。実際に復帰するか
+    どうかは object_tool 側のガード (既に別ツールが起動していれば奪わない /
+    描画モードなら復帰しない / OBJECT モードのみ) が判断する。多重予約は
+    フラグで抑止する。
+    """
+    global _object_tool_resume_scheduled
+    if _object_tool_resume_scheduled:
+        return
+    try:
+        if bpy.app.background:
+            return
+    except Exception:  # noqa: BLE001
+        return
+    _object_tool_resume_scheduled = True
+
+    def _resume():
+        global _object_tool_resume_scheduled
+        _object_tool_resume_scheduled = False
+        try:
+            if any_tool_active():
+                return None
+            from . import object_tool_op
+
+            object_tool_op._schedule_object_tool_relaunch(
+                delay_seconds=0.05, require_object_mode=True
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
+    try:
+        bpy.app.timers.register(_resume, first_interval=0.1)
+    except Exception:  # noqa: BLE001
+        _object_tool_resume_scheduled = False
+
+
 def clear_active(tool_name: str, op=None, context=None) -> None:
     current = get_active(tool_name)
     if op is not None and current is not op:
         return
     _ACTIVE_REFS[tool_name] = None
     tag_tool_ui_redraw(context)
+    # オブジェクトツール以外の特殊ツールが終了したら、他ツールへ切り替わって
+    # いない限りオブジェクトツールを常駐復帰させる (ツール終了後にビューポート
+    # で選択・移動ができなくなる状態を防ぐ)。
+    if tool_name != "object_tool":
+        _schedule_object_tool_resume()
 
 
 def finish_active(tool_name: str, context, *, keep_selection: bool = False) -> bool:
@@ -252,6 +302,31 @@ def activate_object_tool(context):
     if not ({"RUNNING_MODAL", "FINISHED"} & set(result)):
         raise RuntimeError("オブジェクトツールを開始できませんでした")
     return result
+
+
+def toggle_off_and_return(context, tool_name: str, *, keep_selection: bool = True) -> bool:
+    """稼働中のツールを再度呼んだ時のトグルOFF: 終了してオブジェクトツールへ戻す.
+
+    ツールボタン/ショートカットで「既に選択中のツール」を再度起動した時に、
+    各ツールの invoke() 冒頭から呼ぶ。戻り値:
+      True  = 稼働していたので OFF にした → 呼び出し側は {"FINISHED"} を返す。
+      False = 稼働していなかった (または心拍停止の残骸を回収した) → 呼び出し側は
+              通常どおりツールの起動処理を続ける。
+    """
+    op = active_or_reclaim(tool_name)
+    if op is None:
+        return False
+    try:
+        op.finish_from_external(context, keep_selection=keep_selection)
+    except Exception:  # noqa: BLE001
+        pass
+    finally:
+        clear_active(tool_name, op, context)
+    try:
+        activate_object_tool(context)
+    except Exception:  # noqa: BLE001
+        pass
+    return True
 
 
 def restore_modal_cursor(context) -> None:

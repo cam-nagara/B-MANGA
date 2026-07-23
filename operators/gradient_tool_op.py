@@ -97,7 +97,7 @@ class BMANGA_OT_gradient_tool(Operator):
         )
 
     def invoke(self, context, _event):
-        if coma_modal_state.get_active(TOOL_NAME) is not None:
+        if coma_modal_state.toggle_off_and_return(context, TOOL_NAME):
             return {"FINISHED"}
         coma_modal_state.exit_drawing_mode(context)
         coma_modal_state.finish_all(context, except_tool=TOOL_NAME)
@@ -125,6 +125,10 @@ class BMANGA_OT_gradient_tool(Operator):
         if getattr(self, "_externally_finished", False):
             self._cleanup(context)
             return {"FINISHED"}
+
+        # 純ナビゲーション用マウス操作はドラッグ中でも常にビューポートへ通す。
+        if view_event_region.is_navigation_mouse_event(event):
+            return {"PASS_THROUGH"}
 
         from . import handle_intercept, object_rotation
         if handle_intercept.is_dragging(self):

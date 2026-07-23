@@ -40,6 +40,31 @@ _MOUSE_EVENT_TYPES = {
     "WHEELOUTMOUSE",
 }
 
+# ツール操作には一切使われず、純粋にビューポートのナビゲーションだけに使う
+# マウス/トラックパッドイベント。どのモーダルツールを使用中でも (ドラッグ中・
+# テキスト入力中も含め) 常にビューポートナビゲーションへ通すため、各ツールの
+# modal() 冒頭でこの判定を使い PASS_THROUGH させる。
+#   ・MIDDLEMOUSE  = 中ボタンによるオービット/パン
+#   ・WHEEL*       = ホイールズーム
+#   ・TRACKPAD*    = トラックパッドのパン/ズーム/回転ジェスチャ
+# テンキー視点キー (NUMPAD_1〜9 等) はテキスト入力中に数字入力と競合するため
+# ここには含めない (文字入力ではないマウス系ナビだけを対象にする)。
+_NAVIGATION_MOUSE_EVENT_TYPES = frozenset({
+    "MIDDLEMOUSE",
+    "WHEELUPMOUSE",
+    "WHEELDOWNMOUSE",
+    "WHEELINMOUSE",
+    "WHEELOUTMOUSE",
+    "TRACKPADPAN",
+    "TRACKPADZOOM",
+    "TRACKPADROTATE",
+})
+
+
+def is_navigation_mouse_event(event) -> bool:
+    """ツール操作に使われない純ナビゲーション用マウス/トラックパッドイベントか."""
+    return str(getattr(event, "type", "") or "") in _NAVIGATION_MOUSE_EVENT_TYPES
+
 
 def _mouse_event_type(event) -> bool:
     return str(getattr(event, "type", "") or "") in _MOUSE_EVENT_TYPES

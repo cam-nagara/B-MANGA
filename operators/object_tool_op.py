@@ -939,6 +939,9 @@ class BMANGA_OT_object_tool(Operator):
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active("object_tool", self, context)
             return {"FINISHED", "PASS_THROUGH"}
+        # 純ナビゲーション用マウス操作はドラッグ中でも常にビューポートへ通す。
+        if view_event_region.is_navigation_mouse_event(event):
+            return {"PASS_THROUGH"}
         if view_event_region.toggle_modal_sidebar_if_requested(context, event):
             return {"RUNNING_MODAL"}
         # ▲ ハンドル hover ハイライト用にカーソル位置を WM に記録

@@ -864,17 +864,10 @@ class BMANGA_OT_text_tool(Operator):
     def invoke(self, context, _event):
         if not shortcut_visibility.shortcuts_allowed(context):
             return {"PASS_THROUGH"}
-        if coma_modal_state.get_active("text_tool") is not None:
+        if coma_modal_state.toggle_off_and_return(context, "text_tool"):
             return {"FINISHED"}
         coma_modal_state.exit_drawing_mode(context)
-        coma_modal_state.finish_active("coma_vertex_edit", context, keep_selection=True)
-        coma_modal_state.finish_active("knife_cut", context, keep_selection=False)
-        coma_modal_state.finish_active("edge_move", context, keep_selection=True)
-        coma_modal_state.finish_active("layer_move", context, keep_selection=True)
-        coma_modal_state.finish_active("balloon_tool", context, keep_selection=True)
-        coma_modal_state.finish_active("effect_line_tool", context, keep_selection=True)
-        coma_modal_state.finish_active("balloon_tail_tool", context, keep_selection=True)
-        coma_modal_state.finish_active("balloon_nurbs_tool", context, keep_selection=True)
+        coma_modal_state.finish_all(context, except_tool="text_tool")
         self._externally_finished = False
         self._vcur_x = -1
         self._vcur_y = -1
@@ -912,6 +905,12 @@ class BMANGA_OT_text_tool(Operator):
             self._cleanup(context)
             coma_modal_state.clear_active("text_tool", self, context)
             return {"FINISHED", "PASS_THROUGH"}
+        # 純ナビゲーション用マウス操作 (中ボタン回転/パン・ホイールズーム・
+        # トラックパッド) は、本文入力中 (_editing) でも常にビューポートへ通す。
+        # これらは文字入力ではないため、テキスト編集中でも視点操作を妨げない
+        # (テンキーの数字は文字入力なのでゲート対象外＝従来どおり入力に使う)。
+        if view_event_region.is_navigation_mouse_event(event):
+            return {"PASS_THROUGH"}
         # VIEW_3D 作業領域外ではツールカーソルを一時的に戻し、戻ってきたら復帰する。
         coma_modal_state.sync_modal_cursor_for_event_region(
             context, event, self, getattr(self, "_tool_cursor", "TEXT")

@@ -1202,21 +1202,16 @@ class BMANGA_OT_balloon_tool(Operator):
     def invoke(self, context, _event):
         from . import preset_op
 
-        if preset_op.selected_balloon_tool_creation_mode(context) == "nurbs":
-            if coma_modal_state.get_active("balloon_nurbs_tool") is not None:
-                return {"FINISHED"}
-            return bpy.ops.bmanga.balloon_nurbs_tool("INVOKE_DEFAULT")
-        if coma_modal_state.get_active("balloon_tool") is not None:
+        # フキダシツールは通常形とNURBS形の2形態がある。どちらかが稼働中に
+        # ボタンを再度押したらトグルOFF (オブジェクトツールへ戻す)。
+        if coma_modal_state.toggle_off_and_return(context, "balloon_tool"):
             return {"FINISHED"}
+        if coma_modal_state.toggle_off_and_return(context, "balloon_nurbs_tool"):
+            return {"FINISHED"}
+        if preset_op.selected_balloon_tool_creation_mode(context) == "nurbs":
+            return bpy.ops.bmanga.balloon_nurbs_tool("INVOKE_DEFAULT")
         coma_modal_state.exit_drawing_mode(context)
-        coma_modal_state.finish_active("coma_vertex_edit", context, keep_selection=True)
-        coma_modal_state.finish_active("knife_cut", context, keep_selection=False)
-        coma_modal_state.finish_active("edge_move", context, keep_selection=True)
-        coma_modal_state.finish_active("layer_move", context, keep_selection=True)
-        coma_modal_state.finish_active("text_tool", context, keep_selection=True)
-        coma_modal_state.finish_active("effect_line_tool", context, keep_selection=True)
-        coma_modal_state.finish_active("balloon_tail_tool", context, keep_selection=True)
-        coma_modal_state.finish_active("balloon_nurbs_tool", context, keep_selection=True)
+        coma_modal_state.finish_all(context, except_tool="balloon_tool")
         self._externally_finished = False
         self._cursor_modal_set = coma_modal_state.set_modal_cursor(context, "CROSSHAIR")
         self._clear_drag_state()
@@ -1230,6 +1225,9 @@ class BMANGA_OT_balloon_tool(Operator):
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active("balloon_tool", self, context)
             return {"FINISHED", "PASS_THROUGH"}
+        # 純ナビゲーション用マウス操作はドラッグ中でも常にビューポートへ通す。
+        if view_event_region.is_navigation_mouse_event(event):
+            return {"PASS_THROUGH"}
         from . import handle_intercept, object_rotation
         if handle_intercept.is_dragging(self):
             if event.type == "MOUSEMOVE":

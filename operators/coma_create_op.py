@@ -118,21 +118,10 @@ class BMANGA_OT_coma_create_tool(Operator):
         )
 
     def invoke(self, context, _event):
-        if coma_modal_state.get_active("coma_create") is not None:
+        if coma_modal_state.toggle_off_and_return(context, "coma_create"):
             return {"FINISHED"}
         coma_modal_state.exit_drawing_mode(context)
-        for slot in (
-            "coma_vertex_edit",
-            "knife_cut",
-            "edge_move",
-            "layer_move",
-            "balloon_tool",
-            "balloon_tail_tool",
-            "balloon_nurbs_tool",
-            "text_tool",
-            "effect_line_tool",
-        ):
-            coma_modal_state.finish_active(slot, context, keep_selection=True)
+        coma_modal_state.finish_all(context, except_tool="coma_create")
         self._reset_shape()
         self._page_id = ""
         self._page_index = -1
@@ -226,6 +215,9 @@ class BMANGA_OT_coma_create_tool(Operator):
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active("coma_create", self, context)
             return {"FINISHED", "PASS_THROUGH"}
+        # 純ナビゲーション用マウス操作はドラッグ中でも常にビューポートへ通す。
+        if view_event_region.is_navigation_mouse_event(event):
+            return {"PASS_THROUGH"}
         from . import handle_intercept, object_rotation
         if handle_intercept.is_dragging(self):
             if event.type == "MOUSEMOVE":

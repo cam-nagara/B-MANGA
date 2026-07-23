@@ -632,17 +632,10 @@ class BMANGA_OT_coma_knife_cut(Operator):
         target = _find_view3d(context)
         if target is None:
             return {"PASS_THROUGH"}
-        if coma_modal_state.get_active("knife_cut") is not None:
+        if coma_modal_state.toggle_off_and_return(context, "knife_cut", keep_selection=False):
             return {"FINISHED"}
         coma_modal_state.exit_drawing_mode(context)
-        coma_modal_state.finish_active("coma_vertex_edit", context, keep_selection=True)
-        coma_modal_state.finish_active("edge_move", context, keep_selection=False)
-        coma_modal_state.finish_active("layer_move", context, keep_selection=False)
-        coma_modal_state.finish_active("balloon_tool", context, keep_selection=True)
-        coma_modal_state.finish_active("text_tool", context, keep_selection=True)
-        coma_modal_state.finish_active("effect_line_tool", context, keep_selection=True)
-        coma_modal_state.finish_active("balloon_tail_tool", context, keep_selection=True)
-        coma_modal_state.finish_active("balloon_nurbs_tool", context, keep_selection=True)
+        coma_modal_state.finish_all(context, except_tool="knife_cut")
         self._area, self._region, self._rv3d = target
         self._work = get_work(context)
         if self._work is None or not self._work.loaded:
@@ -756,6 +749,9 @@ class BMANGA_OT_coma_knife_cut(Operator):
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active("knife_cut", self, context)
             return {"FINISHED", "PASS_THROUGH"}
+        # 純ナビゲーション用マウス操作はドラッグ中でも常にビューポートへ通す。
+        if view_event_region.is_navigation_mouse_event(event):
+            return {"PASS_THROUGH"}
         from . import handle_intercept, object_rotation
         if handle_intercept.is_dragging(self):
             if event.type == "MOUSEMOVE":
