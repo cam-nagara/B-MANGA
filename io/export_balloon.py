@@ -1557,52 +1557,111 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
     )
     body_sharp = _body_sharp_corners(entry)
     export_anchor_cfg = _anchor_cfg_for_export(entry)
+    from ..utils import balloon_line_mesh as blm
+
     # 新方式Jの谷/山線幅%: ビューポート (balloon_line_mesh) と共用の正典ヘルパーで
     # 主線・フチのアンカー倍率へ適用する (2026-07-23。標準方式・非J形状では
     # 100/100 が返るため以下の計算は恒等変換になる)。
     line_valley_pct = line_peak_pct = 100.0
     if export_anchor_cfg is not None:
-        from ..utils import balloon_line_mesh as blm
-
         line_valley_pct, line_peak_pct, _ml_valley_pct, _ml_peak_pct = blm.dynamic_width_pcts(entry)
+    # 標準方式 (新方式Jでない) の動的形状 (雲/フワフワ/トゲ/トゲ曲線) で谷/山の
+    # 線幅%が有効か (2026-07-24: ビューポートの正典生成器をメートル単位で書き出し
+    # からも呼び、主線・フチを画面と一致させる。v0.6.579 の多重線動的経路と同一
+    # パターン)。
+    _std_is_dynamic, _std_valley_pct, _std_peak_pct, _std_both_zero = blm._line_dynamic_width_params(entry)
+    std_dyn_active = export_anchor_cfg is None and _std_is_dynamic
+    std_both_zero = _std_both_zero
     band_line_styles = {"solid", "double", "material"}
     outer_band_rings = []
     inner_band_rings = []
     multi_band_groups = []
     main_band_rings = []
     if line_w_mm > 1.0e-6 and not is_flash:
+        # 標準dynamic時の共通座標準備 (v0.6.579 の多重線動的経路と同一手順):
+        # しっぽ結合済み outline を密度補完してメートル3タプル化する。
+        std_pts_m = None
+        std_center_m = None
+        if std_dyn_active:
+            dense_mm = _densify_closed_outline_mm(outline)
+            if len(dense_mm) >= 6:
+                std_pts_m = [(x * 0.001, y * 0.001, 1.0) for (x, y) in dense_mm]
+                std_center_m = (
+                    sum(p[0] for p in std_pts_m) / len(std_pts_m),
+                    sum(p[1] for p in std_pts_m) / len(std_pts_m),
+                )
         if outer_enabled and outer_w_mm > 1.0e-6:
-            outer_anchor_cfg = export_anchor_cfg
-            outer_anchor_cfg_lo = None
-            if export_anchor_cfg is not None:
-                near, far = _edge_fringe_anchor_scales(
-                    export_anchor_cfg, half_line_w_mm, outer_w_mm, line_peak_pct, line_valley_pct
+            outer_band_rings = None
+            if std_dyn_active and std_pts_m is not None:
+                try:
+                    outer_polys_m = blm.outer_edge_band_polys(
+                        entry, std_pts_m, std_center_m,
+                        line_w_mm * 0.001, outer_w_mm * 0.001, body_sharp,
+                    )
+                except Exception:  # noqa: BLE001
+                    outer_polys_m = None
+                if outer_polys_m:
+                    outer_band_rings = [
+                        (
+                            [(px * 1000.0, py * 1000.0) for (px, py) in outer],
+                            [[(hx * 1000.0, hy * 1000.0) for (hx, hy) in hole] for hole in holes],
+                        )
+                        for (outer, holes) in outer_polys_m
+                    ]
+            if outer_band_rings is None:
+                # 非dynamic・J、または標準dynamic経路が空/例外だった場合は
+                # 従来の均一帯へフォールバック (書き出し全体を落とさない)。
+                outer_anchor_cfg = export_anchor_cfg
+                outer_anchor_cfg_lo = None
+                if export_anchor_cfg is not None:
+                    near, far = _edge_fringe_anchor_scales(
+                        export_anchor_cfg, half_line_w_mm, outer_w_mm, line_peak_pct, line_valley_pct
+                    )
+                    outer_anchor_cfg, outer_anchor_cfg_lo = far, near
+                outer_band_rings = _mitre_band_polygons_mm(
+                    outline,
+                    half_line_w_mm + outer_w_mm,
+                    half_line_w_mm,
+                    sharp=body_sharp,
+                    anchor_cfg=outer_anchor_cfg,
+                    anchor_cfg_lo=outer_anchor_cfg_lo,
                 )
-                outer_anchor_cfg, outer_anchor_cfg_lo = far, near
-            outer_band_rings = _mitre_band_polygons_mm(
-                outline,
-                half_line_w_mm + outer_w_mm,
-                half_line_w_mm,
-                sharp=body_sharp,
-                anchor_cfg=outer_anchor_cfg,
-                anchor_cfg_lo=outer_anchor_cfg_lo,
-            )
         if inner_enabled and inner_w_mm > 1.0e-6:
-            inner_anchor_cfg = export_anchor_cfg
-            inner_anchor_cfg_lo = None
-            if export_anchor_cfg is not None:
-                near, far = _edge_fringe_anchor_scales(
-                    export_anchor_cfg, half_line_w_mm, inner_w_mm, line_peak_pct, line_valley_pct
+            inner_band_rings = None
+            if std_dyn_active and std_pts_m is not None:
+                try:
+                    inner_polys_m = blm.inner_edge_band_polys(
+                        entry, std_pts_m, std_center_m,
+                        line_w_mm * 0.001, inner_w_mm * 0.001, body_sharp,
+                    )
+                except Exception:  # noqa: BLE001
+                    inner_polys_m = None
+                if inner_polys_m:
+                    inner_band_rings = [
+                        (
+                            [(px * 1000.0, py * 1000.0) for (px, py) in outer],
+                            [[(hx * 1000.0, hy * 1000.0) for (hx, hy) in hole] for hole in holes],
+                        )
+                        for (outer, holes) in inner_polys_m
+                    ]
+            if inner_band_rings is None:
+                # 非dynamic・J、または標準dynamic経路が空/例外だった場合は
+                # 従来の均一帯へフォールバック (書き出し全体を落とさない)。
+                inner_anchor_cfg = export_anchor_cfg
+                inner_anchor_cfg_lo = None
+                if export_anchor_cfg is not None:
+                    near, far = _edge_fringe_anchor_scales(
+                        export_anchor_cfg, half_line_w_mm, inner_w_mm, line_peak_pct, line_valley_pct
+                    )
+                    inner_anchor_cfg, inner_anchor_cfg_lo = near, far
+                inner_band_rings = _mitre_band_polygons_mm(
+                    outline,
+                    -half_line_w_mm,
+                    -half_line_w_mm - inner_w_mm,
+                    sharp=body_sharp,
+                    anchor_cfg=inner_anchor_cfg,
+                    anchor_cfg_lo=inner_anchor_cfg_lo,
                 )
-                inner_anchor_cfg, inner_anchor_cfg_lo = near, far
-            inner_band_rings = _mitre_band_polygons_mm(
-                outline,
-                -half_line_w_mm,
-                -half_line_w_mm - inner_w_mm,
-                sharp=body_sharp,
-                anchor_cfg=inner_anchor_cfg,
-                anchor_cfg_lo=inner_anchor_cfg_lo,
-            )
         if str(line_style or "") in band_line_styles:
             if str(line_style or "") == "double":
                 multi_band_groups = _multi_ring_band_polygons(
@@ -1610,18 +1669,40 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
                     entry,
                     sharp=body_sharp,
                 )
-            # 谷/山の線幅%が両方0% (新方式Jのみ): 主線全体を非表示にする。J の帯
-            # 構築へ落とすと帯が空になり従来方式の均一幅へフォールバックして
-            # しまうため、mitre_band_polygons を呼ぶ前に抜ける (balloon_line_mesh
-            # の main_line_both_zero ガードと同一の理由)。
+            # 谷/山の線幅%が両方0%: 主線全体を非表示にする。J / 標準dynamic の
+            # 帯構築へ落とすと帯が空になり従来方式の均一幅へフォールバックして
+            # しまうため、mitre_band_polygons / 標準dynamic経路を呼ぶ前に抜ける
+            # (balloon_line_mesh の main_line_both_zero ガードと同一の理由。
+            # 標準方式も同じガードへ 2026-07-24 に拡張)。
             main_both_zero = (
                 export_anchor_cfg is not None
                 and line_valley_pct <= 1.0e-3
                 and line_peak_pct <= 1.0e-3
-            )
+            ) or (std_dyn_active and std_both_zero)
+            std_main_applied = False
             if main_both_zero:
                 main_band_rings = []
-            else:
+                std_main_applied = True
+            elif std_dyn_active and std_pts_m is not None:
+                try:
+                    main_polys_m = blm.main_line_dynamic_band_polys(
+                        entry, std_pts_m, std_center_m, line_w_mm * 0.001, body_sharp,
+                    )
+                except Exception:  # noqa: BLE001
+                    main_polys_m = None
+                if main_polys_m is not None:
+                    # 空リストもビューポートの「主線を描かない」と同義なので
+                    # 尊重する (apply_sharp_tail_tips はビューポートの dynamic
+                    # 分岐と同一で、この経路では適用しない)。
+                    main_band_rings = [
+                        (
+                            [(px * 1000.0, py * 1000.0) for (px, py) in outer],
+                            [[(hx * 1000.0, hy * 1000.0) for (hx, hy) in hole] for hole in holes],
+                        )
+                        for (outer, holes) in main_polys_m
+                    ]
+                    std_main_applied = True
+            if not std_main_applied:
                 main_anchor_cfg = export_anchor_cfg
                 if export_anchor_cfg is not None:
                     main_anchor_cfg = _main_line_anchor_scale(

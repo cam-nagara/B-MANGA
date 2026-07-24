@@ -3095,8 +3095,6 @@ def ensure_balloon_line_mesh(
     main_line_dynamic, line_valley_width_pct, line_peak_width_pct, main_line_both_zero = (
         _line_dynamic_width_params(entry)
     )
-    line_valley_width_mm = line_width_mm * line_valley_width_pct / 100.0
-    line_peak_width_mm = line_width_mm * line_peak_width_pct / 100.0
 
     if line_style in {"dashed", "dotted"}:
         dash_polys = _build_dashed_band_polygons(
@@ -3127,19 +3125,11 @@ def ensure_balloon_line_mesh(
         # stroke_variable_width() 内部のミター結合はセグメント法線ベースで対称
         # オフセットでも正しい鋭角交点を計算するため、 outside_align=False (中心
         # アライメント) でも 100% 均一幅時と同じ鋭い山頂・谷になる。
+        # 幾何構築は main_line_dynamic_band_polys に集約 (書き出し
+        # io/export_balloon と共用。 ビューポートと出力の一致の正本)。
         body_center_m = _balloon_center_m_from_samples(samples)
-        sub_polys = _build_dynamic_multi_line_polygons(
-            body_samples=samples,
-            signed_offset_m=0.0,
-            base_width_m=line_width_m,
-            valley_width_m=line_valley_width_mm * 0.001,
-            peak_width_m=line_peak_width_mm * 0.001,
-            length_scale=1.0,
-            valley_sharp=valley_sharp,
-            balloon_center_m=body_center_m,
-            peak_extension_m=0.0,
-            outside_align=False,
-            peaks_rounded=peaks_rounded,
+        sub_polys = main_line_dynamic_band_polys(
+            entry, samples, body_center_m, line_width_m, valley_sharp,
         )
         if not sub_polys:
             remove_balloon_line_mesh(balloon_id)
@@ -3266,6 +3256,43 @@ def _balloon_center_m_from_samples(samples: Sequence[tuple[float, float, float]]
     return (
         sum(s[0] for s in samples) / len(samples),
         sum(s[1] for s in samples) / len(samples),
+    )
+
+
+def main_line_dynamic_band_polys(
+    entry,
+    samples,
+    balloon_center_m: tuple[float, float],
+    line_width_m: float,
+    valley_sharp: bool,
+) -> list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
+    """標準方式 (新方式Jでない) の動的形状の主線帯ポリゴンを構築する.
+
+    対象形状: 雲/フワフワ/トゲ/トゲ曲線 (`_DYNAMIC_WIDTH_SHAPES`)。
+    `ensure_balloon_line_mesh` の主線 dynamic 分岐 (anchor_cfg is None かつ
+    is_dynamic) の中身を抽出したもの。谷/山幅の % 計算・peaks_rounded (雲/
+    フワフワの山頂丸め) 判定を含む。書き出し (io/export_balloon) と共用。
+    ビューポートと出力の一致の正本。
+
+    戻り値: [(outer_ring, holes), ...]。空リスト = 主線を描かない (呼び出し側の
+    both_zero 判定と合わせて非表示扱いにする)。
+    """
+    _, valley_pct, peak_pct, _ = _line_dynamic_width_params(entry)
+    peaks_rounded = balloon_shapes.normalize_shape(
+        str(getattr(entry, "shape", "rect") or "rect")
+    ) in _ROUNDED_PEAK_SHAPES
+    return _build_dynamic_multi_line_polygons(
+        body_samples=samples,
+        signed_offset_m=0.0,
+        base_width_m=line_width_m,
+        valley_width_m=line_width_m * (valley_pct / 100.0),
+        peak_width_m=line_width_m * (peak_pct / 100.0),
+        length_scale=1.0,
+        valley_sharp=valley_sharp,
+        balloon_center_m=balloon_center_m,
+        peak_extension_m=0.0,
+        outside_align=False,
+        peaks_rounded=peaks_rounded,
     )
 
 
@@ -3430,6 +3457,78 @@ def _shapely_geom_to_outer_holes_list(geom):
     return out
 
 
+def outer_edge_band_polys(
+    entry,
+    samples,
+    balloon_center_m: tuple[float, float],
+    line_width_m: float,
+    edge_width_m: float,
+    valley_sharp: bool,
+) -> list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
+    """標準方式 (新方式Jでない) の外側フチ帯ポリゴンを構築する.
+
+    `ensure_balloon_outer_edge_mesh` の標準方式分岐 (主線が描くアウトライン →
+    外側へ edge_width_m だけ buffer → 差分 → リング変換) を抽出したもの。
+    書き出し (io/export_balloon) と共用。ビューポートと出力の一致の正本。
+
+    戻り値: [(outer_ring, holes), ...]。空リスト = 失敗/退化 (呼び出し側で
+    従来の均一帯へフォールバックする)。
+    """
+    outline = _compute_balloon_outer_outline(entry, samples, balloon_center_m, line_width_m, valley_sharp)
+    if outline is None or outline.is_empty:
+        return []
+    # mitre_limit は全帯共通の _SHARP_MITRE_LIMIT に統一 (2026-07-23 確定仕様:
+    # 先端の伸びはオフセットの2倍まで)。
+    join = 2 if valley_sharp else 1
+    mitre = _SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT
+    try:
+        outer_buffer = outline.buffer(edge_width_m, join_style=join, mitre_limit=mitre)
+        outer_band = outer_buffer.difference(outline)
+    except Exception:  # noqa: BLE001
+        return []
+    if outer_band is None or outer_band.is_empty:
+        return []
+    return _shapely_geom_to_outer_holes_list(outer_band)
+
+
+def inner_edge_band_polys(
+    entry,
+    samples,
+    balloon_center_m: tuple[float, float],
+    line_width_m: float,
+    edge_width_m: float,
+    valley_sharp: bool,
+) -> list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
+    """標準方式 (新方式Jでない) の内側フチ帯ポリゴンを構築する.
+
+    `ensure_balloon_inner_edge_mesh` の標準方式分岐 (主線の内側境界 → 内側へ
+    edge_width_m だけ buffer → 差分。 空バッファ時は境界全体を帯にする既存
+    フォールバック含む) を抽出したもの。書き出し (io/export_balloon) と共用。
+    ビューポートと出力の一致の正本。
+
+    戻り値: [(outer_ring, holes), ...]。空リスト = 失敗/退化 (呼び出し側で
+    従来の均一帯へフォールバックする)。
+    """
+    inner_boundary = _compute_main_line_inner_boundary(
+        entry, samples, balloon_center_m, line_width_m, valley_sharp
+    )
+    if inner_boundary is None or inner_boundary.is_empty:
+        return []
+    join = 2 if valley_sharp else 1
+    mitre = _SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT
+    try:
+        inner_shrunk = inner_boundary.buffer(-edge_width_m, join_style=join, mitre_limit=mitre)
+        if inner_shrunk.is_empty:
+            inner_band = inner_boundary
+        else:
+            inner_band = inner_boundary.difference(inner_shrunk)
+    except Exception:  # noqa: BLE001
+        return []
+    if inner_band is None or inner_band.is_empty:
+        return []
+    return _shapely_geom_to_outer_holes_list(inner_band)
+
+
 def ensure_balloon_outer_edge_mesh(
     *,
     scene,
@@ -3514,25 +3613,11 @@ def ensure_balloon_outer_edge_mesh(
         # 「主線が描く変わったアウトライン」 (body + 主線 polygon の union) を取得し、
         # その外側に均一幅 edge_width で buffer する。 主線が dynamic (谷/山幅変動) でも
         # アウトラインの形状追従だけが反映され、 フチ自身は常に均一幅で描かれる。
-        outline = _compute_balloon_outer_outline(entry, samples, body_center_m, line_width_m, valley_sharp)
-        if outline is None or outline.is_empty:
-            remove_balloon_outer_edge_mesh(balloon_id)
-            return None
-
-        # mitre_limit は全帯共通の _SHARP_MITRE_LIMIT に統一 (2026-07-23 確定仕様:
-        # 先端の伸びはオフセットの2倍まで)。
-        join = 2 if valley_sharp else 1
-        mitre = _SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT
-        try:
-            outer_buffer = outline.buffer(edge_width_m, join_style=join, mitre_limit=mitre)
-            outer_band = outer_buffer.difference(outline)
-        except Exception:  # noqa: BLE001
-            outer_band = None
-        if outer_band is None or outer_band.is_empty:
-            remove_balloon_outer_edge_mesh(balloon_id)
-            return None
-
-        polys = _shapely_geom_to_outer_holes_list(outer_band)
+        # 幾何構築は outer_edge_band_polys に集約 (書き出し io/export_balloon と
+        # 共用。 ビューポートと出力の一致の正本)。
+        polys = outer_edge_band_polys(
+            entry, samples, body_center_m, line_width_m, edge_width_m, valley_sharp,
+        )
     if not polys:
         remove_balloon_outer_edge_mesh(balloon_id)
         return None
@@ -3641,28 +3726,11 @@ def ensure_balloon_inner_edge_mesh(
         if band_geom is not None:
             polys = _shapely_geom_to_outer_holes_list(band_geom)
     if not polys:
-        inner_boundary = _compute_main_line_inner_boundary(
-            entry, samples, body_center_m, line_width_m, valley_sharp
+        # 幾何構築は inner_edge_band_polys に集約 (書き出し io/export_balloon と
+        # 共用。 ビューポートと出力の一致の正本)。
+        polys = inner_edge_band_polys(
+            entry, samples, body_center_m, line_width_m, edge_width_m, valley_sharp,
         )
-        if inner_boundary is None or inner_boundary.is_empty:
-            remove_balloon_inner_edge_mesh(balloon_id)
-            return None
-
-        join = 2 if valley_sharp else 1
-        mitre = _SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT
-        try:
-            inner_shrunk = inner_boundary.buffer(-edge_width_m, join_style=join, mitre_limit=mitre)
-            if inner_shrunk.is_empty:
-                inner_band = inner_boundary
-            else:
-                inner_band = inner_boundary.difference(inner_shrunk)
-        except Exception:  # noqa: BLE001
-            inner_band = None
-        if inner_band is None or inner_band.is_empty:
-            remove_balloon_inner_edge_mesh(balloon_id)
-            return None
-
-        polys = _shapely_geom_to_outer_holes_list(inner_band)
     if not polys:
         remove_balloon_inner_edge_mesh(balloon_id)
         return None
