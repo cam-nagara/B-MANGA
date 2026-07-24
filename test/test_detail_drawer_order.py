@@ -85,6 +85,7 @@ def _install_effect_line_panel_stub(panels_package) -> None:
         preset_mode: bool = False,
         allow_path_edit: bool = True,
         show_base_path: bool = True,
+        enabled_prop: str | None = None,
     ) -> None:
         if show_base_path:
             path_box = layout.box()
@@ -92,6 +93,8 @@ def _install_effect_line_panel_stub(panels_package) -> None:
             path_box.prop(params, "base_path_enabled", text="基準パス")
         image_box = layout.box()
         image_box.label(text="パス線")
+        if enabled_prop is not None:
+            image_box.prop(params, enabled_prop, text="パス線を使う")
         image_box.prop(params, "line_image_source", text="内容")
 
     module.draw_effect_path_settings = draw_effect_path_settings

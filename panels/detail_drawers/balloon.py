@@ -223,6 +223,7 @@ def _draw_path(layout, entry, preset_mode: bool) -> None:
         preset_mode=preset_mode,
         allow_path_edit=False,
         show_base_path=False,
+        enabled_prop="path_line_enabled",
     )
 
 

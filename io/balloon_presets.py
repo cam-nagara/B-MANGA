@@ -83,6 +83,8 @@ BALLOON_STYLE_KEYS = (
     "line_image_jitter",
     # パス線 (2026-07-20 追加)。line_image_path / line_image_angle_deg は
     # 上の「線種「画像」用」の項目と共有 (core/balloon.py 参照)。
+    # path_line_enabled (2026-07-24 追加): パス線を使うかの明示トグル。
+    "path_line_enabled",
     "line_image_source",
     "line_image_shape_kind",
     "line_image_shape_sides",
@@ -250,6 +252,19 @@ def apply_style_to_entry(entry, data: dict[str, Any] | None) -> None:
         else:
             try:
                 setattr(entry, key, val)
+            except Exception:  # noqa: BLE001
+                pass
+
+    # 旧プリセット (パス線トグル導入前) の移行: 画像・生成形状が設定済みなら、
+    # 以前はパス線が主線を置き換えて表示されていたので、その見た目を保つため
+    # トグルを ON 扱いにする (新規既定は OFF)。プリセットは line_image_source も
+    # 保存するため、生成形状指定も判定できる。
+    if "path_line_enabled" not in data and hasattr(entry, "path_line_enabled"):
+        has_image = bool(str(getattr(entry, "line_image_path", "") or "").strip())
+        is_shape = str(getattr(entry, "line_image_source", "image") or "image") == "shape"
+        if has_image or is_shape:
+            try:
+                entry.path_line_enabled = True
             except Exception:  # noqa: BLE001
                 pass
 

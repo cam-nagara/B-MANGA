@@ -120,12 +120,19 @@ def draw_effect_path_settings(
     preset_mode: bool = False,
     allow_path_edit: bool = True,
     show_base_path: bool = True,
+    enabled_prop: str | None = None,
 ) -> None:
     """「パス」(基準パス) + 「パス線」box を描画する。
 
     ``show_base_path=False`` で「基準パス」box を省き「パス線」box だけを
     出す (フキダシ用。フキダシ本体の輪郭が常にパスになるため、効果線のよう
     な基準パスの明示指定は不要)。
+
+    ``enabled_prop`` を渡すと (フキダシ用)、「パス線」box の先頭にその bool
+    プロパティのトグルを描き、OFF の間は内容をグレーアウトする。フキダシは
+    パス線と線種「画像」で ``line_image_path`` を共有するため、明示トグルが
+    無いと画像を設定しただけでパス線が主線を置き換えてしまう (2026-07-24)。
+    効果線はパス線そのものが主体なのでトグルは使わない (``enabled_prop=None``)。
     """
 
     if show_base_path:
@@ -142,6 +149,12 @@ def draw_effect_path_settings(
 
     image_box = layout.box()
     image_box.label(text="パス線")
+    if enabled_prop is not None:
+        # フキダシ用: 明示トグル。以降の描画先を「グレーアウト可能な子カラム」へ
+        # 差し替えることで、OFF の間は内容全体を無効表示にする (トグル自身は有効)。
+        image_box.prop(params, enabled_prop, text="パス線を使う")
+        image_box = image_box.column()
+        image_box.enabled = bool(getattr(params, enabled_prop, False))
     image_box.prop(params, "line_image_source", text="内容")
     source = str(getattr(params, "line_image_source", "image") or "image")
     if source == "shape":

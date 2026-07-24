@@ -1607,6 +1607,9 @@ def _geometry_key_for_entry(entry) -> str:
         "rounded_radius_unit": str(getattr(entry, "rounded_corner_radius_unit", "mm") or "mm"),
         "rounded_radius_percent": float(getattr(entry, "rounded_corner_radius_percent", 0.0) or 0.0),
         "line_style": str(getattr(entry, "line_style", "") or ""),
+        # パス線 (輪郭スタンプ/リボン) の明示トグル。ON/OFF で主線メッシュとパス線
+        # メッシュのどちらが出るかが変わるため署名に含める (2026-07-24)。
+        "path_line_enabled": bool(getattr(entry, "path_line_enabled", False)),
         "line_width": float(getattr(entry, "line_width_mm", 0.3) or 0.0),
         "dashed_segment_length": float(getattr(entry, "dashed_segment_length_mm", 3.6) or 0.0),
         "dashed_gap": float(getattr(entry, "dashed_gap_mm", 2.4) or 0.0),

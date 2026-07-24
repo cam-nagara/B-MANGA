@@ -117,6 +117,9 @@ def main() -> None:
         # 既存の線種「画像」用プロパティをそのまま再利用している (新設し直していない)。
         assert hasattr(entry, "line_image_path")
         assert hasattr(entry, "line_image_angle_deg")
+        # パス線トグル (2026-07-24 追加)。既定OFF。
+        assert hasattr(entry, "path_line_enabled"), "パス線トグル path_line_enabled が未登録です"
+        assert entry.path_line_enabled is False, "パス線トグルの既定がOFFではありません"
 
         body_object = object_naming.find_object_by_bmanga_id(balloon_id, kind="balloon")
         assert body_object is not None, "フキダシ本体カーブが見つかりません"
@@ -133,6 +136,22 @@ def main() -> None:
         assert not balloon_path_line.line_image_active(entry), "画像未読込なのにパス線が有効です"
         assert _path_line_obj() is None, "画像未読込なのにパス線オブジェクトが生成されています"
         assert _main_line_obj() is not None, "既定状態で主線メッシュが消えています"
+
+        # --- B2. パス線トグル (2026-07-24): OFF の間は画像を設定しても主線が残る ---
+        # 回帰防止: 線種「画像」で画像を選んだ後に線種を実線へ戻す (line_image_path が
+        # 残る) と、以前はパス線が主線を勝手に置き換え主線が出なかった。トグルOFFなら
+        # 画像が残っていても必ず主線が出ること、ONで初めてパス線に切り替わることを確認。
+        entry.line_image_source = "image"
+        entry.line_image_path = str(image_path)
+        assert not balloon_path_line.line_image_active(entry), "トグルOFFなのにパス線が有効です"
+        assert _path_line_obj() is None, "トグルOFFなのにパス線オブジェクトが生成されています"
+        assert _main_line_obj() is not None, "トグルOFFで画像を設定したら主線メッシュが消えました(回帰)"
+        entry.path_line_enabled = True
+        assert balloon_path_line.line_image_active(entry), "トグルONでパス線が有効になりません"
+        assert _path_line_obj() is not None, "トグルONでパス線オブジェクトが生成されません"
+        assert _main_line_obj() is None, "トグルON(パス線有効)でも主線メッシュが残っています"
+        # 後続テストのため画像パスをクリア (トグルは ON のまま維持し、以降の C/F で使う)
+        entry.line_image_path = ""
 
         # --- C. 内容=生成形状 でパス線オブジェクトが生成される ---
         entry.line_image_source = "shape"
@@ -191,6 +210,7 @@ def main() -> None:
         entry.line_image_inout_end_color = (0.0, 0.0, 1.0, 0.5)
         snapshot = balloon_presets.snapshot_style_from_entry(entry)
         for field in (
+            "path_line_enabled",
             "line_image_source",
             "line_image_shape_kind",
             "line_image_shape_sides",
@@ -222,6 +242,7 @@ def main() -> None:
         )
         assert other_entry is not None
         balloon_presets.apply_style_to_entry(other_entry, snapshot)
+        assert other_entry.path_line_enabled is True, "パス線トグルがプリセット往復で伝わっていません"
         assert other_entry.line_image_source == "shape"
         assert other_entry.line_image_shape_kind == "star"
         assert other_entry.line_image_shape_sides == 5

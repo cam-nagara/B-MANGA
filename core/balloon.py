@@ -768,6 +768,12 @@ class BMangaBalloonEntry(bpy.types.PropertyGroup):
     # 描画される (utils/balloon_path_line.py)。画像パス・画像の角度は既存の
     # 線種「画像」用 line_image_path / line_image_angle_deg をそのまま共有
     # する (効果線の同名プロパティと意味を揃えるため)。
+    # path_line_enabled (2026-07-24 追加): パス線を使うかどうかの明示トグル。
+    # 既定OFF。これが無かった頃は line_image_path が入っているだけでパス線が
+    # 主線を置き換えたため、線種「画像」で画像を選んだ後に線種を「実線」等へ
+    # 戻すと (共有する line_image_path が残るせいで) 主線が出ずパス線に乗っ取
+    # られる不具合があった。トグルを明示ONにしたときだけパス線を有効化する。
+    path_line_enabled: BoolProperty(name="パス線を使う", description="ONにすると、フキダシの輪郭に沿って画像・生成形状をスタンプ/リボン表示するパス線を主線の代わりに描きます", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     line_image_source: EnumProperty(name="内容", description="パス線に使う内容を画像ファイルか生成形状かで選びます", items=_LINE_IMAGE_SOURCE_ITEMS, default="image", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     line_image_shape_kind: EnumProperty(name="生成形状", description="パス線に使う生成形状の種類を選びます", items=_LINE_IMAGE_SHAPE_ITEMS, default="circle", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     line_image_shape_sides: IntProperty(name="角数", description="多角形の角の数です", default=6, min=3, max=16, update=_on_balloon_entry_changed)  # type: ignore[valid-type]

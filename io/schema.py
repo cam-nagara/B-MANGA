@@ -1398,6 +1398,7 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "lineImageIntervalMm": round(float(getattr(entry, "line_image_interval_mm", 20.0)), 3),
         "lineImageAngleDeg": round(float(getattr(entry, "line_image_angle_deg", 0.0)), 3),
         "lineImageJitter": round(float(getattr(entry, "line_image_jitter", 0.0)), 3),
+        "pathLineEnabled": bool(getattr(entry, "path_line_enabled", False)),
         "multiLineCount": int(getattr(entry, "multi_line_count", 3) or 3),
         "multiLineWidthMm": round(float(getattr(entry, "multi_line_width_mm", 0.3)), 3),
         "multiLineSpacingMm": round(float(getattr(entry, "multi_line_spacing_mm", 0.4)), 3),
@@ -1611,6 +1612,14 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
         entry.line_image_interval_mm = float(data.get("lineImageIntervalMm", 20.0))
         entry.line_image_angle_deg = float(data.get("lineImageAngleDeg", 0.0))
         entry.line_image_jitter = float(data.get("lineImageJitter", 0.0))
+    if hasattr(entry, "path_line_enabled"):
+        if "pathLineEnabled" in data:
+            entry.path_line_enabled = bool(data.get("pathLineEnabled", False))
+        else:
+            # 旧ファイル (パス線トグル導入前) の移行: 画像パスが入っていれば、
+            # 以前はパス線が主線を置き換えて表示されていたので、その見た目を
+            # 保つためトグルを ON 扱いにする (新規フキダシは既定 OFF)。
+            entry.path_line_enabled = bool(str(data.get("lineImagePath", "") or "").strip())
     entry.multi_line_count = int(data.get("multiLineCount", 3))
     entry.multi_line_width_mm = float(data.get("multiLineWidthMm", 0.3))
     entry.multi_line_spacing_mm = float(data.get("multiLineSpacingMm", 0.4))

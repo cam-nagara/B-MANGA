@@ -60,6 +60,11 @@ def line_image_active(entry) -> bool:
 
     if entry is None:
         return False
+    # 明示トグル (2026-07-24 追加)。OFF の間はパス線を一切有効化しない。これが
+    # 無かった頃は line_image_path が残っているだけでパス線が主線を置き換えたため、
+    # 線種「画像」→「実線」へ戻すと主線が出ない不具合になっていた (共有プロパティ)。
+    if not bool(getattr(entry, "path_line_enabled", False)):
+        return False
     if str(getattr(entry, "line_image_source", "image") or "image") == "shape":
         return True
     return _image_path(entry) is not None
