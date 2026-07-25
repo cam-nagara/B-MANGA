@@ -1422,6 +1422,7 @@ def _bezier_cloud_line_loops(
             perp_y = -perp_y
         body_apex_h = eff_h * h_mul
         body_apex = (mid_x + perp_x * body_apex_h, mid_y + perp_y * body_apex_h)
+        m_len_body = (4.0 / 3.0) * body_apex_h
         chord_ux = chord_dx / chord_len
         chord_uy = chord_dy / chord_len
 
@@ -1438,12 +1439,18 @@ def _bezier_cloud_line_loops(
         outer_bumps.append({
             "vs": vs_outer, "ve": ve_outer, "apex": apex_outer,
             "r_s": r_s, "r_e": r_e, "t_s": t_s, "t_e": t_e,
-            "chord_u": (chord_ux, chord_uy), "chord_len": chord_len,
+            "chord_u": (chord_ux, chord_uy),
+            # ふくらみは「ハンドルの倒れ角」として与える。絶対量 (弦長比) をそのまま
+            # 内外の輪へ足すと、こぶが小さくハンドルも短い内周だけが大きく倒れて
+            # 外周へ寄り、帯の厚み (線幅) が谷の上で 0 近くまで潰れる。
+            # lean_unit = 本体こぶでの倒れ比 (弦方向成分 / 垂直ハンドル長)。
+            "lean_unit": (chord_len / m_len_body) if m_len_body > 1.0e-9 else 0.0,
         })
         inner_bumps.append({
             "vs": vs_inner, "ve": ve_inner, "apex": apex_inner,
             "r_s": r_s, "r_e": r_e, "t_s": t_s, "t_e": t_e,
-            "chord_u": (chord_ux, chord_uy), "chord_len": chord_len,
+            "chord_u": (chord_ux, chord_uy),
+            "lean_unit": (chord_len / m_len_body) if m_len_body > 1.0e-9 else 0.0,
         })
 
     if len(outer_bumps) < 3 or len(inner_bumps) != len(outer_bumps):
@@ -1473,10 +1480,12 @@ def _bezier_cloud_line_loops(
             )
             # 本体こぶと同じ「弦方向のひらき」を谷側ハンドルへ足し、
             # 主線が本体のふくらみに追従するようにする。
-            bulge = cloud_bulge * bump["chord_len"]
+            lean = cloud_bulge * bump["lean_unit"]
+            bulge_va = L_va * lean
+            bulge_ab = L_ab * lean
             bump["c1_A"] = (
-                bump["vs"][0] + dir_vs[0] * L_va - bump["chord_u"][0] * bulge,
-                bump["vs"][1] + dir_vs[1] * L_va - bump["chord_u"][1] * bulge,
+                bump["vs"][0] + dir_vs[0] * L_va - bump["chord_u"][0] * bulge_va,
+                bump["vs"][1] + dir_vs[1] * L_va - bump["chord_u"][1] * bulge_va,
             )
             # c2 は山頂から chord 逆方向 (= 前の谷側) へ L_va 戻す
             bump["c2_A"] = (bump["apex"][0] - bump["chord_u"][0] * L_va, bump["apex"][1] - bump["chord_u"][1] * L_va)
@@ -1490,8 +1499,8 @@ def _bezier_cloud_line_loops(
                 bump["r_e"][1] * cos_t - bump["t_e"][1] * sin_t,
             )
             bump["c2_B"] = (
-                bump["ve"][0] + dir_ve[0] * L_ab + bump["chord_u"][0] * bulge,
-                bump["ve"][1] + dir_ve[1] * L_ab + bump["chord_u"][1] * bulge,
+                bump["ve"][0] + dir_ve[0] * L_ab + bump["chord_u"][0] * bulge_ab,
+                bump["ve"][1] + dir_ve[1] * L_ab + bump["chord_u"][1] * bulge_ab,
             )
         anchors: list[BezierAnchor] = []
         for i in range(n):

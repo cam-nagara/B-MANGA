@@ -1838,7 +1838,7 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
         0.0, min(100.0, float(sp.get("thornCurveBulgePercent", 38.0) or 0.0))
     )
     entry.shape_params.cloud_bump_bulge_percent = max(
-        -30.0, min(50.0, float(sp.get("cloudBumpBulgePercent", 0.0) or 0.0))
+        -30.0, min(30.0, float(sp.get("cloudBumpBulgePercent", 0.0) or 0.0))
     )
     entry.shape_params.thorn_corner_square_percent = max(
         0.0, min(200.0, float(sp.get("thornCornerSquarePercent", 0.0) or 0.0))

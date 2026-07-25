@@ -450,9 +450,14 @@ def _fluffy_clone_opts(
         rng=rng,
         base_kind=base_kind,
         base_corner_radius_mm=base_radius,
-        # クローンで欠落すると、将来この経路に四隅変形が来たとき無言で無効化される
+        # クローンで欠落すると、将来この経路に四隅変形・ふくらみが来たとき
+        # 無言で無効化される。corner_* は % のまま保持されるが、
+        # curve_bulge / cloud_bulge は __init__ で /100 された比率で保持されるため、
+        # コンストラクタへ渡すときは % へ戻す。
         corner_square=getattr(opts, "corner_square", 0.0),
         corner_squeeze=getattr(opts, "corner_squeeze", 0.0),
+        curve_bulge=getattr(opts, "curve_bulge", 0.38) * 100.0,
+        cloud_bulge=getattr(opts, "cloud_bulge", 0.0) * 100.0,
     )
 
 

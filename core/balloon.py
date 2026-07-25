@@ -692,11 +692,12 @@ class BMangaBalloonShapeParams(bpy.types.PropertyGroup):
         name="こぶのふくらみ (%)",
         description=(
             "雲のこぶを横に太らせて丸くする量。マイナスでこぶが尖る。"
-            "こぶの高さ（山の高さ）は変わらない。+30% を超えると隣のこぶ同士が食い込む"
+            "こぶの高さ（山の高さ）は変わらない"
         ),
         default=0.0,
+        # +30% より上はこぶ同士が食い込み、主線の帯も谷の上で潰れるため上限とする
         min=-30.0,
-        max=50.0,
+        max=30.0,
         soft_min=-20.0,
         soft_max=30.0,
         subtype="PERCENTAGE",
