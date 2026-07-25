@@ -450,6 +450,9 @@ def _fluffy_clone_opts(
         rng=rng,
         base_kind=base_kind,
         base_corner_radius_mm=base_radius,
+        # クローンで欠落すると、将来この経路に四隅変形が来たとき無言で無効化される
+        corner_square=getattr(opts, "corner_square", 0.0),
+        corner_squeeze=getattr(opts, "corner_squeeze", 0.0),
     )
 
 

@@ -1555,6 +1555,12 @@ def _geometry_key_for_entry(entry) -> str:
         "dynamic_base_rounded_corner_radius_percent": float(
             getattr(sp, "dynamic_base_rounded_corner_radius_percent", 0.0) or 0.0
         ),
+        "thorn_corner_square_percent": float(
+            getattr(sp, "thorn_corner_square_percent", 0.0) or 0.0
+        ),
+        "thorn_corner_squeeze_percent": float(
+            getattr(sp, "thorn_corner_squeeze_percent", 0.0) or 0.0
+        ),
         "shape_seed": int(getattr(sp, "shape_seed", 0) or 0),
     }
     tails = []

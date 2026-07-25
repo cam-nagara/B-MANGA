@@ -840,6 +840,12 @@ def _draw_preview_balloon(
                 )
                 else 0.0
             ),
+            thorn_corner_square_percent=float(
+                params.get("thorn_corner_square_percent", 0.0) or 0.0
+            ),
+            thorn_corner_squeeze_percent=float(
+                params.get("thorn_corner_squeeze_percent", 0.0) or 0.0
+            ),
         )
         mapped = _map_points_to_preview_rect(points, rect, width_mm, height_mm)
         if len(mapped) >= 3:

@@ -1535,6 +1535,12 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
                 float(getattr(entry.shape_params, "dynamic_base_rounded_corner_radius_percent", 0.0) or 0.0),
                 3,
             ),
+            "thornCornerSquarePercent": round(
+                float(getattr(entry.shape_params, "thorn_corner_square_percent", 0.0) or 0.0), 3
+            ),
+            "thornCornerSqueezePercent": round(
+                float(getattr(entry.shape_params, "thorn_corner_squeeze_percent", 0.0) or 0.0), 3
+            ),
             "cloudWaveCount": int(entry.shape_params.cloud_wave_count),
             "cloudWaveAmplitudeMm": round(entry.shape_params.cloud_wave_amplitude_mm, 3),
             "spikeCount": int(entry.shape_params.spike_count),
@@ -1821,6 +1827,12 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     )
     entry.shape_params.cloud_sub_height_ratio = float(
         sp.get("cloudSubHeightRatio", sp.get("cloudSubBumpRatio", 50.0))
+    )
+    entry.shape_params.thorn_corner_square_percent = max(
+        0.0, min(200.0, float(sp.get("thornCornerSquarePercent", 0.0) or 0.0))
+    )
+    entry.shape_params.thorn_corner_squeeze_percent = max(
+        0.0, min(300.0, float(sp.get("thornCornerSqueezePercent", 0.0) or 0.0))
     )
     entry.shape_params.dynamic_base_rounded_corner_enabled = bool(
         sp.get("dynamicBaseRoundedCornerEnabled", False)

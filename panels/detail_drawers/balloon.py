@@ -106,6 +106,11 @@ def _draw_dynamic_shape(layout, params, shape: str) -> None:
         _draw_corner_radius(radius, params, "dynamic_base_rounded_corner")
     _draw_shape_jitter_fields(box, params)
     if shape in {"thorn", "thorn-curve"}:
+        # 四隅変形はベースが楕円のときだけ効く（矩形ベースでは角度と周長が対応しない）
+        corner = box.column(align=True)
+        corner.enabled = str(value(params, "dynamic_shape_base_kind", "ellipse")) == "ellipse"
+        prop_if(corner, params, "thorn_corner_square_percent", text="角ばり")
+        prop_if(corner, params, "thorn_corner_squeeze_percent", text="四隅寄せ")
         prop_if(box, params, "cloud_valley_sharp", text="角を尖らせる")
         if bool(value(params, "cloud_valley_sharp", False)):
             prop_if(box, params, "sharp_corner_method", text="角の方式")

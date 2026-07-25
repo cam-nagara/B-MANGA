@@ -282,6 +282,13 @@ class BMANGA_PT_balloons(Panel):
             # 「角を尖らせる」は形状パラメータの一番下に置く。
             # 雲・もやもやでは効かない確定仕様のためトゲ系でだけ表示する。
             if balloon_shapes.normalize_shape(str(entry.shape or "")) in {"thorn", "thorn-curve"}:
+                # 四隅変形はベースが楕円のときだけ効く（矩形ベースでは角度と周長が対応しない）
+                corner = box.column(align=True)
+                corner.enabled = str(
+                    getattr(sp, "dynamic_shape_base_kind", "ellipse") or "ellipse"
+                ) == "ellipse"
+                corner.prop(sp, "thorn_corner_square_percent")
+                corner.prop(sp, "thorn_corner_squeeze_percent")
                 box.prop(sp, "cloud_valley_sharp")
                 if bool(getattr(sp, "cloud_valley_sharp", False)):
                     box.prop(sp, "sharp_corner_method", text="角の方式")

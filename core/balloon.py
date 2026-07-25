@@ -675,6 +675,32 @@ class BMangaBalloonShapeParams(bpy.types.PropertyGroup):
     dynamic_base_rounded_corner_radius_unit: EnumProperty(name="単位", description="角の半径を mm と % のどちらで指定するか", items=corner_radius.RADIUS_UNIT_ITEMS, default="mm", update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     dynamic_base_rounded_corner_radius_percent: FloatProperty(name="ベース角半径 (%)", description="ベース形状の角を丸める半径を、辺の長さに対する割合で指定", default=30.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
 
+    # トゲの四隅変形 (ベース形状が楕円のときだけ有効)
+    thorn_corner_square_percent: FloatProperty(  # type: ignore[valid-type]
+        name="角ばり (%)",
+        description=(
+            "トゲフキダシを左上・右上・左下・右下へ張り出させて矩形に近づける。"
+            "0% で楕円のまま。上下左右の辺の中心は動かないので、全体の大きさはほぼ変わらない"
+        ),
+        default=0.0,
+        min=0.0,
+        max=200.0,
+        subtype="PERCENTAGE",
+        update=_on_balloon_shape_params_changed,
+    )
+    thorn_corner_squeeze_percent: FloatProperty(  # type: ignore[valid-type]
+        name="四隅寄せ (%)",
+        description=(
+            "上下左右それぞれの辺の中心から辺に沿って広げ、トゲを四隅へ押し寄せる。"
+            "0% でトゲが均等。トゲの本数は変わらず位置だけが変わる"
+        ),
+        default=0.0,
+        min=0.0,
+        max=300.0,
+        subtype="PERCENTAGE",
+        update=_on_balloon_shape_params_changed,
+    )
+
     # Legacy parameters kept for older B-MANGA files/presets.
     cloud_wave_count: IntProperty(name="雲の波数", description="雲形状の輪郭にできる波の数", default=12, min=3, soft_max=60, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     cloud_wave_amplitude_mm: FloatProperty(name="波の振幅 (mm)", description="雲形状の波の高さ (mm)", default=3.0, min=0.0, soft_max=20.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]

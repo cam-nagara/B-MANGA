@@ -39,6 +39,105 @@ _CLOUD_VALLEY_TILT_DEG = 35.0
 # _THORN_CURVE_VALLEY_PULL: 谷ハンドル長 / 側面弦長 = 側面のふくらみ量。大きいほど弧が膨らむ。
 _THORN_CURVE_PEAK_PULL = 0.05
 _THORN_CURVE_VALLEY_PULL = 0.38
+# 四隅寄せで山が詰まったときの谷ハンドル長の上限 (谷を挟む 2 山の弦長に対する割合)。
+# これを超えると隣の山側へハンドルが食い込み、曲線が自己交差する。
+_THORN_CURVE_VALLEY_HANDLE_CHORD_LIMIT = 0.5
+
+# --- トゲの「角ばり」「四隅寄せ」変形 (2026-07-25) ---------------------------
+# 楕円ベースのトゲを、四隅方向へ張り出させて矩形に近づけ (角ばり)、
+# さらに上下左右の辺の中心から辺に沿って広げてトゲを四隅へ寄せる (四隅寄せ)。
+# どちらも 0% で従来の形状と完全に一致する。ベース形状が矩形のときは適用しない
+# (矩形はパラメータ t が周長に対応するため、この角度ベースの変形が成立しない)。
+#
+# 角ばり: 楕円 |u|^2+|v|^2=1 の指数を上げてスーパー楕円 |u|^n+|v|^n=1 にする。
+#   100% で n=14、200% で n=26。軸方向 (辺の中心) は動かないので外形サイズは不変。
+_CORNER_SQUARE_MAX_PERCENT = 200.0
+_CORNER_SQUARE_EXPONENT_PER_100 = 12.0
+# 四隅寄せ: 象限内の位置 d∈[-1,1] (0=四隅 / ±1=辺の中心) を d'=(1-m)·sign(d)·|d|^p+m·d
+#   へ写す。冪写像だけだと四隅で傾きが 0 になり山が 0 幅に潰れて自己交差するため、
+#   恒等写像を割合 m だけ混ぜて傾きの下限を確保する。p を上げれば上限なく寄せられる。
+_CORNER_SQUEEZE_MAX_PERCENT = 300.0
+_CORNER_SQUEEZE_MIX_BASE = 0.15
+_CORNER_SQUEEZE_MIX_FALLOFF = 150.0
+# 四隅寄せで潰された山は、そのままの高さだと隣同士が交差するので低くする
+# (既存 `_height_factor_for_width` と同じ考え方)。
+_CORNER_SQUEEZE_HEIGHT_POWER = 0.45
+_CORNER_SQUEEZE_MIN_HEIGHT_SCALE = 0.45
+
+
+def _corner_deform_params(opts: "_DynamicOpts") -> tuple[float, float, float] | None:
+    """トゲの角ばり/四隅寄せ変形の (スーパー楕円指数 n, 写像指数 p, 混合率 m) を返す.
+
+    変形不要なとき (両方 0% / ベースが矩形) は None。
+    """
+    if str(getattr(opts, "base_kind", "ellipse") or "ellipse") != "ellipse":
+        return None
+    square = max(0.0, min(_CORNER_SQUARE_MAX_PERCENT, float(getattr(opts, "corner_square", 0.0))))
+    squeeze = max(0.0, min(_CORNER_SQUEEZE_MAX_PERCENT, float(getattr(opts, "corner_squeeze", 0.0))))
+    if square <= 0.0 and squeeze <= 0.0:
+        return None
+    n = 2.0 + (square / 100.0) * _CORNER_SQUARE_EXPONENT_PER_100
+    p = 1.0 + squeeze / 100.0
+    m = _CORNER_SQUEEZE_MIX_BASE / (1.0 + squeeze / _CORNER_SQUEEZE_MIX_FALLOFF)
+    return n, p, m
+
+
+def _corner_squeeze_angle(t: float, p: float, m: float) -> float:
+    """パラメータ角 t を四隅 (45°/135°/225°/315°) へ引き寄せる (辺の中心は不動)."""
+    if p <= 1.0 + 1.0e-9:
+        return t
+    quarter = math.pi * 0.5
+    base = math.floor(t / quarter) * quarter
+    d = 2.0 * ((t - base) / quarter) - 1.0
+    dw = (1.0 - m) * math.copysign(abs(d) ** p, d) + m * d
+    return base + (0.5 + 0.5 * dw) * quarter
+
+
+def _corner_super_radius(t: float, n: float) -> float:
+    """角度 t におけるスーパー楕円の半径倍率 (n=2 の楕円で 1.0)."""
+    if abs(n - 2.0) <= 1.0e-9:
+        return 1.0
+    c = abs(math.cos(t))
+    s = abs(math.sin(t))
+    denom = c**n + s**n
+    if denom <= 1.0e-12:
+        return 1.0
+    return denom ** (-1.0 / n)
+
+
+def _corner_deform_position(
+    t: float,
+    cx: float,
+    cy: float,
+    rx: float,
+    ry: float,
+    deform: tuple[float, float, float],
+    extra: float = 0.0,
+) -> tuple[float, float]:
+    """変形後のベース輪郭上の点 (extra>0 で外向きに突き出した山頂点).
+
+    extra=0 のとき従来の `_base_position` (楕円)、extra=eff_h*h_mul のとき
+    従来の `_base_position_scaled` (楕円) と、変形 0% では完全に一致する。
+    """
+    n, p, m = deform
+    tw = _corner_squeeze_angle(t, p, m)
+    r = _corner_super_radius(tw, n)
+    return (cx + (rx + extra) * r * math.cos(tw), cy + (ry + extra) * r * math.sin(tw))
+
+
+def _corner_squeeze_height_scale(
+    t0: float, t1: float, deform: tuple[float, float, float]
+) -> float:
+    """四隅寄せで圧縮された山ほど高さを抑える倍率を返す."""
+    _n, p, m = deform
+    span = t1 - t0
+    if span <= 1.0e-12:
+        return 1.0
+    warped = abs(_corner_squeeze_angle(t1, p, m) - _corner_squeeze_angle(t0, p, m))
+    ratio = warped / span
+    if ratio >= 1.0:
+        return 1.0
+    return max(_CORNER_SQUEEZE_MIN_HEIGHT_SCALE, ratio**_CORNER_SQUEEZE_HEIGHT_POWER)
 
 _LEGACY_SHAPE_ALIASES = {
     "polygon": "rect",
@@ -132,6 +231,8 @@ def outline_for_entry(entry, rect: Rect) -> list[tuple[float, float]]:
         jitter_seed=_entry_jitter_seed(entry, sp),
         base_kind=str(getattr(sp, "dynamic_shape_base_kind", "ellipse") or "ellipse"),
         base_corner_radius_mm=_dynamic_base_radius_for_entry(sp, rect),
+        thorn_corner_square_percent=float(getattr(sp, "thorn_corner_square_percent", 0.0) or 0.0),
+        thorn_corner_squeeze_percent=float(getattr(sp, "thorn_corner_squeeze_percent", 0.0) or 0.0),
     )
 
 
@@ -167,6 +268,8 @@ def outline_with_corners_for_entry(
         jitter_seed=_entry_jitter_seed(entry, sp),
         base_kind=str(getattr(sp, "dynamic_shape_base_kind", "ellipse") or "ellipse"),
         base_corner_radius_mm=_dynamic_base_radius_for_entry(sp, rect),
+        thorn_corner_square_percent=float(getattr(sp, "thorn_corner_square_percent", 0.0) or 0.0),
+        thorn_corner_squeeze_percent=float(getattr(sp, "thorn_corner_squeeze_percent", 0.0) or 0.0),
     )
 
 
@@ -193,6 +296,8 @@ def bezier_loop_for_entry(entry, rect: Rect) -> list[BezierAnchor] | None:
         jitter_seed=_entry_jitter_seed(entry, sp),
         base_kind=str(getattr(sp, "dynamic_shape_base_kind", "ellipse") or "ellipse"),
         base_corner_radius_mm=_dynamic_base_radius_for_entry(sp, rect),
+        thorn_corner_square_percent=float(getattr(sp, "thorn_corner_square_percent", 0.0) or 0.0),
+        thorn_corner_squeeze_percent=float(getattr(sp, "thorn_corner_squeeze_percent", 0.0) or 0.0),
     )
 
 
@@ -340,6 +445,8 @@ def outline_for_shape(
     jitter_seed: int = 0,
     base_kind: str = "ellipse",
     base_corner_radius_mm: float = 0.0,
+    thorn_corner_square_percent: float = 0.0,
+    thorn_corner_squeeze_percent: float = 0.0,
 ) -> list[tuple[float, float]]:
     return outline_with_corners_for_shape(
         shape,
@@ -359,6 +466,8 @@ def outline_for_shape(
         jitter_seed=jitter_seed,
         base_kind=base_kind,
         base_corner_radius_mm=base_corner_radius_mm,
+        thorn_corner_square_percent=thorn_corner_square_percent,
+        thorn_corner_squeeze_percent=thorn_corner_squeeze_percent,
     )[0]
 
 
@@ -381,6 +490,8 @@ def outline_with_corners_for_shape(
     jitter_seed: int = 0,
     base_kind: str = "ellipse",
     base_corner_radius_mm: float = 0.0,
+    thorn_corner_square_percent: float = 0.0,
+    thorn_corner_squeeze_percent: float = 0.0,
 ) -> tuple[list[tuple[float, float]], list[int]]:
     s = normalize_shape(shape)
     opts = _DynamicOpts(
@@ -396,6 +507,8 @@ def outline_with_corners_for_shape(
         rng=random.Random(int(jitter_seed) & 0xFFFFFFFF),
         base_kind=str(base_kind or "ellipse"),
         base_corner_radius_mm=max(0.0, float(base_corner_radius_mm)),
+        corner_square=float(thorn_corner_square_percent),
+        corner_squeeze=float(thorn_corner_squeeze_percent),
     )
     resolved_corner = str(corner_type or ("rounded" if rounded_corner_enabled else "square"))
     if resolved_corner not in CORNER_TYPES:
@@ -451,6 +564,8 @@ def bezier_loop_for_shape(
     jitter_seed: int = 0,
     base_kind: str = "ellipse",
     base_corner_radius_mm: float = 0.0,
+    thorn_corner_square_percent: float = 0.0,
+    thorn_corner_squeeze_percent: float = 0.0,
 ) -> list[BezierAnchor] | None:
     s = normalize_shape(shape)
     opts = _DynamicOpts(
@@ -466,6 +581,8 @@ def bezier_loop_for_shape(
         rng=random.Random(int(jitter_seed) & 0xFFFFFFFF),
         base_kind=str(base_kind or "ellipse"),
         base_corner_radius_mm=max(0.0, float(base_corner_radius_mm)),
+        corner_square=float(thorn_corner_square_percent),
+        corner_squeeze=float(thorn_corner_squeeze_percent),
     )
     resolved_corner = str(corner_type or ("rounded" if rounded_corner_enabled else "square"))
     if resolved_corner not in CORNER_TYPES:
@@ -503,6 +620,8 @@ class _DynamicOpts:
         rng: random.Random,
         base_kind: str = "ellipse",
         base_corner_radius_mm: float = 0.0,
+        corner_square: float = 0.0,
+        corner_squeeze: float = 0.0,
     ) -> None:
         self.bump_w = bump_w
         self.bump_w_jitter = bump_w_jitter
@@ -516,6 +635,8 @@ class _DynamicOpts:
         self.rng = rng
         self.base_kind = str(base_kind or "ellipse")
         self.base_corner_radius_mm = max(0.0, float(base_corner_radius_mm))
+        self.corner_square = max(0.0, min(_CORNER_SQUARE_MAX_PERCENT, float(corner_square)))
+        self.corner_squeeze = max(0.0, min(_CORNER_SQUEEZE_MAX_PERCENT, float(corner_squeeze)))
 
 
 def unified_seed_for_entry(entry) -> int:
@@ -1345,11 +1466,14 @@ def _outline_thorn_with_corners(
         return _outline_ellipse(rect), []
     cx, cy, rx, ry, eff_h = base
     base_kind = getattr(opts, "base_kind", "ellipse")
+    deform = _corner_deform_params(opts)
     angle, segments = _thorn_bump_segments(rx, ry, opts, min_slots=6)
     if not segments:
         return _outline_ellipse(rect), []
 
     def ellipse_point(t: float) -> tuple[float, float]:
+        if deform is not None:
+            return _corner_deform_position(t, cx, cy, rx, ry, deform)
         return _base_position(
             t,
             cx,
@@ -1361,6 +1485,8 @@ def _outline_thorn_with_corners(
         )
 
     def peak_at(t: float, h_mul: float) -> tuple[float, float]:
+        if deform is not None:
+            return _corner_deform_position(t, cx, cy, rx, ry, deform, eff_h * h_mul)
         return _base_position_scaled(
             t,
             h_mul,
@@ -1376,8 +1502,13 @@ def _outline_thorn_with_corners(
     pts = [ellipse_point(angle)]
     for _is_sub, bump_angle, h_mul in segments:
         mid_angle = angle + bump_angle * 0.5
+        h_scale = (
+            _corner_squeeze_height_scale(angle, angle + bump_angle, deform)
+            if deform is not None
+            else 1.0
+        )
         angle += bump_angle
-        pts.append(peak_at(mid_angle, h_mul))
+        pts.append(peak_at(mid_angle, h_mul * h_scale))
         pts.append(ellipse_point(angle))
     # トゲは全頂点 (先端・谷) が鋭角の多角形。
     corners = list(range(len(pts)))
@@ -1450,6 +1581,7 @@ def _thorn_curve_peaks_valleys(
         return None
     cx, cy, rx, ry, eff_h = base
     base_kind = getattr(opts, "base_kind", "ellipse")
+    deform = _corner_deform_params(opts)
     angle, segments = _thorn_bump_segments(rx, ry, opts, min_slots=6)
     if not segments:
         return None
@@ -1457,6 +1589,14 @@ def _thorn_curve_peaks_valleys(
     valleys: list[tuple[float, float]] = []
     a = angle
     for _is_sub, bump_angle, h_mul in segments:
+        if deform is not None:
+            h_scale = _corner_squeeze_height_scale(a, a + bump_angle, deform)
+            valleys.append(_corner_deform_position(a, cx, cy, rx, ry, deform))
+            peaks.append(_corner_deform_position(
+                a + bump_angle * 0.5, cx, cy, rx, ry, deform, eff_h * h_mul * h_scale
+            ))
+            a += bump_angle
+            continue
         valleys.append(_base_position(
             a,
             cx,
@@ -1486,6 +1626,8 @@ def _thorn_curve_peaks_valleys(
 def _thorn_curve_cubics(
     peaks: list[tuple[float, float]],
     valleys: list[tuple[float, float]],
+    *,
+    clamp_valley_handles: bool = False,
 ) -> list[tuple[tuple[float, float], tuple[float, float], tuple[float, float], tuple[float, float]]]:
     """山/谷列から「谷→山→谷」を結ぶ 3 次ベジェ列 (閉ループ) を作る.
 
@@ -1500,12 +1642,25 @@ def _thorn_curve_cubics(
     Lv = _THORN_CURVE_VALLEY_PULL
     # D[k] = 山(k-1)→山k の弦方向単位ベクトル (= 谷k を挟む 2 山の弦)。
     chord_dirs: list[tuple[float, float]] = []
+    chord_lens: list[float] = []
     for k in range(m):
         ax, ay = peaks[(k - 1) % m]
         bx, by = peaks[k]
         dx, dy = bx - ax, by - ay
         length = math.hypot(dx, dy) or 1.0
         chord_dirs.append((dx / length, dy / length))
+        chord_lens.append(length)
+
+    def valley_handle_len(default_len: float, k: int) -> float:
+        """谷ハンドル長。四隅寄せで山が詰まったとき、隣の山を超えて伸びないよう抑える.
+
+        谷 k は山(k-1) と山 k に挟まれるので、その弦長の半分を超えるハンドルは
+        隣の山側へ食い込み、曲線が自己交差する。変形時のみ有効にして、
+        従来のトゲ曲線の形は一切変えない。
+        """
+        if not clamp_valley_handles:
+            return default_len
+        return min(default_len, chord_lens[k] * _THORN_CURVE_VALLEY_HANDLE_CHORD_LIMIT)
     cubics: list[tuple[tuple[float, float], tuple[float, float], tuple[float, float], tuple[float, float]]] = []
     for k in range(m):
         vk = valleys[k]
@@ -1517,7 +1672,8 @@ def _thorn_curve_cubics(
         ux, uy = pk[0] - vk[0], pk[1] - vk[1]
         cl = math.hypot(ux, uy) or 1.0
         ux, uy = ux / cl, uy / cl
-        c1 = (vk[0] + dk[0] * cl * Lv, vk[1] + dk[1] * cl * Lv)
+        hv = valley_handle_len(cl * Lv, k)
+        c1 = (vk[0] + dk[0] * hv, vk[1] + dk[1] * hv)
         c2 = (pk[0] - ux * cl * Lp, pk[1] - uy * cl * Lp)
         cubics.append((vk, c1, c2, pk))
         # 下り: 山k → 谷k+1
@@ -1525,7 +1681,8 @@ def _thorn_curve_cubics(
         cl2 = math.hypot(wx, wy) or 1.0
         wx, wy = wx / cl2, wy / cl2
         c3 = (pk[0] + wx * cl2 * Lp, pk[1] + wy * cl2 * Lp)
-        c4 = (vk1[0] - dk1[0] * cl2 * Lv, vk1[1] - dk1[1] * cl2 * Lv)
+        hv1 = valley_handle_len(cl2 * Lv, (k + 1) % m)
+        c4 = (vk1[0] - dk1[0] * hv1, vk1[1] - dk1[1] * hv1)
         cubics.append((pk, c3, c4, vk1))
     return cubics
 
@@ -1541,7 +1698,9 @@ def _outline_thorn_curve_with_corners(
     if geo is None:
         return _outline_ellipse(rect), []
     cx, cy, peaks, valleys = geo
-    cubics = _thorn_curve_cubics(peaks, valleys)
+    cubics = _thorn_curve_cubics(
+        peaks, valleys, clamp_valley_handles=_corner_deform_params(opts) is not None
+    )
     pts = [cubics[0][0]]  # 谷0 から開始
     corners: list[int] = []
     for idx, (p0, c1, c2, p1) in enumerate(cubics):
@@ -1558,7 +1717,9 @@ def _bezier_thorn_curve(rect: Rect, opts: _DynamicOpts) -> list[BezierAnchor] | 
         return _bezier_ellipse(rect)
     cx, cy, peaks, valleys = geo
     # 谷→山→谷 を結ぶ cubic 列 (長さ 2m)。各 cubic 始点がアンカー。
-    cubics = _thorn_curve_cubics(peaks, valleys)
+    cubics = _thorn_curve_cubics(
+        peaks, valleys, clamp_valley_handles=_corner_deform_params(opts) is not None
+    )
     n = len(cubics)
     anchors: list[BezierAnchor] = []
     for i in range(n):
