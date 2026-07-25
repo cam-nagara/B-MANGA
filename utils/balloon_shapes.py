@@ -39,6 +39,15 @@ _CLOUD_VALLEY_TILT_DEG = 35.0
 # _THORN_CURVE_VALLEY_PULL: 谷ハンドル長 / 側面弦長 = 側面のふくらみ量。大きいほど弧が膨らむ。
 _THORN_CURVE_PEAK_PULL = 0.05
 _THORN_CURVE_VALLEY_PULL = 0.38
+# 側面のふくらみ (%) の既定値。UI は % 表記、内部はこの比率。
+_THORN_CURVE_VALLEY_PULL_DEFAULT_PERCENT = _THORN_CURVE_VALLEY_PULL * 100.0
+
+# 雲のこぶのふくらみ: こぶの 3 次ベジェのハンドルへ弦方向の成分を足す量
+# (弦長に対する比率)。正でこぶが横に太って丸くなり、負で尖る。
+# 3 次ベジェの中点高さは弦方向成分に依存しないため、**こぶの高さ (山の高さ) は
+# ふくらみを変えても変わらない**。
+# +0.30 を超えると隣のこぶ同士が食い込み始めるので UI のスライダー域はそこまで。
+_CLOUD_BUMP_BULGE_SOFT_MAX = 30.0
 # 四隅寄せで山が詰まったときの谷ハンドル長の上限 (谷を挟む 2 山の弦長に対する割合)。
 # これを超えると隣の山側へハンドルが食い込み、曲線が自己交差する。
 _THORN_CURVE_VALLEY_HANDLE_CHORD_LIMIT = 0.5
@@ -206,6 +215,21 @@ def corner_type_for_entry(entry) -> str:
     return "rounded" if bool(getattr(entry, "rounded_corner_enabled", False)) else "square"
 
 
+def _entry_thorn_curve_bulge_percent(shape_params) -> float:
+    """トゲ(曲線)の側面のふくらみ (%) を取り出す.
+
+    プロパティを持たない古いデータ／効果線のパラメータ群では、
+    従来の見た目を保つため既定値 (38%) を返す。
+    """
+    value = getattr(shape_params, "thorn_curve_bulge_percent", None)
+    if value is None:
+        return _THORN_CURVE_VALLEY_PULL_DEFAULT_PERCENT
+    try:
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        return _THORN_CURVE_VALLEY_PULL_DEFAULT_PERCENT
+
+
 def outline_for_entry(entry, rect: Rect) -> list[tuple[float, float]]:
     sp = getattr(entry, "shape_params", None)
     shape = normalize_shape(getattr(entry, "shape", "rect"))
@@ -233,6 +257,8 @@ def outline_for_entry(entry, rect: Rect) -> list[tuple[float, float]]:
         base_corner_radius_mm=_dynamic_base_radius_for_entry(sp, rect),
         thorn_corner_square_percent=float(getattr(sp, "thorn_corner_square_percent", 0.0) or 0.0),
         thorn_corner_squeeze_percent=float(getattr(sp, "thorn_corner_squeeze_percent", 0.0) or 0.0),
+        thorn_curve_bulge_percent=_entry_thorn_curve_bulge_percent(sp),
+        cloud_bump_bulge_percent=float(getattr(sp, "cloud_bump_bulge_percent", 0.0) or 0.0),
     )
 
 
@@ -270,6 +296,8 @@ def outline_with_corners_for_entry(
         base_corner_radius_mm=_dynamic_base_radius_for_entry(sp, rect),
         thorn_corner_square_percent=float(getattr(sp, "thorn_corner_square_percent", 0.0) or 0.0),
         thorn_corner_squeeze_percent=float(getattr(sp, "thorn_corner_squeeze_percent", 0.0) or 0.0),
+        thorn_curve_bulge_percent=_entry_thorn_curve_bulge_percent(sp),
+        cloud_bump_bulge_percent=float(getattr(sp, "cloud_bump_bulge_percent", 0.0) or 0.0),
     )
 
 
@@ -298,6 +326,8 @@ def bezier_loop_for_entry(entry, rect: Rect) -> list[BezierAnchor] | None:
         base_corner_radius_mm=_dynamic_base_radius_for_entry(sp, rect),
         thorn_corner_square_percent=float(getattr(sp, "thorn_corner_square_percent", 0.0) or 0.0),
         thorn_corner_squeeze_percent=float(getattr(sp, "thorn_corner_squeeze_percent", 0.0) or 0.0),
+        thorn_curve_bulge_percent=_entry_thorn_curve_bulge_percent(sp),
+        cloud_bump_bulge_percent=float(getattr(sp, "cloud_bump_bulge_percent", 0.0) or 0.0),
     )
 
 
@@ -352,6 +382,7 @@ def bezier_line_loops_for_entry(
         rng=random.Random(_entry_jitter_seed(entry, sp)),
         base_kind=str(getattr(sp, "dynamic_shape_base_kind", "ellipse") or "ellipse"),
         base_corner_radius_mm=_dynamic_base_radius_for_entry(sp, rect),
+        cloud_bulge=float(getattr(sp, "cloud_bump_bulge_percent", 0.0) or 0.0),
     )
     return _bezier_cloud_line_loops(rect, opts, float(half_width_mm), body_radii)
 
@@ -447,6 +478,8 @@ def outline_for_shape(
     base_corner_radius_mm: float = 0.0,
     thorn_corner_square_percent: float = 0.0,
     thorn_corner_squeeze_percent: float = 0.0,
+    thorn_curve_bulge_percent: float = _THORN_CURVE_VALLEY_PULL_DEFAULT_PERCENT,
+    cloud_bump_bulge_percent: float = 0.0,
 ) -> list[tuple[float, float]]:
     return outline_with_corners_for_shape(
         shape,
@@ -468,6 +501,8 @@ def outline_for_shape(
         base_corner_radius_mm=base_corner_radius_mm,
         thorn_corner_square_percent=thorn_corner_square_percent,
         thorn_corner_squeeze_percent=thorn_corner_squeeze_percent,
+        thorn_curve_bulge_percent=thorn_curve_bulge_percent,
+        cloud_bump_bulge_percent=cloud_bump_bulge_percent,
     )[0]
 
 
@@ -492,6 +527,8 @@ def outline_with_corners_for_shape(
     base_corner_radius_mm: float = 0.0,
     thorn_corner_square_percent: float = 0.0,
     thorn_corner_squeeze_percent: float = 0.0,
+    thorn_curve_bulge_percent: float = _THORN_CURVE_VALLEY_PULL_DEFAULT_PERCENT,
+    cloud_bump_bulge_percent: float = 0.0,
 ) -> tuple[list[tuple[float, float]], list[int]]:
     s = normalize_shape(shape)
     opts = _DynamicOpts(
@@ -509,6 +546,8 @@ def outline_with_corners_for_shape(
         base_corner_radius_mm=max(0.0, float(base_corner_radius_mm)),
         corner_square=float(thorn_corner_square_percent),
         corner_squeeze=float(thorn_corner_squeeze_percent),
+        curve_bulge=float(thorn_curve_bulge_percent),
+        cloud_bulge=float(cloud_bump_bulge_percent),
     )
     resolved_corner = str(corner_type or ("rounded" if rounded_corner_enabled else "square"))
     if resolved_corner not in CORNER_TYPES:
@@ -566,6 +605,8 @@ def bezier_loop_for_shape(
     base_corner_radius_mm: float = 0.0,
     thorn_corner_square_percent: float = 0.0,
     thorn_corner_squeeze_percent: float = 0.0,
+    thorn_curve_bulge_percent: float = _THORN_CURVE_VALLEY_PULL_DEFAULT_PERCENT,
+    cloud_bump_bulge_percent: float = 0.0,
 ) -> list[BezierAnchor] | None:
     s = normalize_shape(shape)
     opts = _DynamicOpts(
@@ -583,6 +624,8 @@ def bezier_loop_for_shape(
         base_corner_radius_mm=max(0.0, float(base_corner_radius_mm)),
         corner_square=float(thorn_corner_square_percent),
         corner_squeeze=float(thorn_corner_squeeze_percent),
+        curve_bulge=float(thorn_curve_bulge_percent),
+        cloud_bulge=float(cloud_bump_bulge_percent),
     )
     resolved_corner = str(corner_type or ("rounded" if rounded_corner_enabled else "square"))
     if resolved_corner not in CORNER_TYPES:
@@ -622,6 +665,8 @@ class _DynamicOpts:
         base_corner_radius_mm: float = 0.0,
         corner_square: float = 0.0,
         corner_squeeze: float = 0.0,
+        curve_bulge: float = _THORN_CURVE_VALLEY_PULL_DEFAULT_PERCENT,
+        cloud_bulge: float = 0.0,
     ) -> None:
         self.bump_w = bump_w
         self.bump_w_jitter = bump_w_jitter
@@ -637,6 +682,9 @@ class _DynamicOpts:
         self.base_corner_radius_mm = max(0.0, float(base_corner_radius_mm))
         self.corner_square = max(0.0, min(_CORNER_SQUARE_MAX_PERCENT, float(corner_square)))
         self.corner_squeeze = max(0.0, min(_CORNER_SQUEEZE_MAX_PERCENT, float(corner_squeeze)))
+        # UI は % 表記、内部はベジェのハンドル比率へ戻す
+        self.curve_bulge = max(0.0, float(curve_bulge)) / 100.0
+        self.cloud_bulge = float(cloud_bulge) / 100.0
 
 
 def unified_seed_for_entry(entry) -> int:
@@ -1205,7 +1253,14 @@ def _outline_cloud_with_corners(
         m_len = (4.0 / 3.0) * eff_h * h_mul
         off_x = m_len * perp_x
         off_y = m_len * perp_y
-        pts.extend(_sample_cubic(v_start, (v_start[0] + off_x, v_start[1] + off_y), (v_end[0] + off_x, v_end[1] + off_y), v_end))
+        # ふくらみ: ハンドルを弦方向へ開く (正でこぶが太る)。
+        # 中点高さは弦方向成分に依存しないので、こぶの高さは変わらない。
+        bulge = getattr(opts, "cloud_bulge", 0.0) * chord_len
+        ux = chord_x / chord_len
+        uy = chord_y / chord_len
+        c1 = (v_start[0] + off_x - ux * bulge, v_start[1] + off_y - uy * bulge)
+        c2 = (v_end[0] + off_x + ux * bulge, v_end[1] + off_y + uy * bulge)
+        pts.extend(_sample_cubic(v_start, c1, c2, v_end))
     return _local_to_rect(rect, pts), corners
 
 
@@ -1252,8 +1307,12 @@ def _bezier_cloud(rect: Rect, opts: _DynamicOpts) -> list[BezierAnchor] | None:
             perp_x = -perp_x
             perp_y = -perp_y
         m_len = (4.0 / 3.0) * eff_h * h_mul
-        c1 = (v_start[0] + m_len * perp_x, v_start[1] + m_len * perp_y)
-        c2 = (v_end[0] + m_len * perp_x, v_end[1] + m_len * perp_y)
+        # ふくらみ: `_outline_cloud_with_corners` と同一式 (本体形状を一致させる)
+        bulge = getattr(opts, "cloud_bulge", 0.0) * chord_len
+        ux = chord_x / chord_len
+        uy = chord_y / chord_len
+        c1 = (v_start[0] + m_len * perp_x - ux * bulge, v_start[1] + m_len * perp_y - uy * bulge)
+        c2 = (v_end[0] + m_len * perp_x + ux * bulge, v_end[1] + m_len * perp_y + uy * bulge)
         cubics.append((v_start, c1, c2))
     if len(cubics) < 3:
         return _bezier_ellipse(rect)
@@ -1379,12 +1438,12 @@ def _bezier_cloud_line_loops(
         outer_bumps.append({
             "vs": vs_outer, "ve": ve_outer, "apex": apex_outer,
             "r_s": r_s, "r_e": r_e, "t_s": t_s, "t_e": t_e,
-            "chord_u": (chord_ux, chord_uy),
+            "chord_u": (chord_ux, chord_uy), "chord_len": chord_len,
         })
         inner_bumps.append({
             "vs": vs_inner, "ve": ve_inner, "apex": apex_inner,
             "r_s": r_s, "r_e": r_e, "t_s": t_s, "t_e": t_e,
-            "chord_u": (chord_ux, chord_uy),
+            "chord_u": (chord_ux, chord_uy), "chord_len": chord_len,
         })
 
     if len(outer_bumps) < 3 or len(inner_bumps) != len(outer_bumps):
@@ -1396,6 +1455,7 @@ def _bezier_cloud_line_loops(
         # に丸める。隣接 cubic が接線方向に互いに逆向きを使うことで、谷 anchor の
         # 左右 handle は anti-parallel (aligned) になり 180° 滑らかになる。
         # 結果: 谷は本体より僅かに外側へ膨らむが、メッシュバンドの厚みは一定。
+        cloud_bulge = getattr(opts, "cloud_bulge", 0.0)
         tilt = math.radians(_CLOUD_VALLEY_TILT_DEG)
         cos_t = math.cos(tilt)
         sin_t = math.sin(tilt)
@@ -1411,7 +1471,13 @@ def _bezier_cloud_line_loops(
                 bump["r_s"][0] * cos_t + bump["t_s"][0] * sin_t,
                 bump["r_s"][1] * cos_t + bump["t_s"][1] * sin_t,
             )
-            bump["c1_A"] = (bump["vs"][0] + dir_vs[0] * L_va, bump["vs"][1] + dir_vs[1] * L_va)
+            # 本体こぶと同じ「弦方向のひらき」を谷側ハンドルへ足し、
+            # 主線が本体のふくらみに追従するようにする。
+            bulge = cloud_bulge * bump["chord_len"]
+            bump["c1_A"] = (
+                bump["vs"][0] + dir_vs[0] * L_va - bump["chord_u"][0] * bulge,
+                bump["vs"][1] + dir_vs[1] * L_va - bump["chord_u"][1] * bulge,
+            )
             # c2 は山頂から chord 逆方向 (= 前の谷側) へ L_va 戻す
             bump["c2_A"] = (bump["apex"][0] - bump["chord_u"][0] * L_va, bump["apex"][1] - bump["chord_u"][1] * L_va)
             # Cubic B: apex → ve
@@ -1423,7 +1489,10 @@ def _bezier_cloud_line_loops(
                 bump["r_e"][0] * cos_t - bump["t_e"][0] * sin_t,
                 bump["r_e"][1] * cos_t - bump["t_e"][1] * sin_t,
             )
-            bump["c2_B"] = (bump["ve"][0] + dir_ve[0] * L_ab, bump["ve"][1] + dir_ve[1] * L_ab)
+            bump["c2_B"] = (
+                bump["ve"][0] + dir_ve[0] * L_ab + bump["chord_u"][0] * bulge,
+                bump["ve"][1] + dir_ve[1] * L_ab + bump["chord_u"][1] * bulge,
+            )
         anchors: list[BezierAnchor] = []
         for i in range(n):
             bump = bumps[i]
@@ -1628,6 +1697,7 @@ def _thorn_curve_cubics(
     valleys: list[tuple[float, float]],
     *,
     clamp_valley_handles: bool = False,
+    valley_pull: float | None = None,
 ) -> list[tuple[tuple[float, float], tuple[float, float], tuple[float, float], tuple[float, float]]]:
     """山/谷列から「谷→山→谷」を結ぶ 3 次ベジェ列 (閉ループ) を作る.
 
@@ -1639,7 +1709,7 @@ def _thorn_curve_cubics(
     """
     m = len(peaks)
     Lp = _THORN_CURVE_PEAK_PULL
-    Lv = _THORN_CURVE_VALLEY_PULL
+    Lv = _THORN_CURVE_VALLEY_PULL if valley_pull is None else max(0.0, float(valley_pull))
     # D[k] = 山(k-1)→山k の弦方向単位ベクトル (= 谷k を挟む 2 山の弦)。
     chord_dirs: list[tuple[float, float]] = []
     chord_lens: list[float] = []
@@ -1699,7 +1769,10 @@ def _outline_thorn_curve_with_corners(
         return _outline_ellipse(rect), []
     cx, cy, peaks, valleys = geo
     cubics = _thorn_curve_cubics(
-        peaks, valleys, clamp_valley_handles=_corner_deform_params(opts) is not None
+        peaks,
+        valleys,
+        clamp_valley_handles=_corner_deform_params(opts) is not None,
+        valley_pull=getattr(opts, "curve_bulge", None),
     )
     pts = [cubics[0][0]]  # 谷0 から開始
     corners: list[int] = []
@@ -1718,7 +1791,10 @@ def _bezier_thorn_curve(rect: Rect, opts: _DynamicOpts) -> list[BezierAnchor] | 
     cx, cy, peaks, valleys = geo
     # 谷→山→谷 を結ぶ cubic 列 (長さ 2m)。各 cubic 始点がアンカー。
     cubics = _thorn_curve_cubics(
-        peaks, valleys, clamp_valley_handles=_corner_deform_params(opts) is not None
+        peaks,
+        valleys,
+        clamp_valley_handles=_corner_deform_params(opts) is not None,
+        valley_pull=getattr(opts, "curve_bulge", None),
     )
     n = len(cubics)
     anchors: list[BezierAnchor] = []

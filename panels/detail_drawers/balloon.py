@@ -105,6 +105,11 @@ def _draw_dynamic_shape(layout, params, shape: str) -> None:
         radius.enabled = bool(value(params, "dynamic_base_rounded_corner_enabled", False))
         _draw_corner_radius(radius, params, "dynamic_base_rounded_corner")
     _draw_shape_jitter_fields(box, params)
+    # カーブのふくらみ（形状ごとに効くものだけ出す）
+    if shape == "thorn-curve":
+        prop_if(box, params, "thorn_curve_bulge_percent", text="側面のふくらみ")
+    elif shape == "cloud":
+        prop_if(box, params, "cloud_bump_bulge_percent", text="こぶのふくらみ")
     if shape in {"thorn", "thorn-curve"}:
         # 四隅変形はベースが楕円のときだけ効く（矩形ベースでは角度と周長が対応しない）
         corner = box.column(align=True)

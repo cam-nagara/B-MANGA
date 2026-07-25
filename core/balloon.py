@@ -675,6 +675,34 @@ class BMangaBalloonShapeParams(bpy.types.PropertyGroup):
     dynamic_base_rounded_corner_radius_unit: EnumProperty(name="単位", description="角の半径を mm と % のどちらで指定するか", items=corner_radius.RADIUS_UNIT_ITEMS, default="mm", update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     dynamic_base_rounded_corner_radius_percent: FloatProperty(name="ベース角半径 (%)", description="ベース形状の角を丸める半径を、辺の長さに対する割合で指定", default=30.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
 
+    # カーブのふくらみ
+    thorn_curve_bulge_percent: FloatProperty(  # type: ignore[valid-type]
+        name="側面のふくらみ (%)",
+        description=(
+            "トゲ（曲線）の、谷から山へ向かう側面をどれだけ外へ膨らませるか。"
+            "0% で直線（トゲ直線と同じ側面）になり、上げるほど弧が膨らむ"
+        ),
+        default=38.0,
+        min=0.0,
+        max=100.0,
+        subtype="PERCENTAGE",
+        update=_on_balloon_shape_params_changed,
+    )
+    cloud_bump_bulge_percent: FloatProperty(  # type: ignore[valid-type]
+        name="こぶのふくらみ (%)",
+        description=(
+            "雲のこぶを横に太らせて丸くする量。マイナスでこぶが尖る。"
+            "こぶの高さ（山の高さ）は変わらない。+30% を超えると隣のこぶ同士が食い込む"
+        ),
+        default=0.0,
+        min=-30.0,
+        max=50.0,
+        soft_min=-20.0,
+        soft_max=30.0,
+        subtype="PERCENTAGE",
+        update=_on_balloon_shape_params_changed,
+    )
+
     # トゲの四隅変形 (ベース形状が楕円のときだけ有効)
     thorn_corner_square_percent: FloatProperty(  # type: ignore[valid-type]
         name="角ばり (%)",

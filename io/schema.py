@@ -1535,6 +1535,12 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
                 float(getattr(entry.shape_params, "dynamic_base_rounded_corner_radius_percent", 0.0) or 0.0),
                 3,
             ),
+            "thornCurveBulgePercent": round(
+                float(getattr(entry.shape_params, "thorn_curve_bulge_percent", 38.0) or 0.0), 3
+            ),
+            "cloudBumpBulgePercent": round(
+                float(getattr(entry.shape_params, "cloud_bump_bulge_percent", 0.0) or 0.0), 3
+            ),
             "thornCornerSquarePercent": round(
                 float(getattr(entry.shape_params, "thorn_corner_square_percent", 0.0) or 0.0), 3
             ),
@@ -1827,6 +1833,12 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     )
     entry.shape_params.cloud_sub_height_ratio = float(
         sp.get("cloudSubHeightRatio", sp.get("cloudSubBumpRatio", 50.0))
+    )
+    entry.shape_params.thorn_curve_bulge_percent = max(
+        0.0, min(100.0, float(sp.get("thornCurveBulgePercent", 38.0) or 0.0))
+    )
+    entry.shape_params.cloud_bump_bulge_percent = max(
+        -30.0, min(50.0, float(sp.get("cloudBumpBulgePercent", 0.0) or 0.0))
     )
     entry.shape_params.thorn_corner_square_percent = max(
         0.0, min(200.0, float(sp.get("thornCornerSquarePercent", 0.0) or 0.0))

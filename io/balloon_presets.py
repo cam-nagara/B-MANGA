@@ -183,6 +183,8 @@ BALLOON_SHAPE_PARAM_KEYS = (
     "dynamic_base_rounded_corner_radius_mm",
     "dynamic_base_rounded_corner_radius_unit",
     "dynamic_base_rounded_corner_radius_percent",
+    "thorn_curve_bulge_percent",
+    "cloud_bump_bulge_percent",
     "thorn_corner_square_percent",
     "thorn_corner_squeeze_percent",
 )

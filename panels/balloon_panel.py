@@ -279,6 +279,12 @@ class BMANGA_PT_balloons(Panel):
             row = box.row(align=True)
             row.prop(sp, "cloud_sub_height_ratio")
             row.prop(sp, "cloud_sub_height_jitter", text="乱れ")
+            # カーブのふくらみ（形状ごとに効くものだけ出す）
+            _shape_norm_for_bulge = balloon_shapes.normalize_shape(str(entry.shape or ""))
+            if _shape_norm_for_bulge == "thorn-curve":
+                box.prop(sp, "thorn_curve_bulge_percent")
+            elif _shape_norm_for_bulge == "cloud":
+                box.prop(sp, "cloud_bump_bulge_percent")
             # 「角を尖らせる」は形状パラメータの一番下に置く。
             # 雲・もやもやでは効かない確定仕様のためトゲ系でだけ表示する。
             if balloon_shapes.normalize_shape(str(entry.shape or "")) in {"thorn", "thorn-curve"}:

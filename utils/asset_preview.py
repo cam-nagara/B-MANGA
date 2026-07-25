@@ -840,6 +840,12 @@ def _draw_preview_balloon(
                 )
                 else 0.0
             ),
+            thorn_curve_bulge_percent=float(
+                params.get("thorn_curve_bulge_percent", 38.0) or 0.0
+            ),
+            cloud_bump_bulge_percent=float(
+                params.get("cloud_bump_bulge_percent", 0.0) or 0.0
+            ),
             thorn_corner_square_percent=float(
                 params.get("thorn_corner_square_percent", 0.0) or 0.0
             ),

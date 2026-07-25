@@ -442,6 +442,8 @@ def _shape_params_signature(sp) -> tuple:
         _round_float(getattr(sp, "dynamic_base_rounded_corner_radius_mm", 0.0)),
         str(getattr(sp, "dynamic_base_rounded_corner_radius_unit", "") or ""),
         _round_float(getattr(sp, "dynamic_base_rounded_corner_radius_percent", 0.0)),
+        _round_float(getattr(sp, "thorn_curve_bulge_percent", 38.0)),
+        _round_float(getattr(sp, "cloud_bump_bulge_percent", 0.0)),
         _round_float(getattr(sp, "thorn_corner_square_percent", 0.0)),
         _round_float(getattr(sp, "thorn_corner_squeeze_percent", 0.0)),
         int(getattr(sp, "cloud_wave_count", 0) or 0),
