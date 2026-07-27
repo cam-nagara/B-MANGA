@@ -769,6 +769,7 @@ def _process_assets(context, page, entries: list) -> tuple[int, set[str]]:
                 drop_local_xy_mm=(float(drop[0]), float(drop[1])),
                 defer_to_page_file=False,
                 stage_id=stage_id,
+                target_page=page,
             )
         except Exception:  # noqa: BLE001
             _logger.exception("staged asset creation failed: %s", stage_id)

@@ -191,12 +191,13 @@ def instantiate_payload(
     drop_local_xy_mm: tuple[float, float] | None = None,
     defer_to_page_file: bool = True,
     stage_id: str = "",
+    target_page=None,
 ) -> dict:
     work = get_work(context)
-    page = get_active_page(context)
+    page = target_page or get_active_page(context)
     if work is None or not getattr(work, "loaded", False) or page is None:
         raise RuntimeError("ページ一覧を開いてください")
-    page_index = int(getattr(work, "active_page_index", -1))
+    page_index = list(work.pages).index(page)
     page_offset = page_grid.page_total_offset_mm(work, context.scene, page_index)
     if drop_local_xy_mm is not None:
         drop_local = (float(drop_local_xy_mm[0]), float(drop_local_xy_mm[1]))

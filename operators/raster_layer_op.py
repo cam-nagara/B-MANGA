@@ -393,6 +393,10 @@ def _build_raster_material_nodes(mat, mask_info=None) -> dict[str, object]:
     links.new(mix.outputs["Shader"], out.inputs["Surface"])
     nodes.active = tex
     mat[RASTER_MATERIAL_VERSION_PROP] = RASTER_MATERIAL_VERSION
+    if mask_info is not None:
+        mat["bmanga_raster_mask_name"] = str(getattr(mask_info, "name", "") or "")
+    elif "bmanga_raster_mask_name" in mat:
+        del mat["bmanga_raster_mask_name"]
     return {
         "tex": tex,
         "color_mix": color_mix,
@@ -406,10 +410,14 @@ def _has_mask_nodes(tree) -> bool:
 
 
 def _ensure_raster_material_nodes(mat, mask_info=None) -> dict[str, object]:
-    if mask_info is not None:
+    wanted_mask = str(getattr(mask_info, "name", "") or "")
+    saved_mask = str(mat.get("bmanga_raster_mask_name", "") or "")
+    if mask_info is not None and (
+        not _has_mask_nodes(mat.node_tree) or saved_mask != wanted_mask
+    ):
         return _build_raster_material_nodes(mat, mask_info=mask_info)
     tree = mat.node_tree
-    if _has_mask_nodes(tree):
+    if mask_info is None and _has_mask_nodes(tree):
         return _build_raster_material_nodes(mat)
     try:
         version = int(mat.get(RASTER_MATERIAL_VERSION_PROP, 0))
@@ -550,7 +558,19 @@ def sync_raster_runtime_display(context, entry) -> None:
         obj.hide_render = not visible
     image = ensure_raster_image(context, entry, create_missing=False)
     if obj is not None and image is not None:
-        mat = ensure_raster_material(entry, image)
+        mask_info = None
+        try:
+            from ..utils import coma_content_mask
+
+            mask_info = coma_content_mask.ensure_viewport_mask_for_entry(
+                context.scene,
+                get_work(context),
+                None,
+                entry,
+            )
+        except Exception:  # noqa: BLE001
+            _logger.exception("raster runtime mask refresh failed")
+        mat = ensure_raster_material(entry, image, mask_info=mask_info)
         _assign_raster_material(obj, mat)
     layer_stack_utils.tag_view3d_redraw(context)
 
@@ -772,6 +792,12 @@ def mark_raster_dirty(entry) -> None:
         entry["bmanga_raster_dirty"] = True
     except Exception:  # noqa: BLE001
         pass
+    try:
+        from ..utils import preview_composite
+
+        preview_composite.mark_entry_dirty("raster", entry)
+    except Exception:  # noqa: BLE001
+        _logger.exception("raster composite dirty notification failed")
 
 
 def translate_raster_layer_pixels(context, entry, dx_mm: float, dy_mm: float) -> bool:
@@ -1221,6 +1247,12 @@ class BMANGA_OT_raster_layer_paint_enter(Operator):
         image = ensure_raster_image(context, entry)
         if obj is None or image is None:
             return {"CANCELLED"}
+        try:
+            # 2D合成中は通常表示の実体を隠している。Texture Paintへ入る
+            # 瞬間だけ先に戻さないと、Blenderがhidden objectのmode切替を拒否する。
+            obj.hide_set(False)
+        except (ReferenceError, RuntimeError):
+            pass
         for selected in tuple(getattr(context, "selected_objects", []) or []):
             if selected is not obj:
                 selected.select_set(False)
@@ -1278,6 +1310,9 @@ class BMANGA_OT_raster_layer_paint_exit(Operator):
             entry, _idx = active_raster_entry(context)
         if entry is not None:
             try:
+                image = ensure_raster_image(context, entry, create_missing=False)
+                if image is not None and bool(getattr(image, "is_dirty", False)):
+                    mark_raster_dirty(entry)
                 save_raster_png(context, entry, force=True)
             except Exception as exc:  # noqa: BLE001
                 # 保存失敗を握り潰すと描画が無言で消える。必ず通知しつつ、
@@ -1319,7 +1354,11 @@ class BMANGA_OT_raster_layer_mode_set(Operator):
             try:
                 from . import coma_modal_state as _cms
 
-                _cms.activate_object_tool(context)
+                result = bpy.ops.bmanga.raster_layer_paint_exit("EXEC_DEFAULT")
+                if "FINISHED" not in result:
+                    return {"CANCELLED"}
+                if not bpy.app.background:
+                    _cms.activate_object_tool(context)
             except Exception as exc:  # noqa: BLE001
                 self.report({"WARNING"}, f"オブジェクトツールへ切り替えられません: {exc}")
                 return {"CANCELLED"}

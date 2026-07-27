@@ -111,7 +111,7 @@ def draw_composite_for_page(
             width_mm,
             height_mm,
             1.0,
-            z_m=float(frame.active_z) - SANDWICH_Z_GAP_M,
+            z_m=float(frame.active_z_min) - SANDWICH_Z_GAP_M,
             depth_test="LESS_EQUAL",
         )
         if frame.active_image is not None:
@@ -133,7 +133,7 @@ def draw_composite_for_page(
             width_mm,
             height_mm,
             1.0,
-            z_m=float(frame.active_z) + SANDWICH_Z_GAP_M,
+            z_m=float(frame.active_z_max) + SANDWICH_Z_GAP_M,
             depth_test="LESS_EQUAL",
         )
     elif frame.full_image is not None:

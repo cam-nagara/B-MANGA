@@ -6,10 +6,11 @@ from dataclasses import dataclass
 
 import bpy
 
-from ..utils import layer_object_sync, object_naming as on
+from ..utils import layer_object_sync, log, object_naming as on
 from ..utils.geom import mm_to_m
 
 
+_logger = log.get_logger(__name__)
 _COMA_OWNER_PROPS = (
     "bmanga_coma_plane_owner_id",
     "bmanga_coma_mask_owner_id",
@@ -226,8 +227,10 @@ class ObjectMoveTransaction:
 
     def _restore_objects(self) -> None:
         for state in self._objects:
-            if state.obj is not None:
+            try:
                 state.obj.matrix_world = state.matrix_world
+            except (ReferenceError, RuntimeError, AttributeError):
+                pass
 
     def finish(self, context) -> bool:
         if self._closed:
@@ -238,6 +241,13 @@ class ObjectMoveTransaction:
         try:
             if changed:
                 self._owner._apply_snapshots(context, dx_mm, dy_mm)
+        except Exception:
+            try:
+                self._owner._apply_snapshots(context, 0.0, 0.0)
+            except Exception:  # noqa: BLE001
+                _logger.exception("object drag snapshot rollback failed")
+            changed = False
+            raise
         finally:
             self._closed = True
             layer_object_sync.end_sync_suppression()
@@ -342,8 +352,10 @@ class DragTransaction:
 
     def _restore_objects(self) -> None:
         for state in self._objects:
-            if state.obj is not None:
+            try:
                 state.obj.matrix_world = state.matrix_world
+            except (ReferenceError, RuntimeError, AttributeError):
+                pass
 
     def commit(self, context) -> bool:
         if self._closed:
@@ -356,6 +368,13 @@ class DragTransaction:
                 (dx_mm or dy_mm)
                 and self._owner._apply_delta(context, dx_mm, dy_mm)
             )
+        except Exception:
+            try:
+                self._owner._restore_snapshots(context)
+            except Exception:  # noqa: BLE001
+                _logger.exception("layer drag snapshot rollback failed")
+            changed = False
+            raise
         finally:
             self._closed = True
             layer_object_sync.end_sync_suppression()

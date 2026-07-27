@@ -45,6 +45,7 @@ def _add_children(context, page, parent_key: str):
         balloon_curve_object,
         fill_real_object,
         image_path_object,
+        layer_object_sync,
     )
 
     work = context.scene.bmanga_work
@@ -55,6 +56,11 @@ def _add_children(context, page, parent_key: str):
     from bmanga_transfer_group_test.utils import layer_stack
 
     layer_stack.sync_layer_stack_after_data_change(context)
+    layer_object_sync.mirror_work_to_outliner(
+        context.scene,
+        work,
+        allow_object_writeback=False,
+    )
 
     balloon = page.balloons.add()
     balloon.id = "balloon_transfer"
@@ -130,10 +136,6 @@ def _add_children(context, page, parent_key: str):
         entry.parent_kind = "coma"
         entry.parent_key = parent_key
         entry.folder_key = folder.id
-    image_path_object.remove_image_path_object(path.id)
-    path.parent_kind = "coma"
-    path.parent_key = parent_key
-    path.folder_key = folder.id
     return folder, balloon, text, fill, path
 
 
@@ -221,6 +223,75 @@ def main() -> None:
         assert text.parent_balloon_id == balloon.id
         assert balloon.parent_key == parent_key
 
+        # 移動元blend保存後・移動先ready化前の強制終了を模擬する。例外処理を
+        # 通らなくても、次回起動用ジャーナルからファイルとprepared stageを戻す。
+        text_index, _text_item = _stack_item(context, "text", text.id)
+        layer_stack.clear_all_selection(context)
+        layer_stack.select_stack_index(context, text_index)
+        source_blend_path = Path(work.work_dir) / source.id / "page.blend"
+        original_mark_ready = layer_transfer_group.cross_page_stage.mark_asset_bundle_ready
+
+        def simulate_process_exit(*_args, **_kwargs):
+            raise SystemExit("forced transfer process exit")
+
+        layer_transfer_group.cross_page_stage.mark_asset_bundle_ready = simulate_process_exit
+        try:
+            try:
+                layer_transfer_group.transfer_group_to_page(
+                    context,
+                    click_target,
+                    drop_world_xy_mm=drop,
+                )
+                raise AssertionError("forced process exit was not propagated")
+            except SystemExit as exc:
+                assert "forced transfer process exit" in str(exc)
+        finally:
+            layer_transfer_group.cross_page_stage.mark_asset_bundle_ready = original_mark_ready
+        recovery_root = Path(work.work_dir) / source.id / "_transfer_recovery"
+        assert any(recovery_root.glob("*/transaction.json"))
+        restored_paths = layer_transfer_group.recover_interrupted_transfers(
+            Path(work.work_dir)
+        )
+        assert source_blend_path in restored_paths
+        recovered_page_json = json.loads(page_json_path.read_text(encoding="utf-8"))
+        assert any(
+            item.get("id") == "balloon_transfer"
+            for item in recovered_page_json.get("balloons", [])
+        )
+        assert any(
+            item.get("id") == "text_transfer"
+            for item in recovered_page_json.get("texts", [])
+        )
+        assert not recovery_root.exists()
+        if stage_path.is_file():
+            recovered_stage = json.loads(stage_path.read_text(encoding="utf-8"))
+            assert not recovered_stage.get("asset_bundles")
+        # 実際の次回起動と同様、復旧済みblendを直接読み直す。B-MANGAの
+        # ページ切替Operatorは現在メモリを保存してから開くため、強制終了後の
+        # staleメモリを意図的に残すこのテストでは使わない。
+        assert "FINISHED" in bpy.ops.wm.open_mainfile(
+            filepath=str(source_blend_path),
+            load_ui=False,
+        )
+
+        context = bpy.context
+        work = context.scene.bmanga_work
+        source = work.pages[0]
+        target = work.pages[1]
+        panel = source.comas[0]
+        parent_key = coma_stack_key(source, panel)
+        restored_path = next(
+            item
+            for item in context.scene.bmanga_image_path_layers
+            if item.id == "path_transfer"
+        )
+        # テスト直書きのパターンカーブはOutliner操作を経由しないため、再読込後
+        # の所属を実際の作成Operatorと同じ確定状態へ戻す。
+        with image_path_object.suspend_auto_sync():
+            restored_path.parent_kind = "coma"
+            restored_path.parent_key = parent_key
+            restored_path.folder_key = "folder_transfer_nested"
+
         # コマを選べば入れ子フォルダーと全子種別をまとめて移す。
         coma_index, _coma_item = _stack_item(context, "coma", panel.coma_id)
         layer_stack.clear_all_selection(context)
@@ -254,13 +325,54 @@ def main() -> None:
         assert abs(center[0] - 115.0) < 0.01, center
         assert abs(center[1] - 145.0) < 0.01, center
         new_parent = coma_stack_key(target, moved_panel)
-        new_balloon = next(item for item in target.balloons if item.title == "移送フキダシ")
-        new_text = next(item for item in target.texts if item.title == "移送テキスト")
+        new_text = next(item for item in target.texts if item.body == "リンク")
+        new_balloon = next(
+            item for item in target.balloons
+            if item.id == new_text.parent_balloon_id
+        )
         assert new_balloon.parent_key == new_parent
         assert new_text.parent_key == new_parent
         assert new_text.parent_balloon_id == new_balloon.id
         assert any(item.title == "移送グラデーション" for item in context.scene.bmanga_fill_layers)
         assert any(item.title == "移送パターンカーブ" for item in context.scene.bmanga_image_path_layers)
+
+        # 復旧台帳自体が壊れている場合はprepared stageを孤児として消さない。
+        # 自動復旧できなくても、再試行・手動救出用の両資料を残す。
+        broken_stage_id = "broken_journal_stage"
+        source_page_id = str(work.pages[0].id)
+        target_page_id = str(work.pages[1].id)
+        broken_recovery = (
+            Path(work.work_dir)
+            / source_page_id
+            / "_transfer_recovery"
+            / broken_stage_id
+        )
+        broken_recovery.mkdir(parents=True)
+        (broken_recovery / "transaction.json").write_text(
+            "{broken",
+            encoding="utf-8",
+        )
+        broken_stage_path = layer_transfer_group.cross_page_stage.staged_path(
+            Path(work.work_dir),
+            target_page_id,
+        )
+        broken_stage_data = layer_transfer_group.cross_page_stage._read(
+            broken_stage_path
+        )
+        broken_stage_data.setdefault("asset_bundles", []).append(
+            {"stage_id": broken_stage_id, "state": "prepared"}
+        )
+        layer_transfer_group.json_io.write_json(
+            broken_stage_path,
+            broken_stage_data,
+        )
+        layer_transfer_group.recover_interrupted_transfers(Path(work.work_dir))
+        assert broken_recovery.is_dir()
+        assert layer_transfer_group._recovery_stage_state(
+            Path(work.work_dir),
+            target_page_id,
+            broken_stage_id,
+        ) == "prepared"
         print("BMANGA_TRANSFER_GROUP_ALT_DND_OK")
     finally:
         if module is not None:

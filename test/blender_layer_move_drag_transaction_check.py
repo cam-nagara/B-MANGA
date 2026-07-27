@@ -55,6 +55,12 @@ def _mover(layer_move_op, resolved):
             dy_mm,
         )
     )
+    mover._restore_snapshots = lambda context: (
+        layer_move_op.BMANGA_OT_layer_move_tool._restore_snapshots(
+            mover,
+            context,
+        )
+    )
     mover._can_apply_total = lambda context, dx_mm, dy_mm: (
         layer_move_op.BMANGA_OT_layer_move_tool._can_apply_total(
             mover,
@@ -233,6 +239,32 @@ def main() -> None:
             assert abs(float(fill.gradient_end_y_mm) - 46.0) < 1.0e-5
             assert not layer_object_sync.is_sync_in_progress()
 
+            # 確定処理の途中で例外が起きても、データと同期抑止を開始前へ戻す。
+            resolved = _select_coma(context, page, coma)
+            failure_mover = _mover(layer_move_op, resolved)
+            failure_origin = (float(coma.rect_x_mm), float(coma.rect_y_mm))
+
+            def fail_layer_commit(_context, dx_mm, dy_mm):
+                coma.rect_x_mm = failure_origin[0] + float(dx_mm)
+                coma.rect_y_mm = failure_origin[1] + float(dy_mm)
+                raise RuntimeError("forced layer commit failure")
+
+            failure_mover._apply_delta = fail_layer_commit
+            failure_transaction = layer_drag_transaction.DragTransaction(
+                context,
+                failure_mover,
+                "coma",
+                resolved,
+            )
+            assert failure_transaction.update_overlay(context, 4.0, 3.0)
+            try:
+                failure_transaction.commit(context)
+                raise AssertionError("layer commit failure was not propagated")
+            except RuntimeError as exc:
+                assert "forced layer commit failure" in str(exc)
+            assert (float(coma.rect_x_mm), float(coma.rect_y_mm)) == failure_origin
+            assert not layer_object_sync.is_sync_in_progress()
+
             resolved = _select_coma(context, page, coma)
             cancel_mover = _mover(layer_move_op, resolved)
             cancel_transaction = layer_drag_transaction.DragTransaction(
@@ -299,6 +331,37 @@ def main() -> None:
             assert object_apply_calls == 1
             assert abs(float(fill.region_x_mm) - (object_origin[0] + 9.6)) < 1.0e-5
             assert abs(float(fill.region_y_mm) - (object_origin[1] - 4.8)) < 1.0e-5
+            assert not layer_object_sync.is_sync_in_progress()
+
+            failed_object_origin = (
+                float(fill.region_x_mm),
+                float(fill.region_y_mm),
+            )
+
+            def fail_object_snapshots(_context, dx_mm, dy_mm):
+                fill.region_x_mm = failed_object_origin[0] + float(dx_mm)
+                fill.region_y_mm = failed_object_origin[1] + float(dy_mm)
+                if dx_mm or dy_mm:
+                    raise RuntimeError("forced object commit failure")
+
+            failed_object_owner = SimpleNamespace(
+                _apply_snapshots=fail_object_snapshots,
+            )
+            failed_object_transaction = layer_drag_transaction.ObjectMoveTransaction(
+                context,
+                failed_object_owner,
+                [object_selection.fill_key(fill)],
+            )
+            assert failed_object_transaction.update_overlay(context, 2.0, -1.0)
+            try:
+                failed_object_transaction.finish(context)
+                raise AssertionError("object commit failure was not propagated")
+            except RuntimeError as exc:
+                assert "forced object commit failure" in str(exc)
+            assert (
+                float(fill.region_x_mm),
+                float(fill.region_y_mm),
+            ) == failed_object_origin
             assert not layer_object_sync.is_sync_in_progress()
         finally:
             layer_stack.apply_stack_order = original_stack

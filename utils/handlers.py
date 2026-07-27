@@ -867,6 +867,26 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
             # 旧内容を通常同期へ流さず、復旧済みファイルから読み直す。
             _schedule_native_save_reload(blend_path, notice=True)
             return
+        try:
+            from . import layer_transfer_group
+
+            transfer_restored = layer_transfer_group.recover_interrupted_transfers(
+                work_dir
+            )
+        except Exception:  # noqa: BLE001
+            _logger.exception("load_post: page transfer recovery failed")
+            _show_native_save_notice(
+                title="ページ間移動の復旧に失敗しました",
+                lines=(
+                    "この画面では保存せず、Blenderを閉じて作品を開き直してください。",
+                ),
+            )
+            return
+        if blend_path.resolve() in {
+            path.resolve() for path in transfer_restored
+        }:
+            _schedule_native_save_reload(blend_path, notice=True)
+            return
         work = sync_scene_work_from_disk(bpy.context, work_dir)
         if work is None:
             return

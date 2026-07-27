@@ -6,7 +6,6 @@ import copy
 from dataclasses import dataclass
 from pathlib import Path
 import shutil
-import tempfile
 
 import bpy
 
@@ -16,6 +15,7 @@ from . import (
     asset_bundle,
     cross_page_gp_transfer,
     cross_page_stage,
+    json_io,
     layer_links,
     layer_stack as layer_stack_utils,
     log,
@@ -28,6 +28,8 @@ from .layer_hierarchy import coma_stack_key, split_child_key
 
 _logger = log.get_logger(__name__)
 _TRANSFERABLE_KINDS = frozenset(asset_bundle.SUPPORTED_LAYER_KINDS)
+_RECOVERY_DIR_NAME = "_transfer_recovery"
+_RECOVERY_MANIFEST_NAME = "transaction.json"
 
 
 @dataclass(frozen=True)
@@ -282,55 +284,66 @@ def _execute_cross_page(context, group: TransferGroup, target_page, drop_world_x
     snapshots = _capture_snapshots(context, work, source_page, group)
     stage_id = ""
     moved_comas: list[_ComaMove] = []
+    recovery_dir: Path | None = None
+    backup: dict[Path, Path | None] = {}
     from ..io.project_content_migration_lock import work_lock
 
-    with tempfile.TemporaryDirectory(prefix="bmanga_transfer_") as temp_name:
-        backup = _backup_source_files(work_dir, group.source_page_id, Path(temp_name))
-        try:
-            with work_lock(work_dir, blocking=True):
-                stage_id = cross_page_stage.stage_asset_bundle(
-                    work_dir,
-                    target_page_id,
-                    payload,
-                    target_local,
-                    ready=False,
-                )
-                if not stage_id:
-                    raise RuntimeError("destination staging failed")
-                moved_comas = _move_coma_files(
-                    work_dir,
-                    group.source_page_id,
-                    target_page_id,
-                    coma_moves,
-                )
-                if not _remove_source_group(context, group):
-                    raise RuntimeError("source group removal failed")
-                _remove_source_links(context, group.uids)
-                _save_source(work_dir, work, source_page)
-                if not blend_io.save_page_blend(work_dir, group.source_page_id):
-                    raise RuntimeError("source page.blend save failed")
-                if not cross_page_stage.mark_asset_bundle_ready(
-                    work_dir,
-                    target_page_id,
-                    stage_id,
-                ):
-                    raise RuntimeError("destination staging commit failed")
-            layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
-            return len(group.items)
-        except Exception:  # noqa: BLE001
-            _logger.exception("transfer group transaction failed")
-            _rollback(
-                context,
+    try:
+        with work_lock(work_dir, blocking=True):
+            stage_id = cross_page_stage.stage_asset_bundle(
+                work_dir,
+                target_page_id,
+                payload,
+                target_local,
+                ready=False,
+            )
+            if not stage_id:
+                raise RuntimeError("destination staging failed")
+            recovery_dir, backup = _create_recovery_backup(
+                work_dir,
                 work,
                 source_page,
-                snapshots,
+                group.source_page_id,
+                target_page_id,
+                stage_id,
+                coma_moves,
+            )
+            moved_comas = _move_coma_files(
+                work_dir,
+                group.source_page_id,
+                target_page_id,
+                coma_moves,
+            )
+            if not _remove_source_group(context, group):
+                raise RuntimeError("source group removal failed")
+            _remove_source_links(context, group.uids)
+            _save_source(work_dir, work, source_page)
+            if not blend_io.save_page_blend(work_dir, group.source_page_id):
+                raise RuntimeError("source page.blend save failed")
+            if not cross_page_stage.mark_asset_bundle_ready(
                 work_dir,
                 target_page_id,
                 stage_id,
-                moved_comas,
-                backup,
-            )
-            return 0
+            ):
+                raise RuntimeError("destination staging commit failed")
+            _remove_recovery_dir(recovery_dir)
+        layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
+        return len(group.items)
+    except Exception:  # noqa: BLE001
+        _logger.exception("transfer group transaction failed")
+        _rollback(
+            context,
+            work,
+            source_page,
+            snapshots,
+            work_dir,
+            target_page_id,
+            stage_id,
+            moved_comas,
+            backup,
+            recovery_dir,
+        )
+        return 0
 
 
 def _prepare_coma_ids(payload, work_dir: Path, source_page, target_page) -> list[_ComaMove]:
@@ -526,21 +539,112 @@ def _save_source(work_dir: Path, work, page) -> None:
     page_io.save_pages_json(work_dir, work)
 
 
-def _backup_source_files(work_dir: Path, page_id: str, temp_dir: Path) -> dict[Path, Path]:
+def _backup_source_files(
+    work_dir: Path,
+    page_id: str,
+    recovery_dir: Path,
+) -> dict[Path, Path | None]:
+    recovery_dir.mkdir(parents=True, exist_ok=True)
     source_paths = (
         paths.page_blend_path(work_dir, page_id),
         paths.page_meta_path(work_dir, page_id),
         paths.work_meta_path(work_dir),
         paths.pages_meta_path(work_dir),
     )
-    backup = {}
+    backup: dict[Path, Path | None] = {}
     for index, source in enumerate(source_paths):
         if not source.is_file():
+            backup[source] = None
             continue
-        target = temp_dir / f"{index}_{source.name}"
+        target = recovery_dir / f"{index}_{source.name}"
         shutil.copy2(source, target)
         backup[source] = target
     return backup
+
+
+def _create_recovery_backup(
+    work_dir: Path,
+    work,
+    source_page,
+    source_page_id: str,
+    target_page_id: str,
+    stage_id: str,
+    coma_moves: list[_ComaMove],
+) -> tuple[Path, dict[Path, Path | None]]:
+    recovery_dir = (
+        paths.page_dir(work_dir, source_page_id)
+        / _RECOVERY_DIR_NAME
+        / stage_id
+    )
+    recovery_dir.mkdir(parents=True, exist_ok=False)
+    rollback_backup: dict[Path, Path | None] = {}
+    try:
+        rollback_backup = _backup_source_files(
+            work_dir,
+            source_page_id,
+            recovery_dir / "rollback",
+        )
+        # 異常終了ではメモリを失うため、移送前の未保存状態も専用の復旧点へ
+        # 保存する。通常の例外rollbackには開始前のdisk bytesを別途使う。
+        _save_source(work_dir, work, source_page)
+        if not blend_io.save_page_blend(work_dir, source_page_id):
+            raise RuntimeError("source recovery point save failed")
+        recovery_backup = _backup_source_files(
+            work_dir,
+            source_page_id,
+            recovery_dir / "crash",
+        )
+        if not _restore_source_files(rollback_backup):
+            raise RuntimeError("source pre-transfer files restore failed")
+        from ..io.project_content_save_baseline import record_successful_tree_change
+
+        record_successful_tree_change(recovery_dir)
+        manifest = {
+            "version": 1,
+            "stage_id": stage_id,
+            "source_page_id": source_page_id,
+            "target_page_id": target_page_id,
+            "files": [
+                {
+                    "relative_path": str(path.resolve().relative_to(work_dir.resolve())),
+                    "backup_name": (
+                        str(saved.resolve().relative_to(recovery_dir.resolve()))
+                        if saved is not None
+                        else ""
+                    ),
+                    "existed": saved is not None,
+                }
+                for path, saved in recovery_backup.items()
+            ],
+            "coma_moves": [
+                {
+                    "source_id": move.source_id,
+                    "target_id": move.target_id,
+                    "source_existed": paths.coma_dir(
+                        work_dir,
+                        source_page_id,
+                        move.source_id,
+                    ).is_dir(),
+                }
+                for move in coma_moves
+            ],
+        }
+        json_io.write_json(recovery_dir / _RECOVERY_MANIFEST_NAME, manifest)
+        return recovery_dir, rollback_backup
+    except Exception:
+        if rollback_backup:
+            _restore_source_files(rollback_backup)
+        shutil.rmtree(recovery_dir, ignore_errors=True)
+        try:
+            from ..io.project_content_save_baseline import record_successful_tree_change
+
+            record_successful_tree_change(recovery_dir)
+        except Exception:  # noqa: BLE001
+            _logger.exception(
+                "transfer recovery cleanup baseline update failed: %s",
+                recovery_dir,
+            )
+        raise
 
 
 def _rollback(
@@ -553,9 +657,13 @@ def _rollback(
     stage_id,
     moved_comas,
     backup,
+    recovery_dir,
 ) -> None:
+    rollback_ok = True
     if stage_id:
         _remove_stage(work_dir, target_page_id, stage_id)
+        if _recovery_stage_state(work_dir, target_page_id, stage_id):
+            rollback_ok = False
     for move in reversed(moved_comas):
         try:
             coma_io.move_coma_files(
@@ -566,6 +674,7 @@ def _rollback(
                 move.source_id,
             )
         except Exception:  # noqa: BLE001
+            rollback_ok = False
             _logger.exception("coma file rollback failed: %s", move.source_id)
     try:
         schema.work_from_dict(work, snapshots["work"])
@@ -579,17 +688,174 @@ def _rollback(
         # 戻っており、再採番はcNN.jsonへの不要な書込みと競合検知を起こす。
         layer_stack_utils.sync_layer_stack_after_data_change(context)
     except Exception:  # noqa: BLE001
+        rollback_ok = False
         _logger.exception("transfer memory rollback failed")
+    if not _restore_source_files(backup):
+        rollback_ok = False
+    if rollback_ok:
+        _remove_recovery_dir(recovery_dir)
+
+
+def _restore_source_files(backup: dict[Path, Path | None]) -> bool:
+    restored = True
     for destination, saved in backup.items():
         try:
             from ..io.project_content_migration_lock import guard_path_write
             from ..io.project_content_save_baseline import record_successful_write
 
             with guard_path_write(destination):
-                shutil.copy2(saved, destination)
+                if saved is None:
+                    destination.unlink(missing_ok=True)
+                else:
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(saved, destination)
                 record_successful_write(destination)
         except Exception:  # noqa: BLE001
+            restored = False
             _logger.exception("transfer file rollback failed: %s", destination)
+    page_io.invalidate_page_json_write_cache(tuple(backup))
+    return restored
+
+
+def _remove_recovery_dir(recovery_dir: Path | None) -> None:
+    if recovery_dir is None or not recovery_dir.exists():
+        return
+    try:
+        shutil.rmtree(recovery_dir)
+        from ..io.project_content_save_baseline import record_successful_tree_change
+
+        record_successful_tree_change(recovery_dir)
+        parent = recovery_dir.parent
+        if parent.is_dir() and not any(parent.iterdir()):
+            parent.rmdir()
+    except OSError:
+        _logger.exception("transfer recovery cleanup failed: %s", recovery_dir)
+
+
+def recover_interrupted_transfers(work_dir: Path) -> tuple[Path, ...]:
+    """preparedのまま異常終了したページ間移送を次回起動時に復元する."""
+    root = Path(work_dir).resolve()
+    if not root.is_dir():
+        return ()
+    from ..io.project_content_migration_lock import work_lock
+
+    restored: set[Path] = set()
+    with work_lock(root, blocking=True):
+        manifests = list(root.glob(f"p????/{_RECOVERY_DIR_NAME}/*/{_RECOVERY_MANIFEST_NAME}"))
+        # 壊れたmanifestも「復旧資料あり」とみなし、対応するprepared stageを
+        # orphan掃除で消さない。資料を残せば再試行・手動救出ができる。
+        journal_ids = {manifest_path.parent.name for manifest_path in manifests}
+        for manifest_path in manifests:
+            try:
+                manifest = json_io.read_json(manifest_path)
+                if not isinstance(manifest, dict):
+                    raise ValueError("invalid recovery manifest")
+                stage_id = str(manifest.get("stage_id", "") or "")
+                source_page_id = str(manifest.get("source_page_id", "") or "")
+                target_page_id = str(manifest.get("target_page_id", "") or "")
+                paths.validate_page_id(source_page_id)
+                paths.validate_page_id(target_page_id)
+                if not stage_id or manifest_path.parent.name != stage_id:
+                    raise ValueError("invalid recovery identity")
+                state = _recovery_stage_state(root, target_page_id, stage_id)
+                if state == "ready":
+                    _remove_recovery_dir(manifest_path.parent)
+                    continue
+                backup = _load_recovery_files(root, manifest_path.parent, manifest)
+                if not _restore_manifest_comas(root, manifest):
+                    continue
+                if not _restore_source_files(backup):
+                    continue
+                _remove_stage(root, target_page_id, stage_id)
+                if _recovery_stage_state(root, target_page_id, stage_id):
+                    continue
+                source_blend = paths.page_blend_path(root, source_page_id)
+                if backup.get(source_blend) is not None:
+                    restored.add(source_blend)
+                _remove_recovery_dir(manifest_path.parent)
+            except Exception:  # noqa: BLE001
+                _logger.exception("interrupted transfer recovery failed: %s", manifest_path)
+        _remove_orphan_prepared_stages(root, journal_ids)
+    return tuple(sorted(restored, key=str))
+
+
+def _load_recovery_files(
+    work_dir: Path,
+    recovery_dir: Path,
+    manifest: dict,
+) -> dict[Path, Path | None]:
+    backup: dict[Path, Path | None] = {}
+    for record in manifest.get("files", []) or []:
+        if not isinstance(record, dict):
+            raise ValueError("invalid recovery file record")
+        relative = Path(str(record.get("relative_path", "") or ""))
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError("unsafe recovery destination")
+        destination = (work_dir / relative).resolve()
+        if not destination.is_relative_to(work_dir):
+            raise ValueError("recovery destination escaped work directory")
+        if not bool(record.get("existed", False)):
+            backup[destination] = None
+            continue
+        saved = (recovery_dir / str(record.get("backup_name", "") or "")).resolve()
+        if not saved.is_relative_to(recovery_dir.resolve()) or not saved.is_file():
+            raise FileNotFoundError(saved)
+        backup[destination] = saved
+    return backup
+
+
+def _restore_manifest_comas(work_dir: Path, manifest: dict) -> bool:
+    source_page_id = str(manifest.get("source_page_id", "") or "")
+    target_page_id = str(manifest.get("target_page_id", "") or "")
+    restored = True
+    for record in reversed(manifest.get("coma_moves", []) or []):
+        if not isinstance(record, dict) or not bool(record.get("source_existed", True)):
+            continue
+        source_id = str(record.get("source_id", "") or "")
+        target_id = str(record.get("target_id", "") or "")
+        source_dir = paths.coma_dir(work_dir, source_page_id, source_id)
+        target_dir = paths.coma_dir(work_dir, target_page_id, target_id)
+        if source_dir.is_dir() and not target_dir.exists():
+            continue
+        if not source_dir.exists() and target_dir.is_dir():
+            try:
+                coma_io.move_coma_files(
+                    work_dir,
+                    target_page_id,
+                    source_page_id,
+                    target_id,
+                    source_id,
+                )
+                continue
+            except Exception:  # noqa: BLE001
+                _logger.exception("interrupted coma recovery failed: %s", source_id)
+        restored = False
+    return restored
+
+
+def _recovery_stage_state(work_dir: Path, page_id: str, stage_id: str) -> str:
+    data = cross_page_stage._read(cross_page_stage.staged_path(work_dir, page_id))
+    for entry in data.get(cross_page_stage.ASSET_ENTRIES_KEY, []) or []:
+        if (
+            isinstance(entry, dict)
+            and str(entry.get("stage_id", "") or "") == stage_id
+        ):
+            return str(entry.get("state", "ready") or "ready")
+    return ""
+
+
+def _remove_orphan_prepared_stages(work_dir: Path, journal_ids: set[str]) -> None:
+    for page_dir in work_dir.iterdir():
+        if not page_dir.is_dir() or not paths.is_valid_page_id(page_dir.name):
+            continue
+        data = cross_page_stage._read(cross_page_stage.staged_path(work_dir, page_dir.name))
+        for entry in tuple(data.get(cross_page_stage.ASSET_ENTRIES_KEY, []) or []):
+            if not isinstance(entry, dict):
+                continue
+            stage_id = str(entry.get("stage_id", "") or "")
+            state = str(entry.get("state", "ready") or "ready")
+            if stage_id and state == "prepared" and stage_id not in journal_ids:
+                _remove_stage(work_dir, page_dir.name, stage_id)
 
 
 def _restore_layer_objects(context, snapshots, page_id: str) -> None:
@@ -655,4 +921,9 @@ def _page_index(work, page_id: str) -> int:
     )
 
 
-__all__ = ["TransferGroup", "build_transfer_group", "transfer_group_to_page"]
+__all__ = [
+    "TransferGroup",
+    "build_transfer_group",
+    "recover_interrupted_transfers",
+    "transfer_group_to_page",
+]

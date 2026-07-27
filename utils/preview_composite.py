@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from dataclasses import dataclass, field
+import math
 import time
 from typing import Any, Iterable
 
@@ -60,6 +61,8 @@ class CompositeFrame:
     front_image: bpy.types.Image | None = None
     active_layers: tuple[Any, ...] = ()
     active_z: float = 0.05
+    active_z_min: float = 0.05
+    active_z_max: float = 0.05
     active_offset_mm: tuple[float, float] = (0.0, 0.0)
     byte_size: int = 0
     created_at: float = field(default_factory=time.monotonic)
@@ -156,7 +159,12 @@ class PreviewCompositeService:
             return
         entry_id = str(getattr(entry, "id", "") or "")
         page_id = self._entry_page_id(entry)
-        uid = layer_stack.target_uid(str(kind or ""), entry_id) if entry_id else ""
+        stack_key = (
+            f"{page_id}:{entry_id}"
+            if str(kind or "") in {"balloon", "text"} and page_id
+            else entry_id
+        )
+        uid = layer_stack.target_uid(str(kind or ""), stack_key) if stack_key else ""
         self.mark_dirty(
             context=context,
             page_id=page_id,
@@ -198,8 +206,8 @@ class PreviewCompositeService:
         page_id = str(getattr(page, "id", "") or "")
         if not page_id or self._rendering:
             return self.frame_for_page(page_id)
-        dpi = self._preview_dpi(work, page, scene, quality)
-        key = (page_id, dpi)
+        requested_dpi = self._preview_dpi(work, page, scene, quality)
+        key = (page_id, requested_dpi)
         cached = self._cache.get(key)
         revision = self._revision.get(page_id, 0)
         dirty = (
@@ -217,33 +225,58 @@ class PreviewCompositeService:
             return cached
         self._rendering = True
         try:
-            if cached is not None and order_dirty and not dirty:
-                layers = export_stack_order.apply_coma_preview_order(
-                    work, page, list(cached.layers)
+            effective_dpi = cached.dpi if cached is not None and order_dirty and not dirty else requested_dpi
+            reuse_layers = cached is not None and order_dirty and not dirty
+            while True:
+                if reuse_layers:
+                    layers = export_stack_order.apply_coma_preview_order(
+                        work, page, list(cached.layers)
+                    )
+                else:
+                    options = self._options(effective_dpi)
+                    layers = export_pipeline.build_page_layers(work, page, options)
+                    masks = export_pipeline._coma_group_masks(work, page, options)
+                    layers = export_group_masks.apply_group_masks_to_layers(
+                        layers,
+                        masks,
+                        export_pipeline.Image,
+                        export_pipeline.ImageChops,
+                    )
+                size = export_pipeline._page_canvas_size_px(
+                    work,
+                    page,
+                    self._options(effective_dpi),
                 )
-            else:
-                options = self._options(dpi)
-                layers = export_pipeline.build_page_layers(work, page, options)
-                masks = export_pipeline._coma_group_masks(work, page, options)
-                layers = export_group_masks.apply_group_masks_to_layers(
-                    layers,
-                    masks,
-                    export_pipeline.Image,
-                    export_pipeline.ImageChops,
+                full = export_pipeline._flatten_layers(layers, size).convert("RGBA")
+                frame = CompositeFrame(
+                    page_id=page_id,
+                    dpi=effective_dpi,
+                    quality=str(quality or "high"),
+                    size=size,
+                    layers=tuple(layers),
+                    full_pil=full,
+                    full_image=None,
+                    revision=revision,
                 )
-            size = export_pipeline._page_canvas_size_px(work, page, self._options(dpi))
-            full = export_pipeline._flatten_layers(layers, size).convert("RGBA")
-            frame = CompositeFrame(
-                page_id=page_id,
-                dpi=dpi,
-                quality=str(quality or "high"),
-                size=size,
-                layers=tuple(layers),
-                full_pil=full,
-                full_image=self._upload(page_id, dpi, "full", full),
-                revision=revision,
-            )
+                peak_bytes = self._peak_frame_bytes(frame)
+                if peak_bytes <= self.max_cache_bytes:
+                    break
+                if effective_dpi <= 1:
+                    _logger.error(
+                        "2D composite exceeds cache budget even at 1dpi: %s (%d bytes)",
+                        page_id,
+                        peak_bytes,
+                    )
+                    self.restore_objects()
+                    return cached
+                ratio = math.sqrt(self.max_cache_bytes / float(peak_bytes)) * 0.92
+                effective_dpi = max(
+                    1,
+                    min(effective_dpi - 1, int(effective_dpi * ratio)),
+                )
+                reuse_layers = False
             self._configure_frame_mode(context, frame)
+            self._ensure_gpu_images(frame)
             self._recount_frame_bytes(frame)
             self._replace_cache(key, frame)
             self._latest_key[page_id] = key
@@ -357,6 +390,8 @@ class PreviewCompositeService:
         self._dirty_uids.clear()
         self._revision.clear()
         self._drag = None
+        self._save_suspended = False
+        self._rendering = False
         if remove_images:
             self._remove_images()
 
@@ -380,6 +415,7 @@ class PreviewCompositeService:
         if frame is not None and self.enabled(context.scene):
             self._ensure_gpu_images(frame)
             self._apply_visibility(context, frame)
+            self._evict(frame.page_id)
             self.tag_redraw(context)
 
     def _options(self, dpi: int):
@@ -430,7 +466,7 @@ class PreviewCompositeService:
             and frame.front_image is not None
             and (not request.overlay_only or frame.active_image is not None)
         ):
-            frame.active_z = self._active_z(request.objects)
+            self._set_active_z(frame, request.objects)
             frame.active_offset_mm = request.offset_mm
             return
         back, active, front = export_stack_order.partition_around_stack_uid(
@@ -471,8 +507,9 @@ class PreviewCompositeService:
             frame.active_pil = None
             frame.active_image = None
         keep_objects = request.objects
-        frame.active_z = self._active_z(keep_objects)
+        self._set_active_z(frame, keep_objects)
         self._recount_frame_bytes(frame)
+        self._evict(frame.page_id)
 
     def _set_full_mode(self, frame: CompositeFrame) -> None:
         self._remove_image(frame.back_image)
@@ -575,14 +612,18 @@ class PreviewCompositeService:
                     pending.append(child)
         return result
 
-    def _active_z(self, objects) -> float:
+    def _set_active_z(self, frame: CompositeFrame, objects) -> None:
         values = []
         for obj in objects:
             try:
                 values.append(float(obj.matrix_world.translation.z))
             except (ReferenceError, AttributeError):
                 pass
-        return sum(values) / len(values) if values else 0.05
+        if not values:
+            values = [0.05]
+        frame.active_z = sum(values) / len(values)
+        frame.active_z_min = min(values)
+        frame.active_z_max = max(values)
 
     def _entry_page_id(self, entry) -> str:
         parent = str(getattr(entry, "parent_key", "") or "")
@@ -590,14 +631,30 @@ class PreviewCompositeService:
             return parent.split(":", 1)[0]
         work = get_work(bpy.context)
         entry_id = str(getattr(entry, "id", "") or "")
+        entry_pointer = 0
+        try:
+            entry_pointer = int(entry.as_pointer())
+        except (AttributeError, ReferenceError):
+            pass
         for page in getattr(work, "pages", ()) if work is not None else ():
+            for attr in ("balloons", "texts"):
+                for candidate in getattr(page, attr, ()) or ():
+                    try:
+                        if entry_pointer and int(candidate.as_pointer()) == entry_pointer:
+                            return str(getattr(page, "id", "") or "")
+                    except (AttributeError, ReferenceError):
+                        pass
+        current = page_file_scene.current_page_id(getattr(bpy.context, "scene", None))
+        for page in getattr(work, "pages", ()) if work is not None else ():
+            if str(getattr(page, "id", "") or "") != current:
+                continue
             for attr in ("balloons", "texts"):
                 if any(
                     str(getattr(candidate, "id", "") or "") == entry_id
                     for candidate in getattr(page, attr, ()) or ()
                 ):
-                    return str(getattr(page, "id", "") or "")
-        return page_file_scene.current_page_id(getattr(bpy.context, "scene", None))
+                    return current
+        return current
 
     def _upload(self, page_id: str, dpi: int, role: str, pil_image):
         if pil_image is None:
@@ -696,8 +753,22 @@ class PreviewCompositeService:
         )
         frame.byte_size = pil_bytes + gpu_bytes
 
+    @staticmethod
+    def _peak_frame_bytes(frame: CompositeFrame) -> int:
+        """全体＋三層分割へ切替えても超えない保守的な必要量."""
+        layer_bytes = sum(
+            int(layer.image.width) * int(layer.image.height) * 4
+            for layer in frame.layers
+            if getattr(layer, "image", None) is not None
+        )
+        canvas_bytes = int(frame.size[0]) * int(frame.size[1]) * 4
+        return layer_bytes + canvas_bytes * 8
+
     def _replace_cache(self, key, frame: CompositeFrame) -> None:
+        previous = self._cache.get(key)
         self._cache[key] = frame
+        if previous is not None and previous is not frame:
+            self._remove_frame_images(previous)
         self._touch(key)
         self._evict(frame.page_id)
 
@@ -723,13 +794,26 @@ class PreviewCompositeService:
             self._remove_frame_images(frame)
 
     def _remove_frame_images(self, frame: CompositeFrame) -> None:
+        retained = {
+            image
+            for cached in self._cache.values()
+            if cached is not frame
+            for image in (
+                cached.full_image,
+                cached.back_image,
+                cached.active_image,
+                cached.front_image,
+            )
+            if image is not None
+        }
         for image in (
             frame.full_image,
             frame.back_image,
             frame.active_image,
             frame.front_image,
         ):
-            self._remove_image(image)
+            if image not in retained:
+                self._remove_image(image)
 
     @staticmethod
     def _remove_image(image) -> None:
@@ -760,7 +844,7 @@ class PreviewCompositeService:
 
     def _frozen(self) -> bool:
         mode = str(getattr(bpy.context, "mode", "") or "")
-        return mode in {"PAINT_GREASE_PENCIL", "PAINT_GPENCIL"}
+        return mode in {"PAINT_GREASE_PENCIL", "PAINT_GPENCIL", "PAINT_TEXTURE"}
 
     def run_low_timer(self):
         if self._frozen():
@@ -832,6 +916,11 @@ def _on_save_post(*_args) -> None:
 
 
 @persistent
+def _on_save_post_fail(*_args) -> None:
+    SERVICE.after_save()
+
+
+@persistent
 def _on_depsgraph_update_post(scene, depsgraph) -> None:
     """GP描画の連続更新をdirty化し、描画終了後の再合成へつなぐ."""
     if not SERVICE.enabled(scene) or SERVICE.rendering:
@@ -860,6 +949,9 @@ def register() -> None:
     _remove_named_handler(bpy.app.handlers.load_post, _on_load_post.__name__)
     _remove_named_handler(bpy.app.handlers.save_pre, _on_save_pre.__name__)
     _remove_named_handler(bpy.app.handlers.save_post, _on_save_post.__name__)
+    save_post_fail = getattr(bpy.app.handlers, "save_post_fail", None)
+    if save_post_fail is not None:
+        _remove_named_handler(save_post_fail, _on_save_post_fail.__name__)
     _remove_named_handler(
         bpy.app.handlers.depsgraph_update_post,
         _on_depsgraph_update_post.__name__,
@@ -867,6 +959,8 @@ def register() -> None:
     bpy.app.handlers.load_post.append(_on_load_post)
     bpy.app.handlers.save_pre.append(_on_save_pre)
     bpy.app.handlers.save_post.append(_on_save_post)
+    if save_post_fail is not None:
+        save_post_fail.append(_on_save_post_fail)
     bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph_update_post)
 
 
@@ -880,6 +974,9 @@ def unregister() -> None:
     _remove_named_handler(bpy.app.handlers.load_post, _on_load_post.__name__)
     _remove_named_handler(bpy.app.handlers.save_pre, _on_save_pre.__name__)
     _remove_named_handler(bpy.app.handlers.save_post, _on_save_post.__name__)
+    save_post_fail = getattr(bpy.app.handlers, "save_post_fail", None)
+    if save_post_fail is not None:
+        _remove_named_handler(save_post_fail, _on_save_post_fail.__name__)
     _remove_named_handler(
         bpy.app.handlers.depsgraph_update_post,
         _on_depsgraph_update_post.__name__,

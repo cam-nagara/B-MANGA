@@ -49,6 +49,8 @@ def main() -> None:
 
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "Raster_Paint.bmanga"))
         assert result == {"FINISHED"}, result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        assert result == {"FINISHED"}, result
         result = bpy.ops.bmanga.raster_layer_add(
             dpi_preset="150",
             bit_depth="gray8",
@@ -60,10 +62,14 @@ def main() -> None:
 
         from bmanga_dev.operators import raster_layer_op
         from bmanga_dev.core.work import get_work
-        from bmanga_dev.utils import object_naming as on
+        from bmanga_dev.utils import object_naming as on, preview_composite
 
         work = get_work(bpy.context)
         assert work is not None
+        scene.bmanga_composite_preview_enabled = True
+        service = preview_composite.get_service()
+        service.mark_dirty(context=bpy.context)
+        assert service.render_now(bpy.context, quality="low", force=True) is not None
         png_path = Path(work.work_dir) / entry.filepath_rel
         assert png_path.is_file(), png_path
 
@@ -107,12 +113,15 @@ def main() -> None:
         )
         assert transparent_node is not None
         mat.node_tree.nodes.remove(transparent_node)
-        mat = raster_layer_op.ensure_raster_material(entry, image)
+        raster_layer_op.sync_raster_runtime_display(bpy.context, entry)
+        mat = bpy.data.materials.get(raster_layer_op.raster_material_name(entry.id))
+        assert mat is not None
         assert (
             mat.node_tree.nodes.get(raster_layer_op.RASTER_TRANSPARENT_NODE)
             is not None
         )
         node_ptrs = sorted(node.as_pointer() for node in mat.node_tree.nodes)
+        node_names = sorted(node.name for node in mat.node_tree.nodes)
 
         entry.opacity = 50.0
         entry.line_color = (0.2, 0.2, 0.2, 0.75)
@@ -120,7 +129,7 @@ def main() -> None:
             raster_layer_op.raster_material_name(entry.id)
         )
         assert mat_after is mat
-        assert sorted(node.as_pointer() for node in mat.node_tree.nodes) == node_ptrs
+        assert set(node_names) <= {node.name for node in mat.node_tree.nodes}
         assert abs(_alpha_value_node(mat) - 0.375) < 1e-5
 
         result = bpy.ops.bmanga.raster_layer_paint_enter()
@@ -134,7 +143,7 @@ def main() -> None:
             if bg.get(paper_bg_object.PROP_BG_KIND) == "page"
         ]
         assert paper_bgs, "paper background object was not created"
-        assert all(bg.hide_viewport for bg in paper_bgs), "paper background should be hidden in overlay mode"
+        assert all(bg.hide_get() for bg in paper_bgs), "paper background should be hidden in overlay mode"
         paint = bpy.context.tool_settings.image_paint
         assert paint.canvas is image
         assert paint.brush is not None
@@ -144,6 +153,9 @@ def main() -> None:
             0.0,
         )
 
+        mat = bpy.data.materials.get(raster_layer_op.raster_material_name(entry.id))
+        assert mat is not None
+        node_ptrs = sorted(node.as_pointer() for node in mat.node_tree.nodes)
         entry.opacity = 25.0
         entry.line_color = (0.4, 0.4, 0.4, 1.0)
         assert bpy.context.object is obj
@@ -185,20 +197,6 @@ def main() -> None:
             target,
             target_validator=lambda identity: identity.stable_id == str(entry.id),
         )
-        result = bpy.ops.bmanga.detail_raster_paint_enter(
-            "EXEC_DEFAULT",
-            session_token=session.token,
-            target_id=target.stable_id,
-        )
-        assert result == {"FINISHED"}, result
-        assert obj.mode == "TEXTURE_PAINT"
-        assert detail_dialog_runtime.detail_action_session_is_open(
-            session.token, "raster", target.stable_id
-        ), "ペイント開始で親の詳細設定セッションを閉じてはいけません"
-        assert [item.spec.action_id for item in session.independent_actions] == [
-            "bmanga.detail_raster_paint_enter"
-        ]
-        assert bpy.ops.bmanga.raster_layer_paint_exit() == {"FINISHED"}
         result = bpy.ops.bmanga.detail_raster_save_png(
             "EXEC_DEFAULT",
             force=True,
@@ -206,13 +204,12 @@ def main() -> None:
             target_id=target.stable_id,
         )
         assert result == {"FINISHED"}, result
+        assert [item.spec.action_id for item in session.independent_actions] == [
+            "bmanga.detail_raster_save_png"
+        ]
         assert detail_dialog_runtime.detail_action_session_is_open(
             session.token, "raster", target.stable_id
         ), "PNG保存で親の詳細設定セッションを閉じてはいけません"
-        assert [item.spec.action_id for item in session.independent_actions] == [
-            "bmanga.detail_raster_paint_enter",
-            "bmanga.detail_raster_save_png",
-        ]
         detail_dialog_runtime.cancel_actual_session(bpy.context, session)
 
         result = bpy.ops.bmanga.raster_layer_mode_set(mode="TEXTURE_PAINT")

@@ -178,6 +178,11 @@ def main() -> None:
             memory_raster_layer.image,
             disk_raster_layer.image,
         ).getbbox() is not None, "未保存ラスター画素が2D合成へ反映されていません"
+        revision_before_raster_dirty = service._revision.get(page.id, 0)
+        raster_layer_op.mark_raster_dirty(raster)
+        assert service._revision.get(page.id, 0) > revision_before_raster_dirty
+        frame = service.render_now(context, quality="high", force=True)
+        assert frame is not None
         draw_calls = []
         original_draw = overlay_page_preview._draw_textured_image
         overlay_page_preview._draw_textured_image = (
@@ -219,14 +224,18 @@ def main() -> None:
 
         stack = layer_stack.sync_layer_stack(context, preserve_active_index=True)
         assert any(layer_stack.stack_item_uid(item) == fill_uid for item in stack)
+        z_probe = bpy.data.objects.new("CompositeZRangeProbe", None)
+        scene.collection.objects.link(z_probe)
+        z_probe.location.z = float(fill_obj.matrix_world.translation.z) + 0.2
         assert service.begin_drag(
             context,
             anchor_uid=fill_uid,
             exclude_uids={fill_uid},
-            objects={fill_obj},
+            objects={fill_obj, z_probe},
         )
         assert frame.mode == "split"
         assert frame.back_pil is not None and frame.front_pil is not None
+        assert frame.active_z_min < frame.active_z_max
         split = frame.back_pil.copy()
         for active_layer in frame.active_layers:
             export_pipeline._composite_layer(split, active_layer)
@@ -272,6 +281,8 @@ def main() -> None:
             )
             assert draw_calls[0][1]["z_m"] < draw_calls[1][1]["z_m"]
             assert draw_calls[1][1]["z_m"] < draw_calls[2][1]["z_m"]
+            assert draw_calls[0][1]["z_m"] < frame.active_z_min
+            assert draw_calls[2][1]["z_m"] > frame.active_z_max
             assert abs(float(draw_calls[1][0][1]) - 12.0) < 1.0e-6
             assert abs(float(draw_calls[1][0][2]) + 6.0) < 1.0e-6
         finally:
@@ -280,6 +291,7 @@ def main() -> None:
         service.end_drag(context, committed=False)
         assert frame.mode == "full"
         assert fill_obj.hide_get()
+        bpy.data.objects.remove(z_probe, do_unlink=True)
 
         pattern = export_pipeline.Image.new("RGBA", (2, 2))
         pattern.putdata(
@@ -306,15 +318,29 @@ def main() -> None:
         assert abs(float(values[3]) - 1.0) < 1.0e-6
         bpy.data.images.remove(uploaded)
 
+        original_budget = service.max_cache_bytes
+        service.max_cache_bytes = 2 * 1024 * 1024
+        service.mark_dirty(context=context)
+        frame = service.render_now(context, quality="high", force=True)
+        assert frame is not None and frame.dpi < 144
+        assert service.cache_stats()["bytes"] <= service.max_cache_bytes
+        service.max_cache_bytes = original_budget
+
         service.before_save()
         assert not any(
             image.name.startswith(preview_composite.IMAGE_PREFIX)
             for image in bpy.data.images
         )
         assert not fill_obj.hide_get()
-        service.after_save()
+        preview_composite._on_save_post_fail()
         assert frame.full_image is not None
         assert fill_obj.hide_get()
+        save_post_fail = getattr(bpy.app.handlers, "save_post_fail", None)
+        if save_post_fail is not None:
+            assert any(
+                getattr(handler, "__name__", "") == "_on_save_post_fail"
+                for handler in save_post_fail
+            )
 
         scene.bmanga_composite_preview_enabled = False
         assert not fill_obj.hide_get()
