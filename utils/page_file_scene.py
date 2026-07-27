@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,6 +15,7 @@ ROLE_WORK = "work"
 ROLE_PAGE = "page"
 ROLE_COMA = "coma"
 ROLE_UNKNOWN = "unknown"
+PAGE_RUNTIME_SIGNATURE_PROP = "bmanga_page_runtime_signature_v1"
 
 
 def find_work_root(blend_path: Path) -> Path | None:
@@ -529,7 +532,65 @@ def resync_page_runtime_objects(scene, work, page_id: str) -> int:
     count += coma_plane.regenerate_all_coma_planes(scene, scoped_work)
     count += coma_border_object.regenerate_all_coma_borders(scene, scoped_work)
     layer_object_sync._mirror_image_text_objects(scene, work, {page_id})
+    try:
+        scene[PAGE_RUNTIME_SIGNATURE_PROP] = page_runtime_signature(work, page_id)
+    except Exception:  # noqa: BLE001
+        pass
     return count
+
+
+def page_runtime_signature(work, page_id: str) -> str:
+    """紙面・コマ実体の再生成に影響する保存データだけを要約する。"""
+
+    page = next(
+        (
+            entry
+            for entry in getattr(work, "pages", []) or []
+            if str(getattr(entry, "id", "") or "") == str(page_id or "")
+        ),
+        None,
+    )
+    if page is None:
+        return ""
+    try:
+        from ..io import schema
+
+        payload = {
+            "paper": schema.paper_to_dict(getattr(work, "paper", None)),
+            "page": schema.page_to_dict(page),
+        }
+        encoded = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def page_runtime_objects_current(scene, work, page_id: str) -> bool:
+    """保存済み紙面実体を使い回せるか。旧ファイルは一度だけ再生成する。"""
+
+    if scene is None or work is None or not paths.is_valid_page_id(page_id):
+        return False
+    expected = page_runtime_signature(work, page_id)
+    try:
+        saved = str(scene.get(PAGE_RUNTIME_SIGNATURE_PROP, "") or "")
+    except Exception:  # noqa: BLE001
+        return False
+    if not expected or saved != expected:
+        return False
+    has_paper = any(
+        str(obj.get("bmanga_paper_bg_page_id", "") or "") == page_id
+        for obj in getattr(scene, "objects", ()) or ()
+    )
+    has_guides = any(
+        str(obj.get("bmanga_paper_guide_page_id", "") or "") == page_id
+        for obj in getattr(scene, "objects", ()) or ()
+    )
+    return bool(has_paper and has_guides)
 
 
 _WORK_LIST_RUNTIME_KIND_PROPS = {

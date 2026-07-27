@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
+import json
 from pathlib import Path
 from typing import Iterable
 
@@ -16,8 +18,9 @@ from .coma_camera_constants import (
     NAME_REF_PREFIX,
     REFERENCE_DIR_NAME,
 )
-
 _logger = log.get_logger(__name__)
+CONTENT_OVERLAY_VERSION = "2"
+CONTENT_OVERLAY_SIGNATURE_KEY = "BMangaContentOverlaySignature"
 
 
 class ReferenceImage:
@@ -41,7 +44,6 @@ class ReferenceImage:
         self.full_page_mask = full_page_mask
         self.page_count = max(1, int(page_count))
         self.render_side = render_side if render_side in {"left", "right", "full"} else "full"
-
 
 def ensure_reference_images(work, current_page_id: str, coma_id: str) -> list[ReferenceImage]:
     """現在コマ用のページ全体マスク下絵を生成して返す."""
@@ -89,7 +91,6 @@ def ensure_reference_images(work, current_page_id: str, coma_id: str) -> list[Re
             )
     return refs
 
-
 def reference_dir(work_dir: Path) -> Path:
     return paths.assets_dir(Path(work_dir)) / REFERENCE_DIR_NAME
 
@@ -121,14 +122,12 @@ def _collect_existing_reference_images(work, current_page_id: str, coma_id: str)
 def _page_ref_path(ref_dir: Path, page_id: str) -> Path:
     return ref_dir / f"{NAME_REF_PREFIX}_pageclean_{page_id}.png"
 
-
 def _page_coma_ref_path(ref_dir: Path, page_id: str, coma_id: str) -> Path:
     return ref_dir / f"{NAME_REF_PREFIX}_pageclean_{page_id}_{coma_id}.png"
 
 
 def _koma_ref_path(ref_dir: Path, page_id: str, coma_id: str) -> Path:
     return ref_dir / f"{KOMA_REF_PREFIX}_{page_id}_{coma_id}_page.png"
-
 
 def _reference_frame_info(work, page_id: str, coma_id: str = "") -> tuple[int, str, float, float]:
     paper = getattr(work, "paper", None) if work is not None else None
@@ -431,14 +430,8 @@ def ensure_page_content_overlay(
         return None
     work_dir = Path(work_dir_text)
     page_blend = paths.page_blend_path(work_dir, page_id)
-    stale = _reference_is_stale(work_dir, page, out, include_work_blend=False)
-    stale = stale or _path_mtime(out) < _path_mtime(page_blend)
-    if not stale and export_pipeline.Image is not None:
-        try:
-            with export_pipeline.Image.open(str(out)) as cached:
-                stale = cached.size != (max(1, int(target_size[0])), max(1, int(target_size[1])))
-        except Exception:  # noqa: BLE001
-            stale = True
+    signature = _content_overlay_signature(work, page, target_size, side)
+    stale = not _content_overlay_usable(out, target_size, signature)
     if not stale:
         return out
     rendered = False
@@ -449,6 +442,117 @@ def ensure_page_content_overlay(
     if not rendered:
         rendered = _render_page_content_overlay_in_scene(work, page, out, target_size, side=side)
     return out if rendered and out.is_file() else None
+
+
+def ensure_page_content_overlays(
+    work,
+    page,
+    cache_dir: Path,
+    target_size: tuple[int, int],
+    *,
+    force: bool = False,
+) -> dict[str, Path]:
+    """前面・背面の透明作画画像を、ページblendの一時読込1回で更新する。"""
+    work_dir_text = str(getattr(work, "work_dir", "") or "").strip()
+    page_id = str(getattr(page, "id", "") or "")
+    if not work_dir_text or not page_id:
+        return {}
+    cache_dir = Path(cache_dir)
+    paths_by_side = {
+        side: cache_dir / f"page_content_{side}_{page_id}.png"
+        for side in ("back", "front")
+    }
+    stale_sides = [
+        side
+        for side, out in paths_by_side.items()
+        if force
+        or not _content_overlay_usable(
+            out,
+            target_size,
+            _content_overlay_signature(work, page, target_size, side),
+        )
+    ]
+    if stale_sides:
+        work_dir = Path(work_dir_text)
+        page_blend = paths.page_blend_path(work_dir, page_id)
+        rendered: set[str] = set()
+        if page_blend.is_file() and not _current_mainfile_is(page_blend):
+            rendered = _render_page_content_overlays_from_blend(
+                page_blend,
+                work_dir,
+                page_id,
+                paths_by_side,
+                target_size,
+                stale_sides,
+            )
+        for side in stale_sides:
+            if side in rendered:
+                continue
+            if _render_page_content_overlay_in_scene(
+                work,
+                page,
+                paths_by_side[side],
+                target_size,
+                side=side,
+            ):
+                rendered.add(side)
+    return {
+        side: out
+        for side, out in paths_by_side.items()
+        if _content_overlay_usable(
+            out,
+            target_size,
+            _content_overlay_signature(work, page, target_size, side),
+        )
+    }
+
+
+def _content_overlay_signature(work, page, target_size, side: str) -> str:
+    try:
+        from ..io import schema
+
+        payload = {
+            "version": CONTENT_OVERLAY_VERSION,
+            "side": str(side),
+            "size": [
+                max(1, int(target_size[0])),
+                max(1, int(target_size[1])),
+            ],
+            "paper": schema.paper_to_dict(getattr(work, "paper", None)),
+            "page": schema.page_to_dict(page),
+        }
+        raw = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return hashlib.sha256(raw).hexdigest()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _content_overlay_usable(
+    out: Path,
+    target_size: tuple[int, int],
+    signature: str,
+) -> bool:
+    Image = export_pipeline.Image
+    if Image is None or not out.is_file() or not signature:
+        return False
+    try:
+        with Image.open(str(out)) as cached:
+            return (
+                cached.size
+                == (
+                    max(1, int(target_size[0])),
+                    max(1, int(target_size[1])),
+                )
+                and str(cached.info.get(CONTENT_OVERLAY_SIGNATURE_KEY, "") or "")
+                == signature
+            )
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _render_page_content_overlay_in_scene(
@@ -486,8 +590,25 @@ def _render_page_content_overlay_in_scene(
         resampling = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
         image = image.resize((width_px, height_px), resampling)
     out.parent.mkdir(parents=True, exist_ok=True)
-    image.save(str(out))
+    signature = _content_overlay_signature(work, page, target_size, side)
+    _save_content_overlay(image, out, signature)
     return True
+
+
+def _save_content_overlay(image, out: Path, signature: str) -> None:
+    out.parent.mkdir(parents=True, exist_ok=True)
+    pnginfo = None
+    try:
+        from PIL.PngImagePlugin import PngInfo
+
+        pnginfo = PngInfo()
+        pnginfo.add_text(CONTENT_OVERLAY_SIGNATURE_KEY, signature)
+    except Exception:  # noqa: BLE001
+        pnginfo = None
+    if pnginfo is None:
+        image.save(str(out))
+    else:
+        image.save(str(out), pnginfo=pnginfo)
 
 
 def _render_page_content_overlay_from_blend(
@@ -526,6 +647,69 @@ def _render_page_content_overlay_from_blend(
     except Exception:  # noqa: BLE001
         _logger.exception("panel camera page content overlay render failed: %s", page_id)
         return False
+    finally:
+        try:
+            window = getattr(bpy.context, "window", None)
+            if window is not None and old_scene is not None:
+                window.scene = old_scene
+        except Exception:  # noqa: BLE001
+            pass
+        _remove_new_bpy_ids(bpy, before)
+
+
+def _render_page_content_overlays_from_blend(
+    page_blend: Path,
+    work_dir: Path,
+    page_id: str,
+    paths_by_side: dict[str, Path],
+    target_size: tuple[int, int],
+    sides: Iterable[str],
+) -> set[str]:
+    """ページblendを一度だけ読み込み、指定された前後画像をまとめて描画する。"""
+    try:
+        import bpy
+    except Exception:  # pragma: no cover - bpy unavailable outside Blender
+        return set()
+    before = _snapshot_bpy_ids(bpy)
+    old_scene = getattr(getattr(bpy.context, "window", None), "scene", None)
+    rendered: set[str] = set()
+    try:
+        with bpy.data.libraries.load(
+            str(page_blend.resolve()),
+            link=False,
+        ) as (data_from, data_to):
+            data_to.scenes = list(getattr(data_from, "scenes", []) or [])
+        loaded_scenes = _new_bpy_ids(bpy.data.scenes, before["scenes"])
+        scene = _first_loaded_work_scene(loaded_scenes)
+        if scene is None:
+            return rendered
+        window = getattr(bpy.context, "window", None)
+        if window is not None:
+            window.scene = scene
+        with bpy.context.temp_override(scene=scene):
+            _scene, loaded_work, loaded_page = _loaded_page_scene(
+                (scene,),
+                work_dir,
+                page_id,
+            )
+            if loaded_work is None or loaded_page is None:
+                return rendered
+            for side in sides:
+                if _render_page_content_overlay_in_scene(
+                    loaded_work,
+                    loaded_page,
+                    paths_by_side[side],
+                    target_size,
+                    side=side,
+                ):
+                    rendered.add(side)
+        return rendered
+    except Exception:  # noqa: BLE001
+        _logger.exception(
+            "panel camera page content overlay batch render failed: %s",
+            page_id,
+        )
+        return rendered
     finally:
         try:
             window = getattr(bpy.context, "window", None)

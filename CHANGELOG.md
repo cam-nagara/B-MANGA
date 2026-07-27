@@ -3,6 +3,28 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.2 LTS を対象としています（開発基準バージョン。5.1でも動作確認済み）。
 
+## 2026-07-28 — ページ／コマファイルの切替を差分キャッシュ化 (B-MANGA v0.6.595)
+
+### 症状
+- ページファイルやコマファイルを開くたびに、変更していない全ページのJSON読込、実体再構築、一覧プレビュー再生成、カメラ下絵再設定が重複して走っていた。
+- ページからコマへ移る時とページ一覧へ戻る時に、同じ遷移でメタデータ保存とblend保存を二重実行する経路があり、コマのサムネイルも未変更時に再描画していた。
+
+### 原因
+blend内のPropertyGroupとsidecar JSONが同一かを判定する仕組みがなく、`load_post`は常に全ページを再読込していた。プレビュー鮮度判定も、内容が同じでも更新される`work.json`等の時刻へ依存し、ページ一覧用とページ編集用が単一PNGを上書きし合っていた。ページ実体とコマカメラ下絵にも保存済み状態を再利用する署名がなかった。
+
+### 修正
+- work／pages／対象page JSONの内容署名をblendへ保存し、内容が一致する再オープンでは埋込済みデータを再利用する。必須sidecarの欠落・読込失敗・実内容変更時は必ず従来の全同期へ戻す。
+- ファイル切替を一つのトランザクションにまとめ、遷移中のOutliner再構築と二重保存を廃止した。オブジェクト、形状、材質、画像、Undo／Redoの変更を追跡し、未変更時だけプレビューとコマサムネイルの再描画を省く。
+- ページ一覧用`page_preview.png`とページ編集用`page_preview.detail.png`を分離し、JSON内容・用紙設定・解像度・表示用途の署名で再利用する。現在ページと前後1ページを優先し、残りは150ms後から1ページずつ更新する。選択枠はPNGへ焼き込まずGPUオーバーレイだけで描く。
+- 保存済みの紙面実体、コマカメラのページ一覧下絵、現在ページの前面／背面作画画像を内容署名で再利用する。前面／背面はページblendを一度だけ一括読込し、古いキャッシュの再生成に失敗した場合は表示へ混ぜない。
+- 既存のページ／コマ単体書き出し仕様にテストを同期し、書き出しプリセットの追加・改名・複製・削除ダイアログも対象を隠さない共通配置へ統一した。
+
+### 検証（Blender 5.2 LTS実機）
+- 18ページ作品の最終キャッシュ済み再計測で、ページを開く処理`0.346秒`、コマを開く処理`0.467秒`、コマからページへ戻る処理`0.196秒`。各遷移の全ページJSON再読込は0回、変更検知も未変更と判定した。
+- `test/blender_file_transition_cache_check.py`、`test/blender_page_file_stage_check.py`、`test/blender_page_file_panel_role_check.py`、`test/blender_work_file_slim_check.py`、`test/blender_page_preview_resolution_and_tail_check.py`が合格。sidecar実変更、即時の座標・材質変更、ページ移動、保存再読込、一覧ファイルの軽量性を確認した。
+- `test/blender_coma_camera_roundtrip_check.py`、`test/blender_coma_page_preview_camera_follow_check.py`、`test/blender_coma_template_check.py`、`test/blender_preview_propagation_visual_audit.py`、`test/blender_export_preset_and_panel_check.py`が合格。AI目視でも作品→ページ→コマ→ページ→作品の色反映、ページ枠、コマカメラの円形範囲・シフト・背景倍率に異常がないことを確認した。
+- 純Pythonテスト27ファイル240件、変更Pythonの構文検査、差分空白検査がすべて合格。
+
 ## 2026-07-28 — 2D合成と書き出しへ効果線の表示実体を反映 (B-MANGA v0.6.594)
 
 ### 症状

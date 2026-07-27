@@ -11,7 +11,13 @@ from bpy.types import Operator
 from ..core.mode import MODE_PAGE, get_mode, set_mode
 from ..core.work import get_work
 from ..io import blend_io, page_io
-from ..utils import log, page_file_scene, page_grid, paths
+from ..utils import (
+    file_transition_runtime,
+    log,
+    page_file_scene,
+    page_grid,
+    paths,
+)
 from . import coma_modal_state
 
 _logger = log.get_logger(__name__)
@@ -27,14 +33,19 @@ def _cleanup_default_scene_objects() -> None:
                 pass
 
 
-def _save_current_blend_if_bmanga(context, work_dir: Path) -> None:
+def _save_current_blend_if_bmanga(context, work_dir: Path) -> bool:
     role, page_id, coma_id = page_file_scene.current_role(context)
     if role == page_file_scene.ROLE_WORK:
-        blend_io.save_work_blend(work_dir)
-    elif role == page_file_scene.ROLE_PAGE and paths.is_valid_page_id(page_id):
-        blend_io.save_page_blend(work_dir, page_id)
-    elif role == page_file_scene.ROLE_COMA and paths.is_valid_page_id(page_id) and paths.is_valid_coma_id(coma_id):
-        blend_io.save_coma_blend(work_dir, page_id, coma_id)
+        return bool(blend_io.save_work_blend(work_dir))
+    if role == page_file_scene.ROLE_PAGE and paths.is_valid_page_id(page_id):
+        return bool(blend_io.save_page_blend(work_dir, page_id))
+    if (
+        role == page_file_scene.ROLE_COMA
+        and paths.is_valid_page_id(page_id)
+        and paths.is_valid_coma_id(coma_id)
+    ):
+        return bool(blend_io.save_coma_blend(work_dir, page_id, coma_id))
+    return _save_metadata(context, reason="file_switch_fallback")
 
 
 def _save_metadata(context, *, reason: str) -> bool:
@@ -47,7 +58,13 @@ def _save_metadata(context, *, reason: str) -> bool:
         return False
 
 
-def _update_page_preview_png(work, page_id: str) -> None:
+def _update_page_preview_png(
+    work,
+    page_id: str,
+    *,
+    force: bool,
+    variant: str,
+) -> None:
     if work is None or not paths.is_valid_page_id(page_id):
         return
     try:
@@ -61,7 +78,8 @@ def _update_page_preview_png(work, page_id: str) -> None:
                 index,
                 current=True,
                 scene=bpy.context.scene,
-                force=True,
+                force=force,
+                variant=variant,
             )
     except Exception:  # noqa: BLE001
         _logger.exception("page preview update failed: %s", page_id)
@@ -239,28 +257,28 @@ class BMANGA_OT_open_page_file(Operator):
         work_dir = Path(work.work_dir)
         try:
             page_io.ensure_page_dir(work_dir, page_id)
-            if not _save_metadata(context, reason="open_page_file"):
-                self.report({"ERROR"}, "作品情報の保存に失敗しました")
-                return {"CANCELLED"}
-            _save_current_blend_if_bmanga(context, work_dir)
-            if blend_io.page_blend_exists(work_dir, page_id):
-                if not blend_io.open_page_blend(work_dir, page_id):
-                    self.report({"ERROR"}, "ページを開けませんでした")
+            with file_transition_runtime.blend_switch():
+                if not _save_current_blend_if_bmanga(context, work_dir):
+                    self.report({"ERROR"}, "作品情報の保存に失敗しました")
                     return {"CANCELLED"}
-            else:
-                if not _create_page_blend(work_dir, page_id):
-                    self.report({"ERROR"}, "ページ用blendファイルの作成に失敗しました")
-                    try:
-                        blend_io.open_work_blend(work_dir)
-                    except Exception:  # noqa: BLE001
-                        pass
-                    return {"CANCELLED"}
-                # save_as_mainfile だけでは直前ファイルの Undo 履歴が残る場合が
-                # ある。保存したページを open_mainfile で開き直し、ファイル境界
-                # と履歴境界を一致させる。
-                if not blend_io.open_page_blend(work_dir, page_id):
-                    self.report({"ERROR"}, "作成したページ用blendファイルを開けませんでした")
-                    return {"CANCELLED"}
+                if blend_io.page_blend_exists(work_dir, page_id):
+                    if not blend_io.open_page_blend(work_dir, page_id):
+                        self.report({"ERROR"}, "ページを開けませんでした")
+                        return {"CANCELLED"}
+                else:
+                    if not _create_page_blend(work_dir, page_id):
+                        self.report({"ERROR"}, "ページ用blendファイルの作成に失敗しました")
+                        try:
+                            blend_io.open_work_blend(work_dir)
+                        except Exception:  # noqa: BLE001
+                            pass
+                        return {"CANCELLED"}
+                    # save_as_mainfile だけでは直前ファイルの Undo 履歴が残る場合が
+                    # ある。保存したページを open_mainfile で開き直し、ファイル境界
+                    # と履歴境界を一致させる。
+                    if not blend_io.open_page_blend(work_dir, page_id):
+                        self.report({"ERROR"}, "作成したページ用blendファイルを開けませんでした")
+                        return {"CANCELLED"}
             context = bpy.context
             work = get_work(context)
         except Exception as exc:  # noqa: BLE001
@@ -307,17 +325,25 @@ class BMANGA_OT_exit_page_file(Operator):
             self.report({"ERROR"}, "ページ用blendファイルではありません")
             return {"CANCELLED"}
         try:
-            if not _save_metadata(context, reason="exit_page_file"):
-                self.report({"ERROR"}, "作品情報の保存に失敗しました")
-                return {"CANCELLED"}
-            blend_io.save_page_blend(work_dir, page_id)
-            _update_page_preview_png(work, page_id)
-            if not blend_io.work_blend_exists(work_dir):
-                self.report({"ERROR"}, "ページ一覧ファイルが見つかりません")
-                return {"CANCELLED"}
-            if not blend_io.open_work_blend(work_dir):
-                self.report({"ERROR"}, "ページ一覧へ戻れませんでした")
-                return {"CANCELLED"}
+            page_dirty = file_transition_runtime.scene_content_dirty(context.scene)
+            with file_transition_runtime.blend_switch():
+                if not blend_io.save_page_blend(work_dir, page_id):
+                    self.report({"ERROR"}, "ページファイルを保存できませんでした")
+                    return {"CANCELLED"}
+                from ..utils import page_preview_object
+
+                _update_page_preview_png(
+                    work,
+                    page_id,
+                    force=page_dirty,
+                    variant=page_preview_object.PREVIEW_RENDER_VARIANT_WORK,
+                )
+                if not blend_io.work_blend_exists(work_dir):
+                    self.report({"ERROR"}, "ページ一覧ファイルが見つかりません")
+                    return {"CANCELLED"}
+                if not blend_io.open_work_blend(work_dir):
+                    self.report({"ERROR"}, "ページ一覧へ戻れませんでした")
+                    return {"CANCELLED"}
         except Exception as exc:  # noqa: BLE001
             _logger.exception("exit_page_file failed")
             self.report({"ERROR"}, f"ページ一覧へ戻れませんでした: {exc}")
@@ -325,13 +351,6 @@ class BMANGA_OT_exit_page_file(Operator):
         ctx = bpy.context
         set_mode(MODE_PAGE, ctx)
         page_file_scene.set_work_list_state(ctx)
-        try:
-            from ..utils import page_preview_object
-
-            page_preview_object.sync_page_previews(ctx, get_work(ctx), force=False)
-            page_file_scene.purge_work_list_runtime_data(ctx.scene)
-        except Exception:  # noqa: BLE001
-            _logger.exception("exit_page_file: work list cleanup failed")
         self.report({"INFO"}, "作品ファイルに戻りました")
         return {"FINISHED"}
 
@@ -380,17 +399,27 @@ class BMANGA_OT_page_file_next(Operator):
             return {"CANCELLED"}
         work_dir = Path(work.work_dir)
         try:
-            cur_page_id = page_file_scene.current_page_id()
-            if cur_page_id:
-                blend_io.save_page_blend(work_dir, cur_page_id)
-                _update_page_preview_png(work, cur_page_id)
             page_io.ensure_page_dir(work_dir, next_page_id)
+            cur_page_id = page_file_scene.current_page_id()
+            page_dirty = file_transition_runtime.scene_content_dirty(context.scene)
             work.active_page_index = new_idx
-            _save_metadata(context, reason="page_file_next")
-            if blend_io.page_blend_exists(work_dir, next_page_id):
-                blend_io.open_page_blend(work_dir, next_page_id)
-            else:
-                _create_page_blend(work_dir, next_page_id)
+            with file_transition_runtime.blend_switch():
+                if cur_page_id and not blend_io.save_page_blend(work_dir, cur_page_id):
+                    raise RuntimeError("現在のページを保存できませんでした")
+                if cur_page_id:
+                    from ..utils import page_preview_object
+
+                    _update_page_preview_png(
+                        work,
+                        cur_page_id,
+                        force=page_dirty,
+                        variant=page_preview_object.PREVIEW_RENDER_VARIANT_WORK,
+                    )
+                if blend_io.page_blend_exists(work_dir, next_page_id):
+                    if not blend_io.open_page_blend(work_dir, next_page_id):
+                        raise RuntimeError("次のページを開けませんでした")
+                elif not _create_page_blend(work_dir, next_page_id):
+                    raise RuntimeError("次のページを作成できませんでした")
         except Exception as exc:  # noqa: BLE001
             _logger.exception("page_file_next failed")
             self.report({"ERROR"}, f"次のページを開けませんでした: {exc}")
@@ -442,17 +471,27 @@ class BMANGA_OT_page_file_prev(Operator):
             return {"CANCELLED"}
         work_dir = Path(work.work_dir)
         try:
-            cur_page_id = page_file_scene.current_page_id()
-            if cur_page_id:
-                blend_io.save_page_blend(work_dir, cur_page_id)
-                _update_page_preview_png(work, cur_page_id)
             page_io.ensure_page_dir(work_dir, prev_page_id)
+            cur_page_id = page_file_scene.current_page_id()
+            page_dirty = file_transition_runtime.scene_content_dirty(context.scene)
             work.active_page_index = new_idx
-            _save_metadata(context, reason="page_file_prev")
-            if blend_io.page_blend_exists(work_dir, prev_page_id):
-                blend_io.open_page_blend(work_dir, prev_page_id)
-            else:
-                _create_page_blend(work_dir, prev_page_id)
+            with file_transition_runtime.blend_switch():
+                if cur_page_id and not blend_io.save_page_blend(work_dir, cur_page_id):
+                    raise RuntimeError("現在のページを保存できませんでした")
+                if cur_page_id:
+                    from ..utils import page_preview_object
+
+                    _update_page_preview_png(
+                        work,
+                        cur_page_id,
+                        force=page_dirty,
+                        variant=page_preview_object.PREVIEW_RENDER_VARIANT_WORK,
+                    )
+                if blend_io.page_blend_exists(work_dir, prev_page_id):
+                    if not blend_io.open_page_blend(work_dir, prev_page_id):
+                        raise RuntimeError("前のページを開けませんでした")
+                elif not _create_page_blend(work_dir, prev_page_id):
+                    raise RuntimeError("前のページを作成できませんでした")
         except Exception as exc:  # noqa: BLE001
             _logger.exception("page_file_prev failed")
             self.report({"ERROR"}, f"前のページを開けませんでした: {exc}")

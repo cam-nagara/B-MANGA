@@ -17,12 +17,11 @@ from bpy.types import Operator
 from ..core.mode import MODE_PAGE, MODE_COMA, get_mode, set_mode
 from ..core.work import get_active_page, get_work
 from ..io import blend_io, page_io, work_io
-from ..utils import geom, log, paths
+from ..utils import file_transition_runtime, geom, log, paths
 from . import coma_modal_state
 
 _logger = log.get_logger(__name__)
 _PENDING_ENTER_COMA: tuple[int, int, bool] | None = None
-
 
 def _suspend_keymap_visibility_updates(
     seconds: float = 4.0, *, disable_now: bool = True
@@ -60,13 +59,15 @@ def _find_page_by_id(work, page_id: str):
             return pg
     return None
 
-
-def _auto_render_thumb_before_return(context, work) -> None:
+def _auto_render_thumb_before_return(context, work, *, force: bool) -> None:
     if work is None or not bool(getattr(work, "auto_render_coma_thumb_on_return", True)):
         return
     try:
         from ..utils import coma_thumb_output
 
+        expected = coma_thumb_output.expected_thumb_path(getattr(context, "scene", None))
+        if not force and expected is not None and expected.is_file():
+            return
         coma_thumb_output.render_thumb_png(context)
     except Exception:  # noqa: BLE001
         _logger.exception("exit_coma_mode: thumb auto render failed")
@@ -398,6 +399,7 @@ class BMANGA_OT_enter_coma_mode(Operator):
 
     def execute(self, context):
         coma_modal_state.finish_all(context)
+        page_dirty = file_transition_runtime.scene_content_dirty(context.scene)
         work = get_work(context)
         page = get_active_page(context)
         if (
@@ -445,6 +447,8 @@ class BMANGA_OT_enter_coma_mode(Operator):
         page_id = page.id
         work_dir = Path(work.work_dir)
         _suspend_keymap_visibility_updates()
+        transition = file_transition_runtime.blend_switch()
+        transition.__enter__()
 
         try:
             if self._should_prompt_coma_template(context, work_dir, page_id, stem, entry):
@@ -460,19 +464,44 @@ class BMANGA_OT_enter_coma_mode(Operator):
                     entry.coma_blend_template_needs_apply = False
                 page_io.save_page_json(work_dir, page)
 
-            # work.blend を開く前後の load_post は work.json を正として再同期する。
-            # 用紙色や開始ページを UI で変えた直後に cNN.blend へ入っても
-            # 古い JSON で巻き戻らないよう、mainfile 切替前に必ず保存する。
-            _save_current_work_metadata(work, page)
-
             # 1) 現在の mainfile が B-MANGA の編集ファイルなら上書き保存
             cur = blend_io.current_mainfile_path()
             expected_work = paths.work_blend_path(work_dir).resolve()
             expected_page = paths.page_blend_path(work_dir, page_id).resolve()
             if cur is not None and cur == expected_work:
-                blend_io.save_current_as(expected_work)
+                if not blend_io.save_current_as(expected_work):
+                    raise RuntimeError("作品ファイルを保存できませんでした")
             elif cur is not None and cur == expected_page:
-                blend_io.save_current_as(expected_page)
+                if not blend_io.save_current_as(expected_page):
+                    raise RuntimeError("ページファイルを保存できませんでした")
+                from ..utils import page_preview_object
+
+                page_preview_object.ensure_preview_png(
+                    work,
+                    page,
+                    int(getattr(work, "active_page_index", 0) or 0),
+                    current=True,
+                    scene=context.scene,
+                    force=page_dirty,
+                    variant=page_preview_object.PREVIEW_RENDER_VARIANT_DETAIL,
+                )
+                from ..utils import coma_camera_refs
+
+                coma_camera_refs.ensure_page_content_overlays(
+                    work,
+                    page,
+                    paths.assets_dir(work_dir) / "_coma_bg_cache",
+                    page_preview_object.preview_image_size(
+                        work,
+                        context.scene,
+                        page,
+                    ),
+                    force=page_dirty,
+                )
+            else:
+                # 想定外のファイルからの呼出しだけは native save_pre が無いため、
+                # JSONを明示保存して遷移先で巻き戻らないようにする。
+                _save_current_work_metadata(work, page)
 
             # 2) cNN.blend を開く。未作成なら現シーンを新規保存して遷移。
             if blend_io.coma_blend_exists(work_dir, page_id, stem):
@@ -586,6 +615,8 @@ class BMANGA_OT_enter_coma_mode(Operator):
             _logger.exception("enter_coma_mode failed")
             self.report({"ERROR"}, f"コマ編集モード遷移失敗: {exc}")
             return {"CANCELLED"}
+        finally:
+            transition.__exit__(None, None, None)
 
         # load_post ハンドラがモード/stem を同期するが、念のため明示的にも設定
         ctx = bpy.context
@@ -594,35 +625,6 @@ class BMANGA_OT_enter_coma_mode(Operator):
         ctx.scene.bmanga_current_coma_page_id = page_id
         if hasattr(ctx.scene, "bmanga_active_layer_kind"):
             ctx.scene.bmanga_active_layer_kind = "coma"
-        active_view_layer_name = str(
-            getattr(getattr(ctx, "view_layer", None), "name", "") or ""
-        )
-        try:
-            from ..utils import coma_camera
-
-            coma_camera.ensure_coma_camera_scene(
-                ctx,
-                page_id=page_id,
-                coma_id=stem,
-                generate_references=False,
-            )
-        except Exception:  # noqa: BLE001
-            _logger.exception("enter_coma_mode: final panel camera setup failed")
-        try:
-            from ..utils import page_preview_object
-
-            page_preview_object.schedule_sync_page_previews()
-        except Exception:  # noqa: BLE001
-            _logger.exception("enter_coma_mode: page preview setup failed")
-        try:
-            from ..utils import coma_mask_object
-
-            coma_mask_object.restore_preferred_user_view_layer(
-                ctx.scene,
-                active_view_layer_name,
-            )
-        except Exception:  # noqa: BLE001
-            _logger.exception("enter_coma_mode: restore view layer failed")
         try:
             from ..ui import sidebar as _sidebar
 
@@ -773,6 +775,7 @@ class BMANGA_OT_exit_coma_mode(Operator):
 
     def execute(self, context):
         coma_modal_state.finish_all(context)
+        coma_dirty = file_transition_runtime.scene_content_dirty(context.scene)
         try:
             from ..utils import coma_camera
 
@@ -795,35 +798,39 @@ class BMANGA_OT_exit_coma_mode(Operator):
                     return {"CANCELLED"}
                 cur = blend_io.current_mainfile_path()
                 expected_panel = paths.coma_blend_path(work_dir, page_id, stem).resolve()
-                _auto_render_thumb_before_return(context, work)
-                if cur is not None and cur == expected_panel:
-                    if not blend_io.save_current_as(expected_panel):
-                        self.report({"ERROR"}, "コマファイルを保存できなかったため移動を中止しました")
+                with file_transition_runtime.blend_switch():
+                    if cur is not None and cur == expected_panel:
+                        if not blend_io.save_current_as(expected_panel):
+                            self.report({"ERROR"}, "コマファイルを保存できなかったため移動を中止しました")
+                            return {"CANCELLED"}
+                    else:
+                        page = _find_page_by_id(work, page_id)
+                        _save_current_work_metadata(work, page)
+                    _auto_render_thumb_before_return(
+                        context,
+                        work,
+                        force=coma_dirty,
+                    )
+                    # ページ用blendがあればページ編集へ戻る。無い場合だけページ一覧へ戻る。
+                    if blend_io.page_blend_exists(work_dir, page_id):
+                        _suspend_keymap_visibility_updates()
+                        target_opened = blend_io.open_page_blend(work_dir, page_id)
+                        _suspend_keymap_visibility_updates()
+                    elif blend_io.work_blend_exists(work_dir):
+                        _suspend_keymap_visibility_updates()
+                        target_opened = blend_io.open_work_blend(work_dir)
+                        _suspend_keymap_visibility_updates()
+                    else:
+                        _logger.error(
+                            "exit_coma_mode: page/work blend not found at %s / %s",
+                            paths.page_blend_path(work_dir, page_id),
+                            paths.work_blend_path(work_dir),
+                        )
+                        self.report(
+                            {"ERROR"},
+                            "戻り先のblendファイルが見つかりません. 作品フォルダの整合性を確認してください",
+                        )
                         return {"CANCELLED"}
-                # メタデータを JSON へ書き出してから戻り先 blend を開く。
-                # enter_coma_mode と同様、load_post で古い JSON に巻き戻るのを防ぐ。
-                page = _find_page_by_id(work, page_id)
-                _save_current_work_metadata(work, page)
-                # ページ用blendがあればページ編集へ戻る。無い場合だけページ一覧へ戻る。
-                if blend_io.page_blend_exists(work_dir, page_id):
-                    _suspend_keymap_visibility_updates()
-                    target_opened = blend_io.open_page_blend(work_dir, page_id)
-                    _suspend_keymap_visibility_updates()
-                elif blend_io.work_blend_exists(work_dir):
-                    _suspend_keymap_visibility_updates()
-                    target_opened = blend_io.open_work_blend(work_dir)
-                    _suspend_keymap_visibility_updates()
-                else:
-                    _logger.error(
-                        "exit_coma_mode: page/work blend not found at %s / %s",
-                        paths.page_blend_path(work_dir, page_id),
-                        paths.work_blend_path(work_dir),
-                    )
-                    self.report(
-                        {"ERROR"},
-                        "戻り先のblendファイルが見つかりません. 作品フォルダの整合性を確認してください",
-                    )
-                    return {"CANCELLED"}
                 if not target_opened:
                     self.report({"ERROR"}, "戻り先のblendファイルを開けませんでした")
                     return {"CANCELLED"}
@@ -901,6 +908,7 @@ class BMANGA_OT_exit_coma_mode_safe(Operator):
         if work_dir is None:
             self.report({"ERROR"}, "コマファイル (cNN.blend) ではありません")
             return {"CANCELLED"}
+        coma_dirty = file_transition_runtime.scene_content_dirty(context.scene)
         try:
             try:
                 from ..utils import coma_camera
@@ -913,36 +921,43 @@ class BMANGA_OT_exit_coma_mode_safe(Operator):
                 cur = blend_io.current_mainfile_path()
                 expected_panel = paths.coma_blend_path(work_dir, page_id, coma_id).resolve()
                 work = get_work(context)
-                _auto_render_thumb_before_return(context, work)
-                if cur is not None and cur == expected_panel:
-                    if not blend_io.save_current_as(expected_panel):
-                        self.report({"ERROR"}, "コマファイルを保存できなかったため移動を中止しました")
-                        return {"CANCELLED"}
-                page = _find_page_by_id(work, page_id) if work is not None else None
-                _save_current_work_metadata(work, page)
+                with file_transition_runtime.blend_switch():
+                    if cur is not None and cur == expected_panel:
+                        if not blend_io.save_current_as(expected_panel):
+                            self.report({"ERROR"}, "コマファイルを保存できなかったため移動を中止しました")
+                            return {"CANCELLED"}
+                    else:
+                        page = _find_page_by_id(work, page_id) if work is not None else None
+                        _save_current_work_metadata(work, page)
+                    _auto_render_thumb_before_return(
+                        context,
+                        work,
+                        force=coma_dirty,
+                    )
             except Exception as exc:  # noqa: BLE001
                 _logger.exception("exit_coma_mode_safe: cNN.blend 保存失敗")
                 self.report({"ERROR"}, f"コマファイルを保存できなかったため移動を中止しました: {exc}")
                 return {"CANCELLED"}
 
-            if self.to_work:
-                if not blend_io.work_blend_exists(work_dir):
+            with file_transition_runtime.blend_switch():
+                if self.to_work:
+                    if not blend_io.work_blend_exists(work_dir):
+                        self.report(
+                            {"ERROR"},
+                            f"作品ファイルが見つかりません: {paths.work_blend_path(work_dir)}",
+                        )
+                        return {"CANCELLED"}
+                    target_opened = blend_io.open_work_blend(work_dir)
+                elif blend_io.page_blend_exists(work_dir, page_id):
+                    target_opened = blend_io.open_page_blend(work_dir, page_id)
+                elif blend_io.work_blend_exists(work_dir):
+                    target_opened = blend_io.open_work_blend(work_dir)
+                else:
                     self.report(
                         {"ERROR"},
-                        f"作品ファイルが見つかりません: {paths.work_blend_path(work_dir)}",
+                        f"戻り先のblendファイルが見つかりません: {paths.work_blend_path(work_dir)}",
                     )
                     return {"CANCELLED"}
-                target_opened = blend_io.open_work_blend(work_dir)
-            elif blend_io.page_blend_exists(work_dir, page_id):
-                target_opened = blend_io.open_page_blend(work_dir, page_id)
-            elif blend_io.work_blend_exists(work_dir):
-                target_opened = blend_io.open_work_blend(work_dir)
-            else:
-                self.report(
-                    {"ERROR"},
-                    f"戻り先のblendファイルが見つかりません: {paths.work_blend_path(work_dir)}",
-                )
-                return {"CANCELLED"}
             if not target_opened:
                 self.report({"ERROR"}, "戻り先のblendファイルを開けませんでした")
                 return {"CANCELLED"}

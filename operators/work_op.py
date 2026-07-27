@@ -591,14 +591,19 @@ class BMANGA_OT_work_save(Operator):
                 if file_role == "page" and paths.is_valid_page_id(file_page_id):
                     page_index = page_file_scene.find_page_index(work, file_page_id)
                     if 0 <= page_index < len(work.pages):
-                        page_preview_object.ensure_preview_png(
-                            work,
-                            work.pages[page_index],
-                            page_index,
-                            current=True,
-                            scene=context.scene,
-                            force=True,
-                        )
+                        for variant in (
+                            page_preview_object.PREVIEW_RENDER_VARIANT_DETAIL,
+                            page_preview_object.PREVIEW_RENDER_VARIANT_WORK,
+                        ):
+                            page_preview_object.ensure_preview_png(
+                                work,
+                                work.pages[page_index],
+                                page_index,
+                                current=True,
+                                scene=context.scene,
+                                force=True,
+                                variant=variant,
+                            )
                 elif file_role == "work":
                     page_file_scene.purge_work_list_runtime_data(context.scene)
                     page_preview_object.sync_page_previews(context, work, force=True)

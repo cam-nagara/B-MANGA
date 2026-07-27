@@ -204,8 +204,9 @@ def test_every_supported_kind_uses_its_single_fixed_maximum_profile():
     expected = {
         "page": 1,
         "coma": 2,
-        "gp": 2,
-        "layer_folder": 1,
+            "gp": 2,
+            "gp_tool": 2,
+            "layer_folder": 1,
         "image": 2,
         "image_path": 2,
         "raster": 2,

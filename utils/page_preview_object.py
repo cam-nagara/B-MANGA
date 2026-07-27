@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 from pathlib import Path
 
@@ -37,13 +39,19 @@ PREVIEW_RENDER_SUPERSAMPLE = 2
 PREVIEW_SUPERSAMPLE_MAX_TARGET_PX = 1024
 PREVIEW_Z_M = 0.006
 PREVIEW_FILENAME = "page_preview.png"
-PREVIEW_RENDER_VERSION = "11"
+PREVIEW_DETAIL_FILENAME = "page_preview.detail.png"
+PREVIEW_RENDER_VERSION = "12"
 PREVIEW_RENDER_VERSION_KEY = "BMangaPreviewVersion"
 PREVIEW_RENDER_VARIANT_KEY = "BMangaPreviewVariant"
 PREVIEW_RENDER_SIGNATURE_KEY = "BMangaPreviewSignature"
 PREVIEW_RENDER_VARIANT_WORK = "work"
 PREVIEW_RENDER_VARIANT_DETAIL = "detail"
 _DEFERRED_SYNC_FORCE = False
+_DEFERRED_RENDER_QUEUE: list[tuple[str, str]] = []
+_DEFERRED_RENDER_SCENE_KEY = 0
+_DEFERRED_RENDER_VARIANT = ""
+_DEFERRED_RENDER_WORK_DIR = ""
+_PAGE_JSON_DIGEST_CACHE: dict[str, tuple[int, int, str]] = {}
 
 
 def preview_enabled(scene=None) -> bool:
@@ -353,6 +361,12 @@ def _image_size(work, scene=None, page=None) -> tuple[int, int]:
     return width, height
 
 
+def preview_image_size(work, scene=None, page=None) -> tuple[int, int]:
+    """ページ／コマ下絵の共有キャッシュが使う表示解像度を返す。"""
+
+    return _image_size(work, scene, page)
+
+
 def _resize_preview_image(image, width: int, height: int):
     if tuple(image.size) == (int(width), int(height)):
         return image
@@ -378,17 +392,65 @@ def _preview_render_variant(scene=None) -> str:
     return PREVIEW_RENDER_VARIANT_WORK
 
 
-def _preview_render_signature(work, scene=None) -> str:
-    variant = _preview_render_variant(scene)
-    if variant != PREVIEW_RENDER_VARIANT_DETAIL:
-        return PREVIEW_RENDER_VARIANT_WORK
+def _preview_render_signature(
+    work,
+    scene=None,
+    page_index: int = -1,
+    *,
+    variant: str = "",
+) -> str:
+    variant = str(variant or _preview_render_variant(scene))
     try:
         from . import page_preview_decor
+        from ..io import schema
 
-        guides = int(page_preview_decor.page_guides_visible(work, scene))
+        guides = int(variant == PREVIEW_RENDER_VARIANT_DETAIL and page_preview_decor.page_guides_visible(work, scene))
+        paper = schema.paper_to_dict(getattr(work, "paper", None))
     except Exception:  # noqa: BLE001
         guides = 1
-    return f"{variant}:guides={guides}:labels=overlay"
+        paper = {}
+    payload = {
+        "variant": variant,
+        "guides": guides,
+        "labels": "overlay",
+        "page_index": int(page_index),
+        "paper": paper,
+        "page_json": _page_json_digest(work, page_index),
+    }
+    digest = hashlib.sha256(
+        json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    return f"{variant}:{digest}"
+
+
+def _page_json_digest(work, page_index: int) -> str:
+    pages = list(getattr(work, "pages", ()) or ())
+    if not (0 <= int(page_index) < len(pages)):
+        return ""
+    page_id = str(getattr(pages[int(page_index)], "id", "") or "")
+    work_dir_text = str(getattr(work, "work_dir", "") or "")
+    if not work_dir_text or not paths.is_valid_page_id(page_id):
+        return ""
+    path = paths.page_meta_path(Path(work_dir_text), page_id)
+    try:
+        stat = path.stat()
+        key = str(path)
+        state = (int(stat.st_mtime_ns), int(stat.st_size))
+        cached = _PAGE_JSON_DIGEST_CACHE.get(key)
+        if cached is not None and cached[:2] == state:
+            return cached[2]
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        _PAGE_JSON_DIGEST_CACHE[key] = (state[0], state[1], digest)
+        if len(_PAGE_JSON_DIGEST_CACHE) > 1024:
+            _PAGE_JSON_DIGEST_CACHE.clear()
+        return digest
+    except OSError:
+        return ""
 
 
 def _preview_png_usable(
@@ -441,16 +503,14 @@ def _preview_png_usable(
         return False
     if a < 200 or r > 120:
         return False
-    if current:
-        return g <= 170 and b >= 220
-    return g >= 170 and b >= 180
+    return g >= 140 and b >= 180
 
 
 def _draw_preview_frame(draw, width: int, height: int, *, current: bool) -> None:
+    # 選択中ページの強調はGPUオーバーレイで描く。PNGへ焼き込むと、
+    # 選択変更だけで旧ページと新ページの2枚を再生成するため、全ページ共通。
     outline = (72, 190, 222, 255)
-    if current:
-        outline = (64, 140, 255, 255)
-    draw.rectangle((0, 0, width - 1, height - 1), outline=outline, width=3 if current else 2)
+    draw.rectangle((0, 0, width - 1, height - 1), outline=outline, width=2)
 
 
 def _page_number(work, page_index: int) -> str:
@@ -481,12 +541,38 @@ def _bbox(points: list[tuple[float, float]]) -> tuple[float, float, float, float
     return min(xs), min(ys), max(xs), max(ys)
 
 
-def _preview_png_path(work, page_id: str) -> Path | None:
+def _preview_png_path(
+    work,
+    page_id: str,
+    *,
+    scene=None,
+    variant: str = "",
+) -> Path | None:
     work_dir_text = str(getattr(work, "work_dir", "") or "")
     if not work_dir_text:
         return None
     work_dir = Path(work_dir_text)
-    return work_dir / page_id / PREVIEW_FILENAME
+    resolved_variant = str(variant or _preview_render_variant(scene))
+    filename = (
+        PREVIEW_DETAIL_FILENAME
+        if resolved_variant == PREVIEW_RENDER_VARIANT_DETAIL
+        else PREVIEW_FILENAME
+    )
+    return work_dir / page_id / filename
+
+
+def preview_png_for_display(work, page_id: str, *, scene=None) -> Path | None:
+    """現在用途の画像を返す。詳細キャッシュ生成前は一覧用画像を即時表示する。"""
+
+    target = _preview_png_path(work, page_id, scene=scene)
+    if target is not None and target.is_file():
+        return target
+    return _preview_png_path(
+        work,
+        page_id,
+        scene=scene,
+        variant=PREVIEW_RENDER_VARIANT_WORK,
+    )
 
 
 def _draw_coma_thumb(draw, image, work, page, coma, points_px, bbox_px) -> None:
@@ -516,7 +602,15 @@ def _draw_coma_thumb(draw, image, work, page, coma, points_px, bbox_px) -> None:
         return
 
 
-def _render_preview_image(work, page, page_index: int, *, current: bool, scene=None):
+def _render_preview_image(
+    work,
+    page,
+    page_index: int,
+    *,
+    current: bool,
+    scene=None,
+    variant: str = "",
+):
     from PIL import Image, ImageDraw
 
     # 見開きはタイル自体が 2 ページ分の横長 (_image_size が page 対応)
@@ -531,7 +625,15 @@ def _render_preview_image(work, page, page_index: int, *, current: bool, scene=N
         scale = 1
     width = max(1, target_width * scale)
     height = max(1, target_height * scale)
-    exported = _render_preview_image_from_export(work, page, width, height, scene=scene)
+    resolved_variant = str(variant or _preview_render_variant(scene))
+    exported = _render_preview_image_from_export(
+        work,
+        page,
+        width,
+        height,
+        scene=scene,
+        variant=resolved_variant,
+    )
     if exported is not None:
         exported = _resize_preview_image(exported, target_width, target_height)
         from . import page_preview_decor
@@ -542,7 +644,7 @@ def _render_preview_image(work, page, page_index: int, *, current: bool, scene=N
         # 含まないため、装飾側で塗りを描く。両方で描くと二重になるので
         # export が焼き込んだ時だけ装飾側の塗りを止める。
         fills_baked = (
-            _preview_render_variant(scene) == PREVIEW_RENDER_VARIANT_DETAIL
+            resolved_variant == PREVIEW_RENDER_VARIANT_DETAIL
             and page_preview_decor.page_guides_visible(work, scene)
         )
         page_preview_decor.draw_preview_decoration(
@@ -623,7 +725,15 @@ def _render_preview_image(work, page, page_index: int, *, current: bool, scene=N
     return img
 
 
-def _render_preview_image_from_export(work, page, width: int, height: int, *, scene=None):
+def _render_preview_image_from_export(
+    work,
+    page,
+    width: int,
+    height: int,
+    *,
+    scene=None,
+    variant: str = "",
+):
     try:
         from PIL import Image
         from ..io import export_pipeline
@@ -637,7 +747,7 @@ def _render_preview_image_from_export(work, page, width: int, height: int, *, sc
         dpi = max(8, int(round(max(width / cw, height / ch) * 25.4)))
         from . import page_preview_decor
 
-        detail_preview = _preview_render_variant(scene) == PREVIEW_RENDER_VARIANT_DETAIL
+        detail_preview = str(variant or _preview_render_variant(scene)) == PREVIEW_RENDER_VARIANT_DETAIL
         page_overlay_visible = detail_preview and page_preview_decor.page_guides_visible(work, scene)
         options = export_pipeline.ExportOptions(
             area="canvas",
@@ -662,11 +772,26 @@ def _render_preview_image_from_export(work, page, width: int, height: int, *, sc
         return None
 
 
-def ensure_preview_png(work, page, page_index: int, *, current: bool, scene=None, force: bool = False) -> Path | None:
+def ensure_preview_png(
+    work,
+    page,
+    page_index: int,
+    *,
+    current: bool,
+    scene=None,
+    force: bool = False,
+    variant: str = "",
+) -> Path | None:
     page_id = str(getattr(page, "id", "") or "")
     if not paths.is_valid_page_id(page_id):
         return None
-    path = _preview_png_path(work, page_id)
+    resolved_variant = str(variant or _preview_render_variant(scene))
+    path = _preview_png_path(
+        work,
+        page_id,
+        scene=scene,
+        variant=resolved_variant,
+    )
     if path is None:
         return None
     try:
@@ -674,13 +799,17 @@ def ensure_preview_png(work, page, page_index: int, *, current: bool, scene=None
         expected_size = _image_size(work, scene, page)
         if not force and not _preview_png_fresh_for_page(work, page, path):
             force = True
-        variant = _preview_render_variant(scene)
-        signature = _preview_render_signature(work, scene)
+        signature = _preview_render_signature(
+            work,
+            scene,
+            page_index,
+            variant=resolved_variant,
+        )
         if not force and _preview_png_usable(
             path,
             expected_size,
             current=current,
-            variant=variant,
+            variant=resolved_variant,
             signature=signature,
         ):
             return path
@@ -690,13 +819,25 @@ def ensure_preview_png(work, page, page_index: int, *, current: bool, scene=None
 
         loaded_here = page_detail.ensure_page_detail(work, page)
         try:
-            image = _render_preview_image(work, page, page_index, current=current, scene=scene)
+            image = _render_preview_image(
+                work,
+                page,
+                page_index,
+                current=current,
+                scene=scene,
+                variant=resolved_variant,
+            )
         finally:
             if loaded_here:
                 page_detail.clear_page_detail(page)
         if image is None:
             return None
-        _save_preview_png(image, path, variant=variant, signature=signature)
+        _save_preview_png(
+            image,
+            path,
+            variant=resolved_variant,
+            signature=signature,
+        )
         return path
     except Exception:  # noqa: BLE001
         _logger.exception("page preview render failed: %s", page_id)
@@ -1123,7 +1264,11 @@ def _ensure_preview_object(scene, work, page, page_index: int, rect, *, current:
 
 
 def _preview_png_fresh_for_page(work, page, path: Path) -> bool:
-    """プレビュー PNG が保存内容 (page.json / コマ画像) より新しいかを返す."""
+    """プレビューPNGが、そのページ固有の保存内容より新しいかを返す。
+
+    work.json は通常保存のたびに更新されるため判定へ使わない。用紙などの
+    作品共通設定はPNG内の表示シグネチャで照合する。
+    """
     try:
         png_mtime = path.stat().st_mtime
     except OSError:
@@ -1132,13 +1277,7 @@ def _preview_png_fresh_for_page(work, page, path: Path) -> bool:
         from . import coma_preview
 
         work_dir = Path(str(getattr(work, "work_dir", "") or ""))
-        work_meta = paths.work_meta_path(work_dir)
-        if work_meta.is_file() and work_meta.stat().st_mtime > png_mtime:
-            return False
         page_id = str(getattr(page, "id", "") or "")
-        meta = paths.page_meta_path(work_dir, page_id)
-        if meta.is_file() and meta.stat().st_mtime > png_mtime:
-            return False
         for coma in getattr(page, "comas", []) or []:
             src = coma_preview.coma_preview_source_path(work_dir, page_id, coma)
             if src is not None and src.is_file() and src.stat().st_mtime > png_mtime:
@@ -1146,6 +1285,129 @@ def _preview_png_fresh_for_page(work, page, path: Path) -> bool:
     except Exception:  # noqa: BLE001
         return False
     return True
+
+
+def _preview_needs_update(work, page, page_index: int, scene) -> bool:
+    page_id = str(getattr(page, "id", "") or "")
+    variant = _preview_render_variant(scene)
+    path = _preview_png_path(work, page_id, scene=scene, variant=variant)
+    if path is None or not _preview_png_fresh_for_page(work, page, path):
+        return True
+    return not _preview_png_usable(
+        path,
+        _image_size(work, scene, page),
+        current=False,
+        variant=variant,
+        signature=_preview_render_signature(
+            work,
+            scene,
+            page_index,
+            variant=variant,
+        ),
+    )
+
+
+def _priority_preview_indices(work, current_page_id: str) -> set[int]:
+    pages = list(getattr(work, "pages", []) or [])
+    current_index = next(
+        (
+            index
+            for index, page in enumerate(pages)
+            if str(getattr(page, "id", "") or "") == current_page_id
+        ),
+        -1,
+    )
+    if current_index < 0:
+        current_index = max(
+            0,
+            min(
+                len(pages) - 1,
+                int(getattr(work, "active_page_index", 0) or 0),
+            ),
+        ) if pages else -1
+    if current_index < 0:
+        return set()
+    return {
+        index
+        for index in range(current_index - 1, current_index + 2)
+        if 0 <= index < len(pages)
+    }
+
+
+def _schedule_deferred_preview_renders(
+    scene,
+    work,
+    queued: list[tuple[str, str]],
+) -> None:
+    global _DEFERRED_RENDER_QUEUE
+    global _DEFERRED_RENDER_SCENE_KEY
+    global _DEFERRED_RENDER_VARIANT
+    global _DEFERRED_RENDER_WORK_DIR
+    if not queued:
+        _DEFERRED_RENDER_QUEUE.clear()
+        return
+    try:
+        scene_key = int(scene.as_pointer())
+    except Exception:  # noqa: BLE001
+        scene_key = id(scene)
+    _DEFERRED_RENDER_QUEUE = list(queued)
+    _DEFERRED_RENDER_SCENE_KEY = scene_key
+    _DEFERRED_RENDER_VARIANT = _preview_render_variant(scene)
+    _DEFERRED_RENDER_WORK_DIR = str(getattr(work, "work_dir", "") or "")
+    try:
+        if not bpy.app.timers.is_registered(_run_deferred_preview_render):
+            bpy.app.timers.register(
+                _run_deferred_preview_render,
+                first_interval=0.15,
+            )
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _run_deferred_preview_render():
+    if not _DEFERRED_RENDER_QUEUE:
+        return None
+    scene = getattr(bpy.context, "scene", None)
+    work = getattr(scene, "bmanga_work", None) if scene is not None else None
+    try:
+        scene_key = int(scene.as_pointer()) if scene is not None else 0
+    except Exception:  # noqa: BLE001
+        scene_key = id(scene) if scene is not None else 0
+    if (
+        scene is None
+        or work is None
+        or scene_key != _DEFERRED_RENDER_SCENE_KEY
+        or str(getattr(work, "work_dir", "") or "") != _DEFERRED_RENDER_WORK_DIR
+        or _preview_render_variant(scene) != _DEFERRED_RENDER_VARIANT
+    ):
+        _DEFERRED_RENDER_QUEUE.clear()
+        return None
+    page_id, current_page_id = _DEFERRED_RENDER_QUEUE.pop(0)
+    pages = list(getattr(work, "pages", []) or [])
+    index = next(
+        (
+            page_index
+            for page_index, page in enumerate(pages)
+            if str(getattr(page, "id", "") or "") == page_id
+        ),
+        -1,
+    )
+    if index >= 0:
+        ensure_preview_png(
+            work,
+            pages[index],
+            index,
+            current=page_id == current_page_id,
+            scene=scene,
+            force=False,
+        )
+        try:
+            for area in getattr(bpy.context, "screen", None).areas:
+                if area.type == "VIEW_3D":
+                    area.tag_redraw()
+        except Exception:  # noqa: BLE001
+            pass
+    return 0.05 if _DEFERRED_RENDER_QUEUE else None
 
 
 def sync_page_previews(context=None, work=None, *, force: bool = False) -> int:
@@ -1165,20 +1427,33 @@ def sync_page_previews(context=None, work=None, *, force: bool = False) -> int:
         return 0
     rects = preview_rects_mm(scene, work)
     updated = 0
+    priority_indices = _priority_preview_indices(work, current_page_id)
+    deferred: list[tuple[str, str]] = []
     for page in getattr(work, "pages", []) or []:
         page_id = str(getattr(page, "id", "") or "")
         rect = rects.get(page_id)
         if rect is None:
             continue
-        ensure_preview_png(
+        page_index = int(rect[0])
+        needs_update = bool(force or _preview_needs_update(
             work,
             page,
-            int(rect[0]),
-            current=page_id == current_page_id,
-            scene=scene,
-            force=force,
-        )
+            page_index,
+            scene,
+        ))
+        if needs_update and (force or page_index in priority_indices):
+            ensure_preview_png(
+                work,
+                page,
+                page_index,
+                current=page_id == current_page_id,
+                scene=scene,
+                force=force,
+            )
+        elif needs_update:
+            deferred.append((page_id, current_page_id))
         updated += 1
+    _schedule_deferred_preview_renders(scene, work, deferred)
     if role == "work":
         try:
             from . import page_file_scene

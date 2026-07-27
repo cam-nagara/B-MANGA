@@ -65,6 +65,10 @@ def main() -> None:
 
     # --- ページを増やし、ページ側でコマ/フキダシ入りの page.json を作る ---
     assert "FINISHED" in bpy.ops.bmanga.page_add("EXEC_DEFAULT")
+    # 見開き統合は両ページのpage.blendを安全要件とするため、追加ページも
+    # 一度開いて正規のページ内容ファイルを作る。
+    assert bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=1) == {"FINISHED"}
+    assert bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT") == {"FINISHED"}
     result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
     assert result == {"FINISHED"}, result
     assert page_file_scene.is_page_edit_scene(bpy.context.scene)

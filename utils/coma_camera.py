@@ -24,7 +24,7 @@ from .coma_camera_constants import (
 )
 from .coma_camera_refs import (
     ReferenceImage,
-    ensure_page_content_overlay,
+    ensure_page_content_overlays,
     ensure_reference_images,
     reference_dir,
     _collect_existing_reference_images,
@@ -1299,6 +1299,16 @@ def _add_page_overview_backgrounds(scene, work) -> None:
     cam_data = getattr(cam, "data", None)
     if cam_data is None:
         return
+    from . import coma_overview_cache
+
+    expected_signature = coma_overview_cache.build_signature(scene, work)
+    if coma_overview_cache.backgrounds_current(
+        scene,
+        expected_signature,
+        _PAGE_OVERVIEW_BG_PROP,
+    ):
+        apply_coma_overlay_background_visibility(scene=scene)
+        return
     _remove_page_overview_backgrounds(scene)
     from . import page_preview_object
 
@@ -1369,7 +1379,12 @@ def _add_page_overview_backgrounds(scene, work) -> None:
                 render_side=render_side,
             )
             continue
-        png_path = page_preview_object._preview_png_path(work, page_id)
+        png_path = page_preview_object._preview_png_path(
+            work,
+            page_id,
+            scene=scene,
+            variant=page_preview_object.PREVIEW_RENDER_VARIANT_WORK,
+        )
         if png_path is None or not png_path.is_file():
             continue
         try:
@@ -1401,6 +1416,10 @@ def _add_page_overview_backgrounds(scene, work) -> None:
     if hasattr(cam_data, "show_background_images"):
         cam_data.show_background_images = True
     apply_coma_overlay_background_visibility(scene=scene)
+    coma_overview_cache.record(
+        scene,
+        coma_overview_cache.build_signature(scene, work),
+    )
 
 
 def _add_own_page_backgrounds(
@@ -1416,7 +1435,19 @@ def _add_own_page_backgrounds(
     """現在ページをコマ領域の外側画像と内側レイヤーに分けて追加."""
     from . import page_preview_object
 
-    png_path = page_preview_object._preview_png_path(work, page_id)
+    png_path = page_preview_object._preview_png_path(
+        work,
+        page_id,
+        scene=bpy.context.scene,
+        variant=page_preview_object.PREVIEW_RENDER_VARIANT_DETAIL,
+    )
+    if png_path is None or not png_path.is_file():
+        png_path = page_preview_object._preview_png_path(
+            work,
+            page_id,
+            scene=bpy.context.scene,
+            variant=page_preview_object.PREVIEW_RENDER_VARIANT_WORK,
+        )
     if png_path is None or not png_path.is_file():
         return
     if not export_pipeline.has_pillow():
@@ -1444,12 +1475,18 @@ def _add_own_page_backgrounds(
             None,
         )
         contents = []
-        for side in ("back", "front"):
-            overlay_path = cache_dir / f"page_content_{side}_{page_id}.png"
-            content_source_path = (
-                ensure_page_content_overlay(work, page, overlay_path, src.size, side=side)
-                if page is not None else None
+        content_paths = (
+            ensure_page_content_overlays(
+                work,
+                page,
+                cache_dir,
+                src.size,
             )
+            if page is not None
+            else {}
+        )
+        for side in ("back", "front"):
+            content_source_path = content_paths.get(side)
             if content_source_path is None:
                 continue
             try:
@@ -1684,7 +1721,12 @@ def add_page_file_overview_backgrounds(scene, work) -> None:
     for page_id, (idx, x0, y0, x1, y1) in rects.items():
         if page_id == current_page_id:
             continue
-        png_path = page_preview_object._preview_png_path(work, page_id)
+        png_path = page_preview_object._preview_png_path(
+            work,
+            page_id,
+            scene=scene,
+            variant=page_preview_object.PREVIEW_RENDER_VARIANT_WORK,
+        )
         if png_path is None or not png_path.is_file():
             continue
         try:

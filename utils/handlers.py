@@ -592,6 +592,7 @@ def save_scene_work_to_disk(
     *,
     reason: str = "",
     strict_rasters: bool = False,
+    refresh_runtime: bool = True,
 ) -> bool:
     """現在 scene の B-MANGA JSON メタデータを disk へ保存する.
 
@@ -657,18 +658,28 @@ def save_scene_work_to_disk(
             if not bool(getattr(page, "detail_loaded", True)):
                 continue
             page_io.save_page_json(work_dir, page)
+        try:
+            from . import sidecar_load_cache
+
+            sidecar_load_cache.record(
+                getattr(context, "scene", None),
+                work_dir=work_dir,
+            )
+        except Exception:  # noqa: BLE001
+            _logger.exception("sidecar load signature record failed")
         _logger.info("B-MANGA metadata saved%s", f" ({reason})" if reason else "")
         # Phase 1: 保存契機で Outliner mirror を最新化する。page/coma 追加削除
         # 直後に save_scene_work_to_disk が呼ばれるため、ここでミラーを更新
         # しておけば各 op に侵襲しない。冪等で安全。
-        try:
-            from . import layer_object_sync as _los
+        if refresh_runtime:
+            try:
+                from . import layer_object_sync as _los
 
-            scene = getattr(context, "scene", None)
-            if scene is not None:
-                _los.mirror_work_to_outliner(scene, work)
-        except Exception:  # noqa: BLE001
-            _logger.exception("save_scene_work_to_disk: mirror refresh failed")
+                scene = getattr(context, "scene", None)
+                if scene is not None:
+                    _los.mirror_work_to_outliner(scene, work)
+            except Exception:  # noqa: BLE001
+                _logger.exception("save_scene_work_to_disk: mirror refresh failed")
         try:
             from . import page_grid
 
@@ -887,7 +898,29 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
         }:
             _schedule_native_save_reload(blend_path, notice=True)
             return
-        work = sync_scene_work_from_disk(bpy.context, work_dir)
+        try:
+            from . import sidecar_load_cache
+
+            embedded_work = getattr(scene, "bmanga_work", None)
+            use_embedded = (
+                embedded_work is not None
+                and sidecar_load_cache.current(
+                    scene,
+                    work_dir,
+                    blend_path,
+                )
+            )
+        except Exception:  # noqa: BLE001
+            _logger.exception("load_post: sidecar cache check failed")
+            use_embedded = False
+            embedded_work = None
+        if use_embedded:
+            work = embedded_work
+            work.work_dir = str(work_dir.resolve())
+            work.loaded = True
+            _logger.info("load_post: unchanged sidecars reused from blend")
+        else:
+            work = sync_scene_work_from_disk(bpy.context, work_dir)
         if work is None:
             return
         try:
@@ -1026,21 +1059,29 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
                 try:
                     from . import page_file_scene
 
-                    page_file_scene.purge_other_page_data(scene, str(rel.parts[0]))
-                    page_file_scene.resync_page_runtime_objects(scene, work, str(rel.parts[0]))
+                    page_id = str(rel.parts[0])
+                    page_file_scene.purge_other_page_data(scene, page_id)
+                    if not page_file_scene.page_runtime_objects_current(
+                        scene,
+                        work,
+                        page_id,
+                    ):
+                        page_file_scene.resync_page_runtime_objects(
+                            scene,
+                            work,
+                            page_id,
+                        )
                 except Exception:  # noqa: BLE001
                     _logger.exception("load_post: purge other page data failed")
-                try:
-                    from . import layer_stack as _layer_stack
-
-                    _layer_stack.sync_layer_stack_after_data_change(bpy.context)
-                except Exception:  # noqa: BLE001
-                    _logger.exception("load_post: page layer order refresh failed")
                 try:
                     from . import page_preview_object
 
                     page_preview_object.highlight_preview_page(scene, work, None)
-                    page_preview_object.sync_page_previews(bpy.context, work, force=True)
+                    page_preview_object.sync_page_previews(
+                        bpy.context,
+                        work,
+                        force=False,
+                    )
                 except Exception:  # noqa: BLE001
                     _logger.exception("load_post: page preview setup failed")
                 display_settings.apply_standard_color_management(scene)
@@ -1101,12 +1142,6 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
                     generate_references=False,
                 )
                 try:
-                    from . import page_preview_object
-
-                    page_preview_object.schedule_sync_page_previews()
-                except Exception:  # noqa: BLE001
-                    _logger.exception("load_post: coma page preview setup failed")
-                try:
                     from . import coma_thumb_output
 
                     coma_thumb_output.ensure_thumb_output_node(scene)
@@ -1122,7 +1157,6 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
                     _logger.exception("load_post: coma mask mesh sync failed")
                 _overlay.reset_viewport_background_to_theme(bpy.context)
                 _overlay.apply_bmanga_shading_mode(bpy.context)
-                coma_camera.schedule_coma_view_camera()
                 try:
                     from ..ui import sidebar as _sidebar
 
@@ -1132,6 +1166,12 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
                 _restore_coma_user_view_layer(scene, active_view_layer_name)
         except ValueError:
             pass
+        try:
+            from . import file_transition_runtime
+
+            file_transition_runtime.arm_scene(scene)
+        except Exception:  # noqa: BLE001
+            _logger.exception("load_post: file transition tracking arm failed")
         _logger.info("B-MANGA: load_post synced for %s", blend_path)
     except Exception:  # noqa: BLE001
         _logger.exception("B-MANGA load_post handler failed")
@@ -1243,10 +1283,13 @@ def _bmanga_on_save_pre(filepath_arg) -> None:  # signature: (str,) in Blender h
                     )
         except Exception:  # noqa: BLE001
             _logger.exception("B-MANGA thumb output save_pre sync failed")
+        from . import file_transition_runtime
+
         metadata_saved = save_scene_work_to_disk(
             bpy.context,
             reason="save_pre",
             strict_rasters=True,
+            refresh_runtime=not file_transition_runtime.switch_in_progress(),
         )
         _mark_native_save_metadata_result(
             metadata_saved,
@@ -1373,6 +1416,9 @@ def _bmanga_on_undo_post(*_args) -> None:
         from . import preview_composite
 
         preview_composite.mark_dirty(context=bpy.context)
+        from . import file_transition_runtime
+
+        file_transition_runtime.mark_scene_dirty()
     except Exception:  # noqa: BLE001
         _logger.exception("undo_post: deferred reconcile failed")
 

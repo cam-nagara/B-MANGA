@@ -36,15 +36,6 @@ def _page_preview_objects() -> list[bpy.types.Object]:
     ]
 
 
-def _translation(obj: bpy.types.Object):
-    return obj.matrix_world.to_translation().copy()
-
-
-def _assert_delta(value: float, expected: float, label: str) -> None:
-    if abs(value - expected) > 1.0e-5:
-        raise AssertionError(f"{label}: {value} != {expected}")
-
-
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_coma_preview_follow_"))
     mod = None
@@ -102,29 +93,45 @@ def main() -> None:
         if updated <= 0:
             raise AssertionError("ページ一覧プレビューが作られていません")
         previews = _page_preview_objects()
-        if not previews:
-            raise AssertionError("表示中のページ一覧プレビューがありません")
-        for obj in previews:
-            if obj.parent is not camera:
-                raise AssertionError(f"{obj.name} がカメラに追従していません")
-            if not bool(obj.get(page_preview_object.PREVIEW_CAMERA_FOLLOW_PROP, False)):
-                raise AssertionError(f"{obj.name} にカメラ追従状態が保存されていません")
-
-        before = [(obj, _translation(obj)) for obj in previews]
+        if previews:
+            raise AssertionError(
+                "GPUオーバーレイ専用プレビューの実Objectが残っています: "
+                f"{[obj.name for obj in previews]}"
+            )
+        coma_camera.ensure_coma_camera_scene(
+            bpy.context,
+            work=scene.bmanga_work,
+            page_id=page_id,
+            coma_id=coma_id,
+            generate_references=False,
+        )
+        before = [
+            (
+                str(bg.image.get("bmanga_page_id", "") or ""),
+                str(bg.image.get("bmanga_kind", "") or ""),
+                float(bg.scale),
+                tuple(bg.offset),
+            )
+            for bg in camera.data.background_images
+            if getattr(bg, "image", None) is not None
+            and bool(bg.image.get("_bmanga_page_overview_bg", False))
+        ]
+        assert before, "ページ概要のカメラ下絵がありません"
         camera.location.x += 0.25
         camera.location.y -= 0.125
         bpy.context.view_layer.update()
-        for obj, start in before:
-            moved = _translation(obj) - start
-            _assert_delta(float(moved.x), 0.25, f"{obj.name} X移動")
-            _assert_delta(float(moved.y), -0.125, f"{obj.name} Y移動")
-
-        page_preview_object.sync_page_previews(bpy.context, scene.bmanga_work, force=True)
-        bpy.context.view_layer.update()
-        for obj, start in before:
-            moved = _translation(obj) - start
-            _assert_delta(float(moved.x), 0.25, f"{obj.name} 再同期後X移動")
-            _assert_delta(float(moved.y), -0.125, f"{obj.name} 再同期後Y移動")
+        after = [
+            (
+                str(bg.image.get("bmanga_page_id", "") or ""),
+                str(bg.image.get("bmanga_kind", "") or ""),
+                float(bg.scale),
+                tuple(bg.offset),
+            )
+            for bg in camera.data.background_images
+            if getattr(bg, "image", None) is not None
+            and bool(bg.image.get("_bmanga_page_overview_bg", False))
+        ]
+        assert after == before, "カメラ移動でページ下絵の相対配置が変わりました"
 
         print("BMANGA_COMA_PAGE_PREVIEW_CAMERA_FOLLOW_OK", flush=True)
     finally:

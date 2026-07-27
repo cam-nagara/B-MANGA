@@ -68,8 +68,11 @@ def _page_preview_object_for(page_id: str):
 
 
 def _assert_preview_cache_hidden() -> None:
-    visible = _visible_page_preview_objects()
-    assert not visible, f"ページプレビュー平面は表示に使わず非表示キャッシュにします: {[obj.name for obj in visible]}"
+    objects = _page_preview_objects()
+    assert not objects, (
+        "ページプレビューはGPUオーバーレイ専用で、実Objectを作りません: "
+        f"{[obj.name for obj in objects]}"
+    )
 
 
 _WORK_FILE_FORBIDDEN_OBJECT_PROPS = {
@@ -389,9 +392,6 @@ def main() -> None:
         other_page.comas.clear()  # 後始末: 他ページの詳細を持たない状態へ戻す
         _assert_page_file_current_page_runtime_only("p0001")
         assert bpy.data.collections.get("p0002") is None
-        previews = _page_preview_objects()
-        assert len(previews) == 4, _page_preview_object_ids()
-        assert _page_preview_object_ids() == {"p0001", "p0002", "p0003", "p0004"}
         _assert_preview_cache_hidden()
         assert (work_dir / "p0002" / "page_preview.png").is_file()
         assert str(getattr(bpy.context.scene, "bmanga_page_preview_range_mode", "")) == "ALL"
@@ -465,15 +465,7 @@ def main() -> None:
         assert set(rects) == {"p0001", "p0002"}
         assert overlay._page_file_overview_indices(bpy.context.scene, work) == {0, 1}  # noqa: SLF001
         _assert_preview_cache_hidden()
-        preview_obj = _page_preview_object_for("p0002")
-        assert preview_obj is not None
-        mat = preview_obj.active_material
-        assert mat is not None and mat.node_tree is not None
-        assert any(getattr(node, "type", "") == "EMISSION" for node in mat.node_tree.nodes)
-        opacity_node = mat.node_tree.nodes.get(page_preview_object.PREVIEW_OPACITY_NODE)
-        assert opacity_node is not None
-        assert abs(float(opacity_node.outputs[0].default_value) - 1.0) < 0.001
-        assert abs(float(getattr(mat, "diffuse_color", (1.0, 1.0, 1.0, 0.0))[3]) - 1.0) < 0.001
+        _assert_preview_cache_hidden()
         before_cut = len(work.pages[0].comas)
         cut_target = work.pages[0].comas[0]
         cut_x = float(cut_target.rect_x_mm) + float(cut_target.rect_width_mm) * 0.5
@@ -502,13 +494,19 @@ def main() -> None:
         )
         from PIL import Image
 
-        preview_size = Image.open(work_dir / "p0002" / "page_preview.png").size
+        visible_preview = page_preview_object.preview_png_for_display(
+            work,
+            "p0002",
+            scene=bpy.context.scene,
+        )
+        assert visible_preview is not None
+        preview_size = Image.open(visible_preview).size
         assert tuple(preview_size) == tuple(expected_preview_size), (
             preview_size,
             expected_preview_size,
         )
         assert max(preview_size) < 1536, preview_size
-        preview_image = Image.open(work_dir / "p0002" / "page_preview.png").convert("RGBA")
+        preview_image = Image.open(visible_preview).convert("RGBA")
         r, g, b, a = preview_image.getpixel((preview_image.width // 2, preview_image.height // 2))
         assert a == 255 and max(r, g, b) > 200, (r, g, b, a)
         bpy.context.scene.bmanga_overview_cols = 6
@@ -551,7 +549,7 @@ def main() -> None:
         assert _managed_object("balloon", "page_only_balloon_probe") is not None
         assert bpy.data.collections.get("p0002") is None
         _assert_page_file_current_page_runtime_only("p0001")
-        assert len(_page_preview_objects()) >= 1
+        _assert_preview_cache_hidden()
         assert int(getattr(bpy.context.scene, "bmanga_overview_cols", -1)) == 6
         assert abs(float(getattr(bpy.context.scene, "bmanga_overview_gap_mm", -1.0))) < 0.001
         assert not bool(getattr(bpy.context.scene, "bmanga_page_preview_enabled", True))

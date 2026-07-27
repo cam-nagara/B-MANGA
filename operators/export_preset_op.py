@@ -7,6 +7,7 @@ from bpy.props import EnumProperty, StringProperty
 from bpy.types import Operator
 
 from ..io import export_presets
+from ..utils import detail_popup
 
 
 def _export_preset_enum_items(self, context):
@@ -30,7 +31,7 @@ class BMANGA_OT_export_preset_add_local(Operator):
 
     def invoke(self, context, event):
         self.preset_name = export_presets.unique_preset_name(None, "新規プリセット")
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         name = self.preset_name.strip()
@@ -59,7 +60,7 @@ class BMANGA_OT_export_preset_delete(Operator):
     preset_name: StringProperty(name="名前")  # type: ignore[valid-type]
 
     def invoke(self, context, event):
-        return context.window_manager.invoke_confirm(self, event)
+        return detail_popup.invoke_confirm(context, event, self)
 
     def execute(self, context):
         name = self.preset_name
@@ -90,7 +91,7 @@ class BMANGA_OT_export_preset_rename(Operator):
 
     def invoke(self, context, event):
         self.new_name = self.preset_name
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         old = self.preset_name
@@ -125,7 +126,7 @@ class BMANGA_OT_export_preset_duplicate(Operator):
 
     def invoke(self, context, event):
         self.new_name = export_presets.unique_preset_name(None, f"{self.preset_name} コピー")
-        return context.window_manager.invoke_props_dialog(self)
+        return detail_popup.invoke_props_dialog(context, event, self)
 
     def execute(self, context):
         source = self.preset_name

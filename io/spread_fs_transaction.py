@@ -13,7 +13,7 @@ import uuid
 
 MANIFEST_NAME = "spread-content-manifest.json"
 _PAGE_CONTROL_NAMES = {"page.blend", "page.json", MANIFEST_NAME}
-_DERIVED_PAGE_FILES = {"page_preview.png"}
+_DERIVED_PAGE_FILES = {"page_preview.png", "page_preview.detail.png"}
 
 
 class SpreadContentError(RuntimeError):

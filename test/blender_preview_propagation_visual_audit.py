@@ -203,7 +203,14 @@ def main() -> None:
         page_preview_object = _submodule("utils.page_preview_object")
         _mark("STEP page_preview_sync")
         page_preview_object.sync_page_previews(bpy.context, work, force=True)
-        page_preview_1 = _copy_image(work_path / "p0001" / "page_preview.png", "03_page_edit_page_preview.png")
+        page_preview_1 = _copy_image(
+            page_preview_object.preview_png_for_display(
+                work,
+                "p0001",
+                scene=bpy.context.scene,
+            ),
+            "03_page_edit_page_preview.png",
+        )
 
         _mark("STEP page_edit_exit_to_work")
         assert bpy.ops.bmanga.exit_page_file() == {"FINISHED"}
@@ -215,7 +222,15 @@ def main() -> None:
         _mark("STEP reopen_page_file")
         assert bpy.ops.bmanga.open_page_file(index=0) == {"FINISHED"}
         work = bpy.context.scene.bmanga_work
-        page_coma_reference = _copy_image(work_path / "p0001" / "page_preview.png", "05_page_edit_coma_reference.png")
+        page_preview_object = _submodule("utils.page_preview_object")
+        page_coma_reference = _copy_image(
+            page_preview_object.preview_png_for_display(
+                work,
+                "p0001",
+                scene=bpy.context.scene,
+            ),
+            "05_page_edit_coma_reference.png",
+        )
 
         work.active_page_index = 0
         work.pages[0].active_coma_index = 0
@@ -250,7 +265,14 @@ def main() -> None:
         page_preview_object = _submodule("utils.page_preview_object")
         _mark("STEP page_after_coma_sync")
         page_preview_object.sync_page_previews(bpy.context, work, force=True)
-        page_preview_2 = _copy_image(work_path / "p0001" / "page_preview.png", "07_page_after_coma_preview.png")
+        page_preview_2 = _copy_image(
+            page_preview_object.preview_png_for_display(
+                work,
+                "p0001",
+                scene=bpy.context.scene,
+            ),
+            "07_page_after_coma_preview.png",
+        )
 
         _mark("STEP exit_page_file")
         assert bpy.ops.bmanga.exit_page_file() == {"FINISHED"}

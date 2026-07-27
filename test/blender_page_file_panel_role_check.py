@@ -294,7 +294,8 @@ def main() -> None:
         assert role == page_file_scene.ROLE_PAGE
         assert page_id == "p0001"
         assert tool_panel.BMANGA_PT_tools.poll(context)
-        assert not export_panel.BMANGA_PT_export.poll(context)
+        # v0.6.555以降はページ／コマ単体の書き出しにも対応している。
+        assert export_panel.BMANGA_PT_export.poll(context)
         assert not work_panel.BMANGA_PT_work.poll(context)
         assert not bpy.ops.bmanga.meldex_scenario_file_import.poll()
         assert not paper_panel.BMANGA_PT_paper.poll(context)

@@ -27,7 +27,7 @@ class FileFingerprint:
 _registry_lock = threading.RLock()
 _baselines: dict[str, dict[str, FileFingerprint]] = {}
 _PROTECTED_SUFFIXES = {".blend", ".json", ".png"}
-_DERIVED_CACHE_NAMES = {"page_preview.png"}
+_DERIVED_CACHE_NAMES = {"page_preview.png", "page_preview.detail.png"}
 
 
 class SaveBaselineUnavailableError(RuntimeError):

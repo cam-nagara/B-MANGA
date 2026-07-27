@@ -52,7 +52,11 @@ def draw_for_page(
     if not page_id:
         return
 
-    png_path = page_preview_object._preview_png_path(work, page_id)
+    png_path = page_preview_object.preview_png_for_display(
+        work,
+        page_id,
+        scene=getattr(context, "scene", None),
+    )
     if png_path is None or not png_path.is_file():
         return
 

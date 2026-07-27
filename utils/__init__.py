@@ -31,6 +31,9 @@ from . import (  # noqa: E402,F401
 def register() -> None:
     log.register()
     handlers.register()
+    from . import file_transition_runtime
+
+    file_transition_runtime.register()
     from . import preview_composite
 
     preview_composite.register()
@@ -47,6 +50,12 @@ def register() -> None:
 
 
 def unregister() -> None:
+    try:
+        from . import file_transition_runtime
+
+        file_transition_runtime.unregister()
+    except Exception:  # noqa: BLE001
+        pass
     try:
         from . import preview_composite
 
