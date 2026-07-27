@@ -1834,6 +1834,22 @@ def _render_gp_object_layers(
     return out
 
 
+def _effect_has_mesh_display(controller) -> bool:
+    from ..utils import effect_line_object, effect_line_path
+
+    displays = (
+        effect_line_object.find_effect_display_object(controller),
+        effect_line_path.find_effect_line_image_object(controller),
+    )
+    for display in displays:
+        if display is None or str(getattr(display, "type", "") or "") != "MESH":
+            continue
+        mesh = getattr(display, "data", None)
+        if len(getattr(mesh, "polygons", ())) > 0 or len(display.modifiers) > 0:
+            return True
+    return False
+
+
 def _gp_layers(work, page, canvas_size: tuple[int, int], dpi: int) -> list[ExportLayer]:
     try:
         from ..utils import layer_object_model
@@ -1843,11 +1859,14 @@ def _gp_layers(work, page, canvas_size: tuple[int, int], dpi: int) -> list[Expor
     page_offset_mm = _resolve_page_offset_mm(work, page)
     page_id = str(getattr(page, "id", "") or "")
     for obj in layer_object_model.iter_layer_objects():
+        kind = layer_object_model.layer_kind(obj)
+        if kind == "effect" and _effect_has_mesh_display(obj):
+            continue
         parent_key = layer_object_model.parent_key(obj)
         obj_page_id = parent_key.split(":", 1)[0] if parent_key else ""
         if obj_page_id != page_id:
             continue
-        group_root = "effects" if layer_object_model.layer_kind(obj) == "effect" else "gp"
+        group_root = "effects" if kind == "effect" else "gp"
         out.extend(
             _render_gp_object_layers(
                 obj,
@@ -2123,6 +2142,29 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
                     )
                 )
 
+    from . import export_effect_mesh
+
+    layers.extend(
+        export_effect_mesh.page_effect_mesh_layers(
+            work=work,
+            page=page,
+            canvas_size=canvas_size,
+            dpi=dpi,
+            ExportLayer=ExportLayer,
+            Image=Image,
+            ImageDraw=ImageDraw,
+            page_offset_mm=_resolve_page_offset_mm(work, page),
+            group_path_for_parent=lambda parent_kind, parent_key, fallback: (
+                _group_path_for_parent(
+                    page,
+                    parent_kind,
+                    parent_key,
+                    fallback,
+                )
+            ),
+            stack_uid_for_object=export_stack_order.stack_uid_for_object,
+        )
+    )
     layers.extend(_gp_layers(work, page, canvas_size, dpi))
 
     for balloon in getattr(page, "balloons", []):

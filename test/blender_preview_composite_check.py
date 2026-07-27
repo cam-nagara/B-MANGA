@@ -50,7 +50,7 @@ def _assert_same(ImageChops, actual, expected, label: str) -> None:
     if actual.size != expected.size:
         raise AssertionError(f"{label}: size mismatch {actual.size} != {expected.size}")
     difference = ImageChops.difference(actual, expected)
-    if difference.getbbox() is not None:
+    if any(maximum > 0 for _minimum, maximum in difference.getextrema()):
         extrema = difference.getextrema()
         raise AssertionError(f"{label}: pixel mismatch extrema={extrema}")
 

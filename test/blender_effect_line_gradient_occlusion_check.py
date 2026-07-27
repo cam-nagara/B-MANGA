@@ -301,6 +301,82 @@ def _diff_ratio(path_with: Path, path_without: Path, region_px, threshold: float
     return hit, total
 
 
+def _create_path_effect(context, parent_key, bounds, *, source, image_path=""):
+    from bmanga_dev_effect_gradient_occlusion.operators import effect_line_op
+    from bmanga_dev_effect_gradient_occlusion.utils import effect_line_path
+
+    context.scene.bmanga_active_layer_kind = "gp"
+    params = context.scene.bmanga_effect_line_params
+    params.line_image_source = source
+    params.line_image_shape_kind = "star"
+    params.line_image_path = str(image_path)
+    params.line_image_draw_mode = "stamp"
+    params.line_image_brush_size_mm = 4.0
+    params.line_image_spacing_percent = 175.0
+    obj, layer = effect_line_op._create_effect_layer(
+        context,
+        bounds,
+        parent_key=parent_key,
+    )
+    effect_line_op._write_effect_strokes(context, obj, layer, bounds)
+    display = effect_line_path.find_effect_line_image_object(obj)
+    assert display is not None and len(display.data.polygons) > 0
+    return obj
+
+
+def _opaque_colors(image):
+    pixels = (
+        image.get_flattened_data()
+        if hasattr(image, "get_flattened_data")
+        else image.getdata()
+    )
+    return {pixel[:3] for pixel in pixels if pixel[3] >= 100}
+
+
+def _assert_path_mesh_effect_composite(
+    context,
+    parent_key,
+    service,
+    layer_stack,
+    export_pipeline,
+    temp_root,
+) -> Path:
+    source_path = temp_root / "effect_image_source.png"
+    source = export_pipeline.Image.new("RGBA", (48, 48), (0, 0, 0, 0))
+    draw = export_pipeline.ImageDraw.Draw(source)
+    draw.ellipse((2, 2, 45, 45), fill=(235, 35, 45, 230))
+    draw.polygon(((4, 24), (24, 4), (44, 24), (24, 44)), fill=(20, 90, 245, 230))
+    source.save(source_path)
+
+    shape_obj = _create_path_effect(
+        context,
+        parent_key,
+        (20.0, 20.0, 72.0, 72.0),
+        source="shape",
+    )
+    image_obj = _create_path_effect(
+        context,
+        parent_key,
+        (36.0, 28.0, 64.0, 78.0),
+        source="image",
+        image_path=source_path,
+    )
+    layer_stack.sync_layer_stack_after_data_change(context)
+    service.mark_dirty(context=context)
+    frame = service.render_now(context, quality="high", force=True)
+    assert frame is not None
+    by_uid = {layer.stack_uid: layer for layer in frame.layers}
+    shape_uid = layer_stack.target_uid("effect", str(shape_obj.get("bmanga_id", "") or ""))
+    image_uid = layer_stack.target_uid("effect", str(image_obj.get("bmanga_id", "") or ""))
+    assert by_uid[shape_uid].image.getbbox() is not None
+    colors = _opaque_colors(by_uid[image_uid].image)
+    assert any(red > blue * 2 for red, _green, blue in colors)
+    assert any(blue > red * 2 for red, _green, blue in colors)
+    output = OUT_DIR / "composite_with_shape_and_image_effects.png"
+    frame.full_pil.save(output)
+    return output
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_effect_gradient_occlusion_"))
     mod = None
@@ -382,9 +458,81 @@ def main() -> None:
                 f"hit={hit}/{total} ratio={ratio:.4f}"
             )
 
+        # ---- 2D合成表示の実体Mesh取込 ----
+        # 効果線の編集用GPは表示用Meshへ焼き込んだ後に空になるため、GPだけを
+        # 読むと2D合成オン時に効果線が消える。表示用Meshがレイヤー順UID付きで
+        # 合成へ入り、ドラッグ時の前後分割対象にもなることを検証する。
+        from bmanga_dev_effect_gradient_occlusion.io import export_pipeline
+        from bmanga_dev_effect_gradient_occlusion.utils import (
+            layer_stack,
+            preview_composite,
+        )
+
+        scene.bmanga_composite_preview_enabled = True
+        scene.bmanga_page_preview_resolution_percentage = 25.0
+        service = preview_composite.get_service()
+        service.mark_dirty(context=context)
+        composite = service.render_now(
+            context,
+            quality="high",
+            force=True,
+        )
+        assert composite is not None
+        effect_uid = layer_stack.target_uid(
+            "effect",
+            str(effect_obj.get("bmanga_id", "") or ""),
+        )
+        composite_effect = next(
+            layer for layer in composite.layers
+            if layer.stack_uid == effect_uid
+        )
+        assert composite_effect.image.getbbox() is not None
+        without_effect = export_pipeline._flatten_layers(
+            [
+                layer for layer in composite.layers
+                if layer.stack_uid != effect_uid
+            ],
+            composite.full_pil.size,
+        )
+        composite_path = OUT_DIR / "composite_with_effect.png"
+        without_composite_path = OUT_DIR / "composite_without_effect.png"
+        isolated_effect_path = OUT_DIR / "composite_effect_layer.png"
+        composite.full_pil.save(composite_path)
+        without_effect.save(without_composite_path)
+        composite_effect.image.save(isolated_effect_path)
+        composite_difference = export_pipeline.ImageChops.difference(
+            composite.full_pil,
+            without_effect,
+        )
+        assert any(
+            maximum > 0
+            for _minimum, maximum in composite_difference.getextrema()
+        )
+        assert service.begin_drag(
+            context,
+            anchor_uid=effect_uid,
+            exclude_uids={effect_uid},
+            objects={effect_obj, effect_display},
+        )
+        assert any(
+            layer.stack_uid == effect_uid
+            for layer in composite.active_layers
+        )
+        service.end_drag(context, committed=False)
+        service.restore_objects()
+        path_effect_path = _assert_path_mesh_effect_composite(
+            context,
+            parent_key,
+            service,
+            layer_stack,
+            export_pipeline,
+            temp_root,
+        )
+
         print(
             "BMANGA_EFFECT_LINE_GRADIENT_OCCLUSION_OK "
-            f"diff_ratio={ratio:.4f} with={out_with} without={out_without}"
+            f"diff_ratio={ratio:.4f} with={out_with} without={out_without} "
+            f"composite={composite_path} path_effects={path_effect_path}"
         )
     finally:
         if mod is not None:
