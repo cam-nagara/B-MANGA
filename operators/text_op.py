@@ -207,19 +207,32 @@ def _resolve_local_xy_for_page_from_event(context, event, page_id: str):
     return work, target_page, world_x_mm - ox_mm, world_y_mm - oy_mm
 
 
-def _page_indices_for_text_hit_search(work):
+def _page_indices_for_text_hit_search(work, scene=None):
     if work is None:
+        return
+    allowed_page_ids = page_file_scene.editable_page_ids(scene)
+    if allowed_page_ids == set():
         return
     active_index = int(getattr(work, "active_page_index", -1))
     if (
         0 <= active_index < len(work.pages)
         and page_range.page_in_range(work.pages[active_index])
+        and (
+            allowed_page_ids is None
+            or str(getattr(work.pages[active_index], "id", "") or "")
+            in allowed_page_ids
+        )
     ):
         yield active_index
     for page_index in reversed(range(len(work.pages))):
         if (
             page_index != active_index
             and page_range.page_in_range(work.pages[page_index])
+            and (
+                allowed_page_ids is None
+                or str(getattr(work.pages[page_index], "id", "") or "")
+                in allowed_page_ids
+            )
         ):
             yield page_index
 
@@ -242,7 +255,10 @@ def _resolve_text_hit_from_event(context, event):
     if world_x_mm is None or world_y_mm is None:
         return work, page, lx, ly, -1, None, "", can_create
 
-    for page_index in _page_indices_for_text_hit_search(work):
+    for page_index in _page_indices_for_text_hit_search(
+        work,
+        getattr(context, "scene", None),
+    ):
         candidate = work.pages[page_index]
         ox_mm, oy_mm = page_grid.page_total_offset_mm(work, context.scene, page_index)
         local_x = world_x_mm - ox_mm

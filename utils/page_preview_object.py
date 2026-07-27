@@ -256,12 +256,30 @@ def remove_page_previews() -> int:
                     bpy.data.materials.remove(mat)
                 except Exception:  # noqa: BLE001
                     pass
-    coll = bpy.data.collections.get(PREVIEW_COLLECTION_NAME)
-    if coll is not None:
+    preview_collections = [
+        coll
+        for coll in list(bpy.data.collections)
+        if coll.name == PREVIEW_COLLECTION_NAME
+        or str(coll.get(on.PROP_KIND, "") or "") == PREVIEW_KIND
+    ]
+    for coll in preview_collections:
         try:
-            bpy.data.collections.remove(coll)
+            bpy.data.collections.remove(coll, do_unlink=True)
+            removed += 1
         except Exception:  # noqa: BLE001
             pass
+    for mesh in list(bpy.data.meshes):
+        if mesh.name.startswith(PREVIEW_MESH_PREFIX) and int(getattr(mesh, "users", 0)) == 0:
+            try:
+                bpy.data.meshes.remove(mesh)
+            except Exception:  # noqa: BLE001
+                pass
+    for mat in list(bpy.data.materials):
+        if mat.name.startswith(PREVIEW_MATERIAL_PREFIX) and int(getattr(mat, "users", 0)) == 0:
+            try:
+                bpy.data.materials.remove(mat)
+            except Exception:  # noqa: BLE001
+                pass
     return removed
 
 
@@ -1135,80 +1153,30 @@ def sync_page_previews(context=None, work=None, *, force: bool = False) -> int:
     scene = getattr(context, "scene", None)
     if scene is None:
         return 0
+    # 旧版が保存した「ページ一覧プレビュー」Mesh/Object/Collection は、
+    # 現行のGPUオーバーレイ表示には不要。同期入口で確実に移行清掃する。
+    remove_page_previews()
     if work is None:
         work = getattr(scene, "bmanga_work", None)
     role, current_page_id = _preview_scene_role(scene)
     if role not in {"page", "work", "coma"} or (role != "coma" and not preview_enabled(scene)):
-        hide_page_previews(scene)
         return 0
     if work is None or not getattr(work, "loaded", False):
-        hide_page_previews(scene)
         return 0
     rects = preview_rects_mm(scene, work)
-    valid_page_ids = set(rects)
-    if role == "coma":
-        updated = 0
-        for page in getattr(work, "pages", []) or []:
-            page_id = str(getattr(page, "id", "") or "")
-            rect = rects.get(page_id)
-            if rect is None:
-                continue
-            ensure_preview_png(
-                work,
-                page,
-                int(rect[0]),
-                current=page_id == current_page_id,
-                scene=scene,
-                force=force,
-            )
-            updated += 1
-        hide_page_previews(scene)
-        try:
-            for area in getattr(context, "screen", None).areas:
-                if area.type == "VIEW_3D":
-                    area.tag_redraw()
-        except Exception:  # noqa: BLE001
-            pass
-        return updated
-    if role == "page" and current_page_id:
-        current_rect = rects.get(current_page_id)
-        if current_rect is not None:
-            current_index = int(current_rect[0])
-            try:
-                page = getattr(work, "pages", [])[current_index]
-                png_path = _preview_png_path(work, current_page_id)
-                needs = png_path is None or not _preview_png_fresh_for_page(work, page, png_path)
-                if needs:
-                    ensure_preview_png(work, page, current_index, current=True, scene=scene, force=True)
-            except Exception:  # noqa: BLE001
-                _logger.exception("current page preview update failed: %s", current_page_id)
-    # ── メッシュ平面方式 (ページファイル・作品ファイル共通) ──
-    for obj in _iter_preview_objects():
-        page_id = str(obj.get(PREVIEW_PAGE_ID_PROP, "") or "")
-        if page_id not in valid_page_ids:
-            obj.hide_viewport = True
-            obj.hide_render = True
-    coma_origin_mm = None
-    if role == "coma" and current_page_id:
-        current_rect = rects.get(current_page_id)
-        if current_rect is not None:
-            _ci, cx0, cy0, cx1, cy1 = current_rect
-            coma_origin_mm = ((cx0 + cx1) * 0.5, (cy0 + cy1) * 0.5)
     updated = 0
     for page in getattr(work, "pages", []) or []:
         page_id = str(getattr(page, "id", "") or "")
         rect = rects.get(page_id)
         if rect is None:
             continue
-        _ensure_preview_object(
-            scene,
+        ensure_preview_png(
             work,
             page,
             int(rect[0]),
-            rect,
             current=page_id == current_page_id,
+            scene=scene,
             force=force,
-            coma_origin_mm=coma_origin_mm,
         )
         updated += 1
     if role == "work":

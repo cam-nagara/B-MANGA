@@ -19,6 +19,7 @@ from ..utils import (
     layer_stack as layer_stack_utils,
     object_naming as on,
     object_selection,
+    page_file_scene,
     page_grid,
     page_range,
 )
@@ -384,12 +385,42 @@ def _parent_for_hit_key(context, key: str) -> tuple[str, str]:
     return "", ""
 
 
+def _selection_page_id(context, key: str) -> str:
+    kind, page_id, item_id = object_selection.parse_key(key)
+    if kind == "page":
+        return str(item_id or "")
+    if page_id and page_id != OUTSIDE_STACK_KEY:
+        return str(page_id)
+    _parent_kind, parent_key = _parent_for_hit_key(context, key)
+    if parent_key and parent_key != OUTSIDE_STACK_KEY:
+        return str(parent_key).split(":", 1)[0]
+    return ""
+
+
+def selection_key_pickable(context, key: str) -> bool:
+    """ページプレビュー上の子要素へ選択が漏れない共通ゲート."""
+    kind, _page_id, _item_id = object_selection.parse_key(key)
+    if kind == "page":
+        return True
+    scene = getattr(context, "scene", None)
+    allowed = page_file_scene.editable_page_ids(scene)
+    if allowed is None:
+        return True
+    if not allowed:
+        return False
+    page_id = _selection_page_id(context, key)
+    # 作品直下の共有レイヤーはページ編集ファイルでは従来どおり選択可能。
+    return not page_id or page_id in allowed
+
+
 def hit_visible_at_world(context, hit: dict | None, x_mm: float, y_mm: float) -> bool:
     if hit is None:
         return False
     key = str(hit.get("key", "") or "")
     if not key:
         return True
+    if not selection_key_pickable(context, key):
+        return False
     parent_kind, parent_key = _parent_for_hit_key(context, key)
     return coma_hit_visibility.world_point_visible_in_parent(context, parent_kind, parent_key, x_mm, y_mm)
 
@@ -886,6 +917,8 @@ def selection_bounds_for_key(context, key: str) -> Rect | None:
     kind, page_id, item_id = object_selection.parse_key(key)
     if work is None:
         return None
+    if kind != "page" and not selection_key_pickable(context, key):
+        return None
     if kind == "page":
         page_index, _page = page_index_for_key(work, item_id)
         return page_world_rect(context, work, page_index)
@@ -967,6 +1000,11 @@ def _iter_rect_select_candidates(context):
                     "key": page_key,
                 },
             }
+        if not page_file_scene.is_page_child_pickable(
+            getattr(context, "scene", None),
+            page_id,
+        ):
+            continue
         for text_index, entry in enumerate(reversed(list(getattr(page, "texts", []) or []))):
             actual_index = len(page.texts) - 1 - text_index
             if bool(getattr(entry, "locked", False)):

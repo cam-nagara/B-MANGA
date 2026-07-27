@@ -198,8 +198,14 @@ def _resolve_page_from_event(context, event):
     scene = context.scene
     page_idx = page_grid.page_index_at_world_mm(work, scene, x_mm, y_mm)
     if page_idx is not None and 0 <= page_idx < len(work.pages):
+        candidate_page = work.pages[page_idx]
+        if not page_file_scene.is_page_child_pickable(
+            scene,
+            str(getattr(candidate_page, "id", "") or ""),
+        ):
+            return work, page, None, None
         work.active_page_index = page_idx
-        page = work.pages[page_idx]
+        page = candidate_page
         cols = max(1, int(getattr(scene, "bmanga_overview_cols", 4)))
         gap_x, gap_y = page_grid.resolve_gap_mm(scene)
         cw = work.paper.canvas_width_mm

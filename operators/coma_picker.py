@@ -136,7 +136,11 @@ def _hit_test_page(page, x_mm: float, y_mm: float) -> int | None:
 
 
 def find_coma_at_world_mm(
-    work, x_mm: float, y_mm: float
+    work,
+    x_mm: float,
+    y_mm: float,
+    *,
+    allowed_page_ids: set[str] | None = None,
 ) -> tuple[int, int] | None:
     """ワールド (mm) 座標から (page_index, coma_index) を解決.
 
@@ -159,6 +163,11 @@ def find_coma_at_world_mm(
         if not (0 <= idx < len(work.pages)):
             return None
         page = work.pages[idx]
+        if (
+            allowed_page_ids is not None
+            and str(getattr(page, "id", "") or "") not in allowed_page_ids
+        ):
+            return None
         if not page_range.page_in_range(page):
             return None
         cols = max(1, int(getattr(scene, "bmanga_overview_cols", 4)))
@@ -184,6 +193,11 @@ def find_coma_at_world_mm(
     start_side = getattr(work.paper, "start_side", "right")
     read_direction = getattr(work.paper, "read_direction", "left")
     for i, page in enumerate(work.pages):
+        if (
+            allowed_page_ids is not None
+            and str(getattr(page, "id", "") or "") not in allowed_page_ids
+        ):
+            continue
         if not page_range.page_in_range(page):
             continue
         ox, oy = page_grid.page_grid_offset_mm(
@@ -222,9 +236,25 @@ def find_coma_at_event(context, event) -> tuple[int, int] | None:
     coords = _event_world_mm(context, event)
     if coords is None:
         return None
+    allowed_page_ids = page_file_scene.editable_page_ids(
+        getattr(context, "scene", None)
+    )
+    if allowed_page_ids == set():
+        return None
     if page_browser.is_page_browser_area(context) and page_browser.fit_enabled(context.scene):
-        return _find_coma_at_world_mm_page_browser(context, work, coords[0], coords[1])
-    return find_coma_at_world_mm(work, coords[0], coords[1])
+        return _find_coma_at_world_mm_page_browser(
+            context,
+            work,
+            coords[0],
+            coords[1],
+            allowed_page_ids=allowed_page_ids,
+        )
+    return find_coma_at_world_mm(
+        work,
+        coords[0],
+        coords[1],
+        allowed_page_ids=allowed_page_ids,
+    )
 
 
 def find_coma_edge_at_event(context, event, tolerance_px: float = EDGE_PICK_TOLERANCE_PX):
@@ -375,12 +405,24 @@ def _hit_test_canvas(x_mm: float, y_mm: float, width_mm: float, height_mm: float
     return 0.0 <= x_mm <= width_mm and 0.0 <= y_mm <= height_mm
 
 
-def _find_coma_at_world_mm_page_browser(context, work, x_mm: float, y_mm: float):
+def _find_coma_at_world_mm_page_browser(
+    context,
+    work,
+    x_mm: float,
+    y_mm: float,
+    *,
+    allowed_page_ids: set[str] | None = None,
+):
     paper = work.paper
     cw = float(paper.canvas_width_mm)
     ch = float(paper.canvas_height_mm)
     area = getattr(context, "area", None)
     for i, page in enumerate(work.pages):
+        if (
+            allowed_page_ids is not None
+            and str(getattr(page, "id", "") or "") not in allowed_page_ids
+        ):
+            continue
         if not page_range.page_in_range(page):
             continue
         ox, oy = page_browser.page_offset_mm(work, context.scene, area, i)
@@ -468,15 +510,29 @@ def _iter_pickable_pages(context, work, area):
     scene = getattr(context, "scene", None)
     if scene is None:
         return
+    allowed_page_ids = page_file_scene.editable_page_ids(scene)
+    if allowed_page_ids == set():
+        return
     is_browser = page_browser.is_marked_area(area) or page_browser.page_browser_area(context) == area
     overview = bool(getattr(scene, "bmanga_overview_mode", False)) or is_browser
     if not overview:
         idx = int(getattr(work, "active_page_index", -1))
         if 0 <= idx < len(work.pages) and page_range.page_in_range(work.pages[idx]):
-            yield idx, work.pages[idx]
+            page = work.pages[idx]
+            if (
+                allowed_page_ids is None
+                or str(getattr(page, "id", "") or "") in allowed_page_ids
+            ):
+                yield idx, page
         return
     for idx, page in enumerate(work.pages):
-        if page_range.page_in_range(page):
+        if (
+            page_range.page_in_range(page)
+            and (
+                allowed_page_ids is None
+                or str(getattr(page, "id", "") or "") in allowed_page_ids
+            )
+        ):
             yield idx, page
 
 

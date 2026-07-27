@@ -31,6 +31,7 @@ from ..utils import (
     geom,
     log,
     page_browser,
+    page_file_scene,
     page_grid,
     page_range,
     coma_gutter_snap,
@@ -379,6 +380,11 @@ def _all_coma_edges_world(
 
     out: list = []
     for pi, page in enumerate(work.pages):
+        if not page_file_scene.is_page_child_pickable(
+            scene,
+            str(getattr(page, "id", "") or ""),
+        ):
+            continue
         if not page_range.page_in_range(page):
             continue
         if area is not None:
@@ -611,6 +617,11 @@ def pick_selected_coma_edge_or_vertex(
     # 選択中かつ表示中のパネルを 1 度だけ列挙 (辺数ぶんの重複フルスキャンを排除)。
     panels: list[tuple[int, int, list, float, float]] = []
     for pi, page in enumerate(work.pages):
+        if not page_file_scene.is_page_child_pickable(
+            getattr(context, "scene", None),
+            str(getattr(page, "id", "") or ""),
+        ):
+            continue
         if not overlay_visibility.page_visible(page):
             continue
         comas = list(getattr(page, "comas", []) or [])

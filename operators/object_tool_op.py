@@ -21,6 +21,7 @@ from ..utils import (
     layer_stack as layer_stack_utils,
     log,
     object_selection,
+    page_file_scene,
     undo_transaction,
 )
 
@@ -335,14 +336,31 @@ def hit_object_at_event(context, event) -> dict | None:
     area, region, rv3d, mx, my = view
     world_x_mm, world_y_mm = _event_world_xy_mm(context, event)
 
+    # 他ページはプレビュー画像全体を1つのページとして扱い、その中に見える
+    # コマ/レイヤー/ハンドルへヒットを通さない。
+    preview_page_index = coma_picker.find_page_at_event(context, event)
+    if (
+        preview_page_index is not None
+        and 0 <= preview_page_index < len(getattr(work, "pages", []) or [])
+    ):
+        preview_page = work.pages[preview_page_index]
+        if not page_file_scene.is_page_child_pickable(
+            getattr(context, "scene", None),
+            str(getattr(preview_page, "id", "") or ""),
+        ):
+            return {
+                "kind": "page",
+                "page": preview_page_index,
+                "part": "body",
+                "key": object_selection.page_key(preview_page),
+            }
+
     # 作品ファイル (ページ一覧) ではレイヤー実体の選択・ハンドル表示を行わ
     # ない。ページ詳細 (texts 等) がシナリオ取込直後などで一時的にメモリへ
     # 残っていても、ページ一覧で扱うのはページ/コマの選択だけ (2026-07-22
     # ユーザー報告: 1ページ目のテキストだけクリックで選択できてしまう)。
     allow_layer_hits = True
     try:
-        from ..utils import page_file_scene
-
         allow_layer_hits = not page_file_scene.is_work_list_scene(
             getattr(context, "scene", None)
         )

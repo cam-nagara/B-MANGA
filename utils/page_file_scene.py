@@ -234,6 +234,37 @@ def is_current_page_edit_scene(scene, page_id: str) -> bool:
     )
 
 
+def editable_page_ids(scene=None) -> set[str] | None:
+    """子レイヤーを直接選択・編集してよいページ ID を返す.
+
+    ``None`` はファイル役割を判定できない旧データで従来動作を維持する場合、
+    空集合はページ子要素を一切触らない作品一覧/コマファイルを表す。
+    """
+    scene = scene or getattr(bpy.context, "scene", None)
+    if scene is None:
+        return set()
+    role, path_page_id, _coma_id = current_role(bpy.context)
+    if role == ROLE_PAGE and paths.is_valid_page_id(path_page_id):
+        return {path_page_id}
+    if role in {ROLE_WORK, ROLE_COMA}:
+        return set()
+    page_id = current_page_id(scene)
+    if page_id:
+        return {page_id}
+    if is_work_list_scene(scene):
+        return set()
+    return None
+
+
+def is_page_child_pickable(scene, page_id: str) -> bool:
+    """``page_id`` 配下のコマ/レイヤーを現在のファイルで選択可能か返す."""
+    page_id = str(page_id or "")
+    if not paths.is_valid_page_id(page_id):
+        return False
+    allowed = editable_page_ids(scene)
+    return allowed is None or page_id in allowed
+
+
 class PageSubsetWork(SimpleNamespace):
     """全作品データから指定ページだけを見せる軽量 proxy."""
 
@@ -527,7 +558,7 @@ def _object_is_work_list_runtime(obj) -> bool:
     if _object_is_page_content(obj):
         return True
     if str(obj.get("bmanga_kind", "") or "") == "page_preview":
-        return False
+        return True
     return any(str(obj.get(prop, "") or "") for prop in _WORK_LIST_RUNTIME_KIND_PROPS)
 
 
@@ -537,7 +568,7 @@ def _collection_is_work_list_runtime(coll) -> bool:
         return True
     coll_id = str(coll.get("bmanga_id", "") or "")
     if kind == "page_preview":
-        return False
+        return True
     if paths.is_valid_page_id(coll_id) or paths.is_valid_page_id(coll.name):
         return True
     if ":" in coll_id:
