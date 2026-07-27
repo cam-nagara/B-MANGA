@@ -99,6 +99,12 @@ def _on_coma_visible_changed(_self, context) -> None:
         _cp.on_coma_geometry_changed(_self)
     except Exception:  # noqa: BLE001
         pass
+    try:
+        from ..utils import coma_visibility
+
+        coma_visibility.sync_entry_collection(_self, context)
+    except Exception:  # noqa: BLE001
+        _logger.exception("coma collection visibility sync failed")
     _tag_view3d_redraw(context)
 
 
@@ -258,7 +264,7 @@ class BMangaComaEntry(bpy.types.PropertyGroup):
     )
     visible: BoolProperty(  # type: ignore[valid-type]
         name="表示",
-        description="このコマ枠とプレビューを表示する",
+        description="このコマと内包されるすべてのレイヤーを表示する",
         default=True,
         update=_on_coma_visible_changed,
     )

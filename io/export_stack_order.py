@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 
 def stack_uid_for_object(obj) -> str:
     try:
@@ -40,6 +42,34 @@ def entry_stack_parent_key(kind: str, page, entry) -> str:
     except Exception:  # noqa: BLE001
         pass
     return folder_key or parent_key
+
+
+def apply_coma_visibility(page, layers):
+    """非表示コマの全出力レイヤーを非表示にする。
+
+    PSDではレイヤー構造を残したまま非表示、PNG等の合成では描画対象外になる。
+    """
+    hidden_ids = {
+        str(getattr(panel, "coma_id", "") or getattr(panel, "id", "") or "")
+        for panel in getattr(page, "comas", ()) or ()
+        if not bool(getattr(panel, "visible", True))
+    }
+    if not hidden_ids:
+        return list(layers)
+    result = []
+    for layer in layers:
+        group_path = tuple(getattr(layer, "group_path", ()) or ())
+        belongs_to_hidden_coma = (
+            len(group_path) >= 2
+            and group_path[0] == "comas"
+            and str(group_path[1]) in hidden_ids
+        )
+        result.append(
+            replace(layer, visible=False)
+            if belongs_to_hidden_coma and bool(getattr(layer, "visible", True))
+            else layer
+        )
+    return result
 
 
 def _container_indexes(stack, index_by_uid) -> dict[str, int]:

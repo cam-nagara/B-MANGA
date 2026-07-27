@@ -331,6 +331,17 @@ def ensure_coma_collection(
     # シンプル名 (coma_id 直接) + 水色カラータグ
     _set_collection_name_safe(coll, coma_id)
     _set_collection_color_tag(coll, COMA_COLOR_TAG)
+    try:
+        from . import coma_visibility
+
+        coma_visibility.sync_collection_from_work(
+            scene,
+            page_id,
+            coma_id,
+            collection=coll,
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("coma collection visibility restore failed")
     return coll
 
 
@@ -498,6 +509,12 @@ def link_object_to_parent(
     # custom property 反映
     obj[on.PROP_PARENT_KEY] = parent_key
     obj[on.PROP_FOLDER_ID] = folder_id
+    try:
+        from . import coma_visibility
+
+        coma_visibility.sync_object_from_parent(scene, obj)
+    except Exception:  # noqa: BLE001
+        _logger.exception("layer object parent visibility sync failed")
     return target
 
 

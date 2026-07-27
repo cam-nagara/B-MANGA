@@ -321,11 +321,6 @@ def _select_name(row, index: int, text: str, item=None, target=None) -> None:
     op.anchor_index = int(getattr(bpy.context.scene, "bmanga_active_layer_stack_index", -1))
 
 
-def _select_icon_name(row, index: int, text: str, icon: str, item=None, target=None) -> None:
-    _draw_type_icon(row, index, icon, item=item, target=target)
-    _select_name(row, index, text, item=item, target=target)
-
-
 # 選択中レイヤーの『リンク相手』uid キャッシュ (utils.layer_links.related_uids_for_selection)。
 # draw_item は毎行 JSON をパースしないよう、_draw_layer_stack_box が
 # template_list 呼び出し前にパネル描画ごと1回だけ計算してここへ書き込む。
@@ -457,10 +452,8 @@ def _draw_right_controls(row, controls, index: int) -> None:
 def _draw_stack_gp_row(row, controls, item, resolved, index: int) -> None:
     target = resolved.get("target") if resolved is not None else None
     if target is None:
-        _draw_type_icon(row, index, _kind_icon(item.kind), item=item, target=target)
         _select_name(row, index, item.label or item.name or item.key or "レイヤー", item=item)
         return
-    _draw_type_icon(row, index, _kind_icon(item.kind), item=item, target=target)
     name = item.label if item.kind == "effect" and item.label else target.name
     if not str(name or "").strip():
         name = item.label or item.name or item.key or "レイヤー"
@@ -472,21 +465,19 @@ def _draw_stack_gp_row(row, controls, item, resolved, index: int) -> None:
 def _draw_stack_page_row(row, item, resolved, index: int, work=None) -> None:
     target = resolved.get("target") if resolved is not None else None
     if target is None:
-        _select_icon_name(row, index, item.label, _kind_icon(item.kind), item=item)
+        _select_name(row, index, item.label, item=item)
         return
-    icon = "DOCUMENTS" if target.spread else "FILE_BLANK"
     label = layer_stack_detail_ui.page_layer_name(target, work)
     title = str(getattr(target, "title", "") or "").strip()
-    _select_icon_name(row, index, f"{label} {title}" if title else label, icon, item=item, target=target)
+    _select_name(row, index, f"{label} {title}" if title else label, item=item, target=target)
 
 
 def _draw_stack_coma_row(row, controls, item, resolved, index: int) -> None:
     target = resolved.get("target") if resolved is not None else None
     if target is None:
-        _select_icon_name(row, index, item.label, _kind_icon(item.kind), item=item)
+        _select_name(row, index, item.label, item=item)
         return
     title = str(getattr(target, "title", "") or "").strip()
-    _draw_type_icon(row, index, "MOD_WIREFRAME", item=item, target=target)
     _select_name(row, index, title or "コマ", item=item, target=target)
     number_cell = row.row(align=True)
     number_cell.ui_units_x = 1.8
@@ -497,36 +488,27 @@ def _draw_stack_coma_row(row, controls, item, resolved, index: int) -> None:
 def _draw_stack_data_row(row, controls, item, resolved, index: int) -> None:
     target = resolved.get("target") if resolved is not None else None
     if item.kind == "outside_group":
-        _select_icon(row, index, _kind_icon(item.kind))
         _select_name(row, index, item.label or "(ページ外)", item=item)
         return
     if item.kind == "coma_preview":
-        _draw_type_icon(row, index, _kind_icon(item.kind), item=item, target=target)
         _select_name(row, index, item.label or "コマプレビュー", item=item)
         return
     if target is None:
-        _draw_type_icon(row, index, _kind_icon(item.kind), item=item, target=target)
         _select_name(row, index, item.label or item.name or item.key or "レイヤー", item=item)
         return
     if item.kind == "layer_folder":
-        _draw_type_icon(row, index, "FILE_FOLDER", item=item, target=target)
         _select_name(row, index, getattr(target, "title", "") or item.label, item=item, target=target)
     elif item.kind == "balloon_group":
-        _draw_type_icon(row, index, "FILE_FOLDER", item=item, target=target)
         _select_name(row, index, item.label or "フキダシ結合", item=item, target=target)
     elif item.kind == "image":
-        _draw_type_icon(row, index, "IMAGE_DATA", item=item, target=target)
         _select_name(row, index, getattr(target, "title", "") or item.label, item=item, target=target)
     elif item.kind == "raster":
-        _draw_type_icon(row, index, "BRUSH_DATA", item=item, target=target)
         _select_name(row, index, getattr(target, "title", "") or item.label, item=item, target=target)
         if hasattr(target, "line_color") and hasattr(target, "fill_color"):
             controls["raster"] = target
     elif item.kind == "fill":
-        _draw_type_icon(row, index, "NODE_TEXTURE", item=item, target=target)
         _select_name(row, index, getattr(target, "title", "") or item.label, item=item, target=target)
     elif item.kind == "balloon":
-        _draw_type_icon(row, index, "MOD_FLUID", item=item, target=target)
         _select_name(
             row,
             index,
@@ -539,7 +521,6 @@ def _draw_stack_data_row(row, controls, item, resolved, index: int) -> None:
             target=target,
         )
     elif item.kind == "text":
-        _draw_type_icon(row, index, "FONT_DATA", item=item, target=target)
         # レイヤー一覧では本文が長文だと行が崩れるため、表示だけ7文字に
         # 切り詰める (データの title/body 自体は変更しない)。
         _select_name(
@@ -552,8 +533,68 @@ def _draw_stack_data_row(row, controls, item, resolved, index: int) -> None:
     elif item.kind == "effect":
         _draw_stack_gp_row(row, controls, item, resolved, index)
     else:
-        _draw_type_icon(row, index, _kind_icon(item.kind), item=item, target=target)
         _select_name(row, index, item.label or item.name or item.key or "レイヤー", item=item, target=target)
+
+
+def _stack_type_icon(item, target) -> str:
+    kind = str(getattr(item, "kind", "") or "")
+    if kind == "page" and target is not None:
+        return "DOCUMENTS" if bool(getattr(target, "spread", False)) else "FILE_BLANK"
+    return {
+        "coma": "MOD_WIREFRAME",
+        "layer_folder": "FILE_FOLDER",
+        "balloon_group": "FILE_FOLDER",
+        "image": "IMAGE_DATA",
+        "raster": "BRUSH_DATA",
+        "fill": "NODE_TEXTURE",
+        "balloon": "MOD_FLUID",
+        "text": "FONT_DATA",
+    }.get(kind, _kind_icon(kind))
+
+
+def _stack_prefix_units(item, target) -> float:
+    depth = max(0, int(getattr(item, "depth", 0) or 0))
+    expandable = target is not None and item.kind in {"page", "layer_folder", "balloon_group"}
+    return 4.0 + float(depth) + (1.0 if expandable else 0.0)
+
+
+def _draw_stack_row(layout, context, item, index: int) -> None:
+    """固定プレフィックス＋可変名欄として1行を描き、狭幅時の列ズレを防ぐ。"""
+    row = layout.row(align=True)
+    row.context_pointer_set("bmanga_layer_stack_item", item)
+    resolved = layer_stack_utils.resolve_stack_item(context, item)
+    target = resolved.get("target") if resolved is not None else None
+
+    prefix = row.row(align=True)
+    prefix.alignment = "LEFT"
+    prefix.ui_units_x = _stack_prefix_units(item, target)
+    _draw_visibility_slot(prefix, item, target, index)
+    _draw_link_state_icon(prefix, item)
+    _draw_lock_slot(prefix, item, resolved, index)
+    _draw_hierarchy_slot(prefix, item, target, index)
+    _draw_type_icon(
+        prefix,
+        index,
+        _stack_type_icon(item, target),
+        item=item,
+        target=target,
+    )
+
+    controls = {}
+    if item.kind == "outside_group":
+        _draw_stack_data_row(row, controls, item, resolved, index)
+    elif item.kind == "page":
+        _draw_stack_page_row(row, item, resolved, index, get_work(context))
+    elif item.kind == "coma":
+        _draw_stack_coma_row(row, controls, item, resolved, index)
+    elif item.kind in {"gp", "effect"}:
+        _draw_stack_gp_row(row, controls, item, resolved, index)
+    else:
+        _draw_stack_data_row(row, controls, item, resolved, index)
+    if controls.get("gp_style") or controls.get("aux"):
+        right = row.row(align=True)
+        right.alignment = "RIGHT"
+        _draw_right_controls(right, controls, index)
 
 
 class BMANGA_UL_layer_stack(UIList):
@@ -611,31 +652,7 @@ class BMANGA_UL_layer_stack(UIList):
         if source_index >= 0:
             item = stack[source_index]
             index = source_index
-        row = layout.row(align=True)
-        row.context_pointer_set("bmanga_layer_stack_item", item)
-        resolved = layer_stack_utils.resolve_stack_item(context, item)
-        target = resolved.get("target") if resolved is not None else None
-        _draw_visibility_slot(row, item, target, index)
-        _draw_link_state_icon(row, item)
-        _draw_lock_slot(row, item, resolved, index)
-        _draw_hierarchy_slot(row, item, target, index)
-        left = row.row(align=True)
-        left.alignment = "LEFT"
-        controls = {}
-        if item.kind == "outside_group":
-            _draw_stack_data_row(left, controls, item, resolved, index)
-        elif item.kind == "page":
-            _draw_stack_page_row(left, item, resolved, index, get_work(context))
-        elif item.kind == "coma":
-            _draw_stack_coma_row(left, controls, item, resolved, index)
-        elif item.kind in {"gp", "effect"}:
-            _draw_stack_gp_row(left, controls, item, resolved, index)
-        else:
-            _draw_stack_data_row(left, controls, item, resolved, index)
-        if controls.get("gp_style") or controls.get("aux"):
-            right = row.row(align=True)
-            right.alignment = "RIGHT"
-            _draw_right_controls(right, controls, index)
+        _draw_stack_row(layout, context, item, index)
 
 
 class BMANGA_UL_layer_panel_pages(UIList):
@@ -771,9 +788,13 @@ def _draw_layer_stack_box(layout, context) -> None:
         tools.separator()
         op = tools.operator("bmanga.layer_stack_move", text="", icon="TRIA_UP_BAR")
         op.direction = "FRONT"
+        op = tools.operator("bmanga.layer_stack_move_ten", text="", icon="SORT_ASC")
+        op.direction = "UP"
         op = tools.operator("bmanga.layer_stack_move", text="", icon="TRIA_UP")
         op.direction = "UP"
         op = tools.operator("bmanga.layer_stack_move", text="", icon="TRIA_DOWN")
+        op.direction = "DOWN"
+        op = tools.operator("bmanga.layer_stack_move_ten", text="", icon="SORT_DESC")
         op.direction = "DOWN"
         op = tools.operator("bmanga.layer_stack_move", text="", icon="TRIA_DOWN_BAR")
         op.direction = "BACK"
@@ -826,31 +847,7 @@ def _draw_layer_stack_rows(layout, context, stack) -> None:
     # 別に自前でキャッシュを更新する (関数内で1回だけ計算する分には問題ない)。
     _refresh_related_link_uids(context)
     for index, item in entries:
-        row = layout.row(align=True)
-        row.context_pointer_set("bmanga_layer_stack_item", item)
-        resolved = layer_stack_utils.resolve_stack_item(context, item)
-        target = resolved.get("target") if resolved is not None else None
-        _draw_visibility_slot(row, item, target, index)
-        _draw_link_state_icon(row, item)
-        _draw_lock_slot(row, item, resolved, index)
-        _draw_hierarchy_slot(row, item, target, index)
-        left = row.row(align=True)
-        left.alignment = "LEFT"
-        controls = {}
-        if item.kind == "outside_group":
-            _draw_stack_data_row(left, controls, item, resolved, index)
-        elif item.kind == "page":
-            _draw_stack_page_row(left, item, resolved, index, get_work(context))
-        elif item.kind == "coma":
-            _draw_stack_coma_row(left, controls, item, resolved, index)
-        elif item.kind in {"gp", "effect"}:
-            _draw_stack_gp_row(left, controls, item, resolved, index)
-        else:
-            _draw_stack_data_row(left, controls, item, resolved, index)
-        if controls.get("gp_style") or controls.get("aux"):
-            right = row.row(align=True)
-            right.alignment = "RIGHT"
-            _draw_right_controls(right, controls, index)
+        _draw_stack_row(layout, context, item, index)
 
 
 class BMANGA_PT_page_list(Panel):

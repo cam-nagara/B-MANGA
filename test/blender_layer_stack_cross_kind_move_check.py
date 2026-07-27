@@ -83,7 +83,10 @@ def main() -> None:
         page_io,
         text_presets,
     )
-    from bmanga_dev_cross_kind_move.utils import layer_stack as layer_stack_utils
+    from bmanga_dev_cross_kind_move.utils import (
+        layer_stack as layer_stack_utils,
+        page_detail,
+    )
 
     preferences.get_preferences = lambda _context=None: SimpleNamespace(
         meldex_apply_text_presentation=False
@@ -113,11 +116,14 @@ def main() -> None:
         coma.rect_height_mm = 80.0
     page.coma_count = len(page.comas)
     work.active_page_index = 0
+    page_io.save_page_json(temp_root, page)
+    page_io.save_pages_json(temp_root, work)
 
     context = bpy.context
     scene = context.scene
     result = meldex_scenario_import.import_payload(context, work, _payload())
     assert result["created"] == 2, result
+    page_detail.ensure_page_detail(work, page)
 
     stack = layer_stack_utils.sync_layer_stack(context)
 
@@ -224,6 +230,7 @@ def main() -> None:
 
     result = meldex_scenario_import.import_payload(context, work, _payload())
     assert result["updated"] == 2, result
+    page_detail.ensure_page_detail(work, page)
     stack = layer_stack_utils.sync_layer_stack(context)
     _assert_text_balloons_in_front_of_comas(stack, "再取込後")
 

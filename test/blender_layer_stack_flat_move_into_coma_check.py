@@ -87,7 +87,10 @@ def main() -> None:
         page_io,
         text_presets,
     )
-    from bmanga_dev_flat_move_into_coma.utils import layer_stack as layer_stack_utils
+    from bmanga_dev_flat_move_into_coma.utils import (
+        layer_stack as layer_stack_utils,
+        page_detail,
+    )
 
     preferences.get_preferences = lambda _context=None: SimpleNamespace(
         meldex_apply_text_presentation=False
@@ -116,11 +119,14 @@ def main() -> None:
     coma.rect_height_mm = 100.0
     page.coma_count = 1
     work.active_page_index = 0
+    page_io.save_page_json(temp_root, page)
+    page_io.save_pages_json(temp_root, work)
 
     context = bpy.context
     scene = context.scene
     result = meldex_scenario_import.import_payload(context, work, _payload())
     assert result["created"] == 1, result
+    page_detail.ensure_page_detail(work, page)
 
     text_key = "p0001:text_0001"
     coma_key = "p0001:c01"

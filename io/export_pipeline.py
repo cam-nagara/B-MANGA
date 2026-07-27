@@ -2163,7 +2163,7 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
         if nombre is not None:
             layers.append(nombre)
     layers.extend(_page_overlay_fill_layers(work, page, options, canvas_size))
-    return layers
+    return export_stack_order.apply_coma_visibility(page, layers)
 
 
 def _crop_layers(

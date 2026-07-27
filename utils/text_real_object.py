@@ -767,6 +767,13 @@ def _apply_text_object_state(
         obj.hide_select = False
 
     _update_text_opacity_node(obj, entry)
+    try:
+        from . import coma_visibility
+
+        # stamp後に固有のhide_render値を書き直すため、親コマ状態を最後に再適用する。
+        coma_visibility.sync_object_from_parent(scene, obj)
+    except Exception:  # noqa: BLE001
+        _logger.exception("text parent coma visibility sync failed")
 
 
 def ensure_text_real_object(

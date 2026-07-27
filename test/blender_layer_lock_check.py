@@ -146,25 +146,21 @@ def _find_stack_item(context, uid: str):
 
 
 def _check_draw_order_static() -> None:
-    """draw_item 内で _draw_lock_slot が _draw_link_state_icon の直後に呼ばれることを
+    """行描画ヘルパー内でロック欄がリンク欄の直後に呼ばれることを
     ソース上で検証する (静的順序検証)。
 
-    draw_item のトップレベル文だけを source 順に走査する (ast.walk は BFS で
+    _draw_stack_row のトップレベル文だけを source 順に走査する (ast.walk は BFS で
     子ノードへ潜る順序があいまいなため、あえて使わない)。
     """
 
     source = (ROOT / "panels" / "gpencil_panel.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
-    ul_class = next(
+    draw_row = next(
         node for node in tree.body
-        if isinstance(node, ast.ClassDef) and node.name == "BMANGA_UL_layer_stack"
-    )
-    draw_item = next(
-        node for node in ul_class.body
-        if isinstance(node, ast.FunctionDef) and node.name == "draw_item"
+        if isinstance(node, ast.FunctionDef) and node.name == "_draw_stack_row"
     )
     call_names: list[str] = []
-    for stmt in draw_item.body:
+    for stmt in draw_row.body:
         call = stmt.value if isinstance(stmt, ast.Expr) else None
         if isinstance(call, ast.Call) and isinstance(call.func, ast.Name):
             call_names.append(call.func.id)
