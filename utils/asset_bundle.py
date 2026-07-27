@@ -1,20 +1,12 @@
-"""B-MANGA layer bundle assets.
-
-This module keeps B-MANGA layer assets as ordinary Blender collection assets
-with a JSON payload.  Dragging such a collection asset back into the viewport
-creates a collection instance; ``asset_drop_runtime`` converts that instance
-into normal B-MANGA layers.
-"""
+"""JSON付きBlender CollectionとしてB-MANGAレイヤー素材を管理する."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 import json
 from pathlib import Path
-
 import bpy
 from mathutils import Matrix
-
 from ..core.work import get_active_page, get_work
 from . import (
     asset_bundle_extended,
@@ -38,7 +30,10 @@ ASSET_INSTANCE_DONE_PROP = "bmanga_asset_instance_imported"
 ASSET_FILE_NAME = "B-MANGA Assets.blend"
 INVALID_FILENAME_CHARS = '<>:"/\\|?*'
 
-SUPPORTED_LAYER_KINDS = {"coma", "balloon", "text", "effect", "raster", "gp"}
+SUPPORTED_LAYER_KINDS = {
+    "coma", "layer_folder", "balloon", "text", "effect",
+    "raster", "image", "image_path", "fill", "gp",
+}
 
 
 @dataclass(frozen=True)
@@ -135,11 +130,14 @@ def build_payload(context, items, *, name: str = "") -> dict:
         entries.append(entry)
     if not entries:
         raise RuntimeError("登録できるレイヤーがありません")
-    entries.sort(key=lambda entry: 0 if str(entry.get("kind", "")) == "coma" else 1)
+    # 参照先を先に生成する。特にテキストは生成時に parent_balloon_id を
+    # source_id→移送先IDへ解決するため、フキダシより後でなければならない。
+    priorities = {"coma": 0, "layer_folder": 1, "balloon": 2, "text": 3}
+    entries.sort(key=lambda entry: priorities.get(str(entry.get("kind", "")), 2))
     origin = _payload_origin(entries)
     return {
         "version": 1,
-        "name": name or _payload_default_name(entries),
+        "name": name or asset_bundle_extended.payload_default_name(entries),
         "origin": {"x": origin[0], "y": origin[1]},
         "entries": entries,
         "links": _linked_groups_for_uids(context, source_uids),
@@ -236,6 +234,7 @@ def instantiate_payload(
     parent_kind, parent_key = _parent_for_point(page, drop_local[0], drop_local[1])
     id_map: dict[str, str] = {}
     parent_key_map: dict[str, str] = {}
+    folder_key_map: dict[str, str] = {}
     new_uids_by_source: dict[str, str] = {}
     made: list[object] = []
     newly_made: list[object] = []
@@ -249,6 +248,8 @@ def instantiate_payload(
             parent_key,
             parent_key_map,
         )
+        source_folder_key = asset_bundle_extended.source_folder_key(entry)
+        target_folder_key = folder_key_map.get(source_folder_key, "")
         obj = _find_staged_asset_entry(context, page, stage_id, entry_index, kind)
         was_created = False
         if obj is None and kind == "coma":
@@ -266,25 +267,7 @@ def instantiate_payload(
                 if source_parent:
                     parent_key_map[source_parent] = coma_stack_key(page, obj)
         elif obj is None and kind == "balloon":
-            obj = _instantiate_balloon(context, page, entry, dx, dy, entry_parent_kind, entry_parent_key)
-            was_created = obj is not None
-        elif obj is None and kind == "text":
-            obj = _instantiate_text(context, page, entry, dx, dy, entry_parent_kind, entry_parent_key, id_map)
-            was_created = obj is not None
-        elif obj is None and kind == "effect":
-            obj = _instantiate_effect(context, entry, dx, dy, entry_parent_key)
-            was_created = obj is not None
-        elif obj is None and kind == "raster":
-            obj = asset_bundle_extended.instantiate_raster(
-                context,
-                page,
-                entry,
-                entry_parent_kind,
-                entry_parent_key,
-            )
-            was_created = obj is not None
-        elif obj is None and kind == "gp":
-            obj = asset_bundle_extended.instantiate_gp_layer(
+            obj = _instantiate_balloon(
                 context,
                 page,
                 entry,
@@ -292,10 +275,39 @@ def instantiate_payload(
                 dy,
                 entry_parent_kind,
                 entry_parent_key,
+                folder_id=target_folder_key,
             )
             was_created = obj is not None
+        elif obj is None and kind == "text":
+            obj = _instantiate_text(
+                context,
+                page,
+                entry,
+                dx,
+                dy,
+                entry_parent_kind,
+                entry_parent_key,
+                id_map,
+                folder_id=target_folder_key,
+            )
+            was_created = obj is not None
+        elif obj is None and kind == "effect":
+            obj = _instantiate_effect(context, entry, dx, dy, entry_parent_key)
+            was_created = obj is not None
         elif obj is None:
-            obj = None
+            obj = asset_bundle_extended.instantiate_extended_entry(
+                context,
+                page,
+                entry,
+                kind,
+                dx,
+                dy,
+                entry_parent_kind,
+                entry_parent_key,
+                parent_key_map,
+                folder_key_map,
+            )
+            was_created = obj is not None
         if obj is None:
             continue
         if stage_id and was_created:
@@ -484,14 +496,14 @@ def _serialize_stack_item(context, item) -> dict | None:
             "kind": kind,
             "source_id": str(getattr(target, "id", "") or ""),
             "data": _pg_to_dict(target),
-            "bounds": _entry_bounds(target),
+            "bounds": asset_bundle_extended.entry_bounds(target),
         }
     if kind == "text":
         return {
             "kind": kind,
             "source_id": str(getattr(target, "id", "") or ""),
             "data": _pg_to_dict(target),
-            "bounds": _entry_bounds(target),
+            "bounds": asset_bundle_extended.entry_bounds(target),
         }
     if kind == "effect":
         from ..operators import effect_line_op
@@ -582,19 +594,6 @@ def _payload_origin(entries: list[dict]) -> tuple[float, float]:
     return (left + right) * 0.5, (bottom + top) * 0.5
 
 
-def _payload_default_name(entries: list[dict]) -> str:
-    labels = {
-        "coma": "コマ",
-        "balloon": "フキダシ",
-        "text": "テキスト",
-        "effect": "効果線",
-        "raster": "ラスター",
-        "gp": "グリースペンシル",
-    }
-    parts = [labels.get(str(entry.get("kind", "")), "レイヤー") for entry in entries]
-    return "＆".join(parts[:3]) if len(parts) <= 3 else f"{parts[0]}ほか"
-
-
 def _linked_groups_for_uids(context, uids: list[str]) -> list[list[str]]:
     selected = set(uids)
     groups: list[list[str]] = []
@@ -607,15 +606,6 @@ def _linked_groups_for_uids(context, uids: list[str]) -> list[list[str]]:
         if len(group) >= 2:
             groups.append(group)
     return groups
-
-
-def _entry_bounds(entry) -> list[float]:
-    return [
-        float(getattr(entry, "x_mm", 0.0) or 0.0),
-        float(getattr(entry, "y_mm", 0.0) or 0.0),
-        float(getattr(entry, "width_mm", 1.0) or 1.0),
-        float(getattr(entry, "height_mm", 1.0) or 1.0),
-    ]
 
 
 def _parent_for_point(page, x_mm: float, y_mm: float) -> tuple[str, str]:
@@ -638,7 +628,17 @@ def _parent_for_payload_entry(
     return default_kind, default_key
 
 
-def _instantiate_balloon(context, page, entry: dict, dx: float, dy: float, parent_kind: str, parent_key: str):
+def _instantiate_balloon(
+    context,
+    page,
+    entry: dict,
+    dx: float,
+    dy: float,
+    parent_kind: str,
+    parent_key: str,
+    *,
+    folder_id: str = "",
+):
     from ..operators import balloon_op
     from . import balloon_curve_object
 
@@ -651,12 +651,25 @@ def _instantiate_balloon(context, page, entry: dict, dx: float, dy: float, paren
         new_entry.y_mm = float(getattr(new_entry, "y_mm", 0.0)) + dy
         new_entry.parent_kind = parent_kind
         new_entry.parent_key = parent_key
+        if hasattr(new_entry, "folder_key"):
+            new_entry.folder_key = folder_id
         new_entry.selected = False
     balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=new_entry, page=page)
     return new_entry
 
 
-def _instantiate_text(context, page, entry: dict, dx: float, dy: float, parent_kind: str, parent_key: str, id_map: dict[str, str]):
+def _instantiate_text(
+    context,
+    page,
+    entry: dict,
+    dx: float,
+    dy: float,
+    parent_kind: str,
+    parent_key: str,
+    id_map: dict[str, str],
+    *,
+    folder_id: str = "",
+):
     from ..operators import text_op
     from . import text_real_object
 
@@ -670,6 +683,8 @@ def _instantiate_text(context, page, entry: dict, dx: float, dy: float, parent_k
         new_entry.y_mm = float(getattr(new_entry, "y_mm", 0.0)) + dy
         new_entry.parent_kind = parent_kind
         new_entry.parent_key = parent_key
+        if hasattr(new_entry, "folder_key"):
+            new_entry.folder_key = folder_id
         new_entry.parent_balloon_id = id_map.get(old_parent, "") if old_parent else ""
         new_entry.selected = False
     text_real_object.ensure_text_real_object(scene=context.scene, entry=new_entry, page=page)

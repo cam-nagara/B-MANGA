@@ -191,19 +191,55 @@ def main() -> None:
         _make_balloon(context, page1, parent_key)
         raster = _make_raster(context, parent_key)
         gp_obj, gp_layer = _make_gp(context, parent_key)
+        from bmanga_dev_asset_extended.utils import layer_object_model
+
+        gp_id = layer_object_model.stable_id(gp_obj)
         layer_stack_utils.sync_layer_stack_after_data_change(context)
 
-        # 選択中のラスターを別ページへ移動できること。
+        # メニュー移動もTransferGroupの原子的ステージ経路を共用すること。
         raster_index = _stack_index(context, "raster", raster.id)
         layer_stack_utils.select_stack_index(context, raster_index)
         result = bpy.ops.bmanga.layer_move_to_page("EXEC_DEFAULT", target_page_id=page2.id)
         if "FINISHED" not in result:
             raise AssertionError(f"別ページへ移動できません: {result}")
-        if raster.parent_key != page2.id or raster.parent_kind != "page":
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=1)
+        if "FINISHED" not in result:
+            raise AssertionError(f"メニュー移動先ページを開けません: {result}")
+        context = bpy.context
+        work = context.scene.bmanga_work
+        page2 = work.pages[1]
+        moved_raster = next(
+            (
+                entry
+                for entry in context.scene.bmanga_raster_layers
+                if entry.title == "素材ラスター"
+            ),
+            None,
+        )
+        if (
+            moved_raster is None
+            or moved_raster.parent_key != page2.id
+            or moved_raster.parent_kind != "page"
+        ):
             raise AssertionError("ラスターの移動先ページが反映されていません")
-        raster.parent_kind = "coma"
-        raster.parent_key = parent_key
-        work.active_page_index = 0
+
+        # 後続のコマ素材検証用にソースページへ戻り、ラスターを作り直す。
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        if "FINISHED" not in result:
+            raise AssertionError(f"移動元ページへ戻れません: {result}")
+        context = bpy.context
+        work = context.scene.bmanga_work
+        page1 = work.pages[0]
+        page2 = work.pages[1]
+        panel = page1.comas[0]
+        parent_key = coma_stack_key(page1, panel)
+        raster = _make_raster(context, parent_key)
+        gp_obj = next(
+            obj
+            for obj in layer_object_model.iter_layer_objects("gp")
+            if layer_object_model.stable_id(obj) == gp_id
+        )
+        gp_layer = layer_object_model.content_layer(gp_obj)
         layer_stack_utils.sync_layer_stack_after_data_change(context)
 
         # コマ一式・ラスター単体・GP単体を登録し、別ページへまとめて送る。
@@ -213,8 +249,6 @@ def main() -> None:
         payload_kinds = [str(entry.get("kind", "") or "") for entry in payload.get("entries", [])]
         if "gp" not in payload_kinds:
             raise AssertionError(f"コマ素材にGPが含まれていません: {payload_kinds}")
-        from bmanga_dev_asset_extended.utils import layer_object_model
-
         raster_index = _stack_index(context, "raster", raster.id)
         raster_coll = _register_index(context, raster_index, "ラスター単体")
         raster_payload_data = json.loads(

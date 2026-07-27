@@ -1525,6 +1525,27 @@ class BMANGA_OT_object_tool(Operator):
             return
         moved = bool(getattr(self, "_drag_moved", False))
         new_xy = target.world_xy_mm if moved else None
+        from ..utils import layer_transfer_group
+
+        cross_page_changed = layer_transfer_group.transfer_group_to_page(
+            context,
+            target,
+            drop_world_xy_mm=new_xy,
+        )
+        if cross_page_changed is not None:
+            if cross_page_changed > 0:
+                _reparent_set_confirm(target)
+                layer_stack_utils.sync_layer_stack_after_data_change(
+                    context,
+                    align_coma_order=True,
+                )
+                undo_transaction.push_undo(
+                    "B-MANGA: Alt+ドラッグで別ページへ移動",
+                    logger=_logger,
+                )
+            else:
+                _reparent_set_error(target)
+            return
         changed = layer_reparent.reparent_selected(
             context, target, new_world_xy_mm=new_xy
         )

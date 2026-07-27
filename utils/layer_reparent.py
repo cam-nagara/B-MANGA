@@ -157,7 +157,14 @@ def find_target_for_drop(context, event) -> ClickTarget:
     if preview_idx is None or not (0 <= preview_idx < len(work.pages)):
         return target
     page = work.pages[preview_idx]
-    return ClickTarget("page", page, None, preview_idx, None, None)
+    from . import page_grid
+
+    ox, oy = page_grid.page_total_offset_mm(work, scene, preview_idx)
+    local = (float(world[0]) - ox, float(world[1]) - oy)
+    panel = coma_containing_point(page, local[0], local[1])
+    if panel is not None:
+        return ClickTarget("coma", page, panel, preview_idx, world, local)
+    return ClickTarget("page", page, None, preview_idx, world, local)
 
 
 # ---------- 公開関数: 親キー解決 ----------

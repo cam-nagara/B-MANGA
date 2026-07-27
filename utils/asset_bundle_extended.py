@@ -8,6 +8,8 @@ import hashlib
 import os
 from pathlib import Path
 import tempfile
+import json
+import uuid
 import zlib
 
 import bpy
@@ -24,7 +26,15 @@ from .geom import m_to_mm, mm_to_m
 from .layer_hierarchy import coma_stack_key, page_stack_key, split_child_key
 
 
-EXTENDED_LAYER_KINDS = {"coma", "raster", "gp"}
+EXTENDED_LAYER_KINDS = {
+    "coma",
+    "layer_folder",
+    "raster",
+    "image",
+    "image_path",
+    "fill",
+    "gp",
+}
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 _logger = log.get_logger(__name__)
 
@@ -216,6 +226,14 @@ def serialize_stack_item(context, item) -> dict | None:
         return _serialize_coma(context, item)
     if kind == "raster":
         return _serialize_raster(context, item)
+    if kind == "image":
+        return _serialize_scene_entry(context, item, "image")
+    if kind == "image_path":
+        return _serialize_scene_entry(context, item, "image_path")
+    if kind == "fill":
+        return _serialize_scene_entry(context, item, "fill")
+    if kind == "layer_folder":
+        return _serialize_layer_folder(context, item)
     if kind == "gp":
         return _serialize_gp_layer(context, item)
     return None
@@ -261,7 +279,20 @@ def instantiate_coma(
     data = dict(entry.get("data") or {})
     panel = page.comas.add()
     schema.coma_entry_from_dict(panel, data)
-    stem = coma_io.allocate_new_coma_id(Path(work.work_dir), page.id, page=page)
+    requested = str(entry.get("target_id", "") or "")
+    existing = {
+        str(getattr(candidate, "coma_id", "") or getattr(candidate, "id", "") or "")
+        for candidate in page.comas
+        if candidate is not panel
+    }
+    requested_dir = Path(work.work_dir) / str(getattr(page, "id", "") or "") / requested
+    stem = (
+        requested
+        if requested
+        and requested not in existing
+        and (requested_dir.is_dir() or not requested_dir.exists())
+        else coma_io.allocate_new_coma_id(Path(work.work_dir), page.id, page=page)
+    )
     panel.coma_id = stem
     panel.id = stem
     _offset_coma_geometry(panel, dx, dy)
@@ -288,7 +319,15 @@ def instantiate_coma(
     return panel
 
 
-def instantiate_raster(context, page, entry: dict, parent_kind: str, parent_key: str):
+def instantiate_raster(
+    context,
+    page,
+    entry: dict,
+    parent_kind: str,
+    parent_key: str,
+    *,
+    folder_id: str = "",
+):
     from ..operators import raster_layer_op
     from ..io.project_content_migration_lock import guard_path_write
     from ..io.project_content_save_baseline import record_successful_write
@@ -310,6 +349,8 @@ def instantiate_raster(context, page, entry: dict, parent_kind: str, parent_key:
     raster.image_name = raster_layer_op.raster_image_name(raster_id)
     raster.filepath_rel = raster_layer_op.raster_filepath_rel(raster_id)
     _set_entry_parent(raster, parent_kind, parent_key)
+    if hasattr(raster, "folder_key"):
+        raster.folder_key = folder_id
     path = Path(work.work_dir) / raster.filepath_rel
     path_existed = path.exists()
     try:
@@ -345,6 +386,133 @@ def instantiate_raster(context, page, entry: dict, parent_kind: str, parent_key:
             _logger.exception("failed staged raster cleanup: %s", path)
         _remove_raster_entry(coll, raster)
         return None
+
+
+def instantiate_image(
+    context,
+    page,
+    entry: dict,
+    dx: float,
+    dy: float,
+    parent_kind: str,
+    parent_key: str,
+    *,
+    folder_id: str = "",
+):
+    from . import image_real_object
+
+    coll = getattr(getattr(context, "scene", None), "bmanga_image_layers", None)
+    if coll is None:
+        return None
+    created = coll.add()
+    with image_real_object.suspend_auto_sync():
+        schema.image_layer_from_dict(created, dict(entry.get("data") or {}), opacity_percent=True)
+        created.id = _unique_entry_id(coll, "image")
+        created.x_mm = float(getattr(created, "x_mm", 0.0) or 0.0) + dx
+        created.y_mm = float(getattr(created, "y_mm", 0.0) or 0.0) + dy
+        _set_entry_parent(created, parent_kind, parent_key)
+        if hasattr(created, "folder_key"):
+            created.folder_key = folder_id
+    image_real_object.ensure_image_real_object(
+        scene=context.scene,
+        entry=created,
+        page=page,
+        folder_id=folder_id,
+    )
+    return created
+
+
+def instantiate_image_path(
+    context,
+    page,
+    entry: dict,
+    dx: float,
+    dy: float,
+    parent_kind: str,
+    parent_key: str,
+    *,
+    folder_id: str = "",
+):
+    from . import image_path_object
+
+    coll = getattr(getattr(context, "scene", None), "bmanga_image_path_layers", None)
+    if coll is None:
+        return None
+    created = coll.add()
+    with image_path_object.suspend_auto_sync():
+        schema.image_path_layer_from_dict(
+            created,
+            dict(entry.get("data") or {}),
+            opacity_percent=True,
+        )
+        created.id = _unique_entry_id(coll, "image_path")
+        created.path_points_json = _translate_points_json(created.path_points_json, dx, dy)
+        _set_entry_parent(created, parent_kind, parent_key)
+        if hasattr(created, "folder_key"):
+            created.folder_key = folder_id
+    image_path_object.ensure_image_path_object(
+        scene=context.scene,
+        entry=created,
+        page=page,
+        folder_id=folder_id,
+    )
+    return created
+
+
+def instantiate_fill(
+    context,
+    page,
+    entry: dict,
+    dx: float,
+    dy: float,
+    parent_kind: str,
+    parent_key: str,
+    *,
+    folder_id: str = "",
+):
+    from . import fill_real_object
+
+    coll = getattr(getattr(context, "scene", None), "bmanga_fill_layers", None)
+    if coll is None:
+        return None
+    created = coll.add()
+    with fill_real_object.suspend_auto_sync():
+        schema.fill_layer_from_dict(created, dict(entry.get("data") or {}), opacity_percent=True)
+        created.id = _unique_entry_id(coll, "fill")
+        for x_attr, y_attr in (
+            ("region_x_mm", "region_y_mm"),
+            ("gradient_start_x_mm", "gradient_start_y_mm"),
+            ("gradient_end_x_mm", "gradient_end_y_mm"),
+        ):
+            setattr(created, x_attr, float(getattr(created, x_attr, 0.0) or 0.0) + dx)
+            setattr(created, y_attr, float(getattr(created, y_attr, 0.0) or 0.0) + dy)
+        created.lasso_points_json = _translate_points_json(
+            getattr(created, "lasso_points_json", ""),
+            dx,
+            dy,
+        )
+        _set_entry_parent(created, parent_kind, parent_key)
+        if hasattr(created, "folder_key"):
+            created.folder_key = folder_id
+    fill_real_object.ensure_fill_real_object(
+        scene=context.scene,
+        entry=created,
+        page=page,
+        folder_id=folder_id,
+    )
+    return created
+
+
+def instantiate_layer_folder(context, entry: dict, parent_key: str):
+    work = get_work(context)
+    coll = getattr(work, "layer_folders", None) if work is not None else None
+    if coll is None:
+        return None
+    created = coll.add()
+    schema.layer_folder_from_dict(created, dict(entry.get("data") or {}))
+    created.id = _unique_entry_id(coll, "folder")
+    created.parent_key = str(parent_key or "")
+    return created
 
 
 def instantiate_gp_layer(
@@ -421,11 +589,79 @@ def source_parent_key(entry: dict) -> str:
     return str(entry.get("source_parent_key", "") or data.get("parent_key", "") or data.get("parentKey", "") or "")
 
 
+def source_folder_key(entry: dict) -> str:
+    data = entry.get("data") if isinstance(entry.get("data"), dict) else {}
+    return str(data.get("folderKey", data.get("folder_key", "")) or "")
+
+
+def payload_default_name(entries: list[dict]) -> str:
+    labels = {
+        "coma": "コマ", "balloon": "フキダシ", "text": "テキスト",
+        "effect": "効果線", "raster": "ラスター", "gp": "グリースペンシル",
+    }
+    parts = [labels.get(str(entry.get("kind", "")), "レイヤー") for entry in entries]
+    return "＆".join(parts[:3]) if len(parts) <= 3 else f"{parts[0]}ほか"
+
+
+def entry_bounds(entry) -> list[float]:
+    return [
+        float(getattr(entry, "x_mm", 0.0) or 0.0),
+        float(getattr(entry, "y_mm", 0.0) or 0.0),
+        float(getattr(entry, "width_mm", 1.0) or 1.0),
+        float(getattr(entry, "height_mm", 1.0) or 1.0),
+    ]
+
+
+def instantiate_extended_entry(
+    context,
+    page,
+    entry: dict,
+    kind: str,
+    dx: float,
+    dy: float,
+    parent_kind: str,
+    parent_key: str,
+    parent_key_map: dict[str, str],
+    folder_key_map: dict[str, str],
+):
+    """コマ／フキダシ／テキスト／効果線以外の素材を生成する."""
+    folder_id = folder_key_map.get(source_folder_key(entry), "")
+    if kind == "layer_folder":
+        created = instantiate_layer_folder(
+            context,
+            entry,
+            parent_key_map.get(source_parent_key(entry), parent_key),
+        )
+        old_id = str(entry.get("source_id", "") or "")
+        if created is not None and old_id:
+            folder_key_map[old_id] = str(getattr(created, "id", "") or "")
+        return created
+    if kind == "raster":
+        return instantiate_raster(
+            context, page, entry, parent_kind, parent_key, folder_id=folder_id
+        )
+    if kind == "image":
+        return instantiate_image(
+            context, page, entry, dx, dy, parent_kind, parent_key, folder_id=folder_id
+        )
+    if kind == "image_path":
+        return instantiate_image_path(
+            context, page, entry, dx, dy, parent_kind, parent_key, folder_id=folder_id
+        )
+    if kind == "fill":
+        return instantiate_fill(
+            context, page, entry, dx, dy, parent_kind, parent_key, folder_id=folder_id
+        )
+    if kind == "gp":
+        return instantiate_gp_layer(context, page, entry, dx, dy, parent_kind, parent_key)
+    return None
+
+
 def new_uid_for_created(kind: str, page, obj) -> str:
     if kind == "coma":
         return layer_stack_utils.target_uid("coma", coma_stack_key(page, obj))
-    if kind == "raster":
-        return layer_stack_utils.target_uid("raster", getattr(obj, "id", ""))
+    if kind in {"raster", "image", "image_path", "fill", "layer_folder"}:
+        return layer_stack_utils.target_uid(kind, getattr(obj, "id", ""))
     if kind == "gp" and isinstance(obj, tuple):
         from . import layer_object_model
 
@@ -477,6 +713,98 @@ def _serialize_raster(context, item) -> dict | None:
         "bounds": _raster_bounds(context),
         "png_base64": png_b64,
     }
+
+
+def _serialize_scene_entry(context, item, kind: str) -> dict | None:
+    resolved = layer_stack_utils.resolve_stack_item(context, item)
+    target = resolved.get("target") if resolved is not None else None
+    if target is None:
+        return None
+    serializers = {
+        "image": schema.image_layer_to_dict,
+        "image_path": schema.image_path_layer_to_dict,
+        "fill": schema.fill_layer_to_dict,
+    }
+    serializer = serializers.get(kind)
+    if serializer is None:
+        return None
+    return {
+        "kind": kind,
+        "source_id": str(getattr(target, "id", "") or ""),
+        "source_parent_key": str(getattr(target, "parent_key", "") or ""),
+        "data": serializer(target),
+        "bounds": _scene_entry_bounds(context, kind, target),
+    }
+
+
+def _serialize_layer_folder(context, item) -> dict | None:
+    resolved = layer_stack_utils.resolve_stack_item(context, item)
+    target = resolved.get("target") if resolved is not None else None
+    if target is None:
+        return None
+    return {
+        "kind": "layer_folder",
+        "source_id": str(getattr(target, "id", "") or ""),
+        "source_parent_key": str(getattr(target, "parent_key", "") or ""),
+        "data": schema.layer_folder_to_dict(target),
+        "bounds": [0.0, 0.0, 0.0, 0.0],
+    }
+
+
+def _scene_entry_bounds(context, kind: str, entry) -> list[float]:
+    if kind == "image":
+        return [
+            float(getattr(entry, "x_mm", 0.0) or 0.0),
+            float(getattr(entry, "y_mm", 0.0) or 0.0),
+            float(getattr(entry, "width_mm", 1.0) or 1.0),
+            float(getattr(entry, "height_mm", 1.0) or 1.0),
+        ]
+    points = _json_points(
+        getattr(entry, "path_points_json", "")
+        if kind == "image_path"
+        else getattr(entry, "lasso_points_json", "")
+    )
+    if points:
+        return _bounds_from_points(points)
+    if kind == "fill" and bool(getattr(entry, "use_region", False)):
+        return [
+            float(getattr(entry, "region_x_mm", 0.0) or 0.0),
+            float(getattr(entry, "region_y_mm", 0.0) or 0.0),
+            max(1.0, float(getattr(entry, "region_width_mm", 1.0) or 1.0)),
+            max(1.0, float(getattr(entry, "region_height_mm", 1.0) or 1.0)),
+        ]
+    return _raster_bounds(context)
+
+
+def _json_points(raw) -> list[tuple[float, float]]:
+    try:
+        values = json.loads(str(raw or "[]"))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    return [
+        (float(point[0]), float(point[1]))
+        for point in values if isinstance(point, (list, tuple)) and len(point) >= 2
+    ]
+
+
+def _translate_points_json(raw, dx: float, dy: float) -> str:
+    points = _json_points(raw)
+    if not points:
+        return str(raw or "")
+    return json.dumps(
+        [[x + dx, y + dy] for x, y in points],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
+def _unique_entry_id(coll, prefix: str) -> str:
+    existing = {str(getattr(entry, "id", "") or "") for entry in coll}
+    for _attempt in range(128):
+        candidate = f"{prefix}_{uuid.uuid4().hex[:12]}"
+        if candidate not in existing:
+            return candidate
+    return f"{prefix}_{uuid.uuid4().hex}"
 
 
 def _serialize_gp_layer(context, item) -> dict | None:

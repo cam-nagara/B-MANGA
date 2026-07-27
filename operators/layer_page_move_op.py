@@ -101,7 +101,11 @@ class BMANGA_OT_layer_move_to_page(Operator):
             None,
             None,
         )
-        changed = layer_reparent.reparent_selected(context, target)
+        from ..utils import layer_transfer_group
+
+        changed = layer_transfer_group.transfer_group_to_page(context, target)
+        if changed is None:
+            changed = layer_reparent.reparent_selected(context, target)
         if changed <= 0:
             self.report({"INFO"}, "移動できるレイヤーがありません")
             return {"CANCELLED"}

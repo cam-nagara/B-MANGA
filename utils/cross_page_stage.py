@@ -29,6 +29,20 @@ ASSET_STAGE_INDEX_PROP = "bmanga_asset_stage_index"
 ASSET_STAGE_TOKEN_PROP = "bmanga_asset_stage_token"
 _ASSET_MANIFEST_PROP = "bmanga_asset_stage_manifest"
 _RUNTIME_KEYS_PROP = "bmanga_staged_import_runtime_keys"
+_ASSET_SUPPORTED_KINDS = frozenset(
+    {
+        "coma",
+        "layer_folder",
+        "balloon",
+        "text",
+        "effect",
+        "raster",
+        "image",
+        "image_path",
+        "fill",
+        "gp",
+    }
+)
 
 
 def staged_path(work_dir: Path, page_id: str) -> Path:
@@ -127,6 +141,8 @@ def stage_asset_bundle(
     page_id: str,
     payload: dict,
     drop_local_xy_mm: tuple[float, float],
+    *,
+    ready: bool = True,
 ) -> str:
     if not paths.is_valid_page_id(page_id) or not isinstance(payload, dict):
         return ""
@@ -136,8 +152,36 @@ def stage_asset_bundle(
         "target_page_id": page_id,
         "drop_local_xy_mm": [float(drop_local_xy_mm[0]), float(drop_local_xy_mm[1])],
         "payload": _normalized_asset_payload(payload, stage_id),
+        "state": "ready" if ready else "prepared",
     }
     return stage_id if _append_unique(work_dir, page_id, ASSET_ENTRIES_KEY, entry, stage_id) else ""
+
+
+def mark_asset_bundle_ready(work_dir: Path, page_id: str, stage_id: str) -> bool:
+    """準備済みページ間移送を、移動元保存後にだけ復元可能へ昇格する."""
+    path = staged_path(work_dir, page_id)
+    try:
+        from ..io.project_content_migration_lock import work_lock
+
+        with work_lock(work_dir, blocking=True):
+            data = _read(path)
+            entries = data.get(ASSET_ENTRIES_KEY, [])
+            found = False
+            for entry in entries if isinstance(entries, list) else []:
+                if (
+                    isinstance(entry, dict)
+                    and str(entry.get("stage_id", "") or "") == str(stage_id or "")
+                ):
+                    entry["state"] = "ready"
+                    found = True
+                    break
+            if not found:
+                return False
+            _write_or_remove(path, data)
+        return True
+    except Exception:  # noqa: BLE001
+        _logger.exception("prepared asset stage commit failed: %s", stage_id)
+        return False
 
 
 def _runtime_keys(context) -> set[str]:
@@ -329,6 +373,8 @@ def _process_layers(context, page_id: str, kind: str, entries: list) -> tuple[in
     for entry in entries:
         if not isinstance(entry, dict):
             continue
+        if str(entry.get("state", "ready") or "ready") != "ready":
+            continue
         token = _entry_token(kind, entry)
         if not token:
             continue
@@ -432,12 +478,11 @@ def stamp_asset_created(context, created, stage_id: str, index: int, kind: str) 
 def _stamp_asset_token(context, page, payload: dict, stage_id: str, token: str) -> None:
     if not token:
         return
-    supported = {"coma", "balloon", "text", "effect", "raster", "gp"}
     entries = payload.get("entries", []) if isinstance(payload, dict) else []
     manifest = _asset_manifest(getattr(context, "scene", None))
     stage_manifest = manifest.get(stage_id)
     for index, entry in enumerate(entries):
-        if not isinstance(entry, dict) or entry.get("kind") not in supported:
+        if not isinstance(entry, dict) or entry.get("kind") not in _ASSET_SUPPORTED_KINDS:
             continue
         kind = str(entry.get("kind", "") or "")
         created = find_asset_created(context, page, stage_id, index, kind)
@@ -460,11 +505,10 @@ def _stamp_asset_token(context, page, payload: dict, stage_id: str, token: str) 
 
 
 def _asset_token_matches(context, page, payload: dict, stage_id: str, token: str) -> bool:
-    supported = {"coma", "balloon", "text", "effect", "raster", "gp"}
     entries = payload.get("entries", []) if isinstance(payload, dict) else []
     checked = False
     for index, entry in enumerate(entries):
-        if not isinstance(entry, dict) or entry.get("kind") not in supported:
+        if not isinstance(entry, dict) or entry.get("kind") not in _ASSET_SUPPORTED_KINDS:
             continue
         checked = True
         kind = str(entry.get("kind", "") or "")
@@ -486,9 +530,13 @@ def _asset_stage_targets(context, page, stage_id: str) -> list[tuple[str, object
     targets: list[tuple[str, object]] = []
     collections = (
         ("coma", getattr(page, "comas", [])),
+        ("layer_folder", getattr(getattr(context.scene, "bmanga_work", None), "layer_folders", [])),
         ("balloon", getattr(page, "balloons", [])),
         ("text", getattr(page, "texts", [])),
         ("raster", getattr(context.scene, "bmanga_raster_layers", [])),
+        ("image", getattr(context.scene, "bmanga_image_layers", [])),
+        ("image_path", getattr(context.scene, "bmanga_image_path_layers", [])),
+        ("fill", getattr(context.scene, "bmanga_fill_layers", [])),
     )
     for kind, collection in collections:
         for target in collection:
@@ -498,7 +546,18 @@ def _asset_stage_targets(context, page, stage_id: str) -> list[tuple[str, object
         for target in layer_object_model.iter_layer_objects(kind):
             if str(target.get(ASSET_STAGE_PROP, "") or "") == stage_id:
                 targets.append((kind, target))
-    priorities = {"effect": 0, "gp": 1, "raster": 2, "text": 3, "balloon": 4, "coma": 5}
+    priorities = {
+        "effect": 0,
+        "gp": 1,
+        "raster": 2,
+        "image_path": 3,
+        "image": 4,
+        "fill": 5,
+        "text": 6,
+        "balloon": 7,
+        "layer_folder": 8,
+        "coma": 9,
+    }
     return sorted(targets, key=lambda item: priorities[item[0]])
 
 
@@ -523,6 +582,34 @@ def _remove_asset_target(context, page, kind: str, target) -> bool:
         from . import asset_bundle_extended
 
         return asset_bundle_extended.remove_staged_raster(context, target)
+    if kind in {"image", "image_path", "fill"}:
+        removers = {}
+        if kind == "image":
+            from . import image_real_object
+
+            removers = {
+                "collection": getattr(context.scene, "bmanga_image_layers", []),
+                "remove": image_real_object.remove_image_real_object,
+            }
+        elif kind == "image_path":
+            from . import image_path_object
+
+            removers = {
+                "collection": getattr(context.scene, "bmanga_image_path_layers", []),
+                "remove": image_path_object.remove_image_path_object,
+            }
+        else:
+            from . import fill_real_object
+
+            removers = {
+                "collection": getattr(context.scene, "bmanga_fill_layers", []),
+                "remove": fill_real_object.remove_fill_real_object,
+            }
+        removers["remove"](str(getattr(target, "id", "") or ""))
+        return _remove_collection_item(removers["collection"], target)
+    if kind == "layer_folder":
+        work = getattr(context.scene, "bmanga_work", None)
+        return _remove_collection_item(getattr(work, "layer_folders", []), target)
     if kind == "text":
         from . import text_real_object
 
@@ -583,9 +670,13 @@ def _manifest_asset_created(context, page, stage_id: str, index: int, kind: str)
         return layer_object_model.find_layer_object(kind, identity)
     collections = {
         "coma": getattr(page, "comas", []),
+        "layer_folder": getattr(getattr(context.scene, "bmanga_work", None), "layer_folders", []),
         "balloon": getattr(page, "balloons", []),
         "text": getattr(page, "texts", []),
         "raster": getattr(context.scene, "bmanga_raster_layers", []),
+        "image": getattr(context.scene, "bmanga_image_layers", []),
+        "image_path": getattr(context.scene, "bmanga_image_path_layers", []),
+        "fill": getattr(context.scene, "bmanga_fill_layers", []),
     }
     for entry in collections.get(kind, []):
         current = str(
@@ -608,9 +699,13 @@ def find_asset_created(context, page, stage_id: str, index: int, kind: str):
 
     collections = {
         "coma": getattr(page, "comas", []),
+        "layer_folder": getattr(getattr(context.scene, "bmanga_work", None), "layer_folders", []),
         "balloon": getattr(page, "balloons", []),
         "text": getattr(page, "texts", []),
         "raster": getattr(context.scene, "bmanga_raster_layers", []),
+        "image": getattr(context.scene, "bmanga_image_layers", []),
+        "image_path": getattr(context.scene, "bmanga_image_path_layers", []),
+        "fill": getattr(context.scene, "bmanga_fill_layers", []),
     }
     if kind in collections:
         found = next((entry for entry in collections[kind] if matches(entry)), None)
@@ -624,13 +719,16 @@ def find_asset_created(context, page, stage_id: str, index: int, kind: str):
 
 
 def asset_stage_complete(context, page, payload: dict, stage_id: str) -> bool:
-    supported = {"coma", "balloon", "text", "effect", "raster", "gp"}
     entries = payload.get("entries", []) if isinstance(payload, dict) else []
-    valid = [entry for entry in entries if isinstance(entry, dict) and entry.get("kind") in supported]
+    valid = [
+        entry
+        for entry in entries
+        if isinstance(entry, dict) and entry.get("kind") in _ASSET_SUPPORTED_KINDS
+    ]
     if not valid:
         return False
     for index, entry in enumerate(entries):
-        if not isinstance(entry, dict) or entry.get("kind") not in supported:
+        if not isinstance(entry, dict) or entry.get("kind") not in _ASSET_SUPPORTED_KINDS:
             continue
         kind = str(entry.get("kind", "") or "")
         created = find_asset_created(context, page, stage_id, index, kind)
@@ -877,6 +975,7 @@ __all__ = [
     "asset_stage_complete",
     "commit_staged_imports_after_save",
     "find_asset_created",
+    "mark_asset_bundle_ready",
     "process_staged_imports",
     "stage_asset_bundle",
     "stage_effect",
