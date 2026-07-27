@@ -515,6 +515,20 @@ def _balloon_id_exists(coll, balloon_id: str) -> bool:
     return entry is not None
 
 
+def _remove_text_runtime_object(page, text_id: str) -> None:
+    """親スコープを跨ぐ前に、旧座標を書き戻し得るテキスト実体を除去する."""
+    if not text_id:
+        return
+    from . import text_real_object
+
+    page_id = (
+        str(getattr(page, "id", "") or "")
+        if page is not None
+        else text_real_object.OUTSIDE_PAGE_ID
+    )
+    text_real_object.remove_text_real_object(page_id, text_id)
+
+
 def _copy_child_texts_page_to_shared(
     context,
     work,
@@ -535,22 +549,26 @@ def _copy_child_texts_page_to_shared(
         idx, src_entry = _find_entry_index_by_id(src_page.texts, text_id)
         if src_entry is None:
             continue
+        from . import text_real_object
+
+        _remove_text_runtime_object(src_page, text_id)
         final_id = _unique_collection_id(work.shared_texts, text_id, "shared_text")
-        new_entry = work.shared_texts.add()
-        schema.text_entry_from_dict(new_entry, schema.text_entry_to_dict(src_entry))
-        new_entry.id = final_id
-        new_entry.parent_kind = "none"
-        new_entry.parent_key = ""
-        new_entry.parent_balloon_id = dst_balloon_id
-        old_world = _entry_top_left_world(context, work, src_page, src_entry)
-        _set_entry_top_left_world(
-            context,
-            work,
-            None,
-            new_entry,
-            (old_world[0] + delta_world[0], old_world[1] + delta_world[1]),
-        )
-        src_page.texts.remove(idx)
+        with text_real_object.suspend_auto_sync():
+            new_entry = work.shared_texts.add()
+            schema.text_entry_from_dict(new_entry, schema.text_entry_to_dict(src_entry))
+            new_entry.id = final_id
+            new_entry.parent_kind = "none"
+            new_entry.parent_key = ""
+            new_entry.parent_balloon_id = dst_balloon_id
+            old_world = _entry_top_left_world(context, work, src_page, src_entry)
+            _set_entry_top_left_world(
+                context,
+                work,
+                None,
+                new_entry,
+                (old_world[0] + delta_world[0], old_world[1] + delta_world[1]),
+            )
+            src_page.texts.remove(idx)
 
 
 def _copy_child_texts_shared_to_page(
@@ -576,23 +594,27 @@ def _copy_child_texts_shared_to_page(
         idx, src_entry = _find_entry_index_by_id(work.shared_texts, text_id)
         if src_entry is None:
             continue
+        from . import text_real_object
+
+        _remove_text_runtime_object(None, text_id)
         existing_dst_ids = {str(getattr(t, "id", "") or "") for t in dst_page.texts}
         final_id = text_id if text_id and text_id not in existing_dst_ids else _allocate_text_id(dst_page)
-        new_entry = dst_page.texts.add()
-        schema.text_entry_from_dict(new_entry, schema.text_entry_to_dict(src_entry))
-        new_entry.id = final_id
-        new_entry.parent_kind = parent_kind
-        new_entry.parent_key = parent_key or page_stack_key(dst_page)
-        new_entry.parent_balloon_id = dst_balloon_id
-        old_world = _entry_top_left_world(context, work, None, src_entry)
-        _set_entry_top_left_world(
-            context,
-            work,
-            dst_page,
-            new_entry,
-            (old_world[0] + delta_world[0], old_world[1] + delta_world[1]),
-        )
-        work.shared_texts.remove(idx)
+        with text_real_object.suspend_auto_sync():
+            new_entry = dst_page.texts.add()
+            schema.text_entry_from_dict(new_entry, schema.text_entry_to_dict(src_entry))
+            new_entry.id = final_id
+            new_entry.parent_kind = parent_kind
+            new_entry.parent_key = parent_key or page_stack_key(dst_page)
+            new_entry.parent_balloon_id = dst_balloon_id
+            old_world = _entry_top_left_world(context, work, None, src_entry)
+            _set_entry_top_left_world(
+                context,
+                work,
+                dst_page,
+                new_entry,
+                (old_world[0] + delta_world[0], old_world[1] + delta_world[1]),
+            )
+            work.shared_texts.remove(idx)
 
 
 def _copy_child_texts_page_to_page(
@@ -619,23 +641,27 @@ def _copy_child_texts_page_to_page(
         idx, src_entry = _find_entry_index_by_id(src_page.texts, text_id)
         if src_entry is None:
             continue
+        from . import text_real_object
+
+        _remove_text_runtime_object(src_page, text_id)
         existing_dst_ids = {str(getattr(t, "id", "") or "") for t in dst_page.texts}
         final_id = text_id if text_id and text_id not in existing_dst_ids else _allocate_text_id(dst_page)
-        new_entry = dst_page.texts.add()
-        schema.text_entry_from_dict(new_entry, schema.text_entry_to_dict(src_entry))
-        new_entry.id = final_id
-        new_entry.parent_balloon_id = dst_balloon_id
-        new_entry.parent_kind = parent_kind
-        new_entry.parent_key = parent_key or page_stack_key(dst_page)
-        old_world = _entry_top_left_world(context, work, src_page, src_entry)
-        _set_entry_top_left_world(
-            context,
-            work,
-            dst_page,
-            new_entry,
-            (old_world[0] + delta_world[0], old_world[1] + delta_world[1]),
-        )
-        src_page.texts.remove(idx)
+        with text_real_object.suspend_auto_sync():
+            new_entry = dst_page.texts.add()
+            schema.text_entry_from_dict(new_entry, schema.text_entry_to_dict(src_entry))
+            new_entry.id = final_id
+            new_entry.parent_balloon_id = dst_balloon_id
+            new_entry.parent_kind = parent_kind
+            new_entry.parent_key = parent_key or page_stack_key(dst_page)
+            old_world = _entry_top_left_world(context, work, src_page, src_entry)
+            _set_entry_top_left_world(
+                context,
+                work,
+                dst_page,
+                new_entry,
+                (old_world[0] + delta_world[0], old_world[1] + delta_world[1]),
+            )
+            src_page.texts.remove(idx)
 
 
 def _reparent_balloon(context, item, target: ClickTarget, new_parent_key: str, new_world_xy_mm) -> bool:
@@ -663,25 +689,29 @@ def _reparent_balloon(context, item, target: ClickTarget, new_parent_key: str, n
             return old_parent or new_world_xy_mm is not None
         if src_page is None:
             return False
+        from . import balloon_curve_object
+
+        balloon_curve_object.remove_balloon_objects_by_id(balloon_id)
         final_id = _unique_collection_id(work.shared_balloons, balloon_id, "shared_balloon")
-        new_entry = work.shared_balloons.add()
-        schema.balloon_entry_from_dict(new_entry, schema.balloon_entry_to_dict(src_entry))
-        new_entry.id = final_id
-        new_entry.parent_kind = "none"
-        new_entry.parent_key = ""
-        _set_entry_top_left_world(context, work, None, new_entry, old_world)
-        _move_entry_center_world(context, work, None, new_entry, new_world_xy_mm)
-        new_world = _entry_top_left_world(context, work, None, new_entry)
-        delta_world = (new_world[0] - old_world[0], new_world[1] - old_world[1])
-        _copy_child_texts_page_to_shared(
-            context,
-            work,
-            src_page,
-            balloon_id,
-            final_id,
-            delta_world=delta_world,
-        )
-        _remove_entry_by_id(src_page.balloons, balloon_id)
+        with balloon_curve_object.defer_auto_sync():
+            new_entry = work.shared_balloons.add()
+            schema.balloon_entry_from_dict(new_entry, schema.balloon_entry_to_dict(src_entry))
+            new_entry.id = final_id
+            new_entry.parent_kind = "none"
+            new_entry.parent_key = ""
+            _set_entry_top_left_world(context, work, None, new_entry, old_world)
+            _move_entry_center_world(context, work, None, new_entry, new_world_xy_mm)
+            new_world = _entry_top_left_world(context, work, None, new_entry)
+            delta_world = (new_world[0] - old_world[0], new_world[1] - old_world[1])
+            _copy_child_texts_page_to_shared(
+                context,
+                work,
+                src_page,
+                balloon_id,
+                final_id,
+                delta_world=delta_world,
+            )
+            _remove_entry_by_id(src_page.balloons, balloon_id)
         try:
             item.parent_key = OUTSIDE_STACK_KEY
         except Exception:  # noqa: BLE001
@@ -694,30 +724,33 @@ def _reparent_balloon(context, item, target: ClickTarget, new_parent_key: str, n
 
     if src_scope == "shared":
         from ..operators.balloon_op import _allocate_balloon_id
+        from . import balloon_curve_object
 
+        balloon_curve_object.remove_balloon_objects_by_id(balloon_id)
         existing_dst_ids = {str(getattr(b, "id", "") or "") for b in dst_page.balloons}
         final_id = balloon_id if balloon_id and balloon_id not in existing_dst_ids else _allocate_balloon_id(dst_page)
-        new_entry = dst_page.balloons.add()
-        schema.balloon_entry_from_dict(new_entry, schema.balloon_entry_to_dict(src_entry))
-        new_entry.id = final_id
-        new_entry.parent_kind = "coma" if target.kind == "coma" else "page"
-        new_entry.parent_key = new_parent_key
-        _set_entry_top_left_world(context, work, dst_page, new_entry, old_world)
-        _move_entry_center_world(context, work, dst_page, new_entry, new_world_xy_mm)
-        new_world = _entry_top_left_world(context, work, dst_page, new_entry)
-        delta_world = (new_world[0] - old_world[0], new_world[1] - old_world[1])
-        _copy_child_texts_shared_to_page(
-            context,
-            work,
-            dst_page,
-            balloon_id,
-            final_id,
-            delta_world=delta_world,
-            parent_kind="coma" if target.kind == "coma" else "page",
-            parent_key=new_parent_key,
-        )
-        if src_idx >= 0:
-            work.shared_balloons.remove(src_idx)
+        with balloon_curve_object.defer_auto_sync():
+            new_entry = dst_page.balloons.add()
+            schema.balloon_entry_from_dict(new_entry, schema.balloon_entry_to_dict(src_entry))
+            new_entry.id = final_id
+            new_entry.parent_kind = "coma" if target.kind == "coma" else "page"
+            new_entry.parent_key = new_parent_key
+            _set_entry_top_left_world(context, work, dst_page, new_entry, old_world)
+            _move_entry_center_world(context, work, dst_page, new_entry, new_world_xy_mm)
+            new_world = _entry_top_left_world(context, work, dst_page, new_entry)
+            delta_world = (new_world[0] - old_world[0], new_world[1] - old_world[1])
+            _copy_child_texts_shared_to_page(
+                context,
+                work,
+                dst_page,
+                balloon_id,
+                final_id,
+                delta_world=delta_world,
+                parent_kind="coma" if target.kind == "coma" else "page",
+                parent_key=new_parent_key,
+            )
+            if src_idx >= 0:
+                work.shared_balloons.remove(src_idx)
         return True
 
     if src_page is None:
@@ -737,30 +770,33 @@ def _reparent_balloon(context, item, target: ClickTarget, new_parent_key: str, n
         return True
 
     from ..operators.balloon_op import _allocate_balloon_id
+    from . import balloon_curve_object
 
+    balloon_curve_object.remove_balloon_objects_by_id(balloon_id)
     existing_dst_ids = {str(getattr(b, "id", "") or "") for b in dst_page.balloons}
     final_id = balloon_id if balloon_id and balloon_id not in existing_dst_ids else _allocate_balloon_id(dst_page)
-    new_entry = dst_page.balloons.add()
-    schema.balloon_entry_from_dict(new_entry, schema.balloon_entry_to_dict(src_entry))
-    new_entry.id = final_id
-    new_entry.parent_kind = "coma" if target.kind == "coma" else "page"
-    new_entry.parent_key = new_parent_key
-    _set_entry_top_left_world(context, work, dst_page, new_entry, old_world)
-    _move_entry_center_world(context, work, dst_page, new_entry, new_world_xy_mm)
-    new_world = _entry_top_left_world(context, work, dst_page, new_entry)
-    delta_world = (new_world[0] - old_world[0], new_world[1] - old_world[1])
-    _copy_child_texts_page_to_page(
-        context,
-        work,
-        src_page,
-        dst_page,
-        balloon_id,
-        final_id,
-        delta_world=delta_world,
-        parent_kind="coma" if target.kind == "coma" else "page",
-        parent_key=new_parent_key,
-    )
-    _remove_entry_by_id(src_page.balloons, balloon_id)
+    with balloon_curve_object.defer_auto_sync():
+        new_entry = dst_page.balloons.add()
+        schema.balloon_entry_from_dict(new_entry, schema.balloon_entry_to_dict(src_entry))
+        new_entry.id = final_id
+        new_entry.parent_kind = "coma" if target.kind == "coma" else "page"
+        new_entry.parent_key = new_parent_key
+        _set_entry_top_left_world(context, work, dst_page, new_entry, old_world)
+        _move_entry_center_world(context, work, dst_page, new_entry, new_world_xy_mm)
+        new_world = _entry_top_left_world(context, work, dst_page, new_entry)
+        delta_world = (new_world[0] - old_world[0], new_world[1] - old_world[1])
+        _copy_child_texts_page_to_page(
+            context,
+            work,
+            src_page,
+            dst_page,
+            balloon_id,
+            final_id,
+            delta_world=delta_world,
+            parent_kind="coma" if target.kind == "coma" else "page",
+            parent_key=new_parent_key,
+        )
+        _remove_entry_by_id(src_page.balloons, balloon_id)
     return True
 
 
@@ -791,17 +827,21 @@ def _reparent_text(context, item, target: ClickTarget, new_parent_key: str, new_
             return old_parent or new_world_xy_mm is not None
         if src_page is None:
             return False
+        from . import text_real_object
+
+        _remove_text_runtime_object(src_page, text_id)
         final_id = _unique_collection_id(work.shared_texts, text_id, "shared_text")
-        new_entry = work.shared_texts.add()
-        schema.text_entry_from_dict(new_entry, schema.text_entry_to_dict(src_entry))
-        new_entry.id = final_id
-        new_entry.parent_kind = "none"
-        new_entry.parent_key = ""
-        if not _balloon_id_exists(getattr(work, "shared_balloons", []), new_entry.parent_balloon_id):
-            new_entry.parent_balloon_id = ""
-        _set_entry_top_left_world(context, work, None, new_entry, old_world)
-        _move_entry_center_world(context, work, None, new_entry, new_world_xy_mm)
-        _remove_entry_by_id(src_page.texts, text_id)
+        with text_real_object.suspend_auto_sync():
+            new_entry = work.shared_texts.add()
+            schema.text_entry_from_dict(new_entry, schema.text_entry_to_dict(src_entry))
+            new_entry.id = final_id
+            new_entry.parent_kind = "none"
+            new_entry.parent_key = ""
+            if not _balloon_id_exists(getattr(work, "shared_balloons", []), new_entry.parent_balloon_id):
+                new_entry.parent_balloon_id = ""
+            _set_entry_top_left_world(context, work, None, new_entry, old_world)
+            _move_entry_center_world(context, work, None, new_entry, new_world_xy_mm)
+            _remove_entry_by_id(src_page.texts, text_id)
         try:
             item.parent_key = OUTSIDE_STACK_KEY
         except Exception:  # noqa: BLE001
@@ -814,20 +854,23 @@ def _reparent_text(context, item, target: ClickTarget, new_parent_key: str, new_
 
     if src_scope == "shared":
         from ..operators.text_op import _allocate_text_id
+        from . import text_real_object
 
+        _remove_text_runtime_object(None, text_id)
         existing_dst_ids = {str(getattr(t, "id", "") or "") for t in dst_page.texts}
         final_id = text_id if text_id and text_id not in existing_dst_ids else _allocate_text_id(dst_page)
-        new_entry = dst_page.texts.add()
-        schema.text_entry_from_dict(new_entry, schema.text_entry_to_dict(src_entry))
-        new_entry.id = final_id
-        new_entry.parent_kind = "coma" if target.kind == "coma" else "page"
-        new_entry.parent_key = new_parent_key
-        if not _balloon_id_exists(getattr(dst_page, "balloons", []), new_entry.parent_balloon_id):
-            new_entry.parent_balloon_id = ""
-        _set_entry_top_left_world(context, work, dst_page, new_entry, old_world)
-        _move_entry_center_world(context, work, dst_page, new_entry, new_world_xy_mm)
-        if src_idx >= 0:
-            work.shared_texts.remove(src_idx)
+        with text_real_object.suspend_auto_sync():
+            new_entry = dst_page.texts.add()
+            schema.text_entry_from_dict(new_entry, schema.text_entry_to_dict(src_entry))
+            new_entry.id = final_id
+            new_entry.parent_kind = "coma" if target.kind == "coma" else "page"
+            new_entry.parent_key = new_parent_key
+            if not _balloon_id_exists(getattr(dst_page, "balloons", []), new_entry.parent_balloon_id):
+                new_entry.parent_balloon_id = ""
+            _set_entry_top_left_world(context, work, dst_page, new_entry, old_world)
+            _move_entry_center_world(context, work, dst_page, new_entry, new_world_xy_mm)
+            if src_idx >= 0:
+                work.shared_texts.remove(src_idx)
         return True
 
     if src_page is None:
@@ -847,19 +890,22 @@ def _reparent_text(context, item, target: ClickTarget, new_parent_key: str, new_
         return True
 
     from ..operators.text_op import _allocate_text_id
+    from . import text_real_object
 
+    _remove_text_runtime_object(src_page, text_id)
     existing_dst_ids = {str(getattr(t, "id", "") or "") for t in dst_page.texts}
     final_id = text_id if text_id and text_id not in existing_dst_ids else _allocate_text_id(dst_page)
-    new_entry = dst_page.texts.add()
-    schema.text_entry_from_dict(new_entry, schema.text_entry_to_dict(src_entry))
-    new_entry.id = final_id
-    new_entry.parent_kind = "coma" if target.kind == "coma" else "page"
-    new_entry.parent_key = new_parent_key
-    if not _balloon_id_exists(getattr(dst_page, "balloons", []), new_entry.parent_balloon_id):
-        new_entry.parent_balloon_id = ""
-    _set_entry_top_left_world(context, work, dst_page, new_entry, old_world)
-    _move_entry_center_world(context, work, dst_page, new_entry, new_world_xy_mm)
-    _remove_entry_by_id(src_page.texts, text_id)
+    with text_real_object.suspend_auto_sync():
+        new_entry = dst_page.texts.add()
+        schema.text_entry_from_dict(new_entry, schema.text_entry_to_dict(src_entry))
+        new_entry.id = final_id
+        new_entry.parent_kind = "coma" if target.kind == "coma" else "page"
+        new_entry.parent_key = new_parent_key
+        if not _balloon_id_exists(getattr(dst_page, "balloons", []), new_entry.parent_balloon_id):
+            new_entry.parent_balloon_id = ""
+        _set_entry_top_left_world(context, work, dst_page, new_entry, old_world)
+        _move_entry_center_world(context, work, dst_page, new_entry, new_world_xy_mm)
+        _remove_entry_by_id(src_page.texts, text_id)
     return True
 
 

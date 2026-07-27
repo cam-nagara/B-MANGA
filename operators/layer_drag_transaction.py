@@ -124,6 +124,155 @@ def _candidate_objects(owner, kind: str, resolved: dict) -> list:
     return sorted(roots, key=lambda obj: str(getattr(obj, "name", "") or ""))
 
 
+def _object_tool_candidates(context, keys: list[str]) -> list:
+    """オブジェクトツールの選択キーから、一時移動する実体だけを集める."""
+    from ..utils import object_selection
+    from . import object_tool_selection
+
+    candidates: set[bpy.types.Object] = set()
+    for key in keys:
+        kind, page_id, item_id = object_selection.parse_key(key)
+        obj = object_tool_selection._managed_object_for_key(context, key)
+        if obj is not None:
+            candidates.add(obj)
+            candidates.update(_descendants(obj))
+        if kind != "coma" or not page_id or not item_id:
+            continue
+        coma_key = f"{page_id}:{item_id}"
+        collection = on.find_collection_by_bmanga_id(coma_key, kind="coma")
+        if collection is not None:
+            candidates.update(getattr(collection, "all_objects", ()) or ())
+        for candidate in bpy.data.objects:
+            if any(
+                str(candidate.get(prop, "") or "") == coma_key
+                for prop in _COMA_OWNER_PROPS
+            ):
+                candidates.add(candidate)
+                candidates.update(_descendants(candidate))
+    roots = [
+        obj for obj in candidates if getattr(obj, "parent", None) not in candidates
+    ]
+    return sorted(roots, key=lambda obj: str(getattr(obj, "name", "") or ""))
+
+
+def _selection_key_uid(key: str) -> str:
+    from ..utils import layer_stack, object_selection
+
+    kind, page_id, item_id = object_selection.parse_key(key)
+    if not kind or not item_id:
+        return ""
+    stack_key = f"{page_id}:{item_id}" if kind in {"balloon", "text"} else item_id
+    return layer_stack.target_uid(kind, stack_key)
+
+
+class ObjectMoveTransaction:
+    """オブジェクトツールの移動も、実データ更新は確定時の一回に限定する."""
+
+    def __init__(self, context, owner, keys: list[str]) -> None:
+        self._owner = owner
+        self._total = (0.0, 0.0)
+        self._closed = False
+        self._objects = [
+            _ObjectState(obj=obj, matrix_world=obj.matrix_world.copy())
+            for obj in _object_tool_candidates(context, keys)
+        ]
+        self._composite_drag = False
+        uids = tuple(uid for key in keys if (uid := _selection_key_uid(key)))
+        if uids:
+            try:
+                from ..utils import preview_composite
+
+                self._composite_drag = preview_composite.get_service().begin_drag(
+                    context,
+                    anchor_uid=uids[0],
+                    exclude_uids=uids,
+                    objects=[state.obj for state in self._objects],
+                )
+            except Exception:  # noqa: BLE001
+                self._composite_drag = False
+        layer_object_sync.begin_sync_suppression()
+
+    def update_overlay(
+        self,
+        context,
+        total_dx_mm: float,
+        total_dy_mm: float,
+    ) -> bool:
+        if self._closed:
+            return False
+        self._total = (float(total_dx_mm), float(total_dy_mm))
+        dx_m = mm_to_m(self._total[0])
+        dy_m = mm_to_m(self._total[1])
+        if self._composite_drag:
+            try:
+                from ..utils import preview_composite
+
+                preview_composite.get_service().update_drag(
+                    context,
+                    dx_mm=self._total[0],
+                    dy_mm=self._total[1],
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        else:
+            for state in self._objects:
+                if state.obj is None:
+                    continue
+                matrix = state.matrix_world.copy()
+                matrix.translation.x += dx_m
+                matrix.translation.y += dy_m
+                state.obj.matrix_world = matrix
+        return True
+
+    def _restore_objects(self) -> None:
+        for state in self._objects:
+            if state.obj is not None:
+                state.obj.matrix_world = state.matrix_world
+
+    def finish(self, context) -> bool:
+        if self._closed:
+            return False
+        self._restore_objects()
+        dx_mm, dy_mm = self._total
+        changed = bool(dx_mm or dy_mm)
+        try:
+            if changed:
+                self._owner._apply_snapshots(context, dx_mm, dy_mm)
+        finally:
+            self._closed = True
+            layer_object_sync.end_sync_suppression()
+            if self._composite_drag:
+                try:
+                    from ..utils import preview_composite
+
+                    preview_composite.get_service().end_drag(
+                        context,
+                        committed=changed,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+        return changed
+
+    def cancel(self, context=None) -> None:
+        if self._closed:
+            return
+        try:
+            self._restore_objects()
+        finally:
+            self._closed = True
+            layer_object_sync.end_sync_suppression()
+            if self._composite_drag:
+                try:
+                    from ..utils import preview_composite
+
+                    preview_composite.get_service().end_drag(
+                        context or bpy.context,
+                        committed=False,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+
+
 class DragTransaction:
     """ドラッグ中はObjectの一時行列だけ、確定時にデータを一度だけ更新する."""
 
@@ -138,6 +287,20 @@ class DragTransaction:
             _ObjectState(obj=obj, matrix_world=obj.matrix_world.copy())
             for obj in _candidate_objects(owner, self._kind, resolved)
         ]
+        self._composite_drag = False
+        try:
+            from ..utils import layer_transfer_group, preview_composite
+
+            group = layer_transfer_group.build_transfer_group(context)
+            if group is not None:
+                self._composite_drag = preview_composite.get_service().begin_drag(
+                    context,
+                    anchor_uid=group.anchor_uid,
+                    exclude_uids=group.uids,
+                    objects=[state.obj for state in self._objects],
+                )
+        except Exception:  # noqa: BLE001
+            self._composite_drag = False
         layer_object_sync.begin_sync_suppression()
 
     @property
@@ -156,13 +319,25 @@ class DragTransaction:
         self._total = (float(total_dx_mm), float(total_dy_mm))
         dx_m = mm_to_m(self._total[0])
         dy_m = mm_to_m(self._total[1])
-        for state in self._objects:
-            if state.obj is None:
-                continue
-            matrix = state.matrix_world.copy()
-            matrix.translation.x += dx_m
-            matrix.translation.y += dy_m
-            state.obj.matrix_world = matrix
+        if self._composite_drag:
+            try:
+                from ..utils import preview_composite
+
+                preview_composite.get_service().update_drag(
+                    context,
+                    dx_mm=self._total[0],
+                    dy_mm=self._total[1],
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        else:
+            for state in self._objects:
+                if state.obj is None:
+                    continue
+                matrix = state.matrix_world.copy()
+                matrix.translation.x += dx_m
+                matrix.translation.y += dy_m
+                state.obj.matrix_world = matrix
         return True
 
     def _restore_objects(self) -> None:
@@ -175,6 +350,7 @@ class DragTransaction:
             return False
         self._restore_objects()
         dx_mm, dy_mm = self._total
+        changed = False
         try:
             changed = bool(
                 (dx_mm or dy_mm)
@@ -183,6 +359,16 @@ class DragTransaction:
         finally:
             self._closed = True
             layer_object_sync.end_sync_suppression()
+            if self._composite_drag:
+                try:
+                    from ..utils import preview_composite
+
+                    preview_composite.get_service().end_drag(
+                        context,
+                        committed=changed,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
         return changed
 
     def cancel(self) -> None:
@@ -193,3 +379,13 @@ class DragTransaction:
         finally:
             self._closed = True
             layer_object_sync.end_sync_suppression()
+            if self._composite_drag:
+                try:
+                    from ..utils import preview_composite
+
+                    preview_composite.get_service().end_drag(
+                        bpy.context,
+                        committed=False,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass

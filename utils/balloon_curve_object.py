@@ -2143,6 +2143,9 @@ def on_balloon_entry_changed(entry) -> bool:
     work = getattr(scene, "bmanga_work", None) if scene is not None else None
     if scene is None or work is None or entry is None:
         return False
+    from . import preview_composite
+
+    preview_composite.mark_entry_dirty("balloon", entry)
     try:
         target_ptr = int(entry.as_pointer())
     except Exception:  # noqa: BLE001

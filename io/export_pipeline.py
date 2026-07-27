@@ -86,6 +86,7 @@ class ExportOptions:
     include_coma_previews: bool = True
     coma_preview_side: str = "all"  # "all" | "front" | "back"
     include_page_overlay_fills: bool = False
+    prefer_memory_raster: bool = False
     icc_profile_path: str = ""
 
 
@@ -2038,6 +2039,7 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
             stack_uid_for_entry=lambda entry: layer_stack_utils.target_uid(
                 "raster", str(getattr(entry, "id", "") or "")
             ),
+            prefer_memory=bool(getattr(options, "prefer_memory_raster", False)),
         )
     except Exception:  # noqa: BLE001
         _logger.exception("raster layer export failed")
@@ -2057,7 +2059,13 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
         if options.include_white_margin and getattr(panel.white_margin, "enabled", False):
             wm_layer = _draw_coma_white_margin_layer(panel, canvas_size[1], dpi)
             if wm_layer is not None:
-                layers.append(replace(wm_layer, group_path=coma_group))
+                layers.append(
+                    replace(
+                        wm_layer,
+                        group_path=coma_group,
+                        stack_parent_key=coma_stack_key(page, panel),
+                    )
+                )
         if options.include_coma_backgrounds:
             bg_layer = _draw_coma_background_layer(
                 panel,
@@ -2066,7 +2074,13 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
                 include_brush_edge=bool(options.include_border),
             )
             if bg_layer is not None:
-                layers.append(replace(bg_layer, group_path=content_group))
+                layers.append(
+                    replace(
+                        bg_layer,
+                        group_path=content_group,
+                        stack_parent_key=coma_stack_key(page, panel),
+                    )
+                )
         if options.include_coma_previews:
             render_layer = _render_coma_preview_layer(
                 work,
@@ -2101,7 +2115,13 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
         if options.include_border and getattr(panel.border, "visible", False):
             border_layer = _draw_coma_border_layer(panel, canvas_size[1], dpi, work=work, page=page)
             if border_layer is not None:
-                layers.append(replace(border_layer, group_path=coma_group))
+                layers.append(
+                    replace(
+                        border_layer,
+                        group_path=coma_group,
+                        stack_parent_key=coma_stack_key(page, panel),
+                    )
+                )
 
     layers.extend(_gp_layers(work, page, canvas_size, dpi))
 

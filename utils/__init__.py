@@ -31,6 +31,9 @@ from . import (  # noqa: E402,F401
 def register() -> None:
     log.register()
     handlers.register()
+    from . import preview_composite
+
+    preview_composite.register()
     outliner_watch.register()
     active_collection_sync.register()
     cross_addon_settings_sync.register()
@@ -44,6 +47,12 @@ def register() -> None:
 
 
 def unregister() -> None:
+    try:
+        from . import preview_composite
+
+        preview_composite.unregister()
+    except Exception:  # noqa: BLE001
+        pass
     fill_real_object.unregister()
     asset_drop_runtime.unregister()
     coma_plane.unregister()

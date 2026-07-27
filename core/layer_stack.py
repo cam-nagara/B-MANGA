@@ -112,6 +112,13 @@ def _on_active_layer_stack_index_changed(_self, context) -> None:
         _logger.exception("active layer stack index update failed")
     finally:
         _active_index_update_depth -= 1
+        if _active_index_update_depth == 0:
+            try:
+                from ..utils import preview_composite
+
+                preview_composite.selection_changed(context)
+            except Exception:  # noqa: BLE001
+                pass
 
 
 def _on_active_layer_stack_visible_index_changed(_self, context) -> None:

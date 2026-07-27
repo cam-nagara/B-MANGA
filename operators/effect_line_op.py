@@ -913,6 +913,9 @@ def on_effect_params_changed(context, _params) -> None:
                 obj, layer
             ),
         )
+        from ..utils import preview_composite
+
+        preview_composite.mark_dirty(context=context)
         layer_stack_utils.tag_view3d_redraw(context)
     except Exception:  # noqa: BLE001
         _logger.exception("effect_line: param change rebuild failed")

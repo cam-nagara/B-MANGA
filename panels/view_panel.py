@@ -164,6 +164,18 @@ def _page_preview_enabled_update(scene, context) -> None:
         pass
 
 
+def _composite_preview_enabled_update(scene, context) -> None:
+    try:
+        from ..utils import preview_composite
+
+        preview_composite.get_service().set_enabled(
+            context,
+            bool(getattr(scene, "bmanga_composite_preview_enabled", False)),
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _draw_page_preview_range_buttons(layout, scene, *, respect_enabled: bool = True) -> None:
     current = str(getattr(scene, "bmanga_page_preview_range_mode", PAGE_PREVIEW_RANGE_ALL) or PAGE_PREVIEW_RANGE_ALL)
     row = layout.row(align=True)
@@ -213,6 +225,23 @@ def _draw_coma_content_row(layout, scene, settings) -> None:
 
 
 def _draw_page_list_section(layout, scene, settings=None) -> None:
+    row = layout.row(align=True)
+    composite_enabled = bool(
+        getattr(scene, "bmanga_composite_preview_enabled", False)
+    )
+    row.prop(
+        scene,
+        "bmanga_composite_preview_enabled",
+        text="2D合成表示（試験）",
+        icon="RENDER_RESULT" if composite_enabled else "IMAGE_DATA",
+        toggle=True,
+    )
+    if composite_enabled:
+        row.operator(
+            "bmanga.preview_composite_refresh",
+            text="",
+            icon="FILE_REFRESH",
+        )
     row = layout.row(align=True)
     preview_vis = bool(getattr(scene, "bmanga_page_preview_enabled", True))
     row.prop(
@@ -411,6 +440,12 @@ def register() -> None:
         default=True,
         update=_page_preview_enabled_update,
     )
+    bpy.types.Scene.bmanga_composite_preview_enabled = bpy.props.BoolProperty(
+        name="2D合成表示",
+        description="書き出しと同じレイヤー順で合成したページを表示します。従来の3D表示へいつでも戻せます",
+        default=False,
+        update=_composite_preview_enabled_update,
+    )
     bpy.types.Scene.bmanga_page_preview_page_radius = bpy.props.IntProperty(
         name="旧ページ一覧半径",
         description="旧バージョンの保存データを読み込むための互換用設定です",
@@ -465,6 +500,10 @@ def unregister() -> None:
         pass
     try:
         del bpy.types.Scene.bmanga_page_preview_enabled
+    except AttributeError:
+        pass
+    try:
+        del bpy.types.Scene.bmanga_composite_preview_enabled
     except AttributeError:
         pass
     try:

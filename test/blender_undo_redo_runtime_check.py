@@ -38,6 +38,31 @@ _artifact_baseline: dict[str, int] = {}
 _stage = "setup"
 
 
+def _run_in_view3d(callback):
+    """mainfile再読込後も有効な3Dビュー文脈で処理する."""
+    window = next(iter(getattr(bpy.context.window_manager, "windows", ()) or ()), None)
+    if window is None:
+        raise AssertionError("検証用のBlenderウィンドウがありません")
+    area = next((candidate for candidate in window.screen.areas if candidate.type == "VIEW_3D"), None)
+    if area is None:
+        raise AssertionError("検証用の3Dビューがありません")
+    region = next((candidate for candidate in area.regions if candidate.type == "WINDOW"), None)
+    if region is None:
+        raise AssertionError("検証用のWINDOWリージョンがありません")
+    with bpy.context.temp_override(
+        window=window,
+        screen=window.screen,
+        area=area,
+        region=region,
+    ):
+        return callback(bpy.context)
+
+
+def _run_history_operator(operator):
+    """有効なウィンドウ文脈でUndo/Redoを実行する."""
+    return _run_in_view3d(lambda _context: operator("EXEC_DEFAULT"))
+
+
 def _write_status(ok: bool, **details) -> None:
     STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
     STATUS_PATH.write_text(
@@ -109,35 +134,40 @@ def _commit_micro_move() -> None:
     from bmanga_dev_undo_runtime.operators.object_tool_op import BMANGA_OT_object_tool
     from bmanga_dev_undo_runtime.utils import object_selection
 
-    _work, page, balloon, text = _find_entries()
-    balloon_key = object_selection.balloon_key(page, balloon)
-    text_key = object_selection.text_key(page, text)
-    object_selection.select_key(bpy.context, balloon_key, mode="single")
-    object_selection.select_key(bpy.context, text_key, mode="add")
-    method_names = (
-        "_clear_click_state",
-        "_clear_drag_state",
-        "_finish_drag",
-        "_make_snapshots",
-        "_setup_center_snap",
-        "_start_object_drag",
-        "_apply_snapshots",
-    )
-    harness = type(
-        "ObjectToolHarness",
-        (),
-        {name: getattr(BMANGA_OT_object_tool, name) for name in method_names},
-    )()
-    harness._clear_drag_state()
-    harness._clear_click_state()
-    harness._start_object_drag(
-        bpy.context,
-        {"kind": "balloon", "part": "move", "key": balloon_key},
-        float(balloon.x_mm),
-        float(balloon.y_mm),
-    )
-    harness._apply_snapshots(bpy.context, DELTA_X, 0.0)
-    harness._finish_drag(bpy.context)
+    def _drag(context):
+        _work, page, balloon, text = _find_entries()
+        balloon_key = object_selection.balloon_key(page, balloon)
+        text_key = object_selection.text_key(page, text)
+        object_selection.select_key(context, balloon_key, mode="single")
+        object_selection.select_key(context, text_key, mode="add")
+        method_names = (
+            "_clear_click_state",
+            "_clear_drag_state",
+            "_finish_drag",
+            "_make_snapshots",
+            "_setup_center_snap",
+            "_start_object_drag",
+            "_apply_snapshots",
+        )
+        harness = type(
+            "ObjectToolHarness",
+            (),
+            {name: getattr(BMANGA_OT_object_tool, name) for name in method_names},
+        )()
+        harness._clear_drag_state()
+        harness._clear_click_state()
+        harness._start_object_drag(
+            context,
+            {"kind": "balloon", "part": "move", "key": balloon_key},
+            float(balloon.x_mm),
+            float(balloon.y_mm),
+        )
+        assert harness._object_move_drag is not None
+        harness._object_move_drag.update_overlay(context, DELTA_X, 0.0)
+        harness._finish_drag(context)
+
+    _run_in_view3d(_drag)
+    _work, _page, balloon, text = _find_entries()
     assert abs(float(balloon.x_mm) - (ORIGINAL_X + DELTA_X)) < 1.0e-5
     assert abs(float(text.x_mm) - (TEXT_ORIGINAL_X + DELTA_X)) < 1.0e-5, (
         float(text.x_mm),
@@ -149,36 +179,40 @@ def _commit_return_to_origin() -> None:
     from bmanga_dev_undo_runtime.operators.object_tool_op import BMANGA_OT_object_tool
     from bmanga_dev_undo_runtime.utils import object_selection
 
-    _work, page, balloon, text = _find_entries()
-    balloon_key = object_selection.balloon_key(page, balloon)
-    text_key = object_selection.text_key(page, text)
-    object_selection.select_key(bpy.context, balloon_key, mode="single")
-    object_selection.select_key(bpy.context, text_key, mode="add")
-    method_names = (
-        "_clear_click_state",
-        "_clear_drag_state",
-        "_finish_drag",
-        "_make_snapshots",
-        "_setup_center_snap",
-        "_start_object_drag",
-        "_apply_snapshots",
-    )
-    harness = type(
-        "ObjectToolNoopHarness",
-        (),
-        {name: getattr(BMANGA_OT_object_tool, name) for name in method_names},
-    )()
-    harness._clear_drag_state()
-    harness._clear_click_state()
-    harness._start_object_drag(
-        bpy.context,
-        {"kind": "balloon", "part": "move", "key": balloon_key},
-        float(balloon.x_mm),
-        float(balloon.y_mm),
-    )
-    harness._apply_snapshots(bpy.context, 0.2, 0.0)
-    harness._apply_snapshots(bpy.context, 0.0, 0.0)
-    harness._finish_drag(bpy.context)
+    def _drag(context):
+        _work, page, balloon, text = _find_entries()
+        balloon_key = object_selection.balloon_key(page, balloon)
+        text_key = object_selection.text_key(page, text)
+        object_selection.select_key(context, balloon_key, mode="single")
+        object_selection.select_key(context, text_key, mode="add")
+        method_names = (
+            "_clear_click_state",
+            "_clear_drag_state",
+            "_finish_drag",
+            "_make_snapshots",
+            "_setup_center_snap",
+            "_start_object_drag",
+            "_apply_snapshots",
+        )
+        harness = type(
+            "ObjectToolNoopHarness",
+            (),
+            {name: getattr(BMANGA_OT_object_tool, name) for name in method_names},
+        )()
+        harness._clear_drag_state()
+        harness._clear_click_state()
+        harness._start_object_drag(
+            context,
+            {"kind": "balloon", "part": "move", "key": balloon_key},
+            float(balloon.x_mm),
+            float(balloon.y_mm),
+        )
+        assert harness._object_move_drag is not None
+        harness._object_move_drag.update_overlay(context, 0.2, 0.0)
+        harness._object_move_drag.update_overlay(context, 0.0, 0.0)
+        harness._finish_drag(context)
+
+    _run_in_view3d(_drag)
 
 
 def _tick():
@@ -193,19 +227,19 @@ def _tick():
             _stage = "undo"
             return 0.15
         if _stage == "undo":
-            assert bpy.ops.ed.undo() == {"FINISHED"}
+            assert _run_history_operator(bpy.ops.ed.undo) == {"FINISHED"}
             _stage = "check_undo"
             return 0.35
         if _stage == "check_undo":
             _assert_page_state(0.0)
-            assert bpy.ops.ed.redo() == {"FINISHED"}
+            assert _run_history_operator(bpy.ops.ed.redo) == {"FINISHED"}
             _stage = "check_redo"
             return 0.35
         if _stage == "check_redo":
             _assert_page_state(DELTA_X)
             _commit_return_to_origin()
             _stage = "check_noop_undo"
-            assert bpy.ops.ed.undo() == {"FINISHED"}
+            assert _run_history_operator(bpy.ops.ed.undo) == {"FINISHED"}
             return 0.35
         if _stage == "check_noop_undo":
             # 元へ戻したドラッグが空履歴を作っていれば、1回のUndoではここが

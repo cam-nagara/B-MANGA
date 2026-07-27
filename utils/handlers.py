@@ -1350,6 +1350,9 @@ def _bmanga_on_undo_post(*_args) -> None:
         elif count > 0:
             history_runtime.request_object_tool_relaunch()
         history_runtime.schedule_reconcile()
+        from . import preview_composite
+
+        preview_composite.mark_dirty(context=bpy.context)
     except Exception:  # noqa: BLE001
         _logger.exception("undo_post: deferred reconcile failed")
 

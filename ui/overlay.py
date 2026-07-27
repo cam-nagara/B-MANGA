@@ -1297,6 +1297,15 @@ def _draw_page_overlay(
         _is_current = (_pi == int(getattr(work, "active_page_index", -1)))
     except Exception:  # noqa: BLE001
         pass
+    if page is not None and _is_current:
+        overlay_page_preview.draw_composite_for_page(
+            context,
+            work,
+            page,
+            _pi,
+            ox_mm,
+            oy_mm,
+        )
     if page is not None and not use_real_page_objects:
         overlay_page_preview.draw_for_page(context, work, page, _pi, ox_mm, oy_mm, is_current_page=_is_current)
 

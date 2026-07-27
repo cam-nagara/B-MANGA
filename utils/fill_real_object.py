@@ -1049,6 +1049,9 @@ def on_fill_entry_changed(entry) -> bool:
         return False
     page = page_for_entry(scene, work, entry)
     ensure_fill_real_object(scene=scene, entry=entry, page=page)
+    from . import preview_composite
+
+    preview_composite.mark_entry_dirty("fill", entry)
     return True
 
 

@@ -146,8 +146,10 @@ def main() -> None:
         from bmanga_dev_layer_move_transaction.utils import (
             layer_object_sync,
             layer_stack,
+            object_selection,
             page_grid,
         )
+        from bmanga_dev_layer_move_transaction.utils import fill_real_object
         from bmanga_dev_layer_move_transaction.utils.layer_hierarchy import (
             coma_stack_key,
         )
@@ -244,13 +246,68 @@ def main() -> None:
             cancel_transaction.cancel()
             assert (float(coma.rect_x_mm), float(coma.rect_y_mm)) == committed_xy
             assert not layer_object_sync.is_sync_in_progress()
+
+            # オブジェクトツール経由も同じ二相処理を使い、Property更新は
+            # 120イベント中0回、確定時1回だけであることを確認する。
+            fill_obj = fill_real_object.ensure_fill_real_object(
+                scene=context.scene,
+                entry=fill,
+                page=page,
+            )
+            assert fill_obj is not None
+            object_apply_calls = 0
+            object_origin = (
+                float(fill.region_x_mm),
+                float(fill.region_y_mm),
+            )
+
+            def apply_object_snapshots(_context, dx_mm, dy_mm):
+                nonlocal object_apply_calls
+                object_apply_calls += 1
+                fill.region_x_mm = object_origin[0] + float(dx_mm)
+                fill.region_y_mm = object_origin[1] + float(dy_mm)
+
+            object_owner = SimpleNamespace(
+                _apply_snapshots=apply_object_snapshots,
+            )
+            object_transaction = layer_drag_transaction.ObjectMoveTransaction(
+                context,
+                object_owner,
+                [object_selection.fill_key(fill)],
+            )
+            object_timings = []
+            for index in range(1, 121):
+                started = time.perf_counter()
+                assert object_transaction.update_overlay(
+                    context,
+                    index * 0.08,
+                    index * -0.04,
+                )
+                object_timings.append((time.perf_counter() - started) * 1000.0)
+                assert object_apply_calls == 0
+                assert (
+                    float(fill.region_x_mm),
+                    float(fill.region_y_mm),
+                ) == object_origin
+            object_p95_ms = sorted(object_timings)[
+                int(len(object_timings) * 0.95) - 1
+            ]
+            assert object_p95_ms <= 16.0, (
+                f"object drag P95 exceeded 16ms: {object_p95_ms:.3f}ms"
+            )
+            assert object_transaction.finish(context)
+            assert object_apply_calls == 1
+            assert abs(float(fill.region_x_mm) - (object_origin[0] + 9.6)) < 1.0e-5
+            assert abs(float(fill.region_y_mm) - (object_origin[1] - 4.8)) < 1.0e-5
+            assert not layer_object_sync.is_sync_in_progress()
         finally:
             layer_stack.apply_stack_order = original_stack
             page_grid.apply_page_collection_transforms = original_page
 
         print(
             "BMANGA_LAYER_MOVE_DRAG_TRANSACTION_OK "
-            f"p95_ms={p95_ms:.3f} stack_calls={counters['stack']}"
+            f"p95_ms={p95_ms:.3f} object_p95_ms={object_p95_ms:.3f} "
+            f"stack_calls={counters['stack']}"
         )
     finally:
         if module is not None:

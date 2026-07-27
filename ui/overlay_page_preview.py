@@ -20,6 +20,7 @@ from ..utils.geom import mm_to_m
 _logger = log.get_logger(__name__)
 
 PREVIEW_Z_M = 0.006
+SANDWICH_Z_GAP_M = 0.001
 
 _PREVIEW_SHADER = None
 _PREVIEW_SHADER_FAILED = False
@@ -73,6 +74,82 @@ def draw_for_page(
         page_w, ch,
         opacity,
     )
+
+
+def draw_composite_for_page(
+    context,
+    work,
+    page,
+    page_index: int,
+    ox_mm: float,
+    oy_mm: float,
+) -> bool:
+    """現在ページのファイルレス2D合成を描画する."""
+    from ..utils import page_grid, preview_composite
+
+    service = preview_composite.get_service()
+    if not service.enabled(getattr(context, "scene", None)):
+        return False
+    frame = service.frame_for_page(str(getattr(page, "id", "") or ""))
+    if frame is None:
+        service.ensure_requested(context)
+        return False
+    paper = getattr(work, "paper", None)
+    if paper is None:
+        return False
+    width_mm = page_grid.page_content_width_mm(
+        work,
+        page_index,
+        float(getattr(paper, "canvas_width_mm", 1.0) or 1.0),
+    )
+    height_mm = float(getattr(paper, "canvas_height_mm", 1.0) or 1.0)
+    if frame.mode == "split" and frame.back_image is not None and frame.front_image is not None:
+        _draw_textured_image(
+            frame.back_image,
+            ox_mm,
+            oy_mm,
+            width_mm,
+            height_mm,
+            1.0,
+            z_m=float(frame.active_z) - SANDWICH_Z_GAP_M,
+            depth_test="LESS_EQUAL",
+        )
+        if frame.active_image is not None:
+            dx_mm, dy_mm = frame.active_offset_mm
+            _draw_textured_image(
+                frame.active_image,
+                ox_mm + float(dx_mm),
+                oy_mm + float(dy_mm),
+                width_mm,
+                height_mm,
+                1.0,
+                z_m=float(frame.active_z),
+                depth_test="LESS_EQUAL",
+            )
+        _draw_textured_image(
+            frame.front_image,
+            ox_mm,
+            oy_mm,
+            width_mm,
+            height_mm,
+            1.0,
+            z_m=float(frame.active_z) + SANDWICH_Z_GAP_M,
+            depth_test="LESS_EQUAL",
+        )
+    elif frame.full_image is not None:
+        _draw_textured_image(
+            frame.full_image,
+            ox_mm,
+            oy_mm,
+            width_mm,
+            height_mm,
+            1.0,
+            z_m=PREVIEW_Z_M,
+            depth_test="NONE",
+        )
+    else:
+        return False
+    return True
 
 
 def _preview_opacity(context) -> float:
@@ -142,20 +219,43 @@ def _draw_textured_quad(
     h_mm: float,
     opacity: float,
 ) -> None:
+    try:
+        img = bpy.data.images.load(png_path, check_existing=True)
+    except Exception:  # noqa: BLE001
+        return
+    _draw_textured_image(
+        img,
+        x_mm,
+        y_mm,
+        w_mm,
+        h_mm,
+        opacity,
+        z_m=PREVIEW_Z_M,
+        depth_test="NONE",
+    )
+
+
+def _draw_textured_image(
+    img,
+    x_mm: float,
+    y_mm: float,
+    w_mm: float,
+    h_mm: float,
+    opacity: float,
+    *,
+    z_m: float,
+    depth_test: str,
+) -> None:
     shader = _get_preview_shader()
     fallback_shader = gpu.shader.from_builtin("IMAGE") if shader is None else None
     active_shader = shader or fallback_shader
     if active_shader is None:
         return
     try:
-        img = bpy.data.images.load(png_path, check_existing=True)
-    except Exception:  # noqa: BLE001
-        return
-    try:
         tex = gpu_texture.from_image(img)
     except Exception:  # noqa: BLE001
         return
-    z = PREVIEW_Z_M
+    z = float(z_m)
     verts = [
         (mm_to_m(x_mm), mm_to_m(y_mm), z),
         (mm_to_m(x_mm + w_mm), mm_to_m(y_mm), z),
@@ -179,7 +279,7 @@ def _draw_textured_quad(
     prev_depth = gpu.state.depth_test_get()
     try:
         gpu.state.blend_set("ALPHA")
-        gpu.state.depth_test_set("NONE")
+        gpu.state.depth_test_set(depth_test)
         batch.draw(active_shader)
     finally:
         gpu.state.blend_set(prev_blend)

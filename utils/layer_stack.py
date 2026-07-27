@@ -1678,6 +1678,12 @@ def sync_layer_stack_after_data_change(
         tag_view3d_redraw(context)
     except Exception:  # noqa: BLE001
         _logger.exception("layer stack sync after data change failed")
+    try:
+        from . import preview_composite
+
+        preview_composite.mark_dirty(context=context)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def normalize_paired_layer_order(context, pairs) -> None:
@@ -3449,6 +3455,12 @@ def apply_stack_order(context) -> None:
     _apply_text_parenting(context, stack)
     _sync_real_objects_after_stack_order(context)
     tag_view3d_redraw(context)
+    try:
+        from . import preview_composite
+
+        preview_composite.mark_dirty(context=context, order_only=True)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def delete_stack_index(context, index: int) -> bool:

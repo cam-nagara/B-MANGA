@@ -34,16 +34,59 @@ def _painted_ink_mask(src: Any):
     return gray.point(lambda value: 255 - int(value)), alpha
 
 
-def _render_raster_entry(Image, entry, work, canvas_size: tuple[int, int]):
-    path = _entry_png_path(work, entry)
-    if not path.is_file():
+def _memory_raster_source(Image, scene, entry):
+    """未保存ペイントをBlender ImageからPillow RGBAへ変換する."""
+    if scene is None:
         return None
     try:
-        with Image.open(path) as opened:
-            src = opened.convert("RGBA")
-    except Exception:  # noqa: BLE001
-        _logger.exception("raster png open failed: %s", path)
+        import bpy
+        import numpy as np
+    except ImportError:
         return None
+    image_name = str(getattr(entry, "image_name", "") or "")
+    image = bpy.data.images.get(image_name) if image_name else None
+    if image is None or int(image.size[0]) <= 0 or int(image.size[1]) <= 0:
+        return None
+    width, height = int(image.size[0]), int(image.size[1])
+    pixels = np.empty(width * height * 4, dtype=np.float32)
+    image.pixels.foreach_get(pixels)
+    rgba = pixels.reshape((height, width, 4))
+    rgb = np.clip(rgba[..., :3], 0.0, 1.0)
+    threshold = 0.0031308
+    rgb = np.where(
+        rgb <= threshold,
+        rgb * 12.92,
+        1.055 * np.power(rgb, 1.0 / 2.4) - 0.055,
+    )
+    encoded = np.empty_like(rgba)
+    encoded[..., :3] = rgb
+    encoded[..., 3] = np.clip(rgba[..., 3], 0.0, 1.0)
+    raw = np.rint(encoded * 255.0).astype(np.uint8)
+    # Blender pixelsは左下起点、Pillowは左上起点。
+    raw = np.flipud(raw)
+    return Image.fromarray(raw, "RGBA")
+
+
+def _render_raster_entry(
+    Image,
+    entry,
+    work,
+    canvas_size: tuple[int, int],
+    *,
+    scene=None,
+    prefer_memory: bool = False,
+):
+    path = _entry_png_path(work, entry)
+    src = _memory_raster_source(Image, scene, entry) if prefer_memory else None
+    if src is None:
+        if not path.is_file():
+            return None
+        try:
+            with Image.open(path) as opened:
+                src = opened.convert("RGBA")
+        except Exception:  # noqa: BLE001
+            _logger.exception("raster png open failed: %s", path)
+            return None
     if src.size != canvas_size:
         src = src.resize(canvas_size, Image.Resampling.LANCZOS)
     ink, alpha = _painted_ink_mask(src)
@@ -78,6 +121,7 @@ def page_raster_layers(
     *,
     group_path_for_parent=None,
     stack_uid_for_entry=None,
+    prefer_memory: bool = False,
 ) -> list:
     coll = getattr(scene, "bmanga_raster_layers", None) if scene is not None else None
     if coll is None:
@@ -97,7 +141,14 @@ def page_raster_layers(
             continue
         if parent_kind == "coma" and parent_key.split(":", 1)[0] != page_id:
             continue
-        image = _render_raster_entry(Image, entry, work, canvas_size)
+        image = _render_raster_entry(
+            Image,
+            entry,
+            work,
+            canvas_size,
+            scene=scene,
+            prefer_memory=prefer_memory,
+        )
         if image is None:
             continue
         layers.append(

@@ -917,6 +917,7 @@ class BMANGA_OT_object_tool(Operator):
     _drag_moved: bool
     _edge_drag: object | None
     _layer_drag: object | None
+    _object_move_drag: object | None
     _marquee_mode: str
     _marquee_start_x: float
     _marquee_start_y: float
@@ -925,6 +926,7 @@ class BMANGA_OT_object_tool(Operator):
     _center_snap_targets: list[tuple[float, float]]
     _original_center: tuple[float, float] | None
     _center_snap_armed: bool
+    _composite_transform_active: bool
 
     @classmethod
     def poll(cls, context):
@@ -946,6 +948,7 @@ class BMANGA_OT_object_tool(Operator):
         self._ft_mode = False
         self._ft_snapshot = None
         self._ft_key = ""
+        self._composite_transform_active = False
         object_tool_balloon_tail.clear_pending(self)
         context.window_manager.modal_handler_add(self)
         coma_modal_state.set_active("object_tool", self, context)
@@ -1581,6 +1584,18 @@ class BMANGA_OT_object_tool(Operator):
         self._original_center = None
         self._center_snap_armed = False
         self._setup_center_snap(context)
+        if action == "move" and self._snapshots:
+            try:
+                from . import layer_drag_transaction
+
+                self._object_move_drag = layer_drag_transaction.ObjectMoveTransaction(
+                    context,
+                    self,
+                    list(keys),
+                )
+            except Exception:  # noqa: BLE001
+                _logger.exception("object move transaction start failed")
+                self._object_move_drag = None
 
     def _setup_center_snap(self, context) -> None:
         """ドラッグ開始時に中心点スナップデータを準備する。"""
@@ -1665,8 +1680,50 @@ class BMANGA_OT_object_tool(Operator):
         self._drag_keys = keys
         self._drag_moved = False
         self._rotate_snapshots = snapshots
+        self._begin_composite_transform(context, keys)
         coma_modal_state.set_modal_cursor(context, "SCROLL_XY")
         return True
+
+    def _begin_composite_transform(self, context, keys: list[str]) -> None:
+        """回転・自由変形の対象を前後合成の間へ実体表示する."""
+        self._composite_transform_active = False
+        try:
+            from ..utils import preview_composite
+            from . import layer_drag_transaction
+
+            uids = tuple(
+                uid
+                for key in keys
+                if (uid := layer_drag_transaction._selection_key_uid(key))
+            )
+            if not uids:
+                return
+            objects = layer_drag_transaction._object_tool_candidates(context, keys)
+            self._composite_transform_active = (
+                preview_composite.get_service().begin_drag(
+                    context,
+                    anchor_uid=uids[0],
+                    exclude_uids=uids,
+                    objects=objects,
+                    overlay_only=False,
+                )
+            )
+        except Exception:  # noqa: BLE001
+            _logger.exception("composite transform sandwich start failed")
+
+    def _end_composite_transform(self, context, *, committed: bool) -> None:
+        if not getattr(self, "_composite_transform_active", False):
+            return
+        self._composite_transform_active = False
+        try:
+            from ..utils import preview_composite
+
+            preview_composite.get_service().end_drag(
+                context,
+                committed=bool(committed),
+            )
+        except Exception:  # noqa: BLE001
+            _logger.exception("composite transform sandwich finish failed")
 
     def _start_marquee_select(self, context, event, mode: str) -> bool:
         x_mm, y_mm = _event_world_xy_mm(context, event)
@@ -1986,7 +2043,10 @@ class BMANGA_OT_object_tool(Operator):
                 dx, dy = center_point_snap.snap_center(self._original_center, dx, dy, self._center_snap_targets)
         if abs(dx) > _DRAG_EPS_MM or abs(dy) > _DRAG_EPS_MM:
             self._drag_moved = True
-        self._apply_snapshots(context, dx, dy)
+        if self._drag_action == "move" and self._object_move_drag is not None:
+            self._object_move_drag.update_overlay(context, dx, dy)
+        else:
+            self._apply_snapshots(context, dx, dy)
         layer_stack_utils.tag_view3d_redraw(context)
 
     def _apply_snapshots(self, context, dx: float, dy: float) -> None:
@@ -2275,6 +2335,7 @@ class BMANGA_OT_object_tool(Operator):
                 self._clear_click_state()
                 layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
                 undo_transaction.push_undo("B-MANGA: 回転", logger=_logger)
+            self._end_composite_transform(context, committed=changed)
             self._clear_drag_state()
             layer_stack_utils.tag_view3d_redraw(context)
             return
@@ -2320,6 +2381,8 @@ class BMANGA_OT_object_tool(Operator):
             changed = bool(self._edge_drag.finish())
         elif self._drag_action == "layer_move" and self._layer_drag is not None:
             changed = bool(self._layer_drag.finish(context))
+        elif self._drag_action == "move" and self._object_move_drag is not None:
+            changed = bool(self._object_move_drag.finish(context))
         elif self._snapshots:
             current = self._make_snapshots(
                 context,
@@ -2369,6 +2432,7 @@ class BMANGA_OT_object_tool(Operator):
                 object_rotation.restore_rotation_snapshot(context, snap)
             coma_modal_state.set_modal_cursor(context, "DEFAULT")
             self._rotate_cursor_active = False
+            self._end_composite_transform(context, committed=False)
             self._clear_drag_state()
             layer_stack_utils.tag_view3d_redraw(context)
             return
@@ -2380,6 +2444,8 @@ class BMANGA_OT_object_tool(Operator):
             return
         if self._drag_action == "layer_move" and self._layer_drag is not None:
             self._layer_drag.cancel(context)
+        elif self._drag_action == "move" and self._object_move_drag is not None:
+            self._object_move_drag.cancel(context)
         elif self._drag_action == "coma_edge" and self._edge_drag is not None:
             self._edge_drag.cancel()
         elif object_tool_balloon_tail.cancel_point_drag(self, context):
@@ -2402,6 +2468,7 @@ class BMANGA_OT_object_tool(Operator):
         self._drag_moved = False
         self._edge_drag = None
         self._layer_drag = None
+        self._object_move_drag = None
         self._drag_page_id = ""
         self._drag_balloon_id = ""
         self._tail_drag_tail_index = -1
@@ -2434,6 +2501,7 @@ class BMANGA_OT_object_tool(Operator):
         self._ft_mode = True
         self._ft_key = key
         self._ft_snapshot = snapshot
+        self._begin_composite_transform(context, [key])
         wm = context.window_manager
         if hasattr(wm, "bmanga_free_transform_key"):
             wm.bmanga_free_transform_key = key
@@ -2458,6 +2526,7 @@ class BMANGA_OT_object_tool(Operator):
         if changed:
             layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
             undo_transaction.push_undo("B-MANGA: 自由変形", logger=_logger)
+        self._end_composite_transform(context, committed=changed)
         layer_stack_utils.tag_view3d_redraw(context)
 
     def _cancel_free_transform(self, context) -> None:
@@ -2469,6 +2538,7 @@ class BMANGA_OT_object_tool(Operator):
         object_tool_free_transform.clear_mode(context)
         context.workspace.status_text_set(None)
         layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
+        self._end_composite_transform(context, committed=False)
         layer_stack_utils.tag_view3d_redraw(context)
 
     def _capture_ft_snapshot(self, context, key: str, kind: str) -> dict | None:
@@ -2561,6 +2631,8 @@ class BMANGA_OT_object_tool(Operator):
             self._edge_drag.cancel()
         elif getattr(self, "_drag_action", "") == "layer_move" and self._layer_drag is not None:
             self._layer_drag.cancel(context)
+        elif getattr(self, "_drag_action", "") == "move" and self._object_move_drag is not None:
+            self._object_move_drag.cancel(context)
         elif getattr(self, "_drag_action", "") == "reparent":
             reparent_overlay.clear_hover()
             reparent_overlay.clear_preview()
@@ -2573,6 +2645,7 @@ class BMANGA_OT_object_tool(Operator):
         self._clear_drag_state()
         object_tool_balloon_tail.clear_pending(self)
         if getattr(self, "_ft_mode", False):
+            self._end_composite_transform(context, committed=False)
             self._ft_mode = False
             self._ft_snapshot = None
             self._ft_key = ""

@@ -3,6 +3,31 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.2 LTS を対象としています（開発基準バージョン。5.1でも動作確認済み）。
 
+## 2026-07-28 — レイヤー順を固定する2D合成表示とGPUドラッグを試験導入 (B-MANGA v0.6.592)
+
+### 症状
+- 半透明のグラデーション、ラスター、効果線等は、コマを動かした直後だけEEVEEの透過ソート順が変わり、表示のオン／オフで戻ることがあった。
+- オブジェクトツールの通常移動は、レイヤー移動ツールの二相化後もドラッグ中に実データを更新していた。
+- ページ内外を跨ぐフキダシ／テキスト複製では、項目を複製している途中の不完全な実体が座標をデータへ書き戻す場合があった。
+
+### 原因
+3D実体のZ値と透過ソートへ最終表示順を委ねており、書き出し時のレイヤー一覧順とビューポート表示順が別経路だった。オブジェクトツールにはGPU上だけを動かす共通トランザクションがなく、親スコープ変更時のPropertyGroup複製も表示更新を抑止していなかった。
+
+### 修正
+- `PreviewCompositeService` を追加し、PNG書き出しと同じPillow合成経路・レイヤー一覧順をファイルレスBlender Imageへ転送してGPUオーバーレイ表示するようにした。通常は全体合成、GP／効果線／ラスター編集時は背面合成・編集実体・前面合成の三層表示となる。
+- 変更直後は72dpi以下の低解像度を表示し、操作停止150ms後に設定解像度へ差し替える。アクティブページ優先の512MiB LRU、未保存ラスター画素、色空間変換、保存前の一時Image除去、Undo／Redo後の再合成を組み込んだ。
+- レイヤー移動ツールとオブジェクトツールの移動中は、対象を切り出した合成画像のGPU位置だけを更新する。120回の `MOUSEMOVE` 中はPropertyGroup、Object行列、ラスター画素、Outliner、Z順を変更せず、確定時だけ累計移動量を一括反映する。
+- 回転・自由変形は、背面／前面合成の間に編集実体を残して操作性を維持する。従来の3D表示へ戻せる「2D合成表示（試験）」切替と手動更新を表示パネルへ追加した。
+- ページ内外を跨ぐフキダシ／リンクテキストは、旧実体を除去して複製中の自動再生成を抑止し、完成したデータから一度だけ再生成するようにした。
+- 2D合成はユーザー実機での操作感確認前のため既定オフ。合格後に既定オンへ切り替える。
+
+### 検証（Blender 5.2 LTS実機）
+- `test/blender_preview_composite_check.py` 合格。2D合成とPNG経路の画素一致、前後分割の再合成一致、sRGB→scene-linear転送、低解像度即時表示／150ms後の高解像度化、LRU上限、保存時の非直列化を確認。GPUドラッグ120回のP95は0.007ms。
+- `test/blender_layer_move_drag_transaction_check.py` 合格。重量コマのレイヤー移動P95 0.011ms、オブジェクト移動P95 0.004ms、ドラッグ中の全件同期0回、確定時1回、キャンセル完全復元を確認。
+- `test/blender_undo_redo_runtime_check.py`、`test/blender_object_free_transform_check.py`、`test/blender_free_transform_reset_check.py`、`test/blender_rotation_hover_wiring_check.py` 合格。
+- `test/blender_alt_reparent_phase_b_outside_check.py`、`test/blender_transfer_group_alt_dnd_check.py`、`test/blender_cross_page_transfer_durability_check.py`、`test/blender_layer_stack_dnd_reparent_check.py` 合格。リンク移送、ID衝突、保存再読込、強制失敗ロールバックに回帰なし。
+- `test/blender_page_preview_selection_gate_check.py`、`test/blender_work_list_layer_pick_guard_check.py`、`test/blender_page_preview_color_fidelity_check.py`、`test/blender_image_path_export_check.py`、`test/blender_fill_move_reparent_text_opacity_check.py` 合格。
+
 ## 2026-07-28 — Alt+D&Dのページ間移送を位置・子孫・リンク込みで原子化 (B-MANGA v0.6.591)
 
 ### 症状

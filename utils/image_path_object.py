@@ -920,5 +920,9 @@ def on_image_path_entry_changed(entry) -> bool:
         except Exception:  # noqa: BLE001
             same_ptr = False
         if same_id or same_ptr:
-            return sync_all_image_path_objects(scene, work) > 0
+            changed = sync_all_image_path_objects(scene, work) > 0
+            from . import preview_composite
+
+            preview_composite.mark_entry_dirty("image_path", candidate)
+            return changed
     return False

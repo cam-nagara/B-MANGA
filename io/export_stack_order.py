@@ -157,3 +157,69 @@ def apply_coma_preview_order(work, page, layers, *, side: str = "all"):
             result, positioned, preview_uid, index_by_uid[preview_uid], side,
         )
     return result
+
+
+def partition_around_stack_uid(
+    work,
+    layers,
+    anchor_uid: str,
+    *,
+    exclude_uids=(),
+):
+    """合成済み順を保ったまま、操作対象の背面・対象・前面へ分割する."""
+    try:
+        import bpy
+        from ..utils import layer_stack
+    except Exception:  # pragma: no cover - bpy unavailable outside Blender
+        return list(layers), [], []
+    scene = getattr(bpy.context, "scene", None)
+    stack = getattr(scene, "bmanga_layer_stack", None) if scene is not None else None
+    if stack is None:
+        return list(layers), [], []
+    index_by_uid = {
+        layer_stack.stack_item_uid(item): index for index, item in enumerate(stack)
+    }
+    anchor_index = index_by_uid.get(str(anchor_uid or ""))
+    if anchor_index is None:
+        return list(layers), [], []
+    anchor_item = next(
+        (
+            item
+            for item in stack
+            if layer_stack.stack_item_uid(item) == str(anchor_uid or "")
+        ),
+        None,
+    )
+    anchor_key = str(getattr(anchor_item, "key", "") or "") if anchor_item else ""
+    excluded = {str(uid) for uid in exclude_uids if uid}
+    excluded.add(str(anchor_uid or ""))
+    containers = _container_indexes(stack, index_by_uid)
+    positions = []
+    active_positions = set()
+    for position, layer in enumerate(layers):
+        uid = str(getattr(layer, "stack_uid", "") or "")
+        parent = str(getattr(layer, "stack_parent_key", "") or "")
+        if uid in excluded or (anchor_key and parent == anchor_key):
+            active_positions.add(position)
+            continue
+        index = _layer_stack_index(layer, containers, index_by_uid, work)
+        positions.append((position, index))
+    if not active_positions:
+        return list(layers), [], []
+    first_active = min(active_positions)
+    back = []
+    active = []
+    front = []
+    index_by_position = dict(positions)
+    for position, layer in enumerate(layers):
+        if position in active_positions:
+            active.append(layer)
+            continue
+        index = index_by_position.get(position)
+        if index is None:
+            (back if position < first_active else front).append(layer)
+        elif int(index) > int(anchor_index):
+            back.append(layer)
+        else:
+            front.append(layer)
+    return back, active, front
