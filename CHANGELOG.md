@@ -22,7 +22,7 @@ Blender 5.2 LTS を対象としています（開発基準バージョン。5.1�
 - 待機素材の展開先をステージが指定したページへ固定した。壊れた復旧台帳がある場合は待機データを自動削除せず、再試行・手動救出に必要な資料を保持する。
 
 ### 検証（Blender 5.2 LTS実機）
-- `test/blender_preview_composite_check.py` 合格。2MiB制限時の自動解像度調整、複数Zの前後分割、保存失敗後の復帰、ラスターdirty、画素一致を確認。GPUドラッグ120回のP95は0.003ms。
+- `test/blender_preview_composite_check.py` 合格。2MiB制限時の自動解像度調整、複数Zの前後分割、保存失敗後の復帰、ラスターdirty、画素一致を確認。GPUドラッグ120回のP95は0.004ms。
 - `test/blender_layer_move_drag_transaction_check.py` 合格。レイヤー／オブジェクト両経路の強制確定失敗から完全復元し、P95は0.010ms／0.003ms、ドラッグ中の全件同期0回を確認。
 - `test/blender_transfer_group_alt_dnd_check.py` 合格。通常例外とプロセス強制終了相当の両方で、未保存のフキダシ・テキスト、JSON、blend、コマ資産、待機ステージを復元した。
 - `test/blender_raster_layer_paint_check.py` 合格。2D合成中のTexture Paint再入場、終了保存、dirty通知、コママスク維持を確認。
