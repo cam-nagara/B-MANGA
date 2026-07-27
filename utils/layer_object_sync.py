@@ -32,6 +32,21 @@ _logger = log.get_logger(__name__)
 # ---------- 再帰抑止 guard (計画書 §5.3) ----------
 
 _SYNC_IN_PROGRESS = False
+_SYNC_SUPPRESS_DEPTH = 0
+
+
+def begin_sync_suppression() -> None:
+    """複数イベントにまたがる一時Object変形中の逆同期を停止する."""
+    global _SYNC_IN_PROGRESS, _SYNC_SUPPRESS_DEPTH
+    _SYNC_SUPPRESS_DEPTH += 1
+    _SYNC_IN_PROGRESS = True
+
+
+def end_sync_suppression() -> None:
+    """``begin_sync_suppression`` と対になる抑止解除."""
+    global _SYNC_IN_PROGRESS, _SYNC_SUPPRESS_DEPTH
+    _SYNC_SUPPRESS_DEPTH = max(0, _SYNC_SUPPRESS_DEPTH - 1)
+    _SYNC_IN_PROGRESS = _SYNC_SUPPRESS_DEPTH > 0
 
 
 @contextmanager
@@ -44,15 +59,11 @@ def suppress_sync():
 
     ネストしても外側のフラグが立っている限り内側は no-op。
     """
-    global _SYNC_IN_PROGRESS
-    if _SYNC_IN_PROGRESS:
-        yield
-        return
-    _SYNC_IN_PROGRESS = True
+    begin_sync_suppression()
     try:
         yield
     finally:
-        _SYNC_IN_PROGRESS = False
+        end_sync_suppression()
 
 
 def is_sync_in_progress() -> bool:

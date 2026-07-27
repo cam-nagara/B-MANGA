@@ -32,6 +32,29 @@ def _move_panel(panel, dx_mm: float, dy_mm: float) -> None:
         vertex.y_mm += dy_mm
 
 
+def _fill_position_snapshot(entry) -> tuple[float, ...]:
+    return (
+        float(getattr(entry, "region_x_mm", 0.0)),
+        float(getattr(entry, "region_y_mm", 0.0)),
+        float(getattr(entry, "gradient_start_x_mm", 0.0)),
+        float(getattr(entry, "gradient_start_y_mm", 0.0)),
+        float(getattr(entry, "gradient_end_x_mm", 0.0)),
+        float(getattr(entry, "gradient_end_y_mm", 0.0)),
+    )
+
+
+def _move_fill_entry(entry, dx_mm: float, dy_mm: float) -> None:
+    from ..utils import fill_real_object
+
+    with fill_real_object.suspend_auto_sync():
+        entry.region_x_mm += dx_mm
+        entry.region_y_mm += dy_mm
+        entry.gradient_start_x_mm += dx_mm
+        entry.gradient_start_y_mm += dy_mm
+        entry.gradient_end_x_mm += dx_mm
+        entry.gradient_end_y_mm += dy_mm
+
+
 def _move_balloon(page, balloon, dx_mm: float, dy_mm: float) -> None:
     if abs(float(dx_mm)) <= 1.0e-9 and abs(float(dy_mm)) <= 1.0e-9:
         return
@@ -197,6 +220,7 @@ class BMANGA_OT_layer_move_tool(Operator):
     _original_center: tuple[float, float] | None
     _center_snap_armed: bool
     _effect_meta_origin: tuple | None
+    _drag_transaction: object | None
 
     @classmethod
     def poll(cls, context):
@@ -230,6 +254,7 @@ class BMANGA_OT_layer_move_tool(Operator):
         self._original_center = None
         self._center_snap_armed = False
         self._effect_meta_origin = None
+        self._drag_transaction = None
         self._cursor_modal_set = coma_modal_state.set_modal_cursor(context, "SCROLL_XY")
         context.window_manager.modal_handler_add(self)
         coma_modal_state.set_active("layer_move", self, context)
@@ -312,7 +337,12 @@ class BMANGA_OT_layer_move_tool(Operator):
             self.finish_from_external(context, keep_selection=True)
             return {"FINISHED", "PASS_THROUGH"}
         if event.type in {"ESC", "RIGHTMOUSE"}:
-            self._restore_snapshots(context)
+            transaction = getattr(self, "_drag_transaction", None)
+            if transaction is not None:
+                transaction.cancel()
+            else:
+                self._restore_snapshots(context)
+            self._drag_transaction = None
             layer_stack_utils.tag_view3d_redraw(context)
             self._cleanup(context)
             coma_modal_state.clear_active("layer_move", self, context)
@@ -335,11 +365,16 @@ class BMANGA_OT_layer_move_tool(Operator):
                 return {"PASS_THROUGH"}
             if self._dragging:
                 if self._moved:
-                    # 効果線メタ(bounds/center)は確定時に累計移動量で一括更新する。
-                    # _last_applied_total がリセットされる前に読むこと。
-                    self._commit_effect_meta()
-                    self._push_undo_step()
-                    layer_stack_utils.sync_layer_stack(context)
+                    transaction = getattr(self, "_drag_transaction", None)
+                    changed = bool(transaction and transaction.commit(context))
+                    if changed:
+                        # 効果線メタ(bounds/center)は確定時に累計移動量で一括更新する。
+                        self._commit_effect_meta()
+                        self._finalize_committed_drag(context)
+                        self._push_undo_step()
+                elif getattr(self, "_drag_transaction", None) is not None:
+                    self._drag_transaction.cancel()
+                self._drag_transaction = None
                 self._effect_meta_origin = None
                 self._target = None
                 self._snapshots = []
@@ -393,16 +428,20 @@ class BMANGA_OT_layer_move_tool(Operator):
             total_dy = 0.0
         elif shift_locked_axis == "x":
             total_dx = 0.0
-        dx = total_dx - self._last_applied_total[0]
-        dy = total_dy - self._last_applied_total[1]
-        if dx == 0.0 and dy == 0.0:
+        if (
+            total_dx == self._last_applied_total[0]
+            and total_dy == self._last_applied_total[1]
+        ):
             return {"RUNNING_MODAL"}
-        if self._apply_delta(context, dx, dy):
+        transaction = getattr(self, "_drag_transaction", None)
+        if transaction is not None and transaction.update_overlay(
+            context,
+            total_dx,
+            total_dy,
+        ):
             self._last_world = coords
             self._last_applied_total = (total_dx, total_dy)
             self._moved = True
-            layer_stack_utils.apply_stack_order(context)
-            page_grid.apply_page_collection_transforms(context, get_work(context))
             layer_stack_utils.tag_view3d_redraw(context)
         return {"RUNNING_MODAL"}
 
@@ -414,7 +453,14 @@ class BMANGA_OT_layer_move_tool(Operator):
             return False
         self._target = resolved
         self._snapshots = []
-        self._capture_snapshot(context, item.kind, resolved)
+        from . import layer_drag_transaction
+
+        self._drag_transaction = layer_drag_transaction.DragTransaction(
+            context,
+            self,
+            item.kind,
+            resolved,
+        )
         self._last_world = coords
         self._drag_origin_world = coords
         self._last_applied_total = (0.0, 0.0)
@@ -435,6 +481,37 @@ class BMANGA_OT_layer_move_tool(Operator):
                 self._effect_meta_origin = (obj, resolved.get("target"), bounds, center)
         self._setup_center_snap(context, item.kind, resolved)
         return True
+
+    def _can_apply_total(
+        self,
+        context,
+        dx_mm: float,
+        dy_mm: float,
+    ) -> bool:
+        if self._target is None:
+            return False
+        kind = str(self._target.get("kind", "") or "")
+        target = self._target.get("target")
+        page = self._target.get("page") or get_active_page(context)
+        if kind in {"balloon", "text", "image"} and page is not None:
+            return not _move_would_violate_layer_scope(
+                context,
+                page,
+                target,
+                dx_mm,
+                dy_mm,
+            )
+        if kind == "fill":
+            return bool(getattr(target, "use_region", False))
+        return True
+
+    def _finalize_committed_drag(self, context) -> None:
+        """確定時だけOutliner/Z/ページ配置を1回同期する."""
+        layer_stack_utils.apply_stack_order(context)
+        if self._target is not None and self._target.get("kind") == "page":
+            page_grid.apply_page_collection_transforms(context, get_work(context))
+        layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
+        layer_stack_utils.tag_view3d_redraw(context)
 
     def _setup_center_snap(self, context, kind: str, resolved: dict) -> None:
         """ドラッグ開始時に中心点スナップデータを準備する。"""
@@ -499,6 +576,10 @@ class BMANGA_OT_layer_move_tool(Operator):
     def _cleanup(self, context) -> None:
         # ESC/RIGHTMOUSE キャンセルや外部終了ではメタ更新せず、保持データのみクリアする。
         self._effect_meta_origin = None
+        transaction = getattr(self, "_drag_transaction", None)
+        if transaction is not None:
+            transaction.cancel()
+            self._drag_transaction = None
         if getattr(self, "_cursor_modal_set", False):
             coma_modal_state.restore_modal_cursor(context)
             self._cursor_modal_set = False
@@ -508,6 +589,15 @@ class BMANGA_OT_layer_move_tool(Operator):
         _ = keep_selection
         if getattr(self, "_externally_finished", False):
             return
+        transaction = getattr(self, "_drag_transaction", None)
+        if transaction is not None:
+            if getattr(self, "_moved", False) and transaction.commit(context):
+                self._commit_effect_meta()
+                self._finalize_committed_drag(context)
+                self._push_undo_step()
+            else:
+                transaction.cancel()
+            self._drag_transaction = None
         self._externally_finished = True
         self._cleanup(context)
         coma_modal_state.clear_active("layer_move", self, context)
@@ -545,6 +635,27 @@ class BMANGA_OT_layer_move_tool(Operator):
                         context, {layer_stack_utils.gp_parent_key_for_coma(page, target)}
                     ))
                 )
+                parent_key = layer_stack_utils.gp_parent_key_for_coma(page, target)
+                scene = getattr(context, "scene", None)
+                for entry in getattr(scene, "bmanga_image_layers", []) or []:
+                    if str(getattr(entry, "parent_key", "") or "") == parent_key:
+                        self._snapshots.append(
+                            ("image_child", entry, (entry.x_mm, entry.y_mm))
+                        )
+                for entry in getattr(scene, "bmanga_image_path_layers", []) or []:
+                    if str(getattr(entry, "parent_key", "") or "") == parent_key:
+                        self._snapshots.append(
+                            (
+                                "image_path_child",
+                                entry,
+                                str(getattr(entry, "path_points_json", "") or ""),
+                            )
+                        )
+                for entry in getattr(scene, "bmanga_fill_layers", []) or []:
+                    if str(getattr(entry, "parent_key", "") or "") == parent_key:
+                        self._snapshots.append(
+                            ("fill_child", entry, _fill_position_snapshot(entry))
+                        )
                 balloons, texts = _panel_children(page, target)
                 attached_text_ids: set[str] = set()
                 for balloon in balloons:
@@ -578,12 +689,19 @@ class BMANGA_OT_layer_move_tool(Operator):
                     "total_dx": 0.0,
                     "total_dy": 0.0,
                 }))
+        elif kind == "image_path":
+            self._snapshots.append(
+                (
+                    "image_path",
+                    target,
+                    str(getattr(target, "path_points_json", "") or ""),
+                )
+            )
         elif kind == "fill":
             if bool(getattr(target, "use_region", False)):
-                self._snapshots.append(("fill", target, (
-                    float(getattr(target, "region_x_mm", 0.0)),
-                    float(getattr(target, "region_y_mm", 0.0)),
-                )))
+                self._snapshots.append(
+                    ("fill", target, _fill_position_snapshot(target))
+                )
         elif kind == "gp":
             self._snapshots.append(("gp_layers", None, gp_parent.capture_layers([target])))
         elif kind == "effect":
@@ -595,8 +713,13 @@ class BMANGA_OT_layer_move_tool(Operator):
                 target.offset_x_mm, target.offset_y_mm = data
             elif kind == "coma":
                 _restore_panel(target, data)
-            elif kind in {"balloon", "text", "attached_text", "image"}:
+            elif kind in {"balloon", "text", "attached_text", "image", "image_child"}:
                 target.x_mm, target.y_mm = data
+            elif kind in {"image_path", "image_path_child"}:
+                from ..utils import image_path_object
+
+                with image_path_object.suspend_auto_sync():
+                    target.path_points_json = data
             elif kind == "raster":
                 image = bpy.data.images.get(str(data.get("image_name", "") or ""))
                 pixels = data.get("pixels", ())
@@ -606,8 +729,18 @@ class BMANGA_OT_layer_move_tool(Operator):
                         image.update()
                     except Exception:  # noqa: BLE001
                         pass
-            elif kind == "fill":
-                target.region_x_mm, target.region_y_mm = data
+            elif kind in {"fill", "fill_child"}:
+                from ..utils import fill_real_object
+
+                with fill_real_object.suspend_auto_sync():
+                    (
+                        target.region_x_mm,
+                        target.region_y_mm,
+                        target.gradient_start_x_mm,
+                        target.gradient_start_y_mm,
+                        target.gradient_end_x_mm,
+                        target.gradient_end_y_mm,
+                    ) = data
             elif kind == "gp_layers":
                 layer_stack_utils.restore_gp_layer_snapshots(data)
             elif kind == "effect_layers":
@@ -643,6 +776,23 @@ class BMANGA_OT_layer_move_tool(Operator):
                 elif child_kind == "text":
                     child.x_mm += dx_mm
                     child.y_mm += dy_mm
+                elif child_kind == "image_child":
+                    from ..utils import image_real_object
+
+                    with image_real_object.suspend_auto_sync():
+                        child.x_mm += dx_mm
+                        child.y_mm += dy_mm
+                elif child_kind == "image_path_child":
+                    from ..utils import image_path_object
+
+                    with image_path_object.suspend_auto_sync():
+                        image_path_object.translate_entry_points(
+                            child,
+                            dx_mm,
+                            dy_mm,
+                        )
+                elif child_kind == "fill_child":
+                    _move_fill_entry(child, dx_mm, dy_mm)
             if page is not None:
                 layer_stack_utils.translate_gp_layers_for_parent_keys(
                     context, {layer_stack_utils.gp_parent_key_for_coma(page, target)}, dx_mm, dy_mm
@@ -674,6 +824,17 @@ class BMANGA_OT_layer_move_tool(Operator):
             target.x_mm += dx_mm
             target.y_mm += dy_mm
             return True
+        if kind == "image_path":
+            from ..utils import image_path_object
+
+            with image_path_object.suspend_auto_sync():
+                return bool(
+                    image_path_object.translate_entry_points(
+                        target,
+                        dx_mm,
+                        dy_mm,
+                    )
+                )
         if kind == "raster":
             for snap_kind, snap_target, snap_data in self._snapshots:
                 if snap_kind != "raster" or snap_target is not target:
@@ -695,8 +856,7 @@ class BMANGA_OT_layer_move_tool(Operator):
             return True
         if kind == "fill":
             if bool(getattr(target, "use_region", False)):
-                target.region_x_mm += dx_mm
-                target.region_y_mm += dy_mm
+                _move_fill_entry(target, dx_mm, dy_mm)
                 return True
             return False
         if kind == "gp":
