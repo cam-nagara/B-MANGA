@@ -76,6 +76,7 @@ def _configure_line_material_nodes(
     attr.location = (-260, -180)
     attr.attribute_name = geometry_nodes_bridge.EFFECT_ALPHA_ATTR
     mul = nodes.new("ShaderNodeMath")
+    mul.label = "効果線不透明度"
     mul.operation = "MULTIPLY"
     mul.location = (0, -140)
     try:
@@ -104,6 +105,33 @@ def _configure_line_material_nodes(
         mat.update_tag()
     except Exception:  # noqa: BLE001
         pass
+
+
+def _update_line_material_rgba(
+    mat: bpy.types.Material,
+    rgba: tuple[float, float, float, float],
+) -> bool:
+    nt = getattr(mat, "node_tree", None)
+    if nt is None:
+        return False
+    bsdf = next(
+        (node for node in nt.nodes if getattr(node, "bl_idname", "") == "ShaderNodeBsdfPrincipled"),
+        None,
+    )
+    alpha = next(
+        (node for node in nt.nodes if str(getattr(node, "label", "") or "") == "効果線不透明度"),
+        None,
+    )
+    if bsdf is None or alpha is None:
+        return False
+    try:
+        mat.diffuse_color = rgba
+        bsdf.inputs["Base Color"].default_value = (rgba[0], rgba[1], rgba[2], 1.0)
+        alpha.inputs[1].default_value = max(0.0, min(1.0, float(rgba[3])))
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        return False
+    return True
 
 
 def _resolve_unique_data_name(base: str) -> str:
@@ -964,6 +992,75 @@ def _prefer_exact_boolean_for_effect_mask(display: bpy.types.Object) -> None:
         pass
 
 
+def sync_effect_display_material(
+    *,
+    scene: bpy.types.Scene,
+    controller_obj: bpy.types.Object,
+    values: dict | None,
+) -> bool:
+    """既存の表示メッシュを作り直さず、色と不透明度だけを同期する。"""
+    display = find_effect_display_object(controller_obj)
+    if scene is None or display is None:
+        return False
+    parent_key = str(controller_obj.get(on.PROP_PARENT_KEY, "") or "")
+    line_color = (values or {}).get("線色", (0.0, 0.0, 0.0, 1.0))
+    line_opacity = percentage.percent_to_factor((values or {}).get("不透明度", 100.0), 100.0)
+    fill_color = (values or {}).get("塗り色", (1.0, 1.0, 1.0, 1.0))
+    fill_opacity = percentage.percent_to_factor((values or {}).get("塗り不透明度", 100.0), 100.0)
+    underlay_color = (values or {}).get("白抜き線色", (1.0, 1.0, 1.0, 1.0))
+    if int((values or {}).get("種類", 0) or 0) == 5:
+        fill_color = (1.0, 1.0, 1.0, 1.0)
+        fill_opacity = 1.0
+    display_id = str(display.get(on.PROP_ID, "") or display.name)
+    line_mat = bpy.data.materials.get(f"BManga_Effect_Display_Line_{display_id}")
+    fill_mat = bpy.data.materials.get(f"BManga_Effect_Display_Fill_{display_id}")
+    underlay_mat = bpy.data.materials.get(f"BManga_Effect_Display_Underlay_{display_id}")
+    try:
+        line_alpha = max(0.0, min(1.0, float(line_color[3]) * float(line_opacity)))
+        line_rgba = (float(line_color[0]), float(line_color[1]), float(line_color[2]), line_alpha)
+        fill_alpha = max(
+            0.0,
+            min(1.0, float(fill_color[3]) * float(fill_opacity) * float(line_opacity)),
+        )
+        fill_rgba = (float(fill_color[0]), float(fill_color[1]), float(fill_color[2]), fill_alpha)
+        underlay_alpha = max(
+            0.0,
+            min(1.0, float(underlay_color[3]) * float(line_opacity)),
+        )
+        underlay_rgba = (
+            float(underlay_color[0]),
+            float(underlay_color[1]),
+            float(underlay_color[2]),
+            underlay_alpha,
+        )
+    except Exception:  # noqa: BLE001
+        line_rgba = fill_rgba = underlay_rgba = ()
+    if (
+        line_mat is not None
+        and fill_mat is not None
+        and underlay_mat is not None
+        and len(line_rgba) == 4
+        and _update_line_material_rgba(line_mat, line_rgba)
+        and material_opacity_mask.update_flat_emission_material_rgba(fill_mat, fill_rgba)
+        and material_opacity_mask.update_flat_emission_material_rgba(underlay_mat, underlay_rgba)
+    ):
+        return True
+    _ensure_display_material(
+        display,
+        line_color,
+        opacity=line_opacity,
+        fill_color=fill_color,
+        fill_opacity=fill_opacity,
+        underlay_color=underlay_color,
+        mask_info=coma_content_mask.ensure_viewport_mask_for_parent(
+            scene,
+            getattr(scene, "bmanga_work", None),
+            parent_key,
+        ),
+    )
+    return True
+
+
 def ensure_effect_display_object(
     *,
     scene: bpy.types.Scene,
@@ -1025,26 +1122,10 @@ def ensure_effect_display_object(
             controller_obj.hide_render = True
     except Exception:  # noqa: BLE001
         pass
-    line_color = (values or {}).get("線色", (0.0, 0.0, 0.0, 1.0))
-    line_opacity = percentage.percent_to_factor((values or {}).get("不透明度", 100.0), 100.0)
-    fill_color = (values or {}).get("塗り色", (1.0, 1.0, 1.0, 1.0))
-    fill_opacity = percentage.percent_to_factor((values or {}).get("塗り不透明度", 100.0), 100.0)
-    underlay_color = (values or {}).get("白抜き線色", (1.0, 1.0, 1.0, 1.0))
-    if int((values or {}).get("種類", 0) or 0) == 5:
-        fill_color = (1.0, 1.0, 1.0, 1.0)
-        fill_opacity = 1.0
-    _ensure_display_material(
-        display,
-        line_color,
-        opacity=line_opacity,
-        fill_color=fill_color,
-        fill_opacity=fill_opacity,
-        underlay_color=underlay_color,
-        mask_info=coma_content_mask.ensure_viewport_mask_for_parent(
-            scene,
-            getattr(scene, "bmanga_work", None),
-            parent_key,
-        ),
+    sync_effect_display_material(
+        scene=scene,
+        controller_obj=controller_obj,
+        values=values,
     )
     if strokes is not None:
         _remove_effect_display_gn_modifier(display)

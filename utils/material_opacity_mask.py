@@ -172,3 +172,38 @@ def setup_flat_emission_material(
         mat.update_tag()
     except Exception:  # noqa: BLE001
         pass
+
+
+def update_flat_emission_material_rgba(
+    mat: bpy.types.Material,
+    rgba: tuple[float, float, float, float],
+) -> bool:
+    """既存ノード構成を保ったまま、単色Emissionの色と不透明度を更新する。"""
+    nt = getattr(mat, "node_tree", None)
+    if nt is None:
+        return False
+    emission = next(
+        (node for node in nt.nodes if getattr(node, "bl_idname", "") == "ShaderNodeEmission"),
+        None,
+    )
+    alpha = next(
+        (node for node in nt.nodes if str(getattr(node, "label", "") or "") == "不透明度"),
+        None,
+    )
+    if emission is None or alpha is None:
+        return False
+    try:
+        mat.diffuse_color = rgba
+        emission.inputs["Color"].default_value = (rgba[0], rgba[1], rgba[2], 1.0)
+        alpha.outputs[0].default_value = max(0.0, min(1.0, float(rgba[3])))
+        has_mask = any(
+            str(getattr(node, "label", "") or "") == "コマ内容マスク"
+            for node in nt.nodes
+        )
+        mat.blend_method = "BLEND" if has_mask or float(rgba[3]) < 0.999 else "OPAQUE"
+        mat.surface_render_method = "DITHERED"
+        mat.show_transparent_back = True
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        return False
+    return True

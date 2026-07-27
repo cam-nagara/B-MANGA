@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 import bpy
 from bpy.props import (
     BoolProperty,
@@ -78,8 +80,20 @@ _LEGACY_DEFAULT_SPEED_LINE_COUNT = 20
 _DEFAULT_SPEED_LINE_COUNT = 300
 _DEFAULT_IN_START_PERCENT = 0.0
 _DEFAULT_OUT_START_PERCENT = 100.0
+_PARAM_UPDATE_SUSPEND_DEPTH = 0
 
 EFFECT_PARAM_FIELDS = line_effect_schema.EFFECT_PARAM_FIELDS
+
+
+@contextmanager
+def suspend_param_updates():
+    """複数の連動プロパティを変更する間、効果線の中間再生成を止める。"""
+    global _PARAM_UPDATE_SUSPEND_DEPTH
+    _PARAM_UPDATE_SUSPEND_DEPTH += 1
+    try:
+        yield
+    finally:
+        _PARAM_UPDATE_SUSPEND_DEPTH = max(0, _PARAM_UPDATE_SUSPEND_DEPTH - 1)
 
 
 def _on_params_changed(self, context) -> None:
@@ -90,7 +104,7 @@ def _on_params_changed(self, context) -> None:
     効果線レイヤーを書き換えてはならない。ここで同一性 (as_pointer) を確認
     し、シーン本体のインスタンスでなければ即 return する。
     """
-    if context is None:
+    if context is None or _PARAM_UPDATE_SUSPEND_DEPTH > 0:
         return
     scene = getattr(context, "scene", None)
     scene_params = getattr(scene, "bmanga_effect_line_params", None) if scene is not None else None
@@ -109,38 +123,42 @@ def _on_params_changed(self, context) -> None:
 
 
 def _on_start_corner_type_changed(self, context) -> None:
-    try:
-        self.start_rounded_corner_enabled = (
-            str(getattr(self, "start_corner_type", "square") or "square") != "square"
-        )
-    except Exception:  # noqa: BLE001
-        pass
+    with suspend_param_updates():
+        try:
+            self.start_rounded_corner_enabled = (
+                str(getattr(self, "start_corner_type", "square") or "square") != "square"
+            )
+        except Exception:  # noqa: BLE001
+            pass
     _on_params_changed(self, context)
 
 
 def _on_end_corner_type_changed(self, context) -> None:
-    try:
-        self.end_rounded_corner_enabled = (
-            str(getattr(self, "end_corner_type", "square") or "square") != "square"
-        )
-    except Exception:  # noqa: BLE001
-        pass
+    with suspend_param_updates():
+        try:
+            self.end_rounded_corner_enabled = (
+                str(getattr(self, "end_corner_type", "square") or "square") != "square"
+            )
+        except Exception:  # noqa: BLE001
+            pass
     _on_params_changed(self, context)
 
 
 def _on_in_start_changed(self, context) -> None:
     in_start = float(getattr(self, "in_start_percent", _DEFAULT_IN_START_PERCENT))
     out_start = float(getattr(self, "out_start_percent", _DEFAULT_OUT_START_PERCENT))
-    if in_start + out_start > 100.0:
-        self.out_start_percent = max(0.0, 100.0 - in_start)
+    with suspend_param_updates():
+        if in_start + out_start > 100.0:
+            self.out_start_percent = max(0.0, 100.0 - in_start)
     _on_params_changed(self, context)
 
 
 def _on_out_start_changed(self, context) -> None:
     in_start = float(getattr(self, "in_start_percent", _DEFAULT_IN_START_PERCENT))
     out_start = float(getattr(self, "out_start_percent", _DEFAULT_OUT_START_PERCENT))
-    if in_start + out_start > 100.0:
-        self.in_start_percent = max(0.0, 100.0 - out_start)
+    with suspend_param_updates():
+        if in_start + out_start > 100.0:
+            self.in_start_percent = max(0.0, 100.0 - out_start)
     _on_params_changed(self, context)
 
 
@@ -174,11 +192,12 @@ def _inout_apply_value_from_flags(params) -> str:
 
 def _on_inout_apply_changed(self, context) -> None:
     legacy = str(getattr(self, "inout_apply", "brush_size") or "brush_size")
-    try:
-        self.inout_apply_brush_size = legacy != "opacity"
-        self.inout_apply_opacity = legacy == "opacity"
-    except Exception:  # noqa: BLE001
-        pass
+    with suspend_param_updates():
+        try:
+            self.inout_apply_brush_size = legacy != "opacity"
+            self.inout_apply_opacity = legacy == "opacity"
+        except Exception:  # noqa: BLE001
+            pass
     _on_params_changed(self, context)
 
 

@@ -35,6 +35,13 @@ _EFFECT_MIN_SIZE_MM = 2.0
 _EFFECT_HANDLE_HIT_MM = 2.5
 _EFFECT_STROKE_HIT_MM = 2.5
 _EFFECT_DRAG_EPS_MM = 0.05
+_MATERIAL_ONLY_PARAM_FIELDS = frozenset({
+    "line_color",
+    "fill_color",
+    "fill_opacity",
+    "opacity",
+    "white_underlay_color",
+})
 
 
 def _unique_layer_name(gp_data, base: str) -> str:
@@ -327,11 +334,16 @@ def _select_effect_layer(context, obj, layer) -> bool:
             context.view_layer.objects.active = display
     except Exception:  # noqa: BLE001
         pass
-    stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     from ..utils import layer_object_model
 
     stable_id = layer_object_model.stable_id(obj)
     uid = layer_stack_utils.target_uid("effect", stable_id) if stable_id else ""
+    stack = getattr(context.scene, "bmanga_layer_stack", None)
+    if (
+        stack is None
+        or not any(layer_stack_utils.stack_item_uid(item) == uid for item in stack)
+    ):
+        stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     if stack is not None:
         for i, item in enumerate(stack):
             if layer_stack_utils.stack_item_uid(item) == uid:
@@ -811,6 +823,8 @@ def _write_effect_strokes(
             start_outline_mm=start_frame_outline if start_frame_outline else None,
             start_extend_mm=_effective_start_extend_mm(params, _start_frame_extend),
             end_center_xy_mm=shape_center_xy,
+            generated_start_outline_mm=None if start_frame_outline else start_outline,
+            generated_end_outline_mm=end_outline,
         )
         if bool(getattr(params, "fill_base_shape", False)):
             fill_stroke = effect_line_gen.generate_end_shape_fill_stroke(
@@ -891,6 +905,39 @@ def _write_effect_strokes(
     return 1
 
 
+def _changed_param_fields(old_data: dict, new_data: dict) -> set[str]:
+    return {
+        key
+        for key in set(old_data) | set(new_data)
+        if old_data.get(key) != new_data.get(key)
+    } - {"schema_version"}
+
+
+def _sync_effect_material_only(context, obj, layer, bounds, params, params_data) -> bool:
+    from ..utils import effect_line_object as _elo
+    from ..utils import geometry_nodes_bridge as _gn
+
+    center_xy = effect_layer_center(obj, layer, bounds)
+    _set_layer_bounds(
+        obj,
+        layer,
+        bounds,
+        params_data=params_data,
+        center_xy_mm=center_xy,
+    )
+    values = _gn.effect_values(
+        params,
+        bounds,
+        _seed_for_layer(obj, layer),
+        center_xy_mm=center_xy,
+    )
+    return _elo.sync_effect_display_material(
+        scene=context.scene,
+        controller_obj=obj,
+        values=values,
+    )
+
+
 def on_effect_params_changed(context, _params) -> None:
     scene = getattr(context, "scene", None)
     if scene is None or _scene_params_syncing(scene):
@@ -901,18 +948,35 @@ def on_effect_params_changed(context, _params) -> None:
     if obj is None or layer is None or bounds is None:
         return
     try:
+        from ..core import effect_line
         from . import detail_dialog_runtime
 
-        _write_effect_strokes(
-            context,
-            obj,
-            layer,
-            bounds,
-            params_override=_params,
-            propagate_link=not detail_dialog_runtime.effect_target_has_open_actual_session(
-                obj, layer
-            ),
-        )
+        old_data = _layer_params_data(obj, layer)
+        new_data = effect_line.effect_params_to_dict(_params)
+        changed_fields = _changed_param_fields(old_data, new_data)
+        if not changed_fields:
+            return
+        material_only_synced = False
+        if changed_fields <= _MATERIAL_ONLY_PARAM_FIELDS:
+            material_only_synced = _sync_effect_material_only(
+                context,
+                obj,
+                layer,
+                bounds,
+                _params,
+                new_data,
+            )
+        if not material_only_synced:
+            _write_effect_strokes(
+                context,
+                obj,
+                layer,
+                bounds,
+                params_override=_params,
+                propagate_link=not detail_dialog_runtime.effect_target_has_open_actual_session(
+                    obj, layer
+                ),
+            )
         from ..utils import preview_composite
 
         preview_composite.mark_dirty(context=context)
@@ -1072,7 +1136,10 @@ def _create_effect_layer(
         bounds = (70.0, 110.0, 80.0, 100.0)
     _write_effect_strokes(context, obj, layer, bounds, seed=seed)
     _select_effect_layer(context, obj, layer)
-    layer_stack_utils.sync_layer_stack_after_data_change(context)
+    layer_stack_utils.sync_layer_stack_after_data_change(
+        context,
+        stack_already_synced=True,
+    )
     return obj, layer
 
 
@@ -1843,7 +1910,6 @@ class BMANGA_OT_effect_line_tool(Operator):
                         object_selection.effect_key(layer),
                         mode="single",
                     )
-                    layer_stack_utils.sync_layer_stack_after_data_change(context)
                     self._push_undo_step("B-MANGA: 効果線作成")
             else:
                 layer_stack_utils.tag_view3d_redraw(context)

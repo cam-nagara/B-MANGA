@@ -592,12 +592,16 @@ def _select_balloon_index(context, work, page, index: int, *, mode: str = "singl
 
 
 def _sync_active_balloon_stack_item(context, page, entry) -> None:
-    stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     page_key = OUTSIDE_STACK_KEY if page is None else page_stack_key(page)
     uid = layer_stack_utils.target_uid(
         "balloon",
         f"{page_key}:{getattr(entry, 'id', '')}",
     )
+    stack = getattr(context.scene, "bmanga_layer_stack", None)
+    if stack is None or not any(
+        layer_stack_utils.stack_item_uid(item) == uid for item in stack
+    ):
+        stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     if stack is not None:
         for i, item in enumerate(stack):
             if layer_stack_utils.stack_item_uid(item) == uid:

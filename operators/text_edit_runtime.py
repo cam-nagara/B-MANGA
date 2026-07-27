@@ -969,9 +969,12 @@ def text_rect(entry) -> Rect:
     )
 
 
-def _glyph_em_mm(entry, index: int) -> float:
+def _glyph_em_mm(entry, index: int, styles=None) -> float:
     try:
-        return max(0.25, q_to_mm(float(text_style.font_size_q_for_index(entry, int(index)))))
+        if styles is None:
+            styles = text_style.resolved_style_table(entry)
+        style = text_style.style_from_table(entry, styles, int(index))
+        return max(0.25, q_to_mm(float(style[1])))
     except Exception:  # noqa: BLE001
         return text_em_mm(entry)
 
@@ -1017,6 +1020,7 @@ def natural_text_outer_size(entry) -> tuple[float, float]:
         return size, size
     char_scale = max(0.1, 1.0 + text_letter_spacing(entry))
     ruby_flags = _line_ruby_flags(entry)
+    styles = text_style.resolved_style_table(entry)
     if getattr(entry, "writing_mode", "vertical") == "horizontal":
         widths: list[float] = []
         line_ems: list[float] = []
@@ -1035,7 +1039,7 @@ def natural_text_outer_size(entry) -> tuple[float, float]:
                 current_width = base_em
                 current_em = base_em
                 continue
-            em = _glyph_em_mm(entry, index)
+            em = _glyph_em_mm(entry, index, styles)
             current_width = max(current_width, current_advance + em)
             current_advance += em * char_scale
             current_em = max(current_em, em)
@@ -1061,7 +1065,7 @@ def natural_text_outer_size(entry) -> tuple[float, float]:
                 current_height = base_em
                 current_em = base_em
                 continue
-            em = _glyph_em_mm(entry, index)
+            em = _glyph_em_mm(entry, index, styles)
             current_height = max(current_height, current_advance + em)
             current_advance += em * char_scale
             current_em = max(current_em, em)

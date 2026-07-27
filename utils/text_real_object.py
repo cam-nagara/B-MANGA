@@ -284,18 +284,30 @@ def _render_entry_to_pillow(entry):
             getattr(entry, "stroke_color", (1.0, 1.0, 1.0, 1.0))
         )
     font_path = text_style.resolve_font_path(str(getattr(entry, "font", "") or ""))
+    styles = text_style.resolved_style_table(entry)
+    resolved_font_paths: dict[str, str] = {}
+
+    def _style(index: int):
+        return text_style.style_from_table(entry, styles, index)
+
+    def _font_path(index: int) -> str:
+        raw = _style(index)[0]
+        resolved = resolved_font_paths.get(raw)
+        if resolved is None:
+            resolved = text_style.resolve_font_path(raw)
+            resolved_font_paths[raw] = resolved
+        return resolved
+
     export_renderer.render_to_image(
         result,
         image,
         font_path=font_path,
-        font_path_for_index=lambda index: text_style.resolve_font_path(
-            text_style.font_for_index(entry, index)
-        ),
+        font_path_for_index=_font_path,
         color_for_index=lambda index: _rgba255_from_linear(
-            text_style.color_for_index(entry, index)
+            _style(index)[2]
         ),
-        bold_for_index=lambda index: text_style.bold_for_index(entry, index),
-        italic_for_index=lambda index: text_style.italic_for_index(entry, index),
+        bold_for_index=lambda index: bool(_style(index)[3]),
+        italic_for_index=lambda index: bool(_style(index)[4]),
         px_per_mm=px_per_mm,
         color=_rgba255_from_linear(getattr(entry, "color", (0.0, 0.0, 0.0, 1.0))),
         stroke_width_px=stroke_width_px,

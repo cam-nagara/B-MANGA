@@ -651,6 +651,7 @@ def generate_white_outline_strokes(
     start_outline_mm: Sequence[tuple[float, float]] | None = None,
     start_extend_mm: float = 0.0,
     end_center_xy_mm: tuple[float, float] | None = None,
+    generated_start_outline_mm: Sequence[tuple[float, float]] | None = None,
 ):
     rng = random.Random(seed)
     count = max(1, min(500, int(getattr(params, "white_outline_count", 5))))
@@ -664,9 +665,12 @@ def generate_white_outline_strokes(
     black_gap = max(0.0, float(getattr(params, "white_outline_black_spacing_mm", white_gap)))
     shape_center_xy_mm = end_center_xy_mm if end_center_xy_mm is not None else center_xy_mm
     if start_outline_mm is None:
-        start_rx, start_ry = effect_line_gen._start_shape_radii(params, radius_x_mm, radius_y_mm)
-        start_rect = effect_line_gen._scaled_rect(shape_center_xy_mm[0], shape_center_xy_mm[1], start_rx, start_ry, 1.0)
-        start_outline = effect_line_gen._shape_outline(params, "start", start_rect, shape_center_xy_mm, seed=seed + 11)
+        if generated_start_outline_mm is not None:
+            start_outline = [(float(x), float(y)) for x, y in generated_start_outline_mm]
+        else:
+            start_rx, start_ry = effect_line_gen._start_shape_radii(params, radius_x_mm, radius_y_mm)
+            start_rect = effect_line_gen._scaled_rect(shape_center_xy_mm[0], shape_center_xy_mm[1], start_rx, start_ry, 1.0)
+            start_outline = effect_line_gen._shape_outline(params, "start", start_rect, shape_center_xy_mm, seed=seed + 11)
         start_extend = 0.0
     else:
         start_outline = [(float(x), float(y)) for x, y in start_outline_mm]

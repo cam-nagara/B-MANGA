@@ -1665,14 +1665,16 @@ def sync_layer_stack_after_data_change(
     *,
     align_page_order: bool = False,
     align_coma_order: bool = False,
+    stack_already_synced: bool = False,
 ) -> None:
     """Operator で実データを更新した直後に、UIList と既知シグネチャを揃える."""
     try:
-        sync_layer_stack(
-            context,
-            align_page_order=align_page_order,
-            align_coma_order=align_coma_order,
-        )
+        if not stack_already_synced:
+            sync_layer_stack(
+                context,
+                align_page_order=align_page_order,
+                align_coma_order=align_coma_order,
+            )
         _remember_stack_signature(context)
         _sync_real_objects_after_stack_order(context)
         tag_view3d_redraw(context)

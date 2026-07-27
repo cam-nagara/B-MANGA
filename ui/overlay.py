@@ -922,17 +922,10 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
         return
 
     entry = entry_or_text
-    padded = text_layout_bounds.text_inner_rect(rect)
     try:
-        from ..typography import layout as text_layout, ruby as text_ruby
+        from ..typography import ruby as text_ruby
 
-        result = text_layout.typeset(
-            entry,
-            padded.x,
-            padded.y,
-            padded.width,
-            padded.height,
-        )
+        result = overlay_text.text_typeset_result(entry, rect)
         ruby_placements = text_ruby.compute_for_entry(result.placements, entry)
     except Exception:  # noqa: BLE001
         _logger.exception("text layout failed")
@@ -947,9 +940,16 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
     from ..typography import vertical_glyph
 
     vertical = str(getattr(entry, "writing_mode", "horizontal") or "horizontal") == "vertical"
+    styles = text_style.resolved_style_table(entry)
+    resolved_font_paths: dict[str, str] = {}
     draw_records: list[dict] = []
     for glyph in result.placements:
-        glyph_font_path = text_style.resolve_font_path(text_style.font_for_index(entry, glyph.index))
+        style = text_style.style_from_table(entry, styles, glyph.index)
+        raw_font_path = style[0]
+        glyph_font_path = resolved_font_paths.get(raw_font_path)
+        if glyph_font_path is None:
+            glyph_font_path = text_style.resolve_font_path(raw_font_path)
+            resolved_font_paths[raw_font_path] = glyph_font_path
         glyph_font_id = _get_font_id_for_path(glyph_font_path)
         coord = location_3d_to_region_2d(
             region,
@@ -961,7 +961,7 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
         size_px = blf_safety.safe_text_px_size(glyph.size_pt * px_per_mm * 25.4 / 72.0)
         if size_px is None:
             continue
-        entry_color = text_style.color_for_index(entry, glyph.index)
+        entry_color = style[2]
         x_px = float(coord.x) + float(getattr(glyph, "offset_x_mm", 0.0)) * px_per_mm
         y_px = float(coord.y) + float(getattr(glyph, "offset_y_mm", 0.0)) * px_per_mm
         rotated = getattr(glyph, "rotation_deg", 0.0) != 0.0
@@ -987,8 +987,8 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
         draw_records.append({
             "font_id": glyph_font_id, "ch": glyph.ch, "x": x_px, "y": y_px,
             "size": size_px, "rotation": float(glyph.rotation_deg), "color": entry_color,
-            "bold": text_style.bold_for_index(entry, glyph.index),
-            "italic": text_style.italic_for_index(entry, glyph.index), "thicken": True,
+            "bold": bool(style[3]),
+            "italic": bool(style[4]), "thicken": True,
         })
     ruby_color = getattr(entry, "color", (0.0, 0.0, 0.0, 1.0))
     for ruby_glyph in ruby_placements:

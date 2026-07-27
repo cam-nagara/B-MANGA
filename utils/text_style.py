@@ -908,6 +908,37 @@ def adjust_font_spans_for_replace(entry, start: int, end: int, new_length: int) 
     adjust_spans_for_replace(entry, start, end, new_length)
 
 
+def resolved_style_table(entry) -> tuple[StyleTuple, ...]:
+    """本文1文字ごとの最終スタイルを、正規化走査1回ずつで確定する。"""
+    body_len = _body_len(entry)
+    default = _default_style(entry)
+    if body_len <= 0:
+        return ()
+    styles = [default] * body_len
+    for start, end, font in _normalized_segments(entry):
+        for index in range(start, end):
+            current = styles[index]
+            styles[index] = (font, current[1], current[2], current[3], current[4])
+    base_font = str(getattr(entry, "font", "") or "")
+    for start, end, style in _normalized_style_segments(entry):
+        font, font_size_q, color, bold, italic = style
+        resolved = (font or base_font, font_size_q, color, bold, italic)
+        for index in range(start, end):
+            styles[index] = resolved
+    return tuple(styles)
+
+
+def style_from_table(
+    entry,
+    table: tuple[StyleTuple, ...],
+    index: int,
+) -> StyleTuple:
+    index = int(index)
+    if 0 <= index < len(table):
+        return table[index]
+    return _default_style(entry)
+
+
 def font_for_index(entry, index: int) -> str:
     index = int(index)
     for start, end, style in _normalized_style_segments(entry):

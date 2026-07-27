@@ -141,6 +141,9 @@ def _setup() -> None:
     result = bpy.ops.bmanga.work_new(filepath=str(_TEMP_ROOT / "Text_Edit_Matrix.bmanga"))
     if "FINISHED" not in result:
         raise RuntimeError(f"work_new failed: {result}")
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+    if "FINISHED" not in result:
+        raise RuntimeError(f"open_page_file failed: {result}")
     work = bpy.context.scene.bmanga_work
     page = work.pages[0]
     _ensure_text_cases(work, page)
@@ -154,7 +157,7 @@ def _setup() -> None:
     if override:
         with bpy.context.temp_override(**override):
             bpy.ops.bmanga.view_fit_page()
-    _STATE["blend"] = str(_TEMP_ROOT / "Text_Edit_Matrix.bmanga" / "work.blend")
+    _STATE["blend"] = str(bpy.data.filepath)
     _write_state()
 
 

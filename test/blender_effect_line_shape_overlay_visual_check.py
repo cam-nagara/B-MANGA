@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import atexit
 import importlib.util
 import os
 import shutil
@@ -78,7 +79,8 @@ def _screenshot(name: str) -> str:
         bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=8)
     except Exception:
         pass
-    result = bpy.ops.screen.screenshot("EXEC_DEFAULT", filepath=str(path), check_existing=False)
+    with _view3d_override():
+        result = bpy.ops.screen.screenshot("EXEC_DEFAULT", filepath=str(path), check_existing=False)
     if "FINISHED" not in result:
         raise RuntimeError(f"screenshot failed: {result}")
     return str(path)
@@ -99,6 +101,8 @@ def _assert_close(label: str, actual: float, expected: float, eps: float = 0.8) 
 def _setup_scene(temp_root: Path):
     mod = _load_addon()
     result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "EffectShapeVisual.bmanga"))
+    assert "FINISHED" in result, result
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
     assert "FINISHED" in result, result
 
     from bmanga_dev_effect_shape_visual.core.work import get_work
@@ -166,24 +170,16 @@ def _assert_overlay_guides(obj, layer, bounds) -> None:
 
 def _run_visual_check() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_effect_shape_visual_"))
-    mod = None
+    atexit.register(shutil.rmtree, temp_root, ignore_errors=True)
     try:
-        try:
-            bpy.context.preferences.view.show_splash = False
-        except Exception:
-            pass
-        mod, obj, layer, bounds = _setup_scene(temp_root)
-        _assert_overlay_guides(obj, layer, bounds)
-        _set_top_view()
-        path = _screenshot("effect_line_shape_overlay.png")
-        print(f"BMANGA_EFFECT_LINE_SHAPE_OVERLAY_VISUAL_OK {path}", flush=True)
-    finally:
-        if mod is not None:
-            try:
-                mod.unregister()
-            except Exception:
-                pass
-        shutil.rmtree(temp_root, ignore_errors=True)
+        bpy.context.preferences.view.show_splash = False
+    except Exception:
+        pass
+    _mod, obj, layer, bounds = _setup_scene(temp_root)
+    _assert_overlay_guides(obj, layer, bounds)
+    _set_top_view()
+    path = _screenshot("effect_line_shape_overlay.png")
+    print(f"BMANGA_EFFECT_LINE_SHAPE_OVERLAY_VISUAL_OK {path}", flush=True)
 
 
 def _visual_check_tick():

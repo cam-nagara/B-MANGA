@@ -455,6 +455,12 @@ def typeset(
     region_height_mm: float,
 ) -> TypesetResult:
     """PropertyGroup TextEntry からレイアウトを実行."""
+    style_table = text_style.resolved_style_table(text_entry)
+
+    def _font_size_pt(index: int) -> float:
+        style = text_style.style_from_table(text_entry, style_table, index)
+        return q_to_pt(style[1])
+
     font_size_pt = float(
         q_to_pt(float(getattr(text_entry, "font_size_q", 20.0)))
         if hasattr(text_entry, "font_size_q")
@@ -472,7 +478,7 @@ def typeset(
             letter_spacing=text_entry.letter_spacing,
             ruby_line_height=getattr(text_entry, "ruby_line_height", text_entry.line_height),
             ruby_spans=getattr(text_entry, "ruby_spans", []) or [],
-            font_size_pt_for_index=lambda index: q_to_pt(text_style.font_size_q_for_index(text_entry, index)),
+            font_size_pt_for_index=_font_size_pt,
         )
     return typeset_vertical(
         text_entry.body,
@@ -485,6 +491,6 @@ def typeset(
         letter_spacing=text_entry.letter_spacing,
         ruby_line_height=getattr(text_entry, "ruby_line_height", text_entry.line_height),
         ruby_spans=getattr(text_entry, "ruby_spans", []) or [],
-        font_size_pt_for_index=lambda index: q_to_pt(text_style.font_size_q_for_index(text_entry, index)),
+        font_size_pt_for_index=_font_size_pt,
         tatechuyoko_ranges=tatechuyoko_ranges_for_entry(text_entry, text_entry.body),
     )

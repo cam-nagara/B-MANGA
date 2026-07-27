@@ -10,6 +10,7 @@ typeset の配置結果を基準にすることで、縦中横・行頭禁則ぶ
 from __future__ import annotations
 
 import math
+from collections import OrderedDict
 from bisect import bisect_left
 
 # 縦中横の正規化・ルビ行フラグは typeset 本体と同じ規則を使う必要があるため、
@@ -21,6 +22,8 @@ from ..utils.geom import Rect, q_to_mm
 
 CARET_MIN_THICKNESS_MM = 0.18
 _PT_TO_MM = 25.4 / 72.0
+_LAYOUT_CACHE_MAX = 32
+_LAYOUT_CACHE: OrderedDict[tuple, "_CaretLayout"] = OrderedDict()
 
 
 def _em_from_pt(size_pt: float) -> float:
@@ -89,11 +92,14 @@ class _CaretLayout:
             self.line_height,
             self.ruby_line_height,
         ) = _entry_layout_params(entry)
+        self.styles = text_style.resolved_style_table(entry)
         try:
-            placements = typography_layout.typeset(
+            self.result = typography_layout.typeset(
                 entry, self.region.x, self.region.y, self.region.width, self.region.height
-            ).placements
+            )
+            placements = self.result.placements
         except Exception:  # noqa: BLE001
+            self.result = typography_layout.TypesetResult([], False)
             placements = []
         self.by_index: dict[int, object] = {}
         for placement in placements:
@@ -107,7 +113,8 @@ class _CaretLayout:
 
     def glyph_em(self, index: int) -> float:
         try:
-            return max(0.25, q_to_mm(float(text_style.font_size_q_for_index(self.entry, int(index)))))
+            style = text_style.style_from_table(self.entry, self.styles, int(index))
+            return max(0.25, q_to_mm(float(style[1])))
         except Exception:  # noqa: BLE001
             return self.base_em
 
@@ -223,14 +230,60 @@ def _caret_rect_in_layout(layout: _CaretLayout, cursor_index: int) -> Rect | Non
     return _caret_rect_vertical(layout, index)
 
 
+def _entry_identity(entry) -> int:
+    source = getattr(entry, "_source", entry)
+    try:
+        return int(source.as_pointer())
+    except Exception:  # noqa: BLE001
+        return id(source)
+
+
+def _layout_cache_key(entry, rect: Rect) -> tuple:
+    return (
+        _entry_identity(entry),
+        str(getattr(entry, "body", "") or ""),
+        str(getattr(entry, "writing_mode", "horizontal") or "horizontal"),
+        float(getattr(entry, "font_size_q", 20.0) or 20.0),
+        float(getattr(entry, "line_height", 1.4) or 1.4),
+        float(getattr(entry, "ruby_line_height", 1.4) or 1.4),
+        float(getattr(entry, "letter_spacing", 0.0) or 0.0),
+        bool(getattr(entry, "tatechuyoko_auto", True)),
+        text_style.all_spans_snapshot(entry),
+        float(rect.x),
+        float(rect.y),
+        float(rect.width),
+        float(rect.height),
+    )
+
+
+def _layout_for(entry, rect: Rect) -> _CaretLayout:
+    key = _layout_cache_key(entry, rect)
+    cached = _LAYOUT_CACHE.get(key)
+    if cached is not None:
+        cached.entry = entry
+        _LAYOUT_CACHE.move_to_end(key)
+        return cached
+    layout = _CaretLayout(entry, rect)
+    _LAYOUT_CACHE[key] = layout
+    _LAYOUT_CACHE.move_to_end(key)
+    while len(_LAYOUT_CACHE) > _LAYOUT_CACHE_MAX:
+        _LAYOUT_CACHE.popitem(last=False)
+    return layout
+
+
+def typeset_result(entry, rect: Rect):
+    """本文・選択範囲・キャレットで共有する1回分の組版結果を返す。"""
+    return _layout_for(entry, rect).result
+
+
 def caret_rect(entry, rect: Rect, cursor_index: int) -> Rect | None:
     """描画と同じ typeset 結果からキャレット矩形 (ページローカル mm) を返す."""
-    return _caret_rect_in_layout(_CaretLayout(entry, rect), cursor_index)
+    return _caret_rect_in_layout(_layout_for(entry, rect), cursor_index)
 
 
 def cursor_index_from_point(entry, rect: Rect, x_mm: float, y_mm: float) -> int:
     """クリック座標に最も近いキャレット位置 (本文インデックス) を返す."""
-    layout = _CaretLayout(entry, rect)
+    layout = _layout_for(entry, rect)
     best_index = 0
     best_distance = math.inf
     for index in range(len(layout.body) + 1):
@@ -266,7 +319,7 @@ def _selection_rect_for(layout: _CaretLayout, index: int, placement) -> Rect:
 
 def selection_rects(entry, rect: Rect, start: int, end: int) -> list[Rect]:
     """選択範囲 [start, end) の文字ごとのハイライト矩形を返す."""
-    layout = _CaretLayout(entry, rect)
+    layout = _layout_for(entry, rect)
     rects: list[Rect] = []
     end = min(int(end), len(layout.body))
     for index in range(max(0, int(start)), end):

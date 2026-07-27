@@ -56,6 +56,11 @@ def text_caret_rect(entry, rect: Rect, cursor_index: int | None = None) -> Rect 
     return text_edit_runtime.caret_rect(entry, rect, cursor_index)
 
 
+def text_typeset_result(entry, rect: Rect):
+    """本文・選択・キャレットで共有する組版結果。"""
+    return text_caret_layout.typeset_result(entry, rect)
+
+
 def _editing_operator(context, page, entry):
     if context is None:
         return None

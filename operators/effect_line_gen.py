@@ -657,6 +657,8 @@ def generate_focus_strokes(
     start_extend_mm: float = 0.0,
     end_center_xy_mm: tuple[float, float] | None = None,
     end_outline_mm: Sequence[tuple[float, float]] | None = None,
+    generated_start_outline_mm: Sequence[tuple[float, float]] | None = None,
+    generated_end_outline_mm: Sequence[tuple[float, float]] | None = None,
 ) -> list[EffectLineStroke]:
     """集中線 (focus) のストローク生成.
 
@@ -670,16 +672,22 @@ def generate_focus_strokes(
     shape_center_xy_mm = end_center_xy_mm if end_center_xy_mm is not None else center_xy_mm
     start_rx, start_ry = _start_shape_radii(params, radius_x_mm, radius_y_mm)
     if start_outline_mm is None:
-        cx, cy = shape_center_xy_mm
-        start_rect = _scaled_rect(cx, cy, start_rx, start_ry, 1.0)
-        start_outline = _shape_outline(params, "start", start_rect, shape_center_xy_mm, seed=seed + 11)
+        if generated_start_outline_mm is not None:
+            start_outline = [(float(x), float(y)) for x, y in generated_start_outline_mm]
+        else:
+            cx, cy = shape_center_xy_mm
+            start_rect = _scaled_rect(cx, cy, start_rx, start_ry, 1.0)
+            start_outline = _shape_outline(params, "start", start_rect, shape_center_xy_mm, seed=seed + 11)
         start_extend = 0.0
     else:
         start_outline = [(float(x), float(y)) for x, y in start_outline_mm]
         start_extend = max(0.0, float(start_extend_mm))
     if end_outline_mm is None:
-        end_rect = _scaled_rect(shape_center_xy_mm[0], shape_center_xy_mm[1], radius_x_mm, radius_y_mm, 1.0)
-        end_outline = _shape_outline(params, "end", end_rect, shape_center_xy_mm, seed=seed + 23)
+        if generated_end_outline_mm is not None:
+            end_outline = [(float(x), float(y)) for x, y in generated_end_outline_mm]
+        else:
+            end_rect = _scaled_rect(shape_center_xy_mm[0], shape_center_xy_mm[1], radius_x_mm, radius_y_mm, 1.0)
+            end_outline = _shape_outline(params, "end", end_rect, shape_center_xy_mm, seed=seed + 23)
     else:
         end_outline = [(float(x), float(y)) for x, y in end_outline_mm]
     distance_outline_available = str(getattr(params, "spacing_mode", "") or "") == "distance" and len(start_outline) >= 2
@@ -918,6 +926,7 @@ def generate_white_outline_strokes(
     start_outline_mm: Sequence[tuple[float, float]] | None = None,
     start_extend_mm: float = 0.0,
     end_center_xy_mm: tuple[float, float] | None = None,
+    generated_start_outline_mm: Sequence[tuple[float, float]] | None = None,
 ) -> list[EffectLineStroke]:
     """白抜き線: 白い抜き面と左右の黒線群を放射状に生成."""
     from . import effect_line_white_outline
@@ -932,6 +941,7 @@ def generate_white_outline_strokes(
         start_outline_mm=start_outline_mm,
         start_extend_mm=start_extend_mm,
         end_center_xy_mm=end_center_xy_mm,
+        generated_start_outline_mm=generated_start_outline_mm,
     )
 
 
@@ -1128,6 +1138,8 @@ def generate_strokes(
     start_extend_mm: float = 0.0,
     end_center_xy_mm: tuple[float, float] | None = None,
     end_outline_mm: Sequence[tuple[float, float]] | None = None,
+    generated_start_outline_mm: Sequence[tuple[float, float]] | None = None,
+    generated_end_outline_mm: Sequence[tuple[float, float]] | None = None,
 ):
     etype = params.effect_type
     rx, ry = radius_xy_mm
@@ -1156,6 +1168,7 @@ def generate_strokes(
             start_outline_mm=start_outline_mm,
             start_extend_mm=start_extend_mm,
             end_center_xy_mm=shape_center_xy_mm,
+            generated_start_outline_mm=generated_start_outline_mm,
         )
     focus_strokes = generate_focus_strokes(
         params,
@@ -1167,6 +1180,8 @@ def generate_strokes(
         start_extend_mm=start_extend_mm,
         end_center_xy_mm=shape_center_xy_mm,
         end_outline_mm=end_outline_mm,
+        generated_start_outline_mm=generated_start_outline_mm,
+        generated_end_outline_mm=generated_end_outline_mm,
     )
     if etype == "uni_flash":
         focus_strokes = _apply_uni_flash_jag(

@@ -152,13 +152,17 @@ def _on_writing_mode_changed(self, context) -> None:
         previous_mode = current_mode
     _writing_mode_sync_depth += 1
     try:
-        if previous_mode != current_mode:
-            width_mm = float(getattr(self, "width_mm", 0.0) or 0.0)
-            height_mm = float(getattr(self, "height_mm", 0.0) or 0.0)
-            if abs(width_mm - height_mm) > 1.0e-9:
-                self.width_mm = height_mm
-                self.height_mm = width_mm
-        prime_writing_mode_tracking(self)
+        from ..utils import text_real_object
+
+        # 幅と高さは1つの書字方向変更に属するため、中間状態を画像化しない。
+        with text_real_object.suspend_auto_sync():
+            if previous_mode != current_mode:
+                width_mm = float(getattr(self, "width_mm", 0.0) or 0.0)
+                height_mm = float(getattr(self, "height_mm", 0.0) or 0.0)
+                if abs(width_mm - height_mm) > 1.0e-9:
+                    self.width_mm = height_mm
+                    self.height_mm = width_mm
+            prime_writing_mode_tracking(self)
     finally:
         _writing_mode_sync_depth -= 1
     _on_text_entry_changed(self, context)

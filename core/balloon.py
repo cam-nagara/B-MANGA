@@ -274,11 +274,14 @@ def _inout_apply_value_from_flags(entry) -> str:
 
 def _on_balloon_inout_apply_changed(self, context) -> None:
     legacy = str(getattr(self, "inout_apply", "brush_size") or "brush_size")
-    try:
-        self.inout_apply_brush_size = legacy != "opacity"
-        self.inout_apply_opacity = legacy == "opacity"
-    except Exception:  # noqa: BLE001
-        pass
+    from ..utils import balloon_curve_object
+
+    with balloon_curve_object.defer_auto_sync():
+        try:
+            self.inout_apply_brush_size = legacy != "opacity"
+            self.inout_apply_opacity = legacy == "opacity"
+        except Exception:  # noqa: BLE001
+            pass
     _on_balloon_entry_changed(self, context)
 
 
@@ -349,44 +352,59 @@ def _on_balloon_shape_changed(_self, context) -> None:
     # トゲ形状は曲線・直線とも、先端と多重線を丸めない状態を初期値にする。
     # 共有プロパティ自体の既定値は False のままにし、トゲ以外へ切り替えた
     # ときはユーザーが明示した値を上書きしない。
-    shape = str(getattr(_self, "shape", "") or "")
-    shape_params = getattr(_self, "shape_params", None)
-    if shape_params is not None and shape in {"thorn", "thorn-curve"}:
-        shape_params.cloud_valley_sharp = True
+    from ..utils import balloon_curve_object
+
+    with balloon_curve_object.defer_auto_sync():
+        shape = str(getattr(_self, "shape", "") or "")
+        shape_params = getattr(_self, "shape_params", None)
+        if shape_params is not None and shape in {"thorn", "thorn-curve"}:
+            shape_params.cloud_valley_sharp = True
     _on_balloon_entry_changed(_self, context)
 
 
 def _on_balloon_line_style_changed(_self, context) -> None:
-    apply_balloon_line_style_defaults(_self)
+    from ..utils import balloon_curve_object
+
+    with balloon_curve_object.defer_auto_sync():
+        apply_balloon_line_style_defaults(_self)
     _on_balloon_entry_changed(_self, context)
 
 
 def _on_balloon_corner_type_changed(_self, context) -> None:
-    try:
-        _self.corner_type_initialized = True
-        _self.rounded_corner_enabled = str(getattr(_self, "corner_type", "square") or "square") != "square"
-    except Exception:  # noqa: BLE001
-        pass
+    from ..utils import balloon_curve_object
+
+    with balloon_curve_object.defer_auto_sync():
+        try:
+            _self.corner_type_initialized = True
+            _self.rounded_corner_enabled = str(getattr(_self, "corner_type", "square") or "square") != "square"
+        except Exception:  # noqa: BLE001
+            pass
     _on_balloon_entry_changed(_self, context)
 
 
 def _on_balloon_effect_start_corner_changed(_self, context) -> None:
-    try:
-        _self.start_rounded_corner_enabled = (
-            str(getattr(_self, "start_corner_type", "square") or "square") != "square"
-        )
-    except Exception:  # noqa: BLE001
-        pass
+    from ..utils import balloon_curve_object
+
+    with balloon_curve_object.defer_auto_sync():
+        try:
+            _self.start_rounded_corner_enabled = (
+                str(getattr(_self, "start_corner_type", "square") or "square") != "square"
+            )
+        except Exception:  # noqa: BLE001
+            pass
     _on_balloon_entry_changed(_self, context)
 
 
 def _on_balloon_effect_end_corner_changed(_self, context) -> None:
-    try:
-        _self.end_rounded_corner_enabled = (
-            str(getattr(_self, "end_corner_type", "square") or "square") != "square"
-        )
-    except Exception:  # noqa: BLE001
-        pass
+    from ..utils import balloon_curve_object
+
+    with balloon_curve_object.defer_auto_sync():
+        try:
+            _self.end_rounded_corner_enabled = (
+                str(getattr(_self, "end_corner_type", "square") or "square") != "square"
+            )
+        except Exception:  # noqa: BLE001
+            pass
     _on_balloon_entry_changed(_self, context)
 
 

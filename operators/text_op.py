@@ -301,47 +301,51 @@ def _create_text_entry(
     parent_key: str = "",
 ):
     entry = page.texts.add()
-    entry.id = _allocate_text_id(page)
-    entry.body = body
-    entry.x_mm = x_mm
-    entry.y_mm = y_mm
-    entry.width_mm = width_mm
-    entry.height_mm = height_mm
-
     missing_parent = ""
-    if parent_balloon_id:
-        for b in page.balloons:
-            if b.id == parent_balloon_id:
-                entry.parent_balloon_id = parent_balloon_id
-                entry.x_mm = b.x_mm + (b.width_mm - entry.width_mm) / 2.0
-                entry.y_mm = b.y_mm + (b.height_mm - entry.height_mm) / 2.0
-                break
-        else:
-            missing_parent = parent_balloon_id
+    # 初期値とプリセットは同じ新規エントリへ連続して書き込む。各プロパティの
+    # update ごとに300dpi画像を作る必要はないため、完成状態を一度だけ同期する。
+    with text_real_object.suspend_auto_sync():
+        entry.id = _allocate_text_id(page)
+        entry.body = body
+        entry.x_mm = x_mm
+        entry.y_mm = y_mm
+        entry.width_mm = width_mm
+        entry.height_mm = height_mm
 
-    # クリック位置由来の親 (page or coma) を entry に書き込む。 parent_balloon_id
-    # が指定された場合 (= フキダシに紐付くテキスト) は balloon の親階層を継承
-    # するため、 ここでは未指定時のみ反映する。
-    if not parent_balloon_id:
-        if parent_kind:
-            try:
-                entry.parent_kind = parent_kind
-            except Exception:  # noqa: BLE001
-                pass
-        if parent_key is not None:
-            try:
-                entry.parent_key = parent_key
-            except Exception:  # noqa: BLE001
-                pass
+        if parent_balloon_id:
+            for b in page.balloons:
+                if b.id == parent_balloon_id:
+                    entry.parent_balloon_id = parent_balloon_id
+                    entry.x_mm = b.x_mm + (b.width_mm - entry.width_mm) / 2.0
+                    entry.y_mm = b.y_mm + (b.height_mm - entry.height_mm) / 2.0
+                    break
+            else:
+                missing_parent = parent_balloon_id
+
+        # クリック位置由来の親 (page or coma) を entry に書き込む。 parent_balloon_id
+        # が指定された場合 (= フキダシに紐付くテキスト) は balloon の親階層を継承
+        # するため、 ここでは未指定時のみ反映する。
+        if not parent_balloon_id:
+            if parent_kind:
+                try:
+                    entry.parent_kind = parent_kind
+                except Exception:  # noqa: BLE001
+                    pass
+            if parent_key is not None:
+                try:
+                    entry.parent_key = parent_key
+                except Exception:  # noqa: BLE001
+                    pass
+
+        try:
+            from . import preset_op
+            preset_op.apply_text_preset_to_entry(context, entry)
+        except Exception:  # noqa: BLE001
+            pass
 
     page.active_text_index = len(page.texts) - 1
     if hasattr(context.scene, "bmanga_active_layer_kind"):
         context.scene.bmanga_active_layer_kind = "text"
-    try:
-        from . import preset_op
-        preset_op.apply_text_preset_to_entry(context, entry)
-    except Exception:  # noqa: BLE001
-        pass
     _sync_text_real_object(context, page, entry)
     layer_stack_utils.sync_layer_stack_after_data_change(context)
     return entry, missing_parent
@@ -1574,7 +1578,11 @@ class BMANGA_OT_text_tool(Operator):
         x, y, w, h = self._drag_result_rect(dx, dy)
         if self._drag_action != "move" and _creation_blocked(context, page, x, y, w, h):
             return
-        _set_text_rect(entry, x, y, w, h)
+        # x/y/幅/高さの途中値ごとに画像を作らず、1イベントの完成矩形を一度だけ
+        # 実体へ反映する。移動時も署名キャッシュ経由の軽い位置同期1回で済む。
+        with text_real_object.suspend_auto_sync():
+            _set_text_rect(entry, x, y, w, h)
+        _sync_text_real_object(context, page, entry)
         page.active_text_index = idx
         work.active_page_index = next((i for i, p in enumerate(work.pages) if p == page), work.active_page_index)
         if hasattr(context.scene, "bmanga_active_layer_kind"):
@@ -1620,13 +1628,16 @@ class BMANGA_OT_text_tool(Operator):
         if action == "create":
             _remove_text_by_id(context, self._drag_page_id, self._drag_text_id)
         elif entry is not None:
-            _set_text_rect(
-                entry,
-                self._drag_orig_x,
-                self._drag_orig_y,
-                self._drag_orig_w,
-                self._drag_orig_h,
-            )
+            with text_real_object.suspend_auto_sync():
+                _set_text_rect(
+                    entry,
+                    self._drag_orig_x,
+                    self._drag_orig_y,
+                    self._drag_orig_w,
+                    self._drag_orig_h,
+                )
+            if page is not None:
+                _sync_text_real_object(context, page, entry)
         self._clear_drag_state()
         layer_stack_utils.tag_view3d_redraw(context)
 
