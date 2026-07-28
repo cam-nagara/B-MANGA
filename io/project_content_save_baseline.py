@@ -28,6 +28,7 @@ _registry_lock = threading.RLock()
 _baselines: dict[str, dict[str, FileFingerprint]] = {}
 _PROTECTED_SUFFIXES = {".blend", ".json", ".png"}
 _DERIVED_CACHE_NAMES = {"page_preview.png", "page_preview.detail.png"}
+_INTERNAL_CONTROL_DIR_NAMES = {"_transfer_recovery"}
 
 
 class SaveBaselineUnavailableError(RuntimeError):
@@ -53,6 +54,23 @@ def _is_derived_cache(path: Path) -> bool:
     """別画面で再生成されてもユーザーデータ競合にならない派生物か。"""
 
     return path.name.casefold() in _DERIVED_CACHE_NAMES
+
+
+def _is_internal_control_path(path: Path, work: Path) -> bool:
+    """作品データではなく、トランザクション内部だけで使う退避物か。"""
+
+    try:
+        relative = path.resolve(strict=False).relative_to(work.resolve(strict=False))
+    except ValueError:
+        return False
+    internal_names = {name.casefold() for name in _INTERNAL_CONTROL_DIR_NAMES}
+    return any(part.casefold() in internal_names for part in relative.parts)
+
+
+def _prune_internal_paths(snapshot: dict[str, FileFingerprint], work: Path) -> None:
+    for key in tuple(snapshot):
+        if _is_internal_control_path(Path(key), work):
+            snapshot.pop(key, None)
 
 
 def _canonical_json_bytes(path: Path, raw: bytes) -> bytes:
@@ -133,7 +151,11 @@ def capture_loaded_baseline(
     paths = _default_paths(work, blend)
     paths.update(Path(path).resolve(strict=False) for path in page_json_paths)
     paths.update(Path(path).resolve(strict=False) for path in content_paths)
-    snapshot = {_path_key(path): fingerprint(path) for path in paths}
+    snapshot = {
+        _path_key(path): fingerprint(path)
+        for path in paths
+        if not _is_internal_control_path(path, work)
+    }
     with _registry_lock:
         _baselines[_work_key(work)] = snapshot
 
@@ -167,6 +189,7 @@ def conflicting_paths(
             raise SaveBaselineUnavailableError(
                 "作品の読込基準がありません。作品を開き直してください"
             )
+        _prune_internal_paths(snapshot, work)
         items = tuple(snapshot.items())
     ignored = {_path_key(Path(path)) for path in ignore_paths}
     conflicts = []
@@ -174,6 +197,8 @@ def conflicting_paths(
         if key in ignored:
             continue
         path = Path(key)
+        if _is_internal_control_path(path, work):
+            continue
         if _is_derived_cache(path):
             continue
         if not _matches_fingerprint(path, expected):
@@ -199,7 +224,7 @@ def assert_existing_target_tracked(
 
     work = Path(work_dir).resolve(strict=True)
     target = Path(target_path).resolve(strict=False)
-    if _is_derived_cache(target):
+    if _is_derived_cache(target) or _is_internal_control_path(target, work):
         return
     if not target.is_file():
         return
@@ -217,7 +242,7 @@ def record_observed_read(path: str | os.PathLike[str]) -> None:
 
     target = Path(path).resolve(strict=False)
     work = find_work_root(target)
-    if work is None:
+    if work is None or _is_internal_control_path(target, work):
         return
     with _registry_lock:
         snapshot = _baselines.get(_work_key(work))
@@ -231,7 +256,7 @@ def record_successful_write(path: str | os.PathLike[str]) -> None:
 
     target = Path(path).resolve(strict=False)
     work = find_work_root(target)
-    if work is None:
+    if work is None or _is_internal_control_path(target, work):
         return
     work_key = _work_key(work)
     with _registry_lock:
@@ -251,7 +276,9 @@ def _is_within(path: Path, root: Path) -> bool:
     return True
 
 
-def _protected_files(root: Path) -> Iterable[Path]:
+def _protected_files(root: Path, work: Path) -> Iterable[Path]:
+    if _is_internal_control_path(root, work):
+        return
     if root.is_file():
         if root.suffix.casefold() in _PROTECTED_SUFFIXES:
             yield root
@@ -263,6 +290,7 @@ def _protected_files(root: Path) -> Iterable[Path]:
             candidate.is_file()
             and not candidate.is_symlink()
             and candidate.suffix.casefold() in _PROTECTED_SUFFIXES
+            and not _is_internal_control_path(candidate, work)
         ):
             yield candidate
 
@@ -294,12 +322,13 @@ def record_successful_tree_change(
             raise SaveBaselineUnavailableError(
                 "作品の読込基準がないため変更結果を基準化できません"
             )
+        _prune_internal_paths(snapshot, work)
         tracked_paths = tuple(Path(key) for key in snapshot)
         for tracked in tracked_paths:
             if any(_is_within(tracked, root) for root in roots):
                 snapshot[_path_key(tracked)] = fingerprint(tracked)
         for root in roots:
-            for candidate in _protected_files(root):
+            for candidate in _protected_files(root, work):
                 snapshot[_path_key(candidate)] = fingerprint(candidate)
 
 
@@ -309,8 +338,11 @@ def forget_baseline(work_dir: str | os.PathLike[str]) -> None:
 
 
 def tracked_paths(work_dir: str | os.PathLike[str]) -> tuple[Path, ...]:
+    work = Path(work_dir).resolve(strict=False)
     with _registry_lock:
-        snapshot = dict(_baselines.get(_work_key(Path(work_dir)), {}))
+        source = _baselines.get(_work_key(work), {})
+        _prune_internal_paths(source, work)
+        snapshot = dict(source)
     return tuple(Path(path) for path in snapshot)
 
 

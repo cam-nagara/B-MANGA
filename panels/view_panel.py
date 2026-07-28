@@ -92,8 +92,17 @@ def _refresh_page_preview_content(scene, context, *, force: bool = True) -> None
         pass
 
 
+def _tag_view3d_redraw(context) -> None:
+    try:
+        for area in (context.screen.areas if context.screen else ()):
+            if area.type == "VIEW_3D":
+                area.tag_redraw()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _page_work_info_visible_update(scene, context) -> None:
-    _refresh_page_preview_content(scene, context, force=True)
+    _tag_view3d_redraw(context)
 
 
 def _page_guides_visible_update(scene, context) -> None:
@@ -102,23 +111,21 @@ def _page_guides_visible_update(scene, context) -> None:
 
         work = getattr(scene, "bmanga_work", None) if scene is not None else None
         if work is not None and bool(getattr(work, "loaded", False)):
-            if page_file_scene.is_work_list_scene(scene):
-                page_file_scene.purge_work_list_runtime_data(scene)
-            elif page_file_scene.is_page_edit_scene(scene):
+            if page_file_scene.is_page_edit_scene(scene):
                 page_id = page_file_scene.current_page_id(scene)
                 if not page_id:
                     role, path_page_id, _coma_id = page_file_scene.current_role(context)
                     if role == page_file_scene.ROLE_PAGE:
                         page_id = path_page_id
                 if page_id:
-                    paper_guide_object.regenerate_all_paper_guides(
+                    paper_guide_object.apply_existing_paper_guide_visibility(
                         scene,
-                        page_file_scene.work_for_pages(work, {page_id}),
+                        work,
+                        page_ids={page_id},
                     )
-                    paper_guide_object.apply_view_constant_thickness()
     except Exception:  # noqa: BLE001
         pass
-    _refresh_page_preview_content(scene, context, force=True)
+    _tag_view3d_redraw(context)
 
 
 def _coma_content_visible_update(scene, context) -> None:

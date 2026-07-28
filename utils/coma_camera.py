@@ -1285,7 +1285,7 @@ def _ensure_coma_overlay_objects(scene, work) -> None:
 _PAGE_OVERVIEW_BG_PROP = "_bmanga_page_overview_bg"
 
 
-def _add_page_overview_backgrounds(scene, work) -> None:
+def _add_page_overview_backgrounds(scene, work, *, force: bool = False) -> None:
     """ページプレビュー画像を個別カメラ下絵として追加する.
 
     各ページ画像を scale=1.0 で追加し、出力解像度にピッタリ合わせる。
@@ -1302,7 +1302,7 @@ def _add_page_overview_backgrounds(scene, work) -> None:
     from . import coma_overview_cache
 
     expected_signature = coma_overview_cache.build_signature(scene, work)
-    if coma_overview_cache.backgrounds_current(
+    if not force and coma_overview_cache.backgrounds_current(
         scene,
         expected_signature,
         _PAGE_OVERVIEW_BG_PROP,
@@ -1640,7 +1640,7 @@ def refresh_coma_page_overview(context) -> None:
     work = get_work(context)
     if work is None or not getattr(work, "loaded", False):
         return
-    _add_page_overview_backgrounds(scene, work)
+    _add_page_overview_backgrounds(scene, work, force=True)
 
 
 def _remove_page_overview_backgrounds(scene) -> None:

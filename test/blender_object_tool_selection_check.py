@@ -229,7 +229,9 @@ def main() -> None:
         tool._start_marquee_select = lambda _ctx, _event, _mode: True
         tool._activate_hit = lambda _ctx, _hit, *, mode: None
         tool._start_point_for_hit = lambda _ctx, _event, _hit: (10.0, 10.0)
-        tool._start_object_drag = lambda _ctx, _hit, _x, _y: None
+        tool._start_object_drag = (
+            lambda _ctx, _hit, _x, _y, *, event=None: None
+        )
         tool._try_enter_coma_from_hit = lambda _ctx, hit: opened_hits.append(hit) or True
         # このケースはコマ連続クリックの検証なので、ページファイル判定は無効化する
         tool._page_open_hit_from_event = lambda _ctx, _event: None

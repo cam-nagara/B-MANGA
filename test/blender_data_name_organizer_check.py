@@ -48,6 +48,9 @@ def _add_rect_coma(page, coma_id: str, title: str, x_mm: float) -> None:
 def _write_marker(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+    from bmanga_dev_data_name_organizer.io import project_content_save_baseline
+
+    project_content_save_baseline.record_successful_write(path)
 
 
 def _prepare_swapped_work(work_dir: Path):

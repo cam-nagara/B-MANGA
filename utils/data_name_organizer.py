@@ -441,7 +441,24 @@ def _collect_and_apply_coma_remaps(
 
 def _rename_page_dirs(work_dir: Path, remaps: list[_PageRename]) -> int:
     renamed = _rename_directories(work_dir, [(remap.old_id, remap.new_id) for remap in remaps])
+    _record_directory_renames(work_dir, renamed)
     return len(renamed)
+
+
+def _record_directory_renames(
+    parent: Path,
+    renamed: list[tuple[Path, str, str]],
+    *,
+    extra_roots: tuple[Path, ...] = (),
+) -> None:
+    if not renamed and not extra_roots:
+        return
+    from ..io.project_content_save_baseline import record_successful_tree_change
+
+    roots = list(extra_roots)
+    for destination, old_id, _new_id in renamed:
+        roots.extend((parent / old_id, destination))
+    record_successful_tree_change(*roots)
 
 
 def _rename_coma_dirs(work_dir: Path, remaps: list[_ComaRename]) -> int:
@@ -463,9 +480,17 @@ def _rename_coma_dirs(work_dir: Path, remaps: list[_ComaRename]) -> int:
         for dst, old_id, new_id in renamed:
             _rename_coma_artifacts(dst, old_id, new_id)
         existing = _existing_data_dir_names(page_dir)
+        artifact_roots = []
         for remap in page_remaps:
             if remap.new_id in existing:
-                _rename_coma_artifacts(page_dir / remap.new_id, remap.old_id, remap.new_id)
+                artifact_root = page_dir / remap.new_id
+                _rename_coma_artifacts(artifact_root, remap.old_id, remap.new_id)
+                artifact_roots.append(artifact_root)
+        _record_directory_renames(
+            page_dir,
+            renamed,
+            extra_roots=tuple(artifact_roots),
+        )
     return renamed_count
 
 
@@ -521,6 +546,9 @@ def organize_data_names(context) -> DataNameOrganizeResult:
         return DataNameOrganizeResult()
     work_dir = Path(work_dir_raw)
     read_direction = str(getattr(getattr(work, "paper", None), "read_direction", "left") or "left")
+    from ..io.project_content_save_baseline import assert_no_external_changes
+
+    assert_no_external_changes(work_dir)
 
     page_remaps = _collect_page_remaps(work)
     if page_remaps:
@@ -558,6 +586,9 @@ def organize_page_coma_names(context, page) -> DataNameOrganizeResult:
         return DataNameOrganizeResult()
     work_dir = Path(work_dir_raw)
     read_direction = str(getattr(getattr(work, "paper", None), "read_direction", "left") or "left")
+    from ..io.project_content_save_baseline import assert_no_external_changes
+
+    assert_no_external_changes(work_dir)
     coma_remaps, reorder_count = _collect_and_apply_coma_remaps(
         context,
         work,

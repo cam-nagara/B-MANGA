@@ -356,6 +356,26 @@ def test_successful_tree_move_and_delete_refresh_old_and_new_paths(tmp_path):
     BASELINE.assert_no_external_changes(work)
 
 
+def test_transfer_recovery_files_are_never_user_content_baseline(tmp_path):
+    work = _work(tmp_path, "TransferRecovery", pages=1)
+    page = work / "p0001" / "page.blend"
+    BASELINE.capture_loaded_baseline(work, page)
+    recovery = work / "p0001" / "_transfer_recovery" / "tx01"
+    recovery.mkdir(parents=True)
+    backup = recovery / "0_page.blend"
+    manifest = recovery / "transaction.json"
+    backup.write_bytes(b"temporary-backup")
+    manifest.write_text('{"state":"prepared"}', encoding="utf-8")
+
+    BASELINE.record_successful_write(manifest)
+    BASELINE.record_observed_read(backup)
+    BASELINE.record_successful_tree_change(recovery)
+    assert not any("_transfer_recovery" in path.parts for path in BASELINE.tracked_paths(work))
+
+    shutil.rmtree(recovery)
+    BASELINE.assert_no_external_changes(work)
+
+
 def test_explicit_blend_read_can_adopt_previously_untracked_page(tmp_path):
     work = _work(tmp_path, "ObservedPageBlend", pages=2)
     current = work / "p0001" / "page.blend"

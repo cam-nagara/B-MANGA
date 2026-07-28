@@ -85,8 +85,10 @@ def main() -> None:
             raise AssertionError("ページ一覧プレビュー画像に作品情報が焼き込まれています")
 
         preview = bpy.data.objects.get(f"{page_preview_object.PREVIEW_OBJECT_PREFIX}{page.id}")
-        if preview is None:
-            raise AssertionError("ページ一覧プレビューの板が作られていません")
+        if preview is not None:
+            raise AssertionError("廃止済みのページ一覧プレビューObjectが再作成されています")
+        if bpy.data.collections.get(page_preview_object.PREVIEW_COLLECTION_NAME) is not None:
+            raise AssertionError("廃止済みの「ページ一覧プレビュー」Collectionが再作成されています")
         info_objects = [
             obj
             for obj in bpy.data.objects
@@ -94,8 +96,6 @@ def main() -> None:
         ]
         if not info_objects:
             raise AssertionError("作品情報のオーバーレイが作られていません")
-        if not all(float(preview.location.z) < float(obj.location.z) for obj in info_objects):
-            raise AssertionError("作品情報のオーバーレイがページ一覧プレビューより手前にありません")
 
         from PIL import Image
 

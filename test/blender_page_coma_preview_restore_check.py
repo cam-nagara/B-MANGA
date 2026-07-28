@@ -89,11 +89,6 @@ def _safe_guide_pixel_exists(path: Path, work, page=None) -> bool:
     return False
 
 
-def _assert_safe_guide_pixel(path: Path, work, page=None) -> None:
-    if not _safe_guide_pixel_exists(path, work, page):
-        raise AssertionError("ページ一覧プレビュー画像に用紙ガイド線が見つかりません")
-
-
 def _assert_no_safe_guide_pixel(path: Path, work, page=None) -> None:
     if _safe_guide_pixel_exists(path, work, page):
         raise AssertionError("ページ一覧プレビュー画像に用紙ガイド線が残っています")
@@ -122,18 +117,20 @@ def _assert_preview_image_is_spread(path: Path, work, page) -> None:
         )
 
 
-def _background_for_page(camera, page_id: str):
+def _backgrounds_for_page(camera, page_id: str):
     cam_data = camera.data
-    for bg in getattr(cam_data, "background_images", []):
+    found = []
+    for bg in getattr(cam_data, "background_images", []) or ():
         image = getattr(bg, "image", None)
         if image is None:
             continue
         if (
             str(image.get("bmanga_kind", "") or "") == "name"
             and str(image.get("bmanga_page_id", "") or "") == page_id
+            and bool(image.get("_bmanga_page_overview_bg", False))
         ):
-            return bg
-    return None
+            found.append(bg)
+    return found
 
 
 def _assert_spread_overview_background_aligned(scene, work, spread_page_id: str) -> None:
@@ -142,8 +139,8 @@ def _assert_spread_overview_background_aligned(scene, work, spread_page_id: str)
     camera = scene.camera
     if camera is None:
         raise AssertionError("コマファイルのカメラが見つかりません")
-    bg = _background_for_page(camera, spread_page_id)
-    if bg is None:
+    backgrounds = _backgrounds_for_page(camera, spread_page_id)
+    if not backgrounds:
         raise AssertionError("見開きページのページ一覧下絵が見つかりません")
     rects = page_preview_object.preview_rects_mm(scene, work)
     _role, current_page_id = page_preview_object._preview_scene_role(scene)
@@ -166,6 +163,14 @@ def _assert_spread_overview_background_aligned(scene, work, spread_page_id: str)
     expected_offset_y = ((spread_cy - current_cy) / canvas_h) * expected_scale
     if expected_offset_y >= -0.1:
         raise AssertionError("見開き下絵を下段に置く検証条件になっていません")
+    bg = min(
+        backgrounds,
+        key=lambda candidate: (
+            abs(float(getattr(candidate, "scale", 0.0) or 0.0) - expected_scale)
+            + abs(float(candidate.offset[0]) - expected_offset_x)
+            + abs(float(candidate.offset[1]) - expected_offset_y)
+        ),
+    )
     actual_scale = float(getattr(bg, "scale", 0.0) or 0.0)
     actual_offset_x = float(bg.offset[0])
     actual_offset_y = float(bg.offset[1])
@@ -313,6 +318,15 @@ def main() -> None:
             result = bpy.ops.bmanga.page_add()
             if result != {"FINISHED"}:
                 raise AssertionError(f"ページ追加に失敗しました: {result}")
+        # 見開き結合は両ページの実内容ファイルを原子的に扱う。テスト用に
+        # 追加したページも一度開閉し、通常利用と同じ page.blend を用意する。
+        for page_index in (1, 2):
+            result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=page_index)
+            if result != {"FINISHED"}:
+                raise AssertionError(f"ページ内容の初期化に失敗しました: index={page_index}, result={result}")
+            result = bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
+            if result != {"FINISHED"}:
+                raise AssertionError(f"作品ファイルへの復帰に失敗しました: index={page_index}, result={result}")
         result = bpy.ops.bmanga.pages_merge_spread("EXEC_DEFAULT", left_index=1)
         if result != {"FINISHED"}:
             raise AssertionError(f"見開きページ作成に失敗しました: {result}")
@@ -366,7 +380,7 @@ def main() -> None:
         page_preview_object.sync_page_previews(bpy.context, work, force=True)
         spread_page = work.pages[1]
         spread_page_id = str(getattr(spread_page, "id", "") or spread_page_id)
-        preview_path = work_dir / spread_page_id / "page_preview.png"
+        preview_path = work_dir / spread_page_id / page_preview_object.PREVIEW_DETAIL_FILENAME
         _mark("page_file_check_preview_file")
         if not preview_path.is_file():
             raise AssertionError("ページ一覧プレビュー画像が作られていません")
@@ -384,16 +398,16 @@ def main() -> None:
             raise AssertionError("ページ一覧プレビュー画像にページ番号が焼き込まれています")
         _mark("page_file_check_fill_pixels")
         green = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] < 90 and px[1] > 160 and px[2] < 90)
-        if green <= 0:
-            raise AssertionError("ページ一覧プレビュー画像にセーフライン外の塗りが表示されていません")
+        if green > 0:
+            raise AssertionError("ページ一覧プレビュー画像へGPU用の範囲外塗りが焼き込まれています")
+        _assert_no_safe_guide_pixel(preview_path, work, spread_page)
 
-        _mark("page_file_regenerate_guides_only")
+        _mark("page_file_guides_are_overlay_only")
+        preview_mtime = preview_path.stat().st_mtime_ns
         work.safe_area_overlay.enabled = False
-        page_preview_object.sync_page_previews(bpy.context, work, force=True)
-        _mark("page_file_check_guide_pixels")
-        _assert_safe_guide_pixel(preview_path, work, spread_page)
+        if preview_path.stat().st_mtime_ns != preview_mtime:
+            raise AssertionError("ガイド設定だけでページ一覧プレビュー画像が再生成されました")
         work.safe_area_overlay.enabled = True
-        page_preview_object.sync_page_previews(bpy.context, work, force=True)
 
         _mark("page_file_toggle_work_info")
         scene.bmanga_page_work_info_visible = False
@@ -407,9 +421,8 @@ def main() -> None:
 
         _mark("page_file_toggle_guides")
         scene.bmanga_page_guides_visible = False
-        green = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] < 90 and px[1] > 160 and px[2] < 90)
-        if green > 0:
-            raise AssertionError("用紙ガイドOFFでもページ一覧プレビュー画像にセーフライン外の塗りが残っています")
+        if preview_path.stat().st_mtime_ns != preview_mtime:
+            raise AssertionError("用紙ガイドOFFでページ一覧プレビュー画像が再生成されました")
         _assert_no_safe_guide_pixel(preview_path, work, spread_page)
         scene.bmanga_page_guides_visible = True
 
@@ -467,7 +480,11 @@ def main() -> None:
         _assert_own_page_brush_cutout_is_soft(camera, work, work.pages[0], work.pages[0].comas[0])
         spread_page = work.pages[1]
         spread_page_id = str(getattr(spread_page, "id", "") or spread_page_id)
-        preview_path = Path(str(work.work_dir)) / spread_page_id / "page_preview.png"
+        preview_path = (
+            Path(str(work.work_dir))
+            / spread_page_id
+            / page_preview_object.PREVIEW_DETAIL_FILENAME
+        )
         _assert_preview_image_is_spread(preview_path, work, spread_page)
         from bmanga_dev_page_coma_preview_restore.utils import coma_camera
 
@@ -476,11 +493,11 @@ def main() -> None:
         coma_camera.refresh_coma_page_overview(bpy.context)
         _assert_spread_overview_background_aligned(scene, work, spread_page_id)
         _mark("coma_file_toggle_guides")
+        preview_mtime = preview_path.stat().st_mtime_ns
         scene.bmanga_page_guides_visible = False
-        green = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] < 90 and px[1] > 160 and px[2] < 90)
-        if green > 0:
-            raise AssertionError("コマファイルの用紙ガイドOFF後もページ一覧下絵に塗りが残っています")
         _assert_no_safe_guide_pixel(preview_path, work, spread_page)
+        if preview_path.stat().st_mtime_ns != preview_mtime:
+            raise AssertionError("コマファイルの用紙ガイドOFFで下絵画像が再生成されました")
         _mark("coma_file_toggle_work_info")
         scene.bmanga_page_work_info_visible = False
         magenta = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] > 180 and px[1] < 90 and px[2] > 180)
@@ -493,6 +510,10 @@ def main() -> None:
         print(f"BMANGA_PAGE_COMA_PREVIEW_RESTORE_OK work={work_dir}", flush=True)
         _mark("done")
         success = True
+    except Exception:  # noqa: BLE001
+        import traceback
+
+        traceback.print_exc()
     finally:
         if mod is not None:
             try:

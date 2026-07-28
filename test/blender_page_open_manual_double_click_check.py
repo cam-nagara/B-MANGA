@@ -159,7 +159,7 @@ def _check_object_tool_manual_page_open(event) -> None:
     tool._start_marquee_select = lambda _ctx, _event, _mode: True
     tool._activate_hit = lambda _ctx, _hit, *, mode: None
     tool._start_point_for_hit = lambda _ctx, _event, _hit: (0.0, 0.0)
-    tool._start_object_drag = lambda _ctx, _hit, _x, _y: None
+    tool._start_object_drag = lambda _ctx, _hit, _x, _y, *, event=None: None
 
     original_extend = object_tool_op.coma_edge_move_op.extend_selected_handle_at_event
     object_tool_op.coma_edge_move_op.extend_selected_handle_at_event = (
@@ -205,7 +205,7 @@ def _check_visible_handle_suppresses_page_open(event) -> None:
     }
     tool._activate_hit = lambda _ctx, _hit, *, mode: None
     tool._start_point_for_hit = lambda _ctx, _event, _hit: (0.0, 0.0)
-    tool._start_object_drag = lambda _ctx, _hit, _x, _y: None
+    tool._start_object_drag = lambda _ctx, _hit, _x, _y, *, event=None: None
 
     original_extend = object_tool_op.coma_edge_move_op.extend_selected_handle_at_event
     object_tool_op.coma_edge_move_op.extend_selected_handle_at_event = lambda _ctx, _event: False

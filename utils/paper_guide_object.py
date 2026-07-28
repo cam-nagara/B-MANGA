@@ -1252,6 +1252,70 @@ def regenerate_all_paper_guides(scene, work) -> int:
     return count
 
 
+def _set_existing_page_guide_visibility(work, scene, page) -> int:
+    page_id = str(getattr(page, "id", "") or "")
+    visible = bool(
+        getattr(page, "in_page_range", True)
+        and _paper_guides_visible(work, scene)
+    )
+    changed = 0
+    overlay = getattr(work, "safe_area_overlay", None)
+    line_objects = _guide_curve_objects(page_id)
+    current_line = _line_guide_object(page_id)
+    if current_line is not None and current_line not in line_objects:
+        line_objects.append(current_line)
+    for line_obj in line_objects:
+        line_visible = bool(visible and _curve_has_visible_geometry(line_obj))
+        if bool(getattr(line_obj, "hide_viewport", False)) == line_visible:
+            line_obj.hide_viewport = not line_visible
+            changed += 1
+    safe_obj = _safe_fill_object(page_id)
+    safe_visible = bool(
+        visible
+        and bool(getattr(overlay, "enabled", True))
+        and safe_obj is not None
+        and float(getattr(safe_obj, "color", (0.0, 0.0, 0.0, 0.0))[3]) > 0.0
+    )
+    if safe_obj is not None and bool(safe_obj.hide_viewport) == safe_visible:
+        safe_obj.hide_viewport = not safe_visible
+        changed += 1
+    bleed_obj = _bleed_outer_fill_object(page_id)
+    bleed_visible = bool(
+        visible
+        and bool(getattr(overlay, "bleed_outer_enabled", True))
+        and bleed_obj is not None
+        and float(getattr(bleed_obj, "color", (0.0, 0.0, 0.0, 0.0))[3]) > 0.0
+    )
+    if bleed_obj is not None and bool(bleed_obj.hide_viewport) == bleed_visible:
+        bleed_obj.hide_viewport = not bleed_visible
+        changed += 1
+    return changed
+
+
+def apply_existing_paper_guide_visibility(
+    scene,
+    work,
+    *,
+    page_ids: set[str] | None = None,
+) -> int:
+    """既存ガイドの表示状態だけを更新し、形状やデータブロックは作り直さない。"""
+
+    if scene is None or work is None or not bool(getattr(work, "loaded", False)):
+        return 0
+    target_ids = {str(page_id) for page_id in page_ids} if page_ids is not None else None
+    return sum(
+        _set_existing_page_guide_visibility(work, scene, page)
+        for page in (getattr(work, "pages", ()) or ())
+        if (
+            str(getattr(page, "id", "") or "")
+            and (
+                target_ids is None
+                or str(getattr(page, "id", "") or "") in target_ids
+            )
+        )
+    )
+
+
 def sync_paper_guides_after_page_transform(scene, work) -> int:
     """ページ位置変更後、既存ガイドは位置だけ更新し、必要なページだけ再生成する."""
     if scene is None or work is None or not getattr(work, "loaded", False):

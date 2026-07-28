@@ -960,6 +960,7 @@ class BMANGA_OT_object_tool(Operator):
     _click_cycle_hits: tuple[dict, ...]
     _click_cycle_index: int
     _click_cycle_last_time: float
+    _drag_start_px: tuple[float, float]
 
     @classmethod
     def poll(cls, context):
@@ -1170,7 +1171,7 @@ class BMANGA_OT_object_tool(Operator):
                     self._activate_hit(context, move_hit, mode="single")
                     x_mm, y_mm = self._start_point_for_hit(context, event, move_hit)
                     if x_mm is not None and y_mm is not None:
-                        self._start_object_drag(context, move_hit, x_mm, y_mm)
+                        self._start_object_drag(context, move_hit, x_mm, y_mm, event=event)
                         return {"RUNNING_MODAL"}
             if mode == "single" and self._try_start_layer_drag(context, event):
                 return {"RUNNING_MODAL"}
@@ -1206,7 +1207,7 @@ class BMANGA_OT_object_tool(Operator):
         if hit["kind"] in {"coma_edge", "coma_vertex"}:
             self._start_coma_edge_drag(context, hit, event, x_mm, y_mm)
         else:
-            self._start_object_drag(context, hit, x_mm, y_mm)
+            self._start_object_drag(context, hit, x_mm, y_mm, event=event)
         return {"RUNNING_MODAL"}
 
     def _is_manual_coma_double_click(self, event, hit: dict | None) -> bool:
@@ -1506,6 +1507,7 @@ class BMANGA_OT_object_tool(Operator):
         self._drag_keys = []
         self._snapshots = []
         self._drag_moved = False
+        self._drag_start_px = (float(event.mouse_x), float(event.mouse_y))
         return True
 
     # ---------- Alt+ドラッグ: 別コマ/ページへ移動 (reparent) ----------
@@ -1605,7 +1607,7 @@ class BMANGA_OT_object_tool(Operator):
         else:
             _reparent_set_error(target)
 
-    def _start_object_drag(self, context, hit: dict, x_mm: float, y_mm: float) -> None:
+    def _start_object_drag(self, context, hit: dict, x_mm: float, y_mm: float, *, event=None) -> None:
         action = str(hit.get("part", "move") or "move")
         if str(hit.get("kind", "") or "") == "text":
             action = "move"
@@ -1623,6 +1625,8 @@ class BMANGA_OT_object_tool(Operator):
         self._drag_primary_key = key
         self._snapshots = self._make_snapshots(context, keys, primary_key=key, action=action)
         self._drag_moved = False
+        if event is not None:
+            self._drag_start_px = (float(event.mouse_x), float(event.mouse_y))
         self._center_snap_targets = []
         self._original_center = None
         self._center_snap_armed = False
@@ -1967,6 +1971,9 @@ class BMANGA_OT_object_tool(Operator):
         return snapshots
 
     def _modal_dragging(self, context, event):
+        if self._switch_drag_to_reparent(context, event):
+            self._update_drag(context, event)
+            return {"RUNNING_MODAL"}
         if event.type == "MOUSEMOVE":
             self._update_overlay_pointer(context, event)
             self._update_drag(context, event)
@@ -1981,6 +1988,41 @@ class BMANGA_OT_object_tool(Operator):
             self._cancel_drag(context)
             return {"RUNNING_MODAL"}
         return {"RUNNING_MODAL"}
+
+    def _switch_drag_to_reparent(self, context, event) -> bool:
+        """通常移動中のAlt押下を、同じ押下のままページ／コマ移送へ切り替える。"""
+
+        if self._drag_action not in {"move", "layer_move"}:
+            return False
+        if not bool(getattr(event, "alt", False)) or bool(getattr(event, "ctrl", False)):
+            return False
+        if event.type not in {"LEFT_ALT", "RIGHT_ALT", "MOUSEMOVE"}:
+            return False
+        if not _reparent_has_targets(context):
+            return False
+        if self._drag_action == "layer_move" and self._layer_drag is not None:
+            self._layer_drag.cancel(context)
+            self._layer_drag = None
+        elif self._drag_action == "move" and self._object_move_drag is not None:
+            self._object_move_drag.cancel(context)
+            self._object_move_drag = None
+        elif self._snapshots:
+            self._apply_snapshots(context, 0.0, 0.0)
+        self._snapshots = []
+        self._drag_keys = []
+        self._drag_action = "reparent"
+        self._reparent_start_px = tuple(
+            getattr(self, "_drag_start_px", (float(event.mouse_x), float(event.mouse_y)))
+        )
+        self._reparent_target = layer_reparent.find_target_for_drop(context, event)
+        self._drag_moved = False
+        _reparent_set_overlay(self._reparent_target)
+        if self._reparent_target.world_xy_mm is not None:
+            reparent_overlay.set_preview(
+                world_xy_mm=self._reparent_target.world_xy_mm,
+                count=_reparent_count(context),
+            )
+        return True
 
     def _update_overlay_pointer(self, context, event) -> None:
         try:
@@ -2529,6 +2571,7 @@ class BMANGA_OT_object_tool(Operator):
         self._rotate_snapshots = []
         self._reparent_start_px = (0.0, 0.0)
         self._reparent_target = None
+        self._drag_start_px = (0.0, 0.0)
         self._center_snap_targets = []
         self._original_center = None
         self._center_snap_armed = False

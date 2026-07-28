@@ -79,6 +79,7 @@ def _fit_page() -> None:
         except Exception:
             pass
         bpy.ops.bmanga.view_fit_page("EXEC_DEFAULT")
+        rv3d.view_distance *= 2.1
     _redraw(5)
 
 
@@ -146,6 +147,16 @@ def _after_page_open() -> None:
         bpy.context.scene.bmanga_overlay_enabled = True
         _screenshot(SHOT_ON)
         bpy.context.scene.bmanga_overlay_enabled = False
+        visible_guides = [
+            name
+            for name in data["guide_objects"]
+            if (obj := bpy.data.objects.get(name)) is not None
+            and not bool(getattr(obj, "hide_viewport", False))
+        ]
+        if visible_guides:
+            raise AssertionError(
+                f"オーバーレイOFF後も用紙ガイド実体が表示状態です: {visible_guides}"
+            )
         _screenshot(SHOT_OFF)
         data.update(
             {
@@ -172,8 +183,10 @@ def _run() -> None:
     shutil.rmtree(WORK_DIR, ignore_errors=True)
     _load_addon()
     bpy.ops.bmanga.work_new(filepath=str(WORK_DIR))
+    bpy.ops.bmanga.page_add()
+    bpy.ops.bmanga.page_add()
     bpy.ops.bmanga.work_save()
-    bpy.ops.bmanga.open_page_file(index=0)
+    bpy.ops.bmanga.open_page_file(index=1)
     bpy.app.timers.register(_after_page_open, first_interval=1.0)
 
 

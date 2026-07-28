@@ -40,7 +40,7 @@ PREVIEW_SUPERSAMPLE_MAX_TARGET_PX = 1024
 PREVIEW_Z_M = 0.006
 PREVIEW_FILENAME = "page_preview.png"
 PREVIEW_DETAIL_FILENAME = "page_preview.detail.png"
-PREVIEW_RENDER_VERSION = "12"
+PREVIEW_RENDER_VERSION = "13"
 PREVIEW_RENDER_VERSION_KEY = "BMangaPreviewVersion"
 PREVIEW_RENDER_VARIANT_KEY = "BMangaPreviewVariant"
 PREVIEW_RENDER_SIGNATURE_KEY = "BMangaPreviewSignature"
@@ -401,17 +401,14 @@ def _preview_render_signature(
 ) -> str:
     variant = str(variant or _preview_render_variant(scene))
     try:
-        from . import page_preview_decor
         from ..io import schema
 
-        guides = int(variant == PREVIEW_RENDER_VARIANT_DETAIL and page_preview_decor.page_guides_visible(work, scene))
         paper = schema.paper_to_dict(getattr(work, "paper", None))
     except Exception:  # noqa: BLE001
-        guides = 1
         paper = {}
     payload = {
         "variant": variant,
-        "guides": guides,
+        "guides": "gpu-overlay",
         "labels": "overlay",
         "page_index": int(page_index),
         "paper": paper,
@@ -638,21 +635,15 @@ def _render_preview_image(
         exported = _resize_preview_image(exported, target_width, target_height)
         from . import page_preview_decor
 
-        # DETAIL バリアントでは export 側が塗りを焼き込む
-        # (_render_preview_image_from_export の include_page_overlay_fills)。
-        # 作品ファイルのページ一覧 (work バリアント) では export が塗りを
-        # 含まないため、装飾側で塗りを描く。両方で描くと二重になるので
-        # export が焼き込んだ時だけ装飾側の塗りを止める。
-        fills_baked = (
-            resolved_variant == PREVIEW_RENDER_VARIANT_DETAIL
-            and page_preview_decor.page_guides_visible(work, scene)
-        )
+        # ガイドと範囲外塗りはGPUオーバーレイで重ねる。PNGへ焼き込むと
+        # 表示切替だけで全ページ再生成が必要になるため、内容画像へ含めない。
         page_preview_decor.draw_preview_decoration(
             exported,
             work,
             page,
             scene=scene,
-            include_fills=not fills_baked,
+            include_fills=False,
+            include_guides=False,
         )
         draw = ImageDraw.Draw(exported)
         _draw_preview_frame(draw, target_width, target_height, current=current)
@@ -717,7 +708,8 @@ def _render_preview_image(
         work,
         page,
         scene=scene,
-        include_fills=True,
+        include_fills=False,
+        include_guides=False,
     )
     img = _resize_preview_image(img, target_width, target_height)
     draw = ImageDraw.Draw(img)
@@ -745,10 +737,7 @@ def _render_preview_image_from_export(
         fw = max(1.0, float(getattr(work.paper, "finish_width_mm", 1.0) or 1.0))
         cw = page_grid.spread_content_width_mm(page, cw, fw)
         dpi = max(8, int(round(max(width / cw, height / ch) * 25.4)))
-        from . import page_preview_decor
 
-        detail_preview = str(variant or _preview_render_variant(scene)) == PREVIEW_RENDER_VARIANT_DETAIL
-        page_overlay_visible = detail_preview and page_preview_decor.page_guides_visible(work, scene)
         options = export_pipeline.ExportOptions(
             area="canvas",
             dpi_override=dpi,
@@ -759,7 +748,7 @@ def _render_preview_image_from_export(
             include_tombo=False,
             include_paper_color=True,
             include_coma_previews=True,
-            include_page_overlay_fills=page_overlay_visible,
+            include_page_overlay_fills=False,
         )
         image = export_pipeline.render_page(work, page, options)
         if image is None:

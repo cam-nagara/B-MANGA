@@ -1387,6 +1387,42 @@ def _draw_page_overlay(
                 except Exception:  # noqa: BLE001 - 復元失敗時は外側の描画終了処理に任せる
                     pass
 
+def _draw_reference_page_preview(
+    context,
+    work,
+    paper,
+    rects,
+    page,
+    page_index: int,
+    ox_mm: float,
+    oy_mm: float,
+    is_left_half: bool,
+) -> None:
+    """非編集中ページの内容画像と、即時切替可能なガイドを重ねる。"""
+
+    overlay_page_preview.draw_for_page(
+        context,
+        work,
+        page,
+        page_index,
+        ox_mm,
+        oy_mm,
+        is_current_page=False,
+    )
+    region, rv3d = _resolve_active_region(context)
+    if region is not None and rv3d is not None:
+        overlay_paper_guide.draw_for_page(
+            work,
+            paper,
+            rects,
+            page,
+            page_index,
+            ox_mm,
+            oy_mm,
+            is_left_half,
+            region,
+            rv3d,
+        )
 
 
 def _resolve_page_index(work, ox_mm: float, oy_mm: float) -> int:
@@ -1754,8 +1790,16 @@ def _draw_callback(phase: str = "post") -> None:
                 _is_current_iter = (i == page_file_current_index)
                 if page_file_current_only and not _is_current_iter:
                     if page is not None:
-                        overlay_page_preview.draw_for_page(
-                            context, work, page, i, ox, oy, is_current_page=False,
+                        _draw_reference_page_preview(
+                            context,
+                            work,
+                            paper,
+                            rects,
+                            page,
+                            i,
+                            ox,
+                            oy,
+                            _is_left_half(i, start_side, read_direction, work=work),
                         )
                     if _is_preview_hl or page_id in selected_page_ids:
                         highlight_rects.append(_page_content_highlight_rect(work, i, paper, ox, oy))
@@ -1814,8 +1858,16 @@ def _draw_callback(phase: str = "post") -> None:
                     continue
                 if page_file_current_only and i != page_file_current_index:
                     if page is not None:
-                        overlay_page_preview.draw_for_page(
-                            context, work, page, i, ox, oy, is_current_page=False,
+                        _draw_reference_page_preview(
+                            context,
+                            work,
+                            paper,
+                            rects,
+                            page,
+                            i,
+                            ox,
+                            oy,
+                            _is_left_half(i, start_side, read_direction, work=work),
                         )
                     continue
                 left_half = _is_left_half(i, start_side, read_direction, work=work)

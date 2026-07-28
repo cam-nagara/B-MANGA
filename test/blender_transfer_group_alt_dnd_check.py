@@ -157,6 +157,7 @@ def main() -> None:
             layer_transfer_group,
             page_grid,
         )
+        from bmanga_transfer_group_test.io import project_content_save_baseline
         from bmanga_transfer_group_test.utils.layer_hierarchy import coma_stack_key
         from bmanga_transfer_group_test.utils.layer_reparent import ClickTarget
 
@@ -249,6 +250,10 @@ def main() -> None:
             layer_transfer_group.cross_page_stage.mark_asset_bundle_ready = original_mark_ready
         recovery_root = Path(work.work_dir) / source.id / "_transfer_recovery"
         assert any(recovery_root.glob("*/transaction.json"))
+        assert not any(
+            "_transfer_recovery" in tracked.parts
+            for tracked in project_content_save_baseline.tracked_paths(work.work_dir)
+        )
         restored_paths = layer_transfer_group.recover_interrupted_transfers(
             Path(work.work_dir)
         )
@@ -310,6 +315,10 @@ def main() -> None:
         )
         assert moved is not None and moved >= len(expected), moved
         assert len(source.comas) == 0
+        assert not any(
+            "_transfer_recovery" in tracked.parts
+            for tracked in project_content_save_baseline.tracked_paths(work.work_dir)
+        )
         staged = json.loads(stage_path.read_text(encoding="utf-8"))
         assert staged["asset_bundles"][0].get("state") == "ready"
 
@@ -335,6 +344,38 @@ def main() -> None:
         assert new_text.parent_balloon_id == new_balloon.id
         assert any(item.title == "移送グラデーション" for item in context.scene.bmanga_fill_layers)
         assert any(item.title == "移送パターンカーブ" for item in context.scene.bmanga_image_path_layers)
+
+        # 移送直後も、ページ間移動と作品ファイルへの復帰を連続して実行できる。
+        assert "FINISHED" in bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        assert "FINISHED" in bpy.ops.bmanga.page_file_next("EXEC_DEFAULT")
+        context = bpy.context
+        work = context.scene.bmanga_work
+        target = work.pages[work.active_page_index]
+        assert len(target.comas) > 0
+        tracked = {
+            path.resolve()
+            for path in project_content_save_baseline.tracked_paths(work.work_dir)
+        }
+        target_coma_jsons = [
+            Path(work.work_dir) / target.id / coma.coma_id / f"{coma.coma_id}.json"
+            for coma in target.comas
+            if str(getattr(coma, "coma_id", "") or "")
+        ]
+        untracked_existing = [
+            path for path in target_coma_jsons if path.is_file() and path.resolve() not in tracked
+        ]
+        assert not untracked_existing, (
+            [coma.coma_id for coma in target.comas],
+            untracked_existing,
+            sorted(path.name for path in tracked),
+        )
+        target.active_coma_index = 0
+        assert "FINISHED" in bpy.ops.bmanga.enter_coma_mode("EXEC_DEFAULT")
+        assert "FINISHED" in bpy.ops.bmanga.exit_coma_mode("EXEC_DEFAULT")
+        assert "FINISHED" in bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
+        assert Path(bpy.data.filepath).name == "work.blend"
+        context = bpy.context
+        work = context.scene.bmanga_work
 
         # 復旧台帳自体が壊れている場合はprepared stageを孤児として消さない。
         # 自動復旧できなくても、再試行・手動救出用の両資料を残す。

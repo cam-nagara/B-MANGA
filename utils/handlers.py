@@ -312,6 +312,21 @@ def _loaded_page_json_paths(work, work_dir: Path) -> list[Path]:
     return page_paths
 
 
+def _loaded_coma_json_paths(work, work_dir: Path) -> list[Path]:
+    coma_paths = []
+    for page in getattr(work, "pages", []) or []:
+        page_id = str(getattr(page, "id", "") or "")
+        if not page_id or not bool(getattr(page, "detail_loaded", False)):
+            continue
+        for coma in getattr(page, "comas", []) or []:
+            coma_id = str(
+                getattr(coma, "coma_id", "") or getattr(coma, "id", "") or ""
+            )
+            if coma_id and paths.is_valid_coma_id(coma_id):
+                coma_paths.append(paths.coma_json_path(work_dir, page_id, coma_id))
+    return coma_paths
+
+
 def _raster_sidecar_paths(scene, work_dir: Path) -> list[Path]:
     raster_paths = []
     for entry in getattr(scene, "bmanga_raster_layers", []) or []:
@@ -346,12 +361,15 @@ def _capture_native_save_baseline(work, work_dir: Path, blend_path: Path) -> Non
     from ..io import project_content_save_baseline
 
     page_paths = _loaded_page_json_paths(work, work_dir)
-    raster_paths = _raster_sidecar_paths(getattr(bpy.context, "scene", None), work_dir)
+    content_paths = (
+        _loaded_coma_json_paths(work, work_dir)
+        + _raster_sidecar_paths(getattr(bpy.context, "scene", None), work_dir)
+    )
     project_content_save_baseline.capture_loaded_baseline(
         work_dir,
         blend_path,
         page_json_paths=page_paths,
-        content_paths=raster_paths,
+        content_paths=content_paths,
     )
 
 
@@ -1071,6 +1089,17 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
                             work,
                             page_id,
                         )
+                    from . import paper_guide_object
+
+                    paper_guide_object.apply_existing_paper_guide_visibility(
+                        scene,
+                        work,
+                        page_ids={page_id},
+                    )
+                    screen = getattr(bpy.context, "screen", None)
+                    for area in (screen.areas if screen is not None else ()):
+                        if area.type == "VIEW_3D":
+                            area.tag_redraw()
                 except Exception:  # noqa: BLE001
                     _logger.exception("load_post: purge other page data failed")
                 try:

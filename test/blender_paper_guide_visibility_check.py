@@ -76,30 +76,16 @@ def _assert_stable_viewport_order(guide_objects, safe_fill, bleed_outer_fill) ->
             raise AssertionError(f"用紙ガイド線が塗りより奥にあります: {obj.name}")
 
 
-def _assert_page_preview_is_behind_guides(
+def _assert_page_preview_is_overlay_only(
     page_preview_object,
     work_info_text_object,
     page,
-    guide_objects,
-    safe_fill,
-    bleed_outer_fill,
 ) -> None:
     preview = bpy.data.objects.get(f"{page_preview_object.PREVIEW_OBJECT_PREFIX}{page.id}")
-    if preview is None:
-        raise AssertionError("ページ一覧のプレビュー画像が作られていません")
-    preview_z = float(preview.location.z)
-    if preview_z <= 0.0:
-        raise AssertionError(f"ページ一覧のプレビュー画像が用紙背景より奥にあります: {preview_z}")
-    front_fill_z = min(float(safe_fill.location.z), float(bleed_outer_fill.location.z))
-    if not (preview_z < front_fill_z):
-        raise AssertionError(
-            f"ページ一覧のプレビュー画像が塗りより手前にあります: preview={preview_z}, fill={front_fill_z}"
-        )
-    guide_z = min(float(obj.location.z) for obj in guide_objects)
-    if not (preview_z < guide_z):
-        raise AssertionError(
-            f"ページ一覧のプレビュー画像が用紙ガイド線より手前にあります: preview={preview_z}, guide={guide_z}"
-        )
+    if preview is not None:
+        raise AssertionError("廃止済みのページ一覧プレビューObjectが再作成されています")
+    if bpy.data.collections.get(page_preview_object.PREVIEW_COLLECTION_NAME) is not None:
+        raise AssertionError("廃止済みの「ページ一覧プレビュー」Collectionが再作成されています")
     info_objects = [
         obj
         for obj in bpy.data.objects
@@ -107,11 +93,6 @@ def _assert_page_preview_is_behind_guides(
     ]
     if not info_objects:
         raise AssertionError("作品情報テキストが作られていません")
-    for obj in info_objects:
-        if not (preview_z < float(obj.location.z)):
-            raise AssertionError(
-                f"ページ一覧のプレビュー画像が作品情報より手前にあります: {obj.name} preview={preview_z}, info={obj.location.z}"
-            )
 
 
 def _mix_shader_alpha(obj) -> float:
@@ -357,13 +338,10 @@ def main() -> None:
 
         _assert_guide_materials_are_opaque(guide_objects)
         _assert_stable_viewport_order(guide_objects, safe_fill, bleed_outer_fill)
-        _assert_page_preview_is_behind_guides(
+        _assert_page_preview_is_overlay_only(
             page_preview_object,
             work_info_text_object,
             page,
-            guide_objects,
-            safe_fill,
-            bleed_outer_fill,
         )
         _assert_fill_settings_update_immediately(paper_guide_object, work, page)
         _assert_guides_above_coma_planes(guide_objects, safe_fill, bleed_outer_fill, page, coma_z_order)

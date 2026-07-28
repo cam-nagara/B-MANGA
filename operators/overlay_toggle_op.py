@@ -24,18 +24,16 @@ def _overlay_enabled_update(scene, context) -> None:
     except Exception:  # noqa: BLE001
         pass
     try:
-        from ..utils import page_preview_object
+        from ..utils import page_file_scene, paper_guide_object
 
-        page_preview_object.sync_page_previews(context, getattr(scene, "bmanga_work", None), force=True)
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        from ..core.mode import MODE_COMA, get_mode
-        from ..utils import paper_guide_object
-
-        if get_mode(context) != MODE_COMA:
-            paper_guide_object.regenerate_all_paper_guides(scene, getattr(scene, "bmanga_work", None))
-            paper_guide_object.apply_view_constant_thickness()
+        work = getattr(scene, "bmanga_work", None)
+        role, page_id, _coma_id = page_file_scene.current_role(context)
+        if role == page_file_scene.ROLE_PAGE and page_id:
+            paper_guide_object.apply_existing_paper_guide_visibility(
+                scene,
+                work,
+                page_ids={page_id},
+            )
     except Exception:  # noqa: BLE001
         pass
     try:
@@ -59,20 +57,6 @@ class BMANGA_OT_overlay_toggle(bpy.types.Operator):
         scene = context.scene
         new_val = not bool(getattr(scene, "bmanga_overlay_enabled", True))
         scene.bmanga_overlay_enabled = new_val
-        try:
-            from ..core.work import get_work
-            from ..utils import view_settings
-
-            view_settings.copy_scene_to_work(scene, get_work(context))
-        except Exception:  # noqa: BLE001
-            pass
-        # 全 3D ビュー再描画
-        try:
-            for area in context.screen.areas if context.screen else ():
-                if area.type == "VIEW_3D":
-                    area.tag_redraw()
-        except Exception:  # noqa: BLE001
-            pass
         self.report(
             {"INFO"},
             f"オーバーレイ {'表示' if new_val else '非表示'}",

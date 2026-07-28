@@ -67,6 +67,15 @@ def _prepare_work() -> Path:
         result = bpy.ops.bmanga.page_add()
         if result != {"FINISHED"}:
             raise AssertionError(f"page_add failed: {result}")
+    work = bpy.context.scene.bmanga_work
+    work.paper.dpi = 120
+    for page_index in (1, 2):
+        result = bpy.ops.bmanga.open_page_file(index=page_index)
+        if result != {"FINISHED"}:
+            raise AssertionError(f"open spread source failed: {page_index}: {result}")
+        result = bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
+        if result != {"FINISHED"}:
+            raise AssertionError(f"save spread source failed: {page_index}: {result}")
     result = bpy.ops.bmanga.pages_merge_spread("EXEC_DEFAULT", left_index=1)
     if result != {"FINISHED"}:
         raise AssertionError(f"pages_merge_spread failed: {result}")

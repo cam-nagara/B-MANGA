@@ -585,6 +585,10 @@ def _run() -> None:
     result = bpy.ops.bmanga.work_new(filepath=str(WORK_DIR))
     if result != {"FINISHED"}:
         raise AssertionError(f"作品作成に失敗しました: {result}")
+    # このテストの目的はオーバーレイの前後関係と表示切替であり、600dpiの
+    # 完成原稿レンダーではない。GPUコンポジターの最大テクスチャ寸法に
+    # テスト用B4用紙が触れてタイマー処理を阻害しない解像度に固定する。
+    bpy.context.scene.bmanga_work.paper.dpi = 120
     for _ in range(3):
         result = bpy.ops.bmanga.page_add()
         if result != {"FINISHED"}:
@@ -648,11 +652,21 @@ def _run() -> None:
 
 @persistent
 def _after_load_post(_dummy=None) -> None:
+    from bmanga_dev_coma_overlay_visibility.utils import page_file_scene
+
+    role, _page_id, _coma_id = page_file_scene.current_role(bpy.context)
+    if role != page_file_scene.ROLE_COMA:
+        # 新規コマでは最初に空のhomefileが読み込まれる。実際のcNN.blendが
+        # 開くまでハンドラを残し、中間状態を検証対象にしない。
+        return
     try:
         bpy.app.handlers.load_post.remove(_after_load_post)
     except ValueError:
         pass
-    bpy.app.timers.register(_after_coma_open, first_interval=1.0)
+    # Blender 5.2ではタイマーから mainfile を開いた直後、同じタイマーの
+    # コールバックが戻るまで後続タイマーが進まない。製品の load_post 同期が
+    # 完了したこの位置で検証を直接実行し、待ち合いを避ける。
+    _after_coma_open()
 
 
 def _timer():
