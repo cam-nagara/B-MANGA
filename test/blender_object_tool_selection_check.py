@@ -168,6 +168,7 @@ def main() -> None:
         from bmanga_dev.utils import free_transform
         from bmanga_dev.utils import image_path_object
         from bmanga_dev.utils import layer_stack as layer_stack_utils
+        from bmanga_dev.utils import layer_links
         from bmanga_dev.utils import object_naming as on
         from bmanga_dev.utils import effect_line_object
         from bmanga_dev.utils import object_selection
@@ -178,6 +179,7 @@ def main() -> None:
             effect_line_gen,
             handle_intercept,
             object_handle_priority,
+            object_tool_click_candidates,
             object_tool_free_transform,
             object_tool_op,
             object_tool_selection,
@@ -250,11 +252,17 @@ def main() -> None:
             (36.0, 36.0, 24.0, 20.0),
             parent_key=coma_key,
         )
+        effect_obj_2, effect_layer_2 = effect_line_op._create_effect_layer(
+            context,
+            (36.0, 36.0, 24.0, 20.0),
+            parent_key=coma_key,
+        )
         raster = _add_raster(context, coma_key)
         image = _add_image(context, coma_key)
         balloon = _add_balloon(page, coma_key)
         page_balloon = _add_page_balloon(page, page_stack_key(page))
         text = _add_text(page, coma_key)
+        text.parent_balloon_id = balloon.id
         image_path = context.scene.bmanga_image_path_layers.add()
         image_path.id = "object_tool_image_path"
         image_path.title = "画像パス"
@@ -284,6 +292,111 @@ def main() -> None:
         full_fill.parent_key = page_stack_key(page)
         full_fill.use_region = False
         layer_stack_utils.sync_layer_stack_after_data_change(context)
+
+        # テキスト矩形・フキダシ・同位置の複数効果線・コマが重なる点では、
+        # 通常ヒットを先頭にしつつ全レイヤーへ循環到達できる。
+        text_key = object_selection.text_key(page, text)
+        balloon_key = object_selection.balloon_key(page, balloon)
+        effect_keys = {
+            object_selection.effect_key(effect_obj),
+            object_selection.effect_key(effect_obj_2),
+        }
+        overlap_rects = [
+            object_tool_selection.selection_bounds_for_key(context, text_key),
+            object_tool_selection.selection_bounds_for_key(context, balloon_key),
+            *[
+                object_tool_selection.selection_bounds_for_key(context, key)
+                for key in effect_keys
+            ],
+            object_tool_selection.selection_bounds_for_key(context, object_key),
+        ]
+        if any(rect is None for rect in overlap_rects):
+            raise AssertionError(f"循環テスト用の重なり範囲を取得できません: {overlap_rects}")
+        overlap_x = (max(rect.x for rect in overlap_rects) + min(rect.x2 for rect in overlap_rects)) * 0.5
+        overlap_y = (max(rect.y for rect in overlap_rects) + min(rect.y2 for rect in overlap_rects)) * 0.5
+        if not all(
+            object_tool_selection.rect_contains_point(rect, overlap_x, overlap_y)
+            for rect in overlap_rects
+        ):
+            raise AssertionError(f"循環テスト用レイヤーが実際には重なっていません: {overlap_rects}")
+        primary_text_hit = {
+            "kind": "text",
+            "page_id": page.id,
+            "index": next(i for i, entry in enumerate(page.texts) if entry.id == text.id),
+            "part": "move",
+            "key": text_key,
+        }
+        cycle_hits = object_tool_click_candidates.candidates_at_world(
+            context,
+            overlap_x,
+            overlap_y,
+            primary_text_hit,
+        )
+        cycle_keys = [str(hit.get("key", "") or "") for hit in cycle_hits]
+        if not cycle_keys or cycle_keys[0] != text_key:
+            raise AssertionError(f"通常ヒットが循環先頭に維持されません: {cycle_keys}")
+        if balloon_key not in cycle_keys:
+            raise AssertionError(f"テキスト背面のフキダシへ循環できません: {cycle_keys}")
+        if not effect_keys.issubset(set(cycle_keys)):
+            raise AssertionError(f"同位置の複数効果線を列挙できません: {cycle_keys}")
+        if object_tool_click_candidates.selection_display_name(context, text_key) != "テスト":
+            raise AssertionError("循環表示名がレイヤー一覧のテキスト名と一致しません")
+        rapid_event = SimpleNamespace(mouse_x=200.0, mouse_y=240.0)
+        rapid_owner = SimpleNamespace(
+            _click_cycle_anchor_px=(200.0, 240.0),
+            _click_cycle_keys=(text_key, balloon_key),
+        )
+        from bmanga_dev.operators import object_tool_click_cycle
+
+        if not object_tool_click_cycle.overlapping_balloon_cycle_is_active(
+            rapid_owner,
+            rapid_event,
+            primary_text_hit,
+        ):
+            raise AssertionError("フキダシ上テキストの素早い連続クリックが循環へ回りません")
+        rapid_owner._click_cycle_keys = (text_key, object_key)
+        if object_tool_click_cycle.overlapping_balloon_cycle_is_active(
+            rapid_owner,
+            rapid_event,
+            primary_text_hit,
+        ):
+            raise AssertionError("重なりのないテキストのダブルクリック編集まで循環へ奪われます")
+
+        effect_uids = [
+            layer_stack_utils.target_uid(
+                "effect",
+                object_selection.parse_key(key)[2],
+            )
+            for key in effect_keys
+        ]
+        _group_id, linked_count = layer_links.link_uids(context, effect_uids)
+        if linked_count != 2:
+            raise AssertionError(f"重なり効果線をリンクできません: {linked_count}")
+        second_effect_hit = next(
+            hit for hit in cycle_hits
+            if str(hit.get("key", "") or "") == sorted(effect_keys)[1]
+        )
+        object_tool_op.activate_hit(context, second_effect_hit, mode="single")
+        if set(object_selection.get_keys(context)) != effect_keys:
+            raise AssertionError(
+                "循環先のリンク効果線をアクティブにしてもリンク群が選択されません: "
+                f"{object_selection.get_keys(context)}"
+            )
+        object_selection.clear(context)
+
+        balloon.visible = False
+        hidden_cycle_keys = {
+            str(hit.get("key", "") or "")
+            for hit in object_tool_click_candidates.candidates_at_world(
+                context,
+                overlap_x,
+                overlap_y,
+                primary_text_hit,
+            )
+        }
+        if balloon_key in hidden_cycle_keys:
+            raise AssertionError("非表示フキダシがクリック循環候補へ混入します")
+        balloon.visible = True
 
         visible_kinds = set(_visible_stack_kinds(context))
         expected_kinds = {

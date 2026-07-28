@@ -1007,7 +1007,7 @@ def _iter_rect_select_candidates(context):
             continue
         for text_index, entry in enumerate(reversed(list(getattr(page, "texts", []) or []))):
             actual_index = len(page.texts) - 1 - text_index
-            if bool(getattr(entry, "locked", False)):
+            if not bool(getattr(entry, "visible", True)) or bool(getattr(entry, "locked", False)):
                 continue
             key = object_selection.text_key(page, entry)
             yield {
@@ -1023,7 +1023,7 @@ def _iter_rect_select_candidates(context):
             }
         for balloon_index, entry in enumerate(reversed(list(getattr(page, "balloons", []) or []))):
             actual_index = len(page.balloons) - 1 - balloon_index
-            if bool(getattr(entry, "locked", False)):
+            if not bool(getattr(entry, "visible", True)) or bool(getattr(entry, "locked", False)):
                 continue
             key = object_selection.balloon_key(page, entry)
             yield {
@@ -1071,6 +1071,9 @@ def _iter_rect_select_candidates(context):
         }
     for layer in _iter_effect_layers_for_selection():
         key = object_selection.effect_key(layer)
+        obj, _resolved_layer = find_effect_layer(object_selection.parse_key(key)[2])
+        if obj is None or not layer_object_model.user_visible(obj):
+            continue
         rect = selection_bounds_for_key(context, key)
         if rect is None:
             continue
@@ -1102,7 +1105,7 @@ def _iter_rect_select_candidates(context):
             continue
         yield {"key": key, "rect": rect, "hit": {"kind": "image_path", "part": "move", "key": key}}
     for obj in layer_object_model.iter_layer_objects("gp"):
-        if layer_object_model.user_locked(obj):
+        if not layer_object_model.user_visible(obj) or layer_object_model.user_locked(obj):
             continue
         key = object_selection.gp_key(obj)
         rect = selection_bounds_for_key(context, key)
@@ -1139,7 +1142,7 @@ def _iter_rect_select_candidates(context):
             continue
         for coma_index, panel in enumerate(reversed(list(getattr(page, "comas", []) or []))):
             actual_index = len(page.comas) - 1 - coma_index
-            if bool(getattr(panel, "locked", False)):
+            if not bool(getattr(panel, "visible", True)) or bool(getattr(panel, "locked", False)):
                 continue
             key = object_selection.coma_key(page, panel)
             yield {

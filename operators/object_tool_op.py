@@ -42,6 +42,7 @@ from . import (
     object_handle_priority,
     object_rotation,
     object_tool_balloon_tail,
+    object_tool_click_cycle,
     effect_line_op,
     layer_move_session,
     coma_edge_drag_session,
@@ -876,6 +877,10 @@ def _schedule_object_tool_relaunch(
         try:
             from . import coma_modal_state as _state
 
+            # add-on無効化直後まで残った遅延タイマーでは、オペレーター自体が
+            # unregister済み。poll呼び出しで不要な例外ログを出さず終了する。
+            if getattr(bpy.types, "BMANGA_OT_object_tool", None) is None:
+                return None
             if _state.get_active("object_tool") is not None:
                 return None
             if _state.any_tool_active():
@@ -950,6 +955,11 @@ class BMANGA_OT_object_tool(Operator):
     _original_center: tuple[float, float] | None
     _center_snap_armed: bool
     _composite_transform_active: bool
+    _click_cycle_anchor_px: tuple[float, float]
+    _click_cycle_keys: tuple[str, ...]
+    _click_cycle_hits: tuple[dict, ...]
+    _click_cycle_index: int
+    _click_cycle_last_time: float
 
     @classmethod
     def poll(cls, context):
@@ -992,6 +1002,7 @@ class BMANGA_OT_object_tool(Operator):
         # (overlay_coma_selection.draw が読む)
         if event.type == "MOUSEMOVE":
             self._update_overlay_pointer(context, event)
+            object_tool_click_cycle.reset_if_pointer_moved(self, event)
         if getattr(self, "_dragging", False):
             return self._modal_dragging(context, event)
         if view_event_region.modal_navigation_ui_passthrough(self, context, event):
@@ -1107,7 +1118,14 @@ class BMANGA_OT_object_tool(Operator):
                 # ページファイルを開く判定もコマと同じ自前連続クリック検出で行う。
                 # ページ一覧 (全ページ表示) ではページ判定をコマ判定より優先する。
                 if hit is not None and self._is_manual_coma_double_click(event, hit):
-                    if str(hit.get("kind", "") or "") == "text":
+                    if (
+                        str(hit.get("kind", "") or "") == "text"
+                        and not object_tool_click_cycle.overlapping_balloon_cycle_is_active(
+                            self,
+                            event,
+                            hit,
+                        )
+                    ):
                         self._clear_click_state()
                         if self._try_enter_text_edit_from_hit(context, hit):
                             return {"FINISHED"}
@@ -1121,6 +1139,7 @@ class BMANGA_OT_object_tool(Operator):
                             return {"FINISHED"}
                     elif self._try_enter_coma_from_hit(context, open_hit):
                         return {"FINISHED"}
+                hit = object_tool_click_cycle.choose_hit(self, context, event, hit)
                 # ページファイルを開ける位置では、紙面/プレビュー実体への通常ヒット
                 # より page_file キーをクリック履歴へ優先して保存する。逆順だと
                 # 1回目=page、2回目=page_file となり、同じページ上の連続クリックでも
@@ -1219,6 +1238,7 @@ class BMANGA_OT_object_tool(Operator):
         self._last_click_time = 0.0
         self._last_click_xy = (-1.0e9, -1.0e9)
         self._last_click_key = ""
+        object_tool_click_cycle.clear(self)
 
     def _nudge_selection(self, context, event) -> bool:
         keys = object_selection.get_keys(context)
@@ -1950,6 +1970,8 @@ class BMANGA_OT_object_tool(Operator):
         if event.type == "MOUSEMOVE":
             self._update_overlay_pointer(context, event)
             self._update_drag(context, event)
+            if bool(getattr(self, "_drag_moved", False)):
+                object_tool_click_cycle.clear(self)
             return {"RUNNING_MODAL"}
         if event.type == "LEFTMOUSE" and event.value == "RELEASE":
             self._update_drag(context, event)
@@ -2666,6 +2688,7 @@ class BMANGA_OT_object_tool(Operator):
             # カーソル復帰 + 状態クリア) で安全に巻き戻す。
             self._cancel_drag(context)
         self._clear_drag_state()
+        self._clear_click_state()
         object_tool_balloon_tail.clear_pending(self)
         if getattr(self, "_ft_mode", False):
             self._end_composite_transform(context, committed=False)

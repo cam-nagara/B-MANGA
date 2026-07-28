@@ -13,6 +13,7 @@ from . import (  # noqa: F401
     overlay_current_page,
     overlay_shared,
     reparent_overlay,
+    selection_cycle_overlay,
     sidebar,
 )
 
@@ -20,6 +21,7 @@ _MODULES = (
     overlay,
     overlay_current_page,
     reparent_overlay,
+    selection_cycle_overlay,
     context_menu,
     coma_return_header,
     coma_fisheye_overlay,

@@ -185,6 +185,8 @@ def _run_check() -> None:
         mod = _load_addon()
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "ObjectHandleHit.bmanga"))
         assert "FINISHED" in result, result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        assert "FINISHED" in result, result
 
         from bmanga_dev_object_handle_hit.operators import balloon_op, coma_picker, effect_line_op, object_tool_op, text_op
         from bmanga_dev_object_handle_hit.utils import layer_hierarchy, object_selection
@@ -323,14 +325,16 @@ def _run_check() -> None:
             object_selection.select_key(context, balloon_key, mode="single")
             for name, (hx, hy) in _world_handle_points(BALLOON_RECT).items():
                 event = _screen_event_for_world(mm_to_m, event_world_mm, hx, hy)
-                hit = object_tool_op.hit_object_at_event(context, event)
+                with _view3d_override():
+                    hit = object_tool_op.hit_object_at_event(bpy.context, event)
                 kind = None if hit is None else str(hit.get("kind", ""))
                 _check(kind == "balloon", f"選択中フキダシのハンドル({name})クリックがフキダシへ届きません: hit={hit}")
 
             object_selection.select_key(context, text_key, mode="single")
             for name, (hx, hy) in _world_handle_points(TEXT_RECT).items():
                 event = _screen_event_for_world(mm_to_m, event_world_mm, hx, hy)
-                hit = object_tool_op.hit_object_at_event(context, event)
+                with _view3d_override():
+                    hit = object_tool_op.hit_object_at_event(bpy.context, event)
                 kind = None if hit is None else str(hit.get("kind", ""))
                 _check(kind == "text", f"選択中テキストのハンドル({name})クリックがテキストへ届きません: hit={hit}")
 
