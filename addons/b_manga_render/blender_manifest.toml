@@ -1,8 +1,8 @@
 schema_version = "1.0.0"
 
-id = "b_manga_render"
-version = "0.1.37"
-name = "B-MANGA Render"
+id = "b_manga_render_next"
+version = "0.1.38"
+name = "B-MANGA Render Next"
 tagline = "Command based render presets and fisheye rendering for B-MANGA workflows"
 maintainer = "B-MANGA Project"
 type = "add-on"

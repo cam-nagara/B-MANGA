@@ -1,0 +1,1071 @@
+{
+  "schema_version": 1,
+  "sources": {
+    "test/blender_layer_move_drag_transaction_check.py": "a0ce0b1717022952a01c9920b42b0ba175b94ff419e3d7f570fbfaa8d6b75889",
+    "test/blender_preview_composite_check.py": "284f0bb92d4eed166b1291926e3db1fb97f8491d720fd72410cfffd9bfc1c09c",
+    "test/blender_phase0_open_performance_check.py": "b6f3dd39fcb4b67d5dd3cb1fe11cf075060b33ad96222af0e3590e525f959e65"
+  },
+  "drag": {
+    "composite": {
+      "runs_total": 10,
+      "warmup_discarded": 1,
+      "measured_runs": 9,
+      "raw_ms": [
+        0.007,
+        0.02,
+        0.009,
+        0.003,
+        0.005,
+        0.049,
+        0.012,
+        0.004,
+        0.003,
+        0.01
+      ],
+      "p50_ms": 0.009,
+      "p95_ms": 0.049,
+      "max_ms": 0.049
+    },
+    "layer": {
+      "runs_total": 10,
+      "warmup_discarded": 1,
+      "measured_runs": 9,
+      "raw_ms": [
+        0.028,
+        0.01,
+        0.031,
+        0.039,
+        0.032,
+        0.033,
+        0.027,
+        0.048,
+        0.029,
+        0.042
+      ],
+      "p50_ms": 0.032,
+      "p95_ms": 0.048,
+      "max_ms": 0.048
+    },
+    "object": {
+      "runs_total": 10,
+      "warmup_discarded": 1,
+      "measured_runs": 9,
+      "raw_ms": [
+        0.001,
+        0.003,
+        0.005,
+        0.004,
+        0.005,
+        0.005,
+        0.005,
+        0.001,
+        0.006,
+        0.005
+      ],
+      "p50_ms": 0.005,
+      "p95_ms": 0.006,
+      "max_ms": 0.006
+    }
+  },
+  "open": {
+    "schema_version": 2,
+    "blender_version": "5.2.0 LTS",
+    "fixture_tree_sha256": "a45c82f7a82b7d4d574130274eec70947b74ba9e278199e9796ffec046facbf7",
+    "fixture_contract": {
+      "pages": 55,
+      "comas_per_page": 5,
+      "balloons_per_page": 5,
+      "texts_per_page": 5,
+      "coma_mesh_objects": 4
+    },
+    "environment": {
+      "os": "Windows-11-10.0.26200-SP0",
+      "windows_build": "10.0.26200",
+      "cpu": "Intel64 Family 6 Model 198 Stepping 2, GenuineIntel",
+      "logical_cpu_count": 24,
+      "ram_bytes": 136861167616,
+      "gpus": [],
+      "display_pixels": [
+        2560,
+        1440
+      ],
+      "blender_version": "5.2.0 LTS",
+      "blender_build_hash": "fbe6228777e7",
+      "ui_scale": 0.0
+    },
+    "trials_per_condition": 20,
+    "cold_definition": "同一内容を別path・別file blockへ複製し、各pathを初回open。OS page cacheの強制破棄は行わない",
+    "warm_definition": "同一pathを1回warm-up後、同一processで20回open",
+    "results": {
+      "coma": {
+        "file_bytes": 161437,
+        "path_cold": {
+          "trials": 20,
+          "p50_ms": 167.508,
+          "p95_ms": 198.774,
+          "max_ms": 239.739,
+          "min_ms": 150.509
+        },
+        "warm": {
+          "trials": 20,
+          "p50_ms": 99.232,
+          "p95_ms": 130.08,
+          "max_ms": 131.385,
+          "min_ms": 77.978
+        },
+        "path_cold_observation": {
+          "trials": 20,
+          "max_unrelated_page_detail_loads": 0,
+          "page_detail_load_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "max_unrelated_coma_detail_loads": 0,
+          "coma_detail_load_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "json_read_counts": [
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11
+          ],
+          "sidecar_load_counts": [
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            }
+          ]
+        },
+        "warm_observation": {
+          "trials": 20,
+          "max_unrelated_page_detail_loads": 0,
+          "page_detail_load_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "max_unrelated_coma_detail_loads": 0,
+          "coma_detail_load_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "json_read_counts": [
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11
+          ],
+          "sidecar_load_counts": [
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            }
+          ]
+        }
+      },
+      "page": {
+        "file_bytes": 235188,
+        "path_cold": {
+          "trials": 20,
+          "p50_ms": 349.99,
+          "p95_ms": 400.627,
+          "max_ms": 692.485,
+          "min_ms": 305.403
+        },
+        "warm": {
+          "trials": 20,
+          "p50_ms": 227.041,
+          "p95_ms": 262.598,
+          "max_ms": 268.325,
+          "min_ms": 196.933
+        },
+        "path_cold_observation": {
+          "trials": 20,
+          "max_unrelated_page_detail_loads": 0,
+          "page_detail_load_counts": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "max_unrelated_coma_detail_loads": 0,
+          "coma_detail_load_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "json_read_counts": [
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14
+          ],
+          "sidecar_load_counts": [
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            }
+          ]
+        },
+        "warm_observation": {
+          "trials": 20,
+          "max_unrelated_page_detail_loads": 0,
+          "page_detail_load_counts": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "max_unrelated_coma_detail_loads": 0,
+          "coma_detail_load_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "json_read_counts": [
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14,
+            14
+          ],
+          "sidecar_load_counts": [
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            },
+            {
+              "work_json": 1,
+              "pages_json": 1
+            }
+          ]
+        }
+      },
+      "work": {
+        "file_bytes": 1547072,
+        "path_cold": {
+          "trials": 20,
+          "p50_ms": 1676.816,
+          "p95_ms": 1767.347,
+          "max_ms": 2287.322,
+          "min_ms": 1596.521
+        },
+        "warm": {
+          "trials": 20,
+          "p50_ms": 223.595,
+          "p95_ms": 246.906,
+          "max_ms": 285.8,
+          "min_ms": 185.816
+        },
+        "path_cold_observation": {
+          "trials": 20,
+          "max_unrelated_page_detail_loads": 2,
+          "page_detail_load_counts": [
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2
+          ],
+          "max_unrelated_coma_detail_loads": 0,
+          "coma_detail_load_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "json_read_counts": [
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9
+          ],
+          "sidecar_load_counts": [
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            }
+          ]
+        },
+        "warm_observation": {
+          "trials": 20,
+          "max_unrelated_page_detail_loads": 0,
+          "page_detail_load_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "max_unrelated_coma_detail_loads": 0,
+          "coma_detail_load_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "json_read_counts": [
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7,
+            7
+          ],
+          "sidecar_load_counts": [
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            },
+            {
+              "work_json": 0,
+              "pages_json": 0
+            }
+          ]
+        }
+      }
+    }
+  }
+}

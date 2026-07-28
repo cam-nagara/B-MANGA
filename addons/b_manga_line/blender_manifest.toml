@@ -1,8 +1,8 @@
 schema_version = "1.0.0"
 
-id = "b_manga_line"
-version = "0.3.201"
-name = "B-MANGA Liner"
+id = "b_manga_line_next"
+version = "0.3.202"
+name = "B-MANGA Liner Next"
 tagline = "背面法（反転ハル）によるマンガ風アウトライン"
 maintainer = "B-MANGA Project"
 type = "add-on"

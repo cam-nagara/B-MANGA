@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import os
 import shutil
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -13,8 +14,19 @@ from ..utils import json_io, log
 _logger = log.get_logger(__name__)
 
 ENV_CONFIG_DIR = "BMANGA_USER_CONFIG_DIR"
-CONFIG_DIR_NAME = "b_manga"
 PRESETS_DIR_NAME = "presets"
+
+
+def _manifest_id() -> str:
+    manifest = Path(__file__).resolve().parents[1] / "blender_manifest.toml"
+    with manifest.open("rb") as stream:
+        value = tomllib.load(stream).get("id")
+    if not isinstance(value, str) or not value.strip():
+        raise RuntimeError(f"拡張機能IDを取得できません: {manifest}")
+    return value.strip()
+
+
+CONFIG_DIR_NAME = _manifest_id()
 
 PRESET_CATEGORIES = {
     "paper": "paper",

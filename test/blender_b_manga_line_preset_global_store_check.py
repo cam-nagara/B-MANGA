@@ -17,7 +17,7 @@ import b_manga_line  # noqa: E402
 from b_manga_line import presets  # noqa: E402
 
 
-STORE_FILE = "b_manga_line_presets.json"
+STORE_FILE = "b_manga_line_next_presets.json"
 
 
 def _store_names(store_dir: Path) -> list[str]:

@@ -15,7 +15,7 @@ def temporary_line_preset_store():
     with tempfile.TemporaryDirectory(prefix="bmanga_line_presets_") as temp_dir:
         os.environ["BMANGA_LINE_PRESET_STORE_DIR"] = temp_dir
         try:
-            yield Path(temp_dir) / "b_manga_line_presets.json"
+            yield Path(temp_dir) / "b_manga_line_next_presets.json"
         finally:
             if old_value is None:
                 os.environ.pop("BMANGA_LINE_PRESET_STORE_DIR", None)

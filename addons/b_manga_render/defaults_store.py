@@ -8,18 +8,36 @@ JSON で保存し、どの .blend からでも共通の既定として使う。
 from __future__ import annotations
 
 import json
+import os
+import tomllib
 from pathlib import Path
 
 import bpy
 
-_FILE_NAME = "b_manga_render_preset_defaults.json"
+_ENV_STORE_DIR = "BMANGA_RENDER_PRESET_STORE_DIR"
+_FILE_NAME = "b_manga_render_next_preset_defaults.json"
 
 # JSON にそのまま入る型のみ保存対象 (Pointer/Collection は対象外)
 _SKIP_PROPS = {"rna_type"}
 
 
+def _manifest_id() -> str:
+    manifest = Path(__file__).with_name("blender_manifest.toml")
+    with manifest.open("rb") as stream:
+        value = tomllib.load(stream).get("id")
+    if not isinstance(value, str) or not value.strip():
+        raise RuntimeError(f"拡張機能IDを取得できません: {manifest}")
+    return value.strip()
+
+
+_CONFIG_DIR_NAME = _manifest_id()
+
+
 def _store_path() -> Path:
-    cfg = bpy.utils.user_resource("CONFIG", create=True)
+    override = os.environ.get(_ENV_STORE_DIR, "").strip()
+    if override:
+        return Path(override) / _FILE_NAME
+    cfg = bpy.utils.user_resource("CONFIG", path=_CONFIG_DIR_NAME, create=True)
     return Path(cfg) / _FILE_NAME
 
 

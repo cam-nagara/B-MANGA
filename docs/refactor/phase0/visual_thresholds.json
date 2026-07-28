@@ -1,0 +1,322 @@
+{
+  "schema_version": 1,
+  "reference_status": "Phase 0 frozen-current reference; visually approved by user on 2026-07-29",
+  "gpu": {
+    "golden_sha256": "344aa75d0bdd84624d204f6876deff9bbe2f4f69e3042a5b98f75db1e6988879",
+    "capture_count": 10,
+    "comparisons": [
+      {
+        "run": 1,
+        "ssim": 1.0,
+        "psnr_db": 999.0,
+        "max_color_delta": 0,
+        "mean_absolute_error": 0.0
+      },
+      {
+        "run": 2,
+        "ssim": 1.0,
+        "psnr_db": 999.0,
+        "max_color_delta": 0,
+        "mean_absolute_error": 0.0
+      },
+      {
+        "run": 3,
+        "ssim": 1.0,
+        "psnr_db": 999.0,
+        "max_color_delta": 0,
+        "mean_absolute_error": 0.0
+      },
+      {
+        "run": 4,
+        "ssim": 1.0,
+        "psnr_db": 999.0,
+        "max_color_delta": 0,
+        "mean_absolute_error": 0.0
+      },
+      {
+        "run": 5,
+        "ssim": 1.0,
+        "psnr_db": 999.0,
+        "max_color_delta": 0,
+        "mean_absolute_error": 0.0
+      },
+      {
+        "run": 6,
+        "ssim": 1.0,
+        "psnr_db": 999.0,
+        "max_color_delta": 0,
+        "mean_absolute_error": 0.0
+      },
+      {
+        "run": 7,
+        "ssim": 1.0,
+        "psnr_db": 999.0,
+        "max_color_delta": 0,
+        "mean_absolute_error": 0.0
+      },
+      {
+        "run": 8,
+        "ssim": 1.0,
+        "psnr_db": 999.0,
+        "max_color_delta": 0,
+        "mean_absolute_error": 0.0
+      },
+      {
+        "run": 9,
+        "ssim": 1.0,
+        "psnr_db": 999.0,
+        "max_color_delta": 0,
+        "mean_absolute_error": 0.0
+      }
+    ],
+    "thresholds": {
+      "minimum_ssim": 0.9999,
+      "maximum_color_delta": 2
+    }
+  },
+  "jpeg": {
+    "producer": "bpy.ops.bmanga.export_page",
+    "quality": 95,
+    "requested_dpi": 72,
+    "independent_reader": {
+      "schema_version": 1,
+      "producer": "bpy.ops.bmanga.export_page",
+      "requested_dpi": 72,
+      "quality": 95,
+      "source_png": {
+        "file": "product_source.png",
+        "format": "PNG",
+        "mode": "RGBA",
+        "size": [
+          729,
+          1032
+        ],
+        "dpi": null,
+        "icc_present": false,
+        "icc_sha256": "",
+        "jpeg_sampling": null,
+        "sha256": "9661bd0edb822af893a73f1f94b23936dd7f6b55e8ab807cb505b835b0ec2d93"
+      },
+      "jpeg_outputs": [
+        {
+          "file": "product_page_q95_00.jpg",
+          "format": "JPEG",
+          "mode": "RGB",
+          "size": [
+            729,
+            1032
+          ],
+          "dpi": null,
+          "icc_present": false,
+          "icc_sha256": "",
+          "jpeg_sampling": 2,
+          "sha256": "e552d2885d161e7a738685d6ed3644ed7c5cec2db47b0fe1d380be8d0b9c6b32"
+        },
+        {
+          "file": "product_page_q95_01.jpg",
+          "format": "JPEG",
+          "mode": "RGB",
+          "size": [
+            729,
+            1032
+          ],
+          "dpi": null,
+          "icc_present": false,
+          "icc_sha256": "",
+          "jpeg_sampling": 2,
+          "sha256": "e552d2885d161e7a738685d6ed3644ed7c5cec2db47b0fe1d380be8d0b9c6b32"
+        },
+        {
+          "file": "product_page_q95_02.jpg",
+          "format": "JPEG",
+          "mode": "RGB",
+          "size": [
+            729,
+            1032
+          ],
+          "dpi": null,
+          "icc_present": false,
+          "icc_sha256": "",
+          "jpeg_sampling": 2,
+          "sha256": "e552d2885d161e7a738685d6ed3644ed7c5cec2db47b0fe1d380be8d0b9c6b32"
+        },
+        {
+          "file": "product_page_q95_03.jpg",
+          "format": "JPEG",
+          "mode": "RGB",
+          "size": [
+            729,
+            1032
+          ],
+          "dpi": null,
+          "icc_present": false,
+          "icc_sha256": "",
+          "jpeg_sampling": 2,
+          "sha256": "e552d2885d161e7a738685d6ed3644ed7c5cec2db47b0fe1d380be8d0b9c6b32"
+        },
+        {
+          "file": "product_page_q95_04.jpg",
+          "format": "JPEG",
+          "mode": "RGB",
+          "size": [
+            729,
+            1032
+          ],
+          "dpi": null,
+          "icc_present": false,
+          "icc_sha256": "",
+          "jpeg_sampling": 2,
+          "sha256": "e552d2885d161e7a738685d6ed3644ed7c5cec2db47b0fe1d380be8d0b9c6b32"
+        },
+        {
+          "file": "product_page_q95_05.jpg",
+          "format": "JPEG",
+          "mode": "RGB",
+          "size": [
+            729,
+            1032
+          ],
+          "dpi": null,
+          "icc_present": false,
+          "icc_sha256": "",
+          "jpeg_sampling": 2,
+          "sha256": "e552d2885d161e7a738685d6ed3644ed7c5cec2db47b0fe1d380be8d0b9c6b32"
+        },
+        {
+          "file": "product_page_q95_06.jpg",
+          "format": "JPEG",
+          "mode": "RGB",
+          "size": [
+            729,
+            1032
+          ],
+          "dpi": null,
+          "icc_present": false,
+          "icc_sha256": "",
+          "jpeg_sampling": 2,
+          "sha256": "e552d2885d161e7a738685d6ed3644ed7c5cec2db47b0fe1d380be8d0b9c6b32"
+        },
+        {
+          "file": "product_page_q95_07.jpg",
+          "format": "JPEG",
+          "mode": "RGB",
+          "size": [
+            729,
+            1032
+          ],
+          "dpi": null,
+          "icc_present": false,
+          "icc_sha256": "",
+          "jpeg_sampling": 2,
+          "sha256": "e552d2885d161e7a738685d6ed3644ed7c5cec2db47b0fe1d380be8d0b9c6b32"
+        },
+        {
+          "file": "product_page_q95_08.jpg",
+          "format": "JPEG",
+          "mode": "RGB",
+          "size": [
+            729,
+            1032
+          ],
+          "dpi": null,
+          "icc_present": false,
+          "icc_sha256": "",
+          "jpeg_sampling": 2,
+          "sha256": "e552d2885d161e7a738685d6ed3644ed7c5cec2db47b0fe1d380be8d0b9c6b32"
+        },
+        {
+          "file": "product_page_q95_09.jpg",
+          "format": "JPEG",
+          "mode": "RGB",
+          "size": [
+            729,
+            1032
+          ],
+          "dpi": null,
+          "icc_present": false,
+          "icc_sha256": "",
+          "jpeg_sampling": 2,
+          "sha256": "e552d2885d161e7a738685d6ed3644ed7c5cec2db47b0fe1d380be8d0b9c6b32"
+        }
+      ],
+      "dpi_contract_status": "missing_in_current_product_output",
+      "icc_contract_status": "missing_in_current_product_output"
+    },
+    "golden_sha256": "e552d2885d161e7a738685d6ed3644ed7c5cec2db47b0fe1d380be8d0b9c6b32",
+    "source_quality": {
+      "ssim": 0.99953902,
+      "psnr_db": 48.6382,
+      "max_color_delta": 50,
+      "mean_absolute_error": 0.072289
+    },
+    "comparisons": [
+      {
+        "run": 1,
+        "ssim": 1.0,
+        "psnr_db": 999.0,
+        "max_color_delta": 0,
+        "mean_absolute_error": 0.0
+      },
+      {
+        "run": 2,
+        "ssim": 1.0,
+        "psnr_db": 999.0,
+        "max_color_delta": 0,
+        "mean_absolute_error": 0.0
+      },
+      {
+        "run": 3,
+        "ssim": 1.0,
+        "psnr_db": 999.0,
+        "max_color_delta": 0,
+        "mean_absolute_error": 0.0
+      },
+      {
+        "run": 4,
+        "ssim": 1.0,
+        "psnr_db": 999.0,
+        "max_color_delta": 0,
+        "mean_absolute_error": 0.0
+      },
+      {
+        "run": 5,
+        "ssim": 1.0,
+        "psnr_db": 999.0,
+        "max_color_delta": 0,
+        "mean_absolute_error": 0.0
+      },
+      {
+        "run": 6,
+        "ssim": 1.0,
+        "psnr_db": 999.0,
+        "max_color_delta": 0,
+        "mean_absolute_error": 0.0
+      },
+      {
+        "run": 7,
+        "ssim": 1.0,
+        "psnr_db": 999.0,
+        "max_color_delta": 0,
+        "mean_absolute_error": 0.0
+      },
+      {
+        "run": 8,
+        "ssim": 1.0,
+        "psnr_db": 999.0,
+        "max_color_delta": 0,
+        "mean_absolute_error": 0.0
+      },
+      {
+        "run": 9,
+        "ssim": 1.0,
+        "psnr_db": 999.0,
+        "max_color_delta": 0,
+        "mean_absolute_error": 0.0
+      }
+    ],
+    "thresholds": {
+      "minimum_ssim_to_same_encoder_golden": 0.99999,
+      "minimum_psnr_db_to_same_encoder_golden": 998.0
+    }
+  }
+}

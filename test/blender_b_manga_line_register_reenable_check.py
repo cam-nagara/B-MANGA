@@ -36,7 +36,7 @@ def _assert_registered() -> None:
     from b_manga_line_reenable_check import core
     import b_manga_line_reenable_check as mod
 
-    assert mod.bl_info["name"] == "B-MANGA Liner"
+    assert mod.bl_info["name"] == "B-MANGA Liner Next"
     assert bool(getattr(core.BMangaLineSettings, "is_registered", False))
     assert getattr(bpy.types.Object, "bmanga_line_settings", None) is not None
     assert getattr(bpy.types.Scene, "bmanga_line_camera", None) is not None

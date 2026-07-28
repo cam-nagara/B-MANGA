@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 bl_info = {
-    "name": "B-MANGA Render",
+    "name": "B-MANGA Render Next",
     "author": "B-MANGA Project",
-    "version": (0, 1, 37),
+    "version": (0, 1, 38),
     "blender": (5, 2, 0),
     "description": "Command based render presets and fisheye output for B-MANGA workflows",
     "category": "Render",

@@ -1,0 +1,4542 @@
+{
+  "schema_version": 2,
+  "sources": [
+    "test_probe/probe_results.json",
+    "python_test_probe/python_probe_results.json"
+  ],
+  "coverage": {
+    "discovered_sources": 452,
+    "recorded_sources": 452,
+    "expected_sources": 452,
+    "unregistered": [],
+    "unexpected": [],
+    "duplicate_ids": []
+  },
+  "python_test_items": 293,
+  "summary": {
+    "baseline_pass": 189,
+    "behavior_mismatch": 25,
+    "expected_traceback_marker": 8,
+    "external_fixture": 8,
+    "missing_sentinel": 148,
+    "python_pass": 32,
+    "runtime_failure": 29,
+    "silent_failure": 2,
+    "support_module": 4,
+    "ui_required": 7
+  },
+  "results": [
+    {
+      "test_id": "test:test.b.manga.line.test.utils",
+      "script": "test/b_manga_line_test_utils.py",
+      "runner": "inventory_only",
+      "probe_status": "not_executable",
+      "category": "support_module",
+      "evidence": "test支援・監査ツール。単独test itemではない",
+      "seconds": 0.0
+    },
+    {
+      "test_id": "test:test.b.manga.line.width.pixel.analyze",
+      "script": "test/b_manga_line_width_pixel_analyze.py",
+      "runner": "inventory_only",
+      "probe_status": "not_executable",
+      "category": "support_module",
+      "evidence": "test支援・監査ツール。単独test itemではない",
+      "seconds": 0.0
+    },
+    {
+      "test_id": "test:test.blender.active.stack.item.no.sync.check",
+      "script": "test/blender_active_stack_item_no_sync_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 6.095
+    },
+    {
+      "test_id": "test:test.blender.addon.enable.lazy.effect.nodes.check",
+      "script": "test/blender_addon_enable_lazy_effect_nodes_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 9.852
+    },
+    {
+      "test_id": "test:test.blender.alt.reparent.phase.a.check",
+      "script": "test/blender_alt_reparent_phase_a_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 9.041
+    },
+    {
+      "test_id": "test:test.blender.alt.reparent.phase.b.outside.check",
+      "script": "test/blender_alt_reparent_phase_b_outside_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 10.005
+    },
+    {
+      "test_id": "test:test.blender.asset.bundle.roundtrip.check",
+      "script": "test/blender_asset_bundle_roundtrip_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 15.143
+    },
+    {
+      "test_id": "test:test.blender.asset.extended.layers.check",
+      "script": "test/blender_asset_extended_layers_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 24.188
+    },
+    {
+      "test_id": "test:test.blender.asset.thumbnail.patterns.check",
+      "script": "test/blender_asset_thumbnail_patterns_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 48.34
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.aov.composite.check",
+      "script": "test/blender_b_manga_line_aov_composite_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 3.88
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.aov.view.line.only.check",
+      "script": "test/blender_b_manga_line_aov_view_line_only_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.918
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.auto.intersection.targets.check",
+      "script": "test/blender_b_manga_line_auto_intersection_targets_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.311
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.auto.quad.repair.check",
+      "script": "test/blender_b_manga_line_auto_quad_repair_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.758
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.auto.quad.repair.undo.check",
+      "script": "test/blender_b_manga_line_auto_quad_repair_undo_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.109
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.auto.quad.repair.visual.check",
+      "script": "test/blender_b_manga_line_auto_quad_repair_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 4.925
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.auto.smooth.save.guard.check",
+      "script": "test/blender_b_manga_line_auto_smooth_save_guard_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 4.589
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.auto.subdivision.check",
+      "script": "test/blender_b_manga_line_auto_subdivision_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.515
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.batch.apply.refresh.check",
+      "script": "test/blender_b_manga_line_batch_apply_refresh_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.474
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.boundary.tube.material.order.check",
+      "script": "test/blender_b_manga_line_boundary_tube_material_order_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.172
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.bump.line.check",
+      "script": "test/blender_b_manga_line_bump_line_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 3.816
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.camera.aov.line.only.check",
+      "script": "test/blender_b_manga_line_camera_aov_line_only_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.282
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.camera.view.creation.range.check",
+      "script": "test/blender_b_manga_line_camera_view_creation_range_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.419
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.control.update.scope.check",
+      "script": "test/blender_b_manga_line_control_update_scope_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 6.687
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.curve.and.linked.batch.check",
+      "script": "test/blender_b_manga_line_curve_and_linked_batch_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.2
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.deferred.numeric.input.check",
+      "script": "test/blender_b_manga_line_deferred_numeric_input_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 1.962
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.display.modes.check",
+      "script": "test/blender_b_manga_line_display_modes_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 3.782
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.distance.visibility.preserves.check",
+      "script": "test/blender_b_manga_line_distance_visibility_preserves_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.38
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.fisheye.width.check",
+      "script": "test/blender_b_manga_line_fisheye_width_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.084
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.full.visual.audit.check",
+      "script": "test/blender_b_manga_line_full_visual_audit_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 7.521
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.generated.material.color.check",
+      "script": "test/blender_b_manga_line_generated_material_color_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.943
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.generated.update.scope.check",
+      "script": "test/blender_b_manga_line_generated_update_scope_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.593
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.inner.angle.threshold.check",
+      "script": "test/blender_b_manga_line_inner_angle_threshold_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.081
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.inner.branch.endpoint.check",
+      "script": "test/blender_b_manga_line_inner_branch_endpoint_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.023
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.inner.cache.check",
+      "script": "test/blender_b_manga_line_inner_cache_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.262
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.inner.creation.range.check",
+      "script": "test/blender_b_manga_line_inner_creation_range_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.433
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.inner.intersection.material.order.check",
+      "script": "test/blender_b_manga_line_inner_intersection_material_order_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 3.107
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.inner.update.efficiency.check",
+      "script": "test/blender_b_manga_line_inner_update_efficiency_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.907
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.inner.width.check",
+      "script": "test/blender_b_manga_line_inner_width_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.958
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.intersection.batch.geometry.check",
+      "script": "test/blender_b_manga_line_intersection_batch_geometry_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.038
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.intersection.cache.check",
+      "script": "test/blender_b_manga_line_intersection_cache_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.333
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.intersection.candidate.index.check",
+      "script": "test/blender_b_manga_line_intersection_candidate_index_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.209
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.intersection.creation.range.check",
+      "script": "test/blender_b_manga_line_intersection_creation_range_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.377
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.intersection.fill.check",
+      "script": "test/blender_b_manga_line_intersection_fill_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.926
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.intersection.refresh.efficiency.check",
+      "script": "test/blender_b_manga_line_intersection_refresh_efficiency_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.292
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.intersection.shell.method.check",
+      "script": "test/blender_b_manga_line_intersection_shell_method_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 3.448
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.line.only.world.check",
+      "script": "test/blender_b_manga_line_line_only_world_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 3.068
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.local.subdivision.node.check",
+      "script": "test/blender_b_manga_line_local_subdivision_node_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.349
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.mesh.optimizer.check",
+      "script": "test/blender_b_manga_line_mesh_optimizer_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.118
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.mesh.optimizer.visual.check",
+      "script": "test/blender_b_manga_line_mesh_optimizer_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 4.603
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.midpoint.jitter.check",
+      "script": "test/blender_b_manga_line_midpoint_jitter_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.063
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.midpoint.targets.check",
+      "script": "test/blender_b_manga_line_midpoint_targets_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.942
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.multi.intersection.modifier.check",
+      "script": "test/blender_b_manga_line_multi_intersection_modifier_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.53
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.offset.controls.check",
+      "script": "test/blender_b_manga_line_offset_controls_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.554
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.open.mesh.outline.check",
+      "script": "test/blender_b_manga_line_open_mesh_outline_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.249
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.outline.creation.range.check",
+      "script": "test/blender_b_manga_line_outline_creation_range_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.318
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.outline.enable.with.intersections.check",
+      "script": "test/blender_b_manga_line_outline_enable_with_intersections_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.518
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.outline.fast.update.check",
+      "script": "test/blender_b_manga_line_outline_fast_update_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.312
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.preset.diff.gate.check",
+      "script": "test/blender_b_manga_line_preset_diff_gate_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.988
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.preset.global.store.check",
+      "script": "test/blender_b_manga_line_preset_global_store_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.292
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.preset.visibility.check",
+      "script": "test/blender_b_manga_line_preset_visibility_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.96
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.reflect.dispatch.check",
+      "script": "test/blender_b_manga_line_reflect_dispatch_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 3.032
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.register.reenable.check",
+      "script": "test/blender_b_manga_line_register_reenable_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 1.993
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.select.range.outline.toggle.check",
+      "script": "test/blender_b_manga_line_select_range_outline_toggle_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.278
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.selection.creation.range.check",
+      "script": "test/blender_b_manga_line_selection_creation_range_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.452
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.selection.line.check",
+      "script": "test/blender_b_manga_line_selection_line_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.164
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.separate.line.colors.check",
+      "script": "test/blender_b_manga_line_separate_line_colors_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.581
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.settings.contract.check",
+      "script": "test/blender_b_manga_line_settings_contract_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.246
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.settings.draft.check",
+      "script": "test/blender_b_manga_line_settings_draft_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.609
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.settings.lock.check",
+      "script": "test/blender_b_manga_line_settings_lock_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.535
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.shared.tree.regeneration.check",
+      "script": "test/blender_b_manga_line_shared_tree_regeneration_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.648
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.sheet.and.proxy.follow.check",
+      "script": "test/blender_b_manga_line_sheet_and_proxy_follow_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.643
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.sheet.mesh.exclusion.check",
+      "script": "test/blender_b_manga_line_sheet_mesh_exclusion_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.273
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.slider.step.check",
+      "script": "test/blender_b_manga_line_slider_step_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.105
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.subdivision.level.sync.check",
+      "script": "test/blender_b_manga_line_subdivision_level_sync_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.196
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.toggle.matrix.check",
+      "script": "test/blender_b_manga_line_toggle_matrix_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 13.154
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.tokyo0004.large.audit",
+      "script": "test/blender_b_manga_line_tokyo0004_large_audit.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 2",
+      "seconds": 1.448
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.transparent.surface.check",
+      "script": "test/blender_b_manga_line_transparent_surface_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.01
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.ui.controls.check",
+      "script": "test/blender_b_manga_line_ui_controls_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 1.956
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.ui.icon.enum.check",
+      "script": "test/blender_b_manga_line_ui_icon_enum_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.901
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.uniform.width.check",
+      "script": "test/blender_b_manga_line_uniform_width_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.556
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.update.all.targets.check",
+      "script": "test/blender_b_manga_line_update_all_targets_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.286
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.width.all.shapes.visual.check",
+      "script": "test/blender_b_manga_line_width_all_shapes_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 17.5
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.width.cap.visual.check",
+      "script": "test/blender_b_manga_line_width_cap_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 3.486
+    },
+    {
+      "test_id": "test:test.blender.b.manga.line.width.falloff.check",
+      "script": "test/blender_b_manga_line_width_falloff_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.838
+    },
+    {
+      "test_id": "test:test.blender.b.manga.render.batch.runner.check",
+      "script": "test/blender_b_manga_render_batch_runner_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 5.048
+    },
+    {
+      "test_id": "test:test.blender.b.manga.render.bmanga.alignment.check",
+      "script": "test/blender_b_manga_render_bmanga_alignment_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.84
+    },
+    {
+      "test_id": "test:test.blender.b.manga.render.c00.audit",
+      "script": "test/blender_b_manga_render_c00_audit.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "external_fixture",
+      "evidence": "リポジトリ外c00/Dropbox fixtureへ依存",
+      "seconds": 1.669
+    },
+    {
+      "test_id": "test:test.blender.b.manga.render.c00.execution.check",
+      "script": "test/blender_b_manga_render_c00_execution_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "external_fixture",
+      "evidence": "リポジトリ外c00/Dropbox fixtureへ依存",
+      "seconds": 1.635
+    },
+    {
+      "test_id": "test:test.blender.b.manga.render.c00.full.flow.check",
+      "script": "test/blender_b_manga_render_c00_full_flow_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "external_fixture",
+      "evidence": "リポジトリ外c00/Dropbox fixtureへ依存",
+      "seconds": 1.637
+    },
+    {
+      "test_id": "test:test.blender.b.manga.render.c00.output.range.reopen.worker",
+      "script": "test/blender_b_manga_render_c00_output_range_reopen_worker.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 1.722
+    },
+    {
+      "test_id": "test:test.blender.b.manga.render.c00.output.range.roundtrip.check",
+      "script": "test/blender_b_manga_render_c00_output_range_roundtrip_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "external_fixture",
+      "evidence": "リポジトリ外c00/Dropbox fixtureへ依存",
+      "seconds": 1.767
+    },
+    {
+      "test_id": "test:test.blender.b.manga.render.full.fixture.render.check",
+      "script": "test/blender_b_manga_render_full_fixture_render_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "external_fixture",
+      "evidence": "リポジトリ外c00/Dropbox fixtureへ依存",
+      "seconds": 1.79
+    },
+    {
+      "test_id": "test:test.blender.b.manga.render.split.check",
+      "script": "test/blender_b_manga_render_split_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "assertion mismatch",
+      "seconds": 2.65
+    },
+    {
+      "test_id": "test:test.blender.b.manga.render.ui.audit",
+      "script": "test/blender_b_manga_render_ui_audit.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 1.87
+    },
+    {
+      "test_id": "test:test.blender.b.manga.render.visual.presets",
+      "script": "test/blender_b_manga_render_visual_presets.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "external_fixture",
+      "evidence": "リポジトリ外c00/Dropbox fixtureへ依存",
+      "seconds": 1.829
+    },
+    {
+      "test_id": "test:test.blender.balloon.all.shapes.shapely.check",
+      "script": "test/blender_balloon_all_shapes_shapely_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 10.869
+    },
+    {
+      "test_id": "test:test.blender.balloon.anchor.sharp.method.check",
+      "script": "test/blender_balloon_anchor_sharp_method_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 8.887
+    },
+    {
+      "test_id": "test:test.blender.balloon.approved.shape.regression.check",
+      "script": "test/blender_balloon_approved_shape_regression_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 11.062
+    },
+    {
+      "test_id": "test:test.blender.balloon.band.center.alignment.check",
+      "script": "test/blender_balloon_band_center_alignment_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 10.799
+    },
+    {
+      "test_id": "test:test.blender.balloon.band.mesh.image.mask.check",
+      "script": "test/blender_balloon_band_mesh_image_mask_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 8.41
+    },
+    {
+      "test_id": "test:test.blender.balloon.center.seed.selection.check",
+      "script": "test/blender_balloon_center_seed_selection_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "assertion mismatch",
+      "seconds": 6.675
+    },
+    {
+      "test_id": "test:test.blender.balloon.cloud.native.vs.capsule.visual.check",
+      "script": "test/blender_balloon_cloud_native_vs_capsule_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 7.564
+    },
+    {
+      "test_id": "test:test.blender.balloon.corner.line.pattern.check",
+      "script": "test/blender_balloon_corner_line_pattern_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.932
+    },
+    {
+      "test_id": "test:test.blender.balloon.cross.page.id.check",
+      "script": "test/blender_balloon_cross_page_id_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 7.339
+    },
+    {
+      "test_id": "test:test.blender.balloon.curve.bulge.check",
+      "script": "test/blender_balloon_curve_bulge_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 9.562
+    },
+    {
+      "test_id": "test:test.blender.balloon.curve.mask.and.anchor.check",
+      "script": "test/blender_balloon_curve_mask_and_anchor_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "フキダシの表示補助がありません",
+      "seconds": 8.063
+    },
+    {
+      "test_id": "test:test.blender.balloon.curve.near.border.visual.check",
+      "script": "test/blender_balloon_curve_near_border_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 8.61
+    },
+    {
+      "test_id": "test:test.blender.balloon.curve.render.visual.check",
+      "script": "test/blender_balloon_curve_render_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.657
+    },
+    {
+      "test_id": "test:test.blender.balloon.curve.source.check",
+      "script": "test/blender_balloon_curve_source_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 7.254
+    },
+    {
+      "test_id": "test:test.blender.balloon.edge.dynamic.width.check",
+      "script": "test/blender_balloon_edge_dynamic_width_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 8.991
+    },
+    {
+      "test_id": "test:test.blender.balloon.effect.pattern.visual.audit",
+      "script": "test/blender_balloon_effect_pattern_visual_audit.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 61.244
+    },
+    {
+      "test_id": "test:test.blender.balloon.effect.pattern.visual.support",
+      "script": "test/blender_balloon_effect_pattern_visual_support.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.581
+    },
+    {
+      "test_id": "test:test.blender.balloon.flash.performance.check",
+      "script": "test/blender_balloon_flash_performance_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 6.615
+    },
+    {
+      "test_id": "test:test.blender.balloon.fluffy.shape.params.check",
+      "script": "test/blender_balloon_fluffy_shape_params_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 3.167
+    },
+    {
+      "test_id": "test:test.blender.balloon.fringe.multiline.closeup.check",
+      "script": "test/blender_balloon_fringe_multiline_closeup_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 10.184
+    },
+    {
+      "test_id": "test:test.blender.balloon.fringe.multiline.shapely.check",
+      "script": "test/blender_balloon_fringe_multiline_shapely_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 8.927
+    },
+    {
+      "test_id": "test:test.blender.balloon.full.feature.native.vs.face.check",
+      "script": "test/blender_balloon_full_feature_native_vs_face_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 10.143
+    },
+    {
+      "test_id": "test:test.blender.balloon.image.mask.complex.repro",
+      "script": "test/blender_balloon_image_mask_complex_repro.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 11.299
+    },
+    {
+      "test_id": "test:test.blender.balloon.j.multiline.dynamic.check",
+      "script": "test/blender_balloon_j_multiline_dynamic_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 8.34
+    },
+    {
+      "test_id": "test:test.blender.balloon.j.width.pct.check",
+      "script": "test/blender_balloon_j_width_pct_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 10.214
+    },
+    {
+      "test_id": "test:test.blender.balloon.mask.overlap.repro",
+      "script": "test/blender_balloon_mask_overlap_repro.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 9.438
+    },
+    {
+      "test_id": "test:test.blender.balloon.merge.display.check",
+      "script": "test/blender_balloon_merge_display_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "assertion mismatch",
+      "seconds": 6.313
+    },
+    {
+      "test_id": "test:test.blender.balloon.move.handle.sync.check",
+      "script": "test/blender_balloon_move_handle_sync_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 6.75
+    },
+    {
+      "test_id": "test:test.blender.balloon.multi.line.audit",
+      "script": "test/blender_balloon_multi_line_audit.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 61.762
+    },
+    {
+      "test_id": "test:test.blender.balloon.multi.line.break.repro",
+      "script": "test/blender_balloon_multi_line_break_repro.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 21.918
+    },
+    {
+      "test_id": "test:test.blender.balloon.multi.line.count.check",
+      "script": "test/blender_balloon_multi_line_count_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 8.761
+    },
+    {
+      "test_id": "test:test.blender.balloon.multiline.freeform.check",
+      "script": "test/blender_balloon_multiline_freeform_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 10.557
+    },
+    {
+      "test_id": "test:test.blender.balloon.multiline.length.signature.check",
+      "script": "test/blender_balloon_multiline_length_signature_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 10.963
+    },
+    {
+      "test_id": "test:test.blender.balloon.multiline.thorn.break.repro",
+      "script": "test/blender_balloon_multiline_thorn_break_repro.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 11.225
+    },
+    {
+      "test_id": "test:test.blender.balloon.multiline.visual.check",
+      "script": "test/blender_balloon_multiline_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "面としての主線の有無が不正です: expected=True, roles={}",
+      "seconds": 8.503
+    },
+    {
+      "test_id": "test:test.blender.balloon.node.minimization.phase.a.check",
+      "script": "test/blender_balloon_node_minimization_phase_a_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 6.637
+    },
+    {
+      "test_id": "test:test.blender.balloon.node.minimization.phase.b.check",
+      "script": "test/blender_balloon_node_minimization_phase_b_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 7.623
+    },
+    {
+      "test_id": "test:test.blender.balloon.node.minimization.phase.c.check",
+      "script": "test/blender_balloon_node_minimization_phase_c_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 7.679
+    },
+    {
+      "test_id": "test:test.blender.balloon.node.minimization.phase.d.check",
+      "script": "test/blender_balloon_node_minimization_phase_d_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 6.693
+    },
+    {
+      "test_id": "test:test.blender.balloon.node.minimization.phase.d.tail.visual.check",
+      "script": "test/blender_balloon_node_minimization_phase_d_tail_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 7.626
+    },
+    {
+      "test_id": "test:test.blender.balloon.node.minimization.phase.e.check",
+      "script": "test/blender_balloon_node_minimization_phase_e_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 9.661
+    },
+    {
+      "test_id": "test:test.blender.balloon.node.minimization.visual.audit",
+      "script": "test/blender_balloon_node_minimization_visual_audit.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 36.678
+    },
+    {
+      "test_id": "test:test.blender.balloon.path.line.check",
+      "script": "test/blender_balloon_path_line_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 8.541
+    },
+    {
+      "test_id": "test:test.blender.balloon.soft.mask.fuchi.visual.check",
+      "script": "test/blender_balloon_soft_mask_fuchi_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 11.155
+    },
+    {
+      "test_id": "test:test.blender.balloon.std.width.pct.export.check",
+      "script": "test/blender_balloon_std_width_pct_export_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 10.069
+    },
+    {
+      "test_id": "test:test.blender.balloon.tail.inward.join.check",
+      "script": "test/blender_balloon_tail_inward_join_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 6.396
+    },
+    {
+      "test_id": "test:test.blender.balloon.tail.join.free.transform.visual.check",
+      "script": "test/blender_balloon_tail_join_free_transform_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.366
+    },
+    {
+      "test_id": "test:test.blender.balloon.tail.ui.check",
+      "script": "test/blender_balloon_tail_ui_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.999
+    },
+    {
+      "test_id": "test:test.blender.balloon.thorn.corner.deform.check",
+      "script": "test/blender_balloon_thorn_corner_deform_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.429
+    },
+    {
+      "test_id": "test:test.blender.balloon.thorn.native.vs.band.visual.check",
+      "script": "test/blender_balloon_thorn_native_vs_band_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 6.917
+    },
+    {
+      "test_id": "test:test.blender.balloon.tool.unification.check",
+      "script": "test/blender_balloon_tool_unification_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 6.977
+    },
+    {
+      "test_id": "test:test.blender.balloon.uni.flash.check",
+      "script": "test/blender_balloon_uni_flash_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 17.236
+    },
+    {
+      "test_id": "test:test.blender.balloon.uniflash.inner.body.check",
+      "script": "test/blender_balloon_uniflash_inner_body_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 14.795
+    },
+    {
+      "test_id": "test:test.blender.balloon.v0.6.106.check",
+      "script": "test/blender_balloon_v0_6_106_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 6.522
+    },
+    {
+      "test_id": "test:test.blender.balloon.v0.6.107.check",
+      "script": "test/blender_balloon_v0_6_107_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 7.388
+    },
+    {
+      "test_id": "test:test.blender.balloon.v0.6.110.check",
+      "script": "test/blender_balloon_v0_6_110_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 8.533
+    },
+    {
+      "test_id": "test:test.blender.balloon.v0.6.113.check",
+      "script": "test/blender_balloon_v0_6_113_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 6.944
+    },
+    {
+      "test_id": "test:test.blender.balloon.v0.6.114.check",
+      "script": "test/blender_balloon_v0_6_114_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 6.518
+    },
+    {
+      "test_id": "test:test.blender.balloon.v0.6.115.check",
+      "script": "test/blender_balloon_v0_6_115_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 7.475
+    },
+    {
+      "test_id": "test:test.blender.balloon.v0.6.116.check",
+      "script": "test/blender_balloon_v0_6_116_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 8.633
+    },
+    {
+      "test_id": "test:test.blender.balloon.v0.6.118.check",
+      "script": "test/blender_balloon_v0_6_118_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 9.899
+    },
+    {
+      "test_id": "test:test.blender.balloon.v0.6.120.check",
+      "script": "test/blender_balloon_v0_6_120_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 14.311
+    },
+    {
+      "test_id": "test:test.blender.balloon.v0.6.121.check",
+      "script": "test/blender_balloon_v0_6_121_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 11.835
+    },
+    {
+      "test_id": "test:test.blender.balloon.v0.6.124.check",
+      "script": "test/blender_balloon_v0_6_124_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 8.823
+    },
+    {
+      "test_id": "test:test.blender.balloon.v0.6.125.check",
+      "script": "test/blender_balloon_v0_6_125_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 8.678
+    },
+    {
+      "test_id": "test:test.blender.balloon.v0.6.126.check",
+      "script": "test/blender_balloon_v0_6_126_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 11.157
+    },
+    {
+      "test_id": "test:test.blender.balloon.v0.6.127.full.audit",
+      "script": "test/blender_balloon_v0_6_127_full_audit.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 42.275
+    },
+    {
+      "test_id": "test:test.blender.balloon.v0.6.128.check",
+      "script": "test/blender_balloon_v0_6_128_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 8.978
+    },
+    {
+      "test_id": "test:test.blender.bleed.outer.default.color.check",
+      "script": "test/blender_bleed_outer_default_color_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.174
+    },
+    {
+      "test_id": "test:test.blender.bmanga.c00.template.integration.check",
+      "script": "test/blender_bmanga_c00_template_integration_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "external_fixture",
+      "evidence": "リポジトリ外c00/Dropbox fixtureへ依存",
+      "seconds": 1.571
+    },
+    {
+      "test_id": "test:test.blender.bmanga.full.visual.audit",
+      "script": "test/blender_bmanga_full_visual_audit.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 10.066
+    },
+    {
+      "test_id": "test:test.blender.bmanga.partial.completion.check",
+      "script": "test/blender_bmanga_partial_completion_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 9.174
+    },
+    {
+      "test_id": "test:test.blender.bmanga.ui.inventory.visual.audit",
+      "script": "test/blender_bmanga_ui_inventory_visual_audit.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "[{'group': 'B-MANGAパネル / ページ一覧 / 作品', 'depth': 0, 'kind': '非表示', 'label': 'この状態では表示されません', 'detail': 'BMANGA_PT_work', 'icon': 'HIDE_ON'}, {'group': 'B-MANGAパネル / ページ一覧 / ファイル遷移', 'depth': 1, 'kind': 'ラベル', 'label': 'UiInventory p0001', 'de",
+      "seconds": 11.286
+    },
+    {
+      "test_id": "test:test.blender.border.preset.coma.tool.check",
+      "script": "test/blender_border_preset_coma_tool_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.307
+    },
+    {
+      "test_id": "test:test.blender.border.preset.file.roundtrip.check",
+      "script": "test/blender_border_preset_file_roundtrip_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 29.601
+    },
+    {
+      "test_id": "test:test.blender.border.preset.file.roundtrip.visual.check",
+      "script": "test/blender_border_preset_file_roundtrip_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 39.206
+    },
+    {
+      "test_id": "test:test.blender.border.preset.management.check",
+      "script": "test/blender_border_preset_management_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 10.012
+    },
+    {
+      "test_id": "test:test.blender.c00.mask.aov.migration",
+      "script": "test/blender_c00_mask_aov_migration.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 1.708
+    },
+    {
+      "test_id": "test:test.blender.camera.view.navigation.check",
+      "script": "test/blender_camera_view_navigation_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.724
+    },
+    {
+      "test_id": "test:test.blender.coma.basic.frame.merge.check",
+      "script": "test/blender_coma_basic_frame_merge_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 13.624
+    },
+    {
+      "test_id": "test:test.blender.coma.blur.curve.ui.check",
+      "script": "test/blender_coma_blur_curve_ui_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.405
+    },
+    {
+      "test_id": "test:test.blender.coma.border.texture.check",
+      "script": "test/blender_coma_border_texture_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.529
+    },
+    {
+      "test_id": "test:test.blender.coma.border.texture.visual.check",
+      "script": "test/blender_coma_border_texture_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.481
+    },
+    {
+      "test_id": "test:test.blender.coma.brush.corner.check",
+      "script": "test/blender_coma_brush_corner_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.808
+    },
+    {
+      "test_id": "test:test.blender.coma.camera.render.panel.migration.check",
+      "script": "test/blender_coma_camera_render_panel_migration_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "ページ一覧表示",
+      "seconds": 2.452
+    },
+    {
+      "test_id": "test:test.blender.coma.camera.roundtrip.check",
+      "script": "test/blender_coma_camera_roundtrip_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 9.039
+    },
+    {
+      "test_id": "test:test.blender.coma.content.opacity.mask.check",
+      "script": "test/blender_coma_content_opacity_mask_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 9.324
+    },
+    {
+      "test_id": "test:test.blender.coma.content.z.order.check",
+      "script": "test/blender_coma_content_z_order_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.593
+    },
+    {
+      "test_id": "test:test.blender.coma.context.menu.check",
+      "script": "test/blender_coma_context_menu_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.62
+    },
+    {
+      "test_id": "test:test.blender.coma.detail.ui.margin.check",
+      "script": "test/blender_coma_detail_ui_margin_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "assertion mismatch",
+      "seconds": 6.523
+    },
+    {
+      "test_id": "test:test.blender.coma.edge.handle.extend.check",
+      "script": "test/blender_coma_edge_handle_extend_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.789
+    },
+    {
+      "test_id": "test:test.blender.coma.edge.highlight.check",
+      "script": "test/blender_coma_edge_highlight_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.486
+    },
+    {
+      "test_id": "test:test.blender.coma.file.preview.visual.check",
+      "script": "test/blender_coma_file_preview_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.713
+    },
+    {
+      "test_id": "test:test.blender.coma.fisheye.overlay.check",
+      "script": "test/blender_coma_fisheye_overlay_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.472
+    },
+    {
+      "test_id": "test:test.blender.coma.id.duplicate.check",
+      "script": "test/blender_coma_id_duplicate_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 13.822
+    },
+    {
+      "test_id": "test:test.blender.coma.knife.cut.finalize.check",
+      "script": "test/blender_coma_knife_cut_finalize_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 8.71
+    },
+    {
+      "test_id": "test:test.blender.coma.knife.cut.layer.order.check",
+      "script": "test/blender_coma_knife_cut_layer_order_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 6.792
+    },
+    {
+      "test_id": "test:test.blender.coma.knife.cut.reading.order.check",
+      "script": "test/blender_coma_knife_cut_reading_order_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 13.268
+    },
+    {
+      "test_id": "test:test.blender.coma.mask.aov.check",
+      "script": "test/blender_coma_mask_aov_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.715
+    },
+    {
+      "test_id": "test:test.blender.coma.mask.hit.visibility.check",
+      "script": "test/blender_coma_mask_hit_visibility_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "{'key': 'balloon|p0001|balloon_0001', 'kind': 'balloon'}",
+      "seconds": 7.274
+    },
+    {
+      "test_id": "test:test.blender.coma.mask.sync.check",
+      "script": "test/blender_coma_mask_sync_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 6.663
+    },
+    {
+      "test_id": "test:test.blender.coma.number.and.selection.check",
+      "script": "test/blender_coma_number_and_selection_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 6.819
+    },
+    {
+      "test_id": "test:test.blender.coma.overlay.visibility.visual.check",
+      "script": "test/blender_coma_overlay_visibility_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.711
+    },
+    {
+      "test_id": "test:test.blender.coma.page.labels.visual.check",
+      "script": "test/blender_coma_page_labels_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 24.608
+    },
+    {
+      "test_id": "test:test.blender.coma.page.preview.camera.follow.check",
+      "script": "test/blender_coma_page_preview_camera_follow_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 9.648
+    },
+    {
+      "test_id": "test:test.blender.coma.plane.page.anchor.check",
+      "script": "test/blender_coma_plane_page_anchor_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.845
+    },
+    {
+      "test_id": "test:test.blender.coma.plane.uv.anchor.check",
+      "script": "test/blender_coma_plane_uv_anchor_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 1.993
+    },
+    {
+      "test_id": "test:test.blender.coma.preview.scale.check",
+      "script": "test/blender_coma_preview_scale_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 15.742
+    },
+    {
+      "test_id": "test:test.blender.coma.renumber.reading.order.check",
+      "script": "test/blender_coma_renumber_reading_order_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 11.07
+    },
+    {
+      "test_id": "test:test.blender.coma.rotation.check",
+      "script": "test/blender_coma_rotation_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.86
+    },
+    {
+      "test_id": "test:test.blender.coma.template.check",
+      "script": "test/blender_coma_template_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 49.517
+    },
+    {
+      "test_id": "test:test.blender.coma.thumb.scale.node.check",
+      "script": "test/blender_coma_thumb_scale_node_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.566
+    },
+    {
+      "test_id": "test:test.blender.coma.underlay.reference.check",
+      "script": "test/blender_coma_underlay_reference_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "page/coma backgrounds should not be configured on camera: ['koma_content_back_p0001_c01.png', 'koma_content_front_p0001_c01.png']",
+      "seconds": 18.618
+    },
+    {
+      "test_id": "test:test.blender.coma.vertex.selection.snap.check",
+      "script": "test/blender_coma_vertex_selection_snap_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "[]",
+      "seconds": 3.657
+    },
+    {
+      "test_id": "test:test.blender.context.menu.commands.check",
+      "script": "test/blender_context_menu_commands_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 9.267
+    },
+    {
+      "test_id": "test:test.blender.corner.radius.percent.check",
+      "script": "test/blender_corner_radius_percent_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "効果線始点: %指定の角丸が曲線扱いになっていません",
+      "seconds": 2.744
+    },
+    {
+      "test_id": "test:test.blender.creation.scope.check",
+      "script": "test/blender_creation_scope_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 8.616
+    },
+    {
+      "test_id": "test:test.blender.creation.tool.drag.behavior.check",
+      "script": "test/blender_creation_tool_drag_behavior_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.457
+    },
+    {
+      "test_id": "test:test.blender.cross.page.transfer.durability.check",
+      "script": "test/blender_cross_page_transfer_durability_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 12.009
+    },
+    {
+      "test_id": "test:test.blender.current.page.outline.visual.check",
+      "script": "test/blender_current_page_outline_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.652
+    },
+    {
+      "test_id": "test:test.blender.curve.point.identity.check",
+      "script": "test/blender_curve_point_identity_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.431
+    },
+    {
+      "test_id": "test:test.blender.data.name.organizer.check",
+      "script": "test/blender_data_name_organizer_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 13.706
+    },
+    {
+      "test_id": "test:test.blender.detail.dialog.content.conversion.check",
+      "script": "test/blender_detail_dialog_content_conversion_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 14.845
+    },
+    {
+      "test_id": "test:test.blender.detail.dialog.data.migration.check",
+      "script": "test/blender_detail_dialog_data_migration_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 43.982
+    },
+    {
+      "test_id": "test:test.blender.detail.dialog.object.tool.resume.check",
+      "script": "test/blender_detail_dialog_object_tool_resume_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "assertion mismatch",
+      "seconds": 7.287
+    },
+    {
+      "test_id": "test:test.blender.detail.dialog.unification.check",
+      "script": "test/blender_detail_dialog_unification_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 9.093
+    },
+    {
+      "test_id": "test:test.blender.detail.dialog.width.visual.check",
+      "script": "test/blender_detail_dialog_width_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "ui_required",
+      "evidence": "background実行では成立しないUIケース",
+      "seconds": 1.662
+    },
+    {
+      "test_id": "test:test.blender.detail.effect.fixed.target.check",
+      "script": "test/blender_detail_effect_fixed_target_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.423
+    },
+    {
+      "test_id": "test:test.blender.detail.migration.open.file.reload.check",
+      "script": "test/blender_detail_migration_open_file_reload_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "silent_failure",
+      "evidence": "終了コード0だが完了sentinelがなく例外出力を含む",
+      "seconds": 4.255
+    },
+    {
+      "test_id": "test:test.blender.detail.migration.worker.ownership.check",
+      "script": "test/blender_detail_migration_worker_ownership_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 30.347
+    },
+    {
+      "test_id": "test:test.blender.detail.preset.apply.check",
+      "script": "test/blender_detail_preset_apply_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 8.949
+    },
+    {
+      "test_id": "test:test.blender.detail.preset.list.and.object.tool.check",
+      "script": "test/blender_detail_preset_list_and_object_tool_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "BMANGA_OT_raster_layer_mode_set",
+      "seconds": 7.197
+    },
+    {
+      "test_id": "test:test.blender.detail.preset.unsaved.confirm.visual.check",
+      "script": "test/blender_detail_preset_unsaved_confirm_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "ui_required",
+      "evidence": "background実行では成立しないUIケース",
+      "seconds": 1.616
+    },
+    {
+      "test_id": "test:test.blender.detail.settings.runtime.check",
+      "script": "test/blender_detail_settings_runtime_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.967
+    },
+    {
+      "test_id": "test:test.blender.detail.target.state.bridge.check",
+      "script": "test/blender_detail_target_state_bridge_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.564
+    },
+    {
+      "test_id": "test:test.blender.detail.transaction.action.check",
+      "script": "test/blender_detail_transaction_action_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 21.25
+    },
+    {
+      "test_id": "test:test.blender.double.click.keymap.crash.guard.ui.check",
+      "script": "test/blender_double_click_keymap_crash_guard_ui_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "ui_required",
+      "evidence": "background実行では成立しないUIケース",
+      "seconds": 1.786
+    },
+    {
+      "test_id": "test:test.blender.effect.controller.gp.hidden.check",
+      "script": "test/blender_effect_controller_gp_hidden_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 6.378
+    },
+    {
+      "test_id": "test:test.blender.effect.individual.object.guard.check",
+      "script": "test/blender_effect_individual_object_guard_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.543
+    },
+    {
+      "test_id": "test:test.blender.effect.line.detail.graph.check",
+      "script": "test/blender_effect_line_detail_graph_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 11.813
+    },
+    {
+      "test_id": "test:test.blender.effect.line.end.fill.check",
+      "script": "test/blender_effect_line_end_fill_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.287
+    },
+    {
+      "test_id": "test:test.blender.effect.line.frame.spacing.check",
+      "script": "test/blender_effect_line_frame_spacing_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 4.103
+    },
+    {
+      "test_id": "test:test.blender.effect.line.gradient.occlusion.check",
+      "script": "test/blender_effect_line_gradient_occlusion_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 11.73
+    },
+    {
+      "test_id": "test:test.blender.effect.line.handle.defaults.check",
+      "script": "test/blender_effect_line_handle_defaults_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.539
+    },
+    {
+      "test_id": "test:test.blender.effect.line.handle.visual.check",
+      "script": "test/blender_effect_line_handle_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.681
+    },
+    {
+      "test_id": "test:test.blender.effect.line.mask.visibility.check",
+      "script": "test/blender_effect_line_mask_visibility_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 8.777
+    },
+    {
+      "test_id": "test:test.blender.effect.line.path.image.check",
+      "script": "test/blender_effect_line_path_image_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 9.009
+    },
+    {
+      "test_id": "test:test.blender.effect.line.path.image.visual.check",
+      "script": "test/blender_effect_line_path_image_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 9.626
+    },
+    {
+      "test_id": "test:test.blender.effect.line.preset.ui.check",
+      "script": "test/blender_effect_line_preset_ui_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 6.751
+    },
+    {
+      "test_id": "test:test.blender.effect.line.shape.overlay.visual.check",
+      "script": "test/blender_effect_line_shape_overlay_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.673
+    },
+    {
+      "test_id": "test:test.blender.effect.line.start.distance.check",
+      "script": "test/blender_effect_line_start_distance_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 9.534
+    },
+    {
+      "test_id": "test:test.blender.effect.line.white.outline.visual.check",
+      "script": "test/blender_effect_line_white_outline_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 3.609
+    },
+    {
+      "test_id": "test:test.blender.effect.start.frame.page.check",
+      "script": "test/blender_effect_start_frame_page_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 6.353
+    },
+    {
+      "test_id": "test:test.blender.export.preset.and.panel.check",
+      "script": "test/blender_export_preset_and_panel_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.551
+    },
+    {
+      "test_id": "test:test.blender.file.transition.cache.check",
+      "script": "test/blender_file_transition_cache_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.048
+    },
+    {
+      "test_id": "test:test.blender.fill.move.reparent.text.opacity.check",
+      "script": "test/blender_fill_move_reparent_text_opacity_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 8.97
+    },
+    {
+      "test_id": "test:test.blender.fill.rotation.check",
+      "script": "test/blender_fill_rotation_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.608
+    },
+    {
+      "test_id": "test:test.blender.fisheye.f1f2.check",
+      "script": "test/blender_fisheye_f1f2_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.44
+    },
+    {
+      "test_id": "test:test.blender.free.transform.reset.check",
+      "script": "test/blender_free_transform_reset_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.043
+    },
+    {
+      "test_id": "test:test.blender.geometry.nodes.bridge.check",
+      "script": "test/blender_geometry_nodes_bridge_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.725
+    },
+    {
+      "test_id": "test:test.blender.geometry.nodes.functional.settings.check",
+      "script": "test/blender_geometry_nodes_functional_settings_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.564
+    },
+    {
+      "test_id": "test:test.blender.geometry.nodes.migration.coverage.check",
+      "script": "test/blender_geometry_nodes_migration_coverage_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 10.617
+    },
+    {
+      "test_id": "test:test.blender.gp.detail.material.isolation.check",
+      "script": "test/blender_gp_detail_material_isolation_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.266
+    },
+    {
+      "test_id": "test:test.blender.gp.rotation.check",
+      "script": "test/blender_gp_rotation_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.627
+    },
+    {
+      "test_id": "test:test.blender.gp.tool.preset.check",
+      "script": "test/blender_gp_tool_preset_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "silent_failure",
+      "evidence": "終了コード0だが完了sentinelがなく例外出力を含む",
+      "seconds": 2.944
+    },
+    {
+      "test_id": "test:test.blender.gp.tool.preset.visual.check",
+      "script": "test/blender_gp_tool_preset_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "ui_required",
+      "evidence": "background実行では成立しないUIケース",
+      "seconds": 1.664
+    },
+    {
+      "test_id": "test:test.blender.image.path.export.check",
+      "script": "test/blender_image_path_export_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.986
+    },
+    {
+      "test_id": "test:test.blender.image.path.rotation.check",
+      "script": "test/blender_image_path_rotation_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 6.536
+    },
+    {
+      "test_id": "test:test.blender.image.path.tool.check",
+      "script": "test/blender_image_path_tool_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 10.938
+    },
+    {
+      "test_id": "test:test.blender.input.efficiency.check",
+      "script": "test/blender_input_efficiency_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.858
+    },
+    {
+      "test_id": "test:test.blender.layer.clipboard.check",
+      "script": "test/blender_layer_clipboard_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 11.591
+    },
+    {
+      "test_id": "test:test.blender.layer.color.swatch.check",
+      "script": "test/blender_layer_color_swatch_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 8.779
+    },
+    {
+      "test_id": "test:test.blender.layer.detail.and.mask.check",
+      "script": "test/blender_layer_detail_and_mask_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 8.203
+    },
+    {
+      "test_id": "test:test.blender.layer.folder.check",
+      "script": "test/blender_layer_folder_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 13.803
+    },
+    {
+      "test_id": "test:test.blender.layer.lock.check",
+      "script": "test/blender_layer_lock_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 9.428
+    },
+    {
+      "test_id": "test:test.blender.layer.move.drag.transaction.check",
+      "script": "test/blender_layer_move_drag_transaction_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 8.969
+    },
+    {
+      "test_id": "test:test.blender.layer.panel.no.redraw.loop.check",
+      "script": "test/blender_layer_panel_no_redraw_loop_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 6.563
+    },
+    {
+      "test_id": "test:test.blender.layer.panel.page.list.check",
+      "script": "test/blender_layer_panel_page_list_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.324
+    },
+    {
+      "test_id": "test:test.blender.layer.stack.balloon.group.selection.check",
+      "script": "test/blender_layer_stack_balloon_group_selection_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.119
+    },
+    {
+      "test_id": "test:test.blender.layer.stack.cross.kind.move.check",
+      "script": "test/blender_layer_stack_cross_kind_move_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 3.179
+    },
+    {
+      "test_id": "test:test.blender.layer.stack.cross.kind.visual.check",
+      "script": "test/blender_layer_stack_cross_kind_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.863
+    },
+    {
+      "test_id": "test:test.blender.layer.stack.dnd.reparent.check",
+      "script": "test/blender_layer_stack_dnd_reparent_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "expected_traceback_marker",
+      "evidence": "失敗注入の期待tracebackをprobeが赤判定",
+      "seconds": 22.524
+    },
+    {
+      "test_id": "test:test.blender.layer.stack.flat.move.into.coma.check",
+      "script": "test/blender_layer_stack_flat_move_into_coma_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 3.945
+    },
+    {
+      "test_id": "test:test.blender.layer.stack.idempotent.check",
+      "script": "test/blender_layer_stack_idempotent_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.399
+    },
+    {
+      "test_id": "test:test.blender.layer.stack.panel.width.visual.check",
+      "script": "test/blender_layer_stack_panel_width_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.723
+    },
+    {
+      "test_id": "test:test.blender.layer.stack.select.no.reparent.check",
+      "script": "test/blender_layer_stack_select_no_reparent_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "stack row not found: coma:p0001:c01 in [('outside_group', '__outside__', ''), ('page', 'p0001', '')]",
+      "seconds": 2.572
+    },
+    {
+      "test_id": "test:test.blender.layer.stack.ui.behavior.check",
+      "script": "test/blender_layer_stack_ui_behavior_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 9.819
+    },
+    {
+      "test_id": "test:test.blender.layer.stack.visibility.and.jump.check",
+      "script": "test/blender_layer_stack_visibility_and_jump_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 17.648
+    },
+    {
+      "test_id": "test:test.blender.layer.stack.z.order.refresh.check",
+      "script": "test/blender_layer_stack_z_order_refresh_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 38.026
+    },
+    {
+      "test_id": "test:test.blender.legacy.migration.check",
+      "script": "test/blender_legacy_migration_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "__masks__ should be purged but exists. children=<bpy_collection[4], BlendDataCollections>",
+      "seconds": 6.806
+    },
+    {
+      "test_id": "test:test.blender.link.duplicate.behavior.check",
+      "script": "test/blender_link_duplicate_behavior_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 10.521
+    },
+    {
+      "test_id": "test:test.blender.linked.balloon.preset.padding.check",
+      "script": "test/blender_linked_balloon_preset_padding_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 8.291
+    },
+    {
+      "test_id": "test:test.blender.linked.rotation.balloon.fit.check",
+      "script": "test/blender_linked_rotation_balloon_fit_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 10.97
+    },
+    {
+      "test_id": "test:test.blender.mask.visual.matrix.check",
+      "script": "test/blender_mask_visual_matrix_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 10.311
+    },
+    {
+      "test_id": "test:test.blender.meldex.http.security.check",
+      "script": "test/blender_meldex_http_security_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 5.029
+    },
+    {
+      "test_id": "test:test.blender.meldex.presentation.v2.check",
+      "script": "test/blender_meldex_presentation_v2_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 2.437
+    },
+    {
+      "test_id": "test:test.blender.meldex.scenario.file.import.check",
+      "script": "test/blender_meldex_scenario_file_import_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 8.28
+    },
+    {
+      "test_id": "test:test.blender.meldex.scenario.file.panel.visual.check",
+      "script": "test/blender_meldex_scenario_file_panel_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 6.037
+    },
+    {
+      "test_id": "test:test.blender.meldex.scenario.import.check",
+      "script": "test/blender_meldex_scenario_import_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "assertion mismatch",
+      "seconds": 2.56
+    },
+    {
+      "test_id": "test:test.blender.meldex.scenario.import.transaction.check",
+      "script": "test/blender_meldex_scenario_import_transaction_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "expected_traceback_marker",
+      "evidence": "失敗注入の期待tracebackをprobeが赤判定",
+      "seconds": 8.109
+    },
+    {
+      "test_id": "test:test.blender.meldex.scenario.visual.check",
+      "script": "test/blender_meldex_scenario_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "assertion mismatch",
+      "seconds": 6.965
+    },
+    {
+      "test_id": "test:test.blender.native.save.keymap.crash.guard.ui.check",
+      "script": "test/blender_native_save_keymap_crash_guard_ui_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.682
+    },
+    {
+      "test_id": "test:test.blender.native.save.reload.fallback.check",
+      "script": "test/blender_native_save_reload_fallback_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "expected_traceback_marker",
+      "evidence": "失敗注入の期待tracebackをprobeが赤判定",
+      "seconds": 3.048
+    },
+    {
+      "test_id": "test:test.blender.native.stale.save.guard.check",
+      "script": "test/blender_native_stale_save_guard_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 3.532
+    },
+    {
+      "test_id": "test:test.blender.navigation.ui.hitbox.check",
+      "script": "test/blender_navigation_ui_hitbox_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.441
+    },
+    {
+      "test_id": "test:test.blender.object.free.transform.check",
+      "script": "test/blender_object_free_transform_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.358
+    },
+    {
+      "test_id": "test:test.blender.object.handle.hit.check",
+      "script": "test/blender_object_handle_hit_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.659
+    },
+    {
+      "test_id": "test:test.blender.object.preservation.check",
+      "script": "test/blender_object_preservation_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 6.998
+    },
+    {
+      "test_id": "test:test.blender.object.tool.click.cycle.visual.check",
+      "script": "test/blender_object_tool_click_cycle_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.32
+    },
+    {
+      "test_id": "test:test.blender.object.tool.coma.open.deferred.ui.check",
+      "script": "test/blender_object_tool_coma_open_deferred_ui_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.468
+    },
+    {
+      "test_id": "test:test.blender.object.tool.drag.select.then.drag.check",
+      "script": "test/blender_object_tool_drag_select_then_drag_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.344
+    },
+    {
+      "test_id": "test:test.blender.object.tool.mid.drag.alt.check",
+      "script": "test/blender_object_tool_mid_drag_alt_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.681
+    },
+    {
+      "test_id": "test:test.blender.object.tool.page.open.relaunch.check",
+      "script": "test/blender_object_tool_page_open_relaunch_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.473
+    },
+    {
+      "test_id": "test:test.blender.object.tool.selection.check",
+      "script": "test/blender_object_tool_selection_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 12.11
+    },
+    {
+      "test_id": "test:test.blender.open.current.folder.check",
+      "script": "test/blender_open_current_folder_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 5.805
+    },
+    {
+      "test_id": "test:test.blender.outliner.collection.order.check",
+      "script": "test/blender_outliner_collection_order_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.753
+    },
+    {
+      "test_id": "test:test.blender.overlay.font.size.guard.check",
+      "script": "test/blender_overlay_font_size_guard_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 3.719
+    },
+    {
+      "test_id": "test:test.blender.overview.camera.check",
+      "script": "test/blender_overview_camera_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.588
+    },
+    {
+      "test_id": "test:test.blender.page.add.content.stability.check",
+      "script": "test/blender_page_add_content_stability_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 11.531
+    },
+    {
+      "test_id": "test:test.blender.page.coma.preview.restore.check",
+      "script": "test/blender_page_coma_preview_restore_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 27.784
+    },
+    {
+      "test_id": "test:test.blender.page.content.visibility.window.check",
+      "script": "test/blender_page_content_visibility_window_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 6.924
+    },
+    {
+      "test_id": "test:test.blender.page.duplicate.delete.transaction.check",
+      "script": "test/blender_page_duplicate_delete_transaction_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "expected_traceback_marker",
+      "evidence": "失敗注入の期待tracebackをprobeが赤判定",
+      "seconds": 18.193
+    },
+    {
+      "test_id": "test:test.blender.page.export.range.scale.check",
+      "script": "test/blender_page_export_range_scale_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 5.439
+    },
+    {
+      "test_id": "test:test.blender.page.file.nav.and.double.click.check",
+      "script": "test/blender_page_file_nav_and_double_click_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.974
+    },
+    {
+      "test_id": "test:test.blender.page.file.panel.role.check",
+      "script": "test/blender_page_file_panel_role_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 10.187
+    },
+    {
+      "test_id": "test:test.blender.page.file.preview.visual.check",
+      "script": "test/blender_page_file_preview_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.706
+    },
+    {
+      "test_id": "test:test.blender.page.file.real.object.overlay.visual.check",
+      "script": "test/blender_page_file_real_object_overlay_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.668
+    },
+    {
+      "test_id": "test:test.blender.page.file.stage.check",
+      "script": "test/blender_page_file_stage_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 19.56
+    },
+    {
+      "test_id": "test:test.blender.page.list.lightweight.sync.check",
+      "script": "test/blender_page_list_lightweight_sync_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 8.196
+    },
+    {
+      "test_id": "test:test.blender.page.list.redraw.probe",
+      "script": "test/blender_page_list_redraw_probe.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.694
+    },
+    {
+      "test_id": "test:test.blender.page.open.manual.double.click.check",
+      "script": "test/blender_page_open_manual_double_click_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.459
+    },
+    {
+      "test_id": "test:test.blender.page.operation.layer.stability.check",
+      "script": "test/blender_page_operation_layer_stability_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 22.899
+    },
+    {
+      "test_id": "test:test.blender.page.overlay.fill.psd.layers.check",
+      "script": "test/blender_page_overlay_fill_psd_layers_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "ページ一覧プレビューに裁ち落とし枠外の塗りが反映されていません: dark=0",
+      "seconds": 8.028
+    },
+    {
+      "test_id": "test:test.blender.page.overview.open.page.deferred.ui.check",
+      "script": "test/blender_page_overview_open_page_deferred_ui_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.423
+    },
+    {
+      "test_id": "test:test.blender.page.panel.initial.order.check",
+      "script": "test/blender_page_panel_initial_order_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.506
+    },
+    {
+      "test_id": "test:test.blender.page.preview.click.visual.check",
+      "script": "test/blender_page_preview_click_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.789
+    },
+    {
+      "test_id": "test:test.blender.page.preview.color.fidelity.check",
+      "script": "test/blender_page_preview_color_fidelity_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 6.775
+    },
+    {
+      "test_id": "test:test.blender.page.preview.resolution.and.tail.check",
+      "script": "test/blender_page_preview_resolution_and_tail_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.585
+    },
+    {
+      "test_id": "test:test.blender.page.preview.selection.gate.check",
+      "script": "test/blender_page_preview_selection_gate_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.512
+    },
+    {
+      "test_id": "test:test.blender.page.preview.text.weight.check",
+      "script": "test/blender_page_preview_text_weight_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "13",
+      "seconds": 10.855
+    },
+    {
+      "test_id": "test:test.blender.page.preview.work.info.overlay.check",
+      "script": "test/blender_page_preview_work_info_overlay_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.111
+    },
+    {
+      "test_id": "test:test.blender.page.selection.reorder.check",
+      "script": "test/blender_page_selection_reorder_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.483
+    },
+    {
+      "test_id": "test:test.blender.paper.color.check",
+      "script": "test/blender_paper_color_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "BManga_PaperBackground material should exist after work_new",
+      "seconds": 6.559
+    },
+    {
+      "test_id": "test:test.blender.paper.guide.viewport.visual.check",
+      "script": "test/blender_paper_guide_viewport_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.628
+    },
+    {
+      "test_id": "test:test.blender.paper.guide.visibility.check",
+      "script": "test/blender_paper_guide_visibility_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 6.97
+    },
+    {
+      "test_id": "test:test.blender.pattern.curve.handle.visual.check",
+      "script": "test/blender_pattern_curve_handle_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.671
+    },
+    {
+      "test_id": "test:test.blender.pattern.curve.ribbon.visual.check",
+      "script": "test/blender_pattern_curve_ribbon_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 8.909
+    },
+    {
+      "test_id": "test:test.blender.perf.benchmark",
+      "script": "test/blender_perf_benchmark.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 246.812
+    },
+    {
+      "test_id": "test:test.blender.phase0.jpeg.export.check",
+      "script": "test/blender_phase0_jpeg_export_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.372
+    },
+    {
+      "test_id": "test:test.blender.phase0.next.config.isolation.check",
+      "script": "test/blender_phase0_next_config_isolation_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.171
+    },
+    {
+      "test_id": "test:test.blender.phase0.open.performance.check",
+      "script": "test/blender_phase0_open_performance_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 254.565
+    },
+    {
+      "test_id": "test:test.blender.phase0.runtime.catalog.check",
+      "script": "test/blender_phase0_runtime_catalog_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 5.45
+    },
+    {
+      "test_id": "test:test.blender.preferences.preset.persistence.check",
+      "script": "test/blender_preferences_preset_persistence_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.89
+    },
+    {
+      "test_id": "test:test.blender.preset.detail.tool.dialog.check",
+      "script": "test/blender_preset_detail_tool_dialog_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "expected_traceback_marker",
+      "evidence": "失敗注入の期待tracebackをprobeが赤判定",
+      "seconds": 8.157
+    },
+    {
+      "test_id": "test:test.blender.preset.dialog.shape.confirm.check",
+      "script": "test/blender_preset_dialog_shape_confirm_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.142
+    },
+    {
+      "test_id": "test:test.blender.preset.selector.apply.check",
+      "script": "test/blender_preset_selector_apply_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.247
+    },
+    {
+      "test_id": "test:test.blender.preview.composite.check",
+      "script": "test/blender_preview_composite_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.539
+    },
+    {
+      "test_id": "test:test.blender.preview.overlay.alignment.visual.check",
+      "script": "test/blender_preview_overlay_alignment_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.73
+    },
+    {
+      "test_id": "test:test.blender.preview.propagation.visual.audit",
+      "script": "test/blender_preview_propagation_visual_audit.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "ページファイル編集が作品ファイルに反映されていません",
+      "seconds": 17.739
+    },
+    {
+      "test_id": "test:test.blender.raster.layer.paint.check",
+      "script": "test/blender_raster_layer_paint_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 8.728
+    },
+    {
+      "test_id": "test:test.blender.raster.rotation.check",
+      "script": "test/blender_raster_rotation_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 12.986
+    },
+    {
+      "test_id": "test:test.blender.raster.runtime.bulk.sync.check",
+      "script": "test/blender_raster_runtime_bulk_sync_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "重なり順再計算が一括化されていません: 5",
+      "seconds": 6.695
+    },
+    {
+      "test_id": "test:test.blender.real.object.safety.check",
+      "script": "test/blender_real_object_safety_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 8.398
+    },
+    {
+      "test_id": "test:test.blender.real.work.visual.audit",
+      "script": "test/blender_real_work_visual_audit.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "external_fixture",
+      "evidence": "リポジトリ外c00/Dropbox fixtureへ依存",
+      "seconds": 2.328
+    },
+    {
+      "test_id": "test:test.blender.recent.fixes.visual.audit",
+      "script": "test/blender_recent_fixes_visual_audit.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 8.45
+    },
+    {
+      "test_id": "test:test.blender.requested.items.visual.audit",
+      "script": "test/blender_requested_items_visual_audit.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.721
+    },
+    {
+      "test_id": "test:test.blender.restructure.e2e",
+      "script": "test/blender_restructure_e2e.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 6.818
+    },
+    {
+      "test_id": "test:test.blender.rotation.gate.priority.check",
+      "script": "test/blender_rotation_gate_priority_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 8.534
+    },
+    {
+      "test_id": "test:test.blender.rotation.hover.wiring.check",
+      "script": "test/blender_rotation_hover_wiring_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 8.664
+    },
+    {
+      "test_id": "test:test.blender.ruby.adjacent.overflow.check",
+      "script": "test/blender_ruby_adjacent_overflow_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.412
+    },
+    {
+      "test_id": "test:test.blender.ruby.jis.defaults.check",
+      "script": "test/blender_ruby_jis_defaults_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 7.184
+    },
+    {
+      "test_id": "test:test.blender.ruby.overlap.comprehensive.test",
+      "script": "test/blender_ruby_overlap_comprehensive_test.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 28.29
+    },
+    {
+      "test_id": "test:test.blender.ruby.overlap.test",
+      "script": "test/blender_ruby_overlap_test.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 9.793
+    },
+    {
+      "test_id": "test:test.blender.ruby.settings.test",
+      "script": "test/blender_ruby_settings_test.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 11.129
+    },
+    {
+      "test_id": "test:test.blender.ruby.symbols.visual.check",
+      "script": "test/blender_ruby_symbols_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 3.216
+    },
+    {
+      "test_id": "test:test.blender.ruby.unification.check",
+      "script": "test/blender_ruby_unification_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.574
+    },
+    {
+      "test_id": "test:test.blender.ruby.visual.samples",
+      "script": "test/blender_ruby_visual_samples.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 11.603
+    },
+    {
+      "test_id": "test:test.blender.safe.area.fill.viewport.visual.check",
+      "script": "test/blender_safe_area_fill_viewport_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.603
+    },
+    {
+      "test_id": "test:test.blender.shading.mode.rendered.check",
+      "script": "test/blender_shading_mode_rendered_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 6.955
+    },
+    {
+      "test_id": "test:test.blender.shared.layer.schema.check",
+      "script": "test/blender_shared_layer_schema_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 9.849
+    },
+    {
+      "test_id": "test:test.blender.shortcut.conflict.repair.check",
+      "script": "test/blender_shortcut_conflict_repair_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.477
+    },
+    {
+      "test_id": "test:test.blender.shortcut.key.conflict.check",
+      "script": "test/blender_shortcut_key_conflict_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.445
+    },
+    {
+      "test_id": "test:test.blender.shortcut.visibility.check",
+      "script": "test/blender_shortcut_visibility_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.757
+    },
+    {
+      "test_id": "test:test.blender.spread.content.roundtrip.check",
+      "script": "test/blender_spread_content_roundtrip_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "expected_traceback_marker",
+      "evidence": "失敗注入の期待tracebackをprobeが赤判定",
+      "seconds": 30.982
+    },
+    {
+      "test_id": "test:test.blender.spread.context.menu.visual.check",
+      "script": "test/blender_spread_context_menu_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 6.865
+    },
+    {
+      "test_id": "test:test.blender.spread.overlay.fill.visual.check",
+      "script": "test/blender_spread_overlay_fill_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 12.453
+    },
+    {
+      "test_id": "test:test.blender.spread.tombo.align.check",
+      "script": "test/blender_spread_tombo_align_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "runtime_failure",
+      "evidence": "returncode 1",
+      "seconds": 8.252
+    },
+    {
+      "test_id": "test:test.blender.startup.shortcut.repair.timer.check",
+      "script": "test/blender_startup_shortcut_repair_timer_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.298
+    },
+    {
+      "test_id": "test:test.blender.tail.and.line.decor.check",
+      "script": "test/blender_tail_and_line_decor_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 8.234
+    },
+    {
+      "test_id": "test:test.blender.tail.line.sharp.orient.check",
+      "script": "test/blender_tail_line_sharp_orient_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.734
+    },
+    {
+      "test_id": "test:test.blender.target.confirm.visual.check",
+      "script": "test/blender_target_confirm_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "ui_required",
+      "evidence": "background実行では成立しないUIケース",
+      "seconds": 1.603
+    },
+    {
+      "test_id": "test:test.blender.text.autofit.perf.check",
+      "script": "test/blender_text_autofit_perf_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 6.607
+    },
+    {
+      "test_id": "test:test.blender.text.edit.input.matrix.visual.check",
+      "script": "test/blender_text_edit_input_matrix_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 9.013
+    },
+    {
+      "test_id": "test:test.blender.text.fringe.symbol.visual.check",
+      "script": "test/blender_text_fringe_symbol_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.64
+    },
+    {
+      "test_id": "test:test.blender.text.guide.selection.check",
+      "script": "test/blender_text_guide_selection_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 6.256
+    },
+    {
+      "test_id": "test:test.blender.text.ime.runtime.check",
+      "script": "test/blender_text_ime_runtime_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.444
+    },
+    {
+      "test_id": "test:test.blender.text.ime.toggle.check",
+      "script": "test/blender_text_ime_toggle_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.741
+    },
+    {
+      "test_id": "test:test.blender.text.ime.visual.check",
+      "script": "test/blender_text_ime_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 8.291
+    },
+    {
+      "test_id": "test:test.blender.text.preset.font.unit.check",
+      "script": "test/blender_text_preset_font_unit_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 2.544
+    },
+    {
+      "test_id": "test:test.blender.text.request.visual.audit.check",
+      "script": "test/blender_text_request_visual_audit_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 8.912
+    },
+    {
+      "test_id": "test:test.blender.text.rotation.check",
+      "script": "test/blender_text_rotation_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 8.134
+    },
+    {
+      "test_id": "test:test.blender.text.ruby.mesh.image.consistency.check",
+      "script": "test/blender_text_ruby_mesh_image_consistency_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.024
+    },
+    {
+      "test_id": "test:test.blender.text.ruby.ux.check",
+      "script": "test/blender_text_ruby_ux_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 10.311
+    },
+    {
+      "test_id": "test:test.blender.text.selection.popup.visual.check",
+      "script": "test/blender_text_selection_popup_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "ui_required",
+      "evidence": "background実行では成立しないUIケース",
+      "seconds": 1.589
+    },
+    {
+      "test_id": "test:test.blender.text.tatechuyoko.check",
+      "script": "test/blender_text_tatechuyoko_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 9.432
+    },
+    {
+      "test_id": "test:test.blender.text.vertical.cursor.check",
+      "script": "test/blender_text_vertical_cursor_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "expected_traceback_marker",
+      "evidence": "失敗注入の期待tracebackをprobeが赤判定",
+      "seconds": 7.317
+    },
+    {
+      "test_id": "test:test.blender.text.vertical.punctuation.check",
+      "script": "test/blender_text_vertical_punctuation_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.507
+    },
+    {
+      "test_id": "test:test.blender.thumbnail.fidelity.visual.audit",
+      "script": "test/blender_thumbnail_fidelity_visual_audit.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 11.424
+    },
+    {
+      "test_id": "test:test.blender.tool.behavior.visual.audit",
+      "script": "test/blender_tool_behavior_visual_audit.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.719
+    },
+    {
+      "test_id": "test:test.blender.tool.preset.switching.check",
+      "script": "test/blender_tool_preset_switching_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 12.018
+    },
+    {
+      "test_id": "test:test.blender.transfer.group.alt.dnd.check",
+      "script": "test/blender_transfer_group_alt_dnd_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "expected_traceback_marker",
+      "evidence": "失敗注入の期待tracebackをprobeが赤判定",
+      "seconds": 19.062
+    },
+    {
+      "test_id": "test:test.blender.ui.micro.behavior.matrix.check",
+      "script": "test/blender_ui_micro_behavior_matrix_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 123.357
+    },
+    {
+      "test_id": "test:test.blender.ui.screenshot.diagnostic",
+      "script": "test/blender_ui_screenshot_diagnostic.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 1.822
+    },
+    {
+      "test_id": "test:test.blender.ui.tooltip.cleanup.check",
+      "script": "test/blender_ui_tooltip_cleanup_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "UIにINFOアイコンが残っています: panels\\export_panel.py:58 (label)",
+      "seconds": 2.738
+    },
+    {
+      "test_id": "test:test.blender.undo.redo.runtime.check",
+      "script": "test/blender_undo_redo_runtime_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 8.276
+    },
+    {
+      "test_id": "test:test.blender.units.text.meta.render.ui.check",
+      "script": "test/blender_units_text_meta_render_ui_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.783
+    },
+    {
+      "test_id": "test:test.blender.view.toggle.lightweight.check",
+      "script": "test/blender_view_toggle_lightweight_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 7.562
+    },
+    {
+      "test_id": "test:test.blender.white.outline.black.inout.check",
+      "script": "test/blender_white_outline_black_inout_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.802
+    },
+    {
+      "test_id": "test:test.blender.white.outline.spacing.graph.check",
+      "script": "test/blender_white_outline_spacing_graph_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 2.675
+    },
+    {
+      "test_id": "test:test.blender.work.file.slim.check",
+      "script": "test/blender_work_file_slim_check.py",
+      "runner": "blender_background",
+      "probe_status": "passed",
+      "category": "baseline_pass",
+      "evidence": "",
+      "seconds": 18.077
+    },
+    {
+      "test_id": "test:test.blender.work.info.text.object.check",
+      "script": "test/blender_work_info_text_object_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "behavior_mismatch",
+      "evidence": "作品情報テキスト数が不正です: 0",
+      "seconds": 2.597
+    },
+    {
+      "test_id": "test:test.blender.work.list.layer.pick.guard.check",
+      "script": "test/blender_work_list_layer_pick_guard_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "ui_required",
+      "evidence": "background実行では成立しないUIケース",
+      "seconds": 1.728
+    },
+    {
+      "test_id": "test:test.blender.work.open.file.filter.visual.check",
+      "script": "test/blender_work_open_file_filter_visual_check.py",
+      "runner": "blender_background",
+      "probe_status": "failed",
+      "category": "missing_sentinel",
+      "evidence": "終了コード0だが完了sentinelがなく、合格を証明できない",
+      "seconds": 6.678
+    },
+    {
+      "test_id": "test:test.bmanga.ai.audit.runner",
+      "script": "test/bmanga_ai_audit_runner.py",
+      "runner": "inventory_only",
+      "probe_status": "not_executable",
+      "category": "support_module",
+      "evidence": "test支援・監査ツール。単独test itemではない",
+      "seconds": 0.0
+    },
+    {
+      "test_id": "test:test.detail.dialog.public.test.support",
+      "script": "test/detail_dialog_public_test_support.py",
+      "runner": "inventory_only",
+      "probe_status": "not_executable",
+      "category": "support_module",
+      "evidence": "test支援・監査ツール。単独test itemではない",
+      "seconds": 0.0
+    },
+    {
+      "test_id": "test:test.render.batch.logic.test",
+      "script": "test/render_batch_logic_test.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 1.557,
+      "test_item_counts": {
+        "tests": 19,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "render_batch_logic_test.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.blf.safety",
+      "script": "test/test_blf_safety.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 0.598,
+      "test_item_counts": {
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_blf_safety.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.cross.page.transfer.contract",
+      "script": "test/test_cross_page_transfer_contract.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 0.685,
+      "test_item_counts": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_cross_page_transfer_contract.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.detail.action.contract",
+      "script": "test/test_detail_action_contract.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 0.652,
+      "test_item_counts": {
+        "tests": 10,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_detail_action_contract.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.detail.dialog.contract",
+      "script": "test/test_detail_dialog_contract.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 0.695,
+      "test_item_counts": {
+        "tests": 26,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_detail_dialog_contract.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.detail.dialog.runtime.cleanup",
+      "script": "test/test_detail_dialog_runtime_cleanup.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 0.618,
+      "test_item_counts": {
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_detail_dialog_runtime_cleanup.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.detail.drawer.order",
+      "script": "test/test_detail_drawer_order.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 0.728,
+      "test_item_counts": {
+        "tests": 28,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_detail_drawer_order.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.detail.migration.manifest",
+      "script": "test/test_detail_migration_manifest.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 0.735,
+      "test_item_counts": {
+        "tests": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_detail_migration_manifest.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.detail.target.state.bridge",
+      "script": "test/test_detail_target_state_bridge.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 0.642,
+      "test_item_counts": {
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_detail_target_state_bridge.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.layer.stack.page.name",
+      "script": "test/test_layer_stack_page_name.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 0.794,
+      "test_item_counts": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_layer_stack_page_name.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.layer.uid",
+      "script": "test/test_layer_uid.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 0.663,
+      "test_item_counts": {
+        "tests": 23,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_layer_uid.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.line.effect.schema",
+      "script": "test/test_line_effect_schema.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 0.551,
+      "test_item_counts": {
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_line_effect_schema.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.meldex.contract",
+      "script": "test/test_meldex_contract.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 0.759,
+      "test_item_counts": {
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_meldex_contract.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.meldex.scenario.file",
+      "script": "test/test_meldex_scenario_file.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 0.698,
+      "test_item_counts": {
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_meldex_scenario_file.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.native.save.guard.recovery",
+      "script": "test/test_native_save_guard_recovery.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 1.556,
+      "test_item_counts": {
+        "tests": 21,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_native_save_guard_recovery.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.next.extension.identity",
+      "script": "test/test_next_extension_identity.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 0.699,
+      "test_item_counts": {
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_next_extension_identity.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.paths",
+      "script": "test/test_paths.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 0.59,
+      "test_item_counts": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_paths.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.popup.target.placement.contract",
+      "script": "test/test_popup_target_placement_contract.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 1.055,
+      "test_item_counts": {
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_popup_target_placement_contract.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.project.content.migration",
+      "script": "test/test_project_content_migration.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 1.011,
+      "test_item_counts": {
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_project_content_migration.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.project.content.migration.progress",
+      "script": "test/test_project_content_migration_progress.py",
+      "runner": "python_script",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 0.439,
+      "test_item_counts": {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "test_project_content_migration_progress.py"
+      ]
+    },
+    {
+      "test_id": "test:test.test.project.content.migration.safety",
+      "script": "test/test_project_content_migration_safety.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 2.116,
+      "test_item_counts": {
+        "tests": 26,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_project_content_migration_safety.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.refactor.certification.catalog",
+      "script": "test/test_refactor_certification_catalog.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 15.875,
+      "test_item_counts": {
+        "tests": 15,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_refactor_certification_catalog.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.refactor.certification.classification",
+      "script": "test/test_refactor_certification_classification.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 0.696,
+      "test_item_counts": {
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_refactor_certification_classification.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.refactor.certification.metrics",
+      "script": "test/test_refactor_certification_metrics.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 1.365,
+      "test_item_counts": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_refactor_certification_metrics.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.spread.content.transaction",
+      "script": "test/test_spread_content_transaction.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 1.228,
+      "test_item_counts": {
+        "tests": 16,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_spread_content_transaction.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.spread.metadata",
+      "script": "test/test_spread_metadata.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 0.706,
+      "test_item_counts": {
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_spread_metadata.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.spread.page.range",
+      "script": "test/test_spread_page_range.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 0.613,
+      "test_item_counts": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_spread_page_range.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.stroke.style",
+      "script": "test/test_stroke_style.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 0.544,
+      "test_item_counts": {
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_stroke_style.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.undo.policy.contract",
+      "script": "test/test_undo_policy_contract.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 2.272,
+      "test_item_counts": {
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_undo_policy_contract.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.undo.transaction",
+      "script": "test/test_undo_transaction.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 0.724,
+      "test_item_counts": {
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_undo_transaction.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.version.sync",
+      "script": "test/test_version_sync.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 0.651,
+      "test_item_counts": {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_version_sync.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    },
+    {
+      "test_id": "test:test.test.view.event.region",
+      "script": "test/test_view_event_region.py",
+      "runner": "pytest_module",
+      "probe_status": "passed",
+      "category": "python_pass",
+      "evidence": "",
+      "seconds": 0.605,
+      "test_item_counts": {
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "test_view_event_region.py",
+        "-q",
+        "--junitxml=<case>/junit.xml"
+      ]
+    }
+  ]
+}

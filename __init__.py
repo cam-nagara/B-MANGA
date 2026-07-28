@@ -9,9 +9,9 @@ from __future__ import annotations
 
 # Kept for legacy compatibility only. blender_manifest.toml is authoritative.
 bl_info = {
-    "name": "B-MANGA",
+    "name": "B-MANGA Next",
     "author": "B-MANGA Project",
-    "version": (0, 6, 599),
+    "version": (0, 6, 600),
     "blender": (5, 2, 0),
     "description": "Blender manga name/storyboard authoring addon",
     "category": "Paint",

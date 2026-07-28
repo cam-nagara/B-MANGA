@@ -14,10 +14,18 @@ _TEXT_CARET_COLOR = (0.02, 0.02, 0.02, 1.0)
 _TEXT_SELECTION_COLOR_DEFAULT = (0.0, 0.7, 1.0, 0.45)
 
 
+def _addon_package_id() -> str:
+    package = str(__package__ or "")
+    if "." not in package:
+        return package
+    return package.rsplit(".", 1)[0]
+
+
 def _text_selection_color(context) -> tuple[float, float, float, float]:
     try:
-        import bpy
-        prefs = bpy.context.preferences.addons.get("b_manga")
+        preferences = getattr(context, "preferences", None)
+        addons = getattr(preferences, "addons", None)
+        prefs = addons.get(_addon_package_id()) if addons is not None else None
         if prefs is not None:
             c = getattr(prefs.preferences, "text_selection_color", None)
             if c is not None and len(c) >= 4:

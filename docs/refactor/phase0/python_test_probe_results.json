@@ -1,0 +1,746 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-07-28T23:11:01+09:00",
+  "summary": {
+    "discovered_modules": 32,
+    "recorded_modules": 32,
+    "collected_test_items": 293,
+    "statuses": {
+      "passed": 32
+    }
+  },
+  "results": [
+    {
+      "test_id": "test:test.render.batch.logic.test",
+      "script": "test/render_batch_logic_test.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "render_batch_logic_test.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\render_batch_logic_test\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 19,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 1.557
+    },
+    {
+      "test_id": "test:test.test.blf.safety",
+      "script": "test/test_blf_safety.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_blf_safety.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_blf_safety\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 0.598
+    },
+    {
+      "test_id": "test:test.test.cross.page.transfer.contract",
+      "script": "test/test_cross_page_transfer_contract.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_cross_page_transfer_contract.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_cross_page_transfer_contract\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 0.685
+    },
+    {
+      "test_id": "test:test.test.detail.action.contract",
+      "script": "test/test_detail_action_contract.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_detail_action_contract.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_detail_action_contract\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 10,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 0.652
+    },
+    {
+      "test_id": "test:test.test.detail.dialog.contract",
+      "script": "test/test_detail_dialog_contract.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_detail_dialog_contract.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_detail_dialog_contract\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 26,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 0.695
+    },
+    {
+      "test_id": "test:test.test.detail.dialog.runtime.cleanup",
+      "script": "test/test_detail_dialog_runtime_cleanup.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_detail_dialog_runtime_cleanup.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_detail_dialog_runtime_cleanup\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 0.618
+    },
+    {
+      "test_id": "test:test.test.detail.drawer.order",
+      "script": "test/test_detail_drawer_order.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_detail_drawer_order.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_detail_drawer_order\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 28,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 0.728
+    },
+    {
+      "test_id": "test:test.test.detail.migration.manifest",
+      "script": "test/test_detail_migration_manifest.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_detail_migration_manifest.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_detail_migration_manifest\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 0.735
+    },
+    {
+      "test_id": "test:test.test.detail.target.state.bridge",
+      "script": "test/test_detail_target_state_bridge.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_detail_target_state_bridge.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_detail_target_state_bridge\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 0.642
+    },
+    {
+      "test_id": "test:test.test.layer.stack.page.name",
+      "script": "test/test_layer_stack_page_name.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_layer_stack_page_name.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_layer_stack_page_name\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 0.794
+    },
+    {
+      "test_id": "test:test.test.layer.uid",
+      "script": "test/test_layer_uid.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_layer_uid.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_layer_uid\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 23,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 0.663
+    },
+    {
+      "test_id": "test:test.test.line.effect.schema",
+      "script": "test/test_line_effect_schema.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_line_effect_schema.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_line_effect_schema\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 0.551
+    },
+    {
+      "test_id": "test:test.test.meldex.contract",
+      "script": "test/test_meldex_contract.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_meldex_contract.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_meldex_contract\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 0.759
+    },
+    {
+      "test_id": "test:test.test.meldex.scenario.file",
+      "script": "test/test_meldex_scenario_file.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_meldex_scenario_file.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_meldex_scenario_file\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 0.698
+    },
+    {
+      "test_id": "test:test.test.native.save.guard.recovery",
+      "script": "test/test_native_save_guard_recovery.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_native_save_guard_recovery.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_native_save_guard_recovery\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 21,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 1.556
+    },
+    {
+      "test_id": "test:test.test.next.extension.identity",
+      "script": "test/test_next_extension_identity.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_next_extension_identity.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_next_extension_identity\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 0.699
+    },
+    {
+      "test_id": "test:test.test.paths",
+      "script": "test/test_paths.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_paths.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_paths\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 0.59
+    },
+    {
+      "test_id": "test:test.test.popup.target.placement.contract",
+      "script": "test/test_popup_target_placement_contract.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_popup_target_placement_contract.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_popup_target_placement_contract\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 1.055
+    },
+    {
+      "test_id": "test:test.test.project.content.migration",
+      "script": "test/test_project_content_migration.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_project_content_migration.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_project_content_migration\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 1.011
+    },
+    {
+      "test_id": "test:test.test.project.content.migration.progress",
+      "script": "test/test_project_content_migration_progress.py",
+      "runner": "python_script",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "test_project_content_migration_progress.py"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 0.439
+    },
+    {
+      "test_id": "test:test.test.project.content.migration.safety",
+      "script": "test/test_project_content_migration_safety.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_project_content_migration_safety.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_project_content_migration_safety\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 26,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 2.116
+    },
+    {
+      "test_id": "test:test.test.refactor.certification.catalog",
+      "script": "test/test_refactor_certification_catalog.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_refactor_certification_catalog.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_refactor_certification_catalog\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 15,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 15.875
+    },
+    {
+      "test_id": "test:test.test.refactor.certification.classification",
+      "script": "test/test_refactor_certification_classification.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_refactor_certification_classification.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_refactor_certification_classification\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 0.696
+    },
+    {
+      "test_id": "test:test.test.refactor.certification.metrics",
+      "script": "test/test_refactor_certification_metrics.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_refactor_certification_metrics.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_refactor_certification_metrics\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 1.365
+    },
+    {
+      "test_id": "test:test.test.spread.content.transaction",
+      "script": "test/test_spread_content_transaction.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_spread_content_transaction.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_spread_content_transaction\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 16,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 1.228
+    },
+    {
+      "test_id": "test:test.test.spread.metadata",
+      "script": "test/test_spread_metadata.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_spread_metadata.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_spread_metadata\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 0.706
+    },
+    {
+      "test_id": "test:test.test.spread.page.range",
+      "script": "test/test_spread_page_range.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_spread_page_range.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_spread_page_range\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 0.613
+    },
+    {
+      "test_id": "test:test.test.stroke.style",
+      "script": "test/test_stroke_style.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_stroke_style.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_stroke_style\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 0.544
+    },
+    {
+      "test_id": "test:test.test.undo.policy.contract",
+      "script": "test/test_undo_policy_contract.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_undo_policy_contract.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_undo_policy_contract\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 2.272
+    },
+    {
+      "test_id": "test:test.test.undo.transaction",
+      "script": "test/test_undo_transaction.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_undo_transaction.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_undo_transaction\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 0.724
+    },
+    {
+      "test_id": "test:test.test.version.sync",
+      "script": "test/test_version_sync.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_version_sync.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_version_sync\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 0.651
+    },
+    {
+      "test_id": "test:test.test.view.event.region",
+      "script": "test/test_view_event_region.py",
+      "runner": "pytest_module",
+      "command": [
+        "C:\\Users\\niken\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "pytest",
+        "test_view_event_region.py",
+        "-q",
+        "--junitxml=D:\\Develop\\Blender\\B-MANGA\\.worktrees\\bmanga-next\\_verify\\2026-07-28_full_refactor_phase0\\python_test_probe\\cases\\test_view_event_region\\junit.xml"
+      ],
+      "status": "passed",
+      "reason": "",
+      "returncode": 0,
+      "counts": {
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "seconds": 0.605
+    }
+  ]
+}

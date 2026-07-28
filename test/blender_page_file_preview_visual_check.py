@@ -144,6 +144,11 @@ def _after_page_open() -> None:
             WORK_DIR / str(getattr(scene, "bmanga_current_page_id", "")) / "page.blend"
         ),
         "screenshot": str(SCREENSHOT),
+        "window_size": [
+            int(getattr(window, "width", 0)) if window is not None else 0,
+            int(getattr(window, "height", 0)) if window is not None else 0,
+        ],
+        "ui_scale": float(bpy.context.preferences.system.ui_scale),
         "current_page_id": str(getattr(scene, "bmanga_current_page_id", "")),
         "preview_range_mode": str(getattr(scene, "bmanga_page_preview_range_mode", "")),
         "preview_resolution_percentage": float(

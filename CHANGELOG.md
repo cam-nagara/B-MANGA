@@ -3,6 +3,31 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.2 LTS を対象としています（開発基準バージョン。5.1でも動作確認済み）。
 
+## 2026-07-28 — 全体リファクタリングPhase 0の隔離環境と認定台帳を作成 (B-MANGA Next v0.6.600 / Render Next v0.1.38 / Liner Next v0.3.202)
+
+### 症状
+- 381本超のBlender検査が存在する一方、従来の監査runnerは手書き38件だけを入口にしており、未登録、silent failure、UI専用、外部fixture依存を一つの認定結果として把握できなかった。
+- 全Operator、Panel、Property、Preset、Shortcut、Exportを一意な機能IDで追跡する台帳と、同一条件で比較できる性能・画面差分の基準がなかった。
+- 全体リファクタリングの中間版を通常版と同じExtension IDで扱うと、ユーザー実機の安定版を上書きする危険があった。
+
+### 原因
+- テスト追加が手書きrunner登録と分離し、未登録を失敗にする機械的な検査がなかった。
+- 静的宣言、動的RNA、keymap、preset、exportの情報源が分散していた。
+- 通常版と候補版を同時に維持するbranch、worktree、Extension IDの隔離契約が実装されていなかった。
+
+### 修正
+- `tools/refactor_certification`へ決定的な静的台帳generator、実行時RNA/keymap台帳、全`*_check.py`の再開可能な現状probe、結果分類、性能probe、画像SSIM/PSNR計測を追加した。
+- 公開操作と動的設定proxyをsemantic抽出した2,142機能へpath/class非依存のcanonical `feature_id`、全Propertyへcanonical `field_id`を付けた。ID registryと旧source-bound aliasを保持し、未テスト1,919機能を明示した。全48 PropertyGroupの実登録先、ネスト先、JSON/user-config/blend保存経路を明示し、永続Domain、Blender保存値、user preferences/preset、Operator入力、WindowManager一時状態、Draft proxy、派生表示、複数文脈投影へ分類して9契約欄を生成した。未確認所有者、未分類、basis不一致、所有不一致を0にした。
+- 452 test sourceをBlender実機416本、通常Python 32本、実行対象外の補助module 4本へ分けて全実行・全記録し、現行赤、期待失敗traceback、missing sentinel、silent failure、UI専用、外部fixture依存を分類した。
+- branch `codex/bmanga-next-refactor`、専用worktree、`b_manga_next` / `b_manga_render_next` / `b_manga_line_next`を作り、3製品の設定保存先も通常版から分離した。中間版を通常Extensionへ配備しない構成にした。
+
+### 検証（Blender 5.2 LTS実機）
+- 3アドオンを同時登録し、411 class、313 Operator、28 Panel、48 PropertyGroup、6,084 class RNA property、126動的所有Property、94 keymap itemを実測した。静的・実行時union 7,252機能、6,564 fieldへIDを付け、runtime全6,715項目を静的契約一致、Blender継承、登録container、keymap binding、runtime ownerへ分類した。未解決の製品feature/fieldとalias衝突はいずれも0だった。
+- Blender実機416本と通常Python 32本・293 test itemを実行し、補助module 4本を含むsource 452件に対して記録452件、未登録0、予期しない記録0、重複ID 0を確認した。確定分類は`docs/refactor/phase0/test_classification.md`へ保存した。
+- 実B-MANGA 55ページ作品、120イベントdrag×10走行、work/page/comaのpath-cold/warm各20走行を計測し、source hash付き基準を`docs/refactor/phase0/performance_baseline.json`へ保存した。work path-coldで無関係なページ詳細2件を読む既知負債も記録した。
+- GPU画面を3840×2054、UI scale 1.5で10回取得し完全一致を確認した。製品OperatorでJPEGを10回生成し、独立readerでRGB、729×1032、4:2:0、同一hashを確認した。現行出力にDPI metadataとICC profileがない事実はPhase 8の解消対象として固定した。
+- catalog連続生成のSHA-256一致、field追加後の既存ID維持、日本語alias衝突防止、Render組込preset 39項目の抽出、Next Extension ID・設定保存先の一意性、通常版設定ファイル不変を確認した。最終証跡13項目をSHA-256 manifestへ固定し、docsと`_verify` mirrorの一致も検査した。通常Extensionへの配備は行っていない。
+
 ## 2026-07-28 — ページ間移送後の遷移とビュー表示更新を修正 (B-MANGA v0.6.599)
 
 ### 症状
