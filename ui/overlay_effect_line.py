@@ -47,6 +47,18 @@ def draw_active_effect_line_bounds(
         if world_bounds is not None:
             center = effect_line_op.effect_layer_center(obj, layer, bounds)
             world_center = effect_line_op.effect_layer_world_point(context, obj, center, layer)
+            drag_dx, drag_dy = _object_drag_offset(object_selection.effect_key(layer))
+            world_bounds = (
+                float(world_bounds[0]) + drag_dx,
+                float(world_bounds[1]) + drag_dy,
+                float(world_bounds[2]),
+                float(world_bounds[3]),
+            )
+            if world_center is not None:
+                world_center = (
+                    float(world_center[0]) + drag_dx,
+                    float(world_center[1]) + drag_dy,
+                )
             _draw_shape_guides(
                 context,
                 obj,
@@ -84,6 +96,20 @@ def draw_active_effect_line_bounds(
                 if world_bounds is not None:
                     center = effect_line_op.effect_layer_center(obj, selected_layer, selected_bounds)
                     world_center = effect_line_op.effect_layer_world_point(context, obj, center, selected_layer)
+                    drag_dx, drag_dy = _object_drag_offset(
+                        object_selection.effect_key(selected_layer)
+                    )
+                    world_bounds = (
+                        float(world_bounds[0]) + drag_dx,
+                        float(world_bounds[1]) + drag_dy,
+                        float(world_bounds[2]),
+                        float(world_bounds[3]),
+                    )
+                    if world_center is not None:
+                        world_center = (
+                            float(world_center[0]) + drag_dx,
+                            float(world_center[1]) + drag_dy,
+                        )
                     _draw_shape_guides(
                         context,
                         obj,
@@ -100,6 +126,18 @@ def draw_active_effect_line_bounds(
                         draw_rect_fill=draw_rect_fill,
                         draw_rect_outline=draw_rect_outline,
                     )
+
+
+def _object_drag_offset(key: str) -> tuple[float, float]:
+    try:
+        from ..operators import object_tool_op
+
+        return object_tool_op.object_move_overlay_offset_for_key(
+            key,
+            source_follows_object=True,
+        )
+    except Exception:  # noqa: BLE001
+        return 0.0, 0.0
 
 
 def _shape_guides_enabled(context) -> bool:
@@ -215,10 +253,22 @@ def draw_selected_balloon_flash_guides(
             entry = None
         if entry is None:
             continue
-        _draw_balloon_uni_flash_shape_guides(entry, draw_segments_mm=draw_segments_mm, logger=logger)
+        drag_offset = _object_drag_offset(key)
+        _draw_balloon_uni_flash_shape_guides(
+            entry,
+            draw_segments_mm=draw_segments_mm,
+            drag_offset_mm=drag_offset,
+            logger=logger,
+        )
 
 
-def _draw_balloon_uni_flash_shape_guides(entry, *, draw_segments_mm, logger=None) -> None:
+def _draw_balloon_uni_flash_shape_guides(
+    entry,
+    *,
+    draw_segments_mm,
+    drag_offset_mm=(0.0, 0.0),
+    logger=None,
+) -> None:
     """1 フキダシ分のウニフラ形状ガイドをページ mm 座標で描く."""
     try:
         from mathutils import Vector
@@ -255,7 +305,10 @@ def _draw_balloon_uni_flash_shape_guides(entry, *, draw_segments_mm, logger=None
             pts = []
             for p in points:
                 world = matrix @ Vector((float(p[0]), float(p[1]), 0.0))
-                pts.append((m_to_mm(float(world.x)), m_to_mm(float(world.y))))
+                pts.append((
+                    m_to_mm(float(world.x)) + float(drag_offset_mm[0]),
+                    m_to_mm(float(world.y)) + float(drag_offset_mm[1]),
+                ))
             segments = [(pts[i], pts[i + 1]) for i in range(len(pts) - 1)]
             if bool(getattr(guide, "cyclic", False)):
                 segments.append((pts[-1], pts[0]))

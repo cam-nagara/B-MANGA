@@ -24,6 +24,8 @@ from bpy_extras.view3d_utils import location_3d_to_region_2d
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_JSON = Path(tempfile.gettempdir()) / "bmanga_drag_select_then_drag_result.json"
+VERIFY_DIR = ROOT / "_verify" / "2026-07-28_text_handle_fix"
+OUT_PNG = VERIFY_DIR / "object_tool_balloon_mid_drag.png"
 
 _STATE: dict = {"step": 0, "events": [], "logs": [], "temp": None, "mod": None}
 
@@ -80,6 +82,9 @@ def _create_work():
     result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "DragSelect.bmanga"))
     if "FINISHED" not in result:
         raise AssertionError("作品作成に失敗しました")
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+    if "FINISHED" not in result:
+        raise AssertionError("ページファイルを開けませんでした")
 
 
 def _setup_scene():
@@ -231,6 +236,22 @@ def _evaluate():
     keys = object_selection.get_keys(bpy.context)
     if keys != [key]:
         problems.append(f"選択キーが不正: {keys}")
+    mid_drag = _STATE.get("mid_drag")
+    if not mid_drag:
+        problems.append("ドラッグ中のハンドル追従状態を取得できない")
+    else:
+        total = mid_drag["total"]
+        offset = mid_drag["offset"]
+        if abs(total[0] - offset[0]) > 1.0e-6 or abs(total[1] - offset[1]) > 1.0e-6:
+            problems.append(f"ドラッグ中のハンドル差分が不一致: total={total} offset={offset}")
+        expected_x = ox + start_xy[0] + total[0]
+        expected_y = oy + start_xy[1] + total[1]
+        displayed = mid_drag["displayed_rect"]
+        if abs(displayed[0] - expected_x) > 0.05 or abs(displayed[1] - expected_y) > 0.05:
+            problems.append(
+                f"ドラッグ中のハンドル位置が不一致: displayed={displayed} "
+                f"expected=({expected_x},{expected_y})"
+            )
 
     from bmanga_dev_drag_select_check.operators import coma_modal_state
 
@@ -245,6 +266,8 @@ def _evaluate():
         "modal_active": coma_modal_state.get_active("object_tool") is not None,
         "active_page_index": int(work.active_page_index),
         "px_debug": _STATE.get("px_debug"),
+        "mid_drag": mid_drag,
+        "mid_drag_screenshot": str(OUT_PNG) if OUT_PNG.exists() else "",
         "logs": _STATE["logs"],
     }
     OUT_JSON.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -306,6 +329,45 @@ def _tick():
 
             op = coma_modal_state.get_active("object_tool")
             strong = _STATE.get("op_strong")
+            transaction = getattr(strong, "_object_move_drag", None) if strong else None
+            total = getattr(transaction, "total", (0.0, 0.0)) if transaction else (0.0, 0.0)
+            if (
+                strong is not None
+                and bool(getattr(strong, "_dragging", False))
+                and str(getattr(strong, "_drag_action", "") or "") == "move"
+                and (abs(float(total[0])) > 1.0 or abs(float(total[1])) > 1.0)
+                and "mid_drag" not in _STATE
+            ):
+                from bmanga_dev_drag_select_check.operators import (
+                    object_tool_op,
+                    object_tool_selection,
+                )
+
+                active_keys = object_selection.get_keys(bpy.context)
+                active_key = active_keys[0] if active_keys else ""
+                base_rect = object_tool_selection.selection_bounds_for_key(
+                    bpy.context,
+                    active_key,
+                )
+                offset = object_tool_op.object_move_overlay_offset_for_key(active_key)
+                assert base_rect is not None
+                _STATE["mid_drag"] = {
+                    "total": (float(total[0]), float(total[1])),
+                    "offset": offset,
+                    "displayed_rect": (
+                        float(base_rect.x) + offset[0],
+                        float(base_rect.y) + offset[1],
+                    ),
+                }
+                VERIFY_DIR.mkdir(parents=True, exist_ok=True)
+                area.tag_redraw()
+                with bpy.context.temp_override(window=window):
+                    result = bpy.ops.screen.screenshot(
+                        "EXEC_DEFAULT",
+                        filepath=str(OUT_PNG),
+                        check_existing=False,
+                    )
+                assert result == {"FINISHED"}, result
             area_status = []
             for w in bpy.data.window_managers[0].windows:
                 for a in w.screen.areas:

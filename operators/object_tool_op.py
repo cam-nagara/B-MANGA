@@ -565,6 +565,29 @@ def active_selection_key(context) -> str:
     return object_tool_selection.active_selection_key(context)
 
 
+def object_move_overlay_offset_for_key(
+    key: str,
+    *,
+    source_follows_object: bool = False,
+) -> tuple[float, float]:
+    """軽量ドラッグ中に実データへ未反映の移動量をオーバーレイへ渡す."""
+    op = coma_modal_state.get_active("object_tool")
+    if (
+        op is None
+        or not bool(getattr(op, "_dragging", False))
+        or str(getattr(op, "_drag_action", "") or "") != "move"
+        or key not in (getattr(op, "_drag_keys", None) or ())
+    ):
+        return 0.0, 0.0
+    transaction = getattr(op, "_object_move_drag", None)
+    if transaction is None:
+        return 0.0, 0.0
+    if source_follows_object and not bool(getattr(transaction, "composite_drag", False)):
+        return 0.0, 0.0
+    total = getattr(transaction, "total", (0.0, 0.0))
+    return float(total[0]), float(total[1])
+
+
 def _hit_coma_at_event(context, event) -> dict | None:
     work = get_work(context)
     panel_hit = coma_picker.find_coma_at_event(context, event)

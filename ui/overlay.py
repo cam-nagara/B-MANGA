@@ -368,6 +368,11 @@ def _draw_object_tool_layer_bounds(context) -> None:
         rect = object_tool_op.selection_bounds_for_key(context, key)
         if rect is None:
             continue
+        dx_mm, dy_mm = object_tool_op.object_move_overlay_offset_for_key(
+            key,
+            source_follows_object=kind in {"effect", "gp", "image_path"},
+        )
+        rect = _translate_rect(rect, dx_mm, dy_mm)
         quad = _free_transform_quad_for_key(context, key, rect)
         if quad:
             display_quad = _expanded_quad_for_handles(
@@ -418,12 +423,14 @@ def _draw_object_tool_layer_bounds(context) -> None:
 def _draw_gradient_lines(context, keys) -> None:
     """選択中のグラデーションフィルの始点→終点接続線を描画."""
     try:
+        from ..operators import object_tool_op
         from ..utils.fill_real_object import gradient_handle_positions_mm
     except Exception:  # noqa: BLE001
         return
+    selected = set(keys)
     drawn: set[str] = set()
     for key in keys:
-        kind, _sub, item_id = object_selection.parse_key(key)
+        kind, sub, item_id = object_selection.parse_key(key)
         if kind == "fill":
             fill_id = item_id
         elif kind == "gradient_handle":
@@ -437,6 +444,26 @@ def _draw_gradient_lines(context, keys) -> None:
         if pts is None:
             continue
         sx, sy, ex, ey = pts
+        fill_key = object_selection.make_key("fill", "", fill_id)
+        fill_offset = object_tool_op.object_move_overlay_offset_for_key(fill_key)
+        if fill_key in selected:
+            sx += fill_offset[0]
+            sy += fill_offset[1]
+            ex += fill_offset[0]
+            ey += fill_offset[1]
+        else:
+            start_key = object_selection.gradient_handle_key(fill_id, "start")
+            end_key = object_selection.gradient_handle_key(fill_id, "end")
+            start_offset = object_tool_op.object_move_overlay_offset_for_key(start_key)
+            end_offset = object_tool_op.object_move_overlay_offset_for_key(end_key)
+            if kind == "gradient_handle" and sub == "start":
+                start_offset = object_tool_op.object_move_overlay_offset_for_key(key)
+            elif kind == "gradient_handle" and sub == "end":
+                end_offset = object_tool_op.object_move_overlay_offset_for_key(key)
+            sx += start_offset[0]
+            sy += start_offset[1]
+            ex += end_offset[0]
+            ey += end_offset[1]
         _draw_segments_mm(
             [((sx, sy), (ex, ey))],
             viewport_colors.SELECTION,

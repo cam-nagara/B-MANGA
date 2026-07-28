@@ -193,6 +193,14 @@ class ObjectMoveTransaction:
                 self._composite_drag = False
         layer_object_sync.begin_sync_suppression()
 
+    @property
+    def total(self) -> tuple[float, float]:
+        return self._total
+
+    @property
+    def composite_drag(self) -> bool:
+        return self._composite_drag
+
     def update_overlay(
         self,
         context,

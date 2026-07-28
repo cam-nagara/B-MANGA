@@ -34,6 +34,8 @@ TEXT_RENDER_PAD_MM = 1.5
 TEXT_Z_BASE = 2000
 OUTSIDE_PAGE_ID = "outside"
 _TEXT_RENDER_SIGNATURE_PROP = "bmanga_text_render_signature"
+_TEXT_IMAGE_SIGNATURE_PROP = "bmanga_text_image_signature"
+_TEXT_MESH_SIGNATURE_PROP = "bmanga_text_mesh_signature"
 _TEXT_PREVIEW_HIDDEN_PROP = "bmanga_text_preview_hidden"
 _AUTO_SYNC_SUSPEND_DEPTH = 0
 
@@ -345,8 +347,8 @@ def _vec2_sig(value) -> tuple[float, float]:
         return (0.0, 0.0)
 
 
-def _entry_render_signature(entry) -> str:
-    return repr((
+def _entry_image_signature_values(entry) -> tuple:
+    return (
         str(getattr(entry, "body", "") or ""),
         _float_sig(getattr(entry, "width_mm", 0.0)),
         _float_sig(getattr(entry, "height_mm", 0.0)),
@@ -375,6 +377,30 @@ def _entry_render_signature(entry) -> str:
         _float_sig(getattr(entry, "stroke_width_mm", 0.0)),
         _rgba_sig(getattr(entry, "stroke_color", (1.0, 1.0, 1.0, 1.0))),
         text_style.all_spans_snapshot(entry),
+    )
+
+
+def _entry_image_signature(entry) -> str:
+    return repr(_entry_image_signature_values(entry))
+
+
+def _entry_mesh_signature(entry) -> str:
+    width_mm, height_mm, pad_mm = _mesh_dimensions_for_entry(entry)
+    return repr((
+        _float_sig(width_mm),
+        _float_sig(height_mm),
+        _float_sig(pad_mm),
+        bool(getattr(entry, "free_transform_enabled", False)),
+        _vec2_sig(getattr(entry, "free_transform_bottom_left", (0.0, 0.0))),
+        _vec2_sig(getattr(entry, "free_transform_bottom_right", (0.0, 0.0))),
+        _vec2_sig(getattr(entry, "free_transform_top_left", (0.0, 0.0))),
+        _vec2_sig(getattr(entry, "free_transform_top_right", (0.0, 0.0))),
+    ))
+
+
+def _entry_render_signature(entry) -> str:
+    """旧blendとの互換判定用。画像とメッシュの署名を連結した従来形式を保つ."""
+    return repr(_entry_image_signature_values(entry) + (
         bool(getattr(entry, "free_transform_enabled", False)),
         _vec2_sig(getattr(entry, "free_transform_bottom_left", (0.0, 0.0))),
         _vec2_sig(getattr(entry, "free_transform_bottom_right", (0.0, 0.0))),
@@ -612,22 +638,95 @@ def _find_existing_text_object(full_id: str, text_id: str, obj_name: str) -> Opt
     return obj
 
 
-def _can_reuse_rendered_object(obj: Optional[bpy.types.Object], signature: str) -> bool:
+def _expected_image_size(entry) -> tuple[int, int]:
+    width_mm, height_mm, pad_mm = _mesh_dimensions_for_entry(entry)
+    px_per_mm = mm_to_px(1.0, TEXT_REAL_DPI)
+    return (
+        max(1, int(round((width_mm + pad_mm * 2.0) * px_per_mm))),
+        max(1, int(round((height_mm + pad_mm * 2.0) * px_per_mm))),
+    )
+
+
+def _can_reuse_rendered_image(
+    obj: Optional[bpy.types.Object],
+    entry,
+    legacy_signature: str,
+    *,
+    mark_current: bool = False,
+) -> bool:
     if obj is None or obj.type != "MESH":
         return False
-    if str(obj.get(_TEXT_RENDER_SIGNATURE_PROP, "") or "") != signature:
-        return False
-    mesh = getattr(obj, "data", None)
-    if mesh is None or len(getattr(mesh, "polygons", []) or []) == 0:
+    image_signature = _entry_image_signature(entry)
+    signature_matches = (
+        str(obj.get(_TEXT_IMAGE_SIGNATURE_PROP, "") or "") == image_signature
+        or str(obj.get(_TEXT_RENDER_SIGNATURE_PROP, "") or "") == legacy_signature
+    )
+    if not signature_matches:
         return False
     image = _image_for_object(obj)
-    if image is None or getattr(image, "size", (0, 0))[0] <= 0:
+    if image is None or tuple(getattr(image, "size", (0, 0))) != _expected_image_size(entry):
         return False
     # 生成画像が pack されていない場合、開き直しでピクセルが失われ
     # 黒い矩形になっているので再描画させる (再描画時に pack される)。
     if getattr(image, "source", "") == "GENERATED" and getattr(image, "packed_file", None) is None:
         return False
+    if mark_current:
+        obj[_TEXT_IMAGE_SIGNATURE_PROP] = image_signature
     return True
+
+
+def _mesh_matches_entry(
+    obj: Optional[bpy.types.Object],
+    entry,
+    *,
+    mark_current: bool = False,
+) -> bool:
+    if obj is None or obj.type != "MESH":
+        return False
+    mesh = getattr(obj, "data", None)
+    if (
+        mesh is None
+        or len(getattr(mesh, "polygons", []) or []) == 0
+        or len(getattr(mesh, "vertices", []) or []) != 4
+    ):
+        return False
+    width_mm, height_mm, pad_mm = _mesh_dimensions_for_entry(entry)
+    expected = (
+        _text_mesh_vertex(entry, -pad_mm, -pad_mm),
+        _text_mesh_vertex(entry, width_mm + pad_mm, -pad_mm),
+        _text_mesh_vertex(entry, width_mm + pad_mm, height_mm + pad_mm),
+        _text_mesh_vertex(entry, -pad_mm, height_mm + pad_mm),
+    )
+    for vertex, target in zip(mesh.vertices, expected, strict=True):
+        if any(abs(float(vertex.co[i]) - float(target[i])) > 1.0e-8 for i in range(3)):
+            return False
+    if mark_current:
+        obj[_TEXT_MESH_SIGNATURE_PROP] = _entry_mesh_signature(entry)
+    return True
+
+
+def text_real_object_geometry_looks_current(
+    obj: Optional[bpy.types.Object],
+    entry,
+) -> bool:
+    """読込高速経路用。署名生成や書込みをせず画像寸法とメッシュだけを照合する."""
+    if obj is None or obj.type != "MESH":
+        return False
+    image = _image_for_object(obj)
+    if image is None or tuple(getattr(image, "size", (0, 0))) != _expected_image_size(entry):
+        return False
+    if getattr(image, "source", "") == "GENERATED" and getattr(image, "packed_file", None) is None:
+        return False
+    return _mesh_matches_entry(obj, entry)
+
+
+def is_text_real_object_current(obj: Optional[bpy.types.Object], entry) -> bool:
+    """保存済み画像とメッシュが現在のテキスト設定に一致するかを軽量検証する."""
+    signature = _entry_render_signature(entry)
+    return (
+        _can_reuse_rendered_image(obj, entry, signature)
+        and _mesh_matches_entry(obj, entry)
+    )
 
 
 def _rotation_offset_mm(width_mm: float, height_mm: float, rotation_deg: float) -> tuple[float, float]:
@@ -806,7 +905,15 @@ def ensure_text_real_object(
     obj_name = _object_name(page_id, text_id)
     obj = _find_existing_text_object(full_id, text_id, obj_name)
     signature = _entry_render_signature(entry)
-    if _can_reuse_rendered_object(obj, signature):
+    if (
+        getattr(obj, "data", None) is not None
+        and _can_reuse_rendered_image(obj, entry, signature, mark_current=True)
+    ):
+        if not _mesh_matches_entry(obj, entry, mark_current=True):
+            width_mm, height_mm, pad_mm = _mesh_dimensions_for_entry(entry)
+            _rebuild_mesh(obj.data, width_mm, height_mm, pad_mm, entry)
+            obj[_TEXT_MESH_SIGNATURE_PROP] = _entry_mesh_signature(entry)
+        obj[_TEXT_RENDER_SIGNATURE_PROP] = signature
         _remove_duplicate_text_objects(full_id, text_id, obj)
         _remove_legacy_empty(text_id, keep_obj=obj)
         _apply_text_object_state(
@@ -854,6 +961,8 @@ def ensure_text_real_object(
     elif obj.data is not mesh:
         obj.data = mesh
     obj[_TEXT_RENDER_SIGNATURE_PROP] = signature
+    obj[_TEXT_IMAGE_SIGNATURE_PROP] = _entry_image_signature(entry)
+    obj[_TEXT_MESH_SIGNATURE_PROP] = _entry_mesh_signature(entry)
 
     _remove_duplicate_text_objects(full_id, text_id, obj)
     _remove_legacy_empty(text_id, keep_obj=obj)
@@ -935,11 +1044,13 @@ def _refresh_existing_text_mesh(scene, entry, page) -> bool:
         return False
     width_mm, height_mm, pad_mm = _mesh_dimensions_for_entry(entry)
     _rebuild_mesh(mesh, width_mm, height_mm, pad_mm, entry)
-    obj[_TEXT_RENDER_SIGNATURE_PROP] = _entry_render_signature(entry)
+    obj[_TEXT_MESH_SIGNATURE_PROP] = _entry_mesh_signature(entry)
     return True
 
 
 def on_text_free_transform_changed(entry) -> bool:
+    if auto_sync_suspended():
+        return False
     scene = bpy.context.scene if bpy.context is not None else None
     work = getattr(scene, "bmanga_work", None) if scene is not None else None
     if scene is None or work is None or entry is None:

@@ -757,6 +757,7 @@ def _saved_runtime_objects_look_current(
         return False
 
     object_ids_by_kind: dict[str, set[str]] = {}
+    objects_by_kind_id: dict[tuple[str, str], bpy.types.Object] = {}
     plane_owners: set[str] = set()
     plane_objects_by_owner: dict[str, bpy.types.Object] = {}
     border_owners: set[str] = set()
@@ -765,6 +766,7 @@ def _saved_runtime_objects_look_current(
         bmanga_id = str(obj.get(on.PROP_ID, "") or "")
         if kind and bmanga_id:
             object_ids_by_kind.setdefault(kind, set()).add(bmanga_id)
+            objects_by_kind_id[(kind, bmanga_id)] = obj
         owner = str(obj.get(_cp.PROP_COMA_PLANE_OWNER_ID, "") or "")
         if owner:
             plane_owners.add(owner)
@@ -778,6 +780,7 @@ def _saved_runtime_objects_look_current(
     expected_brush_soft_masks: set[str] = set()
     expected_balloons: set[str] = set()
     expected_texts: set[str] = set()
+    expected_text_entries: list[tuple[str, object]] = []
 
     def _track_expected_border(owner_id: str, border) -> None:
         style = str(getattr(border, "style", "solid") or "solid")
@@ -816,7 +819,9 @@ def _saved_runtime_objects_look_current(
             for entry in getattr(page, "texts", []) or []:
                 text_id = str(getattr(entry, "id", "") or "")
                 if text_id:
-                    expected_texts.add(_tro.text_object_bmanga_id_for_values(page_id, text_id))
+                    full_id = _tro.text_object_bmanga_id_for_values(page_id, text_id)
+                    expected_texts.add(full_id)
+                    expected_text_entries.append((full_id, entry))
     # 作品直下 (親なし) の共有レイヤーもページ編集中は実体が必要。
     # ここに入れないと「ページ側は揃っている」と誤判定して全件ミラーが
     # スキップされ、作品直下へ移した直後のレイヤーが実体化されない。
@@ -828,9 +833,9 @@ def _saved_runtime_objects_look_current(
         for entry in getattr(work, "shared_texts", []) or []:
             text_id = str(getattr(entry, "id", "") or "")
             if text_id:
-                expected_texts.add(
-                    _tro.text_object_bmanga_id_for_values(_tro.OUTSIDE_PAGE_ID, text_id)
-                )
+                full_id = _tro.text_object_bmanga_id_for_values(_tro.OUTSIDE_PAGE_ID, text_id)
+                expected_texts.add(full_id)
+                expected_text_entries.append((full_id, entry))
     if coma_page_filter is None or coma_page_filter:
         for coma in getattr(work, "shared_comas", []) or []:
             coma_id = str(getattr(coma, "id", "") or getattr(coma, "coma_id", "") or "")
@@ -855,6 +860,12 @@ def _saved_runtime_objects_look_current(
         return False
     if expected_texts and not expected_texts.issubset(object_ids_by_kind.get("text", set())):
         return False
+    for full_id, entry in expected_text_entries:
+        if not _tro.text_real_object_geometry_looks_current(
+            objects_by_kind_id.get(("text", full_id)),
+            entry,
+        ):
+            return False
 
     if page_filter is None or page_filter:
         scene_raster_layers = getattr(scene, "bmanga_raster_layers", None)

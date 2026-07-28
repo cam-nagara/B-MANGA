@@ -146,8 +146,10 @@ def main() -> None:
         assert bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0) == {"FINISHED"}
 
         from bmanga_dev_layer_move_transaction.operators import (
+            coma_modal_state,
             layer_drag_transaction,
             layer_move_op,
+            object_tool_op,
         )
         from bmanga_dev_layer_move_transaction.utils import (
             layer_object_sync,
@@ -156,6 +158,7 @@ def main() -> None:
             page_grid,
         )
         from bmanga_dev_layer_move_transaction.utils import fill_real_object
+        from bmanga_dev_layer_move_transaction.ui import overlay
         from bmanga_dev_layer_move_transaction.utils.layer_hierarchy import (
             coma_stack_key,
         )
@@ -307,20 +310,86 @@ def main() -> None:
                 object_owner,
                 [object_selection.fill_key(fill)],
             )
+            fill_key = object_selection.fill_key(fill)
+
+            class _ObjectToolState:
+                pass
+
+            object_tool_state = _ObjectToolState()
+            object_tool_state._dragging = True
+            object_tool_state._drag_action = "move"
+            object_tool_state._drag_keys = [fill_key]
+            object_tool_state._object_move_drag = object_transaction
+            coma_modal_state.set_active("object_tool", object_tool_state, context)
             object_timings = []
-            for index in range(1, 121):
-                started = time.perf_counter()
-                assert object_transaction.update_overlay(
-                    context,
-                    index * 0.08,
-                    index * -0.04,
+            try:
+                for index in range(1, 121):
+                    started = time.perf_counter()
+                    assert object_transaction.update_overlay(
+                        context,
+                        index * 0.08,
+                        index * -0.04,
+                    )
+                    object_timings.append((time.perf_counter() - started) * 1000.0)
+                    assert object_apply_calls == 0
+                    assert (
+                        float(fill.region_x_mm),
+                        float(fill.region_y_mm),
+                    ) == object_origin
+                    assert object_tool_op.object_move_overlay_offset_for_key(fill_key) == (
+                        index * 0.08,
+                        index * -0.04,
+                    )
+                assert object_tool_op.object_move_overlay_offset_for_key(
+                    fill_key,
+                    source_follows_object=True,
+                ) == (
+                    object_transaction.total
+                    if object_transaction.composite_drag
+                    else (0.0, 0.0)
                 )
-                object_timings.append((time.perf_counter() - started) * 1000.0)
-                assert object_apply_calls == 0
-                assert (
-                    float(fill.region_x_mm),
-                    float(fill.region_y_mm),
-                ) == object_origin
+                base_gradient = fill_real_object.gradient_handle_positions_mm(
+                    context,
+                    fill.id,
+                )
+                assert base_gradient is not None
+                captured_segments = []
+                original_draw_segments = overlay._draw_segments_mm
+                overlay._draw_segments_mm = (
+                    lambda segments, color, width_mm: captured_segments.extend(segments)
+                )
+                try:
+                    overlay._draw_gradient_lines(context, {fill_key})
+                finally:
+                    overlay._draw_segments_mm = original_draw_segments
+                assert captured_segments == [(
+                    (
+                        base_gradient[0] + object_transaction.total[0],
+                        base_gradient[1] + object_transaction.total[1],
+                    ),
+                    (
+                        base_gradient[2] + object_transaction.total[0],
+                        base_gradient[3] + object_transaction.total[1],
+                    ),
+                )]
+            finally:
+                coma_modal_state.clear_active("object_tool", object_tool_state, context)
+            composite_state = _ObjectToolState()
+            composite_state._dragging = True
+            composite_state._drag_action = "move"
+            composite_state._drag_keys = [fill_key]
+            composite_state._object_move_drag = SimpleNamespace(
+                total=(4.0, -3.0),
+                composite_drag=True,
+            )
+            coma_modal_state.set_active("object_tool", composite_state, context)
+            try:
+                assert object_tool_op.object_move_overlay_offset_for_key(
+                    fill_key,
+                    source_follows_object=True,
+                ) == (4.0, -3.0)
+            finally:
+                coma_modal_state.clear_active("object_tool", composite_state, context)
             object_p95_ms = sorted(object_timings)[
                 int(len(object_timings) * 0.95) - 1
             ]
