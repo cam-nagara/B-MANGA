@@ -131,7 +131,10 @@ def _configure_page_scene() -> dict:
     ]
     if bg_obj is None or bool(getattr(bg_obj, "hide_viewport", True)):
         raise AssertionError("用紙背景の実体が表示されていません")
-    if not guide_objs or any(bool(getattr(obj, "hide_viewport", False)) for obj in guide_objs):
+    if not guide_objs or any(
+        bool(getattr(obj, "hide_viewport", False))
+        for obj in guide_objs
+    ):
         raise AssertionError("用紙ガイド/塗りの実体が表示されていません")
     return {
         "page_id": page_id,

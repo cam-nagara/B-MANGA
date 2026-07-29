@@ -9,6 +9,7 @@ import re
 import shutil
 import sys
 import tempfile
+import traceback
 from pathlib import Path
 
 import bpy
@@ -392,7 +393,14 @@ def main() -> None:
         while len(work.pages) < len(presets):
             assert "FINISHED" in bpy.ops.bmanga.page_add("EXEC_DEFAULT")
         for index, preset in enumerate(presets):
-            page = work.pages[index]
+            assert "FINISHED" in bpy.ops.bmanga.open_page_file(
+                "EXEC_DEFAULT", index=index
+            )
+            work = bpy.context.scene.bmanga_work
+            page = _current_page(work)
+            if len(page.comas) == 0:
+                work.active_page_index = index
+                assert "FINISHED" in bpy.ops.bmanga.coma_add("EXEC_DEFAULT")
             coma = page.comas[0]
             coma.title = preset.name
             coma.shape_type = "rect"
@@ -406,7 +414,7 @@ def main() -> None:
                 # プリセット値のままなので、標準枠線への巻き戻りは検出できる。
                 coma.border.color = (0.0, 1.0, 1.0, 1.0)
             _add_page_content(temp_root, page, coma, index)
-        assert "FINISHED" in bpy.ops.bmanga.work_save("EXEC_DEFAULT")
+            assert "FINISHED" in bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
 
         for index, preset in enumerate(presets):
             result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=index)
@@ -458,4 +466,10 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BaseException:
+        traceback.print_exc()
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(1)

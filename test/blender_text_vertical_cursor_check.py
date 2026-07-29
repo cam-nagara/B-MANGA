@@ -408,11 +408,14 @@ if __name__ == "__main__":
         main()
         import os
 
-        os._exit(0)
+        if os.environ.get("BMANGA_CERT_WRAPPED") != "1":
+            os._exit(0)
     except Exception:
         import traceback
 
         traceback.print_exc()
         import os
 
+        if os.environ.get("BMANGA_CERT_WRAPPED") == "1":
+            raise
         os._exit(1)

@@ -241,7 +241,7 @@ def main() -> None:
     print(f"[OUT] {repaired}")
     print(f"[OUT] {with_lines}")
     print(f"[PIXELS] before={before_counts} repaired={repaired_counts} lines={line_counts}")
-    print("B-MANGA Liner auto quad repair visual check: PASS")
+    print("BMANGA_LINE_AUTO_QUAD_REPAIR_VISUAL_CHECK_OK", flush=True)
     os._exit(0)
 
 

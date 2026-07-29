@@ -8,6 +8,7 @@ import os
 import shutil
 import sys
 import tempfile
+import traceback
 from pathlib import Path
 
 import bpy
@@ -85,12 +86,28 @@ def _configure_work(work) -> None:
     overlay.bleed_outer_color = (0.25, 0.25, 0.25)
 
 
-def _configure_basic_frame_comas(work) -> None:
+def _configure_basic_frame_comas(work):
     overlay_shared = _sub("ui.overlay_shared")
-    rect = overlay_shared.compute_paper_rects(work.paper, is_left_half=False).inner_frame
-    for page in list(getattr(work, "pages", []) or [])[:2]:
+    for page_index in (0, 1):
+        result = bpy.ops.bmanga.open_page_file(
+            "EXEC_DEFAULT", index=page_index
+        )
+        if "FINISHED" not in result:
+            raise AssertionError(
+                f"基本枠確認用ページを開けません: {page_index}: {result}"
+            )
+        work = bpy.context.scene.bmanga_work
+        rect = overlay_shared.compute_paper_rects(
+            work.paper, is_left_half=False
+        ).inner_frame
+        page = work.pages[page_index]
         if len(page.comas) == 0:
-            continue
+            work.active_page_index = page_index
+            result = bpy.ops.bmanga.coma_add("EXEC_DEFAULT")
+            if "FINISHED" not in result:
+                raise AssertionError(
+                    f"基本枠確認用コマを追加できません: {page_index}: {result}"
+                )
         coma = page.comas[0]
         coma.shape_type = "rect"
         coma.rect_x_mm = float(rect.x)
@@ -101,6 +118,12 @@ def _configure_basic_frame_comas(work) -> None:
         coma.border.style = "solid"
         coma.border.width_mm = 0.8
         coma.border.color = (0.0, 0.0, 0.0, 1.0)
+        result = bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
+        if "FINISHED" not in result:
+            raise AssertionError(
+                f"基本枠確認用ページを保存できません: {page_index}: {result}"
+            )
+    return bpy.context.scene.bmanga_work
 
 
 def _mesh_bounds_mm(obj) -> tuple[float, float, float, float]:
@@ -296,14 +319,28 @@ def _assert_render_samples(path: Path, meta: dict[str, float], safe_obj, right_o
     return samples
 
 
-def _assert_basic_frame_merged(path: Path, meta: dict[str, float], safe_obj, right_offset: float) -> None:
-    left_old_inner_edge = 20.0 + 80.0
-    right_old_inner_edge = right_offset + 20.0
-    for label, x_mm in (("left_old_inner_edge", left_old_inner_edge), ("right_old_inner_edge", right_old_inner_edge)):
-        px, py = _world_to_pixel(meta, _local_mm_to_world(safe_obj, x_mm, 85.0))
-        rgb = _sample_rgb(path, px, py, radius=2)
-        if not (rgb[0] > 180.0 and rgb[1] > 180.0 and rgb[2] > 180.0):
-            raise AssertionError(f"基本枠が中央側で分断されています: {label}={rgb} image={path}")
+def _object_world_x_bounds(obj) -> tuple[float, float]:
+    points = []
+    if getattr(obj, "type", "") == "MESH":
+        points = [obj.matrix_world @ vertex.co for vertex in obj.data.vertices]
+    elif getattr(obj, "type", "") == "CURVE":
+        points = [
+            obj.matrix_world @ point.co.to_3d()
+            for spline in getattr(obj.data, "splines", ()) or ()
+            for point in getattr(spline, "points", ()) or ()
+        ]
+    if not points:
+        raise AssertionError(f"基本枠の境界点がありません: {obj.name}")
+    xs = [float(point.x) for point in points]
+    return min(xs), max(xs)
+
+
+def _assert_basic_frames_separate(border_objs) -> None:
+    bounds = sorted(_object_world_x_bounds(obj) for obj in border_objs)
+    if len(bounds) != 2:
+        raise AssertionError(f"左右の基本枠が2個の実体として残っていません: bounds={bounds}")
+    if bounds[0][1] >= bounds[1][0] - 1.0e-6:
+        raise AssertionError(f"左右の基本枠が疑似結合または重複しています: bounds={bounds}")
 
 
 def _assert_spread_fill_case(work, *, gap_mm: float, render: bool) -> Path | None:
@@ -313,8 +350,9 @@ def _assert_spread_fill_case(work, *, gap_mm: float, render: bool) -> Path | Non
 
     _mark(f"case_start gap={gap_mm} render={render}")
     print(f"BMANGA_SPREAD_OVERLAY_FILL_CASE_START gap={gap_mm} render={render}", flush=True)
+    work = bpy.context.scene.bmanga_work
     _ensure_two_pages(work)
-    _configure_basic_frame_comas(work)
+    work = _configure_basic_frame_comas(work)
     work.active_page_index = 0
     result = bpy.ops.bmanga.pages_merge_spread(
         "EXEC_DEFAULT",
@@ -325,13 +363,21 @@ def _assert_spread_fill_case(work, *, gap_mm: float, render: bool) -> Path | Non
     if "FINISHED" not in result:
         raise AssertionError(f"見開き化に失敗しました: {result}")
 
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+    if "FINISHED" not in result:
+        raise AssertionError(f"見開きページを開けません: {result}")
+    work = bpy.context.scene.bmanga_work
     spread = work.pages[0]
     _mark(f"after_merge gap={gap_mm}")
     print(f"BMANGA_SPREAD_OVERLAY_FILL_AFTER_MERGE gap={gap_mm}", flush=True)
-    right_offset = page_grid.spread_right_page_offset_mm(spread, float(work.paper.canvas_width_mm))
+    right_offset = page_grid.spread_right_page_offset_mm(
+        spread,
+        float(work.paper.canvas_width_mm),
+        float(work.paper.finish_width_mm),
+    )
     safe_obj, bleed_obj = _assert_spread_fill_meshes(work, 0, right_offset)
     signature = str(safe_obj.get(paper_guide_object.PROP_GUIDE_SIGNATURE, "") or "")
-    if "paper_guide_spread_fill_v4" not in signature:
+    if "paper_guide_spread_fill_v5" not in signature:
         raise AssertionError("見開き塗りの再生成署名が更新されていません")
     guide_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_GUIDE_PREFIX}{spread.id}")
     if guide_obj is None:
@@ -355,7 +401,7 @@ def _assert_spread_fill_case(work, *, gap_mm: float, render: bool) -> Path | Non
             "spread_overlay_fill.png",
         )
         samples = _assert_render_samples(image_path, meta, safe_obj, right_offset)
-        _assert_basic_frame_merged(image_path, meta, safe_obj, right_offset)
+        _assert_basic_frames_separate(border_objs)
         print(
             "BMANGA_SPREAD_OVERLAY_FILL_VISUAL_SAMPLES "
             + " ".join(f"{key}={tuple(round(v, 1) for v in rgb)}" for key, rgb in samples.items()),
@@ -364,6 +410,9 @@ def _assert_spread_fill_case(work, *, gap_mm: float, render: bool) -> Path | Non
 
     _mark(f"before_split gap={gap_mm}")
     print(f"BMANGA_SPREAD_OVERLAY_FILL_BEFORE_SPLIT gap={gap_mm}", flush=True)
+    result = bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
+    if "FINISHED" not in result:
+        raise AssertionError(f"見開きページを保存できません: {result}")
     result = bpy.ops.bmanga.pages_split_spread("EXEC_DEFAULT", spread_index=0)
     if "FINISHED" not in result:
         raise AssertionError(f"見開き解除に失敗しました: {result}")
@@ -393,6 +442,8 @@ def main() -> None:
         _assert_spread_fill_case(work, gap_mm=15.0, render=False)
         print(f"BMANGA_SPREAD_OVERLAY_FILL_VISUAL_OK image={image_path}", flush=True)
         success = True
+    except BaseException:
+        traceback.print_exc()
     finally:
         _mark("finally_start")
         if mod is not None:

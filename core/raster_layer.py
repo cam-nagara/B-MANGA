@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 import bpy
 from bpy.props import (
     BoolProperty,
@@ -16,6 +18,7 @@ from bpy.props import (
 from ..utils import log
 
 _logger = log.get_logger(__name__)
+_RASTER_PROPERTY_UPDATE_SUPPRESS_DEPTH = 0
 
 BIT_DEPTH_ITEMS = (
     ("gray8", "グレー 8bit", "256階調のグレースケールで保存します"),
@@ -49,6 +52,8 @@ def _on_raster_runtime_display_changed(self, context) -> None:
 
 
 def _on_raster_title_changed(_self, context) -> None:
+    if _RASTER_PROPERTY_UPDATE_SUPPRESS_DEPTH:
+        return
     if not str(getattr(_self, "id", "") or "").strip():
         return
     try:
@@ -57,6 +62,21 @@ def _on_raster_title_changed(_self, context) -> None:
         layer_stack_utils.sync_layer_stack_after_data_change(context)
     except Exception:  # noqa: BLE001
         pass
+
+
+@contextmanager
+def suppress_raster_property_updates():
+    """一括復旧中のProperty更新を抑え、呼び出し側で1回だけ同期する."""
+
+    global _RASTER_PROPERTY_UPDATE_SUPPRESS_DEPTH
+    _RASTER_PROPERTY_UPDATE_SUPPRESS_DEPTH += 1
+    try:
+        yield
+    finally:
+        _RASTER_PROPERTY_UPDATE_SUPPRESS_DEPTH = max(
+            0,
+            _RASTER_PROPERTY_UPDATE_SUPPRESS_DEPTH - 1,
+        )
 
 
 class BMangaRasterLayer(bpy.types.PropertyGroup):

@@ -356,6 +356,9 @@ def _after_coma_open(current_counts, selected_counts) -> None:
             rv3d.view_perspective = "CAMERA"
             rv3d.view_camera_zoom = -38.0
             rv3d.view_camera_offset = (0.0, 0.0)
+        for obj in bpy.context.selected_objects:
+            obj.select_set(False)
+        bpy.context.view_layer.objects.active = None
         _capture(COMA_ON_SHOT)
 
         current_overlay = _sub("ui.overlay_current_page")
@@ -373,9 +376,14 @@ def _after_coma_open(current_counts, selected_counts) -> None:
             raise AssertionError(f"コマファイルのオレンジ枠がありません: {coma_on_counts}")
 
         scene.bmanga_overlay_enabled = False
+        for obj in bpy.context.selected_objects:
+            obj.select_set(False)
+        bpy.context.view_layer.objects.active = None
         _capture(COMA_OFF_SHOT)
         coma_off_counts = _color_counts(COMA_OFF_SHOT, _pixel_rect_roi(COMA_OFF_SHOT, coma_rect))
-        if coma_off_counts["orange"] > max(5, coma_on_counts["orange"] // 20):
+        # CAMERA表示ではBlender標準のカメラ枠もテーマ色の橙で残る。
+        # B-MANGA枠が消えて標準枠だけになる十分な減少率を検証する。
+        if coma_off_counts["orange"] > max(5, coma_on_counts["orange"] // 8):
             raise AssertionError(
                 f"オーバーレイOFFでも現在ページ枠が残っています: on={coma_on_counts} off={coma_off_counts}"
             )

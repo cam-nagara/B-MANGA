@@ -64,14 +64,42 @@ def main() -> None:
         if len(work.pages) < 2:
             raise AssertionError("検証には 2 ページ以上必要です")
 
-        # p1 と p2 に同じ位置・サイズのフキダシを作成
-        work.active_page_index = 0
-        bpy.ops.bmanga.balloon_add('EXEC_DEFAULT', shape='rect', x_mm=30.0, y_mm=200.0, width_mm=40.0, height_mm=20.0)
-        id_p1 = str(work.pages[0].balloons[-1].id)
+        # ページ詳細は page.blend にだけ存在する。各ページを実際に開いて同じ
+        # 位置・サイズのフキダシを作り、作品共通の採番と保存後の実体を検証する。
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        if "FINISHED" not in result:
+            raise AssertionError(f"p1 を開けません: {result}")
+        work = get_work(bpy.context)
+        page1 = work.pages[0]
+        result = bpy.ops.bmanga.balloon_add(
+            "EXEC_DEFAULT", shape="rect", x_mm=30.0, y_mm=200.0,
+            width_mm=40.0, height_mm=20.0,
+        )
+        if "FINISHED" not in result:
+            raise AssertionError(f"p1 のフキダシを作成できません: {result}")
+        id_p1 = str(page1.balloons[-1].id)
+        ox1, _ = page_grid.page_total_offset_mm(work, bpy.context.scene, 0)
+        wx1 = _balloon_world_x(id_p1)
+        tol1 = float(work.paper.canvas_width_mm) * 0.5
+        if wx1 is None or abs(wx1 - ox1) > tol1:
+            raise AssertionError(
+                f"p1 のフキダシ位置が違います: world_x={wx1} offset={ox1}"
+            )
+        if "FINISHED" not in bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT"):
+            raise AssertionError("p1 を保存して作品一覧へ戻れません")
 
-        work.active_page_index = 1
-        bpy.ops.bmanga.balloon_add('EXEC_DEFAULT', shape='rect', x_mm=30.0, y_mm=200.0, width_mm=40.0, height_mm=20.0)
-        id_p2 = str(work.pages[1].balloons[-1].id)
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=1)
+        if "FINISHED" not in result:
+            raise AssertionError(f"p2 を開けません: {result}")
+        work = get_work(bpy.context)
+        page2 = work.pages[1]
+        result = bpy.ops.bmanga.balloon_add(
+            "EXEC_DEFAULT", shape="rect", x_mm=30.0, y_mm=200.0,
+            width_mm=40.0, height_mm=20.0,
+        )
+        if "FINISHED" not in result:
+            raise AssertionError(f"p2 のフキダシを作成できません: {result}")
+        id_p2 = str(page2.balloons[-1].id)
 
         # 1) id がページ横断で一意
         if id_p1 == id_p2:
@@ -80,33 +108,50 @@ def main() -> None:
                 "(実体オブジェクトが重なり、2 ページ目で表示されなくなる)"
             )
 
-        # 2) それぞれの実体が「自分のページ」のオフセット付近に出ている
-        ox1, _ = page_grid.page_total_offset_mm(work, context.scene, 0)
-        ox2, _ = page_grid.page_total_offset_mm(work, context.scene, 1)
-        wx1 = _balloon_world_x(id_p1)
+        # 2) 現在開いている p2 の実体がページファイル内の正しい位置に出る。
+        ox2, _ = page_grid.page_total_offset_mm(work, bpy.context.scene, 1)
         wx2 = _balloon_world_x(id_p2)
-        if wx1 is None or wx2 is None:
-            raise AssertionError(f"フキダシ実体が見つかりません: p1obj={wx1} p2obj={wx2}")
-        # ページ幅の半分(約110mm)以内なら「そのページ上」と判定
-        tol = abs(ox2 - ox1) * 0.5
-        if abs(wx1 - ox1) > tol:
-            raise AssertionError(f"p1 のフキダシがページ1の位置にありません: world_x={wx1:.1f} offset={ox1:.1f}")
-        if abs(wx2 - ox2) > tol:
+        tol2 = float(work.paper.canvas_width_mm) * 0.5
+        if wx2 is None or abs(wx2 - ox2) > tol2:
             raise AssertionError(
-                f"p2 のフキダシがページ2の位置にありません (1ページ目に作られている): "
-                f"world_x={wx2:.1f} page2_offset={ox2:.1f} page1_offset={ox1:.1f}"
+                f"p2 のフキダシ位置が違います: world_x={wx2} offset={ox2}"
             )
 
         # work を渡さない採番経路 (フキダシテキスト作成 / レイヤースタック作成 /
         # 複製 / 別ページへの移動) でもページ横断一意になることを確認する。
         from bmanga_dev_balloon_cross_page.operators.balloon_op import _allocate_balloon_id
-        existing = {str(b.id) for p in work.pages for b in p.balloons}
+        existing = {id_p1, id_p2}
+        existing |= {str(b.id) for p in work.pages for b in p.balloons}
         existing |= {str(b.id) for b in getattr(work, "shared_balloons", [])}
-        new_id_no_work = _allocate_balloon_id(work.pages[1])  # work 引数なし
+        new_id_no_work = _allocate_balloon_id(page2)  # work 引数なし
         if new_id_no_work in existing:
             raise AssertionError(
                 f"work を渡さない採番が既存 id と衝突しました: {new_id_no_work} "
                 f"(複製/移動/テキスト作成 経路で重複フキダシが起きる) existing={sorted(existing)}"
+            )
+        if "FINISHED" not in bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT"):
+            raise AssertionError("p2 を保存して作品一覧へ戻れません")
+
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        if "FINISHED" not in result:
+            raise AssertionError(f"保存後の p1 を開けません: {result}")
+        work = get_work(bpy.context)
+        page1 = work.pages[0]
+        if id_p1 not in {str(balloon.id) for balloon in page1.balloons}:
+            raise AssertionError("p1 のフキダシIDがページ再読込後に失われました")
+        wx1 = _balloon_world_x(id_p1)
+        ox1, _ = page_grid.page_total_offset_mm(work, bpy.context.scene, 0)
+        tol1 = float(work.paper.canvas_width_mm) * 0.5
+        if wx1 is None or abs(wx1 - ox1) > tol1:
+            fill = bpy.data.objects.get(f"balloon_fill_mesh_{id_p1}")
+            body = getattr(fill, "parent", None)
+            body_parent = getattr(body, "parent", None)
+            raise AssertionError(
+                "再読込後の p1 フキダシ位置が違います: "
+                f"x={page1.balloons[0].x_mm} world_x={wx1} offset={ox1} "
+                f"body_local={tuple(body.location) if body else None} "
+                f"body_parent={getattr(body_parent, 'name', None)} "
+                f"parent_local={tuple(body_parent.location) if body_parent else None}"
             )
 
         print("BMANGA_BALLOON_CROSS_PAGE_ID_OK", flush=True)

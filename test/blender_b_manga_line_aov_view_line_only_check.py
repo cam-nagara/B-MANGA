@@ -13,7 +13,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import core, outline_setup, presets, viewport_aov  # noqa: E402
+from b_manga_line import (  # noqa: E402
+    core,
+    line_only_display,
+    outline_setup,
+    presets,
+    viewport_aov,
+)
 
 OUT_DIR = ROOT / "_verify" / "b_manga_line_aov_view_line_only"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -145,6 +151,7 @@ def _image_counts(path: Path) -> dict[str, int]:
         pixels = list(image.pixels)
         colored = 0
         dark = 0
+        nonwhite = 0
         blue_surface = 0
         for index in range(0, len(pixels), 4):
             r, g, b = pixels[index], pixels[index + 1], pixels[index + 2]
@@ -152,11 +159,18 @@ def _image_counts(path: Path) -> dict[str, int]:
             mn = min(r, g, b)
             if mx < 0.18:
                 dark += 1
+            if mn < 0.85:
+                nonwhite += 1
             if b > 0.25 and b - r > 0.18 and g - r > 0.10:
                 blue_surface += 1
             if mx > 0.25 and mx - mn > 0.18:
                 colored += 1
-        return {"colored": colored, "dark": dark, "blue_surface": blue_surface}
+        return {
+            "colored": colored,
+            "dark": dark,
+            "nonwhite": nonwhite,
+            "blue_surface": blue_surface,
+        }
     finally:
         bpy.data.images.remove(image)
 
@@ -179,6 +193,10 @@ def main() -> None:
     original_pass = space.shading.render_pass
     original_aov = space.shading.aov_name
     original_materials = [mat.name if mat else "" for mat in obj.data.materials]
+    original_modifier_visibility = {
+        mod.name: (bool(mod.show_viewport), bool(mod.show_render))
+        for mod in core.iter_line_modifiers(obj)
+    }
     before_path = OUT_DIR / "01_before.png"
     line_only_path = OUT_DIR / "02_material_line_only.png"
 
@@ -191,11 +209,10 @@ def main() -> None:
     assert space.shading.type == original_type
     assert space.shading.render_pass == original_pass
     assert space.shading.aov_name == original_aov
-    assert [mat.name if mat else "" for mat in obj.data.materials[:1]] == [
-        outline_setup.LINE_ONLY_MATERIAL_NAME
-    ]
+    assert [mat.name if mat else "" for mat in obj.data.materials] == original_materials
+    assert line_only_display._is_line_only_output_active(obj.data.materials[0])  # noqa: SLF001
     assert outline_setup.LINE_ONLY_WIREFRAME_NAME not in obj.modifiers
-    assert bool(obj.get(core.PROP_LINE_ONLY, False))
+    assert bool(bpy.context.scene.bmanga_line_line_only_visible)
     _render_view(line_only_path, override)
     aov_counts = _image_counts(line_only_path)
     assert before_counts["blue_surface"] > 1000, before_counts
@@ -203,11 +220,13 @@ def main() -> None:
         before_counts,
         aov_counts,
     )
-    assert aov_counts["dark"] > 100, aov_counts
+    assert aov_counts["nonwhite"] > 100, aov_counts
     line_modifiers = list(core.iter_line_modifiers(obj))
     assert line_modifiers
-    for mod in line_modifiers:
-        assert mod.show_viewport and mod.show_render
+    assert {
+        mod.name: (bool(mod.show_viewport), bool(mod.show_render))
+        for mod in line_modifiers
+    } == original_modifier_visibility
 
     with bpy.context.temp_override(**override):
         assert bpy.ops.bmanga_line.set_line_only(line_only=False) == {"FINISHED"}
@@ -215,22 +234,23 @@ def main() -> None:
     assert space.shading.type == original_type
     assert space.shading.render_pass == original_pass
     assert space.shading.aov_name == original_aov
-    assert not bool(obj.get(core.PROP_LINE_ONLY, False))
+    assert not bool(bpy.context.scene.bmanga_line_line_only_visible)
     assert [mat.name if mat else "" for mat in obj.data.materials] == original_materials
+    assert not line_only_display._has_line_only_output_node(obj.data.materials[0])  # noqa: SLF001
 
     with bpy.context.temp_override(**_non_view3d_override()):
         assert bpy.ops.bmanga_line.set_line_only(line_only=True) == {"FINISHED"}
     assert not viewport_aov.is_line_aov_active(bpy.context)
-    assert bool(obj.get(core.PROP_LINE_ONLY, False))
-    assert [mat.name if mat else "" for mat in obj.data.materials[:1]] == [
-        outline_setup.LINE_ONLY_MATERIAL_NAME
-    ]
+    assert bool(bpy.context.scene.bmanga_line_line_only_visible)
+    assert [mat.name if mat else "" for mat in obj.data.materials] == original_materials
+    assert line_only_display._is_line_only_output_active(obj.data.materials[0])  # noqa: SLF001
     with bpy.context.temp_override(**_non_view3d_override()):
         assert bpy.ops.bmanga_line.set_line_only(line_only=False) == {"FINISHED"}
     assert not viewport_aov.is_line_aov_active(bpy.context)
-    assert not bool(obj.get(core.PROP_LINE_ONLY, False))
+    assert not bool(bpy.context.scene.bmanga_line_line_only_visible)
     assert [mat.name if mat else "" for mat in obj.data.materials] == original_materials
-    print("[PASS] B-MANGA Line line-only display uses material mode without AOV")
+    assert not line_only_display._has_line_only_output_node(obj.data.materials[0])  # noqa: SLF001
+    print("BMANGA_LINE_AOV_VIEW_LINE_ONLY_CHECK_OK", flush=True)
 
 
 def _run_and_quit():

@@ -166,7 +166,7 @@ def main() -> None:
         else:
             os.environ["BMANGA_USER_CONFIG_DIR"] = old_config
         shutil.rmtree(temp_root, ignore_errors=True)
-    print("[ok] effect line preset UI works")
+    print("BMANGA_EFFECT_LINE_PRESET_UI_CHECK_OK", flush=True)
 
 
 if __name__ == "__main__":

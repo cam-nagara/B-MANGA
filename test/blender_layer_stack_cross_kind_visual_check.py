@@ -188,8 +188,6 @@ def _run() -> None:
         work_dir = Path(tempfile.mkdtemp(prefix="bmanga_cross_visual_")) / "visual.bmanga"
         result = bpy.ops.bmanga.work_new(filepath=str(work_dir))
         assert "FINISHED" in result, result
-        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
-        assert "FINISHED" in result, result
 
         from bmanga_dev_cross_kind_visual import preferences
         from bmanga_dev_cross_kind_visual.core.work import get_work
@@ -212,6 +210,7 @@ def _run() -> None:
         text_presets.list_all_presets = lambda _path: [
             SimpleNamespace(
                 name="会話",
+                description="会話",
                 data={
                     "font": r"C:\Windows\Fonts\msgothic.ttc",
                     "font_size_pt": 24.0,
@@ -222,6 +221,14 @@ def _run() -> None:
             ),
         ]
 
+        stage = "import"
+        _mark(stage)
+        context = bpy.context
+        work = get_work(context)
+        import_result = meldex_scenario_import.import_payload(context, work, _payload())
+        assert import_result["created"] == 1, import_result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        assert "FINISHED" in result, result
         context = bpy.context
         scene = context.scene
         work = get_work(context)
@@ -230,11 +237,6 @@ def _run() -> None:
         assert len(page.comas) >= 1, "基本枠コマがありません"
         coma = page.comas[0]
         coma_key = f"{page.id}:{coma.coma_id or coma.id}"
-
-        stage = "import"
-        _mark(stage)
-        import_result = meldex_scenario_import.import_payload(context, work, _payload())
-        assert import_result["created"] == 1, import_result
         text = next(t for t in page.texts if t.meldex_source_row_id == "r1")
         assert text.parent_kind == "page", text.parent_kind
 

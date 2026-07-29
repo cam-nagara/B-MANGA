@@ -187,7 +187,7 @@ def _assert_preview_cache_version(work, page, scene) -> None:
     assert path is not None and path.is_file()
     with Image.open(path) as image:
         version = str(image.info.get(page_preview_object.PREVIEW_RENDER_VERSION_KEY, ""))
-    assert version == "11", version
+    assert version == page_preview_object.PREVIEW_RENDER_VERSION, version
 
 
 def main() -> None:

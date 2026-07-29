@@ -11,6 +11,9 @@ import math
 from pathlib import Path
 from typing import Any, Sequence
 
+from ..bmanga_core.faults import FaultInjectedError
+from ..bmanga_core.file_transaction import staged_export_write
+from ..bmanga_core.observability import observed_operation
 from . import export_group_masks, export_psd, export_raster, export_soft_mask, export_stack_order
 from ..ui import overlay_shared
 from ..utils import (
@@ -590,59 +593,10 @@ def _draw_styled_loop(
         _draw_styled_segment(draw, pts[i], pts[(i + 1) % len(pts)], color, width_px, style)
 
 
-def _spread_basic_frame_info_for_export(work, page, entry):
-    try:
-        return spread_merge_geometry.basic_frame_info(work, page, entry)
-    except Exception:  # noqa: BLE001
-        return "", None
-
-
-def _draw_spread_basic_frame_border(
-    draw,
-    canvas,
-    entry,
-    side: str,
-    combined_rect,
-    color: tuple[int, int, int, int],
-    width_px: int,
-    style_name: str,
-) -> ExportLayer | None:
-    if side == "right" or combined_rect is None:
-        return None
-    poly_mm = [
-        (float(combined_rect.x), float(combined_rect.y)),
-        (float(combined_rect.x2), float(combined_rect.y)),
-        (float(combined_rect.x2), float(combined_rect.y2)),
-        (float(combined_rect.x), float(combined_rect.y2)),
-    ]
-    if len(poly_mm) < 4:
-        return None
-    poly_px = canvas.points_px(poly_mm)
-    draw_style = "solid" if style_name == "brush" else style_name
-    for i in range(len(poly_px)):
-        _draw_styled_segment(
-            draw,
-            poly_px[i],
-            poly_px[(i + 1) % len(poly_px)],
-            color,
-            width_px,
-            draw_style,
-        )
-    return ExportLayer("border", canvas.image, canvas.left, canvas.top)
-
-
 def _draw_coma_border_layer(entry, canvas_height_px: int, dpi: int, *, work=None, page=None) -> ExportLayer | None:
-    spread_basic_side, spread_basic_rect = _spread_basic_frame_info_for_export(work, page, entry)
-    if not spread_basic_side and export_soft_mask.brush_edge_enabled(entry):
+    if export_soft_mask.brush_edge_enabled(entry):
         return None
     poly_mm = _coma_polygon_mm(entry)
-    if spread_basic_side == "left" and spread_basic_rect is not None:
-        poly_mm = [
-            (float(spread_basic_rect.x), float(spread_basic_rect.y)),
-            (float(spread_basic_rect.x2), float(spread_basic_rect.y)),
-            (float(spread_basic_rect.x2), float(spread_basic_rect.y2)),
-            (float(spread_basic_rect.x), float(spread_basic_rect.y2)),
-        ]
     bbox = _points_bbox(poly_mm)
     if bbox is None:
         return None
@@ -654,17 +608,6 @@ def _draw_coma_border_layer(entry, canvas_height_px: int, dpi: int, *, work=None
     base_color = _rgb255(border.color)
     base_width = max(1, int(round(mm_to_px(float(border.width_mm), dpi))))
     style_name = getattr(border, "style", "solid")
-    if spread_basic_side:
-        return _draw_spread_basic_frame_border(
-            draw,
-            canvas,
-            entry,
-            spread_basic_side,
-            spread_basic_rect,
-            base_color,
-            base_width,
-            style_name,
-        )
     if (
         style_name == "solid"
     ):
@@ -2375,6 +2318,7 @@ def render_page(work, page, options: ExportOptions) -> Any:
     return _convert_flatten_mode(image, options)
 
 
+@observed_operation("export.write")
 def merge_pdf(page_image_paths: list[Path], out_path: Path) -> bool:
     if not _HAS_PIL or not page_image_paths:
         return False
@@ -2394,14 +2338,18 @@ def merge_pdf(page_image_paths: list[Path], out_path: Path) -> bool:
     if not images:
         return False
     try:
-        first, rest = images[0], images[1:]
-        first.save(str(out_path), save_all=True, append_images=rest)
+        with staged_export_write(out_path, image_format="pdf") as staged:
+            first, rest = images[0], images[1:]
+            first.save(str(staged), save_all=True, append_images=rest)
         return True
+    except FaultInjectedError:
+        raise
     except Exception as exc:  # noqa: BLE001
         _logger.exception("merge_pdf failed: %s", exc)
         return False
 
 
+@observed_operation("export.write")
 def save_page_as_psd(work, page, options: ExportOptions, out_path: Path) -> bool:
     if not _HAS_PIL:
         raise RuntimeError("Pillow が利用できません")
@@ -2420,16 +2368,27 @@ def save_page_as_psd(work, page, options: ExportOptions, out_path: Path) -> bool
         size = _page_canvas_size_px(work, page, options)
     if not layers:
         layers = [ExportLayer("empty", _empty_rgba(size), 0, 0)]
-    ok = export_psd.save_layers_as_psd(layers, size, out_path, group_masks=group_masks)
-    if not ok:
-        raise RuntimeError("PSD 保存に失敗しました")
+    with staged_export_write(out_path, image_format="psd") as staged:
+        ok = export_psd.save_layers_as_psd(
+            layers,
+            size,
+            staged,
+            group_masks=group_masks,
+        )
+        if not ok:
+            raise RuntimeError("PSD 保存に失敗しました")
     return True
 
 
+@observed_operation("export.write")
 def save_as_psd(img, out_path: Path) -> bool:
     if not _HAS_PIL:
         return False
-    return export_psd.save_flat_image_as_psd(img, out_path)
+    with staged_export_write(out_path, image_format="psd") as staged:
+        ok = export_psd.save_flat_image_as_psd(img, staged)
+        if not ok:
+            raise RuntimeError("PSD 保存に失敗しました")
+    return True
 
 
 def convert_to_cmyk(img, icc_profile_path: str = "") -> "Image.Image | None":
@@ -2461,6 +2420,7 @@ def render_coma(work, page, coma_entry, options: ExportOptions, crop_box: tuple[
     return _convert_flatten_mode(image, options)
 
 
+@observed_operation("export.write")
 def save_coma_as_psd(work, page, coma_entry, options: ExportOptions, crop_box: tuple[int, int, int, int], out_path: Path) -> bool:
     """コマ領域をクロップしてレイヤー付きPSDとして保存する."""
     if not _HAS_PIL:
@@ -2474,4 +2434,13 @@ def save_coma_as_psd(work, page, coma_entry, options: ExportOptions, crop_box: t
     group_masks = export_group_masks.crop_group_masks(group_masks, crop_box, ExportMask)
     if not layers:
         layers = [ExportLayer("empty", _empty_rgba(size), 0, 0)]
-    return export_psd.save_layers_as_psd(layers, size, out_path, group_masks=group_masks)
+    with staged_export_write(out_path, image_format="psd") as staged:
+        ok = export_psd.save_layers_as_psd(
+            layers,
+            size,
+            staged,
+            group_masks=group_masks,
+        )
+        if not ok:
+            raise RuntimeError("PSD 保存に失敗しました")
+    return True

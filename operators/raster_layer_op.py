@@ -923,7 +923,13 @@ def ensure_all_raster_runtime(context) -> int:
         from ..utils import page_content_visibility
     except Exception:  # noqa: BLE001
         page_content_visibility = None
-    with _bulk_raster_runtime(), mask_update_context:
+    from ..core import raster_layer as raster_layer_core
+
+    with (
+        _bulk_raster_runtime(),
+        mask_update_context,
+        raster_layer_core.suppress_raster_property_updates(),
+    ):
         for entry in coll:
             if page_content_visibility is not None:
                 try:
@@ -935,13 +941,9 @@ def ensure_all_raster_runtime(context) -> int:
                 count += 1
     if count:
         try:
-            from ..utils import layer_object_sync as _los
-
-            work = get_work(context)
-            if work is not None:
-                _los.assign_per_page_z_ranks(context.scene, work)
+            layer_stack_utils.sync_layer_stack_after_data_change(context)
         except Exception:  # noqa: BLE001
-            _logger.exception("raster: bulk assign_per_page_z_ranks failed")
+            _logger.exception("raster: bulk layer stack sync failed")
     return count
 
 
@@ -1354,9 +1356,11 @@ class BMANGA_OT_raster_layer_mode_set(Operator):
             try:
                 from . import coma_modal_state as _cms
 
-                result = bpy.ops.bmanga.raster_layer_paint_exit("EXEC_DEFAULT")
-                if "FINISHED" not in result:
-                    return {"CANCELLED"}
+                entry, _index = active_raster_entry(context)
+                if entry is not None:
+                    result = bpy.ops.bmanga.raster_layer_paint_exit("EXEC_DEFAULT")
+                    if "FINISHED" not in result:
+                        return {"CANCELLED"}
                 if not bpy.app.background:
                     _cms.activate_object_tool(context)
             except Exception as exc:  # noqa: BLE001

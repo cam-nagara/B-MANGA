@@ -469,7 +469,7 @@ def main() -> None:
     ]
     for output in outputs:
         print(f"[OUT] {output}")
-    print("[PASS] B-MANGA Line visual audit images rendered")
+    print("BMANGA_LINE_FULL_VISUAL_AUDIT_CHECK_OK", flush=True)
     os._exit(0)
 
 

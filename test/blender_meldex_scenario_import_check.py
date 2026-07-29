@@ -41,6 +41,11 @@ def _payload():
     }
 
 
+def _load_all_page_details(work, page_detail) -> None:
+    for page in work.pages:
+        page_detail.ensure_page_detail(work, page)
+
+
 def main() -> None:
     addon = _load_addon()
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_meldex_import_"))
@@ -104,7 +109,7 @@ def main() -> None:
         assert len(work.pages) == 3
         assert not work.pages[2].detail_loaded, "追加ページの詳細は保存後に解放する"
         from bmanga_dev_meldex_import.utils import page_detail
-        page_detail.ensure_page_detail(work, work.pages[2])
+        _load_all_page_details(work, page_detail)
         # 2026-07-12: 取込で追加した不足ページには、通常のページ追加と同じ
         # 基本枠コマを1個自動生成する。既存ページ (0, 1) は変更しない。
         assert [len(page.comas) for page in work.pages] == [1, 0, 1]
@@ -166,6 +171,7 @@ def main() -> None:
         changed["pages"][1]["rows"][0]["type"] = "会話"
         second = meldex_scenario_import.import_payload(bpy.context, work, changed)
         assert second["created"] == 0 and second["updated"] == 4
+        _load_all_page_details(work, page_detail)
         assert counts == [(len(page.balloons), len(page.texts), len(page.comas)) for page in work.pages]
         text = next(item for item in work.pages[0].texts if item.meldex_source_row_id == "r1")
         assert not text.font_bold and text.writing_mode == "vertical", "未登録タイプは先頭プリセットへ切り替える"
@@ -181,6 +187,7 @@ def main() -> None:
         work.pages[0].balloons.remove(missing_index)
         repaired = meldex_scenario_import.import_payload(bpy.context, work, _payload())
         assert repaired["created"] == 1
+        _load_all_page_details(work, page_detail)
         repaired_balloon = next(item for item in work.pages[0].balloons if item.meldex_source_row_id == "r1")
         assert repaired_balloon.shape == "custom" and repaired_balloon.custom_preset_name == "会話"
 
@@ -201,6 +208,7 @@ def main() -> None:
             {"start": 0, "length": 2, "rubyText": "低", "style": "group", "origin": "local-auto-dictionary", "priority": 1},
         ]
         meldex_scenario_import.import_payload(bpy.context, work, v2)
+        _load_all_page_details(work, page_detail)
         text = next(item for item in work.pages[0].texts if item.meldex_source_row_id == "r1")
         assert text.writing_mode == "horizontal" and abs(text.ruby_size_percent - 72.0) < 1.0e-6
         assert abs(text.ruby_gap_em - 0.12) < 1.0e-6

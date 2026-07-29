@@ -33,7 +33,7 @@ def main() -> None:
     try:
         bmanga = _load_package("bmanga_dev", ROOT)
         assert getattr(bpy.types, "BMANGA_PT_export", None) is not None
-        assert getattr(bpy.types, "BMANGA_PT_export").bl_label == "ページ出力"
+        assert getattr(bpy.types, "BMANGA_PT_export").bl_label == "書き出し"
         assert getattr(bpy.types, "BMANGA_PT_gpencil", None) is None
         assert getattr(bpy.types, "BMANGA_OT_export_page", None) is not None
         assert getattr(bpy.types, "BMANGA_OT_export_all_pages", None) is not None

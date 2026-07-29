@@ -9,7 +9,7 @@ from pathlib import Path
 
 import bpy
 
-from . import log, object_naming as on, page_grid, page_range, paths, spread_merge_geometry
+from . import log, object_naming as on, page_grid, page_range, paths
 from .geom import mm_to_m
 
 _logger = log.get_logger(__name__)
@@ -40,7 +40,7 @@ PREVIEW_SUPERSAMPLE_MAX_TARGET_PX = 1024
 PREVIEW_Z_M = 0.006
 PREVIEW_FILENAME = "page_preview.png"
 PREVIEW_DETAIL_FILENAME = "page_preview.detail.png"
-PREVIEW_RENDER_VERSION = "13"
+PREVIEW_RENDER_VERSION = "15"
 PREVIEW_RENDER_VERSION_KEY = "BMangaPreviewVersion"
 PREVIEW_RENDER_VARIANT_KEY = "BMangaPreviewVariant"
 PREVIEW_RENDER_SIGNATURE_KEY = "BMangaPreviewSignature"
@@ -404,11 +404,24 @@ def _preview_render_signature(
         from ..io import schema
 
         paper = schema.paper_to_dict(getattr(work, "paper", None))
+        safe_area = schema.safe_area_to_dict(
+            getattr(work, "safe_area_overlay", None)
+        )
     except Exception:  # noqa: BLE001
         paper = {}
+        safe_area = {}
+    try:
+        from . import page_preview_decor
+
+        guides_visible = page_preview_decor.page_guides_visible(work, scene)
+    except Exception:  # noqa: BLE001
+        guides_visible = True
     payload = {
         "variant": variant,
-        "guides": "gpu-overlay",
+        "guides": {
+            "visible": bool(guides_visible),
+            "safe_area": safe_area,
+        },
         "labels": "overlay",
         "page_index": int(page_index),
         "paper": paper,
@@ -635,15 +648,15 @@ def _render_preview_image(
         exported = _resize_preview_image(exported, target_width, target_height)
         from . import page_preview_decor
 
-        # ガイドと範囲外塗りはGPUオーバーレイで重ねる。PNGへ焼き込むと
-        # 表示切替だけで全ページ再生成が必要になるため、内容画像へ含めない。
+        # ページ/コマファイルの周辺ページやカメラ下絵でも同じ表示を
+        # 復元できるよう、ガイドと範囲外塗りを確認用PNGへ含める。
         page_preview_decor.draw_preview_decoration(
             exported,
             work,
             page,
             scene=scene,
-            include_fills=False,
-            include_guides=False,
+            include_fills=True,
+            include_guides=True,
         )
         draw = ImageDraw.Draw(exported)
         _draw_preview_frame(draw, target_width, target_height, current=current)
@@ -678,28 +691,8 @@ def _render_preview_image(
         line_w_mm = max(0.2, float(getattr(border, "width_mm", 0.5) or 0.5))
         px_per_mm = max(width / content_width_mm, height / ch)
         line_w = max(1, int(round(line_w_mm * px_per_mm)))
-        spread_basic_side = ""
-        spread_basic_rect = None
-        try:
-            spread_basic_side, spread_basic_rect = spread_merge_geometry.basic_frame_info(work, page, coma)
-        except Exception:  # noqa: BLE001
-            spread_basic_side = ""
-            spread_basic_rect = None
-        if spread_basic_side == "left" and spread_basic_rect is not None:
-            merged_pts = [
-                (float(spread_basic_rect.x), float(spread_basic_rect.y)),
-                (float(spread_basic_rect.x2), float(spread_basic_rect.y)),
-                (float(spread_basic_rect.x2), float(spread_basic_rect.y2)),
-                (float(spread_basic_rect.x), float(spread_basic_rect.y2)),
-            ]
-            merged_pts_px = [point_px(p) for p in merged_pts]
-            closed = merged_pts_px + [merged_pts_px[0]]
-            draw.line(closed, fill=border_color, width=line_w, joint="curve")
-        elif spread_basic_side == "right":
-            continue
-        else:
-            closed = pts_px + [pts_px[0]]
-            draw.line(closed, fill=border_color, width=line_w, joint="curve")
+        closed = pts_px + [pts_px[0]]
+        draw.line(closed, fill=border_color, width=line_w, joint="curve")
 
     from . import page_preview_decor
 

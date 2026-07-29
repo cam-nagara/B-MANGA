@@ -609,6 +609,9 @@ def _run() -> None:
     result = bpy.ops.bmanga.pages_merge_spread("EXEC_DEFAULT", left_index=1)
     if result != {"FINISHED"}:
         raise AssertionError(f"見開き結合に失敗しました: {result}")
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=1)
+    if result != {"FINISHED"}:
+        raise AssertionError(f"見開きページを開けません: {result}")
     work = bpy.context.scene.bmanga_work
     work.active_page_index = 1
     spread_page = work.pages[1]

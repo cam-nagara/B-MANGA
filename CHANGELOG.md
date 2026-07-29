@@ -3,6 +3,33 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.2 LTS を対象としています（開発基準バージョン。5.1でも動作確認済み）。
 
+## 2026-07-29 — 全体リファクタリングPhase 1の統一認定基盤を導入 (B-MANGA Next v0.6.601)
+
+### 症状
+- 全452 test sourceを発見できても、必須テストの未登録、skip、timeout、crash、完了印欠落、成果物改変を一つの合否へ集約する実行基盤がなかった。
+- Operatorの静的入力、実登録RNA、実`bpy.ops`呼出し引数を横断照合できず、宣言だけ存在して実行時に使えない入力を検知できなかった。
+- JSON、素材、mainfile切替、書き出しの途中失敗に対するrollbackと、期待済みTraceback以外のsilent failureを決定的に検証できなかった。
+
+### 原因
+- Phase 0の台帳・probeは現状把握用であり、全テストを必須gateとして毎回再実行するrunner、構造化ログ、失敗注入、Golden承認契約を持っていなかった。
+- 既存の負系テストはTraceback markerの存在だけで分類され、例外型・文言・件数や正常完走を偽装できる余地があった。
+- 現在ページの実体ガイドと一覧プレビューの焼き込みを同時に描く経路があり、ガイド／範囲外塗りが重複または欠落する回帰も混在していた。
+
+### 修正
+- `tools/certification`へ自動発見manifest、通常Python／Blender headless／Blender UI／artifactの統一runner、必須gate、再現可能summaryを追加した。456 caseを423必須、21履歴、12補助へ分類し、未登録・必須skip・失敗・timeout・crashをすべて認定失敗にした。
+- 312 Operator、430入力、静的`bpy.ops` 128呼出しを実登録RNAと照合するBlender 5.2実機検査を追加した。
+- `bmanga_core`へBlender非依存の構造化event、counter、fault point、段階的ファイル置換を追加した。JSON、素材作成／配置、mainfile open、exportのbefore／after-stage／after-commitへ注入し、メモリ、ID、baseline、既存成果物の完全復元を検証する。
+- mainfile切替前が未保存またはdirtyでも一時checkpointから内容を復元し、通常例外と注入例外の双方で開いた先へ取り残さないようにした。
+- 期待Tracebackは型・文言・件数を固定し、任意の独自例外、正逆の偽ログ、completion token偽装を拒否する。期待Tracebackケースは正常return後だけ認定側が完了印を出すwrapper実行に限定し、`SystemExit(0)`も未完走として失敗させる。
+- ユーザー承認済みGPU PNG／JPEG Goldenをhash・byte数・承認ID付きregistryへ固定し、統一gateで未承認・欠落・改変を拒否する。
+- 現在ページは保存済み実体ガイドを一度だけ描き、一覧／周辺ページはガイド・塗り込みのpreviewを描くよう仕様正本へ戻した。previewがない時だけGPU fallbackを使う。
+- 複数Blenderの同時起動で共有状態・UI timingが干渉しないよう、通常Pythonだけを並列化し、全Blender実機caseを直列実行する。ページCollection拡張後に古いRNA参照を使っていたツール視覚監査は、拡張前に固定した安定選択キーへ変更した。
+
+### 検証（Blender 5.2 LTS実機）
+- 独立レビューを複数回実施し、最終判定は重大0・高0。Traceback偽装、preview ID残留、未保存mainfile rollback、`SystemExit(0)`早期終了の各反例を回帰テスト化した。
+- 基盤単体17件、期待Traceback 9件、wrapper影響26件、ガイド0／25／100%・素材／open fault注入の対象検証がすべて合格した。ツール視覚監査は安定キー修正後10/10反復合格した。
+- 統一runnerの最終全件結果は456/456、必須423/423、failure／skip／timeout／crash 0。証跡は`_verify/2026-07-29_phase1/full_all_final_05`。通常Extensionへの配備は行っていない。
+
 ## 2026-07-28 — 全体リファクタリングPhase 0の隔離環境と認定台帳を作成 (B-MANGA Next v0.6.600 / Render Next v0.1.38 / Liner Next v0.3.202)
 
 ### 症状

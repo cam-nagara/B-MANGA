@@ -251,6 +251,30 @@ def record_observed_read(path: str | os.PathLike[str]) -> None:
         snapshot.setdefault(_path_key(target), fingerprint(target))
 
 
+def snapshot_baseline_registry() -> dict[str, dict[str, FileFingerprint]]:
+    """I/O transaction前の観測済み基準を値コピーで退避する。"""
+
+    with _registry_lock:
+        return {
+            work_key: dict(snapshot)
+            for work_key, snapshot in _baselines.items()
+        }
+
+
+def restore_baseline_registry(
+    state: dict[str, dict[str, FileFingerprint]],
+) -> None:
+    """失敗したI/O transactionが変更した観測済み基準を完全復元する。"""
+
+    restored = {
+        str(work_key): dict(snapshot)
+        for work_key, snapshot in state.items()
+    }
+    with _registry_lock:
+        _baselines.clear()
+        _baselines.update(restored)
+
+
 def record_successful_write(path: str | os.PathLike[str]) -> None:
     """このプロセス自身が成功させた書込みだけ基準へ反映する。"""
 
@@ -360,5 +384,7 @@ __all__ = [
     "record_successful_write",
     "record_successful_tree_change",
     "record_observed_read",
+    "restore_baseline_registry",
+    "snapshot_baseline_registry",
     "tracked_paths",
 ]

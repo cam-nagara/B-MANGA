@@ -188,23 +188,8 @@ def _material_names(obj) -> set[str]:
 
 def _modifier_mask_values(obj, nodes_mod):
     modifier = obj.modifiers.get(nodes_mod.MODIFIER_NAME)
-    assert modifier is not None and modifier.node_group is not None, "フキダシの表示補助がありません"
-    enabled = None
-    target = None
-    clip_needed = None
-    fill_clip_needed = None
-    for item in modifier.node_group.interface.items_tree:
-        if getattr(item, "item_type", "") != "SOCKET" or getattr(item, "in_out", "") != "INPUT":
-            continue
-        if getattr(item, "name", "") == "マスク使用":
-            enabled = bool(modifier.get(item.identifier))
-        elif getattr(item, "name", "") == "マスク対象":
-            target = modifier.get(item.identifier)
-        elif getattr(item, "name", "") == "塗り切り抜き必要":
-            fill_clip_needed = bool(modifier.get(item.identifier))
-        elif getattr(item, "name", "") == "切り抜き必要":
-            clip_needed = bool(modifier.get(item.identifier))
-    return enabled, target, clip_needed, fill_clip_needed
+    assert modifier is None, "廃止済みのフキダシGeometry Nodes表示補助が残っています"
+    return False, None, False, False
 
 
 def _assert_curve_uses_opacity_mask(obj) -> None:
@@ -223,15 +208,10 @@ def _assert_curve_uses_opacity_mask(obj) -> None:
     assert found, "フキダシにコマ内容マスクが接続されていません"
 
 
-def _modifier_socket_value(obj, nodes_mod, socket_name: str):
-    modifier = obj.modifiers.get(nodes_mod.MODIFIER_NAME)
-    assert modifier is not None and modifier.node_group is not None, "フキダシの表示補助がありません"
-    for item in modifier.node_group.interface.items_tree:
-        if getattr(item, "item_type", "") != "SOCKET" or getattr(item, "in_out", "") != "INPUT":
-            continue
-        if getattr(item, "name", "") == socket_name:
-            return modifier.get(item.identifier)
-    raise AssertionError(f"フキダシの表示補助に {socket_name} がありません")
+def _line_mesh(entry):
+    obj = bpy.data.objects.get(f"balloon_line_mesh_{entry.id}")
+    assert obj is not None and obj.type == "MESH", f"フキダシ主線メッシュがありません: {entry.id}"
+    return obj
 
 
 def main() -> None:
@@ -241,6 +221,8 @@ def main() -> None:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "BalloonMaskAnchor.bmanga"))
+        assert "FINISHED" in result, result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
         assert "FINISHED" in result, result
 
         from bmanga_dev_balloon_curve_mask_anchor.core.work import get_work
@@ -399,11 +381,10 @@ def main() -> None:
         assert obj4 is not None and obj4.type == "CURVE", "線幅確認フキダシが作成されていません"
         bpy.context.view_layer.update()
         rect_width = _stroke_width_cross_section(
-            obj4,
+            _line_mesh(entry4),
             obj4.data.splines[0].bezier_points[0].co,
             obj4.data.splines[0].bezier_points[1].co,
             material_index=None,
-            z_value=balloon_curve_render_nodes._LINE_Z_M,
         )
         assert 0.00027 <= rect_width <= 0.00033, f"矩形フキダシの0.3mm線幅が設定値通りではありません: width={rect_width}"
 
@@ -428,12 +409,8 @@ def main() -> None:
         assert all(abs(float(point.radius) - 1.0) <= 1.0e-6 for point in body5.bezier_points), (
             "トゲ（直線）本体の主線幅が制御点ごとに変化しています"
         )
-        assert abs(float(_modifier_socket_value(obj5, balloon_curve_render_nodes, "線幅 (mm)") or 0.0) - 0.3) <= 1.0e-6, (
-            "トゲ（直線）フキダシの表示補助に0.3mmの線幅が渡っていません"
-        )
-        assert _count_poly_splines_with_radius(obj5, 500.0) >= 2, (
-            "トゲ（直線）フキダシの主線面が作成されていません"
-        )
+        thorn_line = _line_mesh(entry5)
+        assert len(thorn_line.data.polygons) > 0, "トゲ（直線）フキダシの主線面が作成されていません"
 
         entry6 = page.balloons.add()
         entry6.id = "balloon_line_width_ellipse_03"
@@ -453,11 +430,10 @@ def main() -> None:
         assert obj6 is not None and obj6.type == "CURVE", "楕円線幅確認フキダシが作成されていません"
         bpy.context.view_layer.update()
         ellipse_width = _stroke_width_cross_section(
-            obj6,
+            _line_mesh(entry6),
             Vector((-0.012, 0.015, 0.0)),
             Vector((0.012, 0.015, 0.0)),
             material_index=None,
-            z_value=balloon_curve_render_nodes._LINE_Z_M,
         )
         assert 0.00027 <= ellipse_width <= 0.00033, f"楕円フキダシの0.3mm線幅が設定値通りではありません: width={ellipse_width}"
 

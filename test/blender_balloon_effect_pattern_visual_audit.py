@@ -614,6 +614,8 @@ def main() -> None:
         mod = _load_addon()
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "PatternVisualAudit.bmanga"))
         assert result == {"FINISHED"}, result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        assert result == {"FINISHED"}, result
 
         from bmanga_dev_pattern_visual_audit.core.work import get_work
         from bmanga_dev_pattern_visual_audit.utils.layer_hierarchy import page_stack_key
@@ -668,11 +670,13 @@ def main() -> None:
             "effect_line_failures": effect_failures,
         }
         summary_path = _write_json("summary.json", summary)
+        assert not balloon_failures, balloon_failures
+        assert not effect_failures, effect_failures
         print(f"BMANGA_BALLOON_EFFECT_PATTERN_VISUAL_OK summary={summary_path}")
         print(f"  balloon_images={summary['balloon_images']}")
         print(f"  effect_line_images={summary['effect_line_images']}")
-        assert not balloon_failures, balloon_failures
-        assert not effect_failures, effect_failures
+        sys.stdout.flush()
+        sys.stderr.flush()
         os._exit(0)
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)

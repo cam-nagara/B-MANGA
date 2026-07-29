@@ -58,6 +58,10 @@ def main() -> int:
     if "FINISHED" not in result:
         print(f"  ✗ work_new failed: {result}")
         return 1
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+    if "FINISHED" not in result:
+        print(f"  ✗ open_page_file failed: {result}")
+        return 1
 
     from bmanga_dev_phase_d.operators import balloon_op
     from bmanga_dev_phase_d.utils import balloon_curve_object as bco
@@ -188,4 +192,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    _result = main()
+    if _result not in (None, 0):
+        raise SystemExit(_result)
+    if __import__("os").environ.get("BMANGA_CERT_WRAPPED") != "1":
+        sys.exit(_result)

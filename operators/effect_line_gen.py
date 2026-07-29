@@ -259,9 +259,16 @@ def _shape_guide_uses_smooth_bezier(params, prefix: str, *, frame_outline: bool 
         return False
     if shape == "rect":
         corner = str(getattr(params, f"{prefix}_corner_type", "") or "")
+        rounded_enabled = bool(
+            getattr(params, f"{prefix}_rounded_corner_enabled", False)
+        )
+        # 旧データでは corner_type が既定値 square のまま、個別の角丸有効
+        # フラグだけが保存される。輪郭生成側と同じ互換判定をガイドにも使う。
+        if corner == "square" and rounded_enabled:
+            corner = "rounded"
         if corner and corner != "rounded":
             return False
-        return bool(getattr(params, f"{prefix}_rounded_corner_enabled", False)) and corner_radius.has_positive_value(
+        return rounded_enabled and corner_radius.has_positive_value(
             params,
             prefix=f"{prefix}_rounded_corner",
         )

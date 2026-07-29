@@ -1333,12 +1333,27 @@ def _draw_page_overlay(
             ox_mm,
             oy_mm,
         )
+    preview_drawn = False
     if page is not None and not use_real_page_objects:
-        overlay_page_preview.draw_for_page(context, work, page, _pi, ox_mm, oy_mm, is_current_page=_is_current)
+        preview_drawn = overlay_page_preview.draw_for_page(
+            context,
+            work,
+            page,
+            _pi,
+            ox_mm,
+            oy_mm,
+            is_current_page=_is_current,
+        )
 
     # ガイド線 + セーフ外 / 断ち切り外塗り
     _region, _rv3d = _resolve_active_region(context)
-    if _region is not None and _rv3d is not None and page is not None and not use_real_page_objects:
+    if (
+        _region is not None
+        and _rv3d is not None
+        and page is not None
+        and not use_real_page_objects
+        and not preview_drawn
+    ):
         overlay_paper_guide.draw_for_page(
             work, paper, rects, page, _pi,
             ox_mm, oy_mm, is_left_half, _region, _rv3d,
@@ -1400,7 +1415,7 @@ def _draw_reference_page_preview(
 ) -> None:
     """非編集中ページの内容画像と、即時切替可能なガイドを重ねる。"""
 
-    overlay_page_preview.draw_for_page(
+    preview_drawn = overlay_page_preview.draw_for_page(
         context,
         work,
         page,
@@ -1410,7 +1425,7 @@ def _draw_reference_page_preview(
         is_current_page=False,
     )
     region, rv3d = _resolve_active_region(context)
-    if region is not None and rv3d is not None:
+    if region is not None and rv3d is not None and not preview_drawn:
         overlay_paper_guide.draw_for_page(
             work,
             paper,

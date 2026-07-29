@@ -1314,12 +1314,18 @@ def _remove_balloon_clip_mask(balloon_id: str) -> None:
         return
     mask_name = f"{BALLOON_CLIP_MASK_NAME_PREFIX}{balloon_id}"
     for obj in list(bpy.data.objects):
-        if obj.name != mask_name and not (
+        is_generated_mask = (
             obj.get(PROP_BALLOON_CLIP_MASK_KIND) == "coma_clip"
             and str(obj.get(PROP_BALLOON_CLIP_MASK_OWNER_ID, "") or "") == balloon_id
-        ):
+        )
+        if obj.name != mask_name and not is_generated_mask:
             continue
-        object_preserve.preserve_object(obj, "古いフキダシマスク実体を保持")
+        if is_generated_mask:
+            data = getattr(obj, "data", None)
+            bpy.data.objects.remove(obj, do_unlink=True)
+            _remove_unused_data_block(data)
+            continue
+        object_preserve.preserve_object(obj, "名前が重複したユーザー実体を保持")
 
 
 def _set_data_materials(data, materials: Sequence[bpy.types.Material | None]) -> None:

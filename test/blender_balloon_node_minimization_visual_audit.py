@@ -79,6 +79,8 @@ def _reset_work():
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_visual_audit_work_"))
     result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "VisualAudit.bmanga"))  # type: ignore[attr-defined]
     assert "FINISHED" in result, result
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+    assert "FINISHED" in result, result
     return bpy.context, temp_root
 
 
@@ -430,4 +432,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    _result = main()
+    if _result not in (None, 0):
+        raise SystemExit(_result)
+    if __import__("os").environ.get("BMANGA_CERT_WRAPPED") != "1":
+        sys.exit(_result)

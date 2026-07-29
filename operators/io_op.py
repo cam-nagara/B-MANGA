@@ -17,6 +17,8 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
 from bpy.types import Operator
 
+from ..bmanga_core.file_transaction import staged_export_write
+from ..bmanga_core.observability import observed_operation
 from ..core.mode import MODE_PAGE, get_mode
 from ..core.work import get_active_page, get_work
 from ..io import export_page_regions, export_pipeline
@@ -24,25 +26,27 @@ from ..io.export_pipeline import ExportOptions
 from ..utils import detail_popup, log, page_range, paths
 
 
+@observed_operation("export.write")
 def _save_image(img, out_path: Path, image_format: str) -> None:
     """Pillow Image を format 別の互換モードで保存."""
-    if image_format == "jpeg":
-        # JPEG は RGB / L / CMYK のみサポート。RGBA / "1" は RGB に変換
-        if img.mode == "RGBA":
-            bg = export_pipeline.Image.new("RGBA", img.size, (255, 255, 255, 255))
-            bg.alpha_composite(img)
-            img = bg.convert("RGB")
-        elif img.mode not in ("RGB", "L", "CMYK"):
-            img = img.convert("RGB")
-        img.save(str(out_path), quality=95)
-    elif image_format == "tiff":
-        img.save(str(out_path))
-    elif image_format == "psd":
-        ok = export_pipeline.save_as_psd(img, out_path)
-        if not ok:
-            raise RuntimeError("PSD 保存に失敗しました")
-    else:
-        img.save(str(out_path))
+    with staged_export_write(out_path, image_format=image_format) as staged:
+        if image_format == "jpeg":
+            # JPEG は RGB / L / CMYK のみサポート。RGBA / "1" は RGB に変換
+            if img.mode == "RGBA":
+                bg = export_pipeline.Image.new("RGBA", img.size, (255, 255, 255, 255))
+                bg.alpha_composite(img)
+                img = bg.convert("RGB")
+            elif img.mode not in ("RGB", "L", "CMYK"):
+                img = img.convert("RGB")
+            img.save(str(staged), quality=95)
+        elif image_format == "tiff":
+            img.save(str(staged))
+        elif image_format == "psd":
+            ok = export_pipeline.save_as_psd(img, staged)
+            if not ok:
+                raise RuntimeError("PSD 保存に失敗しました")
+        else:
+            img.save(str(staged))
 
 _logger = log.get_logger(__name__)
 

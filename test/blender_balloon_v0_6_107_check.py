@@ -80,6 +80,8 @@ def main() -> None:
     _load_addon()
     result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "V107Check.bmanga"))
     assert "FINISHED" in result, result
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+    assert "FINISHED" in result, result
 
     from bmanga_dev_v107.core.work import get_work
     from bmanga_dev_v107.operators import balloon_op

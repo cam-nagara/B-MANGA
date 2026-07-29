@@ -78,6 +78,7 @@ def main() -> None:
         text_presets,
     )
     from bmanga_dev_select_no_reparent.utils import layer_stack as layer_stack_utils
+    from bmanga_dev_select_no_reparent.utils import page_file_scene
 
     preferences.get_preferences = lambda _context=None: SimpleNamespace(
         meldex_apply_text_presentation=False
@@ -109,10 +110,16 @@ def main() -> None:
 
     context = bpy.context
     scene = context.scene
+    assert page_file_scene.set_page_edit_state(context, str(page.id))
     result = meldex_scenario_import.import_payload(context, work, _payload())
     assert result["created"] == 2, result
 
-    stack = scene.bmanga_layer_stack
+    page = work.pages[0]
+    page_io.load_page_json(Path(str(work.work_dir)), page)
+    assert page_file_scene.set_page_edit_state(context, str(page.id))
+    stack = layer_stack_utils.sync_layer_stack(
+        context, preserve_active_index=False
+    )
     page_i = _index_of(stack, "page", "p0001")
 
     # --- 1. 記憶シグネチャと実並びがズレた状態を作る (内部要因の並び替え相当) ---

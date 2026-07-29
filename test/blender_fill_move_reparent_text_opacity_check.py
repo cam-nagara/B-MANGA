@@ -482,7 +482,8 @@ def main() -> None:
         sys.exit(1)
     else:
         print("ALL PASSED", flush=True)
-        sys.exit(0)
+        if __import__("os").environ.get("BMANGA_CERT_WRAPPED") != "1":
+            sys.exit(0)
 
 
 if __name__ == "__main__":

@@ -269,7 +269,7 @@ def _main_impl(temp_root: Path) -> None:
         text_auto_ruby_op.request_user_preferences_save = original_ruby_request_save
 
     _mark("main: done")
-    print("[ok] preferences and tool preset selections persist")
+    print("BMANGA_PREFERENCES_PRESET_PERSISTENCE_CHECK_OK", flush=True)
 
 
 if __name__ == "__main__":

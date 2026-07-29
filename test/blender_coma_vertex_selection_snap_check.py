@@ -52,6 +52,7 @@ def main() -> None:
         page = work.pages.add()
         page.id = "p0001"
         page.title = "1ページ"
+        context.scene.bmanga_current_page_id = page.id
         coma = page.comas.add()
         coma.coma_id = "c01"
         _set_poly(coma, [(0, 0), (20, 0), (20, 20), (0, 20)])

@@ -205,4 +205,8 @@ def _run() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(_run())
+    _result = _run()
+    if _result not in (None, 0):
+        raise SystemExit(_result)
+    if __import__("os").environ.get("BMANGA_CERT_WRAPPED") != "1":
+        sys.exit(_result)

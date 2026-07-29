@@ -12,13 +12,21 @@ Phase 1 (overview 再設計): モデル変更あり。
 from __future__ import annotations
 
 from pathlib import Path
+import tempfile
 
 import bpy
 
+from ..bmanga_core.faults import FaultInjectedError, FaultPoint, check_fault
+from ..bmanga_core.observability import observed_operation
 from ..utils import log, paths
 from .project_content_migration_lock import guard_path_write
 from .project_content_migration_model import MIGRATION_VERSION
-from .project_content_save_baseline import record_observed_read, record_successful_write
+from .project_content_save_baseline import (
+    record_observed_read,
+    record_successful_write,
+    restore_baseline_registry,
+    snapshot_baseline_registry,
+)
 from .project_content_version import assert_detail_version_matches
 
 _logger = log.get_logger(__name__)
@@ -38,6 +46,59 @@ def _memory_detail_data_version():
     if work is None:
         return None
     return getattr(work, "detail_data_version", None)
+
+
+def _remove_open_checkpoint(checkpoint: Path | None) -> None:
+    if checkpoint is None:
+        return
+    try:
+        checkpoint.unlink(missing_ok=True)
+        checkpoint.parent.rmdir()
+    except OSError:
+        _logger.warning("open rollback checkpoint cleanup failed: %s", checkpoint)
+
+
+def _prepare_open_rollback_source() -> tuple[Path | None, Path | None]:
+    """現在状態を失わずにopen失敗から戻れるsourceを用意する。"""
+
+    original = Path(str(getattr(bpy.data, "filepath", "") or ""))
+    if original.is_file() and not bool(getattr(bpy.data, "is_dirty", False)):
+        return original, None
+    checkpoint_dir = Path(tempfile.mkdtemp(prefix="bmanga-open-rollback-"))
+    checkpoint = checkpoint_dir / "unsaved-session.blend"
+    try:
+        result = bpy.ops.wm.save_as_mainfile(
+            filepath=str(checkpoint),
+            check_existing=False,
+            compress=True,
+            copy=True,
+        )
+        if "FINISHED" not in result or not checkpoint.is_file():
+            raise RuntimeError("未保存セッションのrollback checkpointを作成できません")
+    except BaseException:
+        _remove_open_checkpoint(checkpoint)
+        raise
+    return checkpoint, checkpoint
+
+
+def _restore_after_open_failure(
+    blend_path: Path,
+    rollback_source: Path | None,
+    baseline_state,
+) -> bool:
+    """targetを既に開いた場合は元セッションへ戻し、baselineも復元する。"""
+
+    current = Path(str(getattr(bpy.data, "filepath", "") or ""))
+    opened_target = current.is_file() and current.resolve() == blend_path.resolve()
+    try:
+        if opened_target:
+            if rollback_source is None or not rollback_source.is_file():
+                raise RuntimeError("open_mainfile確定後のrollback元がありません")
+            bpy.ops.wm.open_mainfile(filepath=str(rollback_source.resolve()))
+            _suspend_keymap_visibility_updates()
+    finally:
+        restore_baseline_registry(baseline_state)
+    return opened_target
 
 
 def save_current_as(
@@ -91,22 +152,58 @@ def save_current_as(
         return False
 
 
+@observed_operation("open.mainfile", failure_result=lambda result: result is False)
 def open_mainfile(blend_path: Path) -> bool:
     """指定 .blend を open_mainfile で開く. 存在しなければ False."""
     blend_path = Path(blend_path)
     if not blend_path.is_file():
         _logger.warning("blend file missing: %s", blend_path)
         return False
+    check_fault(FaultPoint.OPEN_MAINFILE, path=str(blend_path))
+    baseline_state = snapshot_baseline_registry()
+    rollback_source: Path | None = None
+    checkpoint: Path | None = None
     try:
         # 明示的に開くファイルは、この画面が内容を観測してからメモリへ
         # 読み込む。load_post前の保存処理でも未追跡扱いにならないようにする。
         record_observed_read(blend_path)
         _suspend_keymap_visibility_updates()
+        check_fault(
+            FaultPoint.OPEN_MAINFILE_AFTER_STAGE,
+            path=str(blend_path),
+        )
+        rollback_source, checkpoint = _prepare_open_rollback_source()
         bpy.ops.wm.open_mainfile(filepath=str(blend_path.resolve()))
         _suspend_keymap_visibility_updates()
+        check_fault(
+            FaultPoint.OPEN_MAINFILE_AFTER_COMMIT,
+            path=str(blend_path),
+        )
+        _remove_open_checkpoint(checkpoint)
         _logger.info("mainfile opened: %s", blend_path)
         return True
+    except FaultInjectedError:
+        opened_target = _restore_after_open_failure(
+            blend_path,
+            rollback_source,
+            baseline_state,
+        )
+        if checkpoint is not None and not opened_target:
+            _remove_open_checkpoint(checkpoint)
+        raise
     except Exception as exc:  # noqa: BLE001
+        try:
+            opened_target = _restore_after_open_failure(
+                blend_path,
+                rollback_source,
+                baseline_state,
+            )
+            if checkpoint is not None and not opened_target:
+                _remove_open_checkpoint(checkpoint)
+        except Exception as rollback_exc:  # noqa: BLE001
+            raise RuntimeError(
+                f"open_mainfile失敗後のrollbackに失敗しました: {blend_path}"
+            ) from rollback_exc
         _logger.exception("open_mainfile failed: %s (%s)", blend_path, exc)
         return False
 

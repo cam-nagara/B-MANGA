@@ -46,12 +46,22 @@ def main() -> None:
         data = schema.work_to_dict(work)
         assert abs(float(data["pagePreviewScalePercentage"]) - 25.0) < 0.001
 
-        schema.work_from_dict(work, {"pagePreviewScalePercentage": 33.3})
+        data["pagePreviewScalePercentage"] = 33.3
+        schema.work_from_dict(work, data)
         assert abs(float(work.page_preview_scale_percentage) - 33.3) < 0.001
-        schema.work_from_dict(work, {"pagePreviewScalePercentage": 999.0})
+        data["pagePreviewScalePercentage"] = 999.0
+        schema.work_from_dict(work, data)
         assert abs(float(work.page_preview_scale_percentage) - 100.0) < 0.001
-        schema.work_from_dict(work, {"pagePreviewScalePercentage": "invalid"})
+        data["pagePreviewScalePercentage"] = "invalid"
+        schema.work_from_dict(work, data)
         assert abs(float(work.page_preview_scale_percentage) - 12.5) < 0.001
+
+        result = bpy.ops.bmanga.work_save("EXEC_DEFAULT")
+        assert result == {"FINISHED"}, result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        assert result == {"FINISHED"}, result
+        work = get_work(bpy.context)
+        assert work is not None
 
         Image = export_pipeline.Image
         assert Image is not None

@@ -94,6 +94,11 @@ def _assert_no_safe_guide_pixel(path: Path, work, page=None) -> None:
         raise AssertionError("ページ一覧プレビュー画像に用紙ガイド線が残っています")
 
 
+def _assert_safe_guide_pixel(path: Path, work, page=None) -> None:
+    if not _safe_guide_pixel_exists(path, work, page):
+        raise AssertionError("ページ一覧プレビュー画像に用紙ガイド線がありません")
+
+
 def _assert_preview_image_is_spread(path: Path, work, page) -> None:
     from PIL import Image
     from bmanga_dev_page_coma_preview_restore.utils import page_grid
@@ -353,12 +358,26 @@ def main() -> None:
         work.paper.show_guides = True
         work.paper.show_safe_line = True
         work.paper.show_inner_frame = True
-        blur_coma = work.pages[0].comas[0]
+        _mark("prepare_blur_coma")
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        if result != {"FINISHED"}:
+            raise AssertionError(f"ぼかし確認用ページを開けません: {result}")
+        work = bpy.context.scene.bmanga_work
+        page = work.pages[0]
+        if len(page.comas) == 0:
+            work.active_page_index = 0
+            result = bpy.ops.bmanga.coma_add("EXEC_DEFAULT")
+            if result != {"FINISHED"}:
+                raise AssertionError(f"ぼかし確認用コマを追加できません: {result}")
+        blur_coma = page.comas[0]
         blur_coma.rect_x_mm = 40.0
         blur_coma.rect_y_mm = 46.0
         blur_coma.rect_width_mm = 78.0
         blur_coma.rect_height_mm = 136.0
         blur_coma.background_color = (1.0, 1.0, 1.0, 1.0)
+        result = bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
+        if result != {"FINISHED"}:
+            raise AssertionError(f"ぼかし確認用ページを保存できません: {result}")
 
         _mark("work_save")
         result = bpy.ops.bmanga.work_save()
@@ -398,16 +417,19 @@ def main() -> None:
             raise AssertionError("ページ一覧プレビュー画像にページ番号が焼き込まれています")
         _mark("page_file_check_fill_pixels")
         green = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] < 90 and px[1] > 160 and px[2] < 90)
-        if green > 0:
-            raise AssertionError("ページ一覧プレビュー画像へGPU用の範囲外塗りが焼き込まれています")
-        _assert_no_safe_guide_pixel(preview_path, work, spread_page)
+        if green <= 0:
+            raise AssertionError("ページ一覧プレビュー画像にセーフライン外の塗りがありません")
+        _assert_safe_guide_pixel(preview_path, work, spread_page)
 
-        _mark("page_file_guides_are_overlay_only")
+        _mark("page_file_safe_fill_tracks_preview")
         preview_mtime = preview_path.stat().st_mtime_ns
         work.safe_area_overlay.enabled = False
-        if preview_path.stat().st_mtime_ns != preview_mtime:
-            raise AssertionError("ガイド設定だけでページ一覧プレビュー画像が再生成されました")
+        page_preview_object.sync_page_previews(bpy.context, work, force=False)
+        if preview_path.stat().st_mtime_ns == preview_mtime:
+            raise AssertionError("セーフライン外の塗りOFFがページ一覧プレビュー画像へ反映されません")
         work.safe_area_overlay.enabled = True
+        page_preview_object.sync_page_previews(bpy.context, work, force=False)
+        _assert_safe_guide_pixel(preview_path, work, spread_page)
 
         _mark("page_file_toggle_work_info")
         scene.bmanga_page_work_info_visible = False
@@ -421,10 +443,14 @@ def main() -> None:
 
         _mark("page_file_toggle_guides")
         scene.bmanga_page_guides_visible = False
-        if preview_path.stat().st_mtime_ns != preview_mtime:
-            raise AssertionError("用紙ガイドOFFでページ一覧プレビュー画像が再生成されました")
+        preview_mtime = preview_path.stat().st_mtime_ns
+        page_preview_object.sync_page_previews(bpy.context, work, force=False)
+        if preview_path.stat().st_mtime_ns == preview_mtime:
+            raise AssertionError("用紙ガイドOFFがページ一覧プレビュー画像へ反映されません")
         _assert_no_safe_guide_pixel(preview_path, work, spread_page)
         scene.bmanga_page_guides_visible = True
+        page_preview_object.sync_page_previews(bpy.context, work, force=False)
+        _assert_safe_guide_pixel(preview_path, work, spread_page)
 
         _mark("page_file_check_border_objects")
         if not any(owner.startswith("p0001:") for owner in _visible_border_owner_ids()):
@@ -495,9 +521,10 @@ def main() -> None:
         _mark("coma_file_toggle_guides")
         preview_mtime = preview_path.stat().st_mtime_ns
         scene.bmanga_page_guides_visible = False
+        page_preview_object.sync_page_previews(bpy.context, work, force=True)
         _assert_no_safe_guide_pixel(preview_path, work, spread_page)
-        if preview_path.stat().st_mtime_ns != preview_mtime:
-            raise AssertionError("コマファイルの用紙ガイドOFFで下絵画像が再生成されました")
+        if preview_path.stat().st_mtime_ns == preview_mtime:
+            raise AssertionError("コマファイルの用紙ガイドOFFが下絵画像へ反映されません")
         _mark("coma_file_toggle_work_info")
         scene.bmanga_page_work_info_visible = False
         magenta = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] > 180 and px[1] < 90 and px[2] > 180)

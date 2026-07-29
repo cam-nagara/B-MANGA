@@ -59,7 +59,7 @@ def main() -> None:
         work.paper.inner_frame_offset_y_mm = 0.0
         for idx in range(2):
             page = work.pages.add()
-            page.id = f"p{idx + 1:04d}"
+            page.id = f"p{idx + 5:04d}"
             page.title = f"{idx + 1}ページ"
 
         info = work.work_info
@@ -100,7 +100,7 @@ def main() -> None:
         bodies = sorted(str(obj.data.body) for obj in objs)
         assert "作品テスト" in bodies
         assert "作者" in bodies
-        assert "ページ0005" in bodies and "ページ0006" in bodies
+        assert "p0005" in bodies and "p0006" in bodies
         bpy.context.view_layer.update()
         work_name_obj = next(obj for obj in objs if str(obj.data.body) == "作品テスト")
         rects = overlay_shared.compute_paper_rects(work.paper)

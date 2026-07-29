@@ -187,7 +187,8 @@ def main() -> None:
         assert bpy.ops.bmanga.work_new(filepath=str(work_path)) == {"FINISHED"}
         work = bpy.context.scene.bmanga_work
         _configure_fast_render(bpy.context.scene, work)
-        _set_first_coma_color(work, (0.62, 0.93, 0.88, 1.0))
+        if bool(getattr(work.pages[0], "detail_loaded", False)) or len(work.pages[0].comas):
+            raise AssertionError("作品ファイルがページ詳細を常駐させています")
 
         page_preview_object = _submodule("utils.page_preview_object")
         _mark("STEP work_preview_sync")
@@ -283,8 +284,8 @@ def main() -> None:
         work_preview_2 = _copy_image(work_path / "p0001" / "page_preview.png", "08_work_after_coma_preview.png")
 
         entries = [
-            ("作品ファイル編集 -> ページ一覧", work_preview_1),
-            ("作品ファイル編集 -> ページファイル", work_page_preview),
+            ("作品ファイル -> 初期ページ画像", work_preview_1),
+            ("ページファイル -> 初期参照画像", work_page_preview),
             ("ページファイル編集 -> ページ画像", page_preview_1),
             ("ページファイル編集 -> 作品ファイル", page_work_preview),
             ("ページファイル編集 -> コマ参照", page_coma_reference),
@@ -302,10 +303,6 @@ def main() -> None:
                 "stats": stats,
             }
         )
-        if stats["作品ファイル編集 -> ページ一覧"]["cyan_pixels"] < 1000:
-            raise AssertionError("作品ファイル編集がページ一覧に反映されていません")
-        if stats["作品ファイル編集 -> ページファイル"]["cyan_pixels"] < 1000:
-            raise AssertionError("作品ファイル編集がページファイルに反映されていません")
         if stats["ページファイル編集 -> ページ画像"]["yellow_pixels"] < 1000:
             raise AssertionError("ページファイル編集がページ画像に反映されていません")
         if stats["ページファイル編集 -> 作品ファイル"]["yellow_pixels"] < 1000:

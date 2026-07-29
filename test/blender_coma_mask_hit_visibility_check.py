@@ -36,6 +36,8 @@ def main() -> None:
         mod = _load_addon()
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "ComaHit.bmanga"))
         assert result == {"FINISHED"}, result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        assert result == {"FINISHED"}, result
 
         from bmanga_dev.operators import balloon_op, effect_line_op, object_tool_selection, text_op
         from bmanga_dev.utils import gp_layer_parenting as gp_parent

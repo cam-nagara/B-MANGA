@@ -70,6 +70,68 @@ def _ensure_two_pages(work) -> None:
             raise AssertionError(f"ページ追加に失敗しました: {result}")
 
 
+def _work():
+    return _sub("core.work").get_work(bpy.context)
+
+
+def _page_index(work, page_id: str) -> int:
+    return next(
+        index
+        for index, page in enumerate(work.pages)
+        if str(getattr(page, "id", "") or "") == page_id
+    )
+
+
+def _open_page(page_id: str):
+    work = _work()
+    result = bpy.ops.bmanga.open_page_file(
+        "EXEC_DEFAULT",
+        index=_page_index(work, page_id),
+    )
+    if "FINISHED" not in result:
+        raise AssertionError(f"ページを開けません: {page_id}: {result}")
+    work = _work()
+    page = next(page for page in work.pages if str(page.id) == page_id)
+    return work, page
+
+
+def _exit_page() -> None:
+    result = bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
+    if "FINISHED" not in result:
+        raise AssertionError(f"作品一覧へ戻れません: {result}")
+
+
+def _set_page_coma(page_id: str, x_mm: float) -> None:
+    work, page = _open_page(page_id)
+    work.paper.canvas_width_mm = 100.0
+    work.paper.canvas_height_mm = 150.0
+    work.paper.finish_width_mm = 90.0
+    if len(page.comas) == 0:
+        work.active_page_index = _page_index(work, page_id)
+        result = bpy.ops.bmanga.coma_add("EXEC_DEFAULT")
+        if "FINISHED" not in result:
+            raise AssertionError(f"確認用コマの追加に失敗しました: {page_id}: {result}")
+    page.comas[0].rect_x_mm = x_mm
+    page.comas[0].rect_width_mm = 20.0
+    _exit_page()
+
+
+def _prepare_two_page_comas(work) -> None:
+    # Opening page/work files replaces Scene and invalidates every prior RNA handle.
+    # Always reacquire the current root before starting the next merge case.
+    work = _work()
+    _ensure_two_pages(work)
+    _set_page_coma("p0001", 35.0)
+    _set_page_coma("p0002", 10.0)
+
+
+def _page_coma_x(page_id: str) -> float:
+    _work_value, page = _open_page(page_id)
+    value = _first_coma_x(page)
+    _exit_page()
+    return value
+
+
 def _first_coma_x(page) -> float:
     if len(page.comas) == 0:
         raise AssertionError("確認用のコマがありません")
@@ -102,17 +164,20 @@ def _assert_default_values(work) -> None:
 def _assert_default_merge_case(work) -> None:
     page_grid = _sub("utils.page_grid")
 
-    _ensure_two_pages(work)
-    _ensure_page_coma(work, 0)
-    _ensure_page_coma(work, 1)
+    _prepare_two_page_comas(work)
+    work = _work()
+    work.paper.canvas_width_mm = 100.0
+    work.paper.canvas_height_mm = 150.0
+    work.paper.finish_width_mm = 90.0
     work.active_page_index = 0
-    work.pages[0].comas[0].rect_x_mm = 35.0
-    work.pages[0].comas[0].rect_width_mm = 20.0
-    work.pages[1].comas[0].rect_x_mm = 10.0
-    work.pages[1].comas[0].rect_width_mm = 20.0
-    right_before_x = _first_coma_x(work.pages[0])
+    right_before_x = 35.0
     base_width = float(work.paper.canvas_width_mm)
-    expected_offset = base_width - 9.6
+    expected_offset = page_grid.spread_right_page_offset_mm_for_values(
+        base_width,
+        True,
+        -9.6,
+        finish_width_mm=float(work.paper.finish_width_mm),
+    )
 
     result = bpy.ops.bmanga.pages_merge_spread("EXEC_DEFAULT", left_index=0)
     if "FINISHED" not in result:
@@ -121,9 +186,22 @@ def _assert_default_merge_case(work) -> None:
     if bool(getattr(spread, "tombo_aligned", False)) is not True:
         raise AssertionError("見開き化後の「トンボを合わせる」初期値がオンではありません")
     _assert_close(float(getattr(spread, "tombo_gap_mm", 0.0)), -9.6, "見開き化後の「間隔」初期値")
-    _assert_close(page_grid.spread_right_page_offset_mm(spread, base_width), expected_offset, "初期値の右ページ開始位置")
-    _assert_close(_first_coma_x(spread), right_before_x + expected_offset, "初期値の右ページ側コマ位置")
+    _assert_close(
+        page_grid.spread_right_page_offset_mm(
+            spread,
+            base_width,
+            float(work.paper.finish_width_mm),
+        ),
+        expected_offset,
+        "初期値の右ページ開始位置",
+    )
+    _assert_close(
+        _page_coma_x(str(spread.id)),
+        right_before_x + expected_offset,
+        "初期値の右ページ側コマ位置",
+    )
 
+    work = _work()
     result = bpy.ops.bmanga.pages_split_spread("EXEC_DEFAULT", spread_index=0)
     if "FINISHED" not in result:
         raise AssertionError(f"初期値見開きの解除に失敗しました: {result}")
@@ -156,21 +234,20 @@ def _assert_tombo_merge_case(work, *, aligned: bool, gap_mm: float) -> None:
     paper_bg_object = _sub("utils.paper_bg_object")
     paper_guide_object = _sub("utils.paper_guide_object")
 
-    _ensure_two_pages(work)
-    _ensure_page_coma(work, 0)
-    _ensure_page_coma(work, 1)
+    _prepare_two_page_comas(work)
+    work = _work()
+    work.paper.canvas_width_mm = 100.0
+    work.paper.canvas_height_mm = 150.0
+    work.paper.finish_width_mm = 90.0
     work.active_page_index = 0
-    work.pages[0].comas[0].rect_x_mm = 35.0
-    work.pages[0].comas[0].rect_width_mm = 20.0
-    work.pages[1].comas[0].rect_x_mm = 10.0
-    work.pages[1].comas[0].rect_width_mm = 20.0
-    right_before_x = _first_coma_x(work.pages[0])
-    left_before_x = _first_coma_x(work.pages[1])
+    right_before_x = 35.0
+    left_before_x = 10.0
     base_width = float(work.paper.canvas_width_mm)
     expected_offset = page_grid.spread_right_page_offset_mm_for_values(
         base_width,
         aligned,
         gap_mm,
+        finish_width_mm=float(work.paper.finish_width_mm),
     )
     expected_width = max(base_width, expected_offset + base_width)
 
@@ -185,9 +262,16 @@ def _assert_tombo_merge_case(work, *, aligned: bool, gap_mm: float) -> None:
     spread = work.pages[0]
     spread_id = str(spread.id)
 
-    _assert_close(page_grid.spread_right_page_offset_mm(spread, base_width), expected_offset, "右ページ開始位置")
+    _assert_close(
+        page_grid.spread_right_page_offset_mm(
+            spread,
+            base_width,
+            float(work.paper.finish_width_mm),
+        ),
+        expected_offset,
+        "右ページ開始位置",
+    )
     _assert_close(page_grid.page_content_width_mm(work, 0, base_width), expected_width, "見開き幅")
-    _assert_close(_first_coma_x(spread), right_before_x + expected_offset, "右ページ側コマ位置")
 
     dpi = 254
     options = export_pipeline.ExportOptions(area="canvas", dpi_override=dpi)
@@ -201,6 +285,11 @@ def _assert_tombo_merge_case(work, *, aligned: bool, gap_mm: float) -> None:
     if left_box != expected_left or right_box != expected_right:
         raise AssertionError(f"見開き左右切り出し位置が違います: left={left_box}, right={right_box}")
 
+    work, spread = _open_page(spread_id)
+    work.paper.canvas_width_mm = 100.0
+    work.paper.canvas_height_mm = 150.0
+    work.paper.finish_width_mm = 90.0
+    _assert_close(_first_coma_x(spread), right_before_x + expected_offset, "右ページ側コマ位置")
     paper_bg_object.ensure_paper_bg_for_page(bpy.context.scene, work, 0)
     _assert_close(_page_bg_width_mm(spread_id), expected_width, "見開き用紙背景幅")
 
@@ -224,20 +313,21 @@ def _assert_tombo_merge_case(work, *, aligned: bool, gap_mm: float) -> None:
     if missing:
         raise AssertionError(f"見開きガイドが左右ページ別に残っていません: {missing} xs={xs[:24]}")
 
+    _exit_page()
+    work = _work()
     result = bpy.ops.bmanga.pages_split_spread("EXEC_DEFAULT", spread_index=0)
     if "FINISHED" not in result:
         raise AssertionError(f"見開き解除に失敗しました: {result}")
     ids = [str(page.id) for page in work.pages[:2]]
     if ids != ["p0001", "p0002"]:
         raise AssertionError(f"見開き解除後のページが戻っていません: {ids}")
-    _assert_close(_first_coma_x(work.pages[0]), right_before_x, "見開き解除後の右ページ側コマ位置")
-    _assert_close(_first_coma_x(work.pages[1]), left_before_x, "見開き解除後の左ページ側コマ位置")
+    _assert_close(_page_coma_x("p0001"), right_before_x, "見開き解除後の右ページ側コマ位置")
+    _assert_close(_page_coma_x("p0002"), left_before_x, "見開き解除後の左ページ側コマ位置")
 
 
 def main() -> None:
     mod = None
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_spread_tombo_"))
-    success = False
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
@@ -248,6 +338,7 @@ def main() -> None:
         _ensure_two_pages(work)
         work.paper.canvas_width_mm = 100.0
         work.paper.canvas_height_mm = 150.0
+        work.paper.finish_width_mm = 90.0
 
         _assert_default_values(work)
         _assert_missing_value_fallbacks()
@@ -255,7 +346,6 @@ def main() -> None:
         _assert_tombo_merge_case(work, aligned=True, gap_mm=-10.0)
         _assert_tombo_merge_case(work, aligned=False, gap_mm=-10.0)
         print("BMANGA_SPREAD_TOMBO_ALIGN_OK", flush=True)
-        success = True
     finally:
         if mod is not None:
             try:
@@ -264,7 +354,6 @@ def main() -> None:
                 pass
         bpy.ops.wm.read_factory_settings(use_empty=True)
         shutil.rmtree(temp_root, ignore_errors=True)
-        os._exit(0 if success else 1)
 
 
 if __name__ == "__main__":

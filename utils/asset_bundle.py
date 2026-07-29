@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 import bpy
 from mathutils import Matrix
+from ..bmanga_core.faults import FaultInjectedError, FaultPoint, check_fault
+from ..bmanga_core.observability import observed_operation
 from ..core.work import get_active_page, get_work
 from . import (
     asset_bundle_extended,
@@ -144,28 +146,93 @@ def build_payload(context, items, *, name: str = "") -> dict:
     }
 
 
+@observed_operation("asset.create")
 def create_collection_asset(
     context,
     payload: dict,
     *,
     target: AssetBrowserTarget | None = None,
 ) -> bpy.types.Collection:
+    check_fault(FaultPoint.ASSET_CREATE)
     target = target or AssetBrowserTarget()
     coll = _new_asset_collection(_unique_asset_name(str(payload.get("name") or "B-MANGAアセット")))
-    coll[ASSET_KIND_PROP] = ASSET_KIND_LAYER_BUNDLE
-    coll[ASSET_PAYLOAD_PROP] = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-    origin = payload.get("origin") if isinstance(payload.get("origin"), dict) else {}
-    origin_mm = (float(origin.get("x", 0.0) or 0.0), float(origin.get("y", 0.0) or 0.0))
-    for obj in _preview_objects_for_payload(context, payload):
-        clone = _clone_preview_object(obj, origin_mm=origin_mm)
-        if clone is not None:
-            coll.objects.link(clone)
-    _mark_collection_asset(coll, target=target, description="B-MANGA レイヤーアセット")
-    asset_preview.set_collection_asset_preview(coll, payload=payload)
-    _write_external_library_if_needed(coll, target, context=context, payload=payload)
-    if target.is_local:
-        _refresh_open_asset_browser(context)
-    return coll
+    external_blend_path: Path | None = None
+    try:
+        coll[ASSET_KIND_PROP] = ASSET_KIND_LAYER_BUNDLE
+        coll[ASSET_PAYLOAD_PROP] = json.dumps(
+            payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        origin = payload.get("origin") if isinstance(payload.get("origin"), dict) else {}
+        origin_mm = (
+            float(origin.get("x", 0.0) or 0.0),
+            float(origin.get("y", 0.0) or 0.0),
+        )
+        for obj in _preview_objects_for_payload(context, payload):
+            clone = _clone_preview_object(obj, origin_mm=origin_mm)
+            if clone is not None:
+                coll.objects.link(clone)
+        check_fault(
+            FaultPoint.ASSET_CREATE_AFTER_STAGE,
+            collection=str(coll.name),
+        )
+        _mark_collection_asset(
+            coll,
+            target=target,
+            description="B-MANGA レイヤーアセット",
+        )
+        asset_preview.set_collection_asset_preview(coll, payload=payload)
+        external_blend_path = _write_external_library_if_needed(
+            coll,
+            target,
+            context=context,
+            payload=payload,
+        )
+        if target.is_local:
+            _refresh_open_asset_browser(context)
+        check_fault(
+            FaultPoint.ASSET_CREATE_AFTER_COMMIT,
+            collection=str(coll.name),
+            external_path=str(external_blend_path or ""),
+        )
+        return coll
+    except BaseException:
+        if external_blend_path is not None:
+            try:
+                external_blend_path.unlink(missing_ok=True)
+            except OSError as exc:
+                raise RuntimeError(
+                    f"外部アセットのrollbackに失敗しました: {external_blend_path}"
+                ) from exc
+        _discard_staged_asset_collection(coll)
+        raise
+
+
+def _discard_staged_asset_collection(coll: bpy.types.Collection) -> None:
+    """素材作成が確定する前に失敗した時、生成IDを残さない。"""
+
+    objects = list(getattr(coll, "objects", ()) or ())
+    try:
+        bpy.data.collections.remove(coll, do_unlink=True)
+    except (ReferenceError, RuntimeError):
+        pass
+    for obj in objects:
+        data = getattr(obj, "data", None)
+        try:
+            obj.use_fake_user = False
+            if getattr(obj, "users", 0) == 0:
+                bpy.data.objects.remove(obj, do_unlink=True)
+        except (ReferenceError, RuntimeError):
+            continue
+        if data is None:
+            continue
+        try:
+            data.use_fake_user = False
+            if getattr(data, "users", 0) == 0:
+                bpy.data.batch_remove(ids=(data,))
+        except (AttributeError, ReferenceError, RuntimeError):
+            pass
 
 
 def payload_from_collection(collection) -> dict | None:
@@ -183,6 +250,7 @@ def payload_from_collection(collection) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
+@observed_operation("asset.instantiate")
 def instantiate_payload(
     context,
     payload: dict,
@@ -193,6 +261,7 @@ def instantiate_payload(
     stage_id: str = "",
     target_page=None,
 ) -> dict:
+    check_fault(FaultPoint.ASSET_INSTANTIATE)
     work = get_work(context)
     page = target_page or get_active_page(context)
     if work is None or not getattr(work, "loaded", False) or page is None:
@@ -221,6 +290,38 @@ def instantiate_payload(
         )
         if not staged_id:
             raise RuntimeError("素材を対象ページへ送れませんでした")
+        try:
+            check_fault(
+                FaultPoint.ASSET_INSTANTIATE_AFTER_STAGE,
+                page_id=page_id,
+                stage_id=staged_id,
+            )
+        except FaultInjectedError:
+            if not cross_page_stage.discard_asset_bundle_stage(
+                Path(work.work_dir),
+                page_id,
+                staged_id,
+            ):
+                raise RuntimeError(
+                    f"素材stageのrollbackに失敗しました: {staged_id}"
+                )
+            raise
+        try:
+            check_fault(
+                FaultPoint.ASSET_INSTANTIATE_AFTER_COMMIT,
+                page_id=page_id,
+                stage_id=staged_id,
+            )
+        except FaultInjectedError:
+            if not cross_page_stage.discard_asset_bundle_stage(
+                Path(work.work_dir),
+                page_id,
+                staged_id,
+            ):
+                raise RuntimeError(
+                    f"素材stageのrollbackに失敗しました: {staged_id}"
+                )
+            raise
         return {
             "created": [],
             "id_map": {},
@@ -239,6 +340,19 @@ def instantiate_payload(
     new_uids_by_source: dict[str, str] = {}
     made: list[object] = []
     newly_made: list[object] = []
+    newly_made_with_kind: list[tuple[str, object]] = []
+    original_text_parents = {
+        str(getattr(text, "id", "") or ""): str(
+            getattr(text, "parent_balloon_id", "") or ""
+        )
+        for text in getattr(page, "texts", ()) or ()
+    }
+    original_link_json = str(context.scene.get(layer_links.LINK_PROP, "") or "")
+    original_active_indexes = (
+        int(getattr(page, "active_coma_index", -1)),
+        int(getattr(page, "active_balloon_index", -1)),
+        int(getattr(page, "active_text_index", -1)),
+    )
     for entry_index, entry in enumerate(payload.get("entries", []) or []):
         if not isinstance(entry, dict):
             continue
@@ -329,6 +443,7 @@ def instantiate_payload(
         made.append(obj)
         if was_created:
             newly_made.append(obj)
+            newly_made_with_kind.append((kind, obj))
         old_id = str(entry.get("source_id", "") or "")
         new_id = _entry_id(obj)
         if old_id and new_id:
@@ -341,6 +456,22 @@ def instantiate_payload(
     _link_drop_target_text_to_new_balloons(page, newly_made, drop_local)
     _link_overlapping_texts_to_new_balloons(page, newly_made)
     layer_stack_utils.sync_layer_stack_after_data_change(context)
+    try:
+        check_fault(
+            FaultPoint.ASSET_INSTANTIATE_AFTER_COMMIT,
+            page_id=page_id,
+            created_count=len(newly_made),
+        )
+    except FaultInjectedError:
+        _rollback_instantiated_asset(
+            context,
+            page,
+            newly_made_with_kind,
+            original_text_parents,
+            original_link_json,
+            original_active_indexes,
+        )
+        raise
     return {
         "created": made,
         "id_map": id_map,
@@ -349,6 +480,52 @@ def instantiate_payload(
         "staged": False,
         "stage_id": stage_id,
     }
+
+
+def _rollback_instantiated_asset(
+    context,
+    page,
+    created: list[tuple[str, object]],
+    original_text_parents: dict[str, str],
+    original_link_json: str,
+    original_active_indexes: tuple[int, int, int],
+) -> None:
+    """確定後の注入失敗で、生成IDと既存リンク変更を元へ戻す。"""
+
+    from . import cross_page_stage
+
+    failures: list[str] = []
+    for kind, target in reversed(created):
+        removal_target = target[0] if isinstance(target, tuple) else target
+        try:
+            removed = cross_page_stage._remove_asset_target(  # noqa: SLF001
+                context,
+                page,
+                kind,
+                removal_target,
+            )
+        except (AttributeError, ReferenceError, RuntimeError):
+            removed = False
+        if not removed:
+            failures.append(kind)
+    for text in getattr(page, "texts", ()) or ():
+        text_id = str(getattr(text, "id", "") or "")
+        if text_id in original_text_parents:
+            text.parent_balloon_id = original_text_parents[text_id]
+    if original_link_json:
+        context.scene[layer_links.LINK_PROP] = original_link_json
+    elif layer_links.LINK_PROP in context.scene:
+        del context.scene[layer_links.LINK_PROP]
+    (
+        page.active_coma_index,
+        page.active_balloon_index,
+        page.active_text_index,
+    ) = original_active_indexes
+    layer_stack_utils.sync_layer_stack_after_data_change(context)
+    if failures:
+        raise RuntimeError(
+            "素材生成のrollbackに失敗しました: " + ", ".join(failures)
+        )
 
 
 def _is_target_page_file(context, page_id: str) -> bool:
@@ -901,22 +1078,27 @@ def _write_external_library_if_needed(
     *,
     context=None,
     payload: dict | None = None,
-) -> None:
+) -> Path | None:
     if target.is_local:
-        return
+        return None
     library_path = Path(target.library_path)
     if not library_path:
-        return
+        return None
     library_path.mkdir(parents=True, exist_ok=True)
     blend_path = _unique_library_blend_path(library_path, coll.name)
-    bpy.data.libraries.write(str(blend_path), {coll}, fake_user=True)
-    asset_preview.patch_external_library_preview(
-        blend_path,
-        coll.name,
-        payload=payload,
-        objects=list(getattr(coll, "objects", []) or []),
-    )
+    try:
+        bpy.data.libraries.write(str(blend_path), {coll}, fake_user=True)
+        asset_preview.patch_external_library_preview(
+            blend_path,
+            coll.name,
+            payload=payload,
+            objects=list(getattr(coll, "objects", []) or []),
+        )
+    except BaseException:
+        blend_path.unlink(missing_ok=True)
+        raise
     _refresh_open_asset_browser(context)
+    return blend_path
 
 
 def _refresh_open_asset_browser(context=None) -> None:

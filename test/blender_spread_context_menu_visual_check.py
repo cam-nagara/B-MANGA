@@ -148,6 +148,21 @@ def main() -> None:
                 raise AssertionError(f"ページ追加に失敗しました: {result}")
         for index, page in enumerate(work.pages[:3], start=1):
             page.title = f"{index:03d}"
+        assert "FINISHED" in bpy.ops.bmanga.work_save("EXEC_DEFAULT")
+        for page_index in range(3):
+            result = bpy.ops.bmanga.open_page_file(
+                "EXEC_DEFAULT", index=page_index
+            )
+            if "FINISHED" not in result:
+                raise AssertionError(
+                    f"見開き確認用ページを開けません: {page_index}: {result}"
+                )
+            result = bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
+            if "FINISHED" not in result:
+                raise AssertionError(
+                    f"見開き確認用ページを保存できません: {page_index}: {result}"
+                )
+        work = bpy.context.scene.bmanga_work
 
         before = OUT_DIR / "01_before.png"
         _draw_work_state(before, work, "右クリック前: 001 / 002 / 003")

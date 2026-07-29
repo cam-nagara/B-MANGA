@@ -2,7 +2,7 @@
 
 作成日: 2026-07-28
 セッション種別: 開発
-状態: **Phase 0合格・コミット準備完了。Phase 1着手中**
+状態: **Phase 0〜1合格・個別コミット完了。Phase 2着手待ち**
 対象: B-MANGA / B-MANGA Render / B-MANGA Line
 基準環境: **Blender 5.2 LTS のみ**
 

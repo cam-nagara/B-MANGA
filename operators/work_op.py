@@ -272,6 +272,10 @@ class BMANGA_OT_work_new(Operator, ExportHelper):
                 page_file_scene.purge_work_list_runtime_data(context.scene)
                 page_preview_object.sync_page_previews(context, work)
                 page_file_scene.purge_work_list_runtime_data(context.scene)
+                # 初回保存前は bpy.data.filepath が空で ROLE_WORK を判定できない。
+                # page.json とプレビュー生成後、work.blend に詳細を埋め込まない
+                # ことを明示的に確定する。
+                page_file_scene.clear_work_list_page_details(context.scene)
             except Exception:  # noqa: BLE001
                 _logger.exception("work_new: page preview setup failed")
             blend_io.save_work_blend(work_dir)
@@ -295,7 +299,10 @@ class BMANGA_OT_work_new(Operator, ExportHelper):
 
         # 1) ビューポートを全ページフィット (overview モードを維持したままキャンバス可視化)
         try:
-            bpy.ops.bmanga.view_fit_all("INVOKE_DEFAULT")
+            # タイマー/E2E など window を持たない context では poll が成立しない。
+            # 作成処理自体は完了しているため、任意の表示調整だけを静かに省く。
+            if getattr(context, "window", None) is not None:
+                bpy.ops.bmanga.view_fit_all("INVOKE_DEFAULT")
         except Exception:  # noqa: BLE001
             _logger.exception("work_new: view_fit_all failed")
 

@@ -122,6 +122,8 @@ def main() -> None:
         bmanga = _load_package("bmanga_dev_align", ROOT)
         result = bpy.ops.bmanga.work_new(filepath=str(work_dir))
         assert result == {"FINISHED"}, result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        assert result == {"FINISHED"}, result
         result = bpy.ops.bmanga.enter_coma_mode()
         assert result == {"FINISHED"}, result
 

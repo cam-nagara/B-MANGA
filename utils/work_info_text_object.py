@@ -300,6 +300,26 @@ def _remove_stale_work_info_texts(valid: set[str]) -> None:
                 pass
 
 
+def _work_info_page_filter(scene) -> set[str] | None:
+    """現在のファイルに実体化してよい作品情報のページIDを返す."""
+
+    try:
+        from . import page_file_scene
+
+        role, page_id, _coma_id = page_file_scene.current_role(bpy.context)
+        if role == page_file_scene.ROLE_PAGE and page_id:
+            return {page_id}
+        if role == page_file_scene.ROLE_COMA:
+            return set()
+        current_page_id = page_file_scene.current_page_id(scene)
+        if current_page_id and page_file_scene.is_page_edit_scene(scene):
+            return {current_page_id}
+    except Exception:  # noqa: BLE001
+        return None
+    # 作品一覧では全ページの作品情報をプレビュー画像とは別の軽量実体で表示する。
+    return None
+
+
 def regenerate_all_work_info_texts(scene, work) -> int:
     """作品情報・ページ番号の実体テキストを再生成する."""
     if scene is None or work is None or not bool(getattr(work, "loaded", False)):
@@ -311,11 +331,16 @@ def regenerate_all_work_info_texts(scene, work) -> int:
     if info is None:
         return 0
     master_visible = bool(getattr(info, "display_visible", True))
+    page_filter = _work_info_page_filter(scene)
     valid: set[str] = set()
     count = 0
     for page_index, page in enumerate(getattr(work, "pages", []) or []):
         page_id = str(getattr(page, "id", "") or "")
-        if not page_id or not page_range.page_in_range(page):
+        if (
+            not page_id
+            or not page_range.page_in_range(page)
+            or (page_filter is not None and page_id not in page_filter)
+        ):
             continue
         paper = getattr(work, "paper", None)
         for item_key, item, text in _text_items(info, page_index, paper, page_entry=page):
@@ -341,11 +366,16 @@ def sync_work_info_texts_after_page_transform(scene, work) -> int:
     if info is None:
         return 0
     master_visible = bool(getattr(info, "display_visible", True))
+    page_filter = _work_info_page_filter(scene)
     valid: set[str] = set()
     count = 0
     for page_index, page in enumerate(getattr(work, "pages", []) or []):
         page_id = str(getattr(page, "id", "") or "")
-        if not page_id or not page_range.page_in_range(page):
+        if (
+            not page_id
+            or not page_range.page_in_range(page)
+            or (page_filter is not None and page_id not in page_filter)
+        ):
             continue
         paper = getattr(work, "paper", None)
         for item_key, item, text in _text_items(info, page_index, paper, page_entry=page):

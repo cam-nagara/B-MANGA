@@ -55,7 +55,7 @@ class BMANGA_PT_export(Panel):
             elif page_file_scene.is_page_edit_scene(context.scene):
                 self._draw_page_export(layout)
             else:
-                layout.label(text="書き出し対象が見つかりません", icon="INFO")
+                layout.label(text="書き出し対象が見つかりません")
 
     def _draw_work_export(self, layout):
         layout.operator("bmanga.export_page", icon="RENDER_STILL")

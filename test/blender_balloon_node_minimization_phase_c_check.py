@@ -3,7 +3,8 @@
 確認内容:
   1. 全形状で `balloon_fill_mesh_<id>` オブジェクトが生成されること。
   2. 塗り面メッシュに modifier が一切付いていないこと (Python 焼き込みのみ)。
-  3. 塗り面の頂点に bmanga_fill_blur_alpha 属性が POINT domain Float で存在すること。
+  3. 塗り輪郭ぼかし有効時、頂点に bmanga_fill_blur_alpha 属性が
+     POINT domain Float で存在すること。
   4. ジオメトリノードグループから GeometryNodeFillCurve が body 経路では削除されていること
      (main_line_fill 用の FillCurve は残る)。
   5. しっぽ付きフキダシで body + tail の union 塗り面が生成されること。
@@ -56,6 +57,10 @@ def main() -> int:
     if "FINISHED" not in result:
         print(f"  ✗ work_new failed: {result}")
         return 1
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+    if "FINISHED" not in result:
+        print(f"  ✗ open_page_file failed: {result}")
+        return 1
 
     from bmanga_dev_phase_c.operators import balloon_op
     from bmanga_dev_phase_c.utils import balloon_curve_object as bco
@@ -92,6 +97,7 @@ def main() -> int:
         entry.line_color = (0.0, 0.0, 0.0, 1.0)
         entry.fill_color = (1.0, 1.0, 0.7, 1.0)
         entry.fill_opacity = 100.0
+        entry.fill_blur_amount = 0.5
         obj = bco.ensure_balloon_curve_object(scene=scene, entry=entry, page=page)
         if obj is None:
             errors.append(f"{shape}: curve object 生成失敗")
@@ -204,4 +210,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    _result = main()
+    if _result not in (None, 0):
+        raise SystemExit(_result)
+    if __import__("os").environ.get("BMANGA_CERT_WRAPPED") != "1":
+        sys.exit(_result)

@@ -83,7 +83,10 @@ def merge_page_content(
     _require_page_source(first_dir)
     _require_page_source(second_dir)
     spread_target = work / spread_id
-    if spread_target.exists() or spread_target.is_symlink():
+    derived_targets = ()
+    if _is_derived_only_page_dir(spread_target):
+        derived_targets = (spread_target,)
+    elif spread_target.exists() or spread_target.is_symlink():
         raise SpreadContentError(f"見開き保存先が既にあります: {spread_id}")
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_spread_merge_", dir=work.parent))
     try:
@@ -110,7 +113,7 @@ def merge_page_content(
         _inject_failure(fail_phase, "after_stage")
         _install_directories_and_json(
             work,
-            removals=(first_dir, second_dir),
+            removals=(first_dir, second_dir, *derived_targets),
             additions=((staged, work / spread_id),),
             work_json=work_json,
             pages_json=pages_json,

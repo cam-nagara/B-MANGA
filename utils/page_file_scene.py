@@ -642,9 +642,25 @@ def _collection_is_work_list_runtime(coll) -> bool:
     return False
 
 
+def clear_work_list_page_details(scene) -> None:
+    """作品一覧へ保存する Scene からページ詳細の埋込みキャッシュを除く."""
+
+    try:
+        from . import page_detail
+
+        work = getattr(scene, "bmanga_work", None)
+        for page_entry in getattr(work, "pages", []) or []:
+            if bool(getattr(page_entry, "detail_loaded", False)):
+                page_detail.clear_page_detail(page_entry)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def purge_work_list_runtime_data(scene) -> int:
     """ページ一覧ファイルに残ってはいけないページ実体を取り除く."""
-    _ = scene
+    role, _page_id, _coma_id = current_role(bpy.context)
+    if role == ROLE_WORK:
+        clear_work_list_page_details(scene)
     removed = purge_coma_runtime_data(scene, set())
     for obj in list(bpy.data.objects):
         if not _object_is_work_list_runtime(obj):

@@ -289,6 +289,10 @@ def main() -> None:
             shutil.rmtree(temp_root, ignore_errors=True)
         else:
             print(f"FAILED_TEMP_ROOT={temp_root}")
+    if os.environ.get("BMANGA_CERT_WRAPPED") == "1":
+        if not succeeded:
+            raise RuntimeError("native save/reload fallback check failed")
+        return
     os._exit(0 if succeeded else 1)
 
 

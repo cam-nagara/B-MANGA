@@ -409,9 +409,13 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
+        sys.stdout.flush()
+        sys.stderr.flush()
         os._exit(0)
     except Exception:
         import traceback
 
         traceback.print_exc()
+        sys.stdout.flush()
+        sys.stderr.flush()
         os._exit(1)

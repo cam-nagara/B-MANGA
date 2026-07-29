@@ -50,6 +50,8 @@ def main() -> None:
         assert (work_dir / "p0002" / "page.json").exists()
         assert (work_dir / "p0002" / "c01" / "c01.json").exists()
 
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=1)
+        assert result == {"FINISHED"}, result
         result = bpy.ops.bmanga.coma_add()
         assert result == {"FINISHED"}, result
         assert (work_dir / "p0002" / "c02" / "c02.json").exists()
@@ -63,6 +65,9 @@ def main() -> None:
         assert moved_meta["id"] == "c02"
         assert moved_meta["comaId"] == "c02"
 
+        if Path(bpy.data.filepath).name == "page.blend":
+            result = bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
+            assert result == {"FINISHED"}, result
         result = bpy.ops.bmanga.pages_merge_spread(left_index=0)
         assert result == {"FINISHED"}, result
         assert (work_dir / "p0001-0002" / "page.json").exists()
@@ -76,6 +81,9 @@ def main() -> None:
 
         work = bpy.context.scene.bmanga_work
         work.active_page_index = 0
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        assert result == {"FINISHED"}, result
+        work = bpy.context.scene.bmanga_work
         work.pages[0].active_coma_index = 0
         result = bpy.ops.bmanga.enter_coma_mode()
         assert result == {"FINISHED"}, result
@@ -83,7 +91,7 @@ def main() -> None:
 
         result = bpy.ops.bmanga.exit_coma_mode()
         assert result == {"FINISHED"}, result
-        assert _mainfile() == (work_dir / "work.blend").resolve()
+        assert _mainfile() == (work_dir / "p0001" / "page.blend").resolve()
         print("BMANGA_RESTRUCTURE_E2E_OK")
     finally:
         try:

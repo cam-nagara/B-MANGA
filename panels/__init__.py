@@ -13,7 +13,6 @@ from . import (
     page_panel,
     coma_camera_panel,
     coma_detail_panel,
-    coma_list_panel as _legacy_coma_list_panel,
     coma_tools_panel as _legacy_coma_tools_panel,
     outliner_layer_panel,
     paper_panel,
@@ -136,7 +135,6 @@ def _unregister_legacy_tool_panels() -> None:
     for module in (
         _legacy_balloon_panel,
         _legacy_effect_line_panel,
-        _legacy_coma_list_panel,
         _legacy_coma_tools_panel,
     ):
         try:

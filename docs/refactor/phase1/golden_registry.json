@@ -1,0 +1,22 @@
+{
+  "approval": {
+    "approved_at": "2026-07-29T06:33:02+09:00",
+    "id": "user-approval-2026-07-29"
+  },
+  "artifacts": [
+    {
+      "bytes": 2761337,
+      "path": "_verify/2026-07-28_full_refactor_phase0/visual_probe/gpu/page_preview_00.png",
+      "sha256": "344aa75d0bdd84624d204f6876deff9bbe2f4f69e3042a5b98f75db1e6988879"
+    },
+    {
+      "bytes": 18802,
+      "path": "_verify/2026-07-28_full_refactor_phase0/visual_probe/product_jpeg/product_page_q95_00.jpg",
+      "sha256": "86274c623aed1d84f6286b4bbbb753000876fd123410455515c4421d829276fb"
+    }
+  ],
+  "created_at": "2026-07-29T06:33:02+09:00",
+  "requested_by": "phase1-certification-runner",
+  "schema_version": 1,
+  "status": "approved"
+}

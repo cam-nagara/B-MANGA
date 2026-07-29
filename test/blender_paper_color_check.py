@@ -59,10 +59,17 @@ def main() -> None:
 
         work = get_work(bpy.context)
         assert work is not None
+        assert bpy.data.materials.get(pbg.PAPER_BG_MATERIAL_NAME) is None, (
+            "作品一覧ファイルにページ編集用の用紙Materialを持ち込んでいます"
+        )
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        assert result == {"FINISHED"}, result
+        work = get_work(bpy.context)
+        assert work is not None
         paper = work.paper
 
         mat = bpy.data.materials.get(pbg.PAPER_BG_MATERIAL_NAME)
-        assert mat is not None, "BManga_PaperBackground material should exist after work_new"
+        assert mat is not None, "ページファイルに用紙Materialがありません"
         assert _approx_equal(mat.diffuse_color, (1.0, 1.0, 1.0, 1.0)), tuple(mat.diffuse_color)
         assert _approx_equal(_emission_color(mat), (1.0, 1.0, 1.0, 1.0)), _emission_color(mat)
 

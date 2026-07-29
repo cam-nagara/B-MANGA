@@ -157,6 +157,40 @@ def stage_asset_bundle(
     return stage_id if _append_unique(work_dir, page_id, ASSET_ENTRIES_KEY, entry, stage_id) else ""
 
 
+def discard_asset_bundle_stage(
+    work_dir: Path,
+    page_id: str,
+    stage_id: str,
+) -> bool:
+    """確定前の素材stageをID指定で除去する。"""
+
+    path = staged_path(work_dir, page_id)
+    try:
+        from ..io.project_content_migration_lock import work_lock
+
+        with work_lock(Path(work_dir), blocking=True):
+            data = _read(path)
+            entries = data.get(ASSET_ENTRIES_KEY, [])
+            if not isinstance(entries, list):
+                return False
+            kept = [
+                entry
+                for entry in entries
+                if not (
+                    isinstance(entry, dict)
+                    and str(entry.get("stage_id", "") or "") == str(stage_id or "")
+                )
+            ]
+            if len(kept) == len(entries):
+                return False
+            data[ASSET_ENTRIES_KEY] = kept
+            _write_or_remove(path, data)
+        return True
+    except Exception:  # noqa: BLE001
+        _logger.exception("asset stage rollback failed: %s", stage_id)
+        return False
+
+
 def mark_asset_bundle_ready(work_dir: Path, page_id: str, stage_id: str) -> bool:
     """準備済みページ間移送を、移動元保存後にだけ復元可能へ昇格する."""
     path = staged_path(work_dir, page_id)
@@ -975,6 +1009,7 @@ __all__ = [
     "STAGED_IMPORTS_NAME",
     "asset_stage_complete",
     "commit_staged_imports_after_save",
+    "discard_asset_bundle_stage",
     "find_asset_created",
     "mark_asset_bundle_ready",
     "process_staged_imports",

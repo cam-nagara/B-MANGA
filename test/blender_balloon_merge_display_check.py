@@ -52,6 +52,8 @@ def main() -> None:
     try:
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "BalloonMerge.bmanga"))
         assert result == {"FINISHED"}, result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        assert result == {"FINISHED"}, result
 
         from bmanga_dev_balloon_merge_display.core.work import get_work
         from bmanga_dev_balloon_merge_display.operators import balloon_op

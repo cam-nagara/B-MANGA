@@ -107,10 +107,11 @@ def _page_work_info_visible_update(scene, context) -> None:
 
 def _page_guides_visible_update(scene, context) -> None:
     try:
-        from ..utils import page_file_scene, paper_guide_object
+        from ..utils import page_file_scene, page_preview_object, paper_guide_object
 
         work = getattr(scene, "bmanga_work", None) if scene is not None else None
         if work is not None and bool(getattr(work, "loaded", False)):
+            page_preview_object.schedule_sync_page_previews(force=False)
             if page_file_scene.is_page_edit_scene(scene):
                 page_id = page_file_scene.current_page_id(scene)
                 if not page_id:

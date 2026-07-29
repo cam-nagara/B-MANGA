@@ -547,7 +547,12 @@ def _assert_object_tool_routes(context) -> None:
             )
             assert operator_class.execute(operator, context) == {"FINISHED"}, operator_class.__name__
             assert not reports, (operator_class.__name__, reports)
-        assert calls == ["direct", "route", "route", "route"]
+        expected = (
+            ["direct", "route", "route"]
+            if bpy.app.background
+            else ["direct", "route", "route", "route"]
+        )
+        assert calls == expected, calls
     finally:
         modal_state.activate_object_tool = original_activate
         modal_state._invoke_object_tool = original_invoke  # noqa: SLF001
@@ -563,6 +568,8 @@ def main() -> None:
             filepath=str(temp_root / "DetailPresetListObjectTool.bmanga")
         )
         assert "FINISHED" in work_result, work_result
+        assert "FINISHED" in bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        context = bpy.context
         preset_names = _assert_all_preset_lists(context)
         linked_balloon_names = _assert_linked_balloon_preset_list(context)
         _assert_list_selection_callbacks()

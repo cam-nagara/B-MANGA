@@ -246,6 +246,7 @@ def main() -> None:
                 raise AssertionError("screenshot was not created")
             _assert_label_colors_visible(SCREENSHOT)
             _mark(f"done:{SCREENSHOT}")
+            print("BMANGA_COMA_PAGE_LABELS_VISUAL_CHECK_OK", flush=True)
         except Exception as exc:  # noqa: BLE001
             _mark(f"capture_failed: {exc}")
             os._exit(1)

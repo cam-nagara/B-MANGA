@@ -318,6 +318,8 @@ def _assert_paper_guides_use_real_objects(context, work, page) -> list[str]:
     safe_fill = safe_fill_objs[0]
     if safe_fill.type != "MESH":
         raise AssertionError(f"safe area fill should be mesh: {safe_fill.name} ({safe_fill.type})")
+    if bool(safe_fill.hide_viewport):
+        raise AssertionError("safe area fill real object must be visible")
     if getattr(safe_fill, "display_type", "") != "SOLID":
         raise AssertionError("safe area fill should display as solid")
     if bool(getattr(safe_fill, "show_in_front", False)):

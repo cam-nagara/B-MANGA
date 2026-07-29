@@ -1,0 +1,333 @@
+{
+  "schema_version": 1,
+  "cases": {
+    "test/blender_b_manga_line_auto_quad_repair_undo_check.py": {
+      "mode": "historical",
+      "required": false,
+      "completion_token": "",
+      "reason": "旧Blender 5.1向けに外部キー入力3回を待つ手動UI監査。四角面化本体はauto_quad_repair_check、Undo/Redo契約はblender_undo_redo_runtime_checkへ自動認定を移管済み",
+      "review": "phase1-manifest-audit-2026-07-29"
+    },
+    "test/blender_b_manga_line_tokyo0004_large_audit.py": {
+      "mode": "historical",
+      "required": false,
+      "completion_token": "",
+      "reason": "ユーザー所有のTokyo0004.blendと旧監査引数に依存する履歴監査。製品認定はリポジトリ内生成fixtureのauto_quad_repair_checkとmesh_optimizer_checkへ移管済み",
+      "review": "phase1-nonpass-audit-2026-07-29"
+    },
+    "test/blender_b_manga_render_c00_audit.py": {
+      "mode": "historical",
+      "required": false,
+      "completion_token": "",
+      "reason": "リポジトリ外の旧c00.blendへ依存する履歴監査。現在のRender認定は生成fixtureによるalignment、split、preset、export各テストへ移管し、外部パス依存を認定入力にしない",
+      "review": "phase1-external-fixture-audit-2026-07-29"
+    },
+    "test/blender_b_manga_render_c00_execution_check.py": {
+      "mode": "historical",
+      "required": false,
+      "completion_token": "",
+      "reason": "リポジトリ外の旧c00.blendへ依存する履歴監査。現在の実行契約は生成fixtureのRender operator、batch runner、exportテストへ移管済み",
+      "review": "phase1-external-fixture-audit-2026-07-29"
+    },
+    "test/blender_b_manga_render_c00_full_flow_check.py": {
+      "mode": "historical",
+      "required": false,
+      "completion_token": "",
+      "reason": "リポジトリ外の旧c00.blendへ依存する履歴監査。現行フローは生成fixtureのRender full workflow群へ移管し、個人環境の作品ファイルを必須条件にしない",
+      "review": "phase1-external-fixture-audit-2026-07-29"
+    },
+    "test/blender_b_manga_render_c00_output_range_roundtrip_check.py": {
+      "mode": "historical",
+      "required": false,
+      "completion_token": "",
+      "reason": "リポジトリ外の旧c00.blendへ依存する履歴監査。出力範囲の保存再読込は生成fixtureのcamera/output roundtripテストへ移管済み",
+      "review": "phase1-external-fixture-audit-2026-07-29"
+    },
+    "test/blender_b_manga_render_full_fixture_render_check.py": {
+      "mode": "historical",
+      "required": false,
+      "completion_token": "",
+      "reason": "Dropbox上の旧完成作品fixtureへ依存する履歴監査。現在の完成出力契約はリポジトリ内生成fixtureのPNG、PSD、Render出力テストへ移管済み",
+      "review": "phase1-external-fixture-audit-2026-07-29"
+    },
+    "test/blender_b_manga_render_visual_presets.py": {
+      "mode": "historical",
+      "required": false,
+      "completion_token": "",
+      "reason": "リポジトリ外の旧テンプレートと目視操作へ依存する履歴監査。preset UIと出力設定は生成fixtureの自動実機・画像監査へ移管済み",
+      "review": "phase1-external-fixture-audit-2026-07-29"
+    },
+    "test/blender_bmanga_c00_template_integration_check.py": {
+      "mode": "historical",
+      "required": false,
+      "completion_token": "",
+      "reason": "リポジトリ外の旧c00.blendテンプレートへ依存する履歴監査。現行統合契約は生成fixtureのコマcamera、mask、Render連携テストへ移管済み",
+      "review": "phase1-external-fixture-audit-2026-07-29"
+    },
+    "test/blender_real_work_visual_audit.py": {
+      "mode": "historical",
+      "required": false,
+      "completion_token": "",
+      "reason": "ユーザー所有の実作品を読む履歴目視監査。製品認定では同等の機能軸をリポジトリ内生成fixtureと承認済みgoldenで検査する",
+      "review": "phase1-external-fixture-audit-2026-07-29"
+    },
+    "test/blender_b_manga_render_c00_output_range_reopen_worker.py": {
+      "mode": "support",
+      "required": false,
+      "completion_token": "",
+      "reason": "親テストが環境変数でblend/jsonを渡して起動する再open workerで、単独実行契約を持たない",
+      "review": "phase1-manifest-audit-2026-07-29"
+    },
+    "test/blender_c00_mask_aov_migration.py": {
+      "mode": "historical",
+      "required": false,
+      "completion_token": "",
+      "reason": "リポジトリ外の旧c00.blendを同名上書きする一回限りの5.1移行スクリプト。新形式専用計画では自動旧形式変換を認定対象にしない",
+      "review": "phase1-legacy-path-audit-2026-07-29"
+    },
+    "test/blender_creation_scope_check.py": {
+      "mode": "historical",
+      "required": false,
+      "completion_token": "",
+      "reason": "ページ内容をwork.blend上で直接生成する旧二段構成の監査。現行三段構成ではwork.blendにページ詳細・編集実体を置かず、作成ツールの作品/ページ別gateとページファイル内生成はblender_page_file_stage_checkが認定する",
+      "review": "phase1-nonpass-audit-2026-07-29"
+    },
+    "test/blender_alt_reparent_phase_a_check.py": {
+      "mode": "historical",
+      "required": false,
+      "completion_token": "",
+      "reason": "work.blendへ複数ページの全詳細を同時常駐させてPropertyGroup間を直接移送する旧Phase A監査。現行のページ間Alt+D&Dはtransfer_group_alt_dnd_check、layer_stack_dnd_reparent_check、cross_page_transfer_durability_checkがcheckpointと再読込まで認定する",
+      "review": "phase1-three-stage-audit-2026-07-29"
+    },
+    "test/blender_data_name_organizer_check.py": {
+      "mode": "historical",
+      "required": false,
+      "completion_token": "",
+      "reason": "表示順変更に合わせてpNNNN/cNNの実IDとパスを一括改名する旧運用の監査。新設計は安定UIDと表示番号を分離し並べ替え・再採番でパスを変えないため、現行の順序契約はpage_selection_reorder_checkとcoma_renumber_reading_order_checkへ移管する",
+      "review": "phase1-stable-uid-audit-2026-07-29"
+    },
+    "test/blender_layer_folder_check.py": {
+      "mode": "historical",
+      "required": false,
+      "completion_token": "",
+      "reason": "work.blendへ2ページ分の全レイヤーを同時常駐させてPropertyGroupを直接移動する旧二段構成の複合監査。現行のフォルダ・親子・ページ間移送はlayer_stack_dnd_reparent_check、transfer_group_alt_dnd_check、cross_page_transfer_durability_checkが永続化込みで認定する",
+      "review": "phase1-three-stage-audit-2026-07-29"
+    },
+    "test/blender_layer_panel_page_list_check.py": {
+      "mode": "historical",
+      "required": false,
+      "completion_token": "",
+      "reason": "work.blendのページ切替だけで各ページのコマ詳細を常駐表示する旧二段構成の監査。現行三段構成のレイヤー一覧は開いたpage.blendだけを対象とし、page_file_panel_role_checkとlayer_stack_ui_behavior_checkが認定する",
+      "review": "phase1-three-stage-audit-2026-07-29"
+    },
+    "test/blender_page_content_visibility_window_check.py": {
+      "mode": "historical",
+      "required": false,
+      "completion_token": "",
+      "reason": "work.blendへ全ページの編集実体を常駐させ、選択前後3ページだけhide_viewportする旧二段構成の監査。現行work.blendは派生previewだけを持つため、work_file_slim_checkとpage_preview_object_checkへ認定を移管済み",
+      "review": "phase1-three-stage-audit-2026-07-29"
+    },
+    "test/blender_preview_overlay_alignment_visual_check.py": {
+      "mode": "historical",
+      "required": false,
+      "completion_token": "",
+      "reason": "work.blend上のページ詳細Objectと移動ハンドルを直接描く旧二段構成の視覚監査。現行page.blendの配置・オーバーレイはpage_file_real_object_overlay_check、page_coma_preview_restore_check、object_tool_selection_checkで認定する",
+      "review": "phase1-three-stage-audit-2026-07-29"
+    },
+    "test/blender_requested_items_visual_audit.py": {
+      "mode": "historical",
+      "required": false,
+      "completion_token": "",
+      "reason": "work.blendへ全ページのフキダシ・コマ・効果線を同時生成する旧二段構成の総合目視監査。現行三段構成では各機能の生成fixture、bmanga_ui_inventory_visual_audit、page/coma visual群へ決定的認定を分割済み",
+      "review": "phase1-three-stage-audit-2026-07-29"
+    },
+    "test/blender_restructure_e2e.py": {
+      "mode": "historical",
+      "required": false,
+      "completion_token": "",
+      "reason": "page.blend導入前のpNNNN/cNN二段構成を前提とし、コマ終了後にwork.blendへ直接戻る旧E2E。現行三段構成はpage_file_stage_check、work_file_slim_check、cross_page_transfer_durability_check、spread_tombo_align_checkで認定する",
+      "review": "phase1-three-stage-audit-2026-07-29"
+    },
+    "test/blender_detail_dialog_data_migration_check.py": {
+      "completion_token": "DETAIL_DIALOG_DATA_MIGRATION_CHECK_OK",
+      "reason": "既定controller経路の完了トークンを指定する。RESTART_VERIFYはcontrollerが起動する子プロセス専用で、単独manifest caseの完了条件ではない",
+      "review": "phase1-sentinel-audit-2026-07-29"
+    },
+    "test/blender_detail_migration_open_file_reload_check.py": {
+      "mode": "blender_wrapper",
+      "expected_tracebacks": [
+        {
+          "pattern": "^(?:[\\w.]+\\.)?SaveBaselineUnavailableError: 作品の読込基準がありません。作品を開き直してください$",
+          "count": 2
+        },
+        {
+          "pattern": "^(?:[\\w.]+\\.)?WorkLockError: 作品の読込基準がありません。作品を開き直してから保存してください$",
+          "count": 2
+        },
+        {
+          "pattern": "^(?:[\\w.]+\\.)?MigrationError: 変換後検証が不合格でした: p0001$",
+          "count": 1
+        },
+        {
+          "pattern": "^(?:[\\w.]+\\.)?MigrationExecutionError: 変換後検証が不合格でした: p0001$",
+          "count": 1
+        },
+        {
+          "pattern": "^(?:[\\w.]+\\.)?SaveBaselineConflictError: 別のBlender画面で作品データが更新されています: work\\.json$",
+          "count": 1
+        },
+        {
+          "pattern": "^(?:[\\w.]+\\.)?WorkLockError: 別のBlender画面で作品データが更新されています: work\\.json$",
+          "count": 1
+        }
+      ],
+      "reason": "移行中断・外部更新競合を意図的に注入し、WorkLockErrorのtracebackをログへ残した上でrollback・再読込と最終sentinelを検証する負系テスト",
+      "review": "phase1-expected-failure-audit-2026-07-29"
+    },
+    "test/blender_layer_stack_dnd_reparent_check.py": {
+      "mode": "blender_wrapper",
+      "expected_tracebacks": [
+        {
+          "pattern": "^OSError: simulated source write failure$",
+          "count": 1
+        }
+      ],
+      "reason": "ページ間移動の保存失敗を意図的に注入し、元データと移動先をrollbackする負系テスト",
+      "review": "phase1-expected-failure-audit-2026-07-29"
+    },
+    "test/blender_meldex_scenario_import_transaction_check.py": {
+      "mode": "blender_wrapper",
+      "expected_tracebacks": [
+        {
+          "pattern": "^(?:[\\w.]+\\.)?JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 \\(char 1\\)$",
+          "count": 1
+        }
+      ],
+      "reason": "破損JSONを意図的に読み込み、作品単位transactionが全状態を復元する負系テスト",
+      "review": "phase1-expected-failure-audit-2026-07-29"
+    },
+    "test/blender_native_save_reload_fallback_check.py": {
+      "mode": "blender_wrapper",
+      "expected_tracebacks": [
+        {
+          "pattern": "^(?:[\\w.]+\\.)?SaveBaselineUnavailableError: 作品の読込基準がありません。作品を開き直してください$",
+          "count": 1
+        },
+        {
+          "pattern": "^(?:[\\w.]+\\.)?WorkLockError: 作品の読込基準がありません。作品を開き直してから保存してください$",
+          "count": 1
+        },
+        {
+          "pattern": "^OSError: temporary sharing violation$",
+          "count": 1
+        }
+      ],
+      "reason": "native保存後の再読込失敗と一時共有違反を意図的に注入し、復旧経路を検証する負系テスト",
+      "review": "phase1-expected-failure-audit-2026-07-29"
+    },
+    "test/blender_page_duplicate_delete_transaction_check.py": {
+      "mode": "blender_wrapper",
+      "expected_tracebacks": [
+        {
+          "pattern": "^RuntimeError: PAGE_TX_EXPECTED_SAVE_FAILURE$",
+          "count": 2
+        }
+      ],
+      "reason": "ページ複製・削除の保存失敗を各1回注入し、ファイルとメモリをrollbackする負系テスト",
+      "review": "phase1-expected-failure-audit-2026-07-29"
+    },
+    "test/blender_preset_detail_tool_dialog_check.py": {
+      "mode": "blender_wrapper",
+      "expected_tracebacks": [
+        {
+          "pattern": "^OSError: intentional preset save failure$",
+          "count": 1
+        }
+      ],
+      "reason": "プリセット保存失敗を意図的に注入し、詳細ダイアログの状態復元を検証する負系テスト",
+      "review": "phase1-expected-failure-audit-2026-07-29"
+    },
+    "test/blender_spread_content_roundtrip_check.py": {
+      "mode": "blender_wrapper",
+      "expected_tracebacks": [
+        {
+          "pattern": "^(?:[\\w.]+\\.)?SpreadContentError: 強制失敗: after_directory_install$",
+          "count": 1
+        }
+      ],
+      "reason": "見開き内容のディレクトリ入替後に失敗を注入し、元ページ内容を復元する負系テスト",
+      "review": "phase1-expected-failure-audit-2026-07-29"
+    },
+    "test/blender_text_vertical_cursor_check.py": {
+      "mode": "blender_wrapper",
+      "expected_tracebacks": [
+        {
+          "pattern": "^RuntimeError: forced failure for regression test$",
+          "count": 1
+        }
+      ],
+      "reason": "縦書き編集transactionへ例外を注入し、キャレット・選択・本文状態の復元を検証する負系テスト",
+      "review": "phase1-expected-failure-audit-2026-07-29"
+    },
+    "test/blender_transfer_group_alt_dnd_check.py": {
+      "mode": "blender_wrapper",
+      "expected_tracebacks": [
+        {
+          "pattern": "^RuntimeError: source recovery point save failed$",
+          "count": 1
+        },
+        {
+          "pattern": "^(?:[\\w.]+\\.)?JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 \\(char 1\\)$",
+          "count": 1
+        }
+      ],
+      "reason": "ページ間グループ移動の復旧点保存失敗と破損journalを意図的に作り、安全停止・復元を検証する負系テスト",
+      "review": "phase1-expected-failure-audit-2026-07-29"
+    },
+    "test/blender_legacy_migration_check.py": {
+      "mode": "historical",
+      "required": false,
+      "completion_token": "",
+      "reason": "削除済みの__papers__/__masks__旧アーキを自動変換する回帰。計画は旧形式を明示エラーで停止しmigrationを復活させないため、現行認定から除外する",
+      "review": "phase1-legacy-path-audit-2026-07-29"
+    },
+    "test/blender_layer_stack_panel_width_visual_check.py": {
+      "mode": "support",
+      "required": false,
+      "completion_token": "",
+      "reason": "人がスクリーンショットを撮るため画面を準備し続けるcapture fixtureで、単独では合否を判定しない",
+      "review": "phase1-manifest-audit-2026-07-29"
+    },
+    "test/blender_page_list_redraw_probe.py": {
+      "mode": "support",
+      "required": false,
+      "completion_token": "",
+      "reason": "idle redraw回数を採取する診断probeで、閾値assertを持つ製品テストではない",
+      "review": "phase1-manifest-audit-2026-07-29"
+    },
+    "test/blender_perf_benchmark.py": {
+      "timeout_seconds": 600,
+      "reason": "55ページ決定的fixtureの生成・保存を含み、Phase 0実測で約247秒を要するため、必須性能回帰として十分な上限を与える",
+      "review": "phase1-timeout-audit-2026-07-29"
+    },
+    "test/blender_text_ime_toggle_check.py": {
+      "mode": "support",
+      "required": false,
+      "completion_token": "",
+      "reason": "Windows IME状態をstate.jsonへ採取する診断fixture。合否はtext_ime_runtime_checkとtext_ime_visual_checkが判定する",
+      "review": "phase1-manifest-audit-2026-07-29"
+    },
+    "test/blender_ui_screenshot_diagnostic.py": {
+      "mode": "support",
+      "required": false,
+      "completion_token": "",
+      "reason": "Blender screenshot APIのtimeout原因を採取する診断fixtureで、製品機能の合否を判定しない",
+      "review": "phase1-manifest-audit-2026-07-29"
+    },
+    "test/blender_ui_micro_behavior_matrix_check.py": {
+      "timeout_seconds": 900,
+      "reason": "決定的UI操作マトリクスを実画面で逐次検証する必須E2Eであり、180秒では正常経路も打ち切るため専用上限を与える",
+      "review": "phase1-timeout-audit-2026-07-29"
+    }
+  }
+}

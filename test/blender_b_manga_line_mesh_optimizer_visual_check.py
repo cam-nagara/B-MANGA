@@ -216,7 +216,7 @@ def main() -> None:
     print(f"[OUT] {optimized}")
     print(f"[OUT] {all_lines}")
     print(f"[PIXELS] before={before_counts} optimized={optimized_counts} lines={line_counts}")
-    print("B-MANGA Liner mesh optimizer visual check: PASS")
+    print("BMANGA_LINE_MESH_OPTIMIZER_VISUAL_CHECK_OK", flush=True)
     os._exit(0)
 
 

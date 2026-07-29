@@ -53,6 +53,16 @@ def _assert_fill_sample(layer, point: tuple[float, float], dpi: int, expected: t
         raise AssertionError(f"{layer.name} pixel mismatch at {point}: {actual} != {expected}")
 
 
+def _assert_rgb_close(
+    actual: tuple[int, int, int, int],
+    expected: tuple[int, int, int],
+    *,
+    tolerance: int = 4,
+) -> None:
+    if actual[3] != 255 or max(abs(actual[index] - expected[index]) for index in range(3)) > tolerance:
+        raise AssertionError(f"preview pixel mismatch: {actual} != {expected}")
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_overlay_fill_psd_"))
     mod = None
@@ -66,6 +76,7 @@ def main() -> None:
         from bmanga_dev_overlay_fill_psd.core.work import get_work
         from bmanga_dev_overlay_fill_psd.io import export_pipeline
         from bmanga_dev_overlay_fill_psd.io import work_io
+        from bmanga_dev_overlay_fill_psd.ui import overlay
         from bmanga_dev_overlay_fill_psd.ui import overlay_shared
         from bmanga_dev_overlay_fill_psd.utils import color_space
         from bmanga_dev_overlay_fill_psd.utils import page_preview_object
@@ -186,6 +197,97 @@ def main() -> None:
         if not (inner_px[0] > 220 and inner_px[1] > 220 and inner_px[2] > 220):
             raise AssertionError(f"ページ一覧プレビューのセーフライン内まで塗られています: {inner_px}")
 
+        # 一覧・周辺ページのプレビューPNGは塗りを一度だけ焼き込む。
+        # 0/25/100%で画素を固定し、GPUガイドの二重描画も呼出し単位で拒否する。
+        work.safe_area_overlay.bleed_outer_enabled = False
+        for opacity, expected in (
+            (0.0, (255, 255, 255)),
+            (25.0, (204, 230, 242)),
+            (100.0, (51, 153, 204)),
+        ):
+            work.safe_area_overlay.opacity = opacity
+            matrix_path = page_preview_object.ensure_preview_png(
+                work,
+                page,
+                0,
+                current=False,
+                scene=bpy.context.scene,
+                force=True,
+            )
+            with export_pipeline.Image.open(str(matrix_path)) as opened:
+                preview = opened.convert("RGBA")
+                _assert_rgb_close(preview_pixel_at(between_safe_and_bleed_top), expected)
+
+        original_preview_draw = overlay.overlay_page_preview.draw_for_page
+        original_guide_draw = overlay.overlay_paper_guide.draw_for_page
+        original_background_draw = overlay.overlay_paper_bg.draw_for_page
+        original_resolve_region = overlay._resolve_active_region
+        original_real_route = overlay._page_uses_real_page_objects
+        guide_calls: list[int] = []
+        try:
+            overlay.overlay_page_preview.draw_for_page = lambda *args, **kwargs: True
+            overlay.overlay_paper_guide.draw_for_page = (
+                lambda *args, **kwargs: guide_calls.append(1)
+            )
+            overlay.overlay_paper_bg.draw_for_page = lambda *args, **kwargs: None
+            overlay._resolve_active_region = lambda _context: (object(), object())
+            overlay._page_uses_real_page_objects = lambda _context, _page: False
+            overlay._draw_page_overlay(
+                bpy.context,
+                work,
+                work.paper,
+                rects,
+                page,
+                "",
+                page_index=0,
+            )
+            overlay._draw_reference_page_preview(
+                bpy.context,
+                work,
+                work.paper,
+                rects,
+                page,
+                0,
+                0.0,
+                0.0,
+                False,
+            )
+            if guide_calls:
+                raise AssertionError(
+                    f"焼込み済みプレビューへGPUガイドが重複描画されました: {len(guide_calls)}"
+                )
+            overlay.overlay_page_preview.draw_for_page = lambda *args, **kwargs: False
+            overlay._draw_page_overlay(
+                bpy.context,
+                work,
+                work.paper,
+                rects,
+                page,
+                "",
+                page_index=0,
+            )
+            overlay._draw_reference_page_preview(
+                bpy.context,
+                work,
+                work.paper,
+                rects,
+                page,
+                0,
+                0.0,
+                0.0,
+                False,
+            )
+            if len(guide_calls) != 2:
+                raise AssertionError(
+                    f"プレビュー欠落時のGPUガイドfallback回数が違います: {len(guide_calls)}"
+                )
+        finally:
+            overlay.overlay_page_preview.draw_for_page = original_preview_draw
+            overlay.overlay_paper_guide.draw_for_page = original_guide_draw
+            overlay.overlay_paper_bg.draw_for_page = original_background_draw
+            overlay._resolve_active_region = original_resolve_region
+            overlay._page_uses_real_page_objects = original_real_route
+
         old_preview_mtime = Path(preview_path).stat().st_mtime
         time.sleep(1.1)
         work.safe_area_overlay.opacity = 55.0
@@ -211,6 +313,8 @@ def main() -> None:
             raise AssertionError(f"裁ち落とし枠外塗りはメッシュである必要があります: {bleed_obj.type}")
         if bool(getattr(bleed_obj, "show_in_front", False)):
             raise AssertionError("裁ち落とし枠外塗りが最前面ワイヤ表示に依存しています")
+        if bool(bleed_obj.hide_viewport):
+            raise AssertionError("裁ち落とし枠外塗りの実体が表示されていません")
         bleed_mat = bleed_obj.active_material
         if bleed_mat is None or not bleed_mat.name.startswith(paper_guide_object.PAPER_BLEED_OUTER_FILL_VIEW_MATERIAL):
             raise AssertionError("裁ち落とし枠外塗りの表示素材がありません")

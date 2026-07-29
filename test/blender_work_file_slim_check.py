@@ -148,19 +148,28 @@ def main() -> None:
     assert "FINISHED" in result, result
     merged = work.pages[0]
     assert merged.spread
-    assert len(merged.comas) == coma_count_p1 + coma_count_p2, (
-        len(merged.comas), coma_count_p1, coma_count_p2
+    assert not bool(merged.detail_loaded)
+    assert len(merged.comas) == 0 and len(merged.balloons) == 0, (
+        "見開き結合後の作品一覧がページ詳細を保持しています"
     )
-    assert len(merged.balloons) == 1, "見開き結合でフキダシが失われました"
     merged_json = json.loads((work_dir / merged.dir_rel.strip("/") / "page.json").read_text(encoding="utf-8"))
+    assert len(merged_json.get("comas", [])) == coma_count_p1 + coma_count_p2
     assert len(merged_json.get("balloons", [])) == 1
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+    assert "FINISHED" in result, result
+    work = bpy.context.scene.bmanga_work
+    merged = work.pages[0]
+    assert len(merged.comas) == coma_count_p1 + coma_count_p2
+    assert len(merged.balloons) == 1
+    result = bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
+    assert "FINISHED" in result, result
+    work = bpy.context.scene.bmanga_work
     print("SPREAD_MERGE_ON_DEMAND_OK", flush=True)
 
     # --- フキダシ番号の採番: 詳細未読込ページの番号とも衝突しない ---
     # (旧作品相当: カウンター未初期化 + 詳細未読込の状態から、ディスクの
     #  page.json を走査して balloon_0001 を検出し、次番号を採る)
     balloon_op2 = _sub("operators.balloon_op")
-    page_detail.clear_page_detail(work.pages[0])
     work.balloon_id_counter = 0
     new_id = balloon_op2._allocate_balloon_id(work.pages[0], work)
     assert new_id == "balloon_0002", f"採番が衝突しています: {new_id} (既存: balloon_0001)"

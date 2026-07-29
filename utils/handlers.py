@@ -559,6 +559,22 @@ def _reload_all_pages_panels(work, work_dir: Path) -> None:
             )
 
 
+def _filter_embedded_page_details(work) -> None:
+    """blend内キャッシュを現在のファイル役割で許されるページだけに絞る."""
+
+    from . import page_detail
+
+    detail_filter = _page_detail_filter()
+    if detail_filter is None:
+        return
+    for page_entry in getattr(work, "pages", []) or []:
+        page_id = str(getattr(page_entry, "id", "") or "")
+        if page_id not in detail_filter and bool(
+            getattr(page_entry, "detail_loaded", False)
+        ):
+            page_detail.clear_page_detail(page_entry)
+
+
 def _restore_expected_basic_frame_coma(work, work_dir: Path, page_id: str) -> None:
     if work is None or not page_id:
         return
@@ -936,6 +952,7 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
             work = embedded_work
             work.work_dir = str(work_dir.resolve())
             work.loaded = True
+            _filter_embedded_page_details(work)
             _logger.info("load_post: unchanged sidecars reused from blend")
         else:
             work = sync_scene_work_from_disk(bpy.context, work_dir)

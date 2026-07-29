@@ -103,6 +103,8 @@ def main() -> None:
         mod = _load_addon()
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "BalloonNearBorderVisual.bmanga"))
         assert "FINISHED" in result, result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        assert "FINISHED" in result, result
 
         from bmanga_dev_balloon_near_border_visual.core.work import get_work
         from bmanga_dev_balloon_near_border_visual.operators import balloon_op

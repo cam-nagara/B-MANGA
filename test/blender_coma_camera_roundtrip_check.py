@@ -113,6 +113,8 @@ def _current_page_and_coma(work, scene):
 def _create_roundtrip_work(temp_root: Path, get_work):
     result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "Roundtrip.bmanga"))
     assert result == {"FINISHED"}, result
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+    assert result == {"FINISHED"}, result
     work = get_work(bpy.context)
     assert work is not None
     work.page_preview_scale_percentage = 10.0

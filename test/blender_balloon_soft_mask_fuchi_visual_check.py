@@ -118,13 +118,26 @@ def _assert_material_masked(obj) -> None:
     assert not missing, f"コマ内容マスクが未接続の素材があります: {missing}"
 
 
-def _evaluated_material_z_ranges(obj) -> dict[str, tuple[float, float]]:
+def _owned_render_objects(obj) -> list:
+    objects = [obj]
+    pending = list(getattr(obj, "children", []) or [])
+    while pending:
+        child = pending.pop()
+        objects.append(child)
+        pending.extend(list(getattr(child, "children", []) or []))
+    return objects
+
+
+def _evaluated_material_z_ranges_single(obj, *, world: bool) -> dict[str, tuple[float, float]]:
     depsgraph = bpy.context.evaluated_depsgraph_get()
     evaluated = obj.evaluated_get(depsgraph)
     mesh = evaluated.to_mesh()
     try:
         materials = list(getattr(mesh, "materials", []) or [])
-        coords = [vertex.co.copy() for vertex in getattr(mesh, "vertices", []) or []]
+        coords = [
+            evaluated.matrix_world @ vertex.co if world else vertex.co.copy()
+            for vertex in getattr(mesh, "vertices", []) or []
+        ]
         ranges: dict[str, list[float]] = {}
         for poly in getattr(mesh, "polygons", []) or []:
             material_index = int(getattr(poly, "material_index", 0) or 0)
@@ -140,33 +153,60 @@ def _evaluated_material_z_ranges(obj) -> dict[str, tuple[float, float]]:
         return {name: (min(values), max(values)) for name, values in ranges.items() if values}
     finally:
         evaluated.to_mesh_clear()
+
+
+def _combined_material_z_ranges(obj, *, world: bool) -> dict[str, tuple[float, float]]:
+    combined: dict[str, tuple[float, float]] = {}
+    for render_obj in _owned_render_objects(obj):
+        for name, current in _evaluated_material_z_ranges_single(render_obj, world=world).items():
+            previous = combined.get(name)
+            combined[name] = (
+                current[0] if previous is None else min(previous[0], current[0]),
+                current[1] if previous is None else max(previous[1], current[1]),
+            )
+    return combined
+
+
+def _evaluated_material_z_ranges(obj) -> dict[str, tuple[float, float]]:
+    return _combined_material_z_ranges(obj, world=False)
 
 
 def _evaluated_material_world_z_ranges(obj) -> dict[str, tuple[float, float]]:
-    depsgraph = bpy.context.evaluated_depsgraph_get()
-    evaluated = obj.evaluated_get(depsgraph)
-    mesh = evaluated.to_mesh()
-    try:
-        materials = list(getattr(mesh, "materials", []) or [])
-        coords = [evaluated.matrix_world @ vertex.co for vertex in getattr(mesh, "vertices", []) or []]
-        ranges: dict[str, list[float]] = {}
-        for poly in getattr(mesh, "polygons", []) or []:
-            material_index = int(getattr(poly, "material_index", 0) or 0)
-            if not (0 <= material_index < len(materials)):
-                continue
-            mat = materials[material_index]
-            if mat is None:
-                continue
-            name = str(mat.name)
-            ranges.setdefault(name, [])
-            for vertex_index in poly.vertices:
-                ranges[name].append(float(coords[vertex_index].z))
-        return {name: (min(values), max(values)) for name, values in ranges.items() if values}
-    finally:
-        evaluated.to_mesh_clear()
+    return _combined_material_z_ranges(obj, world=True)
 
 
 def _multi_line_visible_lengths(obj) -> list[float]:
+    balloon_id = str(obj.get("bmanga_id", "") or "")
+    mesh_obj = bpy.data.objects.get(f"balloon_multi_line_mesh_{balloon_id}")
+    if mesh_obj is not None and getattr(mesh_obj, "type", "") == "MESH":
+        mesh = mesh_obj.data
+        adjacency = {index: set() for index in range(len(mesh.vertices))}
+        for edge in mesh.edges:
+            a, b = (int(value) for value in edge.vertices)
+            adjacency[a].add(b)
+            adjacency[b].add(a)
+        unseen = set(adjacency)
+        component_lengths: list[float] = []
+        while unseen:
+            start = unseen.pop()
+            component = {start}
+            pending = [start]
+            while pending:
+                current = pending.pop()
+                for neighbor in adjacency[current]:
+                    if neighbor in unseen:
+                        unseen.remove(neighbor)
+                        component.add(neighbor)
+                        pending.append(neighbor)
+            length = 0.0
+            for edge in mesh.edges:
+                a, b = (int(value) for value in edge.vertices)
+                if a in component and b in component:
+                    length += (mesh.vertices[a].co - mesh.vertices[b].co).length
+            if length > 0.0:
+                component_lengths.append(length)
+        return sorted(component_lengths, reverse=True)
+
     lengths: list[float] = []
     for spline in getattr(obj.data, "splines", []) or []:
         if getattr(spline, "type", "") != "POLY":
@@ -201,6 +241,8 @@ def main() -> None:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "BalloonSoftMaskFuchi.bmanga"))
+        assert "FINISHED" in result, result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
         assert "FINISHED" in result, result
 
         from bmanga_dev_balloon_soft_mask_fuchi.core.work import get_work

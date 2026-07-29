@@ -8,6 +8,7 @@ import os
 import shutil
 import sys
 import tempfile
+import traceback
 from pathlib import Path
 
 import bpy
@@ -227,6 +228,19 @@ def _test_spread_basic_frame_merge(temp_root: Path) -> None:
     result = bpy.ops.bmanga.page_add("EXEC_DEFAULT")
     if "FINISHED" not in result:
         raise AssertionError(f"page_add spread failed: {result}")
+    for page_index in (0, 1):
+        result = bpy.ops.bmanga.open_page_file(
+            "EXEC_DEFAULT", index=page_index
+        )
+        if "FINISHED" not in result:
+            raise AssertionError(
+                f"spread source page open failed: {page_index}: {result}"
+            )
+        result = bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
+        if "FINISHED" not in result:
+            raise AssertionError(
+                f"spread source page save failed: {page_index}: {result}"
+            )
     work = bpy.context.scene.bmanga_work
     result = bpy.ops.bmanga.pages_merge_spread("EXEC_DEFAULT", left_index=0, tombo_aligned=True, tombo_gap_mm=-9.6)
     if "FINISHED" not in result:
@@ -236,9 +250,19 @@ def _test_spread_basic_frame_merge(temp_root: Path) -> None:
     page = work.pages[0]
     if not bool(page.spread):
         raise AssertionError("merged page is not marked as spread")
-    if len(page.comas) != 1:
-        raise AssertionError(f"basic-frame spread panels were not merged: {len(page.comas)}")
-    _assert_basic_frame(work, page, page.comas[0], "spread merged basic-frame panel")
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+    if "FINISHED" not in result:
+        raise AssertionError(f"merged spread page open failed: {result}")
+    work = bpy.context.scene.bmanga_work
+    page = _current_page(work)
+    if len(page.comas) != 2:
+        raise AssertionError(f"spread must preserve both source panels: {len(page.comas)}")
+    if len({str(coma.id) for coma in page.comas}) != 2:
+        raise AssertionError("spread source panel IDs were not kept distinct")
+    ordered = sorted(page.comas, key=lambda coma: float(coma.rect_x_mm))
+    left, right = ordered
+    if float(left.rect_x_mm) + float(left.rect_width_mm) >= float(right.rect_x_mm):
+        raise AssertionError("spread source panels overlap instead of remaining distinct")
 
 
 def main() -> None:
@@ -253,6 +277,8 @@ def main() -> None:
         _test_spread_basic_frame_merge(temp_root)
         print("BMANGA_COMA_BASIC_FRAME_MERGE_OK", flush=True)
         success = True
+    except BaseException:
+        traceback.print_exc()
     finally:
         if mod is not None:
             try:

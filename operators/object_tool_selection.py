@@ -406,11 +406,13 @@ def selection_key_pickable(context, key: str) -> bool:
     allowed = page_file_scene.editable_page_ids(scene)
     if allowed is None:
         return True
-    if not allowed:
-        return False
     page_id = _selection_page_id(context, key)
     # 作品直下の共有レイヤーはページ編集ファイルでは従来どおり選択可能。
-    return not page_id or page_id in allowed
+    if not page_id:
+        return True
+    if not allowed:
+        return False
+    return page_id in allowed
 
 
 def hit_visible_at_world(context, hit: dict | None, x_mm: float, y_mm: float) -> bool:

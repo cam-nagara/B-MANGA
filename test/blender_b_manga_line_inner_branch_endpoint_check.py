@@ -214,6 +214,7 @@ def main() -> None:
             },
             flush=True,
         )
+        print("BMANGA_LINE_INNER_BRANCH_ENDPOINT_CHECK_OK", flush=True)
         os._exit(0)
     finally:
         try:

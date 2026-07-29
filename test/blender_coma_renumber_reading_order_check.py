@@ -160,11 +160,22 @@ def main() -> None:
         work = context.scene.bmanga_work
         assert "FINISHED" in bpy.ops.bmanga.page_add("EXEC_DEFAULT")
 
+        assert "FINISHED" in bpy.ops.bmanga.open_page_file(
+            "EXEC_DEFAULT", index=0
+        )
+        work = bpy.context.scene.bmanga_work
         work.paper.read_direction = "left"
         page = work.pages[0]
         _build_four_comas(page)
+        assert "FINISHED" in bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
+
+        assert "FINISHED" in bpy.ops.bmanga.open_page_file(
+            "EXEC_DEFAULT", index=1
+        )
+        work = bpy.context.scene.bmanga_work
         work.paper.read_direction = "right"
         _build_four_comas(work.pages[1])
+        assert "FINISHED" in bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
         assert not bpy.ops.bmanga.coma_renumber_active_page.poll()
 
         assert "FINISHED" in bpy.ops.bmanga.open_page_file(index=0)

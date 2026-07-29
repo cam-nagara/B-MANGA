@@ -944,7 +944,7 @@ def main() -> None:
         else:
             os.environ["BMANGA_USER_CONFIG_DIR"] = old_config
         shutil.rmtree(temp_root, ignore_errors=True)
-    print("[ok] effect line detail graph works")
+    print("BMANGA_EFFECT_LINE_DETAIL_GRAPH_CHECK_OK", flush=True)
 
 
 if __name__ == "__main__":

@@ -18,19 +18,24 @@ from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
+from ..bmanga_core.faults import FaultPoint, check_fault
+from ..bmanga_core.observability import operation_span
+
 
 def read_json(path: str | os.PathLike) -> Any:
     """UTF-8 / UTF-8-BOM 両対応で JSON を読み込む."""
     p = Path(path)
-    with open(p, "rb") as f:
-        raw = f.read()
-    # UTF-8 BOM (EF BB BF) を剥がす
-    if raw.startswith(b"\xef\xbb\xbf"):
-        raw = raw[3:]
-    text = raw.decode("utf-8")
-    value = json.loads(text)
-    _record_observed_read(p)
-    return value
+    with operation_span("json.read", target_uid=f"path:{p}"):
+        check_fault(FaultPoint.JSON_READ, path=str(p))
+        with open(p, "rb") as f:
+            raw = f.read()
+        # UTF-8 BOM (EF BB BF) を剥がす
+        if raw.startswith(b"\xef\xbb\xbf"):
+            raw = raw[3:]
+        text = raw.decode("utf-8")
+        value = json.loads(text)
+        _record_observed_read(p)
+        return value
 
 
 def write_json(path: str | os.PathLike, data: Any, *, indent: int = 2) -> None:
@@ -45,9 +50,16 @@ def write_json(path: str | os.PathLike, data: Any, *, indent: int = 2) -> None:
     対象 OSError は (PermissionError, OSError errno=13/32) を含む。
     """
     p = Path(path)
-    with _path_write_guard(p):
-        _write_json_unlocked(p, data, indent=indent)
-        _record_successful_write(p)
+    with operation_span(
+        "json.write",
+        target_uid=f"path:{p}",
+        transaction_phase="checkpoint",
+        dirty_reason="json_changed",
+    ):
+        check_fault(FaultPoint.JSON_WRITE, path=str(p))
+        with _path_write_guard(p):
+            _write_json_unlocked(p, data, indent=indent)
+            _record_successful_write(p)
 
 
 def _path_write_guard(path: Path):
@@ -82,6 +94,9 @@ def _record_observed_read(path: Path) -> None:
 
 def _write_json_unlocked(p: Path, data: Any, *, indent: int) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
+    original_exists = p.is_file()
+    original_bytes = p.read_bytes() if original_exists else b""
+    committed = False
     # delete=False で自分で削除/rename を管理
     fd, tmp_path = tempfile.mkstemp(
         prefix=p.name + ".", suffix=".tmp", dir=str(p.parent)
@@ -90,12 +105,46 @@ def _write_json_unlocked(p: Path, data: Any, *, indent: int) -> None:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             json.dump(data, f, indent=indent, ensure_ascii=False)
             f.write("\n")
+        check_fault(FaultPoint.JSON_WRITE_AFTER_STAGE, path=str(p))
         # アトミック置換 (Dropbox 等のロック競合に備えてリトライ)
         _replace_with_retry(tmp_path, p)
+        committed = True
+        check_fault(FaultPoint.JSON_WRITE_AFTER_COMMIT, path=str(p))
     except Exception:
         # 失敗時は一時ファイルを掃除
         try:
             os.unlink(tmp_path)
+        except OSError:
+            pass
+        if committed:
+            _restore_original_json(p, original_exists, original_bytes)
+        raise
+
+
+def _restore_original_json(
+    path: Path,
+    existed: bool,
+    payload: bytes,
+) -> None:
+    """commit後の注入失敗でも呼出し前のbyte列へ戻す。"""
+
+    if not existed:
+        path.unlink(missing_ok=True)
+        return
+    fd, raw = tempfile.mkstemp(
+        prefix=path.name + ".rollback.",
+        suffix=".tmp",
+        dir=str(path.parent),
+    )
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        _replace_with_retry(raw, path)
+    except Exception:
+        try:
+            os.unlink(raw)
         except OSError:
             pass
         raise

@@ -108,6 +108,8 @@ def main() -> None:
     _load_addon()
     result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "FringeShapelyCheck.bmanga"))
     assert "FINISHED" in result, result
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+    assert "FINISHED" in result, result
 
     from bmanga_dev_fringe_shapely_check.core.work import get_work
     from bmanga_dev_fringe_shapely_check.operators import balloon_op

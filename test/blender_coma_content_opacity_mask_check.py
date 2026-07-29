@@ -64,6 +64,8 @@ def main() -> None:
         mod = _load_addon()
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "ComaContentMask.bmanga"))
         assert "FINISHED" in result, result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        assert "FINISHED" in result, result
 
         from bmanga_dev_coma_content_mask.io import export_pipeline
         from bmanga_dev_coma_content_mask.io import export_soft_mask

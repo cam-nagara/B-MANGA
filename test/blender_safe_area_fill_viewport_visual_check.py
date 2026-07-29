@@ -19,6 +19,8 @@ OUT_DIR = Path(
     os.environ.get("BMANGA_SAFE_AREA_VISUAL_OUT", "")
     or tempfile.mkdtemp(prefix="bmanga_safe_area_visual_")
 )
+_TEST_TEMP_ROOT: Path | None = None
+_TEST_ADDON = None
 
 
 def _load_addon():
@@ -36,19 +38,27 @@ def _load_addon():
 
 
 def _view3d_context():
-    screen = bpy.context.screen
-    for area in screen.areas:
-        if area.type != "VIEW_3D":
+    for window in bpy.context.window_manager.windows:
+        screen = getattr(window, "screen", None)
+        if screen is None:
             continue
-        for region in area.regions:
-            if region.type == "WINDOW":
-                return area, region, area.spaces.active.region_3d
+        for area in screen.areas:
+            if area.type != "VIEW_3D":
+                continue
+            for region in area.regions:
+                if region.type == "WINDOW":
+                    return window, screen, area, region, area.spaces.active.region_3d
     raise RuntimeError("VIEW_3D が見つかりません")
 
 
 def _view3d_override():
-    area, region, _rv3d = _view3d_context()
-    return bpy.context.temp_override(area=area, region=region)
+    window, screen, area, region, _rv3d = _view3d_context()
+    return bpy.context.temp_override(
+        window=window,
+        screen=screen,
+        area=area,
+        region=region,
+    )
 
 
 def _screen_point_for_mm(region, rv3d, x_mm: float, y_mm: float):
@@ -69,7 +79,18 @@ def _screenshot(name: str) -> Path:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     path = OUT_DIR / name
     _redraw(6)
-    result = bpy.ops.screen.screenshot("EXEC_DEFAULT", filepath=str(path), check_existing=False)
+    window, screen, area, region, _rv3d = _view3d_context()
+    with bpy.context.temp_override(
+        window=window,
+        screen=screen,
+        area=area,
+        region=region,
+    ):
+        result = bpy.ops.screen.screenshot(
+            "EXEC_DEFAULT",
+            filepath=str(path),
+            check_existing=False,
+        )
     if "FINISHED" not in result:
         raise RuntimeError(f"screenshot failed: {result}")
     return path
@@ -107,29 +128,47 @@ def _apply_overlay_fills(work, *, safe_opacity: float, bleed_opacity: float) -> 
     _redraw(4)
 
 
+def _fill_material_state(obj) -> dict[str, object]:
+    mat = obj.data.materials[0] if obj is not None and obj.data.materials else None
+    mix = (
+        next(
+            (node for node in mat.node_tree.nodes if node.bl_idname == "ShaderNodeMixShader"),
+            None,
+        )
+        if mat is not None and mat.node_tree is not None
+        else None
+    )
+    return {
+        "object": tuple(round(float(value), 4) for value in obj.color),
+        "diffuse": tuple(round(float(value), 4) for value in mat.diffuse_color),
+        "mix": round(float(mix.inputs["Fac"].default_value), 4) if mix is not None else None,
+        "surface": str(getattr(mat, "surface_render_method", "")),
+        "hide_viewport": bool(getattr(obj, "hide_viewport", False)),
+        "hide_get": bool(obj.hide_get()),
+    }
+
+
 def _run_visual_check() -> None:
-    if bpy.app.background:
-        raise RuntimeError("このチェックは --background なしで実行してください")
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_safe_area_visual_work_"))
-    mod = None
+    temp_root = _TEST_TEMP_ROOT
+    mod = _TEST_ADDON
+    if temp_root is None or mod is None:
+        raise RuntimeError("page.blendを開く前の検証準備が完了していません")
     try:
         bpy.context.preferences.view.show_splash = False
     except Exception:
         pass
     try:
-        mod = _load_addon()
-        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "SafeAreaVisual.bmanga"))
-        assert "FINISHED" in result, result
-
         from bmanga_dev_safe_area_visual.core.work import get_work
         from bmanga_dev_safe_area_visual.ui import overlay
         from bmanga_dev_safe_area_visual.ui import overlay_shared
-        from bmanga_dev_safe_area_visual.utils import page_grid, paper_guide_object
+        from bmanga_dev_safe_area_visual.utils import page_file_scene, page_grid, paper_guide_object
 
         context = bpy.context
         work = get_work(context)
         assert work is not None and work.loaded
+        assert page_file_scene.is_page_edit_scene(context.scene), (
+            "編集ページの実オブジェクト表示を検証できるpage.blendではありません"
+        )
         page = work.pages[0]
         overlay.apply_bmanga_shading_mode(context)
         with _view3d_override():
@@ -142,10 +181,11 @@ def _run_visual_check() -> None:
             space.overlay.show_floor = False
             space.overlay.show_axis_x = False
             space.overlay.show_axis_y = False
-            if getattr(space.shading, "type", "") != "SOLID":
-                space.shading.type = "SOLID"
-            space.shading.light = "FLAT"
-            space.shading.color_type = "TEXTURE"
+            if getattr(space.shading, "type", "") != "RENDERED":
+                raise AssertionError(
+                    "B-MANGAの実運用表示がレンダー表示ではありません: "
+                    f"{getattr(space.shading, 'type', '')}"
+                )
             try:
                 space.shading.background_type = "VIEWPORT"
                 space.shading.background_color = (1.0, 1.0, 1.0)
@@ -166,6 +206,7 @@ def _run_visual_check() -> None:
         assert safe_obj is not None, "セーフライン外の塗り実体がありません"
         bleed_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_BLEED_OUTER_FILL_PREFIX}{page.id}")
         assert bleed_obj is not None, "裁ち落とし枠外の塗り実体がありません"
+        assert not bool(safe_obj.hide_viewport), "セーフライン外の塗り実体が非表示です"
         assert getattr(safe_obj, "display_type", "") == "SOLID", "表示方法がソリッドではありません"
         assert not bool(getattr(safe_obj, "show_in_front", False)), "最前面ワイヤ表示に依存しています"
         mat = safe_obj.data.materials[0] if safe_obj.data.materials else None
@@ -175,7 +216,27 @@ def _run_visual_check() -> None:
         assert any(node.bl_idname == "ShaderNodeBsdfTransparent" for node in mat.node_tree.nodes), (
             "セーフライン外の塗り素材に透明シェーダーがありません"
         )
-        area, region, rv3d = _view3d_context()
+        paper_bg = next(
+            (obj for obj in bpy.data.objects if obj.name.startswith("page_paper_bg_")),
+            None,
+        )
+        print(
+            "BMANGA_SAFE_AREA_REAL_STATE "
+            f"role={page_file_scene.current_role(context)} "
+            f"real={overlay._page_uses_real_page_objects(context, page)} "
+            f"engine={context.scene.render.engine} "
+            f"safe_visible={safe_obj.visible_get()} safe_z={safe_obj.location.z} "
+            f"safe_collections={[item.name for item in safe_obj.users_collection]} "
+            f"paper={getattr(paper_bg, 'name', None)} "
+            f"paper_visible={paper_bg.visible_get() if paper_bg is not None else None} "
+            f"paper_z={paper_bg.location.z if paper_bg is not None else None}",
+            flush=True,
+        )
+        assert safe_obj.visible_get(), "セーフライン外の塗り実体がViewLayerで不可視です"
+        assert overlay._page_uses_real_page_objects(context, page), (
+            "編集中ページが実オブジェクト表示経路になっていません"
+        )
+        _window, _screen, area, region, rv3d = _view3d_context()
         _ = area
         safe_point = _screen_point_for_mm(region, rv3d, safe_sample_x, safe_sample_y)
         bleed_point = _screen_point_for_mm(region, rv3d, bleed_sample_x, bleed_sample_y)
@@ -198,10 +259,19 @@ def _run_visual_check() -> None:
             raise AssertionError(f"裁ち落とし枠外の色が画面に出ていません: RGB={bleed_full_rgb}")
 
         _apply_overlay_fills(work, safe_opacity=25.0, bleed_opacity=100.0)
+        safe_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_SAFE_FILL_PREFIX}{page.id}")
+        assert safe_obj is not None
+        print(
+            f"BMANGA_SAFE_AREA_MATERIAL_025 {_fill_material_state(safe_obj)}",
+            flush=True,
+        )
         quarter_path = _screenshot("safe_area_opacity_025.png")
         quarter_rgb = _sample_rgb(quarter_path, safe_px, safe_py)
         if _max_rgb_delta(quarter_rgb, full_rgb) <= 30.0:
-            raise AssertionError(f"セーフライン外の不透明度が画面で薄くなっていません: 100={full_rgb} 25={quarter_rgb}")
+            raise AssertionError(
+                f"セーフライン外の不透明度が画面で薄くなっていません: "
+                f"100={full_rgb} 25={quarter_rgb}"
+            )
 
         _apply_overlay_fills(work, safe_opacity=0.0, bleed_opacity=100.0)
         zero_path = _screenshot("safe_area_opacity_000.png")
@@ -246,16 +316,44 @@ def _run_visual_check() -> None:
         shutil.rmtree(temp_root, ignore_errors=True)
 
 
+def _prepare_visual_check_tick():
+    global _TEST_ADDON, _TEST_TEMP_ROOT
+    try:
+        if bpy.app.background:
+            raise RuntimeError("このチェックは --background なしで実行してください")
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
+        _TEST_TEMP_ROOT = Path(tempfile.mkdtemp(prefix="bmanga_safe_area_visual_work_"))
+        try:
+            bpy.context.preferences.view.show_splash = False
+        except Exception:
+            pass
+        _TEST_ADDON = _load_addon()
+        result = bpy.ops.bmanga.work_new(
+            filepath=str(_TEST_TEMP_ROOT / "SafeAreaVisual.bmanga")
+        )
+        assert "FINISHED" in result, result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        assert "FINISHED" in result, result
+        bpy.app.timers.register(_visual_check_tick, first_interval=1.0)
+    except Exception:
+        traceback.print_exc()
+        sys.stderr.flush()
+        sys.stdout.flush()
+        os._exit(1)
+    return None
+
+
 def _visual_check_tick():
     try:
         _run_visual_check()
     except Exception:
         traceback.print_exc()
-        sys.exit(1)
-    finally:
-        bpy.ops.wm.quit_blender()
+        sys.stderr.flush()
+        sys.stdout.flush()
+        os._exit(1)
+    bpy.ops.wm.quit_blender()
     return None
 
 
 if __name__ == "__main__":
-    bpy.app.timers.register(_visual_check_tick, first_interval=0.25)
+    bpy.app.timers.register(_prepare_visual_check_tick, first_interval=0.25)

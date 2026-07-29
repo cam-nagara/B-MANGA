@@ -93,6 +93,8 @@ def main():
     tmp = Path(tempfile.mkdtemp(prefix=f"bmanga_edge_dyn_{_SCENARIO}_"))
     res = bpy.ops.bmanga.work_new(filepath=str(tmp / f"{_SCENARIO}.bmanga"))
     assert "FINISHED" in res, res
+    res = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+    assert "FINISHED" in res, res
 
     scene = bpy.context.scene
     work = get_work(bpy.context)

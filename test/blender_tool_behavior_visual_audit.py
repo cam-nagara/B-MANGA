@@ -286,7 +286,11 @@ def _setup_scene(temp_root: Path):
     assert "FINISHED" in result, result
 
     from bmanga_dev_tool_visual.operators import effect_line_op, raster_layer_op
-    from bmanga_dev_tool_visual.utils import layer_hierarchy, layer_stack as layer_stack_utils
+    from bmanga_dev_tool_visual.utils import (
+        layer_hierarchy,
+        layer_stack as layer_stack_utils,
+        object_selection,
+    )
     from bmanga_dev_tool_visual.utils.geom import mm_to_px
 
     context = bpy.context
@@ -363,6 +367,16 @@ def _setup_scene(temp_root: Path):
     text.parent_key = parent_key
 
     layer_stack_utils.sync_layer_stack_after_data_change(context)
+    selection_keys = {
+        "page": object_selection.page_key(page),
+        "coma": object_selection.coma_key(page, panel),
+        "gp": object_selection.gp_key(gp_layer),
+        "effect": object_selection.effect_key(effect_layer),
+        "raster": object_selection.raster_key(raster),
+        "image": object_selection.image_key(image),
+        "balloon": object_selection.balloon_key(page, balloon),
+        "text": object_selection.text_key(page, text),
+    }
     return mod, {
         "work": work,
         "page": page,
@@ -373,6 +387,7 @@ def _setup_scene(temp_root: Path):
         "image": image,
         "balloon": balloon,
         "text": text,
+        "selection_keys": selection_keys,
     }
 
 
@@ -504,7 +519,6 @@ def _assert_menu_items(context) -> bool:
 
 def _assert_click_and_edit(context, data) -> bool:
     from bmanga_dev_tool_visual.operators import object_tool_op, object_tool_selection, view_op
-    from bmanga_dev_tool_visual.operators import coma_edge_drag_session
     from bmanga_dev_tool_visual.utils import object_selection, page_browser, page_grid
     from bmanga_dev_tool_visual.utils.geom import Rect
 
@@ -516,16 +530,7 @@ def _assert_click_and_edit(context, data) -> bool:
         ox, oy = page_browser.page_offset_mm(work, context.scene, area, 0)
     else:
         ox, oy = page_grid.page_total_offset_mm(work, context.scene, 0)
-    keys = {
-        "page": object_selection.page_key(page),
-        "coma": object_selection.coma_key(page, panel),
-        "gp": object_selection.gp_key(data["gp"]),
-        "effect": object_selection.effect_key(data["effect"]),
-        "raster": object_selection.raster_key(data["raster"]),
-        "image": object_selection.image_key(data["image"]),
-        "balloon": object_selection.balloon_key(page, data["balloon"]),
-        "text": object_selection.text_key(page, data["text"]),
-    }
+    keys = dict(data["selection_keys"])
     hit_aliases = {"coma": {"coma", "coma_edge", "coma_vertex"}}
 
     def expected_hit_kinds(expected_kind: str) -> set[str]:
@@ -648,57 +653,23 @@ def _assert_click_and_edit(context, data) -> bool:
     vertex_world = (box + browser_coma.rect_x_mm, boy + browser_coma.rect_y_mm)
     vertex_event = _screen_event_for_world(vertex_world[0], vertex_world[1])
     vertex_hit = object_tool_op.hit_object_at_event(context, vertex_event)
-    if vertex_hit is None or str(vertex_hit.get("kind", "")) != "coma_vertex":
-        view = object_tool_op.view_event_region.view3d_window_under_event(context, vertex_event)
-        direct_edge = None
-        event_world = object_tool_op.coma_picker._event_world_mm(context, vertex_event)
-        if view is not None:
-            dbg_area, dbg_region, dbg_rv3d, dbg_mx, dbg_my = view
-            direct_edge = object_tool_op.coma_edge_move_op._pick_edge_or_vertex(
-                work,
-                dbg_region,
-                dbg_rv3d,
-                int(dbg_mx),
-                int(dbg_my),
-                context=context,
-                area=dbg_area,
-            )
+    if (
+        vertex_hit is None
+        or str(vertex_hit.get("kind", "")) != "page"
+        or int(vertex_hit.get("page", -1)) != browser_page_index
+    ):
         raise AssertionError(
-            "ページ一覧の頂点をドラッグ対象として拾えません: "
-            f"hit={vertex_hit} direct={direct_edge} event=({vertex_event.mouse_x},{vertex_event.mouse_y}) "
-            f"world={None if event_world is None else (round(event_world[0], 2), round(event_world[1], 2))} "
-            f"target={(round(vertex_world[0], 2), round(vertex_world[1], 2))} "
-            f"bbox={tuple(round(float(v), 2) for v in browser_bbox)} "
-            f"area={None if view is None else (dbg_region.width, dbg_region.height, round(dbg_mx, 2), round(dbg_my, 2))}"
+            "他ページプレビュー内のコマが編集対象として露出しています: "
+            f"hit={vertex_hit} event=({vertex_event.mouse_x},{vertex_event.mouse_y}) "
+            f"target={(round(vertex_world[0], 2), round(vertex_world[1], 2))}"
         )
-    view = object_tool_op.view_event_region.view3d_window_under_event(context, vertex_event)
-    if view is None:
-        raise AssertionError("ページ一覧のドラッグ開始位置が3Dビュー内にありません")
-    drag_area, drag_region, drag_rv3d, _mx, _my = view
-    selection = {
-        "type": "vertex",
-        "page": int(vertex_hit["page"]),
-        "coma": int(vertex_hit["coma"]),
-        "vertex": int(vertex_hit["vertex"]),
-    }
-    session = coma_edge_drag_session.ComaEdgeDragSession(
-        context,
-        work,
-        drag_area,
-        drag_region,
-        drag_rv3d,
-        selection,
-        vertex_world,
-    )
-    move_event = _screen_event_for_world(vertex_world[0] + 6.0, vertex_world[1] + 4.0, event_type="MOUSEMOVE")
-    session.apply(move_event)
-    session.finish("B-MANGA: 枠線移動")
-    if str(getattr(browser_coma, "shape_type", "")) != "polygon" or len(browser_coma.vertices) < 1:
-        raise AssertionError("ページ一覧の頂点ドラッグがコマ形状に反映されません")
-    moved_v = browser_coma.vertices[int(selection["vertex"])]
-    if abs(float(moved_v.x_mm) - (24.0 + 6.0)) > 0.5 or abs(float(moved_v.y_mm) - (48.0 + 4.0)) > 0.5:
+    if (
+        str(getattr(browser_coma, "shape_type", "")) != "rect"
+        or abs(float(browser_coma.rect_x_mm) - 24.0) > 1.0e-6
+        or abs(float(browser_coma.rect_y_mm) - 48.0) > 1.0e-6
+    ):
         raise AssertionError(
-            f"ページ一覧の頂点ドラッグ量が不正です: {(float(moved_v.x_mm), float(moved_v.y_mm))}"
+            "他ページプレビューのヒットテストがコマ形状を変更しました"
         )
 
     selected = set(
@@ -779,10 +750,36 @@ def _select_stack_for_key(context, key: str) -> bool:
         stack_key = item_id
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     if stack is None:
+        print(
+            f"BMANGA_STACK_SELECT_DIAG key={key!r} stack=None",
+            flush=True,
+        )
         return False
     for stack_index, item in enumerate(stack):
         if str(getattr(item, "kind", "")) == kind and str(getattr(item, "key", "")) == stack_key:
-            return layer_stack_utils.select_stack_index(context, stack_index)
+            selected = layer_stack_utils.select_stack_index(context, stack_index)
+            if not selected:
+                resolved = layer_stack_utils.resolve_stack_item(context, item)
+                print(
+                    "BMANGA_STACK_SELECT_DIAG "
+                    f"key={key!r} stack_key={stack_key!r} index={stack_index} "
+                    f"resolved={resolved!r}",
+                    flush=True,
+                )
+            return selected
+    available = [
+        (
+            str(getattr(item, "kind", "")),
+            str(getattr(item, "key", "")),
+            str(getattr(item, "parent_key", "")),
+        )
+        for item in stack
+    ]
+    print(
+        "BMANGA_STACK_SELECT_DIAG "
+        f"key={key!r} stack_key={stack_key!r} available={available!r}",
+        flush=True,
+    )
     return False
 
 
@@ -790,15 +787,16 @@ def _run_tool_visuals(context, data) -> list[dict]:
     from bmanga_dev_tool_visual.utils import layer_stack as layer_stack_utils
     from bmanga_dev_tool_visual.utils import object_selection
 
+    keys = data["selection_keys"]
     tool_specs = [
-        ("オブジェクトツール", "bmanga.object_tool", "INVOKE_DEFAULT", {}, object_selection.balloon_key(data["page"], data["balloon"])),
-        ("GP描画", "bmanga.gpencil_master_mode_set", "EXEC_DEFAULT", {"mode": "PAINT_GREASE_PENCIL"}, object_selection.gp_key(data["gp"])),
-        ("ラスター描画", "bmanga.raster_layer_mode_set", "EXEC_DEFAULT", {"mode": "TEXTURE_PAINT"}, object_selection.raster_key(data["raster"])),
-        ("枠線カットツール", "bmanga.coma_knife_cut", "INVOKE_DEFAULT", {}, object_selection.coma_key(data["page"], data["panel"])),
-        ("レイヤー移動ツール", "bmanga.layer_move_tool", "INVOKE_DEFAULT", {}, object_selection.image_key(data["image"])),
-        ("フキダシツール", "bmanga.balloon_tool", "INVOKE_DEFAULT", {}, object_selection.balloon_key(data["page"], data["balloon"])),
-        ("テキストツール", "bmanga.text_tool", "INVOKE_DEFAULT", {}, object_selection.text_key(data["page"], data["text"])),
-        ("効果線ツール", "bmanga.effect_line_tool", "INVOKE_DEFAULT", {}, object_selection.effect_key(data["effect"])),
+        ("オブジェクトツール", "bmanga.object_tool", "INVOKE_DEFAULT", {}, keys["balloon"]),
+        ("GP描画", "bmanga.gpencil_master_mode_set", "EXEC_DEFAULT", {"mode": "PAINT_GREASE_PENCIL"}, keys["gp"]),
+        ("ラスター描画", "bmanga.raster_layer_mode_set", "EXEC_DEFAULT", {"mode": "TEXTURE_PAINT"}, keys["raster"]),
+        ("枠線カットツール", "bmanga.coma_knife_cut", "INVOKE_DEFAULT", {}, keys["coma"]),
+        ("レイヤー移動ツール", "bmanga.layer_move_tool", "INVOKE_DEFAULT", {}, keys["image"]),
+        ("フキダシツール", "bmanga.balloon_tool", "INVOKE_DEFAULT", {}, keys["balloon"]),
+        ("テキストツール", "bmanga.text_tool", "INVOKE_DEFAULT", {}, keys["text"]),
+        ("効果線ツール", "bmanga.effect_line_tool", "INVOKE_DEFAULT", {}, keys["effect"]),
     ]
     items = []
     for index, (label, op_id, op_context, props, select_key) in enumerate(tool_specs):

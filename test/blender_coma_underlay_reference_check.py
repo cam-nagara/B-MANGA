@@ -86,11 +86,17 @@ def _assert_coma_render_resolution_matches_paper(context) -> None:
         raise AssertionError(f"coma render resolution mismatch: actual={actual} expected={expected}")
 
 
-def _assert_page_images_not_configured_on_camera(context) -> None:
+def _assert_page_images_configured_on_camera(context) -> None:
     backgrounds = _managed_page_or_coma_backgrounds(context)
-    if backgrounds:
-        names = [getattr(getattr(bg, "image", None), "name", "") for bg in backgrounds]
-        raise AssertionError(f"page/coma backgrounds should not be configured on camera: {names}")
+    names = [getattr(getattr(bg, "image", None), "name", "") for bg in backgrounds]
+    if not backgrounds:
+        raise AssertionError("page/coma camera backgrounds were not configured")
+    required_parts = ("koma_content_back_", "koma_content_front_")
+    missing = [part for part in required_parts if not any(part in name for name in names)]
+    if missing:
+        raise AssertionError(
+            f"page/coma camera backgrounds are incomplete: missing={missing}, names={names}"
+        )
 
 
 def main() -> None:
@@ -100,6 +106,8 @@ def main() -> None:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "Underlay.bmanga"))
+        assert result == {"FINISHED"}, result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
         assert result == {"FINISHED"}, result
 
         from bmanga_dev_underlay.utils import coma_camera_refs
@@ -119,10 +127,10 @@ def main() -> None:
         result = bpy.ops.bmanga.enter_coma_mode()
         assert result == {"FINISHED"}, result
         _assert_coma_render_resolution_matches_paper(bpy.context)
-        _assert_page_images_not_configured_on_camera(bpy.context)
+        _assert_page_images_configured_on_camera(bpy.context)
         result = bpy.ops.bmanga.coma_camera_ensure()
         assert result == {"FINISHED"}, result
-        _assert_page_images_not_configured_on_camera(bpy.context)
+        _assert_page_images_configured_on_camera(bpy.context)
         work = bpy.context.scene.bmanga_work
         page_id = str(bpy.context.scene.bmanga_current_coma_page_id)
         coma_id = str(bpy.context.scene.bmanga_current_coma_id)

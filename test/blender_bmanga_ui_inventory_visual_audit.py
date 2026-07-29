@@ -9,7 +9,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
-from types import SimpleNamespace
+from types import MethodType, SimpleNamespace
 from typing import Any
 
 import bpy
@@ -388,6 +388,9 @@ def _collect_panel(records: list[dict[str, Any]], context, cls, group_prefix: st
         return
     layout = _FakeLayout(records, group)
     dummy_self = SimpleNamespace(layout=layout)
+    for name, value in vars(cls).items():
+        if name.startswith("_draw_") and callable(value):
+            setattr(dummy_self, name, MethodType(value, dummy_self))
     try:
         cls.draw(dummy_self, context)
     except Exception as exc:  # noqa: BLE001
@@ -790,9 +793,13 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
+        sys.stdout.flush()
+        sys.stderr.flush()
         os._exit(0)
     except Exception:
         import traceback
 
         traceback.print_exc()
+        sys.stdout.flush()
+        sys.stderr.flush()
         os._exit(1)

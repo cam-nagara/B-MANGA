@@ -112,6 +112,9 @@ def main() -> None:
 
         work = bpy.context.scene.bmanga_work
         work.coma_blend_template_path = str(template_path)
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        assert result == {"FINISHED"}, result
+        work = bpy.context.scene.bmanga_work
         result = bpy.ops.bmanga.enter_coma_mode()
         assert result == {"FINISHED"}, result
 

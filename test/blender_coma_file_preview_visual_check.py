@@ -60,7 +60,7 @@ def _load_addon():
     return mod
 
 
-def _set_coma_variation(work) -> None:
+def _set_coma_variation(work, page_index: int) -> None:
     colors = [
         (1.0, 1.0, 1.0, 1.0),
         (0.62, 0.90, 1.0, 1.0),
@@ -71,19 +71,22 @@ def _set_coma_variation(work) -> None:
         (1.0, 0.93, 0.42, 1.0),
         (0.54, 1.0, 0.88, 1.0),
     ]
-    for i, page in enumerate(work.pages):
-        page.title = f"preview_page_{i + 1:02d}"
-        if len(page.comas) == 0:
-            continue
-        coma = page.comas[0]
-        coma.background_color = colors[i % len(colors)]
-        coma.rect_x_mm = 16.0 + (i % 3) * 5.0
-        coma.rect_y_mm = 22.0 + (i % 2) * 8.0
-        coma.rect_width_mm = 126.0 - (i % 4) * 9.0
-        coma.rect_height_mm = 172.0 - (i % 3) * 13.0
-        border = getattr(coma, "border", None)
-        if border is not None:
-            border.width_mm = 0.8 + (i % 3) * 0.25
+    page = work.pages[page_index]
+    page.title = f"preview_page_{page_index + 1:02d}"
+    if len(page.comas) == 0:
+        work.active_page_index = page_index
+        result = bpy.ops.bmanga.coma_add("EXEC_DEFAULT")
+        if result != {"FINISHED"}:
+            raise AssertionError(f"確認用コマを追加できません: {result}")
+    coma = page.comas[0]
+    coma.background_color = colors[page_index % len(colors)]
+    coma.rect_x_mm = 16.0 + (page_index % 3) * 5.0
+    coma.rect_y_mm = 22.0 + (page_index % 2) * 8.0
+    coma.rect_width_mm = 126.0 - (page_index % 4) * 9.0
+    coma.rect_height_mm = 172.0 - (page_index % 3) * 13.0
+    border = getattr(coma, "border", None)
+    if border is not None:
+        border.width_mm = 0.8 + (page_index % 3) * 0.25
 
 
 def _visible_preview_objects() -> list[bpy.types.Object]:
@@ -221,9 +224,19 @@ def _run() -> None:
     bpy.ops.bmanga.work_new(filepath=str(WORK_DIR))
     for _ in range(7):
         bpy.ops.bmanga.page_add()
+    for page_index in range(8):
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=page_index)
+        if result != {"FINISHED"}:
+            raise AssertionError(f"ページを開けません: index={page_index}: {result}")
+        work = bpy.context.scene.bmanga_work
+        _set_coma_variation(work, page_index)
+        result = bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
+        if result != {"FINISHED"}:
+            raise AssertionError(f"ページを保存できません: index={page_index}: {result}")
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=3)
+    if result != {"FINISHED"}:
+        raise AssertionError(f"コマ編集元ページを開けません: {result}")
     work = bpy.context.scene.bmanga_work
-    _set_coma_variation(work)
-    bpy.ops.bmanga.work_save()
     work.active_page_index = 3
     work.pages[3].active_coma_index = 0
     _mark("enter_coma_mode")

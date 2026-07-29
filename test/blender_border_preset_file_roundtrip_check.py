@@ -113,9 +113,16 @@ def main() -> None:
             raise AssertionError("枠線プリセットが見つかりません")
         _ensure_pages_for_presets(work, len(presets))
         for index, preset in enumerate(presets):
-            page = work.pages[index]
+            result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=index)
+            if "FINISHED" not in result:
+                raise AssertionError(f"{preset.name}: 初期設定用ページを開けません: {result}")
+            work = bpy.context.scene.bmanga_work
+            page = _current_page(work)
             if len(page.comas) == 0:
-                raise AssertionError(f"{preset.name}: 初期コマがありません")
+                work.active_page_index = index
+                result = bpy.ops.bmanga.coma_add("EXEC_DEFAULT")
+                if "FINISHED" not in result:
+                    raise AssertionError(f"{preset.name}: 初期コマを作成できません: {result}")
             coma = page.comas[0]
             coma.title = preset.name
             coma.rect_x_mm = 30.0
@@ -123,8 +130,9 @@ def main() -> None:
             coma.rect_width_mm = 150.0
             coma.rect_height_mm = 185.0
             border_presets.apply_preset_to_coma(preset, coma)
-        if "FINISHED" not in bpy.ops.bmanga.work_save("EXEC_DEFAULT"):
-            raise AssertionError("作品保存に失敗しました")
+            result = bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
+            if "FINISHED" not in result:
+                raise AssertionError(f"{preset.name}: 初期設定を保存できません: {result}")
 
         for index, preset in enumerate(presets):
             result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=index)

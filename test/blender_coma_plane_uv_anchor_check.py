@@ -16,14 +16,15 @@
 """
 from __future__ import annotations
 
-import sys
 import importlib.util
+import sys
 import types
+from pathlib import Path
 
 import bpy
 
 
-ROOT = r"D:/Develop/Blender/B-MANGA/.claude/worktrees/mystifying-jennings-c43858"
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load_module(qualname, path):
@@ -37,25 +38,25 @@ def _load_module(qualname, path):
 def _bootstrap_minimal():
     """coma_plane.py が必要とする最小限の依存だけセットアップする."""
     pkg = types.ModuleType("b_manga_t")
-    pkg.__path__ = [ROOT]
+    pkg.__path__ = [str(ROOT)]
     sys.modules["b_manga_t"] = pkg
     for sub in ("utils", "core"):
         m = types.ModuleType(f"b_manga_t.{sub}")
-        m.__path__ = [f"{ROOT}/{sub}"]
+        m.__path__ = [str(ROOT / sub)]
         sys.modules[f"b_manga_t.{sub}"] = m
-    _load_module("b_manga_t.utils.log", f"{ROOT}/utils/log.py")
-    _load_module("b_manga_t.utils.geom", f"{ROOT}/utils/geom.py")
-    _load_module("b_manga_t.utils.border_geom", f"{ROOT}/utils/border_geom.py")
+    _load_module("b_manga_t.utils.log", ROOT / "utils" / "log.py")
+    _load_module("b_manga_t.utils.geom", ROOT / "utils" / "geom.py")
+    _load_module("b_manga_t.utils.border_geom", ROOT / "utils" / "border_geom.py")
 
 
 def main():
     _bootstrap_minimal()
     # coma_plane は大量の依存があるので、 UV ヘルパだけ局所テストする
-    src = open(f"{ROOT}/utils/coma_plane.py", encoding="utf-8").read()
+    src = (ROOT / "utils" / "coma_plane.py").read_text(encoding="utf-8")
     # 必要な関数だけ抽出して exec
     # シンプルに直接モジュールをロードしてみる
     try:
-        mod = _load_module("b_manga_t.utils.coma_plane", f"{ROOT}/utils/coma_plane.py")
+        mod = _load_module("b_manga_t.utils.coma_plane", ROOT / "utils" / "coma_plane.py")
     except Exception as exc:
         # 一部の import が失敗しても、 UV ヘルパは独立しているので fallback で
         # 関数を再定義する。
@@ -69,8 +70,7 @@ def main():
         mod = None
 
     if mod is None:
-        print("[skip] full module load impossible; UV anchor は実機 (load_post 経由) で別途検証する")
-        return 0
+        raise AssertionError("coma_plane module could not be loaded")
 
     # Build mesh
     mesh = bpy.data.meshes.new("test_coma_plane_mesh")
@@ -179,4 +179,8 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    _result = main()
+    if _result not in (None, 0):
+        raise SystemExit(_result)
+    if __import__("os").environ.get("BMANGA_CERT_WRAPPED") != "1":
+        sys.exit(_result)

@@ -24,7 +24,9 @@ def _check(condition: bool, message: str) -> None:
         FAILURES.append(message)
 
 
-def _close(actual: float, expected: float, tolerance: float = 1.0e-5) -> bool:
+def _close(actual: float, expected: float, tolerance: float = 1.0e-3) -> bool:
+    # 取込Transactionはpage.jsonへ確定して再hydrateする。現行schemaの
+    # 色8bit・数値小数3桁という永続精度の範囲で比較する。
     return abs(float(actual) - float(expected)) <= tolerance
 
 
@@ -139,6 +141,7 @@ def main() -> int:
             text_presets,
         )
         from bmanga_dev_meldex_presentation_v2.utils import color_space
+        from bmanga_dev_meldex_presentation_v2.utils import page_detail
 
         balloon_presets.list_all_presets = lambda _path: []
         text_presets.list_all_presets = lambda _path: [
@@ -170,6 +173,7 @@ def main() -> int:
         )
 
         def text_for(document_id: str):
+            page_detail.ensure_page_detail(work, work.pages[0])
             return next(
                 item for item in work.pages[0].texts
                 if item.meldex_source_document_id == document_id
@@ -282,6 +286,7 @@ def main() -> int:
         _check(v1.writing_mode == "horizontal" and _close(v1.font_size_q, 22.0), "v1は従来どおりプリセットを使用")
 
         # 異常な本文設定は変更前に拒否する。
+        page_detail.ensure_page_detail(work, work.pages[0])
         before = len(work.pages[0].texts)
         invalid = _document("invalid", 2, {"text": {"fontSizePx": 999.0}})
         try:
@@ -298,6 +303,7 @@ def main() -> int:
             FAILURES.append(f"異常値で想定外の例外: {exc!r}")
         else:
             FAILURES.append("異常値の取込が成功してしまった")
+        page_detail.ensure_page_detail(work, work.pages[0])
         _check(len(work.pages[0].texts) == before, "異常値拒否時は作品を変更しない")
     finally:
         try:

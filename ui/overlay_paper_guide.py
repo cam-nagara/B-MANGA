@@ -54,7 +54,9 @@ def draw_for_page(
     safe_pairs, bleed_pairs = _fill_rect_pairs_for_page(work, page, fill_rects)
 
     prev_depth = gpu.state.depth_test_get()
+    prev_blend = gpu.state.blend_get()
     gpu.state.depth_test_set("NONE")
+    gpu.state.blend_set("ALPHA")
     try:
         _draw_bleed_outer_fills(work, bleed_pairs, ox_mm, oy_mm)
         _draw_safe_area_fills(work, safe_pairs, ox_mm, oy_mm)
@@ -70,9 +72,8 @@ def draw_for_page(
             if segments:
                 _draw_segments(segments, color, width_mm, ox_mm, oy_mm)
     finally:
+        gpu.state.blend_set(prev_blend)
         gpu.state.depth_test_set(prev_depth)
-
-
 # -- 幾何計算 (paper_guide_object.py から移植) --
 
 

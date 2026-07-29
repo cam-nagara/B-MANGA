@@ -662,7 +662,10 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
             # 旧仕様維持: bmanga_kind が無い page Collection 直下の Object
             # (master_sketch 等) は page offset に揃える。コマサブ配下の
             # 未識別 Object (= 基本枠コマ Mesh など) には触らない。
-            if id(obj) in direct_child_set:
+            # フキダシの塗り・線などは本体 Object の子でありながら、描画上の
+            # Collection にも直接 link される。親子変換で既にページ位置へ追従
+            # するため、ここでページ offset を local location に再加算しない。
+            if id(obj) in direct_child_set and getattr(obj, "parent", None) is None:
                 _set_xy(
                     obj,
                     mm_to_m(ox_mm + sub_x),
@@ -721,6 +724,12 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
             page_preview_object.sync_page_previews(context, work)
         except Exception:  # noqa: BLE001
             _logger.exception("apply_page_collection_transforms: page preview sync failed")
+    try:
+        from . import work_info_text_object as _work_info_text
+
+        _work_info_text.sync_work_info_texts_after_page_transform(scene, work)
+    except Exception:  # noqa: BLE001
+        _logger.exception("apply_page_collection_transforms: work info text sync failed")
     return updated
 
 

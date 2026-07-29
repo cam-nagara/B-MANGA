@@ -72,6 +72,21 @@ def _assert_close(actual: float, expected: float, label: str, eps: float = 1.0e-
         raise AssertionError(f"{label}: expected {expected}, got {actual}")
 
 
+def _ensure_coma(page, coma_id: str) -> object:
+    if len(page.comas):
+        return page.comas[0]
+    coma = page.comas.add()
+    coma.id = coma_id
+    coma.coma_id = coma_id
+    coma.title = coma_id
+    coma.shape_type = "rect"
+    coma.rect_x_mm = 20.0
+    coma.rect_y_mm = 20.0
+    coma.rect_width_mm = 60.0
+    coma.rect_height_mm = 80.0
+    return coma
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_alt_reparent_phase_a_"))
     mod = None
@@ -91,8 +106,8 @@ def main() -> None:
         work = context.scene.bmanga_work
         page1 = work.pages[0]
         page2 = work.pages[1]
-        coma1 = page1.comas[0]
-        coma2 = page2.comas[0]
+        coma1 = _ensure_coma(page1, "c01")
+        coma2 = _ensure_coma(page2, "c01")
         page1_key = page_stack_key(page1)
         page2_key = page_stack_key(page2)
         coma1_key = coma_stack_key(page1, coma1)

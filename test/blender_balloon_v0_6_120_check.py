@@ -130,8 +130,11 @@ def main() -> None:
     _load_addon()
     result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "V120Check.bmanga"))
     assert "FINISHED" in result, result
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+    assert "FINISHED" in result, result
 
     from bmanga_dev_v120.core.work import get_work
+    from bmanga_dev_v120.operators import balloon_op
     from bmanga_dev_v120.utils import balloon_curve_object
     from bmanga_dev_v120.utils.layer_hierarchy import page_stack_key
 
@@ -216,7 +219,6 @@ def main() -> None:
     # --- 6) ユーザー再現: 谷=100%, 山=94.15% (僅か非一様) + 長さ 90/24 ---
     _delete_all_balloons(page)
     balloon_curve_object.cleanup_orphan_balloon_objects(context.scene)
-    from bmanga_dev_v120.operators import balloon_op
     entry = balloon_op._create_balloon_entry(
         context, page,
         shape="thorn", x=30.0, y=30.0, w=80.0, h=80.0,

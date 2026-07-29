@@ -33,6 +33,8 @@ def main() -> None:
     try:
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "FolderCheck.bmanga"))
         assert result == {"FINISHED"}, result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        assert result == {"FINISHED"}, result
 
         from bmanga_dev_open_current_folder.core.work import get_work
         from bmanga_dev_open_current_folder.operators import folder_op

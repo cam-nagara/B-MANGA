@@ -159,15 +159,33 @@ def _spline_bounds_xy(spline) -> tuple[float, float]:
     return max(co.x for co in coords) - min(co.x for co in coords), max(co.y for co in coords) - min(co.y for co in coords)
 
 
-def _assert_main_line_fill_role(obj, *, expected: bool) -> None:
-    counts = _poly_role_counts(obj)
-    has_role = counts.get(500, 0) > 0
-    assert has_role == expected, f"面としての主線の有無が不正です: expected={expected}, roles={counts}"
+def _line_mesh_object(entry):
+    return bpy.data.objects.get(f"balloon_line_mesh_{entry.id}")
+
+
+def _mesh_bounds_xy(obj) -> tuple[float, float]:
+    coords = [vertex.co for vertex in getattr(getattr(obj, "data", None), "vertices", []) or []]
+    assert coords, "主線メッシュの寸法を確認できません"
+    return max(co.x for co in coords) - min(co.x for co in coords), max(co.y for co in coords) - min(co.y for co in coords)
+
+
+def _assert_main_line_fill_role(obj, entry, *, expected: bool) -> None:
+    line_obj = _line_mesh_object(entry)
+    has_mesh = bool(
+        line_obj is not None
+        and getattr(line_obj, "type", "") == "MESH"
+        and len(getattr(getattr(line_obj, "data", None), "polygons", []) or []) > 0
+        and line_obj.parent is obj
+    )
+    assert has_mesh == expected, (
+        f"焼き込み主線メッシュの有無が不正です: expected={expected}, "
+        f"object={None if line_obj is None else line_obj.name}"
+    )
 
 
 def _assert_smooth_shape_line_has_no_spikes(obj, entry) -> None:
     body_w, body_h = _spline_bounds_xy(obj.data.splines[0])
-    line_w, line_h = _role_bounds_xy(obj, 500)
+    line_w, line_h = _mesh_bounds_xy(_line_mesh_object(entry))
     margin_m = float(getattr(entry, "line_width_mm", 0.3) or 0.3) * 0.001 * 1.8
     assert line_w <= body_w + margin_m and line_h <= body_h + margin_m, (
         "雲の太い主線が谷でトゲ状に伸びています: "
@@ -183,6 +201,8 @@ def main() -> None:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "BalloonMultiLineVisual.bmanga"))
+        assert "FINISHED" in result, result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
         assert "FINISHED" in result, result
 
         from bmanga_dev_balloon_multiline_visual.core.work import get_work
@@ -297,7 +317,7 @@ def main() -> None:
         switched_obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=switched_cloud, page=page)
         assert switched_obj is not None and switched_obj.type == "CURVE"
         _assert_cloud_has_no_stale_thorn_paths(switched_obj)
-        _assert_main_line_fill_role(switched_obj, expected=True)
+        _assert_main_line_fill_role(switched_obj, switched_cloud, expected=True)
         switched_obj.hide_render = True
         switched_obj.hide_viewport = True
 
@@ -327,10 +347,10 @@ def main() -> None:
             _assert_balloon_material_order(obj)
             if str(getattr(entry, "shape", "") or "") == "cloud":
                 _assert_cloud_has_no_stale_thorn_paths(obj)
-                _assert_main_line_fill_role(obj, expected=True)
+                _assert_main_line_fill_role(obj, entry, expected=True)
                 _assert_smooth_shape_line_has_no_spikes(obj, entry)
             if str(getattr(entry, "shape", "") or "") == "thorn":
-                _assert_main_line_fill_role(obj, expected=True)
+                _assert_main_line_fill_role(obj, entry, expected=True)
             objects_and_entries.append((obj, entry))
 
         _set_camera_for_entries(objects_and_entries)

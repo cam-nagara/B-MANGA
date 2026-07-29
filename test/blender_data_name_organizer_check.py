@@ -70,6 +70,11 @@ def _prepare_swapped_work(work_dir: Path):
     _write_marker(Path(work.work_dir) / first_old.id / "origin_page_one.txt", "page-one")
     _write_marker(Path(work.work_dir) / second_old.id / "origin_page_two.txt", "page-two")
 
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=1)
+    if "FINISHED" not in result:
+        raise AssertionError(f"2ページ目を開けません: {result}")
+    work = bpy.context.scene.bmanga_work
+    second_old = work.pages[1]
     _reset_comas(second_old)
     _add_rect_coma(second_old, "c02", "old-c02", 120.0)
     _add_rect_coma(second_old, "c01", "old-c01", 10.0)
@@ -93,6 +98,10 @@ def _prepare_swapped_work(work_dir: Path):
     balloon.parent_kind = "coma"
     balloon.parent_key = f"{second_old.id}:c02"
 
+    result = bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
+    if "FINISHED" not in result:
+        raise AssertionError(f"2ページ目を保存できません: {result}")
+    work = bpy.context.scene.bmanga_work
     work.pages.move(1, 0)
     work.active_page_index = 0
     layer_object_sync.mirror_work_to_outliner(bpy.context.scene, work)
@@ -183,6 +192,10 @@ def main() -> None:
         result = bpy.ops.bmanga.organize_data_names("EXEC_DEFAULT")
         if "FINISHED" not in result:
             raise AssertionError(f"実データ名整理に失敗しました: {result}")
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        if "FINISHED" not in result:
+            raise AssertionError(f"整理後の1ページ目を開けません: {result}")
+        work = bpy.context.scene.bmanga_work
         _assert_organized(work)
 
         result = bpy.ops.bmanga.enter_coma_mode("EXEC_DEFAULT")

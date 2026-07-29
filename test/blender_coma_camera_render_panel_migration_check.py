@@ -152,13 +152,11 @@ def _check_bmanga_view_panel() -> None:
     text_blob = "\n".join(labels)
     for required in (
         "ページ一覧",
-        "ページ一覧表示",
         "全ページ",
         "前後ページ",
         "列数",
         "横間隔mm",
         "縦間隔mm",
-        "ページ一覧不透明度",
         "ページ画像のスケール",
         "コマ内レイヤー",
         "グレースケール表示",
@@ -173,7 +171,6 @@ def _check_bmanga_view_panel() -> None:
     ):
         assert required in text_blob, required
     assert "前後ページ数" not in text_blob
-    assert "bmanga.coma_camera_toggle_name_backgrounds" in operators
     assert "bmanga.page_preview_range_mode_set" in operators
 
 

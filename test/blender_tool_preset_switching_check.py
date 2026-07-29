@@ -559,6 +559,8 @@ def main() -> None:
         mod = _load_addon()
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "ToolPresetSwitching.bmanga"))
         assert "FINISHED" in result, result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+        assert "FINISHED" in result, result
         context = bpy.context
         work = context.scene.bmanga_work
         page = work.pages[0]

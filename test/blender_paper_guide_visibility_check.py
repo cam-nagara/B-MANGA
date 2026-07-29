@@ -166,6 +166,8 @@ def _assert_fill_settings_update_immediately(paper_guide_object, work, page) -> 
     safe_fill = bpy.data.objects.get(f"{paper_guide_object.PAPER_SAFE_FILL_PREFIX}{page.id}")
     if safe_fill is None or bool(safe_fill.hide_viewport):
         raise AssertionError("不透明度を戻した直後にセーフライン外塗りが再表示されていません")
+    if abs(float(safe_fill.color[3]) - 0.31) > 1.0e-6:
+        raise AssertionError("不透明度が塗り実体へ反映されていません")
 
 
 def _assert_guides_above_coma_planes(guide_objects, safe_fill, bleed_outer_fill, page, coma_z_order) -> None:

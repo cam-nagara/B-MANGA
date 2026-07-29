@@ -110,7 +110,9 @@ def _assert_detail_ui(context, coma) -> None:
         coma,
         "coma",
     )
-    assert session.target.stable_id == coma.id
+    assert session.target.stable_id == (
+        f"{context.scene.bmanga_current_page_id}:{coma.id}"
+    )
     assert session.layout.max_columns == 2
 
     texts = {text for _kind, _prop, text in records if text}
@@ -208,6 +210,8 @@ def main() -> None:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "ComaDetailMargin.bmanga"))
+        assert "FINISHED" in result, result
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
         assert "FINISHED" in result, result
 
         context = bpy.context

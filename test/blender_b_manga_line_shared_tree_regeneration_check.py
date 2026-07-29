@@ -333,7 +333,7 @@ def main() -> None:
         print(
             "[PASS] shared intersection GN tree regeneration preserves unselected modifiers"
         )
-        print("ALL TESTS PASSED")
+        print("BMANGA_LINE_SHARED_TREE_REGENERATION_CHECK_OK", flush=True)
     finally:
         try:
             b_manga_line.unregister()

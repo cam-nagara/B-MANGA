@@ -383,9 +383,12 @@ def _resolve_parent_collection(
     if parent_kind == "outside" or parent_kind == "none" or not parent_key:
         return ensure_outside_collection(scene)
     if parent_kind == "page":
-        return on.find_collection_by_bmanga_id(parent_key, kind="page")
+        return ensure_page_collection(scene, parent_key)
     if parent_kind == "coma":
-        return on.find_collection_by_bmanga_id(parent_key, kind="coma")
+        if ":" not in parent_key:
+            return None
+        page_id, coma_id = parent_key.split(":", 1)
+        return ensure_coma_collection(scene, page_id, coma_id)
     if parent_kind == "folder":
         return on.find_collection_by_bmanga_id(parent_key, kind="folder")
     return None

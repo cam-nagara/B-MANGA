@@ -118,6 +118,21 @@ def _add_text(page, text_id: str, parent_key: str):
     return entry
 
 
+def _ensure_coma(page, coma_id: str = "c01"):
+    if len(page.comas):
+        return page.comas[0]
+    entry = page.comas.add()
+    entry.id = coma_id
+    entry.coma_id = coma_id
+    entry.title = coma_id
+    entry.shape_type = "rect"
+    entry.rect_x_mm = 20.0
+    entry.rect_y_mm = 20.0
+    entry.rect_width_mm = 60.0
+    entry.rect_height_mm = 80.0
+    return entry
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_layer_folder_"))
     mod = None
@@ -137,6 +152,8 @@ def main() -> None:
         work = context.scene.bmanga_work
         page1 = work.pages[0]
         page2 = work.pages[1]
+        _ensure_coma(page1)
+        _ensure_coma(page2)
         page1_key = page_stack_key(page1)
         page2_key = page_stack_key(page2)
         page2_coma_key = coma_stack_key(page2, page2.comas[0])

@@ -34,23 +34,23 @@ def draw_for_page(
     ox_mm: float,
     oy_mm: float,
     is_current_page: bool = False,
-) -> None:
+) -> bool:
     if not _HAS_GPU_TEXTURE:
-        return
+        return False
     from ..utils import page_preview_object, page_range
     if is_current_page:
         try:
             from ..utils import page_file_scene
 
             if page_file_scene.is_page_edit_scene(getattr(context, "scene", None)):
-                return
+                return False
         except Exception:  # noqa: BLE001
             pass
     if not page_range.page_in_range(page):
-        return
+        return False
     page_id = str(getattr(page, "id", "") or "")
     if not page_id:
-        return
+        return False
 
     png_path = page_preview_object.preview_png_for_display(
         work,
@@ -58,11 +58,11 @@ def draw_for_page(
         scene=getattr(context, "scene", None),
     )
     if png_path is None or not png_path.is_file():
-        return
+        return False
 
     paper = getattr(work, "paper", None)
     if paper is None:
-        return
+        return False
     cw = max(1.0, float(getattr(paper, "canvas_width_mm", 1.0) or 1.0))
     ch = max(1.0, float(getattr(paper, "canvas_height_mm", 1.0) or 1.0))
     from ..utils import page_grid
@@ -70,9 +70,9 @@ def draw_for_page(
 
     opacity = _preview_opacity(context)
     if opacity <= 0.0:
-        return
+        return False
 
-    _draw_textured_quad(
+    return _draw_textured_quad(
         str(png_path),
         ox_mm, oy_mm,
         page_w, ch,
@@ -222,12 +222,12 @@ def _draw_textured_quad(
     w_mm: float,
     h_mm: float,
     opacity: float,
-) -> None:
+) -> bool:
     try:
         img = bpy.data.images.load(png_path, check_existing=True)
     except Exception:  # noqa: BLE001
-        return
-    _draw_textured_image(
+        return False
+    return _draw_textured_image(
         img,
         x_mm,
         y_mm,
@@ -249,16 +249,16 @@ def _draw_textured_image(
     *,
     z_m: float,
     depth_test: str,
-) -> None:
+) -> bool:
     shader = _get_preview_shader()
     fallback_shader = gpu.shader.from_builtin("IMAGE") if shader is None else None
     active_shader = shader or fallback_shader
     if active_shader is None:
-        return
+        return False
     try:
         tex = gpu_texture.from_image(img)
     except Exception:  # noqa: BLE001
-        return
+        return False
     z = float(z_m)
     verts = [
         (mm_to_m(x_mm), mm_to_m(y_mm), z),
@@ -288,3 +288,4 @@ def _draw_textured_image(
     finally:
         gpu.state.blend_set(prev_blend)
         gpu.state.depth_test_set(prev_depth)
+    return True

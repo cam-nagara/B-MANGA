@@ -84,6 +84,8 @@ def main():
     tmp = Path(tempfile.mkdtemp(prefix="bmanga_overlap_"))
     res = bpy.ops.bmanga.work_new(filepath=str(tmp / "Overlap.bmanga"))
     assert "FINISHED" in res, res
+    res = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+    assert "FINISHED" in res, res
 
     scene = bpy.context.scene
     work = get_work(bpy.context)
