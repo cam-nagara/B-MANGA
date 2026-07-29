@@ -617,6 +617,9 @@ def main():
         _test_border_reference_survives_preset_management(work, page)
         _test_balloon_reference_survives_preset_management(work, page, balloon)
         text = _new_text(page)
+        first_page_id = str(page.id)
+        first_balloon_id = str(balloon.id)
+        first_text_id = str(text.id)
         second_page = work.pages.add()
         second_page.id = "p0002"
         second_page.title = "2ページ"
@@ -629,6 +632,13 @@ def main():
             second_balloon,
             same_id_other_page_balloon=balloon,
         )
+        # CollectionProperty.add() 後は古いRNA参照を保持しない。固定対象IDの
+        # 検証が空IDを誤って受け取らないよう、正本コレクションから再取得する。
+        page = next(item for item in work.pages if str(item.id) == first_page_id)
+        balloon = next(
+            item for item in page.balloons if str(item.id) == first_balloon_id
+        )
+        text = next(item for item in page.texts if str(item.id) == first_text_id)
         _test_ruby_cancel(page, text)
         _test_preset_regeneration_failure_rolls_back(page, text)
         _test_preset_json_survives_parent_cancel(page, text)

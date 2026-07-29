@@ -125,6 +125,45 @@ def test_resolvers_reject_fallback_to_a_different_target():
         DETAIL.resolve_detail_target_from_stack("missing", lambda _key: None)
 
 
+def test_three_entry_requests_and_close_transactions_are_explicit():
+    stack = DETAIL.DetailTargetRequest(
+        DETAIL.DetailEntryPoint.LAYER_LIST,
+        stack_uid="image:image-2",
+    )
+    context_menu = DETAIL.DetailTargetRequest(
+        DETAIL.DetailEntryPoint.CONTEXT_MENU,
+        stable_id="image-2",
+        kind="image",
+    )
+    preset = DETAIL.DetailTargetRequest(
+        DETAIL.DetailEntryPoint.PRESET_GEAR,
+        preset_type="text",
+        preset_name="本文",
+    )
+    assert stack.entry_point is DETAIL.DetailEntryPoint.LAYER_LIST
+    assert context_menu.entry_point is DETAIL.DetailEntryPoint.CONTEXT_MENU
+    assert preset.entry_point is DETAIL.DetailEntryPoint.PRESET_GEAR
+    with pytest.raises(DETAIL.DetailContractError):
+        DETAIL.DetailTargetRequest(DETAIL.DetailEntryPoint.LAYER_LIST)
+    with pytest.raises(DETAIL.DetailContractError):
+        DETAIL.DetailTargetRequest(
+            DETAIL.DetailEntryPoint.PRESET_GEAR,
+            preset_type="text",
+        )
+    expected = {
+        DETAIL.DetailCloseAction.OK: DETAIL.DetailTransactionDisposition.COMMIT,
+        DETAIL.DetailCloseAction.CANCEL: DETAIL.DetailTransactionDisposition.ROLLBACK,
+        DETAIL.DetailCloseAction.ESC: DETAIL.DetailTransactionDisposition.ROLLBACK,
+        DETAIL.DetailCloseAction.OPENING_ABORT: DETAIL.DetailTransactionDisposition.ROLLBACK,
+        DETAIL.DetailCloseAction.PRESET_SWITCH: (
+            DETAIL.DetailTransactionDisposition.ROLLBACK_AND_RESTART
+        ),
+    }
+    assert DETAIL.DETAIL_TRANSACTION_BOUNDARIES == expected
+    for action, disposition in expected.items():
+        assert DETAIL.detail_transaction_disposition(action) is disposition
+
+
 def test_kind_maximum_determines_width_once_while_visible_columns_switch():
     target = _target("balloon", data=Obj(line_style="solid", shape="ellipse"))
     initial = DETAIL.resolve_detail_layout(target, DETAIL.DetailMode.ACTUAL)

@@ -193,6 +193,13 @@ def _assert_smooth_shape_line_has_no_spikes(obj, entry) -> None:
     )
 
 
+def _entry_by_id(page, stable_id: str):
+    for entry in page.balloons:
+        if str(getattr(entry, "id", "") or "") == stable_id:
+            return entry
+    raise AssertionError(f"フキダシを安定IDから再解決できません: {stable_id}")
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_balloon_multiline_visual_work_"))
     mod = None
@@ -229,6 +236,7 @@ def main() -> None:
         )
         _configure_multiline(ellipse, direction="outside")
         ellipse.fill_color = (1.0, 1.0, 1.0, 1.0)
+        ellipse_id = str(ellipse.id)
 
         thorn = balloon_op._create_balloon_entry(
             context,
@@ -247,6 +255,7 @@ def main() -> None:
         thorn.thorn_multi_line_valley_width_mm = 0.18
         thorn.thorn_multi_line_peak_width_mm = 0.48
         thorn.thorn_multi_line_length_scale_percent = 72.0
+        thorn_id = str(thorn.id)
 
         behind_thorn = balloon_op._create_balloon_entry(
             context,
@@ -264,6 +273,7 @@ def main() -> None:
         behind_thorn.multi_line_width_mm = 0.22
         behind_thorn.multi_line_spacing_mm = 1.0
         behind_thorn.fill_color = (0.96, 0.96, 0.96, 1.0)
+        behind_thorn_id = str(behind_thorn.id)
 
         cloud = balloon_op._create_balloon_entry(
             context,
@@ -281,6 +291,7 @@ def main() -> None:
         cloud.multi_line_width_mm = 0.28
         cloud.multi_line_spacing_mm = 0.7
         cloud.fill_color = (1.0, 1.0, 1.0, 1.0)
+        cloud_id = str(cloud.id)
 
         thick_cloud = balloon_op._create_balloon_entry(
             context,
@@ -297,6 +308,7 @@ def main() -> None:
         thick_cloud.line_style = "solid"
         thick_cloud.line_width_mm = 7.0
         thick_cloud.fill_color = (1.0, 0.93, 0.98, 1.0)
+        thick_cloud_id = str(thick_cloud.id)
 
         switched_cloud = balloon_op._create_balloon_entry(
             context,
@@ -334,14 +346,25 @@ def main() -> None:
         )
         _configure_multiline(freeform, direction="inside")
         freeform.fill_color = (1.0, 0.82, 0.92, 1.0)
+        freeform_id = str(freeform.id)
         obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=freeform, page=page)
         assert obj is not None
         obj.data.splines[0].bezier_points[1].co.x += 0.008
         obj.data.splines[0].bezier_points[2].co.y += 0.006
         balloon_op._set_balloon_rect(page, freeform, 42.0, 92.0, 62.0, 40.0)
 
+        stable_ids = (
+            ellipse_id,
+            thorn_id,
+            behind_thorn_id,
+            cloud_id,
+            thick_cloud_id,
+            freeform_id,
+        )
+        assert all(stable_ids) and len(set(stable_ids)) == len(stable_ids)
         objects_and_entries = []
-        for entry in (ellipse, thorn, behind_thorn, cloud, thick_cloud, freeform):
+        for stable_id in stable_ids:
+            entry = _entry_by_id(page, stable_id)
             obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
             assert obj is not None and obj.type == "CURVE"
             _assert_balloon_material_order(obj)

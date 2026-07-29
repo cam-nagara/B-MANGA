@@ -49,9 +49,14 @@ class BMANGA_OT_layer_detail_open(Operator):
     @classmethod
     def poll(cls, context):
         try:
-            from ..utils import detail_target_resolver
+            from ..utils import detail_dialog, detail_target_resolver
 
-            detail_target_resolver.resolve_target_from_selected_object(context)
+            detail_target_resolver.resolve_detail_entry_target(
+                context,
+                detail_dialog.DetailTargetRequest(
+                    detail_dialog.DetailEntryPoint.CONTEXT_MENU
+                ),
+            )
             return True
         except Exception:
             return False
@@ -114,17 +119,15 @@ class BMANGA_OT_layer_detail_open(Operator):
     def _resolve_fixed_target(self, context):
         from ..utils import detail_dialog, detail_target_resolver
 
-        if self.kind and self.bmanga_id:
-            selected = detail_target_resolver.resolve_target_from_object(
-                context,
-                self.bmanga_id,
-                self.kind,
-            )
-        else:
-            selected = detail_target_resolver.resolve_target_from_selected_object(context)
-        return detail_dialog.resolve_detail_target_from_object(
-            selected.stable_id,
-            lambda stable_id: selected if stable_id == selected.stable_id else None,
+        # resolve_detail_target_from_objectを内包する共通3入口resolverを使う。
+        return detail_target_resolver.resolve_detail_entry_target(
+            context,
+            detail_dialog.DetailTargetRequest(
+                detail_dialog.DetailEntryPoint.CONTEXT_MENU,
+                stable_id=self.bmanga_id,
+                kind=self.kind,
+                object_or_id=(self.bmanga_id if self.bmanga_id else None),
+            ),
         )
 
     def draw(self, context):

@@ -32,7 +32,7 @@ from bmanga_core.observability import (
     reset_observability,
     set_event_sink,
 )
-from tools.certification.executor import _status
+from tools.certification.executor import _command, _status
 from tools.certification import cli as certification_cli
 from tools.certification.golden import approve, propose, verify
 from tools.certification.manifest import validate_manifest
@@ -56,6 +56,34 @@ def _case(source: Path, **updates) -> Case:
     }
     values.update(updates)
     return Case(**values)
+
+
+def test_blender_cases_use_case_local_user_preferences(tmp_path):
+    source = tmp_path / "sample.py"
+    source.write_text("print('ok')\n", encoding="utf-8")
+    case = _case(source, mode="blender_headless")
+    first_dir = tmp_path / "case-a"
+    second_dir = tmp_path / "case-b"
+    _, _, first_env = _command(
+        ROOT,
+        case,
+        first_dir,
+        Path("blender.exe"),
+    )
+    _, _, second_env = _command(
+        ROOT,
+        case,
+        second_dir,
+        Path("blender.exe"),
+    )
+    assert first_env["BLENDER_USER_CONFIG"] == str(
+        first_dir / "blender_user_config"
+    )
+    assert second_env["BLENDER_USER_CONFIG"] == str(
+        second_dir / "blender_user_config"
+    )
+    assert first_env["BLENDER_USER_CONFIG"] != second_env["BLENDER_USER_CONFIG"]
+    assert Path(first_env["BLENDER_USER_CONFIG"]).is_dir()
 
 
 def test_manifest_rejects_unregistered_and_changed_sources(tmp_path: Path):

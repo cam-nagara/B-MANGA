@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import os
 import queue
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,6 +22,7 @@ TOKEN_HEADER = "X-B-MANGA-Token"
 DEFAULT_PORT = 47817
 MAX_BODY_BYTES = 2 * 1024 * 1024
 QUEUE_CAPACITY = 8
+DISABLE_RECEIVER_ENV = "BMANGA_DISABLE_MELDEX_RECEIVER"
 
 _server: Optional[ThreadingHTTPServer] = None
 _server_thread: Optional[threading.Thread] = None
@@ -120,6 +122,9 @@ class _MeldexHandler(BaseHTTPRequestHandler):
 def start(port: int = DEFAULT_PORT, token: str = "") -> bool:
     global _server, _server_thread, _timer_registered
     if _server is not None:
+        return True
+    if os.environ.get(DISABLE_RECEIVER_ENV, "").strip() == "1":
+        _logger.info("Meldex receiver disabled by process environment")
         return True
     if not token:
         _logger.error("Meldex receiver token is missing")

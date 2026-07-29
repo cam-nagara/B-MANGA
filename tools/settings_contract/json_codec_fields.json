@@ -1,0 +1,2197 @@
+{
+  "schema_version": 1,
+  "generator": "test.blender_settings_contract_characterization_check",
+  "field_bindings": {
+    "field:bmanga:property.group.0c279e21ab56bce1.92d74db62ac6:id.a56145270ce6": [
+      "io.schema.layer_folder_to_dict/io.schema.layer_folder_from_dict"
+    ],
+    "field:bmanga:property.group.0c279e21ab56bce1.92d74db62ac6:locked.14493f5f5470": [
+      "io.schema.layer_folder_to_dict/io.schema.layer_folder_from_dict"
+    ],
+    "field:bmanga:property.group.0c279e21ab56bce1.92d74db62ac6:parent.key.544df906276b": [
+      "io.schema.layer_folder_to_dict/io.schema.layer_folder_from_dict"
+    ],
+    "field:bmanga:property.group.0c279e21ab56bce1.92d74db62ac6:title.aaf232064610": [
+      "io.schema.layer_folder_to_dict/io.schema.layer_folder_from_dict"
+    ],
+    "field:bmanga:property.group.0c279e21ab56bce1.92d74db62ac6:visible.d42ef1497900": [
+      "io.schema.layer_folder_to_dict/io.schema.layer_folder_from_dict"
+    ],
+    "field:bmanga:property.group.164564e22723b4a0.5c6f55a95624:color.74284d9dcbcc": [
+      "nested:BMangaTextEntry.style_spans"
+    ],
+    "field:bmanga:property.group.164564e22723b4a0.5c6f55a95624:font.795ea3efa43d": [
+      "nested:BMangaTextEntry.style_spans"
+    ],
+    "field:bmanga:property.group.164564e22723b4a0.5c6f55a95624:font.bold.aab171d493e1": [
+      "nested:BMangaTextEntry.style_spans"
+    ],
+    "field:bmanga:property.group.164564e22723b4a0.5c6f55a95624:font.italic.f23d636b3dbc": [
+      "nested:BMangaTextEntry.style_spans"
+    ],
+    "field:bmanga:property.group.164564e22723b4a0.5c6f55a95624:font.size.q.a9196f1f80dd": [
+      "nested:BMangaTextEntry.style_spans"
+    ],
+    "field:bmanga:property.group.164564e22723b4a0.5c6f55a95624:length.0f82aca66af9": [
+      "nested:BMangaTextEntry.style_spans"
+    ],
+    "field:bmanga:property.group.164564e22723b4a0.5c6f55a95624:start.cced28c6dc3f": [
+      "nested:BMangaTextEntry.style_spans"
+    ],
+    "field:bmanga:property.group.1797f4eb424d915b.7bd59e0e7d28:blur.amount.61ad2a364763": [
+      "io.schema.coma_border_to_dict/io.schema.coma_border_from_dict"
+    ],
+    "field:bmanga:property.group.1797f4eb424d915b.7bd59e0e7d28:blur.curve.points.03462f07bbfd": [
+      "io.schema.coma_border_to_dict/io.schema.coma_border_from_dict"
+    ],
+    "field:bmanga:property.group.1797f4eb424d915b.7bd59e0e7d28:blur.dither.04a32524e90d": [
+      "io.schema.coma_border_to_dict/io.schema.coma_border_from_dict"
+    ],
+    "field:bmanga:property.group.1797f4eb424d915b.7bd59e0e7d28:color.74284d9dcbcc": [
+      "io.schema.coma_border_to_dict/io.schema.coma_border_from_dict"
+    ],
+    "field:bmanga:property.group.1797f4eb424d915b.7bd59e0e7d28:corner.radius.mm.336cf234064a": [
+      "io.schema.coma_border_to_dict/io.schema.coma_border_from_dict"
+    ],
+    "field:bmanga:property.group.1797f4eb424d915b.7bd59e0e7d28:corner.type.9ea3c1ce5791": [
+      "io.schema.coma_border_to_dict/io.schema.coma_border_from_dict"
+    ],
+    "field:bmanga:property.group.1797f4eb424d915b.7bd59e0e7d28:preset.name.78e56c7450ed": [
+      "io.schema.coma_border_to_dict/io.schema.coma_border_from_dict"
+    ],
+    "field:bmanga:property.group.1797f4eb424d915b.7bd59e0e7d28:style.cb86eb2d914d": [
+      "io.schema.coma_border_to_dict/io.schema.coma_border_from_dict"
+    ],
+    "field:bmanga:property.group.1797f4eb424d915b.7bd59e0e7d28:visible.d42ef1497900": [
+      "io.schema.coma_border_to_dict/io.schema.coma_border_from_dict"
+    ],
+    "field:bmanga:property.group.1797f4eb424d915b.7bd59e0e7d28:width.mm.5b9b0c56fef0": [
+      "io.schema.coma_border_to_dict/io.schema.coma_border_from_dict"
+    ],
+    "field:bmanga:property.group.18ff5ce6b22f8393.443a9a20d91f:author.636485868971": [
+      "io.schema.work_info_to_dict/io.schema.work_info_from_dict"
+    ],
+    "field:bmanga:property.group.18ff5ce6b22f8393.443a9a20d91f:display.author.3a117953a1e0": [
+      "io.schema.work_info_to_dict/io.schema.work_info_from_dict"
+    ],
+    "field:bmanga:property.group.18ff5ce6b22f8393.443a9a20d91f:display.episode.b8320c86ccad": [
+      "io.schema.work_info_to_dict/io.schema.work_info_from_dict"
+    ],
+    "field:bmanga:property.group.18ff5ce6b22f8393.443a9a20d91f:display.page.number.bda82e32d131": [
+      "io.schema.work_info_to_dict/io.schema.work_info_from_dict"
+    ],
+    "field:bmanga:property.group.18ff5ce6b22f8393.443a9a20d91f:display.subtitle.d585cb1db25a": [
+      "io.schema.work_info_to_dict/io.schema.work_info_from_dict"
+    ],
+    "field:bmanga:property.group.18ff5ce6b22f8393.443a9a20d91f:display.work.name.614e5dee8fc9": [
+      "io.schema.work_info_to_dict/io.schema.work_info_from_dict"
+    ],
+    "field:bmanga:property.group.18ff5ce6b22f8393.443a9a20d91f:episode.number.8e2f496996c0": [
+      "io.schema.work_info_to_dict/io.schema.work_info_from_dict"
+    ],
+    "field:bmanga:property.group.18ff5ce6b22f8393.443a9a20d91f:font.795ea3efa43d": [
+      "io.schema.work_info_to_dict/io.schema.work_info_from_dict"
+    ],
+    "field:bmanga:property.group.18ff5ce6b22f8393.443a9a20d91f:page.number.end.dbb2aabfc500": [
+      "io.schema.work_info_to_dict/io.schema.work_info_from_dict"
+    ],
+    "field:bmanga:property.group.18ff5ce6b22f8393.443a9a20d91f:page.number.start.0ad1d0eb45c1": [
+      "io.schema.work_info_to_dict/io.schema.work_info_from_dict"
+    ],
+    "field:bmanga:property.group.18ff5ce6b22f8393.443a9a20d91f:subtitle.a02c387e87f6": [
+      "io.schema.work_info_to_dict/io.schema.work_info_from_dict"
+    ],
+    "field:bmanga:property.group.18ff5ce6b22f8393.443a9a20d91f:work.name.ea8080edd0a5": [
+      "io.schema.work_info_to_dict/io.schema.work_info_from_dict"
+    ],
+    "field:bmanga:property.group.21b1957948b38ea6.9a1cb699d2b4:border.color.6773b8ee92b1": [
+      "io.schema.nombre_to_dict/io.schema.nombre_from_dict"
+    ],
+    "field:bmanga:property.group.21b1957948b38ea6.9a1cb699d2b4:border.enabled.542739793c41": [
+      "io.schema.nombre_to_dict/io.schema.nombre_from_dict"
+    ],
+    "field:bmanga:property.group.21b1957948b38ea6.9a1cb699d2b4:border.width.mm.887b4a6b6dd6": [
+      "io.schema.nombre_to_dict/io.schema.nombre_from_dict"
+    ],
+    "field:bmanga:property.group.21b1957948b38ea6.9a1cb699d2b4:color.74284d9dcbcc": [
+      "io.schema.nombre_to_dict/io.schema.nombre_from_dict"
+    ],
+    "field:bmanga:property.group.21b1957948b38ea6.9a1cb699d2b4:enabled.fb9cf75606b4": [
+      "io.schema.nombre_to_dict/io.schema.nombre_from_dict"
+    ],
+    "field:bmanga:property.group.21b1957948b38ea6.9a1cb699d2b4:font.795ea3efa43d": [
+      "io.schema.nombre_to_dict/io.schema.nombre_from_dict"
+    ],
+    "field:bmanga:property.group.21b1957948b38ea6.9a1cb699d2b4:font.size.pt.4f6d2095f681": [
+      "io.schema.nombre_to_dict/io.schema.nombre_from_dict"
+    ],
+    "field:bmanga:property.group.21b1957948b38ea6.9a1cb699d2b4:format.e904c9ccfa42": [
+      "io.schema.nombre_to_dict/io.schema.nombre_from_dict"
+    ],
+    "field:bmanga:property.group.21b1957948b38ea6.9a1cb699d2b4:gap.horizontal.mm.bd9d7150f4f5": [
+      "io.schema.nombre_to_dict/io.schema.nombre_from_dict"
+    ],
+    "field:bmanga:property.group.21b1957948b38ea6.9a1cb699d2b4:gap.vertical.mm.0218dacd9278": [
+      "io.schema.nombre_to_dict/io.schema.nombre_from_dict"
+    ],
+    "field:bmanga:property.group.21b1957948b38ea6.9a1cb699d2b4:hidden.nombre.9293d21b230c": [
+      "io.schema.nombre_to_dict/io.schema.nombre_from_dict"
+    ],
+    "field:bmanga:property.group.21b1957948b38ea6.9a1cb699d2b4:position.5a452459503b": [
+      "io.schema.nombre_to_dict/io.schema.nombre_from_dict"
+    ],
+    "field:bmanga:property.group.21b1957948b38ea6.9a1cb699d2b4:start.number.d998e072e16c": [
+      "io.schema.nombre_to_dict/io.schema.nombre_from_dict"
+    ],
+    "field:bmanga:property.group.5fb012660c20d49e.7c9990000a0a:layer.id.5fb012660c20": [
+      "nested:BMangaComaEntry.layer_refs"
+    ],
+    "field:bmanga:property.group.618467c54470d665.c6c5b41518c2:font.795ea3efa43d": [
+      "nested:BMangaTextEntry.font_spans"
+    ],
+    "field:bmanga:property.group.618467c54470d665.c6c5b41518c2:length.0f82aca66af9": [
+      "nested:BMangaTextEntry.font_spans"
+    ],
+    "field:bmanga:property.group.618467c54470d665.c6c5b41518c2:start.cced28c6dc3f": [
+      "nested:BMangaTextEntry.font_spans"
+    ],
+    "field:bmanga:property.group.62c3bcbeba0a2e70.315b4e24bdbf:corner.type.9ea3c1ce5791": [
+      "nested:BMangaBalloonEntry.tails[].points"
+    ],
+    "field:bmanga:property.group.62c3bcbeba0a2e70.315b4e24bdbf:x.mm.17f888647d92": [
+      "nested:BMangaBalloonEntry.tails[].points"
+    ],
+    "field:bmanga:property.group.62c3bcbeba0a2e70.315b4e24bdbf:y.mm.e91a754e59cd": [
+      "nested:BMangaBalloonEntry.tails[].points"
+    ],
+    "field:bmanga:property.group.73524857f35bcd75.39264e13ee63:balloons.e8a4d338288b": [
+      "io.schema.page_to_dict/io.schema.page_from_dict"
+    ],
+    "field:bmanga:property.group.73524857f35bcd75.39264e13ee63:comas.25c2a6108d3e": [
+      "io.schema.page_to_dict/io.schema.page_from_dict"
+    ],
+    "field:bmanga:property.group.73524857f35bcd75.39264e13ee63:dir.rel.8d6f0032191d": [
+      "io.schema.page_entry_to_dict/io.schema.page_entry_from_dict"
+    ],
+    "field:bmanga:property.group.73524857f35bcd75.39264e13ee63:id.a56145270ce6": [
+      "io.schema.page_entry_to_dict/io.schema.page_entry_from_dict",
+      "io.schema.page_to_dict/io.schema.page_from_dict"
+    ],
+    "field:bmanga:property.group.73524857f35bcd75.39264e13ee63:offset.x.mm.bec181cbed52": [
+      "io.schema.page_entry_to_dict/io.schema.page_entry_from_dict",
+      "io.schema.page_to_dict/io.schema.page_from_dict"
+    ],
+    "field:bmanga:property.group.73524857f35bcd75.39264e13ee63:offset.y.mm.f61b16713e24": [
+      "io.schema.page_entry_to_dict/io.schema.page_entry_from_dict",
+      "io.schema.page_to_dict/io.schema.page_from_dict"
+    ],
+    "field:bmanga:property.group.73524857f35bcd75.39264e13ee63:spread.909802b269de": [
+      "io.schema.page_entry_to_dict/io.schema.page_entry_from_dict"
+    ],
+    "field:bmanga:property.group.73524857f35bcd75.39264e13ee63:texts.a4b992ab4296": [
+      "io.schema.page_to_dict/io.schema.page_from_dict"
+    ],
+    "field:bmanga:property.group.73524857f35bcd75.39264e13ee63:title.aaf232064610": [
+      "io.schema.page_entry_to_dict/io.schema.page_entry_from_dict",
+      "io.schema.page_to_dict/io.schema.page_from_dict"
+    ],
+    "field:bmanga:property.group.73524857f35bcd75.39264e13ee63:tombo.aligned.66d1740bec93": [
+      "io.schema.page_entry_to_dict/io.schema.page_entry_from_dict"
+    ],
+    "field:bmanga:property.group.73524857f35bcd75.39264e13ee63:tombo.gap.mm.afdab39f84dd": [
+      "io.schema.page_entry_to_dict/io.schema.page_entry_from_dict"
+    ],
+    "field:bmanga:property.group.73524857f35bcd75.39264e13ee63:visible.d42ef1497900": [
+      "io.schema.page_entry_to_dict/io.schema.page_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:body.230d8358dc8e": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:color.74284d9dcbcc": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:folder.key.23c58d9ec0e6": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:font.795ea3efa43d": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:font.bold.aab171d493e1": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:font.italic.f23d636b3dbc": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:font.size.pt.4f6d2095f681": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:font.size.q.a9196f1f80dd": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:font.size.unit.3d33b1adde55": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:free.transform.bottom.left.d8844b59aa43": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:free.transform.bottom.right.5087fddae758": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:free.transform.top.left.c2428a24abaf": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:free.transform.top.right.51bbbfe652d1": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:height.mm.a58f49b71fe5": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:id.a56145270ce6": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:letter.spacing.ce8960ebde3b": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:line.height.29ea1256ea5b": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:linked.balloon.preset.a2fdb548ccfa": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:locked.14493f5f5470": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:meldex.source.document.id.30e8a5f3f323": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:meldex.source.row.id.5915c755b89e": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:meldex.type.8c4a29601200": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:opacity.ad9a0b2eddd5": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:parent.balloon.id.e45af5407d45": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:parent.key.544df906276b": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:parent.kind.40a53cd5a65b": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:rotation.deg.ae1204a6e6a6": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.align.6c74a7514cb1": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.default.style.303e38143a02": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.font.e530e0828c96": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.font.preset.9b000ccb3206": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.gap.mm.443c48eadbc3": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.letter.spacing.a3c92930fd75": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.line.height.98b4b701219b": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.size.percent.f83fbc55ca40": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.small.kana.818db829ffa3": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.spans.03bd340dad5b": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:speaker.name.634b270ab99d": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:stroke.color.7ccfe3651e27": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:stroke.enabled.74f3203be59d": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:stroke.width.mm.0fa54d591c47": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:style.spans.ddc454a47dc2": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:tatechuyoko.auto.fac63276b2c1": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:tatechuyoko.ranges.7caba5b05db8": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:visible.d42ef1497900": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:width.mm.5b9b0c56fef0": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:writing.mode.c8a6791746a1": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:x.mm.17f888647d92": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:y.mm.e91a754e59cd": [
+      "io.schema.text_entry_to_dict/io.schema.text_entry_from_dict"
+    ],
+    "field:bmanga:property.group.949fc8dc7cdc4a8e.9fe703ad00bd:length.0f82aca66af9": [
+      "nested:BMangaTextEntry.ruby_spans[].segments"
+    ],
+    "field:bmanga:property.group.949fc8dc7cdc4a8e.9fe703ad00bd:ruby.text.53f16e124d35": [
+      "nested:BMangaTextEntry.ruby_spans[].segments"
+    ],
+    "field:bmanga:property.group.949fc8dc7cdc4a8e.9fe703ad00bd:start.cced28c6dc3f": [
+      "nested:BMangaTextEntry.ruby_spans[].segments"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:base.path.enabled.c968bf37f418": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:base.path.points.json.a6136003f4bb": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:brush.jitter.amount.31e82a01e8eb": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:brush.jitter.enabled.f581aaaaf6fa": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:brush.size.mm.09a8227efe94": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:bundle.enabled.b5afab1e5762": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:bundle.gap.jitter.amount.e5d1c9ed2015": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:bundle.gap.mm.d398825bcdee": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:bundle.jagged.enabled.9cb18e337f39": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:bundle.jagged.height.percent.57e8c51f184b": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:bundle.line.count.666c316db6d0": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:bundle.line.count.jitter.3c53f0894cfe": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:effect.type.b17da3ce2915": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:end.cloud.bump.height.jitter.b9895d7c5b4d": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:end.cloud.bump.height.mm.34c1a2eede13": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:end.cloud.bump.width.jitter.c317ec2b0a3c": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:end.cloud.bump.width.mm.ff5e21215f3e": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:end.cloud.offset.percent.c412b99dc323": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:end.cloud.sub.height.jitter.363ae9be6660": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:end.cloud.sub.height.ratio.f3b0d0b5238a": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:end.cloud.sub.width.jitter.9fdfc1a86a9d": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:end.cloud.sub.width.ratio.128448e9bc82": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:end.corner.type.c6c5843aec46": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:end.length.jitter.amount.558f8b37ce8d": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:end.length.jitter.enabled.9f7702e5c8f6": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:end.rounded.corner.enabled.9ca125ee5f6f": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:end.rounded.corner.radius.mm.ef2f314ceea4": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:end.rounded.corner.radius.percent.0908922f72b7": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:end.rounded.corner.radius.unit.4bb10c208cf1": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:end.shape.d6bdfb52ef20": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:fill.base.shape.40f0d63cf703": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:fill.color.847f64dd3764": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:fill.opacity.104d05273081": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:in.easing.curve.8e0228954765": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:in.percent.70ec3521a5c2": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:in.range.mm.e3a5c9db1a44": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:in.range.percent.d5a32b393dd4": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:in.start.percent.a670401fe610": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:inout.apply.192aaedd186d": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:inout.apply.brush.size.d1e3bfaba0b4": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:inout.apply.opacity.d2f44f02bb5a": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:inout.range.mode.fef86f31896b": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:length.jitter.amount.36f4a9b5285d": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:length.jitter.enabled.2db1d9a145c7": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:line.color.99e75db55607": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:line.image.angle.deg.b2255d965117": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:line.image.aspect.ratio.e662bc3f94d2": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:line.image.brush.size.mm.22ddb28fb837": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:line.image.color.e51e1c9cd630": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:line.image.draw.mode.a558cd3b2005": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:line.image.inout.color.enabled.20f298b99ebb": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:line.image.inout.end.color.02ee285429bf": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:line.image.inout.opacity.enabled.c988c50294a3": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:line.image.inout.size.enabled.6a965c76d5d9": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:line.image.inout.start.color.68fb657d27df": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:line.image.path.2333691b02d0": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:line.image.ribbon.repeat.mode.ac2e1afb4972": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:line.image.shape.kind.751ac835d49c": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:line.image.shape.sides.1c932656691c": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:line.image.source.8eb091402f2b": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:line.image.spacing.percent.d259cf11ceba": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:line.image.stamp.angle.mode.e7558df4e4fc": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:line.image.stamp.angle.object.name.4b997ee3d968": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:max.line.count.8013be6610ca": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:opacity.ad9a0b2eddd5": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:out.easing.curve.c6e00080edc2": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:out.percent.9c1cd82c476a": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:out.range.mm.a41129c5cda8": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:out.range.percent.e89407aaf620": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:out.start.percent.47ed3e832071": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:rotation.deg.ae1204a6e6a6": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:spacing.angle.deg.f04f3cd88c8c": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:spacing.distance.mm.e0b3ce3025c2": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:spacing.jitter.amount.77dc5b819295": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:spacing.jitter.enabled.59bac271b343": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:spacing.mode.137657189060": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:speed.angle.deg.2da6ae2a07e3": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:speed.line.count.b70afbc55441": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:start.cloud.bump.height.jitter.6e6980f8db01": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:start.cloud.bump.height.mm.6c509efbdd1f": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:start.cloud.bump.width.jitter.3ea35b246155": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:start.cloud.bump.width.mm.fc385f90b5b5": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:start.cloud.offset.percent.c7430ac721ed": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:start.cloud.sub.height.jitter.16aa86526fb3": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:start.cloud.sub.height.ratio.38d67b8b8084": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:start.cloud.sub.width.jitter.4731363811d6": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:start.cloud.sub.width.ratio.9975ce0e4a3b": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:start.corner.type.8a995bcc4585": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:start.distance.enabled.cfd5578b581d": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:start.distance.mm.e4be4027a095": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:start.rounded.corner.enabled.c987491d5412": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:start.rounded.corner.radius.mm.5e0690270b66": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:start.rounded.corner.radius.percent.abd170178550": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:start.rounded.corner.radius.unit.12c0e57c4c5d": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:start.shape.a4b64fe4dab6": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:start.to.coma.frame.f951e99df3d0": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:uni.flash.offset.percent.68a464ec818f": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.angle.deg.a73b074d0689": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.black.attenuation.2c466b31c4a4": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.black.brush.mm.38f053c09dc9": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.black.direction.bfb71b517c90": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.black.in.easing.curve.9a57b06eccd1": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.black.in.percent.e0704675c481": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.black.in.range.mm.7f988d91cae2": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.black.in.range.percent.0f08e7311b63": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.black.inout.range.mode.acf225522f8b": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.black.length.scale.far.percent.121281ac95c0": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.black.length.scale.near.percent.75ac3f27f632": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.black.line.count.14bb8d44730a": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.black.line.count.auto.5058acc40ead": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.black.out.easing.curve.e18c299dddaa": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.black.out.percent.c13ad961d394": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.black.out.range.mm.ddfa8d38beed": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.black.out.range.percent.c46f6601498e": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.black.ratio.percent.a12053ae6e6c": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.black.spacing.mm.5ea91851546f": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.black.spacing.scale.percent.cbe057be62f8": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.black.width.scale.percent.7c75cd7f4901": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.bundle.placement.5471e361fd69": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.bundle.spacing.deg.b0b806d695c0": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.bundle.spacing.jitter.9459415bcb0c": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.count.7baed91013eb": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.length.jitter.enabled.e9601b5449ab": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.length.min.percent.ddf6f61b42e8": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.length.percent.e4cc144b541d": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.position.percent.d9914b1b5378": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.spacing.mm.b55eccc7e554": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.white.attenuation.5ed71ed7dbf7": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.white.brush.mm.99b3e55b4194": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.white.in.easing.curve.1afed8969c7c": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.white.in.percent.79eca81479a8": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.white.in.range.mm.6eb1e806d67b": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.white.in.range.percent.9718816b5036": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.white.inout.range.mode.f24570487e27": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.white.line.count.07995885af18": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.white.line.count.auto.71aad63da5ee": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.white.out.easing.curve.c70fd97a6c7f": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.white.out.percent.7d52e29d5904": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.white.out.range.mm.554ced9533e7": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.white.out.range.percent.881bbad88526": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.white.ratio.percent.b8086ed66f68": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.white.spacing.scale.percent.90d99d51d550": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.width.jitter.enabled.aa1f671bb23e": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.width.min.percent.28889c1fc3e7": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.outline.width.mm.f6f849111a34": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.underlay.color.9bb5144e21f7": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.underlay.enabled.95e1347da1fa": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:white.underlay.width.percent.a54af4bfdd7f": [
+      "core.effect_line.effect_params_to_dict/core.effect_line.effect_params_from_dict"
+    ],
+    "field:bmanga:property.group.997ad0906e944883.a86e49aae7ec:color.74284d9dcbcc": [
+      "io.schema.display_item_to_dict/io.schema.display_item_from_dict"
+    ],
+    "field:bmanga:property.group.997ad0906e944883.a86e49aae7ec:enabled.fb9cf75606b4": [
+      "io.schema.display_item_to_dict/io.schema.display_item_from_dict"
+    ],
+    "field:bmanga:property.group.997ad0906e944883.a86e49aae7ec:font.size.pt.4f6d2095f681": [
+      "io.schema.display_item_to_dict/io.schema.display_item_from_dict"
+    ],
+    "field:bmanga:property.group.997ad0906e944883.a86e49aae7ec:font.size.q.a9196f1f80dd": [
+      "io.schema.display_item_to_dict/io.schema.display_item_from_dict"
+    ],
+    "field:bmanga:property.group.997ad0906e944883.a86e49aae7ec:font.size.unit.3d33b1adde55": [
+      "io.schema.display_item_to_dict/io.schema.display_item_from_dict"
+    ],
+    "field:bmanga:property.group.997ad0906e944883.a86e49aae7ec:position.5a452459503b": [
+      "io.schema.display_item_to_dict/io.schema.display_item_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:brush.jitter.amount.31e82a01e8eb": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:brush.jitter.enabled.f581aaaaf6fa": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:brush.size.mm.09a8227efe94": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:bundle.enabled.b5afab1e5762": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:bundle.gap.jitter.amount.e5d1c9ed2015": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:bundle.gap.mm.d398825bcdee": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:bundle.jagged.enabled.9cb18e337f39": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:bundle.jagged.height.percent.57e8c51f184b": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:bundle.line.count.666c316db6d0": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:bundle.line.count.jitter.3c53f0894cfe": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:center.offset.x.mm.d9b62bcdef1c": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:center.offset.y.mm.364ccd37fbc6": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:corner.type.9ea3c1ce5791": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:custom.outline.json.12f2db13a6b3": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:custom.preset.name.581fc3a54386": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:dashed.gap.mm.462370931190": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:dashed.segment.length.mm.f9d286098695": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:dotted.gap.mm.55c39fdf7a26": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.cloud.bump.height.jitter.b9895d7c5b4d": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.cloud.bump.height.mm.34c1a2eede13": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.cloud.bump.width.jitter.c317ec2b0a3c": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.cloud.bump.width.mm.ff5e21215f3e": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.cloud.offset.percent.c412b99dc323": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.cloud.sub.height.jitter.363ae9be6660": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.cloud.sub.height.ratio.f3b0d0b5238a": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.cloud.sub.width.jitter.9fdfc1a86a9d": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.cloud.sub.width.ratio.128448e9bc82": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.corner.type.c6c5843aec46": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.length.jitter.amount.558f8b37ce8d": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.length.jitter.enabled.9f7702e5c8f6": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.rounded.corner.radius.mm.ef2f314ceea4": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.rounded.corner.radius.percent.0908922f72b7": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.rounded.corner.radius.unit.4bb10c208cf1": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.shape.d6bdfb52ef20": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.base.shape.40f0d63cf703": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.blur.amount.a20e8830a0ae": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.blur.axis.fc10eeb11d05": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.blur.dither.7fb669b0bfa0": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.color.847f64dd3764": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.gradient.angle.deg.059667ac38e0": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.gradient.enabled.ef2199ee3ec8": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.gradient.end.color.5d1d2d396c29": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.gradient.start.color.3fa5d2f07014": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.material.name.50f858775820": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.opacity.104d05273081": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.line.count.b7ddda40c66e": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.line.spacing.mm.813e866c110b": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.white.line.enabled.2763721802d2": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.white.line.peak.width.pct.2ee7ac79997d": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.white.line.valley.width.pct.2da1adc0177e": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.white.line.width.percent.fec36def1e98": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.white.outline.black.line.count.7a75effa9da0": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.white.outline.black.spacing.mm.68617e8db320": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.white.outline.count.f29eca99235f": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.white.outline.spacing.mm.d96057d1ed05": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.white.outline.white.brush.mm.c5c427e0eedc": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.white.outline.white.line.count.b3cbec456131": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.white.outline.width.mm.ec90231d6097": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:folder.key.23c58d9ec0e6": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:free.transform.bottom.left.d8844b59aa43": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:free.transform.bottom.right.5087fddae758": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:free.transform.line.width.scale.ee29f95d4fd9": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:free.transform.top.left.c2428a24abaf": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:free.transform.top.right.51bbbfe652d1": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:height.mm.a58f49b71fe5": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:id.a56145270ce6": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:in.easing.curve.8e0228954765": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:in.percent.70ec3521a5c2": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:in.range.mm.e3a5c9db1a44": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:in.range.percent.d5a32b393dd4": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:in.start.percent.a670401fe610": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:inner.white.margin.color.9c2c777a8371": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:inner.white.margin.enabled.cb9783a80d90": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:inner.white.margin.width.mm.ea27e9bafc68": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:inout.apply.192aaedd186d": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:inout.apply.brush.size.d1e3bfaba0b4": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:inout.apply.opacity.d2f44f02bb5a": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:inout.range.mode.fef86f31896b": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:length.jitter.amount.36f4a9b5285d": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:length.jitter.enabled.2db1d9a145c7": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.color.99e75db55607": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.image.angle.deg.b2255d965117": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.image.interval.mm.411a16160ce1": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.image.jitter.ea2e3cf172e9": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.image.path.2333691b02d0": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.material.mapping.7056721a15c4": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.material.name.e8ecc3173627": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.material.seam.fix.7b589c3dfe8a": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.material.stretch.single.e90b881a8b00": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.peak.width.pct.2f5fa7fb3ba4": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.shape.angle.deg.168b3e12b9eb": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.shape.jitter.42f46315c7bb": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.shape.kind.84d7cab7f148": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.shape.orient.bd56082ac1f3": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.shape.spacing.mm.34b200a7bf6e": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.style.7a6ff881ea13": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.valley.width.pct.621a727fc6e4": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.width.mm.1efb212f3eed": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:linked.text.offset.x.mm.77c10f3eca44": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:linked.text.offset.y.mm.640c100647af": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:linked.text.padding.x.mm.187bf0f87606": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:linked.text.padding.y.mm.77906f961bbc": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:locked.14493f5f5470": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:max.line.count.8013be6610ca": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:meldex.source.document.id.30e8a5f3f323": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:meldex.source.row.id.5915c755b89e": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:meldex.type.8c4a29601200": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:merge.group.id.433a44f7a531": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:multi.line.count.3faf485be3be": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:multi.line.direction.07585a95a070": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:multi.line.spacing.mm.90da0bde02e9": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:multi.line.spacing.scale.percent.f9a22e19e571": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:multi.line.width.mm.aa69c744195f": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:multi.line.width.scale.percent.6ef6c3d5f952": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:opacity.ad9a0b2eddd5": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:out.easing.curve.c6e00080edc2": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:out.percent.9c1cd82c476a": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:out.range.mm.a41129c5cda8": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:out.range.percent.e89407aaf620": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:out.start.percent.47ed3e832071": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:outer.white.margin.color.34fa4651ffac": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:outer.white.margin.enabled.f326eafb42e5": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:outer.white.margin.width.mm.3d9099014a4f": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:parent.key.544df906276b": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:parent.kind.40a53cd5a65b": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:path.line.enabled.a1da572bd560": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:rotation.deg.ae1204a6e6a6": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:rounded.corner.radius.mm.0b9f1bd65a0b": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:rounded.corner.radius.percent.1124b2940567": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:rounded.corner.radius.unit.55818dcf6493": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:shape.f58940a31399": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:shape.params.6a0f44cdadea": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:spacing.angle.deg.f04f3cd88c8c": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:spacing.density.compensation.c0ed8f82d10f": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:spacing.distance.mm.e0b3ce3025c2": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:spacing.jitter.amount.77dc5b819295": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:spacing.jitter.enabled.59bac271b343": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:spacing.mode.137657189060": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.cloud.bump.height.jitter.6e6980f8db01": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.cloud.bump.height.mm.6c509efbdd1f": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.cloud.bump.width.jitter.3ea35b246155": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.cloud.bump.width.mm.fc385f90b5b5": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.cloud.offset.percent.c7430ac721ed": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.cloud.sub.height.jitter.16aa86526fb3": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.cloud.sub.height.ratio.38d67b8b8084": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.cloud.sub.width.jitter.4731363811d6": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.cloud.sub.width.ratio.9975ce0e4a3b": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.corner.type.8a995bcc4585": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.distance.enabled.cfd5578b581d": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.distance.mm.e4be4027a095": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.rounded.corner.radius.mm.5e0690270b66": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.rounded.corner.radius.percent.abd170178550": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.rounded.corner.radius.unit.12c0e57c4c5d": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.shape.a4b64fe4dab6": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.to.coma.frame.f951e99df3d0": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:tails.ae7a4a6cba2f": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:text.id.3fecb1936722": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:thorn.multi.line.cross.enabled.9c6f5e546fbc": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:thorn.multi.line.length.scale.far.percent.5b03ec194085": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:thorn.multi.line.length.scale.near.percent.7d93d00be609": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:thorn.multi.line.length.scale.percent.f96d7e6cd3ca": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:thorn.multi.line.peak.width.pct.b83c7347d7f3": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:thorn.multi.line.valley.width.pct.361fe2a9b92c": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:uni.flash.offset.percent.68a464ec818f": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:visible.d42ef1497900": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.angle.deg.a73b074d0689": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.attenuation.2c466b31c4a4": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.direction.bfb71b517c90": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.in.easing.curve.9a57b06eccd1": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.in.percent.e0704675c481": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.in.range.mm.7f988d91cae2": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.in.range.percent.0f08e7311b63": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.inout.range.mode.acf225522f8b": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.length.scale.far.percent.121281ac95c0": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.length.scale.near.percent.75ac3f27f632": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.line.count.auto.5058acc40ead": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.out.easing.curve.e18c299dddaa": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.out.percent.c13ad961d394": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.out.range.mm.ddfa8d38beed": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.out.range.percent.c46f6601498e": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.ratio.percent.a12053ae6e6c": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.spacing.scale.percent.cbe057be62f8": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.width.scale.percent.7c75cd7f4901": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.bundle.placement.5471e361fd69": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.bundle.spacing.deg.b0b806d695c0": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.bundle.spacing.jitter.9459415bcb0c": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.length.jitter.enabled.e9601b5449ab": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.length.min.percent.ddf6f61b42e8": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.length.percent.e4cc144b541d": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.position.percent.d9914b1b5378": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.attenuation.5ed71ed7dbf7": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.in.easing.curve.1afed8969c7c": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.in.percent.79eca81479a8": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.in.range.mm.6eb1e806d67b": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.in.range.percent.9718816b5036": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.inout.range.mode.f24570487e27": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.line.count.auto.71aad63da5ee": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.out.easing.curve.c70fd97a6c7f": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.out.percent.7d52e29d5904": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.out.range.mm.554ced9533e7": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.out.range.percent.881bbad88526": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.ratio.percent.b8086ed66f68": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.spacing.scale.percent.90d99d51d550": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.width.jitter.enabled.aa1f671bb23e": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.width.min.percent.28889c1fc3e7": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.underlay.color.9bb5144e21f7": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.underlay.enabled.95e1347da1fa": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.underlay.width.percent.a54af4bfdd7f": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:width.mm.5b9b0c56fef0": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:x.mm.17f888647d92": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:y.mm.e91a754e59cd": [
+      "io.schema.balloon_entry_to_dict/io.schema.balloon_entry_from_dict"
+    ],
+    "field:bmanga:property.group.abb413c6acc0de63.2ace7a4f3e71:color.74284d9dcbcc": [
+      "io.schema.coma_white_margin_to_dict/io.schema.coma_white_margin_from_dict"
+    ],
+    "field:bmanga:property.group.abb413c6acc0de63.2ace7a4f3e71:enabled.fb9cf75606b4": [
+      "io.schema.coma_white_margin_to_dict/io.schema.coma_white_margin_from_dict"
+    ],
+    "field:bmanga:property.group.abb413c6acc0de63.2ace7a4f3e71:inner.color.8b03cb3ccc5d": [
+      "io.schema.coma_white_margin_to_dict/io.schema.coma_white_margin_from_dict"
+    ],
+    "field:bmanga:property.group.abb413c6acc0de63.2ace7a4f3e71:outer.color.d43930499e8a": [
+      "io.schema.coma_white_margin_to_dict/io.schema.coma_white_margin_from_dict"
+    ],
+    "field:bmanga:property.group.abb413c6acc0de63.2ace7a4f3e71:placement.1480fb125459": [
+      "io.schema.coma_white_margin_to_dict/io.schema.coma_white_margin_from_dict"
+    ],
+    "field:bmanga:property.group.abb413c6acc0de63.2ace7a4f3e71:width.mm.5b9b0c56fef0": [
+      "io.schema.coma_white_margin_to_dict/io.schema.coma_white_margin_from_dict"
+    ],
+    "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:auto.render.coma.thumb.on.return.f3a98d61fafb": [
+      "io.schema.work_to_dict/io.schema.work_from_dict"
+    ],
+    "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:balloon.id.counter.8e3c859270d8": [
+      "io.schema.work_to_dict/io.schema.work_from_dict"
+    ],
+    "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:coma.blend.template.path.f3b468489ba9": [
+      "io.schema.work_to_dict/io.schema.work_from_dict"
+    ],
+    "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:coma.gap.cf1f16737563": [
+      "io.schema.work_to_dict/io.schema.work_from_dict"
+    ],
+    "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:layer.folders.c4ad51be5840": [
+      "io.schema.work_to_dict/io.schema.work_from_dict"
+    ],
+    "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:nombre.0bfe93928a49": [
+      "io.schema.work_to_dict/io.schema.work_from_dict"
+    ],
+    "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:page.preview.scale.percentage.bbe5e184dd0a": [
+      "io.schema.work_to_dict/io.schema.work_from_dict"
+    ],
+    "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:paper.382635c9325b": [
+      "io.schema.work_to_dict/io.schema.work_from_dict"
+    ],
+    "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:safe.area.overlay.87800e597866": [
+      "io.schema.work_to_dict/io.schema.work_from_dict"
+    ],
+    "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:shared.balloons.3e341ed46ea4": [
+      "io.schema.work_to_dict/io.schema.work_from_dict"
+    ],
+    "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:shared.comas.d9a684673839": [
+      "io.schema.work_to_dict/io.schema.work_from_dict"
+    ],
+    "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:shared.texts.d7ddded84437": [
+      "io.schema.work_to_dict/io.schema.work_from_dict"
+    ],
+    "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:view.overlay.enabled.45188ad9627d": [
+      "io.schema.work_to_dict/io.schema.work_from_dict"
+    ],
+    "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:view.overview.cols.731a9d40a409": [
+      "io.schema.work_to_dict/io.schema.work_from_dict"
+    ],
+    "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:view.overview.gap.mm.e2c83c36c677": [
+      "io.schema.work_to_dict/io.schema.work_from_dict"
+    ],
+    "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:view.page.browser.fit.49495c082ef5": [
+      "io.schema.work_to_dict/io.schema.work_from_dict"
+    ],
+    "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:view.page.browser.size.772c1d606200": [
+      "io.schema.work_to_dict/io.schema.work_from_dict"
+    ],
+    "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:view.page.preview.enabled.7a0f3e2abf29": [
+      "io.schema.work_to_dict/io.schema.work_from_dict"
+    ],
+    "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:view.page.preview.page.radius.3eef657e4800": [
+      "io.schema.work_to_dict/io.schema.work_from_dict"
+    ],
+    "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:view.page.preview.resolution.percentage.c72369d4289c": [
+      "io.schema.work_to_dict/io.schema.work_from_dict"
+    ],
+    "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:work.info.a4ce3b3fe70c": [
+      "io.schema.work_to_dict/io.schema.work_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:color.74284d9dcbcc": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:color2.bd706c814e53": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:fill.type.e074ab1f6728": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:folder.key.23c58d9ec0e6": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:gradient.angle.4e702488c94a": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:gradient.end.x.mm.4ea865b8a51f": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:gradient.end.y.mm.4a9e7a9372cb": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:gradient.start.x.mm.5c92ad0fcac9": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:gradient.start.y.mm.376efbc61b82": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:gradient.type.dfacfba3876d": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:id.a56145270ce6": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:lasso.points.json.b55dbcf67f48": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:locked.14493f5f5470": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:opacity.ad9a0b2eddd5": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:parent.key.544df906276b": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:parent.kind.40a53cd5a65b": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:region.height.mm.d23d69171947": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:region.width.mm.fb5238709a4f": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:region.x.mm.6d2cd2de47c6": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:region.y.mm.1d654b6c9a5a": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:rotation.deg.ae1204a6e6a6": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:title.aaf232064610": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:use.gradient.endpoints.e73a046f0380": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:use.region.a6e682151c39": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:visible.d42ef1497900": [
+      "io.schema.fill_layer_to_dict/io.schema.fill_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c1edf6b938af4077.96691208da82:binarize.enabled.441b82483c4a": [
+      "io.schema.image_layer_to_dict/io.schema.image_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c1edf6b938af4077.96691208da82:binarize.threshold.c4d9ff4a90d8": [
+      "io.schema.image_layer_to_dict/io.schema.image_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c1edf6b938af4077.96691208da82:blend.mode.ca5d95fdf15a": [
+      "io.schema.image_layer_to_dict/io.schema.image_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c1edf6b938af4077.96691208da82:brightness.aa6ed6c957fc": [
+      "io.schema.image_layer_to_dict/io.schema.image_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c1edf6b938af4077.96691208da82:contrast.3426125bf109": [
+      "io.schema.image_layer_to_dict/io.schema.image_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c1edf6b938af4077.96691208da82:filepath.5fa60d8ed32b": [
+      "io.schema.image_layer_to_dict/io.schema.image_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c1edf6b938af4077.96691208da82:flip.x.aa5dcb6a6189": [
+      "io.schema.image_layer_to_dict/io.schema.image_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c1edf6b938af4077.96691208da82:flip.y.f24a529d6652": [
+      "io.schema.image_layer_to_dict/io.schema.image_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c1edf6b938af4077.96691208da82:folder.key.23c58d9ec0e6": [
+      "io.schema.image_layer_to_dict/io.schema.image_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c1edf6b938af4077.96691208da82:height.mm.a58f49b71fe5": [
+      "io.schema.image_layer_to_dict/io.schema.image_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c1edf6b938af4077.96691208da82:id.a56145270ce6": [
+      "io.schema.image_layer_to_dict/io.schema.image_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c1edf6b938af4077.96691208da82:locked.14493f5f5470": [
+      "io.schema.image_layer_to_dict/io.schema.image_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c1edf6b938af4077.96691208da82:opacity.ad9a0b2eddd5": [
+      "io.schema.image_layer_to_dict/io.schema.image_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c1edf6b938af4077.96691208da82:parent.key.544df906276b": [
+      "io.schema.image_layer_to_dict/io.schema.image_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c1edf6b938af4077.96691208da82:parent.kind.40a53cd5a65b": [
+      "io.schema.image_layer_to_dict/io.schema.image_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c1edf6b938af4077.96691208da82:rotation.deg.ae1204a6e6a6": [
+      "io.schema.image_layer_to_dict/io.schema.image_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c1edf6b938af4077.96691208da82:tint.color.974e742d9e40": [
+      "io.schema.image_layer_to_dict/io.schema.image_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c1edf6b938af4077.96691208da82:title.aaf232064610": [
+      "io.schema.image_layer_to_dict/io.schema.image_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c1edf6b938af4077.96691208da82:visible.d42ef1497900": [
+      "io.schema.image_layer_to_dict/io.schema.image_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c1edf6b938af4077.96691208da82:width.mm.5b9b0c56fef0": [
+      "io.schema.image_layer_to_dict/io.schema.image_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c1edf6b938af4077.96691208da82:x.mm.17f888647d92": [
+      "io.schema.image_layer_to_dict/io.schema.image_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c1edf6b938af4077.96691208da82:y.mm.e91a754e59cd": [
+      "io.schema.image_layer_to_dict/io.schema.image_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:bit.depth.571c36a8bca6": [
+      "io.schema.raster_layer_to_dict/io.schema.raster_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:dpi.a80ad1fef638": [
+      "io.schema.raster_layer_to_dict/io.schema.raster_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:filepath.rel.ee52af0bfe23": [
+      "io.schema.raster_layer_to_dict/io.schema.raster_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:fill.color.847f64dd3764": [
+      "io.schema.raster_layer_to_dict/io.schema.raster_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:folder.key.23c58d9ec0e6": [
+      "io.schema.raster_layer_to_dict/io.schema.raster_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:id.a56145270ce6": [
+      "io.schema.raster_layer_to_dict/io.schema.raster_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:image.name.55ca33cb4e5e": [
+      "io.schema.raster_layer_to_dict/io.schema.raster_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:line.color.99e75db55607": [
+      "io.schema.raster_layer_to_dict/io.schema.raster_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:locked.14493f5f5470": [
+      "io.schema.raster_layer_to_dict/io.schema.raster_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:opacity.ad9a0b2eddd5": [
+      "io.schema.raster_layer_to_dict/io.schema.raster_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:parent.key.544df906276b": [
+      "io.schema.raster_layer_to_dict/io.schema.raster_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:parent.kind.40a53cd5a65b": [
+      "io.schema.raster_layer_to_dict/io.schema.raster_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:scope.5f161c914988": [
+      "io.schema.raster_layer_to_dict/io.schema.raster_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:title.aaf232064610": [
+      "io.schema.raster_layer_to_dict/io.schema.raster_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:visible.d42ef1497900": [
+      "io.schema.raster_layer_to_dict/io.schema.raster_layer_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:bleed.mm.20ee66d57170": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:canvas.height.mm.6fe691d7c26c": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:canvas.width.mm.2206bc4ea322": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:color.mode.b437431f9bb0": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:color.profile.7a0013e6ddef": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:coma.border.width.mm.647df7b93fe7": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:coma.number.prefix.163953697fa2": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:coma.number.suffix.43b37355d866": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:default.line.count.4d7d23cebeaa": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:dpi.a80ad1fef638": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:finish.height.mm.5711d1204eed": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:finish.width.mm.fd35bf63af35": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:inner.frame.height.mm.969250a6cf3d": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:inner.frame.offset.x.mm.feedf3784c04": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:inner.frame.offset.y.mm.908053b97c00": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:inner.frame.width.mm.ee61c99d1d78": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:page.number.digits.4f5bb9138f66": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:page.number.prefix.b5c232dbcd55": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:page.number.suffix.3582aff3cc07": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:paper.color.d1ea278e6dff": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:preset.name.78e56c7450ed": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:read.direction.fe5f5d07206a": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:safe.bottom.mm.462fdf72d63d": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:safe.fore.edge.mm.772f0949a8cc": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:safe.gutter.mm.516339d741d7": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:safe.top.mm.dfc0df7c0ec9": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:show.bleed.frame.f244b5ef5234": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:show.canvas.frame.4f7f789dc2e7": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:show.finish.frame.18241046ff06": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:show.guides.a89cccadeebe": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:show.inner.frame.ee85decf3ce5": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:show.safe.line.13474a1c68a6": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:show.trim.marks.eced00ce3e17": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:start.side.f4a52cce4408": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:unit.385cfdbc00ec": [
+      "io.schema.paper_to_dict/io.schema.paper_from_dict"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:curve.bend.b8b98bbc6104": [
+      "nested:BMangaBalloonEntry.tails"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:curve.mode.edd7180f73f9": [
+      "nested:BMangaBalloonEntry.tails"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:custom.points.enabled.f73d4126ec55": [
+      "nested:BMangaBalloonEntry.tails"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:direction.deg.6f2ca0bef353": [
+      "nested:BMangaBalloonEntry.tails"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:ellipse.angle.deg.4f4957048dd6": [
+      "nested:BMangaBalloonEntry.tails"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:ellipse.gap.mm.b3bf4277187a": [
+      "nested:BMangaBalloonEntry.tails"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:ellipse.orient.37f8de7997cf": [
+      "nested:BMangaBalloonEntry.tails"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:end.x.mm.72996387d4e4": [
+      "nested:BMangaBalloonEntry.tails"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:end.y.mm.4dfc041fa35e": [
+      "nested:BMangaBalloonEntry.tails"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:length.mm.2c4ed4983ea0": [
+      "nested:BMangaBalloonEntry.tails"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:line.type.fa28e1bddda6": [
+      "nested:BMangaBalloonEntry.tails"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:points.c54a061dfcc1": [
+      "nested:BMangaBalloonEntry.tails"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:root.width.mm.da871cbac02e": [
+      "nested:BMangaBalloonEntry.tails"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:sharp.corners.ebcf940d67b9": [
+      "nested:BMangaBalloonEntry.tails"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:start.x.mm.0d70decc873b": [
+      "nested:BMangaBalloonEntry.tails"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:start.y.mm.55eb1ac8858f": [
+      "nested:BMangaBalloonEntry.tails"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:taper.in.percent.a4f6752e06d6": [
+      "nested:BMangaBalloonEntry.tails"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:taper.out.percent.d3271bc805e2": [
+      "nested:BMangaBalloonEntry.tails"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:tip.width.mm.6d49cde321fe": [
+      "nested:BMangaBalloonEntry.tails"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:type.1303c06b0b01": [
+      "nested:BMangaBalloonEntry.tails"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:background.color.84fad1b38b53": [
+      "io.schema.coma_entry_to_dict/io.schema.coma_entry_from_dict"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:border.4f1a55de40bc": [
+      "io.schema.coma_entry_to_dict/io.schema.coma_entry_from_dict"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:coma.blend.template.needs.apply.b700117a6f88": [
+      "io.schema.coma_entry_to_dict/io.schema.coma_entry_from_dict"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:coma.blend.template.path.f3b468489ba9": [
+      "io.schema.coma_entry_to_dict/io.schema.coma_entry_from_dict"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:coma.gap.horizontal.mm.9e1384eef8f1": [
+      "io.schema.coma_entry_to_dict/io.schema.coma_entry_from_dict"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:coma.gap.vertical.mm.c2a48a2709ca": [
+      "io.schema.coma_entry_to_dict/io.schema.coma_entry_from_dict"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:coma.id.200858f7c470": [
+      "io.schema.coma_entry_to_dict/io.schema.coma_entry_from_dict"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:display.number.8ccc6192ef7e": [
+      "io.schema.coma_entry_to_dict/io.schema.coma_entry_from_dict"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:id.a56145270ce6": [
+      "io.schema.coma_entry_to_dict/io.schema.coma_entry_from_dict"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:layer.refs.c1c4531d8ba3": [
+      "io.schema.coma_entry_to_dict/io.schema.coma_entry_from_dict"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:locked.14493f5f5470": [
+      "io.schema.coma_entry_to_dict/io.schema.coma_entry_from_dict"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:overlap.clipping.36f3e6583ac4": [
+      "io.schema.coma_entry_to_dict/io.schema.coma_entry_from_dict"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:paper.visible.553499de5fc3": [
+      "io.schema.coma_entry_to_dict/io.schema.coma_entry_from_dict"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:rect.height.mm.29a2415f9165": [
+      "io.schema.coma_entry_to_dict/io.schema.coma_entry_from_dict"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:rect.width.mm.285699aa9172": [
+      "io.schema.coma_entry_to_dict/io.schema.coma_entry_from_dict"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:rect.x.mm.623a4952d83f": [
+      "io.schema.coma_entry_to_dict/io.schema.coma_entry_from_dict"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:rect.y.mm.29489bd7fe00": [
+      "io.schema.coma_entry_to_dict/io.schema.coma_entry_from_dict"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:shape.type.2b7fe285e559": [
+      "io.schema.coma_entry_to_dict/io.schema.coma_entry_from_dict"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:title.aaf232064610": [
+      "io.schema.coma_entry_to_dict/io.schema.coma_entry_from_dict"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:vertices.da9d870e98d2": [
+      "io.schema.coma_entry_to_dict/io.schema.coma_entry_from_dict"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:visible.d42ef1497900": [
+      "io.schema.coma_entry_to_dict/io.schema.coma_entry_from_dict"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:white.margin.cf3a2ebee505": [
+      "io.schema.coma_entry_to_dict/io.schema.coma_entry_from_dict"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:z.order.bbadac51009d": [
+      "io.schema.coma_entry_to_dict/io.schema.coma_entry_from_dict"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.bump.bulge.percent.8ff1babdc8b7": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.bump.height.jitter.822e7e967960": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.bump.height.mm.a8ddd0cef2cd": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.bump.width.jitter.171cff20a664": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.bump.width.mm.ef00ab3f036b": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.offset.percent.cc1b61464bf0": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.sub.height.jitter.3c9905e56e4f": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.sub.height.ratio.a9174e0eb3ae": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.sub.width.jitter.294aae31c3fa": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.sub.width.ratio.c02bd68b03d8": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.valley.sharp.c87d7762ec3a": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.wave.amplitude.mm.6839e149b872": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.wave.count.2835929f42e0": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:dynamic.base.rounded.corner.enabled.fa0961351d02": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:dynamic.base.rounded.corner.radius.mm.aab49aa3c83e": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:dynamic.base.rounded.corner.radius.percent.8d2a28f9c511": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:dynamic.base.rounded.corner.radius.unit.1a46d3d2281e": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:dynamic.shape.base.kind.a934bc6f2477": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:shape.seed.9883ceb90af0": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:sharp.corner.method.0aad5e6f9411": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:sharp.peak.width.scale.73d044fa0c43": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:sharp.valley.width.scale.1db19047684d": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:spike.count.5a3a89384f03": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:spike.depth.mm.8072aadb857b": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:spike.jitter.ab43c055fc1b": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:thorn.corner.square.percent.9cadde22fde9": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:thorn.corner.squeeze.percent.12320fbf3961": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:thorn.curve.bulge.percent.e919513151df": [
+      "nested:BMangaBalloonEntry.shape_params"
+    ],
+    "field:bmanga:property.group.ecbf95ed1f9f80cf.ec9fbc9fd70a:bleed.outer.color.bef828f6d32e": [
+      "io.schema.safe_area_to_dict/io.schema.safe_area_from_dict"
+    ],
+    "field:bmanga:property.group.ecbf95ed1f9f80cf.ec9fbc9fd70a:bleed.outer.enabled.359b55fd5a50": [
+      "io.schema.safe_area_to_dict/io.schema.safe_area_from_dict"
+    ],
+    "field:bmanga:property.group.ecbf95ed1f9f80cf.ec9fbc9fd70a:bleed.outer.opacity.8e8dc2aa85aa": [
+      "io.schema.safe_area_to_dict/io.schema.safe_area_from_dict"
+    ],
+    "field:bmanga:property.group.ecbf95ed1f9f80cf.ec9fbc9fd70a:color.74284d9dcbcc": [
+      "io.schema.safe_area_to_dict/io.schema.safe_area_from_dict"
+    ],
+    "field:bmanga:property.group.ecbf95ed1f9f80cf.ec9fbc9fd70a:enabled.fb9cf75606b4": [
+      "io.schema.safe_area_to_dict/io.schema.safe_area_from_dict"
+    ],
+    "field:bmanga:property.group.ecbf95ed1f9f80cf.ec9fbc9fd70a:opacity.ad9a0b2eddd5": [
+      "io.schema.safe_area_to_dict/io.schema.safe_area_from_dict"
+    ],
+    "field:bmanga:property.group.f2ecbd093f207cc9.9669646e267d:horizontal.mm.f7f3883cebf9": [
+      "io.schema.coma_gap_to_dict/io.schema.coma_gap_from_dict"
+    ],
+    "field:bmanga:property.group.f2ecbd093f207cc9.9669646e267d:vertical.mm.732625716423": [
+      "io.schema.coma_gap_to_dict/io.schema.coma_gap_from_dict"
+    ],
+    "field:bmanga:property.group.f695703b0accdba4.5e68a6437747:page.id.f695703b0acc": [
+      "nested:BMangaPageEntry.original_pages"
+    ],
+    "field:bmanga:property.group.f6fee6e2d8b2b691.3be140871adf:x.mm.17f888647d92": [
+      "nested:BMangaComaEntry.vertices"
+    ],
+    "field:bmanga:property.group.f6fee6e2d8b2b691.3be140871adf:y.mm.e91a754e59cd": [
+      "nested:BMangaComaEntry.vertices"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:aspect.ratio.05c35d5b5b0d": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:brush.size.mm.09a8227efe94": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:color.74284d9dcbcc": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:content.source.ad2089deb65a": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:draw.mode.cdeeb08a74b2": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:filepath.5fa60d8ed32b": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:folder.key.23c58d9ec0e6": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:id.a56145270ce6": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:image.angle.deg.fd77bd0c6db8": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:in.easing.curve.8e0228954765": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:in.percent.70ec3521a5c2": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:in.start.percent.a670401fe610": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:inout.color.enabled.29ec05f6b2ab": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:inout.end.color.61d7845c0c69": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:inout.opacity.enabled.0e4e0dd01798": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:inout.size.enabled.6f6053055a54": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:inout.start.color.90a7e9bffe28": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:locked.14493f5f5470": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:opacity.ad9a0b2eddd5": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:out.easing.curve.c6e00080edc2": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:out.percent.9c1cd82c476a": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:out.start.percent.47ed3e832071": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:parent.key.544df906276b": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:parent.kind.40a53cd5a65b": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:path.points.json.30066019d897": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:ribbon.repeat.mode.c9d678137cb0": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:shape.kind.db33439eb7a2": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:shape.sides.7ed1a8fe0473": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:spacing.percent.3d15f3f7f479": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:stamp.angle.mode.51e0ca5f5dff": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:stamp.angle.object.name.ea1bb2becee8": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:title.aaf232064610": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:visible.d42ef1497900": [
+      "io.image_path_schema.image_path_layer_to_dict/io.image_path_schema.image_path_layer_from_dict"
+    ],
+    "field:bmanga:property.group.fff1bde4df676157.b9c3907dacab:length.0f82aca66af9": [
+      "nested:BMangaTextEntry.ruby_spans"
+    ],
+    "field:bmanga:property.group.fff1bde4df676157.b9c3907dacab:origin.181fdd46fc4a": [
+      "nested:BMangaTextEntry.ruby_spans"
+    ],
+    "field:bmanga:property.group.fff1bde4df676157.b9c3907dacab:priority.3092a5f0dba0": [
+      "nested:BMangaTextEntry.ruby_spans"
+    ],
+    "field:bmanga:property.group.fff1bde4df676157.b9c3907dacab:ruby.text.53f16e124d35": [
+      "nested:BMangaTextEntry.ruby_spans"
+    ],
+    "field:bmanga:property.group.fff1bde4df676157.b9c3907dacab:segments.08fddbc83d3d": [
+      "nested:BMangaTextEntry.ruby_spans"
+    ],
+    "field:bmanga:property.group.fff1bde4df676157.b9c3907dacab:start.cced28c6dc3f": [
+      "nested:BMangaTextEntry.ruby_spans"
+    ],
+    "field:bmanga:property.group.fff1bde4df676157.b9c3907dacab:style.cb86eb2d914d": [
+      "nested:BMangaTextEntry.ruby_spans"
+    ]
+  }
+}

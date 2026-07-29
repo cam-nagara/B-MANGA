@@ -31,6 +31,59 @@ class DetailMode(str, Enum):
     ACTUAL = "actual"
     PRESET = "preset"
 
+
+class DetailEntryPoint(str, Enum):
+    LAYER_LIST = "layer_list"
+    CONTEXT_MENU = "context_menu"
+    PRESET_GEAR = "preset_gear"
+
+
+class DetailCloseAction(str, Enum):
+    OK = "ok"
+    CANCEL = "cancel"
+    ESC = "esc"
+    OPENING_ABORT = "opening_abort"
+    PRESET_SWITCH = "preset_switch"
+
+
+class DetailTransactionDisposition(str, Enum):
+    COMMIT = "commit"
+    ROLLBACK = "rollback"
+    ROLLBACK_AND_RESTART = "rollback_and_restart"
+
+
+DETAIL_TRANSACTION_BOUNDARIES: Mapping[
+    DetailCloseAction,
+    DetailTransactionDisposition,
+] = MappingProxyType(
+    {
+        DetailCloseAction.OK: DetailTransactionDisposition.COMMIT,
+        DetailCloseAction.CANCEL: DetailTransactionDisposition.ROLLBACK,
+        DetailCloseAction.ESC: DetailTransactionDisposition.ROLLBACK,
+        DetailCloseAction.OPENING_ABORT: DetailTransactionDisposition.ROLLBACK,
+        DetailCloseAction.PRESET_SWITCH: (
+            DetailTransactionDisposition.ROLLBACK_AND_RESTART
+        ),
+    }
+)
+
+
+def detail_transaction_disposition(
+    action: DetailCloseAction | str,
+) -> DetailTransactionDisposition:
+    try:
+        normalized = (
+            action
+            if isinstance(action, DetailCloseAction)
+            else DetailCloseAction(str(action))
+        )
+    except ValueError as exc:
+        raise DetailContractError(
+            f"unsupported detail close action: {action!r}"
+        ) from exc
+    return DETAIL_TRANSACTION_BOUNDARIES[normalized]
+
+
 class DetailSessionStatus(str, Enum):
     OPEN = "open"
     COMMITTED = "committed"
@@ -41,6 +94,45 @@ class DetailActionBoundary(str, Enum):
     TRANSACTIONAL = "transactional"
     INDEPENDENT_IMMEDIATE = "independent_immediate"
     EXCLUDED = "excluded"
+
+
+@dataclass(frozen=True, slots=True)
+class DetailTargetRequest:
+    """3入口を同じresolverへ渡す、変更可能な対象を含まない要求。"""
+
+    entry_point: DetailEntryPoint
+    stack_uid: str = ""
+    stable_id: str = ""
+    kind: str = ""
+    preset_type: str = ""
+    preset_name: str = ""
+    object_or_id: Any = None
+
+    def __post_init__(self) -> None:
+        try:
+            entry_point = (
+                self.entry_point
+                if isinstance(self.entry_point, DetailEntryPoint)
+                else DetailEntryPoint(str(self.entry_point))
+            )
+        except ValueError as exc:
+            raise DetailContractError(
+                f"unsupported detail entry point: {self.entry_point!r}"
+            ) from exc
+        object.__setattr__(self, "entry_point", entry_point)
+        if entry_point is DetailEntryPoint.LAYER_LIST and not str(
+            self.stack_uid or ""
+        ).strip():
+            raise DetailContractError("layer list detail requires stack_uid")
+        if entry_point is DetailEntryPoint.PRESET_GEAR:
+            if not str(self.preset_type or "").strip():
+                raise DetailContractError(
+                    "preset detail requires preset_type"
+                )
+            if not str(self.preset_name or "").strip():
+                raise DetailContractError(
+                    "preset detail requires preset_name"
+                )
 
 @dataclass(frozen=True, slots=True)
 class DetailLayoutProfile:
@@ -1012,12 +1104,15 @@ __all__ = [
     "DEFAULT_COLUMN_GAP", "DEFAULT_COLUMN_WIDTH", "DEFAULT_OUTER_PADDING",
     "DEFAULT_SCREEN_MARGIN", "DETAIL_KIND_ALIASES", "DETAIL_LAYOUT_PROFILES",
     "DETAIL_ACTION_SPECS", "PRESET_KIND_TO_DETAIL_KIND", "PRESET_TYPE_ALIASES",
-    "DetailActionBoundary", "DetailActionRecord", "DetailActionSpec",
+    "DETAIL_TRANSACTION_BOUNDARIES", "DetailActionBoundary",
+    "DetailActionRecord", "DetailActionSpec", "DetailCloseAction",
     "DetailContractError", "DetailLayoutProfile", "DetailLayoutSpec", "DetailMode",
+    "DetailEntryPoint", "DetailTargetRequest", "DetailTransactionDisposition",
     "DetailSession", "DetailSessionClosedError", "DetailSessionStatus",
     "DetailSnapshotProtocol", "DetailTarget", "DetailTargetIdentity",
     "DetailTargetNotFoundError", "TargetLivenessValidator",
-    "current_column_count_for_target", "get_detail_action_spec",
+    "current_column_count_for_target", "detail_transaction_disposition",
+    "get_detail_action_spec",
     "normalize_detail_kind", "normalize_detail_mode", "resolve_detail_layout",
     "resolve_detail_target_from_object", "resolve_detail_target_from_stack",
     "resolve_preset_detail_target",

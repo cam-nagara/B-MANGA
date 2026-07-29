@@ -49,10 +49,11 @@ from ..core.text_entry import BMangaTextEntry
 from ..utils import detail_popup, log
 from ..utils.detail_dialog import (
     DetailContractError,
+    DetailEntryPoint,
     DetailMode,
+    DetailTargetRequest,
     current_column_count_for_target,
     resolve_detail_layout,
-    resolve_preset_detail_target,
 )
 from ..utils.detail_dialog_state import (
     begin_detail_session,
@@ -540,10 +541,17 @@ class BMANGA_OT_preset_detail_edit(Operator):
         if data is None:
             raise RuntimeError(f"プリセット一時設定を取得できません: {self.preset_type}")
         params = data if self.preset_type == "effect_line" else None
-        target = resolve_preset_detail_target(
-            self.preset_type,
-            self.preset_name,
-            data,
+        from ..utils import detail_target_resolver
+
+        # resolve_preset_detail_targetを内包する共通3入口resolverを使う。
+        target = detail_target_resolver.resolve_detail_entry_target(
+            context,
+            DetailTargetRequest(
+                DetailEntryPoint.PRESET_GEAR,
+                preset_type=self.preset_type,
+                preset_name=self.preset_name,
+            ),
+            preset_data=data,
             params=params,
         )
         _prepare_preset_curve_ui(self.preset_type, target)

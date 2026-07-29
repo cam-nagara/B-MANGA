@@ -100,9 +100,13 @@ class BMANGA_OT_layer_stack_detail(Operator):
         from ..utils import detail_dialog, detail_target_resolver
         from . import detail_dialog_runtime
 
-        target = detail_dialog.resolve_detail_target_from_stack(
-            self.uid,
-            lambda uid: detail_target_resolver.resolve_target_from_stack(context, uid),
+        # resolve_detail_target_from_stackを内包する共通3入口resolverを使う。
+        target = detail_target_resolver.resolve_detail_entry_target(
+            context,
+            detail_dialog.DetailTargetRequest(
+                detail_dialog.DetailEntryPoint.LAYER_LIST,
+                stack_uid=self.uid,
+            ),
         )
         expected = detail_dialog.resolve_detail_layout(
             target,

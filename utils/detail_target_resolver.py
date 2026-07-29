@@ -16,10 +16,15 @@ except ModuleNotFoundError:  # 純Python契約テストからもimportできる�
 
 from .detail_dialog import (
     DetailContractError,
+    DetailEntryPoint,
     DetailTarget,
     DetailTargetIdentity,
     DetailTargetNotFoundError,
+    DetailTargetRequest,
     normalize_detail_kind,
+    resolve_detail_target_from_object,
+    resolve_detail_target_from_stack,
+    resolve_preset_detail_target,
 )
 
 
@@ -60,6 +65,50 @@ def can_open_actual_detail(kind: str, target) -> bool:
     """一覧や右クリックに詳細設定を表示してよい実体かを返す。"""
 
     return target is not None and actual_detail_kind_is_supported(kind)
+
+
+def resolve_detail_entry_target(
+    context,
+    request: DetailTargetRequest,
+    *,
+    preset_data=None,
+    params=None,
+) -> DetailTarget:
+    """レイヤー一覧・右クリック・プリセット歯車の唯一の入口resolver。"""
+
+    if not isinstance(request, DetailTargetRequest):
+        raise DetailContractError("DetailTargetRequest is required")
+    if request.entry_point is DetailEntryPoint.LAYER_LIST:
+        return resolve_detail_target_from_stack(
+            request.stack_uid,
+            lambda uid: resolve_target_from_stack(context, uid),
+        )
+    if request.entry_point is DetailEntryPoint.CONTEXT_MENU:
+        selected = (
+            resolve_target_from_object(
+                context,
+                request.object_or_id
+                if request.object_or_id is not None
+                else request.stable_id,
+                request.kind,
+            )
+            if request.object_or_id is not None or request.stable_id
+            else resolve_target_from_selected_object(context)
+        )
+        return resolve_detail_target_from_object(
+            selected.stable_id,
+            lambda stable_id: (
+                selected if stable_id == selected.stable_id else None
+            ),
+        )
+    if preset_data is None:
+        raise DetailContractError("preset detail requires explicit scratch data")
+    return resolve_preset_detail_target(
+        request.preset_type,
+        request.preset_name,
+        preset_data,
+        params=params,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -647,5 +696,6 @@ __all__ = [
     "resolve_target_from_object",
     "resolve_target_from_selected_object",
     "resolve_target_from_stack",
+    "resolve_detail_entry_target",
     "target_is_live",
 ]

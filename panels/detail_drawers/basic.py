@@ -67,11 +67,33 @@ class ClassifiedDetailLayout:
             **kwargs,
         )
 
+    def prop(self, owner: Any, field_name: str, *args: Any, **kwargs: Any):
+        _require_registered_field(owner, field_name)
+        return self._layout.prop(owner, field_name, *args, **kwargs)
+
 
 def _require_drawable_action(operator_id: str) -> None:
     spec = get_detail_action_spec(operator_id)
     if spec.boundary is DetailActionBoundary.EXCLUDED:
         raise DetailContractError(f"excluded detail operator: {operator_id}")
+
+
+def _require_registered_field(owner: Any, field_name: str) -> None:
+    """共通詳細へ追加したRNA fieldのFieldSpec配線漏れを即時拒否する。"""
+
+    name = str(field_name or "")
+    if name.startswith('["') and name.endswith('"]'):
+        # Object custom propertyはRNA fieldではなくOutliner実体契約で管理する。
+        return
+    try:
+        from ...bmanga_core.settings_contract import require_rna_field
+    except ModuleNotFoundError:
+        # 一部の純Python契約テストはこのdrawerだけを隔離packageへ読む。
+        # 製品packageと専用Settings Contractテストでは必ず上記importを通る。
+        if str(__package__ or "").startswith("_bmanga_"):
+            return
+        raise
+    require_rna_field(owner, name)
 
 
 def classified_layout(layout):

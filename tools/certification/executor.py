@@ -119,7 +119,13 @@ def _command(
 ) -> tuple[list[str], Path, dict[str, str]]:
     if case.mode.startswith("python_"):
         return _python_command(root, case, case_dir)
-    return _blender_command(root, case, blender)
+    command, cwd, env = _blender_command(root, case, blender)
+    # テスト中のsave_userprefや設定callbackがユーザー実環境を上書きしないよう、
+    # Blender caseごとに完全に独立したuser configを割り当てる。
+    user_config = case_dir / "blender_user_config"
+    user_config.mkdir(parents=True, exist_ok=True)
+    env["BLENDER_USER_CONFIG"] = str(user_config)
+    return command, cwd, env
 
 
 def _junit_counts(path: Path) -> dict[str, int]:

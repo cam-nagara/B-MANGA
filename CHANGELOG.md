@@ -3,6 +3,32 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.2 LTS を対象としています（開発基準バージョン。5.1でも動作確認済み）。
 
+## 2026-07-29 — 全体リファクタリングPhase 2の設定契約を確定 (B-MANGA Next v0.6.602)
+
+### 症状
+- 1,600件超のRNA Propertyについて、ユーザー設定、永続データ、一時状態、派生表示、独立アドオン所有の境界が一つの機械可読契約になっていなかった。
+- 詳細設定へ項目を追加しても、保存、プリセット、取消、cache、テスト、UI単位のいずれかへの配線漏れを即時検知できなかった。
+- レイヤー一覧、右クリック、プリセット歯車が別々の対象解決を使い、OK、キャンセル、Esc、開始失敗、プリセット切替のTransaction境界も共通定義されていなかった。
+
+### 原因
+- Phase 0の分類は現行所有者を基準にした暫定台帳で、同じPropertyGroupへ混在する選択状態、展開状態、cache、旧互換投影まで永続Domain候補として扱っていた。
+- 詳細設定の描画、対象解決、保存codec、プリセット項目の情報源が分散し、追加項目の契約を一括照合する入口がなかった。
+
+### 修正
+- `bmanga_core/settings_contract.py`と自動生成器を追加し、現行1,644 RNA投影／1,569安定field IDをFieldSpecへ正規化した。840項目を新Domain／user settings候補、480投影をSession State、31投影を派生表示、293投影を独立アドオン境界へ分類した。
+- 各FieldSpecへ新旧保存責務、schema採否、preset、dirty、cache、test、UI/internal単位変換、分類理由を必須化した。`SKIP_SAVE`、選択index、読込状態、表示cache、旧角丸互換投影を新Domainから明示除外した。
+- 現行preset codec 631項目と詳細UI 210 binding／17無効化条件をソースから自動抽出し、設定マトリクスとUIマトリクスを決定的に生成する。フキダシの入れ子ウニフラ設定、コマ背景／用紙表示、Line／Renderの実serializer宣言も抽出対象に含めた。
+- 各FieldSpecをfield単位の実`blend-rna`／`json-adapter`／`userpref` codec、dirty callback、cache依存、個別characterization IDへ接続した。未知のB-MANGA ownerは未登録fieldを許可せず、Blender標準RNAだけを契約外として許可する。
+- 詳細設定の3入口を`DetailTargetRequest`と共通resolverへ統一し、OK、キャンセル、Esc、開始失敗、プリセット切替のTransaction dispositionを共通定義した。
+- 詳細ダイアログの全`layout.prop`をFieldSpec検査付きlayoutへ通し、B-MANGA所有RNAに未登録項目を追加すると描画時に失敗するようにした。
+
+### 検証（Blender 5.2 LTS実機）
+- 新Domain候補840項目のうち永続Domain795項目を`.blend`で全件往復し、729項目／733実adapter結線は現行work/page JSON codecでも往復した。変更可能な805項目を独立した実体で変更・キャンセル・再適用し、構造Property 36項目も実RNA型との一致を確認した。ユーザー設定45項目はcase固有の`BLENDER_USER_CONFIG`へ保存し、`meldex_enabled=True`を含む実`userpref.blend`再読込まで確認した。受信サーバーは起動前の明示gateで停止した。
+- cache対象301項目を412本の実signature結線へ接続し、callback名だけの推測分類を廃止した。`brush_size_mm`等が実メッシュsignatureを変更することをBlender実機で確認した。
+- フキダシの通常style、入れ子shape、効果線由来のウニフラ／白抜き全項目を実preset snapshot/applyで双方向検査した。`_mm`項目はBlenderの長さmetadataよりフィールド名契約を優先し、UI mm／内部mmの往復を固定した。
+- 詳細ダイアログ関連の必須25/25、プリセット関連の必須20/20、設定契約純Python17/17が合格した。全RNA投影の契約生成一致、stable ID／旧alias維持、単位変換、3入口対象解決、Transaction境界の純Python検査も合格した。
+- 独立レビューの重大・高指摘を全件修正し、最終コードレビューと全検証後のテスト修正レビューはいずれも重大0・高0・中0で合格した。統一認定は459/459、必須426/426、failure／skip／timeout／crash 0、現行source hash不一致0。証跡は`_verify/2026-07-29_phase2/full_all_final_05`。
+
 ## 2026-07-29 — 全体リファクタリングPhase 1の統一認定基盤を導入 (B-MANGA Next v0.6.601)
 
 ### 症状

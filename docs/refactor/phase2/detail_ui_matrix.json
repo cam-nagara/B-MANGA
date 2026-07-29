@@ -1,0 +1,3478 @@
+{
+  "binding_count": 210,
+  "bindings": [
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.6457d6c8d17f5ed3.3eb1ec723439:linked.text.offset.x.mm.77c10f3eca44",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:linked.text.offset.x.mm.77c10f3eca44"
+      ],
+      "custom_property": false,
+      "field_expression": "linked_text_offset_x_mm",
+      "field_name": "linked_text_offset_x_mm",
+      "line": 58,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.6457d6c8d17f5ed3.3eb1ec723439:linked.text.offset.y.mm.640c100647af",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:linked.text.offset.y.mm.640c100647af"
+      ],
+      "custom_property": false,
+      "field_expression": "linked_text_offset_y_mm",
+      "field_name": "linked_text_offset_y_mm",
+      "line": 58,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.6457d6c8d17f5ed3.3eb1ec723439:linked.text.padding.x.mm.187bf0f87606",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:linked.text.padding.x.mm.187bf0f87606"
+      ],
+      "custom_property": false,
+      "field_expression": "linked_text_padding_x_mm",
+      "field_name": "linked_text_padding_x_mm",
+      "line": 64,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.6457d6c8d17f5ed3.3eb1ec723439:linked.text.padding.y.mm.77906f961bbc",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:linked.text.padding.y.mm.77906f961bbc"
+      ],
+      "custom_property": false,
+      "field_expression": "linked_text_padding_y_mm",
+      "field_name": "linked_text_padding_y_mm",
+      "line": 64,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:bmanga.balloon.add.d0cdf4629cce:shape.f58940a31399",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:shape.f58940a31399"
+      ],
+      "custom_property": false,
+      "field_expression": "shape",
+      "field_name": "shape",
+      "line": 75,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.1797f4eb424d915b.7bd59e0e7d28:corner.type.9ea3c1ce5791",
+        "field:bmanga:property.group.62c3bcbeba0a2e70.315b4e24bdbf:corner.type.9ea3c1ce5791",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:corner.type.9ea3c1ce5791"
+      ],
+      "custom_property": false,
+      "field_expression": "corner_type",
+      "field_name": "corner_type",
+      "line": 81,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "shape == 'rect'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.1797f4eb424d915b.7bd59e0e7d28:corner.radius.mm.336cf234064a",
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:end.rounded.corner.radius.mm.ef2f314ceea4",
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:end.rounded.corner.radius.percent.0908922f72b7",
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:end.rounded.corner.radius.unit.4bb10c208cf1",
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:start.rounded.corner.radius.mm.5e0690270b66",
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:start.rounded.corner.radius.percent.abd170178550",
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:start.rounded.corner.radius.unit.12c0e57c4c5d",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.rounded.corner.radius.mm.ef2f314ceea4",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.rounded.corner.radius.percent.0908922f72b7",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.rounded.corner.radius.unit.4bb10c208cf1",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:rounded.corner.radius.mm.0b9f1bd65a0b",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:rounded.corner.radius.percent.1124b2940567",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:rounded.corner.radius.unit.55818dcf6493",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.rounded.corner.radius.mm.5e0690270b66",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.rounded.corner.radius.percent.abd170178550",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.rounded.corner.radius.unit.12c0e57c4c5d",
+        "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:dynamic.base.rounded.corner.radius.mm.aab49aa3c83e",
+        "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:dynamic.base.rounded.corner.radius.percent.8d2a28f9c511",
+        "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:dynamic.base.rounded.corner.radius.unit.1a46d3d2281e"
+      ],
+      "custom_property": false,
+      "field_expression": "f'{prefix}_radius_{suffix}'",
+      "field_name": "",
+      "line": 94,
+      "owner_expression": "owner",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [],
+      "custom_property": false,
+      "field_expression": "unit",
+      "field_name": "",
+      "line": 95,
+      "owner_expression": "owner",
+      "resolution_contract": "dynamic_runtime_resolved",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:dynamic.shape.base.kind.a934bc6f2477"
+      ],
+      "custom_property": false,
+      "field_expression": "dynamic_shape_base_kind",
+      "field_name": "dynamic_shape_base_kind",
+      "line": 101,
+      "owner_expression": "params",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:dynamic.base.rounded.corner.enabled.fa0961351d02"
+      ],
+      "custom_property": false,
+      "field_expression": "dynamic_base_rounded_corner_enabled",
+      "field_name": "dynamic_base_rounded_corner_enabled",
+      "line": 103,
+      "owner_expression": "params",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "str(value(params, 'dynamic_shape_base_kind', 'ellipse')) == 'rect'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:thorn.curve.bulge.percent.e919513151df"
+      ],
+      "custom_property": false,
+      "field_expression": "thorn_curve_bulge_percent",
+      "field_name": "thorn_curve_bulge_percent",
+      "line": 110,
+      "owner_expression": "params",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "shape == 'thorn-curve'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.bump.bulge.percent.8ff1babdc8b7"
+      ],
+      "custom_property": false,
+      "field_expression": "cloud_bump_bulge_percent",
+      "field_name": "cloud_bump_bulge_percent",
+      "line": 112,
+      "owner_expression": "params",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "not (shape == 'thorn-curve')",
+        "shape == 'cloud'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:thorn.corner.square.percent.9cadde22fde9"
+      ],
+      "custom_property": false,
+      "field_expression": "thorn_corner_square_percent",
+      "field_name": "thorn_corner_square_percent",
+      "line": 117,
+      "owner_expression": "params",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "shape in {'thorn', 'thorn-curve'}"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:thorn.corner.squeeze.percent.12320fbf3961"
+      ],
+      "custom_property": false,
+      "field_expression": "thorn_corner_squeeze_percent",
+      "field_name": "thorn_corner_squeeze_percent",
+      "line": 118,
+      "owner_expression": "params",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "shape in {'thorn', 'thorn-curve'}"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.valley.sharp.c87d7762ec3a"
+      ],
+      "custom_property": false,
+      "field_expression": "cloud_valley_sharp",
+      "field_name": "cloud_valley_sharp",
+      "line": 119,
+      "owner_expression": "params",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "shape in {'thorn', 'thorn-curve'}"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:sharp.corner.method.0aad5e6f9411"
+      ],
+      "custom_property": false,
+      "field_expression": "sharp_corner_method",
+      "field_name": "sharp_corner_method",
+      "line": 121,
+      "owner_expression": "params",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "shape in {'thorn', 'thorn-curve'}",
+        "bool(value(params, 'cloud_valley_sharp', False))"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:sharp.peak.width.scale.73d044fa0c43"
+      ],
+      "custom_property": false,
+      "field_expression": "sharp_peak_width_scale",
+      "field_name": "sharp_peak_width_scale",
+      "line": 124,
+      "owner_expression": "params",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "shape in {'thorn', 'thorn-curve'}",
+        "bool(value(params, 'cloud_valley_sharp', False))",
+        "str(value(params, 'sharp_corner_method', 'miter')) == 'anchor'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:sharp.valley.width.scale.1db19047684d"
+      ],
+      "custom_property": false,
+      "field_expression": "sharp_valley_width_scale",
+      "field_name": "sharp_valley_width_scale",
+      "line": 125,
+      "owner_expression": "params",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "shape in {'thorn', 'thorn-curve'}",
+        "bool(value(params, 'cloud_valley_sharp', False))",
+        "str(value(params, 'sharp_corner_method', 'miter')) == 'anchor'"
+      ]
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [],
+      "custom_property": false,
+      "field_expression": "first",
+      "field_name": "",
+      "line": 137,
+      "owner_expression": "params",
+      "resolution_contract": "dynamic_runtime_resolved",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [],
+      "custom_property": false,
+      "field_expression": "second",
+      "field_name": "",
+      "line": 137,
+      "owner_expression": "params",
+      "resolution_contract": "dynamic_runtime_resolved",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.style.7a6ff881ea13"
+      ],
+      "custom_property": false,
+      "field_expression": "line_style",
+      "field_name": "line_style",
+      "line": 144,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.width.mm.1efb212f3eed"
+      ],
+      "custom_property": false,
+      "field_expression": "line_width_mm",
+      "field_name": "line_width_mm",
+      "line": 147,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "line_style != 'uni_flash'"
+      ]
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:dashed.gap.mm.462370931190"
+      ],
+      "custom_property": false,
+      "field_expression": "dashed_gap_mm",
+      "field_name": "dashed_gap_mm",
+      "line": 154,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "line_style == 'dashed'"
+      ]
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:dashed.segment.length.mm.f9d286098695"
+      ],
+      "custom_property": false,
+      "field_expression": "dashed_segment_length_mm",
+      "field_name": "dashed_segment_length_mm",
+      "line": 154,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "line_style == 'dashed'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:dotted.gap.mm.55c39fdf7a26"
+      ],
+      "custom_property": false,
+      "field_expression": "dotted_gap_mm",
+      "field_name": "dotted_gap_mm",
+      "line": 156,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "not (line_style == 'dashed')",
+        "line_style == 'dotted'"
+      ]
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.line.count.b7ddda40c66e"
+      ],
+      "custom_property": false,
+      "field_expression": "flash_line_count",
+      "field_name": "flash_line_count",
+      "line": 170,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "not (line_style == 'uni_flash')",
+        "not (line_style == 'white_outline')",
+        "balloon_shapes.is_flash_line_style(line_style)"
+      ]
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.line.spacing.mm.813e866c110b"
+      ],
+      "custom_property": false,
+      "field_expression": "flash_line_spacing_mm",
+      "field_name": "flash_line_spacing_mm",
+      "line": 170,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "not (line_style == 'uni_flash')",
+        "not (line_style == 'white_outline')",
+        "balloon_shapes.is_flash_line_style(line_style)"
+      ]
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.peak.width.pct.2f5fa7fb3ba4"
+      ],
+      "custom_property": false,
+      "field_expression": "line_peak_width_pct",
+      "field_name": "line_peak_width_pct",
+      "line": 171,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "not (line_style == 'uni_flash')",
+        "not (line_style == 'white_outline')",
+        "balloon_shapes.is_flash_line_style(line_style)"
+      ]
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.valley.width.pct.621a727fc6e4"
+      ],
+      "custom_property": false,
+      "field_expression": "line_valley_width_pct",
+      "field_name": "line_valley_width_pct",
+      "line": 171,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "not (line_style == 'uni_flash')",
+        "not (line_style == 'white_outline')",
+        "balloon_shapes.is_flash_line_style(line_style)"
+      ]
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.peak.width.pct.2f5fa7fb3ba4"
+      ],
+      "custom_property": false,
+      "field_expression": "line_peak_width_pct",
+      "field_name": "line_peak_width_pct",
+      "line": 173,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "not (line_style == 'uni_flash')",
+        "not (line_style == 'white_outline')",
+        "not (balloon_shapes.is_flash_line_style(line_style))",
+        "balloon_shapes.is_dynamic_meldex_shape(shape)"
+      ]
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.valley.width.pct.621a727fc6e4"
+      ],
+      "custom_property": false,
+      "field_expression": "line_valley_width_pct",
+      "field_name": "line_valley_width_pct",
+      "line": 173,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "not (line_style == 'uni_flash')",
+        "not (line_style == 'white_outline')",
+        "not (balloon_shapes.is_flash_line_style(line_style))",
+        "balloon_shapes.is_dynamic_meldex_shape(shape)"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.material.name.e8ecc3173627"
+      ],
+      "custom_property": false,
+      "field_expression": "line_material_name",
+      "field_name": "line_material_name",
+      "line": 179,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.material.mapping.7056721a15c4"
+      ],
+      "custom_property": false,
+      "field_expression": "line_material_mapping",
+      "field_name": "line_material_mapping",
+      "line": 180,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.material.stretch.single.e90b881a8b00"
+      ],
+      "custom_property": false,
+      "field_expression": "line_material_stretch_single",
+      "field_name": "line_material_stretch_single",
+      "line": 182,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "str(value(entry, 'line_material_mapping', 'tile') or 'tile') == 'ribbon'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.material.seam.fix.7b589c3dfe8a"
+      ],
+      "custom_property": false,
+      "field_expression": "line_material_seam_fix",
+      "field_name": "line_material_seam_fix",
+      "line": 183,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "str(value(entry, 'line_material_mapping', 'tile') or 'tile') == 'ribbon'"
+      ]
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.shape.kind.84d7cab7f148"
+      ],
+      "custom_property": false,
+      "field_expression": "line_shape_kind",
+      "field_name": "line_shape_kind",
+      "line": 187,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.shape.spacing.mm.34b200a7bf6e"
+      ],
+      "custom_property": false,
+      "field_expression": "line_shape_spacing_mm",
+      "field_name": "line_shape_spacing_mm",
+      "line": 187,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.shape.angle.deg.168b3e12b9eb"
+      ],
+      "custom_property": false,
+      "field_expression": "line_shape_angle_deg",
+      "field_name": "line_shape_angle_deg",
+      "line": 188,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.shape.jitter.42f46315c7bb"
+      ],
+      "custom_property": false,
+      "field_expression": "line_shape_jitter",
+      "field_name": "line_shape_jitter",
+      "line": 188,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.shape.orient.bd56082ac1f3"
+      ],
+      "custom_property": false,
+      "field_expression": "line_shape_orient",
+      "field_name": "line_shape_orient",
+      "line": 189,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:line.image.path.2333691b02d0",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.image.path.2333691b02d0"
+      ],
+      "custom_property": false,
+      "field_expression": "line_image_path",
+      "field_name": "line_image_path",
+      "line": 193,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:line.image.angle.deg.b2255d965117",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.image.angle.deg.b2255d965117"
+      ],
+      "custom_property": false,
+      "field_expression": "line_image_angle_deg",
+      "field_name": "line_image_angle_deg",
+      "line": 194,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.image.interval.mm.411a16160ce1"
+      ],
+      "custom_property": false,
+      "field_expression": "line_image_interval_mm",
+      "field_name": "line_image_interval_mm",
+      "line": 194,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.image.jitter.ea2e3cf172e9"
+      ],
+      "custom_property": false,
+      "field_expression": "line_image_jitter",
+      "field_name": "line_image_jitter",
+      "line": 195,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:multi.line.count.3faf485be3be"
+      ],
+      "custom_property": false,
+      "field_expression": "multi_line_count",
+      "field_name": "multi_line_count",
+      "line": 241,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:multi.line.direction.07585a95a070"
+      ],
+      "custom_property": false,
+      "field_expression": "multi_line_direction",
+      "field_name": "multi_line_direction",
+      "line": 241,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:multi.line.spacing.mm.90da0bde02e9"
+      ],
+      "custom_property": false,
+      "field_expression": "multi_line_spacing_mm",
+      "field_name": "multi_line_spacing_mm",
+      "line": 242,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:multi.line.width.mm.aa69c744195f"
+      ],
+      "custom_property": false,
+      "field_expression": "multi_line_width_mm",
+      "field_name": "multi_line_width_mm",
+      "line": 242,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:multi.line.spacing.scale.percent.f9a22e19e571"
+      ],
+      "custom_property": false,
+      "field_expression": "multi_line_spacing_scale_percent",
+      "field_name": "multi_line_spacing_scale_percent",
+      "line": 243,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:multi.line.width.scale.percent.6ef6c3d5f952"
+      ],
+      "custom_property": false,
+      "field_expression": "multi_line_width_scale_percent",
+      "field_name": "multi_line_width_scale_percent",
+      "line": 243,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:thorn.multi.line.length.scale.far.percent.5b03ec194085"
+      ],
+      "custom_property": false,
+      "field_expression": "thorn_multi_line_length_scale_far_percent",
+      "field_name": "thorn_multi_line_length_scale_far_percent",
+      "line": 246,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:thorn.multi.line.length.scale.near.percent.7d93d00be609"
+      ],
+      "custom_property": false,
+      "field_expression": "thorn_multi_line_length_scale_near_percent",
+      "field_name": "thorn_multi_line_length_scale_near_percent",
+      "line": 246,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:thorn.multi.line.cross.enabled.9c6f5e546fbc"
+      ],
+      "custom_property": false,
+      "field_expression": "thorn_multi_line_cross_enabled",
+      "field_name": "thorn_multi_line_cross_enabled",
+      "line": 252,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:thorn.multi.line.peak.width.pct.b83c7347d7f3"
+      ],
+      "custom_property": false,
+      "field_expression": "thorn_multi_line_peak_width_pct",
+      "field_name": "thorn_multi_line_peak_width_pct",
+      "line": 253,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:thorn.multi.line.valley.width.pct.361fe2a9b92c"
+      ],
+      "custom_property": false,
+      "field_expression": "thorn_multi_line_valley_width_pct",
+      "field_name": "thorn_multi_line_valley_width_pct",
+      "line": 253,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:line.color.99e75db55607",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.color.99e75db55607",
+        "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:line.color.99e75db55607"
+      ],
+      "custom_property": false,
+      "field_expression": "line_color",
+      "field_name": "line_color",
+      "line": 261,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:fill.color.847f64dd3764",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.color.847f64dd3764",
+        "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:fill.color.847f64dd3764"
+      ],
+      "custom_property": false,
+      "field_expression": "fill_color",
+      "field_name": "fill_color",
+      "line": 263,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "has_fill"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:fill.opacity.104d05273081",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.opacity.104d05273081"
+      ],
+      "custom_property": false,
+      "field_expression": "fill_opacity",
+      "field_name": "fill_opacity",
+      "line": 264,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "has_fill"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.c1edf6b938af4077.96691208da82:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.ecbf95ed1f9f80cf.ec9fbc9fd70a:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:opacity.ad9a0b2eddd5"
+      ],
+      "custom_property": false,
+      "field_expression": "opacity",
+      "field_name": "opacity",
+      "line": 267,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.material.name.50f858775820"
+      ],
+      "custom_property": false,
+      "field_expression": "fill_material_name",
+      "field_name": "fill_material_name",
+      "line": 271,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.blur.amount.a20e8830a0ae"
+      ],
+      "custom_property": false,
+      "field_expression": "fill_blur_amount",
+      "field_name": "fill_blur_amount",
+      "line": 273,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.blur.axis.fc10eeb11d05"
+      ],
+      "custom_property": false,
+      "field_expression": "fill_blur_axis",
+      "field_name": "fill_blur_axis",
+      "line": 274,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.blur.dither.7fb669b0bfa0"
+      ],
+      "custom_property": false,
+      "field_expression": "fill_blur_dither",
+      "field_name": "fill_blur_dither",
+      "line": 275,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.gradient.enabled.ef2199ee3ec8"
+      ],
+      "custom_property": false,
+      "field_expression": "fill_gradient_enabled",
+      "field_name": "fill_gradient_enabled",
+      "line": 276,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.gradient.end.color.5d1d2d396c29"
+      ],
+      "custom_property": false,
+      "field_expression": "fill_gradient_end_color",
+      "field_name": "fill_gradient_end_color",
+      "line": 279,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.gradient.start.color.3fa5d2f07014"
+      ],
+      "custom_property": false,
+      "field_expression": "fill_gradient_start_color",
+      "field_name": "fill_gradient_start_color",
+      "line": 279,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.gradient.angle.deg.059667ac38e0"
+      ],
+      "custom_property": false,
+      "field_expression": "fill_gradient_angle_deg",
+      "field_name": "fill_gradient_angle_deg",
+      "line": 280,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [],
+      "custom_property": false,
+      "field_expression": "enabled_name",
+      "field_name": "",
+      "line": 287,
+      "owner_expression": "entry",
+      "resolution_contract": "dynamic_runtime_resolved",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:inner.white.margin.width.mm.ea27e9bafc68",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:outer.white.margin.width.mm.3d9099014a4f"
+      ],
+      "custom_property": false,
+      "field_expression": "f'{prefix}_white_margin_width_mm'",
+      "field_name": "",
+      "line": 290,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:inner.white.margin.color.9c2c777a8371",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:outer.white.margin.color.34fa4651ffac"
+      ],
+      "custom_property": false,
+      "field_expression": "f'{prefix}_white_margin_color'",
+      "field_name": "",
+      "line": 291,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:line.type.fa28e1bddda6"
+      ],
+      "custom_property": false,
+      "field_expression": "line_type",
+      "field_name": "line_type",
+      "line": 332,
+      "owner_expression": "tail",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:type.1303c06b0b01"
+      ],
+      "custom_property": false,
+      "field_expression": "type",
+      "field_name": "type",
+      "line": 333,
+      "owner_expression": "tail",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:direction.deg.6f2ca0bef353"
+      ],
+      "custom_property": false,
+      "field_expression": "direction_deg",
+      "field_name": "direction_deg",
+      "line": 334,
+      "owner_expression": "tail",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:length.mm.2c4ed4983ea0"
+      ],
+      "custom_property": false,
+      "field_expression": "length_mm",
+      "field_name": "length_mm",
+      "line": 334,
+      "owner_expression": "tail",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:curve.bend.b8b98bbc6104"
+      ],
+      "custom_property": false,
+      "field_expression": "curve_bend",
+      "field_name": "curve_bend",
+      "line": 335,
+      "owner_expression": "tail",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:root.width.mm.da871cbac02e"
+      ],
+      "custom_property": false,
+      "field_expression": "root_width_mm",
+      "field_name": "root_width_mm",
+      "line": 336,
+      "owner_expression": "tail",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:tip.width.mm.6d49cde321fe"
+      ],
+      "custom_property": false,
+      "field_expression": "tip_width_mm",
+      "field_name": "tip_width_mm",
+      "line": 336,
+      "owner_expression": "tail",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:taper.in.percent.a4f6752e06d6"
+      ],
+      "custom_property": false,
+      "field_expression": "taper_in_percent",
+      "field_name": "taper_in_percent",
+      "line": 337,
+      "owner_expression": "tail",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:taper.out.percent.d3271bc805e2"
+      ],
+      "custom_property": false,
+      "field_expression": "taper_out_percent",
+      "field_name": "taper_out_percent",
+      "line": 337,
+      "owner_expression": "tail",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:ellipse.angle.deg.4f4957048dd6"
+      ],
+      "custom_property": false,
+      "field_expression": "ellipse_angle_deg",
+      "field_name": "ellipse_angle_deg",
+      "line": 338,
+      "owner_expression": "tail",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:ellipse.gap.mm.b3bf4277187a"
+      ],
+      "custom_property": false,
+      "field_expression": "ellipse_gap_mm",
+      "field_name": "ellipse_gap_mm",
+      "line": 338,
+      "owner_expression": "tail",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:ellipse.orient.37f8de7997cf"
+      ],
+      "custom_property": false,
+      "field_expression": "ellipse_orient",
+      "field_name": "ellipse_orient",
+      "line": 339,
+      "owner_expression": "tail",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:sharp.corners.ebcf940d67b9"
+      ],
+      "custom_property": false,
+      "field_expression": "sharp_corners",
+      "field_name": "sharp_corners",
+      "line": 340,
+      "owner_expression": "tail",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:curve.mode.edd7180f73f9"
+      ],
+      "custom_property": false,
+      "field_expression": "curve_mode",
+      "field_name": "curve_mode",
+      "line": 341,
+      "owner_expression": "tail",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.73524857f35bcd75.39264e13ee63:offset.x.mm.bec181cbed52"
+      ],
+      "custom_property": false,
+      "field_expression": "offset_x_mm",
+      "field_name": "offset_x_mm",
+      "line": 204,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/basic.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.73524857f35bcd75.39264e13ee63:offset.y.mm.f61b16713e24"
+      ],
+      "custom_property": false,
+      "field_expression": "offset_y_mm",
+      "field_name": "offset_y_mm",
+      "line": 204,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/basic.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:coma.blend.template.path.f3b468489ba9",
+        "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:coma.blend.template.path.f3b468489ba9",
+        "field:bmanga:property.group.e80674e900043801.a52eb45c3338:coma.blend.template.path.f3b468489ba9"
+      ],
+      "custom_property": false,
+      "field_expression": "coma_blend_template_path",
+      "field_name": "coma_blend_template_path",
+      "line": 230,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/basic.py",
+      "visibility_conditions": [
+        "not preset_mode"
+      ]
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:rect.x.mm.623a4952d83f"
+      ],
+      "custom_property": false,
+      "field_expression": "rect_x_mm",
+      "field_name": "rect_x_mm",
+      "line": 253,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/basic.py",
+      "visibility_conditions": [
+        "str(value(entry, 'shape_type', 'rect') or 'rect') == 'rect'"
+      ]
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:rect.y.mm.29489bd7fe00"
+      ],
+      "custom_property": false,
+      "field_expression": "rect_y_mm",
+      "field_name": "rect_y_mm",
+      "line": 253,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/basic.py",
+      "visibility_conditions": [
+        "str(value(entry, 'shape_type', 'rect') or 'rect') == 'rect'"
+      ]
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:rect.height.mm.29a2415f9165"
+      ],
+      "custom_property": false,
+      "field_expression": "rect_height_mm",
+      "field_name": "rect_height_mm",
+      "line": 254,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/basic.py",
+      "visibility_conditions": [
+        "str(value(entry, 'shape_type', 'rect') or 'rect') == 'rect'"
+      ]
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:rect.width.mm.285699aa9172"
+      ],
+      "custom_property": false,
+      "field_expression": "rect_width_mm",
+      "field_name": "rect_width_mm",
+      "line": 254,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/basic.py",
+      "visibility_conditions": [
+        "str(value(entry, 'shape_type', 'rect') or 'rect') == 'rect'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.c120edb6a74732c7.b36c3c73418e:paper.visible.553499de5fc3",
+        "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:paper.visible.553499de5fc3"
+      ],
+      "custom_property": false,
+      "field_expression": "paper_visible",
+      "field_name": "paper_visible",
+      "line": 256,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/basic.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.c120edb6a74732c7.b36c3c73418e:background.color.84fad1b38b53",
+        "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:background.color.84fad1b38b53"
+      ],
+      "custom_property": false,
+      "field_expression": "background_color",
+      "field_name": "background_color",
+      "line": 257,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/basic.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.0c279e21ab56bce1.92d74db62ac6:expanded.691661b386fd"
+      ],
+      "custom_property": false,
+      "field_expression": "expanded",
+      "field_name": "expanded",
+      "line": 264,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/basic.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop",
+      "candidate_field_ids": [
+        "field:bmanga:bmanga.preset.detail.edit.92db731b6b50:description.text.ee4e16b64f83"
+      ],
+      "custom_property": false,
+      "field_expression": "description_text",
+      "field_name": "description_text",
+      "line": 85,
+      "owner_expression": "description_owner",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/dispatcher.py",
+      "visibility_conditions": [
+        "not (normalized_mode.value == 'actual')",
+        "description_owner is not None"
+      ]
+    },
+    {
+      "call": "prop",
+      "candidate_field_ids": [
+        "field:bmanga:bmanga.preset.detail.edit.92db731b6b50:description.text.ee4e16b64f83"
+      ],
+      "custom_property": false,
+      "field_expression": "description_text",
+      "field_name": "description_text",
+      "line": 129,
+      "owner_expression": "description_owner",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/dispatcher.py",
+      "visibility_conditions": [
+        "not (mode.value == 'actual')",
+        "description_owner is not None"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:bmanga.effect.line.create.object.70e065f2be0c:title.aaf232064610",
+        "field:bmanga:bmanga.gp.layer.create.per.object.22eca147be1b:title.aaf232064610",
+        "field:bmanga:property.group.0c279e21ab56bce1.92d74db62ac6:title.aaf232064610",
+        "field:bmanga:property.group.73524857f35bcd75.39264e13ee63:title.aaf232064610",
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:title.aaf232064610",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:title.aaf232064610",
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:title.aaf232064610",
+        "field:bmanga:property.group.c1edf6b938af4077.96691208da82:title.aaf232064610",
+        "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:title.aaf232064610",
+        "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:title.aaf232064610",
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:title.aaf232064610"
+      ],
+      "custom_property": false,
+      "field_expression": "title",
+      "field_name": "title",
+      "line": 199,
+      "owner_expression": "data",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/dispatcher.py",
+      "visibility_conditions": [
+        "prop_if(layout, data, 'title', text='表示名')"
+      ]
+    },
+    {
+      "call": "prop",
+      "candidate_field_ids": [],
+      "custom_property": true,
+      "field_expression": "[\"bmanga_title\"]",
+      "field_name": "[\"bmanga_title\"]",
+      "line": 203,
+      "owner_expression": "obj",
+      "resolution_contract": "custom_property",
+      "source": "panels/detail_drawers/dispatcher.py",
+      "visibility_conditions": [
+        "_has_custom_property(obj, 'bmanga_title')"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.0c279e21ab56bce1.92d74db62ac6:visible.d42ef1497900",
+        "field:bmanga:property.group.1797f4eb424d915b.7bd59e0e7d28:visible.d42ef1497900",
+        "field:bmanga:property.group.73524857f35bcd75.39264e13ee63:visible.d42ef1497900",
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:visible.d42ef1497900",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:visible.d42ef1497900",
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:visible.d42ef1497900",
+        "field:bmanga:property.group.c1edf6b938af4077.96691208da82:visible.d42ef1497900",
+        "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:visible.d42ef1497900",
+        "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:visible.d42ef1497900",
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:visible.d42ef1497900",
+        "field:line:bmanga.line.set.visibility.2aaf743cc702:visible.d42ef1497900"
+      ],
+      "custom_property": false,
+      "field_expression": "visible",
+      "field_name": "visible",
+      "line": 214,
+      "owner_expression": "data",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/dispatcher.py",
+      "visibility_conditions": [
+        "not (target.kind in {'gp', 'effect'})"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.0c279e21ab56bce1.92d74db62ac6:locked.14493f5f5470",
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:locked.14493f5f5470",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:locked.14493f5f5470",
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:locked.14493f5f5470",
+        "field:bmanga:property.group.c1edf6b938af4077.96691208da82:locked.14493f5f5470",
+        "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:locked.14493f5f5470",
+        "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:locked.14493f5f5470",
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:locked.14493f5f5470"
+      ],
+      "custom_property": false,
+      "field_expression": "locked",
+      "field_name": "locked",
+      "line": 215,
+      "owner_expression": "data",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/dispatcher.py",
+      "visibility_conditions": [
+        "not (target.kind in {'gp', 'effect'})"
+      ]
+    },
+    {
+      "call": "prop",
+      "candidate_field_ids": [],
+      "custom_property": true,
+      "field_expression": "f'[\"{name}\"]'",
+      "field_name": "",
+      "line": 266,
+      "owner_expression": "obj",
+      "resolution_contract": "custom_property",
+      "source": "panels/detail_drawers/dispatcher.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.c1edf6b938af4077.96691208da82:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.ecbf95ed1f9f80cf.ec9fbc9fd70a:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:opacity.ad9a0b2eddd5"
+      ],
+      "custom_property": false,
+      "field_expression": "opacity",
+      "field_name": "opacity",
+      "line": 20,
+      "owner_expression": "layer",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:blend.mode.ca5d95fdf15a",
+        "field:bmanga:property.group.c1edf6b938af4077.96691208da82:blend.mode.ca5d95fdf15a"
+      ],
+      "custom_property": false,
+      "field_expression": "blend_mode",
+      "field_name": "blend_mode",
+      "line": 21,
+      "owner_expression": "layer",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.c1edf6b938af4077.96691208da82:tint.color.974e742d9e40"
+      ],
+      "custom_property": false,
+      "field_expression": "tint_color",
+      "field_name": "tint_color",
+      "line": 22,
+      "owner_expression": "layer",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:bmanga.text.selection.style.popup.47cb1dcc5a30:color.74284d9dcbcc",
+        "field:bmanga:property.group.164564e22723b4a0.5c6f55a95624:color.74284d9dcbcc",
+        "field:bmanga:property.group.1797f4eb424d915b.7bd59e0e7d28:color.74284d9dcbcc",
+        "field:bmanga:property.group.21b1957948b38ea6.9a1cb699d2b4:color.74284d9dcbcc",
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:color.74284d9dcbcc",
+        "field:bmanga:property.group.997ad0906e944883.a86e49aae7ec:color.74284d9dcbcc",
+        "field:bmanga:property.group.abb413c6acc0de63.2ace7a4f3e71:color.74284d9dcbcc",
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:color.74284d9dcbcc",
+        "field:bmanga:property.group.ecbf95ed1f9f80cf.ec9fbc9fd70a:color.74284d9dcbcc",
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:color.74284d9dcbcc"
+      ],
+      "custom_property": false,
+      "field_expression": "color",
+      "field_name": "color",
+      "line": 30,
+      "owner_expression": "style",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:fill.color.847f64dd3764",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.color.847f64dd3764",
+        "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:fill.color.847f64dd3764"
+      ],
+      "custom_property": false,
+      "field_expression": "fill_color",
+      "field_name": "fill_color",
+      "line": 31,
+      "owner_expression": "style",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [],
+      "custom_property": false,
+      "field_expression": "show_stroke",
+      "field_name": "show_stroke",
+      "line": 33,
+      "owner_expression": "style",
+      "resolution_contract": "blender_builtin_rna",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [],
+      "custom_property": false,
+      "field_expression": "show_fill",
+      "field_name": "show_fill",
+      "line": 34,
+      "owner_expression": "style",
+      "resolution_contract": "blender_builtin_rna",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:size.mm.69222d9fbd27"
+      ],
+      "custom_property": false,
+      "field_expression": "size_mm",
+      "field_name": "size_mm",
+      "line": 56,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "honor_size_mode and str(value(settings, 'size_mode', 'SCENE') or '') == 'SCENE'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:size.ccdcbe846f3d"
+      ],
+      "custom_property": false,
+      "field_expression": "size",
+      "field_name": "size",
+      "line": 58,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "not (honor_size_mode and str(value(settings, 'size_mode', 'SCENE') or '') == 'SCENE')"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:use.size.pressure.a45d3d58bd0a"
+      ],
+      "custom_property": false,
+      "field_expression": "use_size_pressure",
+      "field_name": "use_size_pressure",
+      "line": 59,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:strength.e6b88623f720"
+      ],
+      "custom_property": false,
+      "field_expression": "strength",
+      "field_name": "strength",
+      "line": 64,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:use.strength.pressure.094f18f56354"
+      ],
+      "custom_property": false,
+      "field_expression": "use_strength_pressure",
+      "field_name": "use_strength_pressure",
+      "line": 65,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:tool.7c9bbe5ec9b3"
+      ],
+      "custom_property": false,
+      "field_expression": "tool",
+      "field_name": "tool",
+      "line": 87,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:brush.asset.ace8334da37d"
+      ],
+      "custom_property": false,
+      "field_expression": "brush_asset",
+      "field_name": "brush_asset",
+      "line": 93,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "tool == 'brush'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:size.mode.a140035ef651"
+      ],
+      "custom_property": false,
+      "field_expression": "size_mode",
+      "field_name": "size_mode",
+      "line": 94,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "tool == 'brush'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:stroke.type.5a87428ad8b7"
+      ],
+      "custom_property": false,
+      "field_expression": "stroke_type",
+      "field_name": "stroke_type",
+      "line": 96,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "tool == 'brush'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:caps.type.6c28f5bdd10d"
+      ],
+      "custom_property": false,
+      "field_expression": "caps_type",
+      "field_name": "caps_type",
+      "line": 99,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "tool == 'brush'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:hardness.25d304dd0e41"
+      ],
+      "custom_property": false,
+      "field_expression": "hardness",
+      "field_name": "hardness",
+      "line": 100,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "tool == 'brush'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:use.smooth.stroke.6254ea999a37"
+      ],
+      "custom_property": false,
+      "field_expression": "use_smooth_stroke",
+      "field_name": "use_smooth_stroke",
+      "line": 101,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "tool == 'brush'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:smooth.stroke.factor.9c3e97788386"
+      ],
+      "custom_property": false,
+      "field_expression": "smooth_stroke_factor",
+      "field_name": "smooth_stroke_factor",
+      "line": 104,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "tool == 'brush'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:fill.direction.fb103286989d"
+      ],
+      "custom_property": false,
+      "field_expression": "fill_direction",
+      "field_name": "fill_direction",
+      "line": 109,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "not (tool == 'brush')",
+        "tool == 'fill'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:fill.solver.26a497168eee"
+      ],
+      "custom_property": false,
+      "field_expression": "fill_solver",
+      "field_name": "fill_solver",
+      "line": 110,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "not (tool == 'brush')",
+        "tool == 'fill'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:fill.factor.a3c1171f035b"
+      ],
+      "custom_property": false,
+      "field_expression": "fill_factor",
+      "field_name": "fill_factor",
+      "line": 112,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "not (tool == 'brush')",
+        "tool == 'fill'",
+        "str(value(settings, 'fill_solver', 'DELAUNAY') or '') == 'PIXEL'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:fill.dilate.f7d7c2987023"
+      ],
+      "custom_property": false,
+      "field_expression": "fill_dilate",
+      "field_name": "fill_dilate",
+      "line": 113,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "not (tool == 'brush')",
+        "tool == 'fill'",
+        "str(value(settings, 'fill_solver', 'DELAUNAY') or '') == 'PIXEL'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:size.ccdcbe846f3d"
+      ],
+      "custom_property": false,
+      "field_expression": "size",
+      "field_name": "size",
+      "line": 114,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "not (tool == 'brush')",
+        "tool == 'fill'",
+        "str(value(settings, 'fill_solver', 'DELAUNAY') or '') == 'PIXEL'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:size.mode.a140035ef651"
+      ],
+      "custom_property": false,
+      "field_expression": "size_mode",
+      "field_name": "size_mode",
+      "line": 116,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "not (tool == 'brush')",
+        "tool == 'fill'",
+        "not (str(value(settings, 'fill_solver', 'DELAUNAY') or '') == 'PIXEL')"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:size.mm.69222d9fbd27"
+      ],
+      "custom_property": false,
+      "field_expression": "size_mm",
+      "field_name": "size_mm",
+      "line": 118,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "not (tool == 'brush')",
+        "tool == 'fill'",
+        "not (str(value(settings, 'fill_solver', 'DELAUNAY') or '') == 'PIXEL')",
+        "str(value(settings, 'size_mode', 'SCENE') or '') == 'SCENE'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:size.ccdcbe846f3d"
+      ],
+      "custom_property": false,
+      "field_expression": "size",
+      "field_name": "size",
+      "line": 120,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "not (tool == 'brush')",
+        "tool == 'fill'",
+        "not (str(value(settings, 'fill_solver', 'DELAUNAY') or '') == 'PIXEL')",
+        "not (str(value(settings, 'size_mode', 'SCENE') or '') == 'SCENE')"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:fill.extend.factor.d65f4f51187b"
+      ],
+      "custom_property": false,
+      "field_expression": "fill_extend_factor",
+      "field_name": "fill_extend_factor",
+      "line": 121,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "not (tool == 'brush')",
+        "tool == 'fill'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:fill.extend.mode.b0e5b0255482"
+      ],
+      "custom_property": false,
+      "field_expression": "fill_extend_mode",
+      "field_name": "fill_extend_mode",
+      "line": 124,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "not (tool == 'brush')",
+        "tool == 'fill'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:use.active.layer.only.d0a122af5dae"
+      ],
+      "custom_property": false,
+      "field_expression": "use_active_layer_only",
+      "field_name": "use_active_layer_only",
+      "line": 127,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "not (tool == 'brush')",
+        "not (tool == 'fill')",
+        "tool == 'trim'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:use.keep.caps.8a9b80b9786b"
+      ],
+      "custom_property": false,
+      "field_expression": "use_keep_caps",
+      "field_name": "use_keep_caps",
+      "line": 128,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "not (tool == 'brush')",
+        "not (tool == 'fill')",
+        "tool == 'trim'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:eraser.mode.f748ae0db777"
+      ],
+      "custom_property": false,
+      "field_expression": "eraser_mode",
+      "field_name": "eraser_mode",
+      "line": 135,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "not (tool == 'brush')",
+        "not (tool == 'fill')",
+        "not (tool == 'trim')",
+        "tool == 'erase'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:use.active.layer.only.d0a122af5dae"
+      ],
+      "custom_property": false,
+      "field_expression": "use_active_layer_only",
+      "field_name": "use_active_layer_only",
+      "line": 137,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "not (tool == 'brush')",
+        "not (tool == 'fill')",
+        "not (tool == 'trim')",
+        "tool == 'erase'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.d50fe223dc8581d2.798cb3951a28:use.keep.caps.8a9b80b9786b"
+      ],
+      "custom_property": false,
+      "field_expression": "use_keep_caps",
+      "field_name": "use_keep_caps",
+      "line": 139,
+      "owner_expression": "settings",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "not (tool == 'brush')",
+        "not (tool == 'fill')",
+        "not (tool == 'trim')",
+        "tool == 'erase'",
+        "str(value(settings, 'eraser_mode', 'HARD') or '') in {'HARD', 'SOFT'}"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:bmanga.enter.coma.mode.52670c47f95e:filepath.5fa60d8ed32b",
+        "field:bmanga:bmanga.export.all.pages.29f780f9f3a4:filepath.5fa60d8ed32b",
+        "field:bmanga:bmanga.preferences.export.2850b75fc41e:filepath.5fa60d8ed32b",
+        "field:bmanga:bmanga.preferences.import.861fff514efb:filepath.5fa60d8ed32b",
+        "field:bmanga:property.group.c1edf6b938af4077.96691208da82:filepath.5fa60d8ed32b",
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:filepath.5fa60d8ed32b"
+      ],
+      "custom_property": false,
+      "field_expression": "filepath",
+      "field_name": "filepath",
+      "line": 16,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.c1edf6b938af4077.96691208da82:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.ecbf95ed1f9f80cf.ec9fbc9fd70a:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:opacity.ad9a0b2eddd5"
+      ],
+      "custom_property": false,
+      "field_expression": "opacity",
+      "field_name": "opacity",
+      "line": 20,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:blend.mode.ca5d95fdf15a",
+        "field:bmanga:property.group.c1edf6b938af4077.96691208da82:blend.mode.ca5d95fdf15a"
+      ],
+      "custom_property": false,
+      "field_expression": "blend_mode",
+      "field_name": "blend_mode",
+      "line": 21,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.c1edf6b938af4077.96691208da82:tint.color.974e742d9e40"
+      ],
+      "custom_property": false,
+      "field_expression": "tint_color",
+      "field_name": "tint_color",
+      "line": 22,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.c1edf6b938af4077.96691208da82:brightness.aa6ed6c957fc"
+      ],
+      "custom_property": false,
+      "field_expression": "brightness",
+      "field_name": "brightness",
+      "line": 26,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.c1edf6b938af4077.96691208da82:contrast.3426125bf109"
+      ],
+      "custom_property": false,
+      "field_expression": "contrast",
+      "field_name": "contrast",
+      "line": 27,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.c1edf6b938af4077.96691208da82:binarize.enabled.441b82483c4a"
+      ],
+      "custom_property": false,
+      "field_expression": "binarize_enabled",
+      "field_name": "binarize_enabled",
+      "line": 28,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.c1edf6b938af4077.96691208da82:binarize.threshold.c4d9ff4a90d8"
+      ],
+      "custom_property": false,
+      "field_expression": "binarize_threshold",
+      "field_name": "binarize_threshold",
+      "line": 31,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:content.source.ad2089deb65a"
+      ],
+      "custom_property": false,
+      "field_expression": "content_source",
+      "field_name": "content_source",
+      "line": 46,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.c1edf6b938af4077.96691208da82:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.ecbf95ed1f9f80cf.ec9fbc9fd70a:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:opacity.ad9a0b2eddd5"
+      ],
+      "custom_property": false,
+      "field_expression": "opacity",
+      "field_name": "opacity",
+      "line": 51,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:draw.mode.cdeeb08a74b2"
+      ],
+      "custom_property": false,
+      "field_expression": "draw_mode",
+      "field_name": "draw_mode",
+      "line": 52,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:aspect.ratio.05c35d5b5b0d"
+      ],
+      "custom_property": false,
+      "field_expression": "aspect_ratio",
+      "field_name": "aspect_ratio",
+      "line": 53,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:brush.size.mm.09a8227efe94",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:brush.size.mm.09a8227efe94",
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:brush.size.mm.09a8227efe94"
+      ],
+      "custom_property": false,
+      "field_expression": "brush_size_mm",
+      "field_name": "brush_size_mm",
+      "line": 53,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:image.angle.deg.fd77bd0c6db8"
+      ],
+      "custom_property": false,
+      "field_expression": "image_angle_deg",
+      "field_name": "image_angle_deg",
+      "line": 61,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:spacing.percent.3d15f3f7f479"
+      ],
+      "custom_property": false,
+      "field_expression": "spacing_percent",
+      "field_name": "spacing_percent",
+      "line": 61,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:bmanga.text.selection.style.popup.47cb1dcc5a30:color.74284d9dcbcc",
+        "field:bmanga:property.group.164564e22723b4a0.5c6f55a95624:color.74284d9dcbcc",
+        "field:bmanga:property.group.1797f4eb424d915b.7bd59e0e7d28:color.74284d9dcbcc",
+        "field:bmanga:property.group.21b1957948b38ea6.9a1cb699d2b4:color.74284d9dcbcc",
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:color.74284d9dcbcc",
+        "field:bmanga:property.group.997ad0906e944883.a86e49aae7ec:color.74284d9dcbcc",
+        "field:bmanga:property.group.abb413c6acc0de63.2ace7a4f3e71:color.74284d9dcbcc",
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:color.74284d9dcbcc",
+        "field:bmanga:property.group.ecbf95ed1f9f80cf.ec9fbc9fd70a:color.74284d9dcbcc",
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:color.74284d9dcbcc"
+      ],
+      "custom_property": false,
+      "field_expression": "color",
+      "field_name": "color",
+      "line": 69,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:shape.kind.db33439eb7a2"
+      ],
+      "custom_property": false,
+      "field_expression": "shape_kind",
+      "field_name": "shape_kind",
+      "line": 78,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": [
+        "source == 'shape'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:shape.sides.7ed1a8fe0473"
+      ],
+      "custom_property": false,
+      "field_expression": "shape_sides",
+      "field_name": "shape_sides",
+      "line": 80,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": [
+        "source == 'shape'",
+        "str(value(entry, 'shape_kind', '') or '') == 'polygon'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:bmanga.enter.coma.mode.52670c47f95e:filepath.5fa60d8ed32b",
+        "field:bmanga:bmanga.export.all.pages.29f780f9f3a4:filepath.5fa60d8ed32b",
+        "field:bmanga:bmanga.preferences.export.2850b75fc41e:filepath.5fa60d8ed32b",
+        "field:bmanga:bmanga.preferences.import.861fff514efb:filepath.5fa60d8ed32b",
+        "field:bmanga:property.group.c1edf6b938af4077.96691208da82:filepath.5fa60d8ed32b",
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:filepath.5fa60d8ed32b"
+      ],
+      "custom_property": false,
+      "field_expression": "filepath",
+      "field_name": "filepath",
+      "line": 82,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:stamp.angle.mode.51e0ca5f5dff"
+      ],
+      "custom_property": false,
+      "field_expression": "stamp_angle_mode",
+      "field_name": "stamp_angle_mode",
+      "line": 90,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": [
+        "draw_mode == 'stamp'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:stamp.angle.object.name.ea1bb2becee8"
+      ],
+      "custom_property": false,
+      "field_expression": "stamp_angle_object_name",
+      "field_name": "stamp_angle_object_name",
+      "line": 92,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": [
+        "draw_mode == 'stamp'",
+        "str(value(entry, 'stamp_angle_mode', '') or '') == 'object'"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:ribbon.repeat.mode.c9d678137cb0"
+      ],
+      "custom_property": false,
+      "field_expression": "ribbon_repeat_mode",
+      "field_name": "ribbon_repeat_mode",
+      "line": 94,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:inout.size.enabled.6f6053055a54"
+      ],
+      "custom_property": false,
+      "field_expression": "inout_size_enabled",
+      "field_name": "inout_size_enabled",
+      "line": 101,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:inout.opacity.enabled.0e4e0dd01798"
+      ],
+      "custom_property": false,
+      "field_expression": "inout_opacity_enabled",
+      "field_name": "inout_opacity_enabled",
+      "line": 102,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:inout.color.enabled.29ec05f6b2ab"
+      ],
+      "custom_property": false,
+      "field_expression": "inout_color_enabled",
+      "field_name": "inout_color_enabled",
+      "line": 103,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:in.percent.70ec3521a5c2",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:in.percent.70ec3521a5c2",
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:in.percent.70ec3521a5c2"
+      ],
+      "custom_property": false,
+      "field_expression": "in_percent",
+      "field_name": "in_percent",
+      "line": 104,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:out.percent.9c1cd82c476a",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:out.percent.9c1cd82c476a",
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:out.percent.9c1cd82c476a"
+      ],
+      "custom_property": false,
+      "field_expression": "out_percent",
+      "field_name": "out_percent",
+      "line": 104,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:inout.start.color.90a7e9bffe28"
+      ],
+      "custom_property": false,
+      "field_expression": "inout_start_color",
+      "field_name": "inout_start_color",
+      "line": 107,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:inout.end.color.61d7845c0c69"
+      ],
+      "custom_property": false,
+      "field_expression": "inout_end_color",
+      "field_name": "inout_end_color",
+      "line": 108,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.0e23c8fd4da9ba47.9d58b4ed0a0e:add.name.c5c2383514e4"
+      ],
+      "custom_property": false,
+      "field_expression": "add_name",
+      "field_name": "add_name",
+      "line": 327,
+      "owner_expression": "draft",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/preset_adapters.py",
+      "visibility_conditions": [
+        "draft is not None"
+      ]
+    },
+    {
+      "call": "prop",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.0e23c8fd4da9ba47.9d58b4ed0a0e:add.description.0b42ac6b39b8"
+      ],
+      "custom_property": false,
+      "field_expression": "add_description",
+      "field_name": "add_description",
+      "line": 328,
+      "owner_expression": "draft",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/preset_adapters.py",
+      "visibility_conditions": [
+        "draft is not None"
+      ]
+    },
+    {
+      "call": "prop",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.0e23c8fd4da9ba47.9d58b4ed0a0e:rename.name.45cd432963f1"
+      ],
+      "custom_property": false,
+      "field_expression": "rename_name",
+      "field_name": "rename_name",
+      "line": 369,
+      "owner_expression": "draft",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/preset_adapters.py",
+      "visibility_conditions": [
+        "draft is not None"
+      ]
+    },
+    {
+      "call": "prop",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.0e23c8fd4da9ba47.9d58b4ed0a0e:duplicate.name.36b9fd04ff58"
+      ],
+      "custom_property": false,
+      "field_expression": "duplicate_name",
+      "field_name": "duplicate_name",
+      "line": 378,
+      "owner_expression": "draft",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/preset_adapters.py",
+      "visibility_conditions": [
+        "draft is not None"
+      ]
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.c1edf6b938af4077.96691208da82:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.ecbf95ed1f9f80cf.ec9fbc9fd70a:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:opacity.ad9a0b2eddd5"
+      ],
+      "custom_property": false,
+      "field_expression": "opacity",
+      "field_name": "opacity",
+      "line": 17,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/raster_fill.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:line.color.99e75db55607",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.color.99e75db55607",
+        "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:line.color.99e75db55607"
+      ],
+      "custom_property": false,
+      "field_expression": "line_color",
+      "field_name": "line_color",
+      "line": 22,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/raster_fill.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:fill.color.847f64dd3764",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.color.847f64dd3764",
+        "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:fill.color.847f64dd3764"
+      ],
+      "custom_property": false,
+      "field_expression": "fill_color",
+      "field_name": "fill_color",
+      "line": 23,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/raster_fill.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:bmanga.layer.stack.add.c90ff49c3b7a:bit.depth.571c36a8bca6",
+        "field:bmanga:bmanga.raster.layer.add.fd68bdff497b:bit.depth.571c36a8bca6",
+        "field:bmanga:bmanga.raster.layer.set.bit.depth.ef54d549737f:bit.depth.571c36a8bca6",
+        "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:bit.depth.571c36a8bca6"
+      ],
+      "custom_property": false,
+      "field_expression": "bit_depth",
+      "field_name": "bit_depth",
+      "line": 29,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/raster_fill.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.c1edf6b938af4077.96691208da82:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.ecbf95ed1f9f80cf.ec9fbc9fd70a:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:opacity.ad9a0b2eddd5"
+      ],
+      "custom_property": false,
+      "field_expression": "opacity",
+      "field_name": "opacity",
+      "line": 72,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/raster_fill.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:bmanga.text.selection.style.popup.47cb1dcc5a30:color.74284d9dcbcc",
+        "field:bmanga:property.group.164564e22723b4a0.5c6f55a95624:color.74284d9dcbcc",
+        "field:bmanga:property.group.1797f4eb424d915b.7bd59e0e7d28:color.74284d9dcbcc",
+        "field:bmanga:property.group.21b1957948b38ea6.9a1cb699d2b4:color.74284d9dcbcc",
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:color.74284d9dcbcc",
+        "field:bmanga:property.group.997ad0906e944883.a86e49aae7ec:color.74284d9dcbcc",
+        "field:bmanga:property.group.abb413c6acc0de63.2ace7a4f3e71:color.74284d9dcbcc",
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:color.74284d9dcbcc",
+        "field:bmanga:property.group.ecbf95ed1f9f80cf.ec9fbc9fd70a:color.74284d9dcbcc",
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:color.74284d9dcbcc"
+      ],
+      "custom_property": false,
+      "field_expression": "color",
+      "field_name": "color",
+      "line": 73,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/raster_fill.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:rotation.deg.ae1204a6e6a6",
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:rotation.deg.ae1204a6e6a6",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:rotation.deg.ae1204a6e6a6",
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:rotation.deg.ae1204a6e6a6",
+        "field:bmanga:property.group.c1edf6b938af4077.96691208da82:rotation.deg.ae1204a6e6a6"
+      ],
+      "custom_property": false,
+      "field_expression": "rotation_deg",
+      "field_name": "rotation_deg",
+      "line": 85,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/raster_fill.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:bmanga.layer.stack.add.c90ff49c3b7a:fill.type.e074ab1f6728",
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:fill.type.e074ab1f6728"
+      ],
+      "custom_property": false,
+      "field_expression": "fill_type",
+      "field_name": "fill_type",
+      "line": 91,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/raster_fill.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:color2.bd706c814e53"
+      ],
+      "custom_property": false,
+      "field_expression": "color2",
+      "field_name": "color2",
+      "line": 97,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/raster_fill.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:gradient.type.dfacfba3876d"
+      ],
+      "custom_property": false,
+      "field_expression": "gradient_type",
+      "field_name": "gradient_type",
+      "line": 98,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/raster_fill.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:gradient.angle.4e702488c94a"
+      ],
+      "custom_property": false,
+      "field_expression": "gradient_angle",
+      "field_name": "gradient_angle",
+      "line": 100,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/raster_fill.py",
+      "visibility_conditions": [
+        "not preset_mode and str(value(entry, 'gradient_type', 'linear')) == 'linear'"
+      ]
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:gradient.start.x.mm.5c92ad0fcac9"
+      ],
+      "custom_property": false,
+      "field_expression": "gradient_start_x_mm",
+      "field_name": "gradient_start_x_mm",
+      "line": 107,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/raster_fill.py",
+      "visibility_conditions": [
+        "bool(value(entry, 'use_gradient_endpoints', False))"
+      ]
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:gradient.start.y.mm.376efbc61b82"
+      ],
+      "custom_property": false,
+      "field_expression": "gradient_start_y_mm",
+      "field_name": "gradient_start_y_mm",
+      "line": 107,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/raster_fill.py",
+      "visibility_conditions": [
+        "bool(value(entry, 'use_gradient_endpoints', False))"
+      ]
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:gradient.end.x.mm.4ea865b8a51f"
+      ],
+      "custom_property": false,
+      "field_expression": "gradient_end_x_mm",
+      "field_name": "gradient_end_x_mm",
+      "line": 108,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/raster_fill.py",
+      "visibility_conditions": [
+        "bool(value(entry, 'use_gradient_endpoints', False))"
+      ]
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:gradient.end.y.mm.4a9e7a9372cb"
+      ],
+      "custom_property": false,
+      "field_expression": "gradient_end_y_mm",
+      "field_name": "gradient_end_y_mm",
+      "line": 108,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/raster_fill.py",
+      "visibility_conditions": [
+        "bool(value(entry, 'use_gradient_endpoints', False))"
+      ]
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:region.x.mm.6d2cd2de47c6"
+      ],
+      "custom_property": false,
+      "field_expression": "region_x_mm",
+      "field_name": "region_x_mm",
+      "line": 124,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/raster_fill.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:region.y.mm.1d654b6c9a5a"
+      ],
+      "custom_property": false,
+      "field_expression": "region_y_mm",
+      "field_name": "region_y_mm",
+      "line": 124,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/raster_fill.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:region.height.mm.d23d69171947"
+      ],
+      "custom_property": false,
+      "field_expression": "region_height_mm",
+      "field_name": "region_height_mm",
+      "line": 125,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/raster_fill.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:region.width.mm.fb5238709a4f"
+      ],
+      "custom_property": false,
+      "field_expression": "region_width_mm",
+      "field_name": "region_width_mm",
+      "line": 125,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/raster_fill.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.97e7af9376b0c6e4.368101193601:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.c1edf6b938af4077.96691208da82:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.c3fc858cf05486a0.cf0f8a3fd0ea:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.ecbf95ed1f9f80cf.ec9fbc9fd70a:opacity.ad9a0b2eddd5",
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:opacity.ad9a0b2eddd5"
+      ],
+      "custom_property": false,
+      "field_expression": "opacity",
+      "field_name": "opacity",
+      "line": 33,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/text.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:bmanga.text.apply.font.to.selection.d036f9bc3517:font.795ea3efa43d",
+        "field:bmanga:property.group.164564e22723b4a0.5c6f55a95624:font.795ea3efa43d",
+        "field:bmanga:property.group.18ff5ce6b22f8393.443a9a20d91f:font.795ea3efa43d",
+        "field:bmanga:property.group.21b1957948b38ea6.9a1cb699d2b4:font.795ea3efa43d",
+        "field:bmanga:property.group.618467c54470d665.c6c5b41518c2:font.795ea3efa43d",
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:font.795ea3efa43d"
+      ],
+      "custom_property": false,
+      "field_expression": "font",
+      "field_name": "font",
+      "line": 82,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/text.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:bmanga.text.selection.style.popup.47cb1dcc5a30:font.size.unit.3d33b1adde55",
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:font.size.unit.3d33b1adde55",
+        "field:bmanga:property.group.997ad0906e944883.a86e49aae7ec:font.size.unit.3d33b1adde55"
+      ],
+      "custom_property": false,
+      "field_expression": "font_size_unit",
+      "field_name": "font_size_unit",
+      "line": 83,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/text.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:bmanga.text.selection.style.popup.47cb1dcc5a30:font.size.value.9d35ba9f2a59",
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:font.size.value.9d35ba9f2a59",
+        "field:bmanga:property.group.997ad0906e944883.a86e49aae7ec:font.size.value.9d35ba9f2a59"
+      ],
+      "custom_property": false,
+      "field_expression": "font_size_value",
+      "field_name": "font_size_value",
+      "line": 83,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/text.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:bmanga.text.selection.style.popup.47cb1dcc5a30:font.bold.aab171d493e1",
+        "field:bmanga:property.group.164564e22723b4a0.5c6f55a95624:font.bold.aab171d493e1",
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:font.bold.aab171d493e1"
+      ],
+      "custom_property": false,
+      "field_expression": "font_bold",
+      "field_name": "font_bold",
+      "line": 91,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/text.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:bmanga.text.selection.style.popup.47cb1dcc5a30:font.italic.f23d636b3dbc",
+        "field:bmanga:property.group.164564e22723b4a0.5c6f55a95624:font.italic.f23d636b3dbc",
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:font.italic.f23d636b3dbc"
+      ],
+      "custom_property": false,
+      "field_expression": "font_italic",
+      "field_name": "font_italic",
+      "line": 91,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/text.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:bmanga.text.selection.style.popup.47cb1dcc5a30:color.74284d9dcbcc",
+        "field:bmanga:property.group.164564e22723b4a0.5c6f55a95624:color.74284d9dcbcc",
+        "field:bmanga:property.group.1797f4eb424d915b.7bd59e0e7d28:color.74284d9dcbcc",
+        "field:bmanga:property.group.21b1957948b38ea6.9a1cb699d2b4:color.74284d9dcbcc",
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:color.74284d9dcbcc",
+        "field:bmanga:property.group.997ad0906e944883.a86e49aae7ec:color.74284d9dcbcc",
+        "field:bmanga:property.group.abb413c6acc0de63.2ace7a4f3e71:color.74284d9dcbcc",
+        "field:bmanga:property.group.c18778d41effb14d.aa82002666ab:color.74284d9dcbcc",
+        "field:bmanga:property.group.ecbf95ed1f9f80cf.ec9fbc9fd70a:color.74284d9dcbcc",
+        "field:bmanga:property.group.fc4889045174c35d.bec7e6f7ddf6:color.74284d9dcbcc"
+      ],
+      "custom_property": false,
+      "field_expression": "color",
+      "field_name": "color",
+      "line": 99,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/text.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:writing.mode.c8a6791746a1"
+      ],
+      "custom_property": false,
+      "field_expression": "writing_mode",
+      "field_name": "writing_mode",
+      "line": 100,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/text.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:tatechuyoko.auto.fac63276b2c1"
+      ],
+      "custom_property": false,
+      "field_expression": "tatechuyoko_auto",
+      "field_name": "tatechuyoko_auto",
+      "line": 102,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/text.py",
+      "visibility_conditions": [
+        "str(value(entry, 'writing_mode', 'horizontal') or 'horizontal') == 'vertical'"
+      ]
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:letter.spacing.ce8960ebde3b"
+      ],
+      "custom_property": false,
+      "field_expression": "letter_spacing",
+      "field_name": "letter_spacing",
+      "line": 103,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/text.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:line.height.29ea1256ea5b"
+      ],
+      "custom_property": false,
+      "field_expression": "line_height",
+      "field_name": "line_height",
+      "line": 103,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/text.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:stroke.enabled.74f3203be59d"
+      ],
+      "custom_property": false,
+      "field_expression": "stroke_enabled",
+      "field_name": "stroke_enabled",
+      "line": 109,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/text.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:stroke.width.mm.0fa54d591c47"
+      ],
+      "custom_property": false,
+      "field_expression": "stroke_width_mm",
+      "field_name": "stroke_width_mm",
+      "line": 112,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/text.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:stroke.color.7ccfe3651e27"
+      ],
+      "custom_property": false,
+      "field_expression": "stroke_color",
+      "field_name": "stroke_color",
+      "line": 113,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/text.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.gap.em.2e8c52f9c0f2"
+      ],
+      "custom_property": false,
+      "field_expression": "ruby_gap_em",
+      "field_name": "ruby_gap_em",
+      "line": 122,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/text.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.size.percent.f83fbc55ca40"
+      ],
+      "custom_property": false,
+      "field_expression": "ruby_size_percent",
+      "field_name": "ruby_size_percent",
+      "line": 122,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/text.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.letter.spacing.a3c92930fd75"
+      ],
+      "custom_property": false,
+      "field_expression": "ruby_letter_spacing",
+      "field_name": "ruby_letter_spacing",
+      "line": 123,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/text.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.line.height.98b4b701219b"
+      ],
+      "custom_property": false,
+      "field_expression": "ruby_line_height",
+      "field_name": "ruby_line_height",
+      "line": 123,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/text.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.align.6c74a7514cb1"
+      ],
+      "custom_property": false,
+      "field_expression": "ruby_align",
+      "field_name": "ruby_align",
+      "line": 124,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/text.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_pair",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.small.kana.818db829ffa3"
+      ],
+      "custom_property": false,
+      "field_expression": "ruby_small_kana",
+      "field_name": "ruby_small_kana",
+      "line": 124,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/text.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.font.preset.9b000ccb3206"
+      ],
+      "custom_property": false,
+      "field_expression": "ruby_font_preset",
+      "field_name": "ruby_font_preset",
+      "line": 125,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/text.py",
+      "visibility_conditions": []
+    },
+    {
+      "call": "prop_if",
+      "candidate_field_ids": [
+        "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.default.style.303e38143a02"
+      ],
+      "custom_property": false,
+      "field_expression": "ruby_default_style",
+      "field_name": "ruby_default_style",
+      "line": 126,
+      "owner_expression": "entry",
+      "resolution_contract": "field_spec",
+      "source": "panels/detail_drawers/text.py",
+      "visibility_conditions": []
+    }
+  ],
+  "enabled_rule_count": 17,
+  "enabled_rules": [
+    {
+      "enabled_expression": "str(value(entry, 'corner_type', 'square') or 'square') != 'square'",
+      "layout_expression": "radius",
+      "line": 83,
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "shape == 'rect'"
+      ]
+    },
+    {
+      "enabled_expression": "bool(value(params, 'dynamic_base_rounded_corner_enabled', False))",
+      "layout_expression": "radius",
+      "line": 105,
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "str(value(params, 'dynamic_shape_base_kind', 'ellipse')) == 'rect'"
+      ]
+    },
+    {
+      "enabled_expression": "str(value(params, 'dynamic_shape_base_kind', 'ellipse')) == 'ellipse'",
+      "layout_expression": "corner",
+      "line": 116,
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": [
+        "shape in {'thorn', 'thorn-curve'}"
+      ]
+    },
+    {
+      "enabled_expression": "bool(value(entry, 'fill_gradient_enabled', False))",
+      "layout_expression": "gradient",
+      "line": 278,
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "enabled_expression": "bool(value(entry, enabled_name, False))",
+      "layout_expression": "content",
+      "line": 289,
+      "source": "panels/detail_drawers/balloon.py",
+      "visibility_conditions": []
+    },
+    {
+      "enabled_expression": "False",
+      "layout_expression": "row",
+      "line": 217,
+      "source": "panels/detail_drawers/dispatcher.py",
+      "visibility_conditions": [
+        "not drew"
+      ]
+    },
+    {
+      "enabled_expression": "False",
+      "layout_expression": "note",
+      "line": 130,
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "not (tool == 'brush')",
+        "not (tool == 'fill')",
+        "tool == 'trim'"
+      ]
+    },
+    {
+      "enabled_expression": "False",
+      "layout_expression": "note",
+      "line": 144,
+      "source": "panels/detail_drawers/gp.py",
+      "visibility_conditions": [
+        "not (tool == 'brush')",
+        "not (tool == 'fill')",
+        "not (tool == 'trim')",
+        "not (tool == 'erase')",
+        "tool == 'grab'"
+      ]
+    },
+    {
+      "enabled_expression": "bool(value(entry, 'binarize_enabled', False))",
+      "layout_expression": "threshold",
+      "line": 30,
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "enabled_expression": "bool(value(entry, 'inout_color_enabled', False))",
+      "layout_expression": "color",
+      "line": 106,
+      "source": "panels/detail_drawers/image.py",
+      "visibility_conditions": []
+    },
+    {
+      "enabled_expression": "False",
+      "layout_expression": "row",
+      "line": 113,
+      "source": "panels/detail_drawers/preset_adapters.py",
+      "visibility_conditions": [
+        "count <= 0"
+      ]
+    },
+    {
+      "enabled_expression": "bool(enabled)",
+      "layout_expression": "row",
+      "line": 132,
+      "source": "panels/detail_drawers/preset_adapters.py",
+      "visibility_conditions": []
+    },
+    {
+      "enabled_expression": "False",
+      "layout_expression": "empty",
+      "line": 162,
+      "source": "panels/detail_drawers/preset_adapters.py",
+      "visibility_conditions": [
+        "count == 0"
+      ]
+    },
+    {
+      "enabled_expression": "False",
+      "layout_expression": "empty",
+      "line": 273,
+      "source": "panels/detail_drawers/preset_adapters.py",
+      "visibility_conditions": [
+        "list_owner is not None",
+        "count >= 0",
+        "count == 0"
+      ]
+    },
+    {
+      "enabled_expression": "bool(selected)",
+      "layout_expression": "row",
+      "line": 363,
+      "source": "panels/detail_drawers/preset_adapters.py",
+      "visibility_conditions": []
+    },
+    {
+      "enabled_expression": "not endpoint_mode",
+      "layout_expression": "rotation",
+      "line": 84,
+      "source": "panels/detail_drawers/raster_fill.py",
+      "visibility_conditions": []
+    },
+    {
+      "enabled_expression": "bool(value(entry, 'stroke_enabled', False))",
+      "layout_expression": "content",
+      "line": 111,
+      "source": "panels/detail_drawers/text.py",
+      "visibility_conditions": []
+    }
+  ],
+  "field_registry_digest": "181ff51a8361cc59928242343cca101943ae4a3ed47aff19963dc8bb90eb7cd4",
+  "generator": "tools.settings_contract.ui_scan",
+  "schema_version": 1
+}

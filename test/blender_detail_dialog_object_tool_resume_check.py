@@ -15,7 +15,7 @@ from bpy_extras.view3d_utils import location_3d_to_region_2d
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = "bmanga_dev_detail_object_tool_resume"
-STATE = {"phase": "point_menu"}
+STATE = {"phase": "invoke_detail"}
 
 
 def _load_addon():
@@ -80,6 +80,16 @@ def _tick():
         window, area, region = _view3d_override()
         runtime = _sub("operators.detail_dialog_runtime")
         modal_state = _sub("operators.coma_modal_state")
+        if phase == "invoke_detail":
+            STATE["phase"] = "change_and_close"
+            with bpy.context.temp_override(window=window, area=area, region=region):
+                result = bpy.ops.bmanga.layer_detail_open(
+                    "INVOKE_DEFAULT",
+                    bmanga_id=STATE["bmanga_id"],
+                    kind="text",
+                )
+            assert result == {"RUNNING_MODAL"}, result
+            return 0.4
         if phase == "point_menu":
             selection = _sub("operators.object_tool_selection")
             rect = selection.selection_bounds_for_key(bpy.context, STATE["selection_key"])
@@ -328,6 +338,18 @@ def main():
     assert active is not None
     STATE["before_identity"] = id(active)
     bpy.app.timers.register(_tick, first_interval=0.8)
+
+    def fail_if_stalled():
+        if STATE["phase"] != "finish":
+            print(
+                "BMANGA_DETAIL_OBJECT_TOOL_RESUME_TIMEOUT: "
+                f"phase={STATE['phase']}",
+                flush=True,
+            )
+            os._exit(1)
+        return None
+
+    bpy.app.timers.register(fail_if_stalled, first_interval=60.0)
 
 
 if __name__ == "__main__":

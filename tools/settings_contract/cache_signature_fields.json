@@ -1,0 +1,1020 @@
+{
+  "field_bindings": {
+    "field:bmanga:property.group.18ff5ce6b22f8393.443a9a20d91f:author.636485868971": [
+      "signature:utils.work_info_text_object._item_signature:BMangaWorkInfo.author"
+    ],
+    "field:bmanga:property.group.18ff5ce6b22f8393.443a9a20d91f:episode.number.8e2f496996c0": [
+      "signature:utils.work_info_text_object._item_signature:BMangaWorkInfo.episode_number"
+    ],
+    "field:bmanga:property.group.18ff5ce6b22f8393.443a9a20d91f:page.number.end.dbb2aabfc500": [
+      "signature:utils.work_info_text_object._item_signature:BMangaWorkInfo.page_number_end"
+    ],
+    "field:bmanga:property.group.18ff5ce6b22f8393.443a9a20d91f:page.number.start.0ad1d0eb45c1": [
+      "signature:utils.work_info_text_object._item_signature:BMangaWorkInfo.page_number_start"
+    ],
+    "field:bmanga:property.group.18ff5ce6b22f8393.443a9a20d91f:subtitle.a02c387e87f6": [
+      "signature:utils.work_info_text_object._item_signature:BMangaWorkInfo.subtitle"
+    ],
+    "field:bmanga:property.group.18ff5ce6b22f8393.443a9a20d91f:work.name.ea8080edd0a5": [
+      "signature:utils.work_info_text_object._item_signature:BMangaWorkInfo.work_name"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:body.230d8358dc8e": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.body"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:color.74284d9dcbcc": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.color"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:font.bold.aab171d493e1": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.font_bold"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:font.italic.f23d636b3dbc": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.font_italic"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:font.size.pt.4f6d2095f681": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.font_size_pt"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:font.size.q.a9196f1f80dd": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.font_size_q"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:free.transform.bottom.left.d8844b59aa43": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.free_transform_bottom_left"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:free.transform.bottom.right.5087fddae758": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.free_transform_bottom_right"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:free.transform.enabled.6ee261cdb819": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.free_transform_enabled"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:free.transform.top.left.c2428a24abaf": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.free_transform_top_left"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:free.transform.top.right.51bbbfe652d1": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.free_transform_top_right"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:height.mm.a58f49b71fe5": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.height_mm"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:letter.spacing.ce8960ebde3b": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.letter_spacing"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:line.height.29ea1256ea5b": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.line_height"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.align.6c74a7514cb1": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.ruby_align"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.default.style.303e38143a02": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.ruby_default_style"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.font.preset.9b000ccb3206": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.ruby_font_preset"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.gap.mm.443c48eadbc3": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.ruby_gap_mm"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.letter.spacing.a3c92930fd75": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.ruby_letter_spacing"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.line.height.98b4b701219b": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.ruby_line_height"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.size.percent.f83fbc55ca40": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.ruby_size_percent"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.small.kana.818db829ffa3": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.ruby_small_kana"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:ruby.spans.03bd340dad5b": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.ruby_spans"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:stroke.enabled.74f3203be59d": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.stroke_enabled"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:stroke.width.mm.0fa54d591c47": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.stroke_width_mm"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:width.mm.5b9b0c56fef0": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.width_mm"
+    ],
+    "field:bmanga:property.group.82b1e0cf4acbabdb.903b31e4bf31:writing.mode.c8a6791746a1": [
+      "signature:utils.text_real_object._entry_render_signature:BMangaTextEntry.writing_mode"
+    ],
+    "field:bmanga:property.group.997ad0906e944883.a86e49aae7ec:enabled.fb9cf75606b4": [
+      "signature:utils.work_info_text_object._item_signature:BMangaDisplayItem.enabled"
+    ],
+    "field:bmanga:property.group.997ad0906e944883.a86e49aae7ec:font.size.pt.4f6d2095f681": [
+      "signature:utils.work_info_text_object._item_signature:BMangaDisplayItem.font_size_pt"
+    ],
+    "field:bmanga:property.group.997ad0906e944883.a86e49aae7ec:font.size.q.a9196f1f80dd": [
+      "signature:utils.work_info_text_object._item_signature:BMangaDisplayItem.font_size_q"
+    ],
+    "field:bmanga:property.group.997ad0906e944883.a86e49aae7ec:position.5a452459503b": [
+      "signature:utils.work_info_text_object._item_signature:BMangaDisplayItem.position"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:brush.jitter.amount.31e82a01e8eb": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.brush_jitter_amount"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:brush.jitter.enabled.f581aaaaf6fa": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.brush_jitter_enabled"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:brush.size.mm.09a8227efe94": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.brush_size_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:bundle.enabled.b5afab1e5762": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.bundle_enabled"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:bundle.gap.jitter.amount.e5d1c9ed2015": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.bundle_gap_jitter_amount"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:bundle.gap.mm.d398825bcdee": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.bundle_gap_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:bundle.jagged.enabled.9cb18e337f39": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.bundle_jagged_enabled"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:bundle.jagged.height.percent.57e8c51f184b": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.bundle_jagged_height_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:bundle.line.count.666c316db6d0": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.bundle_line_count"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:bundle.line.count.jitter.3c53f0894cfe": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.bundle_line_count_jitter"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:center.offset.x.mm.d9b62bcdef1c": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.center_offset_x_mm",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.center_offset_x_mm",
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.center_offset_x_mm",
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.center_offset_x_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:center.offset.y.mm.364ccd37fbc6": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.center_offset_y_mm",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.center_offset_y_mm",
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.center_offset_y_mm",
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.center_offset_y_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:corner.type.9ea3c1ce5791": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.corner_type",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.corner_type",
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.corner_type",
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.corner_type"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:custom.preset.name.581fc3a54386": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.custom_preset_name",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.custom_preset_name",
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.custom_preset_name"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:dashed.gap.mm.462370931190": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.dashed_gap_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:dashed.segment.length.mm.f9d286098695": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.dashed_segment_length_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:dotted.gap.mm.55c39fdf7a26": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.dotted_gap_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.cloud.bump.height.jitter.b9895d7c5b4d": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.end_cloud_bump_height_jitter"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.cloud.bump.height.mm.34c1a2eede13": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.end_cloud_bump_height_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.cloud.bump.width.jitter.c317ec2b0a3c": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.end_cloud_bump_width_jitter"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.cloud.bump.width.mm.ff5e21215f3e": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.end_cloud_bump_width_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.cloud.offset.percent.c412b99dc323": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.end_cloud_offset_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.cloud.sub.height.jitter.363ae9be6660": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.end_cloud_sub_height_jitter"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.cloud.sub.height.ratio.f3b0d0b5238a": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.end_cloud_sub_height_ratio"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.cloud.sub.width.jitter.9fdfc1a86a9d": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.end_cloud_sub_width_jitter"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.cloud.sub.width.ratio.128448e9bc82": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.end_cloud_sub_width_ratio"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.corner.type.c6c5843aec46": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.end_corner_type"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.length.jitter.amount.558f8b37ce8d": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.end_length_jitter_amount"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.length.jitter.enabled.9f7702e5c8f6": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.end_length_jitter_enabled"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.rounded.corner.radius.mm.ef2f314ceea4": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.end_rounded_corner_radius_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.rounded.corner.radius.percent.0908922f72b7": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.end_rounded_corner_radius_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.rounded.corner.radius.unit.4bb10c208cf1": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.end_rounded_corner_radius_unit"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:end.shape.d6bdfb52ef20": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.end_shape"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.base.shape.40f0d63cf703": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.fill_base_shape"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:fill.opacity.104d05273081": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.fill_opacity",
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.fill_opacity"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.white.line.enabled.2763721802d2": [
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.flash_white_line_enabled"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.white.line.peak.width.pct.2ee7ac79997d": [
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.flash_white_line_peak_width_pct"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.white.line.valley.width.pct.2da1adc0177e": [
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.flash_white_line_valley_width_pct"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.white.line.width.percent.fec36def1e98": [
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.flash_white_line_width_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.white.outline.black.line.count.7a75effa9da0": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.flash_white_outline_black_line_count"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.white.outline.black.spacing.mm.68617e8db320": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.flash_white_outline_black_spacing_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.white.outline.count.f29eca99235f": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.flash_white_outline_count"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.white.outline.spacing.mm.d96057d1ed05": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.flash_white_outline_spacing_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.white.outline.white.brush.mm.c5c427e0eedc": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.flash_white_outline_white_brush_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.white.outline.white.line.count.b3cbec456131": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.flash_white_outline_white_line_count"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flash.white.outline.width.mm.ec90231d6097": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.flash_white_outline_width_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flip.h.cdbfacf1cb3b": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.flip_h"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:flip.v.91342063d95c": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.flip_v"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:free.transform.bottom.left.d8844b59aa43": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.free_transform_bottom_left",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.free_transform_bottom_left",
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.free_transform_bottom_left",
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.free_transform_bottom_left"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:free.transform.bottom.right.5087fddae758": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.free_transform_bottom_right",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.free_transform_bottom_right",
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.free_transform_bottom_right",
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.free_transform_bottom_right"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:free.transform.enabled.6ee261cdb819": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.free_transform_enabled",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.free_transform_enabled",
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.free_transform_enabled",
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.free_transform_enabled"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:free.transform.line.width.scale.ee29f95d4fd9": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.free_transform_line_width_scale",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.free_transform_line_width_scale",
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.free_transform_line_width_scale"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:free.transform.top.left.c2428a24abaf": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.free_transform_top_left",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.free_transform_top_left",
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.free_transform_top_left",
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.free_transform_top_left"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:free.transform.top.right.51bbbfe652d1": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.free_transform_top_right",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.free_transform_top_right",
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.free_transform_top_right",
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.free_transform_top_right"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:height.mm.a58f49b71fe5": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.height_mm",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.height_mm",
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.height_mm",
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.height_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:id.a56145270ce6": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.id"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:in.easing.curve.8e0228954765": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.in_easing_curve",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.in_easing_curve"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:in.percent.70ec3521a5c2": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.in_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.in_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:in.range.mm.e3a5c9db1a44": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.in_range_mm",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.in_range_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:in.range.percent.d5a32b393dd4": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.in_range_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.in_range_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:in.start.percent.a670401fe610": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.in_start_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.in_start_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:inner.white.margin.enabled.cb9783a80d90": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.inner_white_margin_enabled"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:inner.white.margin.width.mm.ea27e9bafc68": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.inner_white_margin_width_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:inout.apply.192aaedd186d": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.inout_apply",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.inout_apply"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:inout.apply.brush.size.d1e3bfaba0b4": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.inout_apply_brush_size",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.inout_apply_brush_size"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:inout.apply.opacity.d2f44f02bb5a": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.inout_apply_opacity",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.inout_apply_opacity"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:inout.range.mode.fef86f31896b": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.inout_range_mode",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.inout_range_mode"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:length.jitter.amount.36f4a9b5285d": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.length_jitter_amount"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:length.jitter.enabled.2db1d9a145c7": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.length_jitter_enabled"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.color.99e75db55607": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.line_color"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.peak.width.pct.2f5fa7fb3ba4": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.line_peak_width_pct",
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.line_peak_width_pct",
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.line_peak_width_pct"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.style.7a6ff881ea13": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.line_style"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.valley.width.pct.621a727fc6e4": [
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.line_valley_width_pct",
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.line_valley_width_pct"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:line.width.mm.1efb212f3eed": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.line_width_mm",
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.line_width_mm",
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.line_width_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:max.line.count.8013be6610ca": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.max_line_count"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:multi.line.count.3faf485be3be": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.multi_line_count"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:multi.line.direction.07585a95a070": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.multi_line_direction"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:multi.line.spacing.mm.90da0bde02e9": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.multi_line_spacing_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:multi.line.spacing.scale.percent.f9a22e19e571": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.multi_line_spacing_scale_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:multi.line.width.mm.aa69c744195f": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.multi_line_width_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:multi.line.width.scale.percent.6ef6c3d5f952": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.multi_line_width_scale_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:opacity.ad9a0b2eddd5": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.opacity",
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.opacity"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:out.easing.curve.c6e00080edc2": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.out_easing_curve",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.out_easing_curve"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:out.percent.9c1cd82c476a": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.out_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.out_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:out.range.mm.a41129c5cda8": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.out_range_mm",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.out_range_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:out.range.percent.e89407aaf620": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.out_range_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.out_range_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:out.start.percent.47ed3e832071": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.out_start_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.out_start_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:outer.white.margin.enabled.f326eafb42e5": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.outer_white_margin_enabled"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:outer.white.margin.width.mm.3d9099014a4f": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.outer_white_margin_width_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:rotation.deg.ae1204a6e6a6": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.rotation_deg",
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.rotation_deg"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:rounded.corner.radius.mm.0b9f1bd65a0b": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.rounded_corner_radius_mm",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.rounded_corner_radius_mm",
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.rounded_corner_radius_mm",
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.rounded_corner_radius_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:rounded.corner.radius.percent.1124b2940567": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.rounded_corner_radius_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.rounded_corner_radius_percent",
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.rounded_corner_radius_percent",
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.rounded_corner_radius_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:rounded.corner.radius.unit.55818dcf6493": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.rounded_corner_radius_unit",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.rounded_corner_radius_unit",
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.rounded_corner_radius_unit",
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.rounded_corner_radius_unit"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:shape.f58940a31399": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.shape",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.shape",
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.shape",
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.shape"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:spacing.angle.deg.f04f3cd88c8c": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.spacing_angle_deg"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:spacing.density.compensation.c0ed8f82d10f": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.spacing_density_compensation"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:spacing.distance.mm.e0b3ce3025c2": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.spacing_distance_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:spacing.jitter.amount.77dc5b819295": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.spacing_jitter_amount"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:spacing.jitter.enabled.59bac271b343": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.spacing_jitter_enabled"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:spacing.mode.137657189060": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.spacing_mode"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.cloud.bump.height.jitter.6e6980f8db01": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.start_cloud_bump_height_jitter"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.cloud.bump.height.mm.6c509efbdd1f": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.start_cloud_bump_height_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.cloud.bump.width.jitter.3ea35b246155": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.start_cloud_bump_width_jitter"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.cloud.bump.width.mm.fc385f90b5b5": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.start_cloud_bump_width_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.cloud.offset.percent.c7430ac721ed": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.start_cloud_offset_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.cloud.sub.height.jitter.16aa86526fb3": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.start_cloud_sub_height_jitter"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.cloud.sub.height.ratio.38d67b8b8084": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.start_cloud_sub_height_ratio"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.cloud.sub.width.jitter.4731363811d6": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.start_cloud_sub_width_jitter"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.cloud.sub.width.ratio.9975ce0e4a3b": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.start_cloud_sub_width_ratio"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.corner.type.8a995bcc4585": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.start_corner_type"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.distance.enabled.cfd5578b581d": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.start_distance_enabled"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.distance.mm.e4be4027a095": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.start_distance_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.rounded.corner.radius.mm.5e0690270b66": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.start_rounded_corner_radius_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.rounded.corner.radius.percent.abd170178550": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.start_rounded_corner_radius_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.rounded.corner.radius.unit.12c0e57c4c5d": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.start_rounded_corner_radius_unit"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.shape.a4b64fe4dab6": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.start_shape"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:start.to.coma.frame.f951e99df3d0": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.start_to_coma_frame"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:tails.ae7a4a6cba2f": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.tails",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.tails",
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.tails",
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.tails"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:thorn.multi.line.cross.enabled.9c6f5e546fbc": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.thorn_multi_line_cross_enabled"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:thorn.multi.line.length.scale.far.percent.5b03ec194085": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.thorn_multi_line_length_scale_far_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:thorn.multi.line.length.scale.near.percent.7d93d00be609": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.thorn_multi_line_length_scale_near_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:thorn.multi.line.peak.width.pct.b83c7347d7f3": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.thorn_multi_line_peak_width_pct"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:thorn.multi.line.valley.width.pct.361fe2a9b92c": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.thorn_multi_line_valley_width_pct"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:uni.flash.offset.percent.68a464ec818f": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.uni_flash_offset_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:visible.d42ef1497900": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.visible"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.angle.deg.a73b074d0689": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_angle_deg",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_angle_deg"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.attenuation.2c466b31c4a4": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_black_attenuation",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_black_attenuation"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.direction.bfb71b517c90": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_black_direction",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_black_direction"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.in.easing.curve.9a57b06eccd1": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_black_in_easing_curve",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_black_in_easing_curve"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.in.percent.e0704675c481": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_black_in_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_black_in_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.in.range.mm.7f988d91cae2": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_black_in_range_mm",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_black_in_range_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.in.range.percent.0f08e7311b63": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_black_in_range_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_black_in_range_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.inout.range.mode.acf225522f8b": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_black_inout_range_mode",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_black_inout_range_mode"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.length.scale.far.percent.121281ac95c0": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_black_length_scale_far_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_black_length_scale_far_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.length.scale.near.percent.75ac3f27f632": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_black_length_scale_near_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_black_length_scale_near_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.line.count.auto.5058acc40ead": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_black_line_count_auto",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_black_line_count_auto"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.out.easing.curve.e18c299dddaa": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_black_out_easing_curve",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_black_out_easing_curve"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.out.percent.c13ad961d394": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_black_out_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_black_out_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.out.range.mm.ddfa8d38beed": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_black_out_range_mm",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_black_out_range_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.out.range.percent.c46f6601498e": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_black_out_range_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_black_out_range_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.ratio.percent.a12053ae6e6c": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_black_ratio_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_black_ratio_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.spacing.scale.percent.cbe057be62f8": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_black_spacing_scale_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_black_spacing_scale_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.black.width.scale.percent.7c75cd7f4901": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_black_width_scale_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_black_width_scale_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.bundle.placement.5471e361fd69": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_bundle_placement",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_bundle_placement"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.bundle.spacing.deg.b0b806d695c0": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_bundle_spacing_deg",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_bundle_spacing_deg"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.bundle.spacing.jitter.9459415bcb0c": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_bundle_spacing_jitter",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_bundle_spacing_jitter"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.length.jitter.enabled.e9601b5449ab": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_length_jitter_enabled",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_length_jitter_enabled"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.length.min.percent.ddf6f61b42e8": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_length_min_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_length_min_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.length.percent.e4cc144b541d": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_length_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_length_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.position.percent.d9914b1b5378": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_position_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_position_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.attenuation.5ed71ed7dbf7": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_white_attenuation",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_white_attenuation"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.in.easing.curve.1afed8969c7c": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_white_in_easing_curve",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_white_in_easing_curve"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.in.percent.79eca81479a8": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_white_in_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_white_in_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.in.range.mm.6eb1e806d67b": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_white_in_range_mm",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_white_in_range_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.in.range.percent.9718816b5036": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_white_in_range_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_white_in_range_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.inout.range.mode.f24570487e27": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_white_inout_range_mode",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_white_inout_range_mode"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.line.count.auto.71aad63da5ee": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_white_line_count_auto",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_white_line_count_auto"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.out.easing.curve.c70fd97a6c7f": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_white_out_easing_curve",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_white_out_easing_curve"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.out.percent.7d52e29d5904": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_white_out_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_white_out_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.out.range.mm.554ced9533e7": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_white_out_range_mm",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_white_out_range_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.out.range.percent.881bbad88526": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_white_out_range_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_white_out_range_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.ratio.percent.b8086ed66f68": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_white_ratio_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_white_ratio_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.white.spacing.scale.percent.90d99d51d550": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_white_spacing_scale_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_white_spacing_scale_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.width.jitter.enabled.aa1f671bb23e": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_width_jitter_enabled",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_width_jitter_enabled"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.outline.width.min.percent.28889c1fc3e7": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_outline_width_min_percent",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.white_outline_width_min_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.underlay.enabled.95e1347da1fa": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_underlay_enabled"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:white.underlay.width.percent.a54af4bfdd7f": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.white_underlay_width_percent"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:width.mm.5b9b0c56fef0": [
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[uni_flash]:BMangaBalloonEntry.width_mm",
+      "signature:utils.balloon_flash_effect_line_mesh._mesh_signature[white_outline]:BMangaBalloonEntry.width_mm",
+      "signature:utils.balloon_flash_white_line_mesh._mesh_signature:BMangaBalloonEntry.width_mm",
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.width_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:x.mm.17f888647d92": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.x_mm"
+    ],
+    "field:bmanga:property.group.9a492135cb1d7bf2.f31c6d4bd7f2:y.mm.e91a754e59cd": [
+      "signature:utils.balloon_merge_object._entry_signature:BMangaBalloonEntry.y_mm"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:bleed.mm.20ee66d57170": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.bleed_mm"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:canvas.height.mm.6fe691d7c26c": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.canvas_height_mm"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:canvas.width.mm.2206bc4ea322": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.canvas_width_mm"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:color.mode.b437431f9bb0": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.color_mode"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:color.profile.7a0013e6ddef": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.color_profile"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:coma.border.width.mm.647df7b93fe7": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.coma_border_width_mm"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:coma.number.prefix.163953697fa2": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.coma_number_prefix"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:coma.number.suffix.43b37355d866": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.coma_number_suffix"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:default.line.count.4d7d23cebeaa": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.default_line_count"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:dpi.a80ad1fef638": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.dpi"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:finish.height.mm.5711d1204eed": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.finish_height_mm"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:finish.width.mm.fd35bf63af35": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.finish_width_mm"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:inner.frame.height.mm.969250a6cf3d": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.inner_frame_height_mm"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:inner.frame.offset.x.mm.feedf3784c04": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.inner_frame_offset_x_mm"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:inner.frame.offset.y.mm.908053b97c00": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.inner_frame_offset_y_mm"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:inner.frame.width.mm.ee61c99d1d78": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.inner_frame_width_mm"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:page.number.digits.4f5bb9138f66": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.page_number_digits"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:page.number.prefix.b5c232dbcd55": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.page_number_prefix"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:page.number.suffix.3582aff3cc07": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.page_number_suffix"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:preset.name.78e56c7450ed": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.preset_name"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:read.direction.fe5f5d07206a": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.read_direction"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:safe.bottom.mm.462fdf72d63d": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.safe_bottom_mm"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:safe.fore.edge.mm.772f0949a8cc": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.safe_fore_edge_mm"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:safe.gutter.mm.516339d741d7": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.safe_gutter_mm"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:safe.top.mm.dfc0df7c0ec9": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.safe_top_mm"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:show.bleed.frame.f244b5ef5234": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.show_bleed_frame"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:show.canvas.frame.4f7f789dc2e7": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.show_canvas_frame"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:show.finish.frame.18241046ff06": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.show_finish_frame"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:show.guides.a89cccadeebe": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.show_guides"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:show.inner.frame.ee85decf3ce5": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.show_inner_frame"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:show.safe.line.13474a1c68a6": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.show_safe_line"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:show.trim.marks.eced00ce3e17": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.show_trim_marks"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:start.side.f4a52cce4408": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.start_side"
+    ],
+    "field:bmanga:property.group.c874c3a72e40a18d.f296925290d1:unit.385cfdbc00ec": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaPaperSettings.unit"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:curve.bend.b8b98bbc6104": [
+      "signature:utils.balloon_merge_object._tail_signature:BMangaBalloonTail.curve_bend"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:curve.mode.edd7180f73f9": [
+      "signature:utils.balloon_merge_object._tail_signature:BMangaBalloonTail.curve_mode"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:custom.points.enabled.f73d4126ec55": [
+      "signature:utils.balloon_merge_object._tail_signature:BMangaBalloonTail.custom_points_enabled"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:direction.deg.6f2ca0bef353": [
+      "signature:utils.balloon_merge_object._tail_signature:BMangaBalloonTail.direction_deg"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:ellipse.angle.deg.4f4957048dd6": [
+      "signature:utils.balloon_merge_object._tail_signature:BMangaBalloonTail.ellipse_angle_deg"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:ellipse.gap.mm.b3bf4277187a": [
+      "signature:utils.balloon_merge_object._tail_signature:BMangaBalloonTail.ellipse_gap_mm"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:ellipse.orient.37f8de7997cf": [
+      "signature:utils.balloon_merge_object._tail_signature:BMangaBalloonTail.ellipse_orient"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:end.x.mm.72996387d4e4": [
+      "signature:utils.balloon_merge_object._tail_signature:BMangaBalloonTail.end_x_mm"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:end.y.mm.4dfc041fa35e": [
+      "signature:utils.balloon_merge_object._tail_signature:BMangaBalloonTail.end_y_mm"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:length.mm.2c4ed4983ea0": [
+      "signature:utils.balloon_merge_object._tail_signature:BMangaBalloonTail.length_mm"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:line.type.fa28e1bddda6": [
+      "signature:utils.balloon_merge_object._tail_signature:BMangaBalloonTail.line_type"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:points.c54a061dfcc1": [
+      "signature:utils.balloon_merge_object._tail_signature:BMangaBalloonTail.points"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:root.width.mm.da871cbac02e": [
+      "signature:utils.balloon_merge_object._tail_signature:BMangaBalloonTail.root_width_mm"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:sharp.corners.ebcf940d67b9": [
+      "signature:utils.balloon_merge_object._tail_signature:BMangaBalloonTail.sharp_corners"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:start.x.mm.0d70decc873b": [
+      "signature:utils.balloon_merge_object._tail_signature:BMangaBalloonTail.start_x_mm"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:start.y.mm.55eb1ac8858f": [
+      "signature:utils.balloon_merge_object._tail_signature:BMangaBalloonTail.start_y_mm"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:taper.in.percent.a4f6752e06d6": [
+      "signature:utils.balloon_merge_object._tail_signature:BMangaBalloonTail.taper_in_percent"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:taper.out.percent.d3271bc805e2": [
+      "signature:utils.balloon_merge_object._tail_signature:BMangaBalloonTail.taper_out_percent"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:tip.width.mm.6d49cde321fe": [
+      "signature:utils.balloon_merge_object._tail_signature:BMangaBalloonTail.tip_width_mm"
+    ],
+    "field:bmanga:property.group.ca9adda38b1554eb.140bc896454f:type.1303c06b0b01": [
+      "signature:utils.balloon_merge_object._tail_signature:BMangaBalloonTail.type"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:paper.visible.553499de5fc3": [
+      "signature:utils.coma_content_mask._image_signature:BMangaComaEntry.paper_visible"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:rect.height.mm.29a2415f9165": [
+      "signature:utils.coma_content_mask._image_signature:BMangaComaEntry.rect_height_mm"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:rect.width.mm.285699aa9172": [
+      "signature:utils.coma_content_mask._image_signature:BMangaComaEntry.rect_width_mm"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:rect.x.mm.623a4952d83f": [
+      "signature:utils.coma_content_mask._image_signature:BMangaComaEntry.rect_x_mm"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:rect.y.mm.29489bd7fe00": [
+      "signature:utils.coma_content_mask._image_signature:BMangaComaEntry.rect_y_mm"
+    ],
+    "field:bmanga:property.group.de64ec0ad0a73d0f.c52a0f5097ad:shape.type.2b7fe285e559": [
+      "signature:utils.coma_content_mask._image_signature:BMangaComaEntry.shape_type"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.bump.bulge.percent.8ff1babdc8b7": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.cloud_bump_bulge_percent"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.bump.height.jitter.822e7e967960": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.cloud_bump_height_jitter"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.bump.height.mm.a8ddd0cef2cd": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.cloud_bump_height_mm"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.bump.width.jitter.171cff20a664": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.cloud_bump_width_jitter"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.bump.width.mm.ef00ab3f036b": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.cloud_bump_width_mm"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.offset.percent.cc1b61464bf0": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.cloud_offset_percent"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.sub.height.jitter.3c9905e56e4f": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.cloud_sub_height_jitter"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.sub.height.ratio.a9174e0eb3ae": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.cloud_sub_height_ratio"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.sub.width.jitter.294aae31c3fa": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.cloud_sub_width_jitter"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.sub.width.ratio.c02bd68b03d8": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.cloud_sub_width_ratio"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.valley.sharp.c87d7762ec3a": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.cloud_valley_sharp"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.wave.amplitude.mm.6839e149b872": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.cloud_wave_amplitude_mm"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:cloud.wave.count.2835929f42e0": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.cloud_wave_count"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:dynamic.base.rounded.corner.enabled.fa0961351d02": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.dynamic_base_rounded_corner_enabled"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:dynamic.base.rounded.corner.radius.mm.aab49aa3c83e": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.dynamic_base_rounded_corner_radius_mm"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:dynamic.base.rounded.corner.radius.percent.8d2a28f9c511": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.dynamic_base_rounded_corner_radius_percent"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:dynamic.base.rounded.corner.radius.unit.1a46d3d2281e": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.dynamic_base_rounded_corner_radius_unit"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:dynamic.shape.base.kind.a934bc6f2477": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.dynamic_shape_base_kind"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:shape.seed.9883ceb90af0": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.shape_seed"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:sharp.corner.method.0aad5e6f9411": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.sharp_corner_method"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:sharp.peak.width.scale.73d044fa0c43": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.sharp_peak_width_scale"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:sharp.valley.width.scale.1db19047684d": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.sharp_valley_width_scale"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:spike.count.5a3a89384f03": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.spike_count"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:spike.depth.mm.8072aadb857b": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.spike_depth_mm"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:spike.jitter.ab43c055fc1b": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.spike_jitter"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:thorn.corner.square.percent.9cadde22fde9": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.thorn_corner_square_percent"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:thorn.corner.squeeze.percent.12320fbf3961": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.thorn_corner_squeeze_percent"
+    ],
+    "field:bmanga:property.group.eb5cca6369fd90cb.54de07efa803:thorn.curve.bulge.percent.e919513151df": [
+      "signature:utils.balloon_merge_object._shape_params_signature:BMangaBalloonShapeParams.thorn_curve_bulge_percent"
+    ],
+    "field:bmanga:property.group.ecbf95ed1f9f80cf.ec9fbc9fd70a:bleed.outer.color.bef828f6d32e": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaSafeAreaOverlay.bleed_outer_color"
+    ],
+    "field:bmanga:property.group.ecbf95ed1f9f80cf.ec9fbc9fd70a:bleed.outer.enabled.359b55fd5a50": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaSafeAreaOverlay.bleed_outer_enabled"
+    ],
+    "field:bmanga:property.group.ecbf95ed1f9f80cf.ec9fbc9fd70a:bleed.outer.opacity.8e8dc2aa85aa": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaSafeAreaOverlay.bleed_outer_opacity"
+    ],
+    "field:bmanga:property.group.ecbf95ed1f9f80cf.ec9fbc9fd70a:color.74284d9dcbcc": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaSafeAreaOverlay.color"
+    ],
+    "field:bmanga:property.group.ecbf95ed1f9f80cf.ec9fbc9fd70a:enabled.fb9cf75606b4": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaSafeAreaOverlay.enabled"
+    ],
+    "field:bmanga:property.group.ecbf95ed1f9f80cf.ec9fbc9fd70a:opacity.ad9a0b2eddd5": [
+      "signature:utils.page_preview_object._preview_render_signature:BMangaSafeAreaOverlay.opacity"
+    ]
+  },
+  "generator": "blender_settings_cache_signature_characterization_check.py",
+  "schema_version": 1
+}
