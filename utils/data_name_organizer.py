@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from uuid import uuid4
 
 import bpy
 
-from ..io import coma_io, page_io, work_io
+from ..io import page_io, work_io
 from . import log, paths
 
 _logger = log.get_logger(__name__)
@@ -130,58 +129,6 @@ def _move_comas_to_order(page, ordered_indices: list[int]) -> None:
             page.comas.move(current_index, target_index)
             item = current.pop(current_index)
             current.insert(target_index, item)
-
-
-def _existing_data_dir_names(parent: Path) -> set[str]:
-    if not parent.is_dir():
-        return set()
-    return {child.name for child in parent.iterdir() if child.is_dir()}
-
-
-def _rename_directories(parent: Path, pairs: list[tuple[str, str]]) -> list[tuple[Path, str, str]]:
-    unique_pairs = [(old, new) for old, new in pairs if old and new and old != new]
-    if not unique_pairs:
-        return []
-    parent.mkdir(parents=True, exist_ok=True)
-    moving_sources = {old for old, _new in unique_pairs}
-    for old, new in unique_pairs:
-        src = parent / old
-        dst = parent / new
-        if not src.exists():
-            continue
-        if dst.exists() and new not in moving_sources:
-            raise FileExistsError(f"destination already exists: {dst}")
-
-    token = uuid4().hex
-    temp_pairs: list[tuple[Path, Path, str, str]] = []
-    for index, (old, new) in enumerate(unique_pairs):
-        src = parent / old
-        if not src.exists():
-            continue
-        temp = parent / f".bmanga_rename_{token}_{index}"
-        src.rename(temp)
-        temp_pairs.append((temp, parent / new, old, new))
-
-    renamed: list[tuple[Path, str, str]] = []
-    for temp, dst, old, new in temp_pairs:
-        if dst.exists():
-            raise FileExistsError(f"destination already exists: {dst}")
-        temp.rename(dst)
-        renamed.append((dst, old, new))
-    return renamed
-
-
-def _rename_coma_artifacts(coma_dir: Path, old_id: str, new_id: str) -> None:
-    if not coma_dir.is_dir() or old_id == new_id:
-        return
-    for suffix in (".blend", ".json", "_thumb.png", "_preview.png"):
-        src = coma_dir / f"{old_id}{suffix}"
-        if not src.exists():
-            continue
-        dst = coma_dir / f"{new_id}{suffix}"
-        if dst.exists():
-            raise FileExistsError(f"destination already exists: {dst}")
-        src.rename(dst)
 
 
 def _replace_entry_parent_key(entry, old_key: str, new_key: str, *, prefix: bool) -> None:
@@ -393,7 +340,7 @@ def _collect_and_apply_coma_remaps(
         ordered_indices = _reading_order_indices(page, read_direction)
         if ordered_indices != list(range(len(comas))):
             reorder_count += 1
-        active_original = int(getattr(page, "active_coma_index", -1) or -1)
+        active_original = int(getattr(page, "active_coma_index", -1))
         old_stems = [
             str(getattr(coma, "coma_id", "") or getattr(coma, "id", "") or "")
             for coma in comas
@@ -440,69 +387,29 @@ def _collect_and_apply_coma_remaps(
 
 
 def _rename_page_dirs(work_dir: Path, remaps: list[_PageRename]) -> int:
-    renamed = _rename_directories(work_dir, [(remap.old_id, remap.new_id) for remap in remaps])
-    _record_directory_renames(work_dir, renamed)
-    return len(renamed)
+    """表示ページ番号だけを変え、UID directoryは変更しない。"""
 
-
-def _record_directory_renames(
-    parent: Path,
-    renamed: list[tuple[Path, str, str]],
-    *,
-    extra_roots: tuple[Path, ...] = (),
-) -> None:
-    if not renamed and not extra_roots:
-        return
-    from ..io.project_content_save_baseline import record_successful_tree_change
-
-    roots = list(extra_roots)
-    for destination, old_id, _new_id in renamed:
-        roots.extend((parent / old_id, destination))
-    record_successful_tree_change(*roots)
+    del work_dir
+    return len(remaps)
 
 
 def _rename_coma_dirs(work_dir: Path, remaps: list[_ComaRename]) -> int:
-    by_page: dict[str, list[_ComaRename]] = {}
-    for remap in remaps:
-        if not remap.retarget:
-            # 旧IDが重複していた2つ目以降のコマ: フォルダは読み順で最初の
-            # 同IDコマ (元のコマ) の持ち物なので改名しない。
-            continue
-        by_page.setdefault(remap.page_id, []).append(remap)
-    renamed_count = 0
-    for page_id, page_remaps in by_page.items():
-        page_dir = paths.page_dir(work_dir, page_id)
-        renamed = _rename_directories(
-            page_dir,
-            [(remap.old_id, remap.new_id) for remap in page_remaps],
-        )
-        renamed_count += len(renamed)
-        for dst, old_id, new_id in renamed:
-            _rename_coma_artifacts(dst, old_id, new_id)
-        existing = _existing_data_dir_names(page_dir)
-        artifact_roots = []
-        for remap in page_remaps:
-            if remap.new_id in existing:
-                artifact_root = page_dir / remap.new_id
-                _rename_coma_artifacts(artifact_root, remap.old_id, remap.new_id)
-                artifact_roots.append(artifact_root)
-        _record_directory_renames(
-            page_dir,
-            renamed,
-            extra_roots=tuple(artifact_roots),
-        )
-    return renamed_count
+    """表示コマ番号だけを変え、UID directory／scene.blend名は変更しない。"""
+
+    del work_dir
+    return len(remaps)
 
 
 def _save_all_metadata(work_dir: Path, work) -> None:
     work_io.save_work_json(work_dir, work)
     page_io.save_pages_json(work_dir, work)
     for page in getattr(work, "pages", []) or []:
+        # 作品一覧では個別ページの詳細を保持しない。未読込ページを空の
+        # PropertyGroupから保存すると、Repository上のコマ／レイヤーを
+        # 消すため、現在投影されているページだけをcheckpointする。
+        if not bool(getattr(page, "detail_loaded", False)):
+            continue
         page_io.save_page_json(work_dir, page)
-        page_id = str(getattr(page, "id", "") or "")
-        for coma in getattr(page, "comas", []) or []:
-            if str(getattr(coma, "coma_id", "") or ""):
-                coma_io.save_coma_meta(work_dir, page_id, coma)
 
 
 def _sync_blender_state(context, work) -> None:
@@ -546,7 +453,7 @@ def organize_data_names(context) -> DataNameOrganizeResult:
         return DataNameOrganizeResult()
     work_dir = Path(work_dir_raw)
     read_direction = str(getattr(getattr(work, "paper", None), "read_direction", "left") or "left")
-    from ..io.project_content_save_baseline import assert_no_external_changes
+    from ..io.save_baseline import assert_no_external_changes
 
     assert_no_external_changes(work_dir)
 
@@ -586,7 +493,7 @@ def organize_page_coma_names(context, page) -> DataNameOrganizeResult:
         return DataNameOrganizeResult()
     work_dir = Path(work_dir_raw)
     read_direction = str(getattr(getattr(work, "paper", None), "read_direction", "left") or "left")
-    from ..io.project_content_save_baseline import assert_no_external_changes
+    from ..io.save_baseline import assert_no_external_changes
 
     assert_no_external_changes(work_dir)
     coma_remaps, reorder_count = _collect_and_apply_coma_remaps(

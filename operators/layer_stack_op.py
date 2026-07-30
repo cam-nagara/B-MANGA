@@ -372,7 +372,7 @@ def _editable_name_prop_for_item(context, item) -> str | None:
 
 def _remember_inline_rename_click(index: int, uid: str) -> bool:
     now = time.monotonic()
-    previous_index = int(_LAST_INLINE_RENAME_CLICK.get("index", -1) or -1)
+    previous_index = int(_LAST_INLINE_RENAME_CLICK.get("index", -1))
     previous_uid = str(_LAST_INLINE_RENAME_CLICK.get("uid", "") or "")
     previous_time = float(_LAST_INLINE_RENAME_CLICK.get("time", 0.0) or 0.0)
     _LAST_INLINE_RENAME_CLICK["index"] = int(index)
@@ -755,7 +755,7 @@ class BMANGA_OT_layer_stack_add(Operator, ImportHelper):
             return ""
         work_dir = Path(work.work_dir)
         entry = page_io.register_new_page(work)
-        page_io.ensure_page_dir(work_dir, entry.id)
+        page_io.ensure_page_dir(work_dir, entry)
         create_basic_frame_coma(work, entry, work_dir)
         gp_object_layer.ensure_default_page_layer(context.scene, entry.id)
         page_grid.apply_page_collection_transforms(context, work)

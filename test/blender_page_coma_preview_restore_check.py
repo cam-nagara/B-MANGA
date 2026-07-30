@@ -391,7 +391,10 @@ def main() -> None:
 
         _mark("page_file_assertions")
         _mark("page_file_import_preview_module")
-        from bmanga_dev_page_coma_preview_restore.utils import page_preview_object
+        from bmanga_dev_page_coma_preview_restore.utils import (
+            page_preview_object,
+            paths,
+        )
 
         _mark("page_file_sync_previews")
         scene = bpy.context.scene
@@ -399,7 +402,10 @@ def main() -> None:
         page_preview_object.sync_page_previews(bpy.context, work, force=True)
         spread_page = work.pages[1]
         spread_page_id = str(getattr(spread_page, "id", "") or spread_page_id)
-        preview_path = work_dir / spread_page_id / page_preview_object.PREVIEW_DETAIL_FILENAME
+        preview_path = (
+            paths.page_dir(work_dir, spread_page_id)
+            / page_preview_object.PREVIEW_DETAIL_FILENAME
+        )
         _mark("page_file_check_preview_file")
         if not preview_path.is_file():
             raise AssertionError("ページ一覧プレビュー画像が作られていません")
@@ -507,8 +513,7 @@ def main() -> None:
         spread_page = work.pages[1]
         spread_page_id = str(getattr(spread_page, "id", "") or spread_page_id)
         preview_path = (
-            Path(str(work.work_dir))
-            / spread_page_id
+            paths.page_dir(Path(str(work.work_dir)), spread_page_id)
             / page_preview_object.PREVIEW_DETAIL_FILENAME
         )
         _assert_preview_image_is_spread(preview_path, work, spread_page)

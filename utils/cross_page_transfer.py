@@ -24,7 +24,7 @@ import uuid
 
 import bpy
 
-from . import cross_page_gp_transfer, cross_page_stage, json_io, log, page_grid, paths
+from . import cross_page_gp_transfer, cross_page_stage, log, page_grid, paths
 from .layer_hierarchy import split_child_key
 
 _logger = log.get_logger(__name__)
@@ -43,24 +43,65 @@ def _work_dir(work) -> Path | None:
 
 
 def _read_target_page_json(work_dir: Path, target_page_id: str) -> dict | None:
-    meta_path = paths.page_meta_path(work_dir, target_page_id)
-    if not meta_path.is_file():
-        return None
     try:
-        return json_io.read_json(meta_path)
+        from ..io import domain_projection, domain_runtime
+
+        repository = domain_runtime.repository_for(work_dir)
+        project = repository.load_project()
+        page_uid = paths.resolve_page_uid(work_dir, target_page_id)
+        document = repository.load_page(page_uid)
+        summary = next(page for page in project.pages if page.uid == page_uid)
+        payload = domain_projection.page_payload_from_document(
+            document,
+            display_id=summary.display_id,
+            title=summary.title,
+            spread=summary.spread,
+        )
+        payload["_domainDocument"] = document.to_dict()
+        return payload
     except Exception:  # noqa: BLE001
-        _logger.exception("target page.json read failed: %s", meta_path)
+        _logger.exception("target Domain page read failed: %s", target_page_id)
         return None
 
 
 def _write_target_page_json(work_dir: Path, target_page_id: str, data: dict) -> bool:
-    meta_path = paths.page_meta_path(work_dir, target_page_id)
-    meta_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        json_io.write_json(meta_path, data)
+        from ..bmanga_core.domain_model import PageDocument
+        from ..io import domain_projection, domain_runtime
+        from ..io.save_baseline import record_successful_write
+
+        repository = domain_runtime.repository_for(work_dir)
+        project = repository.load_project()
+        original_raw = data.get("_domainDocument")
+        if not isinstance(original_raw, dict):
+            raise ValueError("target Domain snapshot is missing")
+        original = PageDocument.from_dict(original_raw)
+        public_payload = {
+            key: copy.deepcopy(value)
+            for key, value in data.items()
+            if key != "_domainDocument"
+        }
+        summary = next(page for page in project.pages if page.uid == original.page_uid)
+        original_payload = domain_projection.page_payload_from_document(
+            original,
+            display_id=summary.display_id,
+            title=summary.title,
+            spread=summary.spread,
+        )
+        document = (
+            original
+            if public_payload == original_payload
+            else domain_projection.replace_page_projection_payload(
+                original,
+                public_payload,
+            )
+        )
+        repository.checkpoint(project, [document])
+        record_successful_write(repository.project_path)
+        record_successful_write(repository.page_path(document.page_uid))
         return True
     except Exception:  # noqa: BLE001
-        _logger.exception("target page.json write failed: %s", meta_path)
+        _logger.exception("target Domain page write failed: %s", target_page_id)
         return False
 
 
@@ -377,8 +418,8 @@ def _sha256_file(path: Path) -> str:
 
 def _atomic_verified_copy(source: Path, destination: Path) -> None:
     """同一ディレクトリ一時ファイルへ複製し、サイズ/hash一致後に置換する。"""
-    from ..io.project_content_migration_lock import guard_path_write
-    from ..io.project_content_save_baseline import record_successful_write
+    from ..io.project_file_lock import guard_path_write
+    from ..io.save_baseline import record_successful_write
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.is_symlink() or destination.exists():
@@ -415,8 +456,8 @@ def _atomic_verified_copy(source: Path, destination: Path) -> None:
 
 
 def _cleanup_new_rasters(paths_to_remove: list[Path]) -> None:
-    from ..io.project_content_migration_lock import guard_path_write
-    from ..io.project_content_save_baseline import record_successful_write
+    from ..io.project_file_lock import guard_path_write
+    from ..io.save_baseline import record_successful_write
 
     for path in paths_to_remove:
         try:
@@ -543,7 +584,7 @@ def transfer_layers_to_page(
     if wd is None:
         return 0
     try:
-        from ..io.project_content_migration_lock import work_lock
+        from ..io.project_file_lock import work_lock
 
         with work_lock(wd, blocking=True):
             return _transfer_layers_to_page_locked(

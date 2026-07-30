@@ -15,7 +15,6 @@ from . import (
     brush_size_op,
     center_point_op,
     data_name_op,
-    detail_data_migration_op,
     detail_preset_apply_op,
     detail_preset_management_op,
     raster_detail_action_op,
@@ -91,7 +90,6 @@ from . import (
 _MODULES = (
     work_op,
     meldex_scenario_file_op,
-    detail_data_migration_op,
     page_file_op,
     page_op,
     page_reorder_drag_op,

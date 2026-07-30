@@ -93,6 +93,60 @@ def _first_page_with_detail(work):
     return page
 
 
+def _coma_index(page, coma_id: str) -> int:
+    return next(
+        index
+        for index, candidate in enumerate(page.comas)
+        if str(getattr(candidate, "coma_id", "") or "") == coma_id
+    )
+
+
+def _coma_native_uid(entry) -> str:
+    uid = str(entry.get("bmanga_domain_coma_uid", "") or "")
+    assert uid.startswith("coma_"), uid
+    return uid
+
+
+def _coma_index_by_uid(page, coma_uid: str) -> int:
+    return next(
+        index
+        for index, candidate in enumerate(page.comas)
+        if _coma_native_uid(candidate) == coma_uid
+    )
+
+
+def _activate_coma(work, page, coma_index: int) -> None:
+    from bmanga_dev.utils import active_collection_sync
+
+    page_index = next(
+        index
+        for index, candidate in enumerate(work.pages)
+        if str(getattr(candidate, "id", "") or "")
+        == str(getattr(page, "id", "") or "")
+    )
+    work.active_page_index = page_index
+    page.active_coma_index = coma_index
+    active_collection_sync.request_active_coma(
+        bpy.context,
+        str(getattr(page, "id", "") or ""),
+        str(getattr(page.comas[coma_index], "id", "") or ""),
+    )
+
+
+def _stored_coma_settings(work_dir: Path, page_id: str, coma_uid: str) -> dict:
+    from bmanga_dev.utils import paths
+
+    payload = json.loads(
+        paths.page_meta_path(work_dir, page_id).read_text(encoding="utf-8")
+    )
+    node = next(
+        value
+        for value in payload["tree"]["nodes"].values()
+        if value["kind"] == "coma" and value["nativeUid"] == coma_uid
+    )
+    return node["settings"]
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_coma_template_"))
     template_path = temp_root / "template.blend"
@@ -106,6 +160,7 @@ def main() -> None:
         _create_template(replacement_template_path, "REPLACE")
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
+        from bmanga_dev.utils import paths
 
         result = bpy.ops.bmanga.work_new(filepath=str(work_dir))
         assert result == {"FINISHED"}, result
@@ -118,7 +173,9 @@ def main() -> None:
         result = bpy.ops.bmanga.enter_coma_mode()
         assert result == {"FINISHED"}, result
 
-        assert Path(bpy.data.filepath).resolve() == (work_dir / "p0001" / "c01" / "c01.blend").resolve()
+        assert Path(bpy.data.filepath).resolve() == paths.coma_blend_path(
+            work_dir, "p0001", "c01"
+        ).resolve()
         assert bpy.context.scene.name == "TemplateScene"
         assert bpy.data.collections.get("BMANGA_TEMPLATE_MARKER_COLLECTION") is not None
         assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT") is not None
@@ -137,7 +194,7 @@ def main() -> None:
         work = bpy.context.scene.bmanga_work
         work.active_page_index = 0
         page = _first_page_with_detail(work)
-        page.active_coma_index = 0
+        _activate_coma(work, page, 0)
         result = bpy.ops.bmanga.enter_coma_mode()
         assert result == {"FINISHED"}, result
         assert bpy.data.collections.get("BMANGA_TEMPLATE_MARKER_COLLECTION") is not None
@@ -155,12 +212,13 @@ def main() -> None:
         assert result == {"FINISHED"}, result
         page = _first_page_with_detail(work)
         assert len(page.comas) >= 2
-        coma_index = next(
-            idx for idx, candidate in enumerate(page.comas)
-            if str(getattr(candidate, "coma_id", "") or "") == "c02"
-        )
-        page.active_coma_index = coma_index
+        coma_index = _coma_index(page, "c02")
+        _activate_coma(work, page, coma_index)
         page.comas[coma_index].coma_blend_template_path = str(coma_template_path)
+        target_coma_uid = _coma_native_uid(page.comas[coma_index])
+        target_blend_path = paths.coma_blend_path(
+            work_dir, page.id, target_coma_uid
+        ).resolve()
         from bmanga_dev.utils import coma_scene
 
         resolved, error = coma_scene.resolve_coma_blend_template_path(
@@ -173,7 +231,7 @@ def main() -> None:
 
         result = bpy.ops.bmanga.enter_coma_mode()
         assert result == {"FINISHED"}, result
-        assert Path(bpy.data.filepath).resolve() == (work_dir / "p0001" / "c02" / "c02.blend").resolve()
+        assert Path(bpy.data.filepath).resolve() == target_blend_path
         assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT_COMA") is not None
         assert bpy.data.node_groups.get("BMANGA_TEMPLATE_MARKER_NODE_GROUP_COMA") is not None
         assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT") is None
@@ -181,35 +239,39 @@ def main() -> None:
 
         result = bpy.ops.bmanga.exit_coma_mode()
         assert result == {"FINISHED"}, result
-        page_json = json.loads((work_dir / "p0001" / "page.json").read_text(encoding="utf-8"))
-        stored_coma = next(item for item in page_json["comas"] if item["comaId"] == "c02")
+        stored_coma = _stored_coma_settings(
+            work_dir, "p0001", target_coma_uid
+        )
         assert stored_coma["comaBlendTemplatePath"] == str(coma_template_path)
         assert stored_coma["comaBlendTemplateNeedsApply"] is False
 
         work = bpy.context.scene.bmanga_work
         work.active_page_index = 0
         page = _first_page_with_detail(work)
-        page.active_coma_index = coma_index
+        coma_index = _coma_index_by_uid(page, target_coma_uid)
+        _activate_coma(work, page, coma_index)
         page.comas[coma_index].coma_blend_template_path = str(replacement_template_path)
         assert page.comas[coma_index].coma_blend_template_needs_apply is True
         result = bpy.ops.bmanga.enter_coma_mode()
         assert result == {"FINISHED"}, result
-        assert Path(bpy.data.filepath).resolve() == (work_dir / "p0001" / "c02" / "c02.blend").resolve()
+        assert Path(bpy.data.filepath).resolve() == target_blend_path
         assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT_REPLACE") is not None
         assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT_COMA") is None
         _assert_camera_limits_enabled()
 
         result = bpy.ops.bmanga.exit_coma_mode()
         assert result == {"FINISHED"}, result
-        page_json = json.loads((work_dir / "p0001" / "page.json").read_text(encoding="utf-8"))
-        stored_coma = next(item for item in page_json["comas"] if item["comaId"] == "c02")
+        stored_coma = _stored_coma_settings(
+            work_dir, "p0001", target_coma_uid
+        )
         assert stored_coma["comaBlendTemplatePath"] == str(replacement_template_path)
         assert stored_coma["comaBlendTemplateNeedsApply"] is False
 
         work = bpy.context.scene.bmanga_work
         work.active_page_index = 0
         page = _first_page_with_detail(work)
-        page.active_coma_index = coma_index
+        coma_index = _coma_index_by_uid(page, target_coma_uid)
+        _activate_coma(work, page, coma_index)
         page.comas[coma_index].coma_blend_template_path = ""
         assert page.comas[coma_index].coma_blend_template_needs_apply is True
         result = bpy.ops.bmanga.enter_coma_mode()
@@ -219,8 +281,9 @@ def main() -> None:
 
         result = bpy.ops.bmanga.exit_coma_mode()
         assert result == {"FINISHED"}, result
-        page_json = json.loads((work_dir / "p0001" / "page.json").read_text(encoding="utf-8"))
-        stored_coma = next(item for item in page_json["comas"] if item["comaId"] == "c02")
+        stored_coma = _stored_coma_settings(
+            work_dir, "p0001", target_coma_uid
+        )
         assert stored_coma["comaBlendTemplatePath"] == ""
         assert stored_coma["comaBlendTemplateNeedsApply"] is False
 
@@ -230,22 +293,24 @@ def main() -> None:
         result = bpy.ops.bmanga.coma_add()
         assert result == {"FINISHED"}, result
         page = _first_page_with_detail(work)
-        coma_index = next(
-            idx for idx, candidate in enumerate(page.comas)
-            if str(getattr(candidate, "coma_id", "") or "") == "c03"
-        )
-        page.active_coma_index = coma_index
+        coma_index = _coma_index(page, "c03")
+        _activate_coma(work, page, coma_index)
         assert page.comas[coma_index].coma_blend_template_path == ""
+        selected_coma_uid = _coma_native_uid(page.comas[coma_index])
+        selected_blend_path = paths.coma_blend_path(
+            work_dir, page.id, selected_coma_uid
+        ).resolve()
         result = bpy.ops.bmanga.enter_coma_mode(filepath=str(coma_template_path))
         assert result == {"FINISHED"}, result
-        assert Path(bpy.data.filepath).resolve() == (work_dir / "p0001" / "c03" / "c03.blend").resolve()
+        assert Path(bpy.data.filepath).resolve() == selected_blend_path
         assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT_COMA") is not None
         _assert_camera_limits_enabled()
 
         result = bpy.ops.bmanga.exit_coma_mode()
         assert result == {"FINISHED"}, result
-        page_json = json.loads((work_dir / "p0001" / "page.json").read_text(encoding="utf-8"))
-        stored_coma = next(item for item in page_json["comas"] if item["comaId"] == "c03")
+        stored_coma = _stored_coma_settings(
+            work_dir, "p0001", selected_coma_uid
+        )
         assert stored_coma["comaBlendTemplatePath"] == str(coma_template_path)
 
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "Template_Prefs.bmanga"))
@@ -280,8 +345,8 @@ def main() -> None:
                 "key": object_selection.coma_key(page, coma),
             }
             assert object_tool_op.enter_coma_from_hit(bpy.context, hit)
-            assert Path(bpy.data.filepath).resolve() == (
-                temp_root / "Template_Prefs.bmanga" / "p0001" / "c01" / "c01.blend"
+            assert Path(bpy.data.filepath).resolve() == paths.coma_blend_path(
+                temp_root / "Template_Prefs.bmanga", "p0001", "c01"
             ).resolve()
             assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT") is not None
             assert bpy.data.node_groups.get("BMANGA_TEMPLATE_MARKER_NODE_GROUP") is not None

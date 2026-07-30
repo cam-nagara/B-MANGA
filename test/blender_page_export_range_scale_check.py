@@ -31,7 +31,7 @@ def _setup_work(tmp_dir: Path):
     scene = bpy.context.scene
     scene.bmanga_mode = "PAGE"
     work = scene.bmanga_work
-    work.loaded = True
+    work.loaded = False
     work.work_dir = str(tmp_dir / "ExportRange.bmanga")
     work.work_info.work_name = "ExportRange"
     work.work_info.episode_number = 1
@@ -56,6 +56,14 @@ def _setup_work(tmp_dir: Path):
         coma.rect_height_mm = 5.0
         coma.background_color = (1.0, 1.0, 1.0, 1.0)
     work.active_page_index = 0
+    from bmanga_dev_page_export.io import page_io, work_io
+
+    work_dir = Path(str(work.work_dir))
+    work_io.create_bmanga_skeleton(work_dir)
+    work_io.save_work_json(work_dir, work)
+    for page in work.pages:
+        page_io.save_page_json(work_dir, page)
+    work.loaded = True
     return work
 
 

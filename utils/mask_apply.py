@@ -10,7 +10,7 @@
 実装方針:
     - Mesh 系レイヤー (raster / image plane / balloon plane / text plane):
       Boolean Modifier (Intersect, FLOAT solver) で実形状クリップ。
-    - GP 系レイヤー (gp / effect): Blender 5.1 GP v3 では外部 Mesh Object
+    - GP 系レイヤー (gp / effect): Blender 5.2 Grease Pencilでは外部Mesh Object
       をマスク source にする一般 Modifier が無いため、現状は no-op。
       Phase 5d で `__bmanga_mask` 内蔵 layer 方式で実装予定。
 """
@@ -242,7 +242,7 @@ def _ensure_boolean_intersect_modifier(
 ) -> None:
     """Mesh / Curve Object に Boolean Intersect Modifier を ensure.
 
-    Curve は Blender 5.1 では Boolean Modifier 非対応のため、Mesh のみ
+    CurveはBlender 5.2でBoolean Modifier非対応のため、Meshのみ
     付与する。Curve のマスクは別経路 (overlay 側 scissor or shape 制御)。
     """
     if obj is None or target is None:
@@ -258,7 +258,7 @@ def _ensure_boolean_intersect_modifier(
             return
     try:
         mod.operation = "INTERSECT"
-        # Blender 5.1 EEVEE Next では solver enum が変更され、 "FAST" は
+        # Blender 5.2 EEVEE Nextではsolver enumが変更され、"FAST"は
         # 廃止されて "FLOAT" / "EXACT" / "MANIFOLD" に。"FLOAT" が旧 FAST
         # 相当の高速版なのでこれを採用。enum 値非対応で例外なら無視
         # (default solver で続行)。
@@ -294,7 +294,7 @@ def _build_polygon_strokes_from_mesh(
 ) -> None:
     """``mesh_obj`` の各 Face を GP drawing に閉じ stroke として描き込む.
 
-    マスク用の塗り潰しレイヤーに mask Mesh の形状を再現する。Blender 5.1 GP v3
+    マスク用の塗り潰しレイヤーにmask Meshの形状を再現する。Blender 5.2
     の ``GreasePencilDrawing.strokes`` API を使う。
     """
     if drawing is None or mesh_obj is None:
@@ -411,7 +411,7 @@ def _ensure_gp_internal_mask(
 ) -> None:
     """GP Object に ``__bmanga_mask`` 内蔵レイヤーを生成し、target Mesh の
     形状をその layer の stroke として描いて、コンテンツレイヤーから mask 参照
-    する (Blender 5.1 GP v3 の `GreasePencilLayer.use_masks` + `mask_layers`).
+    する（Blender 5.2の`GreasePencilLayer.use_masks` + `mask_layers`）。
     """
     if obj is None or target is None:
         return
@@ -490,93 +490,10 @@ def _ensure_gp_internal_mask(
             except Exception:  # noqa: BLE001
                 pass
             if not already:
-                # Blender 5.1 で GreasePencil v3 の mask_layers は ``add(name=...)``
-                # キーワード必須 / Object 渡しは旧版互換。 各種シグネチャを順に試す。
-                added = False
-                for try_args in (
-                    {"args": (_GP_MASK_LAYER_NAME,), "kwargs": {}},
-                    {"args": (), "kwargs": {"name": _GP_MASK_LAYER_NAME}},
-                    {"args": (mask_layer,), "kwargs": {}},
-                    {"args": (), "kwargs": {"layer": mask_layer}},
-                ):
-                    try:
-                        mask_coll.add(*try_args["args"], **try_args["kwargs"])
-                        added = True
-                        break
-                    except Exception:  # noqa: BLE001
-                        continue
-                if not added:
-                    # Blender 5.1 では `mask_layers.new()` パターンの場合もある
-                    try:
-                        new_fn = getattr(mask_coll, "new", None)
-                        if new_fn is not None:
-                            try:
-                                new_fn(name=_GP_MASK_LAYER_NAME)
-                                added = True
-                            except Exception:  # noqa: BLE001
-                                try:
-                                    new_fn(_GP_MASK_LAYER_NAME)
-                                    added = True
-                                except Exception:  # noqa: BLE001
-                                    pass
-                    except Exception:  # noqa: BLE001
-                        pass
-                if not added:
-                    added = _add_gp_mask_reference_with_operator(obj, gp_data, layer)
-                if added:
-                    try:
-                        layer.use_masks = True
-                    except Exception:  # noqa: BLE001
-                        pass
-                else:
-                    _logger.debug(
-                        "GP mask_layers add: API mismatch — skipping mask setup for layer %s",
-                        getattr(layer, "name", "?"),
-                    )
+                mask_coll.add(mask_layer)
+                layer.use_masks = True
         except Exception:  # noqa: BLE001
             _logger.exception("GP layer mask setup failed")
-
-
-def _add_gp_mask_reference_with_operator(obj, gp_data, layer) -> bool:
-    """Blender 5.1 の operator 経由で GP マスク参照を追加する."""
-    if obj is None or gp_data is None or layer is None:
-        return False
-    view_layer = getattr(bpy.context, "view_layer", None)
-    if view_layer is None:
-        return False
-    prev_active_obj = getattr(view_layer.objects, "active", None)
-    prev_selected = [o for o in getattr(bpy.context, "selected_objects", []) or []]
-    prev_active_layer = getattr(getattr(gp_data, "layers", None), "active", None)
-    try:
-        try:
-            for o in prev_selected:
-                o.select_set(False)
-        except Exception:  # noqa: BLE001
-            pass
-        obj.select_set(True)
-        view_layer.objects.active = obj
-        gp_data.layers.active = layer
-        op = getattr(getattr(bpy.ops, "grease_pencil", None), "layer_mask_add", None)
-        if op is None or not op.poll():
-            return False
-        result = op(name=_GP_MASK_LAYER_NAME)
-        return "FINISHED" in result
-    except Exception:  # noqa: BLE001
-        _logger.exception("GP mask operator add failed")
-        return False
-    finally:
-        try:
-            gp_data.layers.active = prev_active_layer
-        except Exception:  # noqa: BLE001
-            pass
-        try:
-            for o in getattr(bpy.context, "selected_objects", []) or []:
-                o.select_set(False)
-            for o in prev_selected:
-                o.select_set(True)
-            view_layer.objects.active = prev_active_obj
-        except Exception:  # noqa: BLE001
-            pass
 
 
 def _remove_gp_internal_mask(obj: bpy.types.Object) -> None:
@@ -626,7 +543,7 @@ def _ensure_gp_mask_modifier(
 ) -> None:
     """GP Object のマスク適用 (Phase 5d: 内蔵 layer mask 方式).
 
-    Blender 5.1 GP v3 では ``GreasePencilLayer.use_masks`` と
+    Blender 5.2では``GreasePencilLayer.use_masks``と
     ``mask_layers`` を使う。同じ GP Object 内のマスクレイヤーを参照する
     仕組みなので、target Mesh の形状を ``__bmanga_mask`` レイヤーの stroke
     として描き写してから mask 参照を立てる。

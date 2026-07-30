@@ -12,7 +12,7 @@ from pathlib import Path
 # 設定ファイルは各PCのローカルに置く（共有フォルダではなくPC個別の設定）。
 CONFIG_PATH = Path(os.path.expanduser("~")) / ".bmanga_render_batch.json"
 
-DEFAULT_BLENDER = r"C:\Program Files\Blender Foundation\Blender 5.1\blender.exe"
+DEFAULT_BLENDER = r"C:\Program Files\Blender Foundation\Blender 5.2\blender.exe"
 
 
 @dataclass

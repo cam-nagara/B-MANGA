@@ -20,6 +20,10 @@ from . import log
 _logger = log.get_logger(__name__)
 
 
+class PageDetailLoadError(RuntimeError):
+    """必要なpage.jsonを厳格に読み込めない。"""
+
+
 def clear_page_detail(page_entry) -> None:
     """ページ詳細 (コマ・フキダシ・テキスト) をメモリから破棄する."""
     try:
@@ -36,18 +40,27 @@ def clear_page_detail(page_entry) -> None:
 
 def ensure_page_detail(work, page_entry) -> bool:
     """詳細未読込なら page.json から読み込む。読み込みを実行したら True."""
-    if page_entry is None or bool(getattr(page_entry, "detail_loaded", False)):
+    if page_entry is None:
+        raise PageDetailLoadError("page entry is required")
+    if bool(getattr(page_entry, "detail_loaded", False)):
         return False
     work_dir = str(getattr(work, "work_dir", "") or "")
     if not work_dir or not getattr(page_entry, "id", ""):
-        return False
+        raise PageDetailLoadError("work directory and page ID are required")
     try:
         from ..io import page_io
 
-        page_io.load_page_json(Path(work_dir), page_entry)
+        page_io.load_page_json(
+            Path(work_dir),
+            page_entry,
+            allow_missing=False,
+        )
         return True
-    except Exception:  # noqa: BLE001
-        _logger.warning(
+    except Exception as exc:  # noqa: BLE001
+        clear_page_detail(page_entry)
+        _logger.error(
             "page detail on-demand load failed: %s", getattr(page_entry, "id", ""), exc_info=True
         )
-        return False
+        raise PageDetailLoadError(
+            f"required page detail failed to load: {getattr(page_entry, 'id', '')}"
+        ) from exc

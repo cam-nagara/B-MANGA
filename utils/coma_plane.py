@@ -346,9 +346,9 @@ def _bbox_from_coma_m(coma) -> tuple[float, float, float, float] | None:
 
 
 def _page_anchor_m(work, coma) -> tuple[float, float, float, float] | None:
-    """thumb.png (= ページ全体レンダー) に合わせた UV アンカーを返す.
+    """preview.png (= ページ全体レンダー) に合わせた UV アンカーを返す.
 
-    ``thumb.png`` は ``scene.render.resolution`` = ページ × DPI でレンダー
+    ``preview.png`` は ``scene.render.resolution`` = ページ × DPI でレンダー
     されており、 ページ全域を覆っている。 UV アンカーはこのページ全体に
     合わせ、 メッシュ上の位置をそのままページ内の位置として UV に変換する。
 
@@ -359,8 +359,8 @@ def _page_anchor_m(work, coma) -> tuple[float, float, float, float] | None:
       引き戻すように ``(-rect_x, -rect_y, page_w, page_h)`` を使う。
 
     こうすることで、 ユーザーがコマ枠を編集してもメッシュ上の各頂点の UV は
-    その「ページ内位置」のまま変わらず、 ``thumb.png`` 上の対応ピクセルへ
-    確実に貼り付く。 コマ枠を再レンダリングしない限り `thumb.png` 自体が
+    その「ページ内位置」のまま変わらず、 ``preview.png`` 上の対応ピクセルへ
+    確実に貼り付く。 コマ枠を再レンダリングしない限り `preview.png` 自体が
     動かないため、 ページ一覧プレビューとコマ用 blend の描画が常に一致する。
     """
     if coma is None or work is None:
@@ -389,7 +389,7 @@ def _refresh_uv_anchor_for_image(mesh: bpy.types.Mesh, image, coma=None, work=No
     """画像 mtime が UV アンカー保存時より新しければアンカーを張り替える.
 
     アンカーは原則として ``_page_anchor_m(work, coma)`` (ページ全体基準) を
-    使い、 ``thumb.png`` 上の正しい位置がコマ枠へ貼られる。 ``work`` が
+    使い、 ``preview.png`` 上の正しい位置がコマ枠へ貼られる。 ``work`` が
     無い場合はコマ多角形 bbox を使う旧フォールバックを採用する。
     """
     if mesh is None or image is None or len(mesh.vertices) == 0:
@@ -1197,7 +1197,7 @@ def ensure_coma_plane(
         mesh = bpy.data.meshes.new(mesh_name)
     # UV アンカーをページ基準で固定。 メッシュをビルドする前に書き込んでおけば
     # ``_ensure_uv`` がこれを使う。 コマ枠を編集してもアンカーは変わらず、
-    # ``thumb.png`` (= ページ全体レンダー) の正しい位置がコマ枠に貼り付く。
+    # ``preview.png`` (= ページ全体レンダー) の正しい位置がコマ枠に貼り付く。
     page_anchor = _page_anchor_m(work, coma)
     if page_anchor is not None:
         mesh["bmanga_uv_ref"] = list(page_anchor)
@@ -1277,7 +1277,7 @@ def update_coma_plane_geometry(
     if mesh is None or obj is None:
         return False
     # アンカーをページ基準に張り替えてからメッシュを組み直す (コマ形状変更時
-    # も ``thumb.png`` 上の正しい位置と対応する UV が貼られる)。
+    # も ``preview.png`` 上の正しい位置と対応する UV が貼られる)。
     page_anchor = _page_anchor_m(work, coma)
     if page_anchor is not None:
         mesh["bmanga_uv_ref"] = list(page_anchor)

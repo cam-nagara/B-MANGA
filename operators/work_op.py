@@ -23,13 +23,31 @@ def _recover_selected_work_before_open(work_dir: Path) -> tuple[bool, str]:
     """work.blendが退避中でも、作品を開く入口から先に復旧できるようにする."""
 
     try:
-        from ..io import project_content_native_save_guard
+        from ..io import native_save_guard
 
-        project_content_native_save_guard.recover_pending_native_saves(work_dir)
+        native_save_guard.recover_pending_native_saves(work_dir)
         return True, ""
     except Exception as exc:  # noqa: BLE001
         _logger.exception("work_open: pending native save recovery failed")
         return False, str(exc)
+
+
+def _canonical_mainfile_role(
+    work_dir: Path,
+    current_mainfile: Path | None = None,
+) -> tuple[str, str, str]:
+    """Domain登録済みの正規mainfileだけを作品保存対象として分類する."""
+
+    current = (
+        blend_io.current_mainfile_path()
+        if current_mainfile is None
+        else Path(current_mainfile)
+    )
+    if current is None:
+        return "unknown", "", ""
+    from ..utils import page_file_scene
+
+    return page_file_scene.canonical_role_from_path(current, work_dir)
 
 
 def _apply_phase1_defaults(work) -> None:
@@ -210,7 +228,7 @@ class BMANGA_OT_work_new(Operator, ExportHelper):
             # 最初のページ p0001 を自動生成し、ページ一覧ファイルとして保存する。
             # 各ページのフキダシ・テキスト等は、ページ用blendファイルで扱う。
             entry = page_io.register_new_page(work)
-            page_io.ensure_page_dir(work_dir, entry.id)
+            page_io.ensure_page_dir(work_dir, entry)
             from .coma_op import create_basic_frame_coma
 
             create_basic_frame_coma(work, entry, work_dir)
@@ -278,7 +296,14 @@ class BMANGA_OT_work_new(Operator, ExportHelper):
                 page_file_scene.clear_work_list_page_details(context.scene)
             except Exception:  # noqa: BLE001
                 _logger.exception("work_new: page preview setup failed")
-            blend_io.save_work_blend(work_dir)
+            # 現在開いている別作品のpage/coma.blendから新規作成した場合、
+            # save_preが旧ファイルのroleをfallback判定して新作品へ投影しない
+            # ようにする。新作品Domainは直前までに明示checkpoint済み。
+            from ..utils import handlers
+
+            with handlers.suppress_work_metadata_save():
+                if not blend_io.save_work_blend(work_dir):
+                    raise RuntimeError("作品一覧ファイルを保存できませんでした")
         except Exception as exc:  # noqa: BLE001
             _logger.exception("work_new failed")
             work.loaded = False
@@ -355,18 +380,32 @@ class BMANGA_OT_work_open(Operator, ImportHelper):
         old_work_dir = Path(work.work_dir) if work.loaded and work.work_dir else None
         if old_work_dir is not None and old_work_dir.is_dir():
             try:
-                from ..utils import handlers, page_file_scene
+                from ..utils import page_file_scene
 
-                handlers.save_scene_work_to_disk(context, reason="work_open")
                 role, page_id, coma_id = page_file_scene.current_role(context)
                 if role == page_file_scene.ROLE_WORK:
-                    blend_io.save_work_blend(old_work_dir)
+                    saved = blend_io.save_work_blend(old_work_dir)
                 elif role == page_file_scene.ROLE_PAGE and paths.is_valid_page_id(page_id):
-                    blend_io.save_page_blend(old_work_dir, page_id)
+                    saved = blend_io.save_page_blend(old_work_dir, page_id)
                 elif role == page_file_scene.ROLE_COMA and paths.is_valid_page_id(page_id) and paths.is_valid_coma_id(coma_id):
-                    blend_io.save_coma_blend(old_work_dir, page_id, coma_id)
-            except Exception:  # noqa: BLE001
+                    saved = blend_io.save_coma_blend(
+                        old_work_dir,
+                        page_id,
+                        coma_id,
+                    )
+                else:
+                    raise RuntimeError("現在の作品ファイル種別を判定できません")
+                if not saved:
+                    raise RuntimeError(
+                        "作品情報とBlenderファイルを保存できませんでした"
+                    )
+            except Exception as exc:  # noqa: BLE001
                 _logger.exception("work_open: save current file failed")
+                self.report(
+                    {"ERROR"},
+                    f"現在の作品を保存できないため、切り替えませんでした: {exc}",
+                )
+                return {"CANCELLED"}
 
         selected = Path(self.filepath)
         # ファイルを選ばれても親ディレクトリを作品ルートとして解釈
@@ -390,7 +429,6 @@ class BMANGA_OT_work_open(Operator, ImportHelper):
             except Exception:  # noqa: BLE001
                 _logger.exception("work_open: old raster runtime purge failed")
             work_io.load_work_json(work_dir, work)
-            page_io.load_pages_json(work_dir, work)
             work.work_dir = str(work_dir.resolve())
             work.loaded = True
             set_mode(MODE_PAGE, context)
@@ -420,12 +458,6 @@ class BMANGA_OT_work_open(Operator, ImportHelper):
             except Exception:  # noqa: BLE001
                 _logger.exception("work_open: raster runtime setup failed")
             _schedule_layer_stack_sync(context)
-            try:
-                from . import detail_data_migration_op
-
-                detail_data_migration_op.schedule_migration_prompt(context)
-            except Exception:  # noqa: BLE001
-                _logger.exception("work_open: detail data migration prompt failed")
         except FileNotFoundError as exc:
             _logger.exception("work_open: missing file")
             work.loaded = False
@@ -567,13 +599,17 @@ class BMANGA_OT_work_save(Operator):
         if not work_dir.is_dir():
             self.report({"ERROR"}, f"作品ディレクトリが見つかりません: {work_dir}")
             return {"CANCELLED"}
+        file_role, file_page_id, file_coma_id = _canonical_mainfile_role(work_dir)
+        if file_role == "unknown":
+            self.report(
+                {"ERROR"},
+                (
+                    "正規の作品ファイルではないコピーからは保存できません。"
+                    "元の作品ファイルを開き直してください"
+                ),
+            )
+            return {"CANCELLED"}
         try:
-            # 1) JSON メタ保存
-            from ..utils import handlers as _handlers
-
-            if not _handlers.save_scene_work_to_disk(context, reason="work_save"):
-                self.report({"ERROR"}, "作品メタデータの保存に失敗しました")
-                return {"CANCELLED"}
             mode = get_mode(context)
             if mode == MODE_COMA and bool(getattr(work, "auto_render_coma_thumb_on_return", True)):
                 try:
@@ -586,12 +622,6 @@ class BMANGA_OT_work_save(Operator):
                     self.report({"WARNING"}, "コマ画像の更新に失敗しました")
             if mode != MODE_COMA:
                 _disable_work_viewport_overlays(context)
-            try:
-                from ..utils import page_file_scene
-
-                file_role, file_page_id, _file_coma_id = page_file_scene.current_role(context)
-            except Exception:  # noqa: BLE001
-                file_role, file_page_id = "", ""
             try:
                 from ..utils import page_file_scene, page_preview_object
 
@@ -618,53 +648,35 @@ class BMANGA_OT_work_save(Operator):
             except Exception:  # noqa: BLE001
                 _logger.exception("work_save: page preview refresh failed")
 
-            # 2) .blend 保存. ユーザーが File > Save As で work_dir 外に保存
-            #    していた場合は、そのパスを尊重して save_mainfile する (B-MANGA の
-            #    期待パスへ強制リロケートしない)。work_dir 内 or 未保存なら
-            #    overview モードなら work.blend、コマ編集モードなら cNN.blend
-            #    を期待パスとして save_as_mainfile する。
-            cur = blend_io.current_mainfile_path()
-            work_dir_resolved = work_dir.resolve()
-            in_work_dir = False
-            if cur is not None:
-                try:
-                    cur.relative_to(work_dir_resolved)
-                    in_work_dir = True
-                except ValueError:
-                    in_work_dir = False
-
+            # 2) .blend 保存. 外部コピーは入口で拒否済み。overviewモードなら
+            #    work.blend、ページ画面ならpage.blend、コマ編集モードなら
+            #    cNN.blendを期待パスとして保存する。
             saved_blend = False
             saved_path = ""
-            if cur is not None and not in_work_dir:
-                # work_dir 外 → ユーザーの Save As パスをそのまま尊重
-                try:
-                    bpy.ops.wm.save_mainfile(compress=True)
-                    saved_blend = True
-                    saved_path = str(cur)
-                except Exception as exc:  # noqa: BLE001
-                    _logger.exception("save_mainfile (external path) failed")
-                    saved_blend = False
-            else:
-                # work_dir 内 or 未保存 → B-MANGA 期待パスへ save_as
-                if mode == MODE_COMA:
-                    stem = getattr(context.scene, "bmanga_current_coma_id", "")
-                    page_id = getattr(context.scene, "bmanga_current_coma_page_id", "")
-                    if paths.is_valid_coma_id(stem) and paths.is_valid_page_id(page_id):
-                        saved_blend = blend_io.save_coma_blend(
-                            work_dir, page_id, stem
+            if file_role == "coma":
+                saved_blend = blend_io.save_coma_blend(
+                    work_dir,
+                    file_page_id,
+                    file_coma_id,
+                )
+                if saved_blend:
+                    saved_path = str(
+                        paths.coma_blend_path(
+                            work_dir,
+                            file_page_id,
+                            file_coma_id,
                         )
-                        if saved_blend:
-                            saved_path = str(
-                                paths.coma_blend_path(work_dir, page_id, stem)
-                            )
-                elif file_role == "page" and paths.is_valid_page_id(file_page_id):
-                    saved_blend = blend_io.save_page_blend(work_dir, file_page_id)
-                    if saved_blend:
-                        saved_path = str(paths.page_blend_path(work_dir, file_page_id))
-                else:
-                    saved_blend = blend_io.save_work_blend(work_dir)
-                    if saved_blend:
-                        saved_path = str(paths.work_blend_path(work_dir))
+                    )
+            elif file_role == "page":
+                saved_blend = blend_io.save_page_blend(work_dir, file_page_id)
+                if saved_blend:
+                    saved_path = str(paths.page_blend_path(work_dir, file_page_id))
+            elif file_role == "work":
+                saved_blend = blend_io.save_work_blend(work_dir)
+                if saved_blend:
+                    saved_path = str(paths.work_blend_path(work_dir))
+            else:
+                raise RuntimeError("現在の作品ファイル種別を判定できません")
         except Exception as exc:  # noqa: BLE001
             _logger.exception("work_save failed")
             self.report({"ERROR"}, f"保存失敗: {exc}")
@@ -672,7 +684,8 @@ class BMANGA_OT_work_save(Operator):
         if saved_blend:
             self.report({"INFO"}, f"作品を保存: {Path(saved_path).name}")
         else:
-            self.report({"WARNING"}, "JSON は保存、.blend 保存はスキップ")
+            self.report({"ERROR"}, "作品を保存できませんでした")
+            return {"CANCELLED"}
         return {"FINISHED"}
 
 

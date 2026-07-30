@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import os
 from pathlib import Path
 
 
@@ -14,6 +15,8 @@ from tools.refactor_certification.phase0_result_classification import (
 )
 from tools.refactor_certification.ids import test_id as stable_test_id
 from tools.refactor_certification.phase0_python_test_probe import _status
+from tools.certification.executor import _python_command
+from tools.certification.model import Case
 
 
 def _result(status: str, returncode: int = 1) -> dict[str, object]:
@@ -106,3 +109,22 @@ def test_python_probe_requires_items_and_reports_collection_errors() -> None:
     assert status == "collection_error"
     status, _ = _status(0, {"tests": 3, "skipped": 3}, "")
     assert status == "skipped"
+
+
+def test_certification_python_case_can_import_product_root(tmp_path: Path) -> None:
+    root = tmp_path / "repository"
+    test_dir = root / "test"
+    test_dir.mkdir(parents=True)
+    source = test_dir / "test_domain.py"
+    source.write_text("def test_domain(): pass\n", encoding="utf-8")
+    case = Case(
+        test_id="test:domain",
+        source="test/test_domain.py",
+        source_sha256="0" * 64,
+        mode="python_pytest",
+        required=True,
+        timeout_seconds=30,
+    )
+    _command, cwd, env = _python_command(root, case, tmp_path / "case")
+    assert cwd == test_dir
+    assert env["PYTHONPATH"].split(os.pathsep)[0] == str(root)

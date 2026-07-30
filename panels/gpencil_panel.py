@@ -300,7 +300,7 @@ def _is_active_name_row(index: int) -> bool:
     scene = getattr(bpy.context, "scene", None)
     if scene is None:
         return False
-    return int(getattr(scene, "bmanga_active_layer_stack_index", -1) or -1) == int(index)
+    return int(getattr(scene, "bmanga_active_layer_stack_index", -1)) == int(index)
 
 
 def _select_name(row, index: int, text: str, item=None, target=None) -> None:

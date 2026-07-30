@@ -40,7 +40,7 @@ def _active_stack_item(context):
     if scene is None:
         return None
     stack = getattr(scene, "bmanga_layer_stack", None)
-    idx = int(getattr(scene, "bmanga_active_layer_stack_index", -1) or -1)
+    idx = int(getattr(scene, "bmanga_active_layer_stack_index", -1))
     if stack is not None and 0 <= idx < len(stack):
         return stack[idx]
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
@@ -112,17 +112,14 @@ def _linked_balloon_targets(context, page, entry):
     pages = getattr(work, "pages", []) if work is not None else []
     # リンク先が別ページにある場合に備え、リンク uid が指すページの詳細を
     # 読み込んでおく (詳細未読込のページではリンク先がメモリに存在しないため)
-    try:
-        from ..utils import page_detail
+    from ..utils import page_detail
 
-        for target_page in pages:
-            if bool(getattr(target_page, "detail_loaded", True)):
-                continue
-            pk = page_stack_key(target_page)
-            if pk and any(f"{pk}:" in uid for uid in linked_uids):
-                page_detail.ensure_page_detail(work, target_page)
-    except Exception:  # noqa: BLE001
-        pass
+    for target_page in pages:
+        if bool(getattr(target_page, "detail_loaded", True)):
+            continue
+        pk = page_stack_key(target_page)
+        if pk and any(f"{pk}:" in uid for uid in linked_uids):
+            page_detail.ensure_page_detail(work, target_page)
     for target_page in pages:
         for target in getattr(target_page, "balloons", []) or []:
             if target is entry:

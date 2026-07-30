@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
-from types import SimpleNamespace
 import sys
 
 import pytest
@@ -120,20 +119,3 @@ def test_uid_builders_do_not_stringify_missing_ids():
         uid.make_managed_uid("gp", None)
     with pytest.raises(uid.LayerUIDError):
         uid.make_uid(None, "gp_0001")
-
-
-def test_detail_data_version_defaults_and_round_trip_contract():
-    uid = _module()
-    assert uid.detail_data_version_from_mapping({}) == uid.LEGACY_DETAIL_DATA_VERSION
-    assert uid.detail_data_version_from_mapping({"detailDataVersion": "bad"}) == 0
-    assert uid.detail_data_version_from_mapping({"detailDataVersion": 1}) == 1
-    assert uid.detail_data_version_from_mapping({"detailDataVersion": 7}) == 7
-
-    new_work = SimpleNamespace()
-    assert uid.detail_data_version_for_save(new_work) == uid.CURRENT_DETAIL_DATA_VERSION
-
-    old_work = SimpleNamespace(detail_data_version=0)
-    assert uid.detail_data_version_for_save(old_work) == 0
-
-    future_work = SimpleNamespace(detail_data_version=7)
-    assert uid.detail_data_version_for_save(future_work) == 7

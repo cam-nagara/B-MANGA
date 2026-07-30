@@ -1,6 +1,47 @@
 {
   "schema_version": 1,
   "cases": {
+    "test/blender_asset_extended_layers_check.py": {
+      "mode": "blender_wrapper",
+      "expected_tracebacks": [
+        {
+          "pattern": "^RuntimeError: 素材レイヤーを生成できませんでした: raster$",
+          "count": 2
+        },
+        {
+          "pattern": "^OSError: simulated write failure$",
+          "count": 1
+        },
+        {
+          "pattern": "^RuntimeError: ラスター素材を生成できませんでした$",
+          "count": 1
+        }
+      ],
+      "reason": "破損ラスター素材と書込失敗を意図的に注入し、素材一式・PNG・JSONを全件rollbackして再試行可能な状態を維持する負系テスト",
+      "review": "phase3-asset-atomicity-audit-2026-07-30"
+    },
+    "test/blender_phase1_fault_injection_check.py": {
+      "mode": "blender_wrapper",
+      "expected_tracebacks": [
+        {
+          "pattern": "^RuntimeError: 素材レイヤーを生成できませんでした: raster$",
+          "count": 1
+        }
+      ],
+      "reason": "複数素材の途中生成失敗と保存失敗を意図的に注入し、Blender実体・画像・JSON・再試行フラグを全件rollbackする負系テスト",
+      "review": "phase3-asset-atomicity-audit-2026-07-30"
+    },
+    "test/blender_phase3_projection_failure_check.py": {
+      "mode": "blender_wrapper",
+      "expected_tracebacks": [
+        {
+          "pattern": "^RuntimeError: Blender本体の保存が完了しませんでした$",
+          "count": 1
+        }
+      ],
+      "reason": "native blend保存中のDomain投影失敗を意図的に注入し、blendとJSONの不一致世代を公開しないことを検証する負系テスト",
+      "review": "phase3-native-save-atomicity-audit-2026-07-30"
+    },
     "test/blender_b_manga_line_auto_quad_repair_undo_check.py": {
       "mode": "historical",
       "required": false,
@@ -148,42 +189,6 @@
       "reason": "page.blend導入前のpNNNN/cNN二段構成を前提とし、コマ終了後にwork.blendへ直接戻る旧E2E。現行三段構成はpage_file_stage_check、work_file_slim_check、cross_page_transfer_durability_check、spread_tombo_align_checkで認定する",
       "review": "phase1-three-stage-audit-2026-07-29"
     },
-    "test/blender_detail_dialog_data_migration_check.py": {
-      "completion_token": "DETAIL_DIALOG_DATA_MIGRATION_CHECK_OK",
-      "reason": "既定controller経路の完了トークンを指定する。RESTART_VERIFYはcontrollerが起動する子プロセス専用で、単独manifest caseの完了条件ではない",
-      "review": "phase1-sentinel-audit-2026-07-29"
-    },
-    "test/blender_detail_migration_open_file_reload_check.py": {
-      "mode": "blender_wrapper",
-      "expected_tracebacks": [
-        {
-          "pattern": "^(?:[\\w.]+\\.)?SaveBaselineUnavailableError: 作品の読込基準がありません。作品を開き直してください$",
-          "count": 2
-        },
-        {
-          "pattern": "^(?:[\\w.]+\\.)?WorkLockError: 作品の読込基準がありません。作品を開き直してから保存してください$",
-          "count": 2
-        },
-        {
-          "pattern": "^(?:[\\w.]+\\.)?MigrationError: 変換後検証が不合格でした: p0001$",
-          "count": 1
-        },
-        {
-          "pattern": "^(?:[\\w.]+\\.)?MigrationExecutionError: 変換後検証が不合格でした: p0001$",
-          "count": 1
-        },
-        {
-          "pattern": "^(?:[\\w.]+\\.)?SaveBaselineConflictError: 別のBlender画面で作品データが更新されています: work\\.json$",
-          "count": 1
-        },
-        {
-          "pattern": "^(?:[\\w.]+\\.)?WorkLockError: 別のBlender画面で作品データが更新されています: work\\.json$",
-          "count": 1
-        }
-      ],
-      "reason": "移行中断・外部更新競合を意図的に注入し、WorkLockErrorのtracebackをログへ残した上でrollback・再読込と最終sentinelを検証する負系テスト",
-      "review": "phase1-expected-failure-audit-2026-07-29"
-    },
     "test/blender_layer_stack_dnd_reparent_check.py": {
       "mode": "blender_wrapper",
       "expected_tracebacks": [
@@ -201,6 +206,10 @@
         {
           "pattern": "^(?:[\\w.]+\\.)?JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 \\(char 1\\)$",
           "count": 1
+        },
+        {
+          "pattern": "^(?:[\\w.]+\\.)?RepositoryError: invalid JSON: .+[\\\\/]page\\.json$",
+          "count": 1
         }
       ],
       "reason": "破損JSONを意図的に読み込み、作品単位transactionが全状態を復元する負系テスト",
@@ -210,20 +219,16 @@
       "mode": "blender_wrapper",
       "expected_tracebacks": [
         {
-          "pattern": "^(?:[\\w.]+\\.)?SaveBaselineUnavailableError: 作品の読込基準がありません。作品を開き直してください$",
-          "count": 1
-        },
-        {
-          "pattern": "^(?:[\\w.]+\\.)?WorkLockError: 作品の読込基準がありません。作品を開き直してから保存してください$",
-          "count": 1
-        },
-        {
           "pattern": "^OSError: temporary sharing violation$",
+          "count": 1
+        },
+        {
+          "pattern": "^RuntimeError: 作品情報とBlenderファイルを保存できませんでした$",
           "count": 1
         }
       ],
-      "reason": "native保存後の再読込失敗と一時共有違反を意図的に注入し、復旧経路を検証する負系テスト",
-      "review": "phase1-expected-failure-audit-2026-07-29"
+      "reason": "native保存後の再読込失敗・一時共有違反・作品切替前の保存失敗を意図的に注入し、復旧と切替中止を検証する負系テスト",
+      "review": "phase3-native-save-atomicity-audit-2026-07-30"
     },
     "test/blender_page_duplicate_delete_transaction_check.py": {
       "mode": "blender_wrapper",
@@ -304,6 +309,11 @@
       "completion_token": "",
       "reason": "idle redraw回数を採取する診断probeで、閾値assertを持つ製品テストではない",
       "review": "phase1-manifest-audit-2026-07-29"
+    },
+    "test/blender_balloon_effect_pattern_visual_audit.py": {
+      "timeout_seconds": 600,
+      "reason": "フキダシ全形状・全線種と効果線5種の高解像度一覧を複数回レンダリングする必須視覚監査で、Blender 5.2実測が180秒を超えるため専用上限を与える",
+      "review": "phase3-timeout-audit-2026-07-30"
     },
     "test/blender_perf_benchmark.py": {
       "timeout_seconds": 600,

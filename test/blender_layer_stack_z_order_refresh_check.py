@@ -403,7 +403,12 @@ def main() -> None:
         _assert_page_layers_cross_coma_boundary(context, coma, page_targets)
         _assert_page_layer_between_comas(context, page, page_targets[-2])
 
-        preview_path = temp_root / "ZOrder.bmanga" / str(page.id) / "page_preview.png"
+        from bmanga_dev_z_order_refresh.utils import paths
+
+        preview_path = (
+            paths.page_dir(temp_root / "ZOrder.bmanga", str(page.id))
+            / "page_preview.png"
+        )
         _assert_page_preview_refresh(context, work, page, preview_path)
 
         print(f"BMANGA_LAYER_STACK_Z_ORDER_REFRESH_OK page_pairs={page_pairs} coma_pairs={coma_pairs}")

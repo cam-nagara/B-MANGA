@@ -460,7 +460,10 @@ def main() -> None:
             except Exception:
                 pass
         bpy.ops.wm.read_factory_settings(use_empty=True)
-        shutil.rmtree(temp_root, ignore_errors=True)
+        if not success and os.environ.get("BMANGA_KEEP_FAILED_TEMP") == "1":
+            print(f"BMANGA_FAILED_TEMP={temp_root}", flush=True)
+        else:
+            shutil.rmtree(temp_root, ignore_errors=True)
         if success and not bool(getattr(bpy.app, "background", False)):
             bpy.app.timers.register(lambda: (bpy.ops.wm.quit_blender(), None)[1], first_interval=0.5)
 

@@ -1,604 +1,397 @@
-"""保存復旧の再読込フォールバックが依存する既存挙動を純Pythonで固定する。
-
-対象:
-
-* 新規ページ初回保存が中断された場合の復旧が ``page.blend`` を削除し、
-  戻り値へ含めること (``utils/handlers.py`` の再読込フォールバックが
-  「対象が消えている」ケースへ正しく分岐できる前提)。
-* native / sidecar 両保存ガードの ``cleanup_stale_transactions`` が、
-  ジャーナル未到達のまま24時間以上放置されたトランザクションだけを
-  掃除し、若い/ジャーナル有り/名前不一致のものは残すこと。
-* ``recover_pending_native_saves`` の末尾から両方の掃除が実際に呼ばれる
-  こと。
-"""
+"""新Domain作品のnative/sidecar保存復旧契約。"""
 
 from __future__ import annotations
 
-import importlib.util
+import importlib
 import json
 import os
-import shutil
+import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
+import types
 
 import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+PACKAGE = "bmanga_native_save_guard_test"
 
 
-def _load_migration():
-    path = ROOT / "io" / "project_content_migration.py"
-    name = "_bmanga_native_save_guard_recovery_migration_test"
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    assert spec and spec.loader
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
+def _load_runtime():
+    package = types.ModuleType(PACKAGE)
+    package.__path__ = [str(ROOT)]
+    sys.modules.setdefault(PACKAGE, package)
+    io_name = f"{PACKAGE}.io"
+    io_package = types.ModuleType(io_name)
+    io_package.__path__ = [str(ROOT / "io")]
+    sys.modules.setdefault(io_name, io_package)
+    native = importlib.import_module(f"{io_name}.native_save_guard")
+    sidecar = importlib.import_module(f"{io_name}.sidecar_save_guard")
+    baseline = importlib.import_module(f"{io_name}.save_baseline")
+    return native, sidecar, baseline
 
 
-# project_content_migration.py を先にロードすることで、native/sidecarガード
-# が単体ロード時に使う裸importの依存モジュール群 (project_content_migration_
-# lock 等) が sys.modules へ登録される。test_project_content_migration_safety.
-# py と同じ順序を踏襲する。
-_MIGRATION = _load_migration()
+NATIVE, SIDECAR, BASELINE = _load_runtime()
 
 
-def _load_native_guard():
-    path = ROOT / "io" / "project_content_native_save_guard.py"
-    name = "_bmanga_native_save_guard_recovery_native_test"
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    assert spec and spec.loader
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-NATIVE_GUARD = _load_native_guard()
-SIDECAR_GUARD = sys.modules["project_content_sidecar_save_guard"]
-BASELINE = sys.modules["project_content_save_baseline"]
-
-
-def _write_json(path: Path, value) -> None:
+def _write(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
+    path.write_bytes(data)
 
 
-def _work(tmp_path: Path, name: str = "Recovery") -> Path:
+def _work(tmp_path: Path, name: str) -> tuple[Path, Path, Path]:
     work = tmp_path / f"{name}.bmanga"
     work.mkdir()
-    _write_json(work / "work.json", {"detailDataVersion": 0})
-    return work
-
-
-def _tx_id(hours_ago: float, suffix: str) -> str:
-    """``_TRANSACTION_ID_RE`` に一致するトランザクションID文字列を作る。"""
-
-    stamp = (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).strftime(
-        "%Y%m%dT%H%M%SZ"
+    project = work / "project.json"
+    project.write_text(
+        json.dumps(
+            {
+                "schema": "bmanga.project",
+                "schemaVersion": 1,
+                "projectUid": "project_0123456789abcdef0123456789abcdef",
+                "revision": 0,
+                "settings": {},
+                "pageOrder": [],
+                "pages": {},
+            }
+        ),
+        encoding="utf-8",
     )
-    return f"{stamp}-{suffix}"
+    blend = work / "work.blend"
+    _write(blend, b"old-blend")
+    BASELINE.capture_loaded_baseline(
+        work,
+        blend,
+        content_paths=(project,),
+    )
+    return work, project, blend
 
 
-def _make_tx_dir(base: Path, tx_id: str) -> Path:
-    tx_dir = base / tx_id
-    tx_dir.mkdir(parents=True)
-    return tx_dir
+def _begin_transaction(work: Path, project: Path, blend: Path):
+    token = NATIVE.begin_native_save(blend)
+    assert token is not None and not token.requires_restore
+    NATIVE.prepare_native_save_sidecars(token, (project,))
+    return token
 
 
-def _move_sidecar_transaction(token, destination_base: Path) -> Path:
-    current_tx = token.transaction_dir
-    destination_base.mkdir(parents=True)
-    destination_tx = destination_base / current_tx.name
-    shutil.move(str(current_tx), str(destination_tx))
-    journal_path = destination_tx / SIDECAR_GUARD.SIDECAR_JOURNAL_NAME
-    journal = json.loads(journal_path.read_text(encoding="utf-8"))
-    for record in journal["records"]:
-        backup = str(record.get("backupPath", ""))
-        if backup:
-            relative = Path(backup).relative_to(current_tx)
-            record["backupPath"] = str(destination_tx / relative)
-    _write_json(journal_path, journal)
-    return destination_tx
+def _make_directory_link(link: Path, target: Path) -> None:
+    if os.name == "nt":
+        result = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr or result.stdout
+    else:
+        os.symlink(target, link, target_is_directory=True)
 
 
-# --- (a) 新規ページ初回保存の中断復旧 ---------------------------------
+def test_successful_checkpoint_keeps_one_new_generation(tmp_path):
+    work, project, blend = _work(tmp_path, "Success")
+    token = _begin_transaction(work, project, blend)
+    NATIVE.mark_native_save_metadata_result(token, True)
+    _write(blend, b"new-blend")
+    _write(project, b'{"new":"project"}')
+
+    result = NATIVE.finish_native_save(token)
+
+    assert not result.restored
+    assert result.metadata_saved
+    assert blend.read_bytes() == b"new-blend"
+    assert project.read_bytes() == b'{"new":"project"}'
+    assert not (work / ".bmanga-save-recovery-v1").exists()
 
 
-def test_interrupted_new_page_first_save_rollback_deletes_created_file(tmp_path):
-    """新規ページ初回保存中の異常終了は、復旧時にpage.blendを削除して
-    戻り値へ含める。再読込フォールバックが依存する既存挙動の固定化。"""
+def test_metadata_failure_restores_blend_and_project_together(tmp_path):
+    work, project, blend = _work(tmp_path, "MetadataFailure")
+    before_project = project.read_bytes()
+    token = _begin_transaction(work, project, blend)
+    _write(blend, b"partial-blend")
+    _write(project, b'{"partial":true}')
 
-    work = _work(tmp_path, "NewPageRollback")
-    page = work / "p0001" / "page.blend"
-    page.parent.mkdir()
-    assert not page.exists()
+    NATIVE.mark_native_save_metadata_result(token, False, error="forced")
+    result = NATIVE.finish_native_save(token)
 
-    # 読込基準が無い作品への保存は、既存ファイルの有無に関わらず
-    # 「別画面が更新した」扱いで即座にrequires_restoreが立つ
-    # (SaveBaselineUnavailableError経由)。既存テストと同じ前提。
-    token = NATIVE_GUARD.begin_native_save(page, 0)
-    assert token is not None and token.requires_restore
-    assert not token.original_existed
-    assert token.creation_marker is not None and token.creation_marker.is_file()
-    assert token.journal_path is not None
-    journal = NATIVE_GUARD.read_json_mapping(token.journal_path)
-    assert journal["status"] == "original_secured"
-    assert journal["originalExisted"] is False
-    assert journal["transactionId"] == token.transaction_id
+    assert result.restored
+    assert blend.read_bytes() == b"old-blend"
+    assert project.read_bytes() == before_project
+    assert not (work / ".bmanga-save-recovery-v1").exists()
 
-    # Blenderが新規ファイルとして書込みを完了させたことにする。
-    page.write_bytes(b"new-page-content")
-    # プロセスがここでクラッシュした想定 (finish_native_saveへ届かない)。
-    NATIVE_GUARD._release(token)
 
-    restored = NATIVE_GUARD.recover_pending_native_saves(work)
+def test_process_crash_before_commit_recovers_previous_generation(tmp_path):
+    work, project, blend = _work(tmp_path, "CrashRollback")
+    before_project = project.read_bytes()
+    token = _begin_transaction(work, project, blend)
+    NATIVE.mark_native_save_metadata_result(token, True)
+    _write(blend, b"uncommitted-blend")
+    _write(project, b'{"uncommitted":true}')
+    NATIVE._release(token)
 
-    assert page in restored
-    assert not page.exists()
+    restored = NATIVE.recover_pending_native_saves(work)
+
+    assert set(restored) == {blend, project}
+    assert blend.read_bytes() == b"old-blend"
+    assert project.read_bytes() == before_project
+    assert not (work / ".bmanga-save-recovery-v1").exists()
+
+
+def test_commit_decision_survives_process_crash(tmp_path):
+    work, project, blend = _work(tmp_path, "CrashAfterDecision")
+    token = _begin_transaction(work, project, blend)
+    NATIVE.mark_native_save_metadata_result(token, True)
+    _write(blend, b"committed-blend")
+    _write(project, b'{"committed":true}')
+    NATIVE._write_native_status(token, "commit_decided")
+    NATIVE._release(token)
+
+    restored = NATIVE.recover_pending_native_saves(work)
+
+    assert restored == ()
+    assert blend.read_bytes() == b"committed-blend"
+    assert project.read_bytes() == b'{"committed":true}'
+    assert not (work / ".bmanga-save-recovery-v1").exists()
+
+
+def test_unowned_short_guard_never_overwrites_valid_blend(tmp_path):
+    work, _project, blend = _work(tmp_path, "UnownedGuard")
+    guard = blend.with_name(".bmanga-r")
+    _write(guard, b"unowned")
+
+    with pytest.raises(
+        NATIVE.NativeSaveRecoveryError,
+        match="所有者を確認できない",
+    ):
+        NATIVE.recover_pending_native_saves(work)
+    assert blend.read_bytes() == b"old-blend"
+    assert guard.read_bytes() == b"unowned"
+
+
+def test_corrupted_owned_guard_is_preserved_for_manual_recovery(tmp_path):
+    work, project, blend = _work(tmp_path, "CorruptedGuard")
+    token = _begin_transaction(work, project, blend)
+    assert token.recovery_path is not None
+    _write(blend, b"partial-new-blend")
+    _write(token.recovery_path, b"corrupted-backup")
+    NATIVE._release(token)
+
+    with pytest.raises(
+        NATIVE.NativeSaveRecoveryError,
+        match="破損",
+    ):
+        NATIVE.recover_pending_native_saves(work)
+    assert blend.read_bytes() == b"partial-new-blend"
+    assert token.recovery_path.read_bytes() == b"corrupted-backup"
+    assert token.journal_path is not None and token.journal_path.is_file()
+
+
+def test_interrupted_first_page_save_deletes_uncommitted_native_file(tmp_path):
+    work, project, blend = _work(tmp_path, "FirstPage")
+    page_blend = (
+        work
+        / "pages"
+        / "page_0123456789abcdef0123456789abcdef"
+        / "page.blend"
+    )
+    page_blend.parent.mkdir(parents=True)
+    token = NATIVE.begin_native_save(page_blend)
+    assert token is not None and not token.requires_restore
+    NATIVE.prepare_native_save_sidecars(token, (project,))
+    NATIVE.mark_native_save_metadata_result(token, True)
+    _write(page_blend, b"uncommitted-page")
+    NATIVE._release(token)
+
+    restored = NATIVE.recover_pending_native_saves(work)
+
+    assert page_blend in restored
+    assert not page_blend.exists()
+    assert blend.read_bytes() == b"old-blend"
+
+
+def test_first_nested_coma_save_arms_before_parent_exists(tmp_path):
+    work, project, _blend = _work(tmp_path, "FirstNestedComa" + "x" * 64)
+    coma_blend = (
+        work
+        / "pages"
+        / "page_0123456789abcdef0123456789abcdef"
+        / "comas"
+        / "coma_0123456789abcdef0123456789abcdef"
+        / "scene.blend"
+    )
+    assert not coma_blend.parent.exists()
+
+    token = NATIVE.begin_native_save(coma_blend)
+    assert token is not None and not token.requires_restore
+    NATIVE.prepare_native_save_sidecars(token, (project,))
+    assert coma_blend.parent.is_dir()
+    assert token.creation_marker is not None
+    assert token.creation_marker.is_file()
+
+    NATIVE.mark_native_save_metadata_result(token, True)
+    _write(coma_blend, b"new-coma")
+    result = NATIVE.finish_native_save(token)
+
+    assert not result.restored
+    assert coma_blend.read_bytes() == b"new-coma"
+    assert token.creation_marker is not None
     assert not token.creation_marker.exists()
 
 
-# --- (b) native側 cleanup_stale_transactions --------------------------
+def test_external_change_is_restored_and_requires_reload(tmp_path):
+    work, project, blend = _work(tmp_path, "Conflict")
+    _write(project, b'{"external":true}')
 
+    token = NATIVE.begin_native_save(blend)
 
-def test_native_cleanup_stale_transactions_removes_only_old_journal_less_dirs(tmp_path):
-    """ジャーナル未到達のまま24時間以上放置されたトランザクションだけを
-    掃除し、若い/ジャーナル有り/名前不一致/空ディレクトリの扱いを確認する。"""
-
-    work = tmp_path / "NativeCleanup.bmanga"
-    work.mkdir()
-    base = NATIVE_GUARD._base(work)
-    base.mkdir(parents=True)
-
-    old_no_journal = _tx_id(25.0, "aaaaaaaaaaaa")
-    old_dir = _make_tx_dir(base, old_no_journal)
-    (old_dir / "backup").mkdir()
-    (old_dir / "backup" / "0000.bin").write_bytes(b"dummy-backup")
-    (old_dir / ".page.blend.9f2b8e3f1a5c.native-copying").write_bytes(b"copying-residue")
-
-    recent_no_journal = _tx_id(1.0, "bbbbbbbbbbbb")
-    _make_tx_dir(base, recent_no_journal)
-
-    old_with_journal = _tx_id(25.0, "cccccccccccc")
-    old_journal_dir = _make_tx_dir(base, old_with_journal)
-    (old_journal_dir / NATIVE_GUARD.NATIVE_JOURNAL_NAME).write_text("{}", encoding="utf-8")
-
-    invalid_name_dir = base / "not-a-transaction"
-    invalid_name_dir.mkdir()
-
-    finished = _tx_id(1.0, "abababababab")
-    finished_dir = _make_tx_dir(base, finished)
-    _write_json(
-        finished_dir / NATIVE_GUARD.NATIVE_JOURNAL_NAME,
-        {"status": "committed"},
-    )
-
-    old_empty = _tx_id(25.0, "dddddddddddd")
-    _make_tx_dir(base, old_empty)
-
-    removed = NATIVE_GUARD.cleanup_stale_transactions(work)
-
-    removed_names = {path.name for path in removed}
-    assert removed_names == {old_no_journal, old_empty, finished}
-    assert not (base / old_no_journal).exists()
-    assert not (base / old_empty).exists()
-    assert (base / recent_no_journal).is_dir()
-    assert (base / old_with_journal).is_dir()
-    assert invalid_name_dir.is_dir()
-    assert not (base / finished).exists()
-
-
-def test_native_cleanup_removes_only_old_copying_files_from_actual_source_tree(tmp_path):
-    work = _work(tmp_path, "CopyingCleanup")
-    source_dir = work / "p0001"
-    source_dir.mkdir()
-    old_copy = source_dir / ".page.blend.random.native-copying"
-    recent_copy = source_dir / ".page.blend.recent.native-copying"
-    invalid = source_dir / "page.blend.random.native-copying"
-    for path in (old_copy, recent_copy, invalid):
-        path.write_bytes(b"partial")
-    old_stamp = (datetime.now(timezone.utc) - timedelta(hours=25)).timestamp()
-    os.utime(old_copy, (old_stamp, old_stamp))
-    os.utime(invalid, (old_stamp, old_stamp))
-
-    removed = NATIVE_GUARD.cleanup_stale_transactions(work)
-
-    assert old_copy in removed
-    assert not old_copy.exists()
-    assert recent_copy.is_file()
-    assert invalid.is_file()
-
-
-# --- (c) sidecar側 cleanup_stale_transactions --------------------------
-
-
-def test_sidecar_cleanup_stale_transactions_removes_only_old_journal_less_dirs(tmp_path):
-    """sidecar側も同じ基準 (ジャーナル未到達 + 24時間超) だけを掃除すること。"""
-
-    work = tmp_path / "SidecarCleanup.bmanga"
-    work.mkdir()
-    base = SIDECAR_GUARD._base(work)
-    base.mkdir(parents=True)
-
-    old_no_journal = _tx_id(25.0, "eeeeeeeeeeee")
-    old_dir = _make_tx_dir(base, old_no_journal)
-    (old_dir / "backup").mkdir()
-    (old_dir / "backup" / "0000.bin").write_bytes(b"dummy-backup")
-
-    old_with_journal = _tx_id(25.0, "ffffffffffff")
-    old_journal_dir = _make_tx_dir(base, old_with_journal)
-    (old_journal_dir / SIDECAR_GUARD.SIDECAR_JOURNAL_NAME).write_text("{}", encoding="utf-8")
-
-    finished = _tx_id(1.0, "cdcdcdcdcdcd")
-    finished_dir = _make_tx_dir(base, finished)
-    _write_json(
-        finished_dir / SIDECAR_GUARD.SIDECAR_JOURNAL_NAME,
-        {"status": "restored"},
-    )
-
-    removed = SIDECAR_GUARD.cleanup_stale_transactions(work)
-
-    removed_names = {path.name for path in removed}
-    assert removed_names == {old_no_journal, finished}
-    assert not (base / old_no_journal).exists()
-    assert (base / old_with_journal).is_dir()
-    assert not (base / finished).exists()
-
-
-# --- (d) recover_pending_native_saves 経由の掃除 ------------------------
-
-
-def test_recover_pending_native_saves_also_cleans_up_both_stale_bases(tmp_path):
-    """recover_pending_native_savesの末尾でnative/sidecar両方の期限切れ
-    トランザクション残骸が実際に掃除されること。"""
-
-    work = _work(tmp_path, "RecoverCleanup")
-    native_base = NATIVE_GUARD._base(work)
-    sidecar_base = SIDECAR_GUARD._base(work)
-    native_base.mkdir(parents=True)
-    sidecar_base.mkdir(parents=True)
-
-    native_old = _tx_id(25.0, "111111111111")
-    _make_tx_dir(native_base, native_old)
-    sidecar_old = _tx_id(25.0, "222222222222")
-    _make_tx_dir(sidecar_base, sidecar_old)
-
-    NATIVE_GUARD.recover_pending_native_saves(work)
-
-    assert not (native_base / native_old).exists()
-    assert not (sidecar_base / sidecar_old).exists()
-    assert not (work / ".bmanga-save-recovery-v1").exists()
-
-
-def test_successful_save_uses_work_internal_recovery_and_prunes_it(tmp_path):
-    work = _work(tmp_path, "InternalRecovery")
-    source = work / "work.blend"
-    source.write_bytes(b"old-blend")
-    BASELINE.capture_loaded_baseline(work, source)
-
-    token = NATIVE_GUARD.begin_native_save(source, 0)
-    assert token is not None and not token.requires_restore
-    NATIVE_GUARD.prepare_native_save_sidecars(token, (work / "work.json",))
-    root = work / ".bmanga-save-recovery-v1"
-    assert token.journal_path is not None
-    token.journal_path.relative_to(root)
-    token.sidecar_token.journal_path.relative_to(root)
-    assert not NATIVE_GUARD._recovery_paths.legacy_native_base(work).exists()
-    assert not NATIVE_GUARD._recovery_paths.legacy_sidecar_base(work).exists()
-
-    NATIVE_GUARD.mark_native_save_metadata_result(token, True)
-    source.write_bytes(b"new-blend")
-    result = NATIVE_GUARD.finish_native_save(token)
-
-    assert not result.restored and result.metadata_saved
-    assert source.read_bytes() == b"new-blend"
-    assert not root.exists()
-
-
-@pytest.mark.parametrize("linked_part", ["transaction", "journal"])
-def test_native_recovery_rejects_linked_journal_hierarchy(
-    monkeypatch,
-    tmp_path,
-    linked_part,
-):
-    work = _work(tmp_path, "LinkedNativeRecovery")
-    source = work / "work.blend"
-    source.write_bytes(b"latest-work")
-    token = NATIVE_GUARD.begin_native_save(source, 0)
-    assert token is not None and token.journal_path is not None
-    journal = NATIVE_GUARD.read_json_mapping(token.journal_path)
-    linked_path = (
-        token.journal_path.parent
-        if linked_part == "transaction"
-        else token.journal_path
-    )
-    original = Path.is_symlink
-    monkeypatch.setattr(
-        Path,
-        "is_symlink",
-        lambda path: path == linked_path or original(path),
-    )
-
-    with pytest.raises(NATIVE_GUARD.NativeSaveRecoveryError, match="配置が不正"):
-        NATIVE_GUARD._validate_journal(token.journal_path, journal, work)
-
-    NATIVE_GUARD.finish_native_save(token, native_save_succeeded=False)
-
-
-@pytest.mark.parametrize("linked_part", ["transaction", "journal"])
-def test_sidecar_recovery_rejects_linked_journal_hierarchy(
-    monkeypatch,
-    tmp_path,
-    linked_part,
-):
-    work = _work(tmp_path, "LinkedSidecarRecovery")
-    source = work / "pages.json"
-    source.write_bytes(b"latest-pages")
-    token = SIDECAR_GUARD.begin_sidecar_save(work, (source,))
-    journal = dict(SIDECAR_GUARD.read_json_mapping(token.journal_path))
-    linked_path = (
-        token.transaction_dir
-        if linked_part == "transaction"
-        else token.journal_path
-    )
-    original = Path.is_symlink
-    monkeypatch.setattr(
-        Path,
-        "is_symlink",
-        lambda path: path == linked_path or original(path),
-    )
-
-    with pytest.raises(SIDECAR_GUARD.SidecarSaveError, match="配置が不正"):
-        SIDECAR_GUARD._token_from_journal(token.journal_path, journal, work)
-
-    SIDECAR_GUARD.restore_sidecars(token)
-
-
-def test_legacy_external_native_journal_is_recovered_and_pruned(tmp_path):
-    work = _work(tmp_path, "LegacyRecovery")
-    source = work / "work.blend"
-    source.write_bytes(b"latest-work")
-    token = NATIVE_GUARD.begin_native_save(source, 0)
-    assert token is not None and token.journal_path is not None
-    source.write_bytes(b"stale-save")
-    NATIVE_GUARD._release(token)
-
-    current_tx = token.journal_path.parent
-    legacy_base = NATIVE_GUARD._recovery_paths.legacy_native_base(work)
-    legacy_base.mkdir()
-    shutil.move(str(current_tx), str(legacy_base / current_tx.name))
-
-    restored = NATIVE_GUARD.recover_pending_native_saves(work)
-
-    assert restored == (source,)
-    assert source.read_bytes() == b"latest-work"
-    assert not legacy_base.exists()
-    assert not (work / ".bmanga-save-recovery-v1").exists()
-
-
-def test_legacy_external_sidecar_journal_is_recovered_and_pruned(tmp_path):
-    work = _work(tmp_path, "LegacySidecarRecovery")
-    source = work / "pages.json"
-    source.write_bytes(b"latest-pages")
-    token = SIDECAR_GUARD.begin_sidecar_save(work, (source,))
-    SIDECAR_GUARD.mark_sidecar_writes_started(token)
-    source.write_bytes(b"stale-pages")
-
-    legacy_base = NATIVE_GUARD._recovery_paths.legacy_sidecar_base(work)
-    _move_sidecar_transaction(token, legacy_base)
-
-    restored = NATIVE_GUARD.recover_pending_native_saves(work)
-
-    assert restored == (source,)
-    assert source.read_bytes() == b"latest-pages"
-    assert not legacy_base.exists()
-    assert not (work / ".bmanga-save-recovery-v1").exists()
-
-
-def test_sidecar_recovery_prunes_only_opted_in_empty_new_directories(tmp_path):
-    """シナリオ取込中断で新設したページ階層は、復元対象ファイルを消した後に
-    空の場合だけ除去する。未知のファイルを含む階層は巻き込まない。"""
-
-    work = _work(tmp_path, "ScenarioDirectoryRollback")
-    page_dir = work / "p0001"
-    coma_dir = page_dir / "c01"
-    page_json = page_dir / "page.json"
-    coma_json = coma_dir / "c01.json"
-    token = SIDECAR_GUARD.begin_sidecar_save(
-        work,
-        (page_json, coma_json),
-        prune_empty_dirs=(coma_dir, page_dir),
-    )
-    SIDECAR_GUARD.mark_sidecar_writes_started(token)
-    coma_dir.mkdir(parents=True)
-    page_json.write_bytes(b"new-page")
-    coma_json.write_bytes(b"new-coma")
-
-    restored = SIDECAR_GUARD.recover_pending_sidecar_saves(work)
-
-    assert set(restored) == {page_json, coma_json}
-    assert not page_dir.exists()
-    assert not (work / ".bmanga-save-recovery-v1").exists()
-
-    guarded_page = work / "p0002"
-    guarded_coma = guarded_page / "c01"
-    guarded_json = guarded_coma / "c01.json"
-    token = SIDECAR_GUARD.begin_sidecar_save(
-        work,
-        (guarded_json,),
-        prune_empty_dirs=(guarded_coma, guarded_page),
-    )
-    SIDECAR_GUARD.mark_sidecar_writes_started(token)
-    guarded_coma.mkdir(parents=True)
-    guarded_json.write_bytes(b"new-coma")
-    (guarded_page / "unknown.txt").write_text("keep", encoding="utf-8")
-
-    SIDECAR_GUARD.recover_pending_sidecar_saves(work)
-
-    assert not guarded_coma.exists()
-    assert guarded_page.is_dir()
-    assert (guarded_page / "unknown.txt").read_text(encoding="utf-8") == "keep"
-
-
-@pytest.mark.parametrize("legacy_part", ["native", "sidecar"])
-def test_commit_decision_survives_mixed_current_and_legacy_layouts(
-    tmp_path,
-    legacy_part,
-):
-    work = _work(tmp_path, f"MixedCommit{legacy_part.title()}")
-    blend = work / "work.blend"
-    sidecar = work / "pages.json"
-    blend.write_bytes(b"old-blend")
-    sidecar.write_bytes(b"old-pages")
-    BASELINE.capture_loaded_baseline(work, blend, content_paths=(sidecar,))
-
-    token = NATIVE_GUARD.begin_native_save(blend, 0)
-    assert token is not None
-    NATIVE_GUARD.prepare_native_save_sidecars(token, (sidecar,))
-    assert token.journal_path is not None
-    NATIVE_GUARD.mark_native_save_metadata_result(token, True)
-    blend.write_bytes(b"new-blend")
-    sidecar.write_bytes(b"new-pages")
-    NATIVE_GUARD._write_native_status(token, "commit_decided")
-
-    if legacy_part == "native":
-        current_tx = token.journal_path.parent
-        legacy_base = NATIVE_GUARD._recovery_paths.legacy_native_base(work)
-        legacy_base.mkdir()
-        shutil.move(str(current_tx), str(legacy_base / current_tx.name))
-    else:
-        legacy_base = NATIVE_GUARD._recovery_paths.legacy_sidecar_base(work)
-        _move_sidecar_transaction(token.sidecar_token, legacy_base)
-    NATIVE_GUARD._release(token)
-
-    restored = NATIVE_GUARD.recover_pending_native_saves(work)
-
-    assert restored == ()
-    assert blend.read_bytes() == b"new-blend"
-    assert sidecar.read_bytes() == b"new-pages"
-    assert not (work / ".bmanga-save-recovery-v1").exists()
-    assert not legacy_base.exists()
-
-
-def test_cleanup_prunes_old_external_empty_and_journal_less_bases(tmp_path):
-    work = _work(tmp_path, "LegacyCleanup")
-    native_base = NATIVE_GUARD._recovery_paths.legacy_native_base(work)
-    sidecar_base = NATIVE_GUARD._recovery_paths.legacy_sidecar_base(work)
-    native_base.mkdir()
-    sidecar_base.mkdir()
-    _make_tx_dir(native_base, _tx_id(25.0, "333333333333"))
-    _make_tx_dir(sidecar_base, _tx_id(25.0, "444444444444"))
-
-    NATIVE_GUARD.cleanup_stale_transactions(work)
-    SIDECAR_GUARD.cleanup_stale_transactions(work)
-
-    assert not native_base.exists()
-    assert not sidecar_base.exists()
-
-
-def test_interrupted_existing_work_blend_can_be_restored_before_open(tmp_path):
-    work = _work(tmp_path, "MissingWorkBlend")
-    source = work / "work.blend"
-    source.write_bytes(b"latest-work")
-    token = NATIVE_GUARD.begin_native_save(source, 0)
     assert token is not None and token.requires_restore
-    assert not source.exists()
-    NATIVE_GUARD._release(token)
-
-    restored = NATIVE_GUARD.recover_pending_native_saves(work)
-
-    assert source in restored
-    assert source.read_bytes() == b"latest-work"
-
-
-def test_native_save_io_failure_restores_disk_without_reloading_memory(tmp_path):
-    work = _work(tmp_path, "LocalSaveFailure")
-    source = work / "work.blend"
-    source.write_bytes(b"old-blend")
-    BASELINE.capture_loaded_baseline(work, source)
-    token = NATIVE_GUARD.begin_native_save(source, 0)
-    assert token is not None and not token.requires_restore
-    NATIVE_GUARD.prepare_native_save_sidecars(token, (work / "work.json",))
-    source.write_bytes(b"partial-new-blend")
-    (work / "work.json").write_text('{"detailDataVersion": 1}', encoding="utf-8")
-
-    result = NATIVE_GUARD.finish_native_save(token, native_save_succeeded=False)
-
-    assert result.restored is True
-    assert result.reload_required is False
-    assert source.read_bytes() == b"old-blend"
-    retry = NATIVE_GUARD.begin_native_save(source, 0)
-    assert retry is not None and not retry.requires_restore
-    NATIVE_GUARD.finish_native_save(retry, native_save_succeeded=False)
+    assert token.reload_after_restore
+    _write(blend, b"stale-screen-save")
+    result = NATIVE.finish_native_save(token)
+    assert result.restored and result.reload_required
+    assert blend.read_bytes() == b"old-blend"
+    assert project.read_bytes() == b'{"external":true}'
 
 
-def test_external_conflict_restore_still_requires_reload_when_status_write_fails(tmp_path, monkeypatch):
-    work = _work(tmp_path, "ExternalConflict")
-    source = work / "work.blend"
-    source.write_bytes(b"loaded")
-    BASELINE.capture_loaded_baseline(work, source)
-    source.write_bytes(b"newest-external")
-    token = NATIVE_GUARD.begin_native_save(source, 0)
-    assert token is not None and token.reload_after_restore
-    source.write_bytes(b"stale-memory-save")
-    monkeypatch.setattr(
-        NATIVE_GUARD,
-        "atomic_write_json",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("journal locked")),
-    )
-
-    result = NATIVE_GUARD.finish_native_save(token, native_save_succeeded=True)
-
-    assert result.restored is True
-    assert result.reload_required is True
-    assert source.read_bytes() == b"newest-external"
-
-
-def test_sidecar_restore_prioritizes_physical_files_when_status_write_fails(tmp_path, monkeypatch):
-    work = _work(tmp_path, "SidecarStatusFailure")
-    source = work / "page.json"
-    source.write_bytes(b"old-sidecar")
-    token = SIDECAR_GUARD.begin_sidecar_save(work, (source,))
-    SIDECAR_GUARD.mark_sidecar_writes_started(token)
-    source.write_bytes(b"new-sidecar")
-    monkeypatch.setattr(
-        SIDECAR_GUARD,
-        "atomic_write_json",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("journal locked")),
-    )
-
-    assert SIDECAR_GUARD.restore_sidecars(token) is True
-    assert source.read_bytes() == b"old-sidecar"
-
-
-def test_sidecar_commit_journal_failure_keeps_transaction_rollbackable(
+def test_sidecar_restore_is_physical_even_when_status_write_fails(
     tmp_path,
     monkeypatch,
 ):
-    """確定記録を書けなかった取引を、メモリ上だけ確定済みにしない。"""
+    work, project, _blend = _work(tmp_path, "SidecarStatus")
+    before = project.read_bytes()
+    token = SIDECAR.begin_sidecar_save(work, (project,))
+    SIDECAR.mark_sidecar_writes_started(token)
+    _write(project, b'{"partial":true}')
+    monkeypatch.setattr(
+        SIDECAR,
+        "atomic_write_json",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("locked")),
+    )
 
-    work = _work(tmp_path, "SidecarCommitStatusFailure")
-    source = work / "page.json"
-    source.write_bytes(b"old-sidecar")
-    token = SIDECAR_GUARD.begin_sidecar_save(work, (source,))
-    SIDECAR_GUARD.mark_sidecar_writes_started(token)
-    source.write_bytes(b"new-sidecar")
-    original_atomic_write = SIDECAR_GUARD.atomic_write_json
+    assert SIDECAR.restore_sidecars(token)
+    assert project.read_bytes() == before
 
-    def fail_commit_record(path, data):
-        if data.get("status") == "committed":
-            raise OSError("commit journal locked")
-        return original_atomic_write(path, data)
 
-    monkeypatch.setattr(SIDECAR_GUARD, "atomic_write_json", fail_commit_record)
+def test_sidecar_restore_prunes_only_empty_descendants_of_new_tree(tmp_path):
+    work, _project, _blend = _work(tmp_path, "SidecarPruneTree")
+    page = work / "pages" / "page_0123456789abcdef0123456789abcdef"
+    page_json = page / "page.json"
+    token = SIDECAR.begin_sidecar_save(
+        work,
+        (page_json,),
+        prune_empty_dirs=(page,),
+    )
+    SIDECAR.mark_sidecar_writes_started(token)
+    (page / "assets").mkdir(parents=True)
+    (page / "comas").mkdir()
+    _write(page_json, b'{"partial":true}')
 
-    with pytest.raises(OSError, match="commit journal locked"):
-        SIDECAR_GUARD.commit_sidecars(token)
+    assert SIDECAR.restore_sidecars(token)
+    assert not page.exists()
 
-    assert token.status == "writing"
-    assert SIDECAR_GUARD.restore_sidecars(token) is True
-    assert source.read_bytes() == b"old-sidecar"
+    kept_page = work / "pages" / "page_fedcba9876543210fedcba9876543210"
+    kept_json = kept_page / "page.json"
+    kept_token = SIDECAR.begin_sidecar_save(
+        work,
+        (kept_json,),
+        prune_empty_dirs=(kept_page,),
+    )
+    SIDECAR.mark_sidecar_writes_started(kept_token)
+    (kept_page / "assets").mkdir(parents=True)
+    _write(kept_page / "assets" / "unknown.bin", b"keep")
+    _write(kept_json, b'{"partial":true}')
+
+    assert SIDECAR.restore_sidecars(kept_token)
+    assert (kept_page / "assets" / "unknown.bin").read_bytes() == b"keep"
+
+
+def test_recovery_rejects_linked_native_journal_hierarchy(
+    tmp_path,
+    monkeypatch,
+):
+    work, project, blend = _work(tmp_path, "LinkedJournal")
+    token = _begin_transaction(work, project, blend)
+    assert token.journal_path is not None
+    journal = NATIVE.read_json_mapping(token.journal_path)
+    linked = token.journal_path.parent
+    original = Path.is_symlink
+    monkeypatch.setattr(
+        Path,
+        "is_symlink",
+        lambda path: path == linked or original(path),
+    )
+
+    with pytest.raises(NATIVE.NativeSaveRecoveryError, match="配置が不正"):
+        NATIVE._validate_journal(token.journal_path, journal, work)
+
+    monkeypatch.setattr(Path, "is_symlink", original)
+    NATIVE.finish_native_save(token, native_save_succeeded=False)
+
+
+def test_cleanup_removes_only_expired_journal_less_transaction(tmp_path):
+    work, _project, _blend = _work(tmp_path, "Cleanup")
+    base = NATIVE._base(work)
+    base.mkdir(parents=True)
+    now = datetime.now(timezone.utc)
+    old_id = (
+        (now - timedelta(hours=25)).strftime("%Y%m%dT%H%M%SZ")
+        + "-aaaaaaaaaaaa"
+    )
+    recent_id = (
+        (now - timedelta(hours=1)).strftime("%Y%m%dT%H%M%SZ")
+        + "-bbbbbbbbbbbb"
+    )
+    old = base / old_id
+    recent = base / recent_id
+    old.mkdir()
+    recent.mkdir()
+    _write(old / "partial.bin", b"x")
+
+    removed = NATIVE.cleanup_stale_transactions(work)
+
+    assert old in removed
+    assert not old.exists()
+    assert recent.is_dir()
+
+
+def test_cleanup_rejects_junction_recovery_base_outside_work(tmp_path):
+    work, _project, _blend = _work(tmp_path, "JunctionBase")
+    outside = tmp_path / "outside-native"
+    outside.mkdir()
+    sentinel = outside / "keep.txt"
+    sentinel.write_text("keep", encoding="utf-8")
+    old_id = "20000101T000000Z-aaaaaaaaaaaa"
+    (outside / old_id).mkdir()
+    _write(outside / old_id / "partial.bin", b"x")
+    root = work / ".bmanga-save-recovery-v1"
+    root.mkdir()
+    _make_directory_link(root / "native", outside)
+
+    assert NATIVE.cleanup_stale_transactions(work) == ()
+    assert sentinel.read_text(encoding="utf-8") == "keep"
+    assert (outside / old_id / "partial.bin").read_bytes() == b"x"
+
+
+def test_cleanup_rejects_junction_transaction_outside_work(tmp_path):
+    work, _project, _blend = _work(tmp_path, "JunctionEntry")
+    outside = tmp_path / "outside-sidecar"
+    outside.mkdir()
+    sentinel = outside / "keep.txt"
+    sentinel.write_text("keep", encoding="utf-8")
+    base = SIDECAR._base(work)
+    base.mkdir(parents=True)
+    old_id = "20000101T000000Z-bbbbbbbbbbbb"
+    _make_directory_link(base / old_id, outside)
+
+    assert SIDECAR.cleanup_stale_transactions(work) == ()
+    assert sentinel.read_text(encoding="utf-8") == "keep"
+
+
+def test_non_domain_directory_does_not_activate_native_guard(tmp_path):
+    work = tmp_path / "OldLayout.bmanga"
+    work.mkdir()
+    _write(work / "work.json", b"{}")
+    blend = work / "work.blend"
+    _write(blend, b"legacy")
+
+    assert NATIVE.begin_native_save(blend) is None

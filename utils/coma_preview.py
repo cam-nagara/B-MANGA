@@ -14,7 +14,7 @@ def coma_id_from_entry(entry) -> str:
 
 
 def coma_preview_source_path(work_dir: Path, page_id: str, entry) -> Path | None:
-    """表示・書き出しに使う ``thumb.png`` を返す."""
+    """表示・書き出しに使う ``preview.png`` を返す."""
     coma_id = coma_id_from_entry(entry)
     if not coma_id:
         return None

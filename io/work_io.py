@@ -1,24 +1,25 @@
-"""作品 (.bmanga) フォルダの作成・読み込み・保存.
-
-ディレクトリ構造は新構造を参照:
-  MyWork.bmanga/
-    work.json
-    pages.json  (page_io 担当)
-    assets/
-    scenario/
-    exports/
-"""
+"""新Domain作品のproject.json入出力adapter。"""
 
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from ..utils import json_io, log, paths
-from . import schema
-from .project_content_migration_lock import guard_path_write
-from .project_content_version import assert_detail_version_matches
+from ..bmanga_core.domain_store import (
+    ApplyProjectPatch,
+    project_patch,
+)
+from ..utils import log, paths
+from . import (
+    coma_move_recovery,
+    domain_projection,
+    domain_runtime,
+    native_tree_transaction,
+)
+from .save_baseline import (
+    initialize_new_work_baseline,
+    record_successful_write,
+)
 
 _logger = log.get_logger(__name__)
 
@@ -27,69 +28,73 @@ _logger = log.get_logger(__name__)
 
 
 def create_bmanga_skeleton(work_dir: Path) -> None:
-    """.bmanga フォルダのディレクトリ骨格を作成する (中身の JSON は別関数で書く)."""
+    """新形式だけを含む作品directory骨格を作る。"""
     work_dir = Path(work_dir)
-    work_dir.mkdir(parents=True, exist_ok=True)
-    with guard_path_write(work_dir):
-        assets = paths.assets_dir(work_dir)
-        assets.mkdir(exist_ok=True)
-        (assets / paths.ASSETS_BRUSHES_DIR).mkdir(exist_ok=True)
-        (assets / paths.ASSETS_TEMPLATES_DIR).mkdir(exist_ok=True)
-        (assets / paths.ASSETS_MODELS_DIR).mkdir(exist_ok=True)
-        (assets / paths.ASSETS_BALLOONS_DIR).mkdir(exist_ok=True)
-        (assets / paths.ASSETS_EFFECTS_DIR).mkdir(exist_ok=True)
-        paths.scenario_dir(work_dir).mkdir(exist_ok=True)
-        paths.exports_dir(work_dir).mkdir(exist_ok=True)
-        paths.raster_dir(work_dir).mkdir(exist_ok=True)
-        paths.raster_trash_dir(work_dir).mkdir(exist_ok=True)
+    repository = domain_runtime.repository_for(work_dir)
+    repository.initialize_layout()
+    assets = paths.assets_dir(work_dir)
+    for name in (
+        paths.ASSETS_BRUSHES_DIR,
+        paths.ASSETS_TEMPLATES_DIR,
+        paths.ASSETS_MODELS_DIR,
+        paths.ASSETS_BALLOONS_DIR,
+        paths.ASSETS_EFFECTS_DIR,
+    ):
+        (assets / name).mkdir(exist_ok=True)
+    paths.scenario_dir(work_dir).mkdir(exist_ok=True)
+    paths.exports_dir(work_dir).mkdir(exist_ok=True)
+    paths.raster_dir(work_dir).mkdir(exist_ok=True)
+    paths.raster_trash_dir(work_dir).mkdir(exist_ok=True)
     _logger.info("bmanga skeleton created: %s", work_dir)
 
 
-# ---------- work.json ----------
+# ---------- project.json ----------
 
 
 def save_work_json(work_dir: Path, work) -> Path:
-    """BMangaWorkData → work.json に保存."""
+    """UI投影をCommand境界でDomainへ取り込み、project.jsonへ確定する。"""
     work_dir = Path(work_dir)
-    out = paths.work_meta_path(work_dir)
-    with guard_path_write(out):
-        assert_detail_version_matches(
-            work_dir,
-            getattr(work, "detail_data_version", None),
+    repository = domain_runtime.repository_for(work_dir)
+    is_new = not repository.project_path.exists()
+    if is_new:
+        initialize_new_work_baseline(work_dir)
+    projected = domain_projection.project_document_from_work(work)
+    store = domain_runtime.store_for(work_dir, initial_project=projected)
+    projected = domain_projection.preserve_project_projection(
+        store.project,
+        projected,
+    )
+    with store.transaction():
+        store.execute(
+            ApplyProjectPatch(project_patch(store.project, projected))
         )
-        data = schema.work_to_dict(work)
-        data["lastSaved"] = datetime.now().astimezone().isoformat(timespec="seconds")
-        json_io.write_json(out, data)
-    _logger.debug("work.json saved: %s", out)
-    return out
+        document = store.project
+        repository.checkpoint(document)
+    record_successful_write(repository.project_path)
+    domain_projection.bind_project_document(work, document)
+    store.mark_checkpointed(project=True, page_uids=())
+    _logger.debug("project.json saved: %s", repository.project_path)
+    return repository.project_path
 
 
 def load_work_json(work_dir: Path, work) -> dict[str, Any]:
-    """work.json → BMangaWorkData に読み込み。戻り値は読込み生 dict."""
-    path = paths.work_meta_path(Path(work_dir))
-    if not path.is_file():
-        raise FileNotFoundError(f"work.json not found: {path}")
-    data = json_io.read_json(path)
-    _warn_if_unknown_schema(data.get("schemaVersion"), schema.WORK_SCHEMA_VERSION, "work.json")
+    """project.jsonを厳格読込し、PropertyGroupへ一方向投影する。"""
     work.loaded = False
-    schema.work_from_dict(work, data)
+    repository = domain_runtime.repository_for(work_dir)
+    repository.recover()
+    native_tree_transaction.recover_pending_native_transactions(
+        work_dir,
+        repository=repository,
+    )
+    coma_move_recovery.recover_interrupted_coma_moves(
+        work_dir,
+        repository=repository,
+    )
+    document = repository.load_project()
+    repository.validate_project_pages(document)
+    domain_runtime.install_store(work_dir, document)
+    domain_projection.apply_project_document(work, document)
     work.work_dir = str(Path(work_dir).resolve())
     work.loaded = True
-    _logger.info("work.json loaded: %s", path)
-    return data
-
-
-def _warn_if_unknown_schema(found: Any, expected: int, label: str) -> None:
-    if found is None:
-        _logger.warning("%s: schemaVersion missing, treating as v%d", label, expected)
-        return
-    try:
-        if int(found) > expected:
-            _logger.warning(
-                "%s: schemaVersion=%s is newer than supported v%d; loading anyway",
-                label,
-                found,
-                expected,
-            )
-    except (TypeError, ValueError):
-        _logger.warning("%s: invalid schemaVersion=%r", label, found)
+    _logger.info("project.json loaded: %s", repository.project_path)
+    return document.to_dict()

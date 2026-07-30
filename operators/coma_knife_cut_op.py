@@ -25,7 +25,7 @@ from bpy_extras.view3d_utils import location_3d_to_region_2d, region_2d_to_locat
 from gpu_extras.batch import batch_for_shader
 
 from ..core.work import get_work
-from ..io import page_io, coma_io
+from ..io import coma_io, coma_operation_transaction
 from . import coma_modal_state, view_event_region
 from ..utils import (
     edge_selection,
@@ -446,37 +446,35 @@ def _apply_cut_to_coma(
 
     # 新規コマを追加し、小さい番号を読む順で先の形に割り当てる。
     new_stem = coma_io.allocate_new_coma_id(work_dir, page.id, page=page)
+    transaction = coma_operation_transaction.ComaOperationTransaction(
+        bpy.context,
+        work,
+        page,
+        copy_pairs=((str(panel.coma_id), new_stem),),
+    )
     try:
-        coma_io.copy_coma_files(
-            work_dir, page.id, page.id, panel.coma_id, new_stem
-        )
-    except Exception:  # noqa: BLE001
-        _logger.warning("knife_cut: copy_coma_files failed for %s", panel.coma_id)
-    new_entry = page.comas.add()
-    _copy_coma_entry(panel, new_entry)
-    new_entry.coma_id = new_stem
-    new_entry.id = new_stem
-    new_entry.title = blank_generated_coma_title()
-    if _coma_id_number(str(getattr(panel, "coma_id", "") or "")) <= _coma_id_number(new_stem):
-        _set_coma_polygon(panel, first_poly)
-        _set_coma_polygon(new_entry, second_poly)
-        panel_is_front = _first_poly_is_front(first_poly, second_poly)
-    else:
-        _set_coma_polygon(panel, second_poly)
-        _set_coma_polygon(new_entry, first_poly)
-        panel_is_front = not _first_poly_is_front(first_poly, second_poly)
-    _set_split_pair_z_order(page, panel, new_entry, panel_is_front)
-    try:
-        coma_io.save_coma_meta(work_dir, page.id, panel)
-        coma_io.save_coma_meta(work_dir, page.id, new_entry)
-    except Exception:  # noqa: BLE001
-        _logger.exception("knife_cut: save_coma_meta failed")
-
-    page.coma_count = len(page.comas)
-    try:
-        page_io.save_page_json(work_dir, page)
-    except Exception:  # noqa: BLE001
-        _logger.exception("knife_cut: save_page_json failed")
+        transaction.apply_native()
+        new_entry = page.comas.add()
+        _copy_coma_entry(panel, new_entry)
+        new_entry.coma_id = new_stem
+        new_entry.id = new_stem
+        new_entry.title = blank_generated_coma_title()
+        if _coma_id_number(
+            str(getattr(panel, "coma_id", "") or "")
+        ) <= _coma_id_number(new_stem):
+            _set_coma_polygon(panel, first_poly)
+            _set_coma_polygon(new_entry, second_poly)
+            panel_is_front = _first_poly_is_front(first_poly, second_poly)
+        else:
+            _set_coma_polygon(panel, second_poly)
+            _set_coma_polygon(new_entry, first_poly)
+            panel_is_front = not _first_poly_is_front(first_poly, second_poly)
+        _set_split_pair_z_order(page, panel, new_entry, panel_is_front)
+        page.coma_count = len(page.comas)
+        transaction.commit()
+    except BaseException:
+        transaction.abort()
+        raise
     return True
 
 
@@ -544,10 +542,6 @@ def _finalize_cut_after_data_change(context, work, page, work_dir: Path) -> None
         data_name_organizer.organize_page_coma_names(context, page)
     except Exception:  # noqa: BLE001
         _logger.exception("knife_cut: coma id organize failed")
-    try:
-        page_io.save_pages_json(work_dir, work)
-    except Exception:  # noqa: BLE001
-        _logger.exception("knife_cut: save_pages_json failed")
     _sync_layer_stack_after_cut(context)
 
 
@@ -1012,7 +1006,19 @@ class BMANGA_OT_coma_knife_cut(Operator):
         A_local = (xa - ox, ya - oy)
         B_local = (xb - ox, yb - oy)
 
-        ok = _apply_cut_to_coma(work, page, coma_idx, work_dir, A_local, B_local)
+        try:
+            ok = _apply_cut_to_coma(
+                work,
+                page,
+                coma_idx,
+                work_dir,
+                A_local,
+                B_local,
+            )
+        except Exception as exc:  # noqa: BLE001
+            _logger.exception("knife_cut: transaction failed")
+            self.report({"ERROR"}, f"コマ分割失敗: {exc}")
+            return
         if ok:
             _finalize_cut_after_data_change(bpy.context, work, page, work_dir)
             self._cut_count_total += 1

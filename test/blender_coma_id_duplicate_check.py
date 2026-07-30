@@ -67,6 +67,8 @@ def _check_allocation_avoids_data_only_coma(temp_root: Path) -> None:
     assert "FINISHED" in result, result
     work = bpy.context.scene.bmanga_work
     page = work.pages[0]
+    if not bool(page.detail_loaded):
+        page_io.load_page_json(Path(work.work_dir), page)
     while len(page.comas) > 0:
         page.comas.remove(len(page.comas) - 1)
     work_dir = Path(work.work_dir)
@@ -115,36 +117,32 @@ def _check_allocation_avoids_data_only_coma(temp_root: Path) -> None:
 
 
 def _check_organize_heals_duplicates(temp_root: Path) -> None:
-    """治癒: ID重複ページを整理すると一意になり、子レイヤーは元のコマに残る。"""
-    from bmanga_dev_coma_id_dup.io import coma_io, page_io
+    """治癒: メモリ上のID重複を保存前に整理し、子レイヤーを元のコマへ残す。"""
     from bmanga_dev_coma_id_dup.utils import data_name_organizer
 
     result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "coma_id_heal.bmanga"))
     assert "FINISHED" in result, result
     work = bpy.context.scene.bmanga_work
     work.paper.read_direction = "left"
+    result = bpy.ops.bmanga.open_page_file(index=0)
+    assert "FINISHED" in result, result
+
+    # Phase 3 Domainは重複表示IDを永続化前に拒否する。ページ編集状態へ
+    # 不正値を注入し、organizeが正常化してから初めてcheckpointさせる。
+    scene = bpy.context.scene
+    work = scene.bmanga_work
     page = work.pages[0]
     while len(page.comas) > 0:
         page.comas.remove(len(page.comas) - 1)
-    work_dir = Path(work.work_dir)
 
     # 読み順: keeper(右上) → c01(左上) → dup(左下)。keeper と dup が同ID c04。
     keeper = page.comas.add()
     _set_rect_coma(keeper, "c04", 120.0, 120.0, 2)
     plain = page.comas.add()
     _set_rect_coma(plain, "c01", 20.0, 120.0, 1)
-    coma_io.save_coma_meta(work_dir, page.id, plain)
     dup = page.comas.add()
     _set_rect_coma(dup, "c04", 20.0, 40.0, 0)
     page.coma_count = len(page.comas)
-    page_io.save_page_json(work_dir, page)
-    page_io.save_pages_json(work_dir, work)
-    result = bpy.ops.bmanga.open_page_file(index=0)
-    assert "FINISHED" in result, result
-
-    scene = bpy.context.scene
-    work = scene.bmanga_work
-    page = work.pages[0]
     fill = scene.bmanga_fill_layers.add()
     fill.id = "dup_fill"
     fill.parent_kind = "coma"

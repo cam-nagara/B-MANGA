@@ -494,12 +494,7 @@ def _socket_by_identifier(sockets, identifier: str):
 
 
 def _compare_operand_socket(node, name: str):
-    """Compare ノードの A/B 等のオペランド入力を、有効なソケットの表示名で解決する.
-
-    Blender 5.1 以前は型ごとに専用ソケット (A_INT/B_INT 等) が常設され、対応する型だけ
-    enabled=True になる。5.2 以降は型ごとの専用ソケットが撤廃され A/B の2本だけになる。
-    どちらの版でも「有効なソケットの中から表示名で選ぶ」ことで同一コードが動く。
-    """
+    """Blender 5.2のCompare共通socketを表示名で解決する。"""
     for socket in node.inputs:
         if getattr(socket, "enabled", True) and str(getattr(socket, "name", "") or "") == name:
             return socket
@@ -2727,13 +2722,7 @@ def _socket_identifiers(group, kind: str) -> dict[str, tuple[str, SocketSpec]]:
 
 
 def set_gn_modifier_input(modifier, identifier: str, value: Any) -> bool:
-    """GN モディファイア入力への値書込み (Blender 5.1以前 / 5.2 LTS以降の両対応).
-
-    5.2 では `modifier[identifier] = value` の旧形式代入が完全廃止され TypeError になる。
-    新形式は `modifier.properties.inputs[identifier]` から項目を取り、型によって
-    RNA構造体 (`.value` 属性) か素の IDPropertyGroup (`["value"]` 添字) のどちらかで
-    返ってくる (5.2.0 実機で両方の形が確認できたため、両方を試す)。
-    """
+    """Blender 5.2のGN modifier入力へ値を書き込む。"""
     if not identifier:
         return False
     properties = getattr(modifier, "properties", None)
@@ -2753,15 +2742,11 @@ def set_gn_modifier_input(modifier, identifier: str, value: Any) -> bool:
                 return True
             except Exception:  # noqa: BLE001
                 pass
-    try:
-        modifier[identifier] = value
-        return True
-    except Exception:  # noqa: BLE001
-        return False
+    return False
 
 
 def get_gn_modifier_input(modifier, identifier: str, default: Any = None) -> Any:
-    """GN モディファイア入力の現在値読取り (5.1以前 / 5.2 LTS以降の両対応)."""
+    """Blender 5.2のGN modifier入力を読み取る。"""
     if not identifier:
         return default
     properties = getattr(modifier, "properties", None)
@@ -2779,10 +2764,7 @@ def get_gn_modifier_input(modifier, identifier: str, default: Any = None) -> Any
                 return item["value"]
             except Exception:  # noqa: BLE001
                 pass
-    try:
-        return modifier[identifier]
-    except Exception:  # noqa: BLE001
-        return default
+    return default
 
 
 def _set_modifier_value(modifier, identifier: str, spec: SocketSpec, value: Any) -> None:

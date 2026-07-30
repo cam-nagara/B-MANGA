@@ -19,18 +19,24 @@ def _scene(context):
 
 
 def _load_map(context) -> dict[str, str]:
+    try:
+        return load_map_strict(context)
+    except (TypeError, ValueError):
+        return {}
+
+
+def load_map_strict(context) -> dict[str, str]:
+    """永続化用にリンクJSONを厳格読込する。破損を空リンクへ変換しない。"""
+
     scene = _scene(context)
     if scene is None:
         return {}
     raw = str(scene.get(LINK_PROP, "") or "")
     if not raw:
         return {}
-    try:
-        data = json.loads(raw)
-    except Exception:  # noqa: BLE001
-        return {}
+    data = json.loads(raw)
     if not isinstance(data, dict):
-        return {}
+        raise TypeError("layer link mapping must be a JSON object")
     return {
         str(uid): str(group)
         for uid, group in data.items()

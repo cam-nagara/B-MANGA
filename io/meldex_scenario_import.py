@@ -187,7 +187,7 @@ def _ensure_page_count(
             raise meldex_scenario_import_transaction.ScenarioImportTransactionError(
                 "ページ採番が取込開始時の検査結果と一致しません"
             )
-        page_io.ensure_page_dir(work_dir, page.id)
+        page_io.ensure_page_dir(work_dir, page)
         coma = create_basic_frame_coma(work, page, work_dir)
         if str(getattr(coma, "coma_id", "") or "") != "c01":
             raise meldex_scenario_import_transaction.ScenarioImportTransactionError(

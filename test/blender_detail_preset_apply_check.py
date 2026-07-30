@@ -80,6 +80,8 @@ def _check_fill(context) -> None:
 def _check_text(context, page) -> None:
     from bmanga_dev_detail_preset_apply.io import text_presets
 
+    work = context.scene.bmanga_work
+    page_id = str(page.id)
     first = page.texts.add()
     first.id = "fixed_text_a"
     first.body = "A"
@@ -88,12 +90,15 @@ def _check_text(context, page) -> None:
     second.id = "fixed_text_b"
     second.body = "B"
     second.line_height = 1.4
-    other_page = context.scene.bmanga_work.pages.add()
-    other_page.id = "p0099"
+    assert bpy.ops.bmanga.page_add("EXEC_DEFAULT") == {"FINISHED"}
+    other_page = work.pages[-1]
     duplicate = other_page.texts.add()
     duplicate.id = first.id
     duplicate.body = "別ページの同名ID"
     duplicate.line_height = 1.8
+    work.active_page_index = next(
+        index for index, candidate in enumerate(work.pages) if candidate.id == page_id
+    )
     text_presets.save_local_preset(None, "固定テキスト", "", {"line_height": 2.25})
     page.active_text_index = 1
     context.scene.bmanga_active_layer_kind = "text"

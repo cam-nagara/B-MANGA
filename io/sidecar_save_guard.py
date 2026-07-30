@@ -1,4 +1,4 @@
-"""ネイティブ保存に伴うJSON/PNG sidecarを全件commit/rollbackする。"""
+"""ネイティブ保存に伴う補助成果物を全件commit/rollbackする。"""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ import tempfile
 from typing import Iterable
 
 try:
-    from . import project_content_save_recovery_paths as _recovery_paths
-    from .project_content_migration_storage import (
+    from . import save_recovery_paths as _recovery_paths
+    from .durable_storage import (
         atomic_write_json,
         new_transaction_id,
         read_json_mapping,
@@ -21,8 +21,8 @@ try:
         utc_now,
     )
 except ImportError:  # ファイル単体でロードする純Pythonテスト用
-    import project_content_save_recovery_paths as _recovery_paths  # type: ignore
-    from project_content_migration_storage import (  # type: ignore
+    import save_recovery_paths as _recovery_paths  # type: ignore
+    from durable_storage import (  # type: ignore
         atomic_write_json,
         new_transaction_id,
         read_json_mapping,
@@ -210,7 +210,11 @@ def begin_sidecar_save(
         atomic_write_json(journal_path, _journal_value(token, "secured"))
         return token
     except BaseException:
-        shutil.rmtree(tx_dir, ignore_errors=True)
+        _recovery_paths.remove_recovery_tree(
+            work,
+            tx_dir,
+            ignore_errors=True,
+        )
         _prune_base(work, tx_dir.parent)
         raise
 
@@ -234,6 +238,27 @@ def _verify_backups(records: Iterable[SidecarRecord]) -> None:
             raise SidecarSaveError(f"作品情報の退避ファイルが破損しています: {record.source}")
 
 
+def _prune_empty_tree(directory: Path) -> None:
+    """既知の新規treeから空ディレクトリだけを末端順に除去する。"""
+
+    if not directory.exists() or directory.is_symlink() or not directory.is_dir():
+        return
+    children: list[Path] = []
+    try:
+        children = list(directory.iterdir())
+    except OSError:
+        return
+    for child in children:
+        if child.is_symlink() or not child.is_dir():
+            continue
+        _prune_empty_tree(child)
+    try:
+        directory.rmdir()
+    except OSError:
+        # 未知のファイルや非空フォルダーは復元対象外なので必ず残す。
+        pass
+
+
 def restore_sidecars(token: SidecarSaveToken | None) -> bool:
     if token is None or token.status == "restored":
         return False
@@ -247,18 +272,15 @@ def restore_sidecars(token: SidecarSaveToken | None) -> bool:
         else:
             record.source.unlink(missing_ok=True)
     for directory in token.prune_empty_dirs:
-        try:
-            directory.rmdir()
-        except FileNotFoundError:
-            pass
-        except OSError:
-            # 未知のファイルが残るフォルダーは削除しない。復元対象外データを
-            # 巻き込まないため、再帰削除にはしない。
-            continue
+        _prune_empty_tree(directory)
     token.status = "restored"
     try:
         atomic_write_json(token.journal_path, _journal_value(token, token.status))
-        shutil.rmtree(token.transaction_dir, ignore_errors=True)
+        _recovery_paths.remove_recovery_tree(
+            token.work_dir,
+            token.transaction_dir,
+            ignore_errors=True,
+        )
         _prune_base(token.work_dir, token.transaction_dir.parent)
     except Exception:
         # ファイル群の物理復元は完了済み。記録は次回起動時の再処理用に残す。
@@ -276,7 +298,11 @@ def commit_sidecars(token: SidecarSaveToken | None) -> None:
     # 永続化できた時点を確定点とし、それまでは復元可能な状態を維持する。
     atomic_write_json(token.journal_path, _journal_value(token, "committed"))
     token.status = "committed"
-    shutil.rmtree(token.transaction_dir, ignore_errors=True)
+    _recovery_paths.remove_recovery_tree(
+        token.work_dir,
+        token.transaction_dir,
+        ignore_errors=True,
+    )
     _prune_base(token.work_dir, token.transaction_dir.parent)
 
 
@@ -292,6 +318,7 @@ def _token_from_journal(path: Path, data: dict, work: Path) -> SidecarSaveToken:
     if not _TRANSACTION_ID_RE.fullmatch(tx_id):
         raise SidecarSaveError("作品情報復旧IDが不正です")
     if not _recovery_paths.is_safe_transaction_journal(
+        work,
         path,
         tx_id,
         _bases(work),
@@ -378,12 +405,24 @@ def cleanup_stale_transactions(
     except Exception:  # noqa: BLE001
         return ()
     for base in bases:
-        removed.extend(_cleanup_transaction_base(base, now))
+        removed.extend(_cleanup_transaction_base(work, base, now))
         _prune_base(work, base)
     return tuple(removed)
 
 
-def _cleanup_transaction_base(base: Path, now: datetime) -> list[Path]:
+def _cleanup_transaction_base(
+    work: Path,
+    base: Path,
+    now: datetime,
+) -> list[Path]:
+    try:
+        _recovery_paths.assert_recovery_owned_path(
+            work,
+            base,
+            label="作品情報の退避先",
+        )
+    except _recovery_paths.SaveRecoveryPathError:
+        return []
     if not base.is_dir():
         return []
     removed: list[Path] = []
@@ -393,7 +432,12 @@ def _cleanup_transaction_base(base: Path, now: datetime) -> list[Path]:
         return removed
     for entry in entries:
         try:
-            if entry.is_symlink() or not entry.is_dir():
+            _recovery_paths.assert_recovery_owned_path(
+                work,
+                entry,
+                label="作品情報の復旧対象",
+            )
+            if not entry.is_dir():
                 continue
             if not _TRANSACTION_ID_RE.fullmatch(entry.name):
                 continue
@@ -408,7 +452,16 @@ def _cleanup_transaction_base(base: Path, now: datetime) -> list[Path]:
                 ).replace(tzinfo=timezone.utc)
                 if now - stamp < _STALE_TRANSACTION_MAX_AGE:
                     continue
-            shutil.rmtree(entry, ignore_errors=True)
+            _recovery_paths.assert_recovery_owned_path(
+                work,
+                entry,
+                label="作品情報の復旧対象",
+            )
+            _recovery_paths.remove_recovery_tree(
+                work,
+                entry,
+                ignore_errors=True,
+            )
             if not entry.exists():
                 removed.append(entry)
         except Exception:  # noqa: BLE001

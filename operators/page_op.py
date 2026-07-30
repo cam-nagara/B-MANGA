@@ -177,7 +177,7 @@ class BMANGA_OT_page_add(Operator):
         try:
             # 新規ページを登録 (register_new_page が active を新ページへ変更)
             entry = page_io.register_new_page(work)
-            page_io.ensure_page_dir(work_dir, entry.id)
+            page_io.ensure_page_dir(work_dir, entry)
             # 基本枠サイズの矩形コマを 1 個自動生成 (クリスタ準拠の初期状態)
             from .coma_op import create_basic_frame_coma
 

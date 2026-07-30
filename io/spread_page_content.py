@@ -26,8 +26,8 @@ import uuid
 SOURCE_PAGE_PROP = "bmanga_spread_source_page_id"
 SOURCE_PAGES_PROP = "bmanga_spread_source_pages"
 LINK_PROP = "bmanga_layer_link_groups"
-_WORKER_TOKEN_ENV = "BMANGA_DETAIL_MIGRATION_WORKER_TOKEN"
-_WORKER_CLAIM_ENV = "BMANGA_DETAIL_MIGRATION_WORKER_CLAIM"
+_WORKER_TOKEN_ENV = "BMANGA_BLENDER_WORKER_TOKEN"
+_WORKER_CLAIM_ENV = "BMANGA_BLENDER_WORKER_CLAIM"
 _ROOT = Path(__file__).resolve().parents[1]
 _PACKAGE = (__package__ or "").split(".", 1)[0]
 
@@ -51,13 +51,13 @@ _copy_mapped_comas = _FS._copy_mapped_comas
 _copy_page_shell = _FS._copy_page_shell
 _copy_selected_comas = _FS._copy_selected_comas
 _inject_failure = _FS._inject_failure
-_install_directories_and_json = _FS._install_directories_and_json
-_is_coma_id = _FS._is_coma_id
+_install_directories_and_domain = _FS._install_directories_and_domain
+_is_coma_uid = _FS._is_coma_uid
 _is_derived_only_page_dir = _FS._is_derived_only_page_dir
 _merge_extra_assets = _FS._merge_extra_assets
 _require_page_source = _FS._require_page_source
 _validate_staged_page = _FS._validate_staged_page
-_write_coma_jsons = _FS._write_coma_jsons
+_write_domain_document = _FS._write_domain_document
 _write_json = _FS._write_json
 
 
@@ -67,22 +67,25 @@ def merge_page_content(
     second_page_id: str,
     spread_id: str,
     *,
+    first_page_uid: str,
+    second_page_uid: str,
+    spread_page_uid: str,
     request: Mapping[str, Any],
-    coma_maps: Mapping[str, Mapping[str, str]],
+    coma_storage_maps: Mapping[str, Mapping[str, str]],
     manifest: Mapping[str, Any],
-    work_json: Mapping[str, Any],
-    pages_json: Mapping[str, Any],
     page_json: Mapping[str, Any],
+    project_document: object,
+    page_document_factory,
     fail_phase: str = "",
 ) -> dict[str, Any]:
     """両ページを一時領域で統合し、成功時だけ作品へ確定する。"""
 
     work = Path(work_dir).resolve(strict=True)
-    first_dir = work / first_page_id
-    second_dir = work / second_page_id
+    first_dir = work / "pages" / first_page_uid
+    second_dir = work / "pages" / second_page_uid
     _require_page_source(first_dir)
     _require_page_source(second_dir)
-    spread_target = work / spread_id
+    spread_target = work / "pages" / spread_page_uid
     derived_targets = ()
     if _is_derived_only_page_dir(spread_target):
         derived_targets = (spread_target,)
@@ -90,11 +93,19 @@ def merge_page_content(
         raise SpreadContentError(f"見開き保存先が既にあります: {spread_id}")
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_spread_merge_", dir=work.parent))
     try:
-        staged = temp_root / spread_id
+        staged = temp_root / spread_page_uid
         _copy_page_shell(first_dir, staged)
         _merge_extra_assets(second_dir, staged)
-        _copy_mapped_comas(first_dir, staged, coma_maps.get(first_page_id, {}))
-        _copy_mapped_comas(second_dir, staged, coma_maps.get(second_page_id, {}))
+        _copy_mapped_comas(
+            first_dir,
+            staged,
+            coma_storage_maps.get(first_page_id, {}),
+        )
+        _copy_mapped_comas(
+            second_dir,
+            staged,
+            coma_storage_maps.get(second_page_id, {}),
+        )
         worker_request = dict(request)
         worker_request.update({
             "operation": "merge",
@@ -106,20 +117,27 @@ def merge_page_content(
         final_manifest["objectMaps"] = worker_result.get("objectMaps", {})
         final_manifest["linkGroupMaps"] = worker_result.get("linkGroupMaps", {})
         final_page_json = worker_result.get("pageData", page_json)
-        _write_coma_jsons(staged, final_page_json)
-        _write_json(staged / "page.json", final_page_json)
-        _write_json(staged / MANIFEST_NAME, final_manifest)
-        _validate_staged_page(staged, spread_id)
+        final_page_document = page_document_factory(
+            final_page_json,
+            final_manifest,
+            worker_result,
+        )
+        _write_domain_document(staged / "page.json", final_page_document)
+        _write_json(staged / Path(MANIFEST_NAME), final_manifest)
+        _validate_staged_page(staged, spread_page_uid)
         _inject_failure(fail_phase, "after_stage")
-        _install_directories_and_json(
+        _install_directories_and_domain(
             work,
             removals=(first_dir, second_dir, *derived_targets),
-            additions=((staged, work / spread_id),),
-            work_json=work_json,
-            pages_json=pages_json,
+            additions=((staged, spread_target),),
+            project_document=project_document,
             fail_phase=fail_phase,
         )
-        return {"manifest": final_manifest, "pageData": dict(final_page_json)}
+        return {
+            "manifest": final_manifest,
+            "pageData": dict(final_page_json),
+            "domainPage": final_page_document,
+        }
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)
 
@@ -129,32 +147,35 @@ def split_page_content(
     spread_id: str,
     page_ids: tuple[str, str],
     *,
+    spread_page_uid: str,
+    page_uids: Mapping[str, str],
     requests: Mapping[str, Mapping[str, Any]],
-    coma_maps: Mapping[str, Mapping[str, str]],
-    work_json: Mapping[str, Any],
-    pages_json: Mapping[str, Any],
+    coma_storage_maps: Mapping[str, Mapping[str, str]],
     page_jsons: Mapping[str, Mapping[str, Any]],
+    project_document: object,
+    page_document_factory,
     fail_phase: str = "",
-) -> None:
+) -> dict[str, object]:
     """見開き page.blend を原ページ印で左右へ分配して原子的に確定する。"""
 
     work = Path(work_dir).resolve(strict=True)
-    spread_dir = work / spread_id
+    spread_dir = work / "pages" / spread_page_uid
     _require_page_source(spread_dir)
     derived_targets = []
     for page_id in page_ids:
-        target = work / page_id
+        target = work / "pages" / page_uids[page_id]
         if _is_derived_only_page_dir(target):
             derived_targets.append(target)
         elif target.exists() or target.is_symlink():
             raise SpreadContentError(f"解除先ページが既にあります: {page_id}")
     assigned_comas = set().union(
-        *(set(coma_maps.get(page_id, {})) for page_id in page_ids)
+        *(set(coma_storage_maps.get(page_id, {})) for page_id in page_ids)
     )
+    spread_comas = spread_dir / "comas"
     stored_comas = {
-        item.name for item in spread_dir.iterdir()
-        if item.is_dir() and _is_coma_id(item.name)
-    }
+        item.name for item in spread_comas.iterdir()
+        if item.is_dir() and _is_coma_uid(item.name)
+    } if spread_comas.is_dir() else set()
     if stored_comas - assigned_comas:
         raise SpreadContentError(
             "所属元を確認できないコマ保存フォルダーがあります: "
@@ -163,48 +184,61 @@ def split_page_content(
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_spread_split_", dir=work.parent))
     try:
         additions = []
+        page_documents = {}
         for page_id in page_ids:
-            staged = temp_root / page_id
+            page_uid = page_uids[page_id]
+            staged = temp_root / page_uid
             _copy_page_shell(spread_dir, staged)
-            _copy_selected_comas(spread_dir, staged, coma_maps.get(page_id, {}))
+            _copy_selected_comas(
+                spread_dir,
+                staged,
+                coma_storage_maps.get(page_id, {}),
+            )
             worker_request = dict(requests[page_id])
             worker_request.update({
                 "operation": "split",
                 "source_page_id": page_id,
                 "output_path": str((staged / "page.blend").resolve()),
             })
-            _run_worker(page_id, spread_dir / "page.blend", worker_request)
-            _write_coma_jsons(staged, page_jsons[page_id])
-            _write_json(staged / "page.json", page_jsons[page_id])
-            _validate_staged_page(staged, page_id)
-            additions.append((staged, work / page_id))
+            worker_result = _run_worker(
+                page_id,
+                spread_dir / "page.blend",
+                worker_request,
+            )
+            page_document = page_document_factory(page_id, worker_result)
+            page_documents[page_id] = page_document
+            _write_domain_document(staged / "page.json", page_document)
+            _validate_staged_page(staged, page_uid)
+            additions.append((staged, work / "pages" / page_uid))
         _inject_failure(fail_phase, "after_stage")
-        _install_directories_and_json(
+        _install_directories_and_domain(
             work,
             removals=(spread_dir, *derived_targets),
             additions=tuple(additions),
-            work_json=work_json,
-            pages_json=pages_json,
+            project_document=project_document,
             fail_phase=fail_phase,
         )
+        return page_documents
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)
 
 
 def read_manifest(work_dir: Path, spread_id: str) -> dict[str, Any]:
-    path = Path(work_dir) / spread_id / MANIFEST_NAME
+    from ..utils import paths
+
+    path = paths.page_dir(Path(work_dir), spread_id) / Path(MANIFEST_NAME)
     if not path.is_file():
         raise SpreadContentError(
             "この見開きには安全な解除情報がありません。元データを保護するため解除を中止しました"
         )
     value = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(value, dict) or value.get("version") != 1:
+    if not isinstance(value, dict) or value.get("version") != 2:
         raise SpreadContentError("見開き解除情報の形式が不正です")
     return value
 
 
 def _run_worker(page_id: str, source: Path, request: Mapping[str, Any]) -> dict[str, Any]:
-    runtime = _runtime_module("io.detail_data_blender_worker_runtime")
+    runtime = _runtime_module("io.blender_worker_runtime")
     import bpy
 
     return runtime.run_worker(
@@ -324,6 +358,7 @@ def _worker_merge(page_id: str, source_path: Path, request: dict[str, Any]) -> d
     second_root = _find_page_collection(second_scene, second_id)
     if second_root is None:
         raise SpreadContentError(f"{second_id} のページCollectionがありません")
+    second_root_name = second_root.name
     _stamp_source(first_root, first_id)
     _stamp_source(second_root, second_id)
     _set_source_offsets(first_root, float(request.get("right_page_offset_mm", 0.0) or 0.0))
@@ -349,13 +384,21 @@ def _worker_merge(page_id: str, source_path: Path, request: dict[str, Any]) -> d
         request["page_data"], request.get("entity_sources", {}), maps
     )
     _apply_scene_metadata(scene, page_id, worker_request)
+    if _find_page_collection(scene, page_id) is None:
+        raise SpreadContentError("ページ情報の投影中に見開きCollectionが失われました")
     _sync_balloon_transforms_from_metadata(scene, page_id)
+    if _find_page_collection(scene, page_id) is None:
+        raise SpreadContentError("フキダシ同期中に見開きCollectionが失われました")
     scene[LINK_PROP] = json.dumps(links, ensure_ascii=False, separators=(",", ":"))
-    _unlink_collection(second_scene.collection, second_root)
+    orphan_root = bpy.data.collections.get(second_root_name)
+    if orphan_root is not None:
+        _unlink_collection(second_scene.collection, orphan_root)
+        orphan_root = bpy.data.collections.get(second_root_name)
+        if orphan_root is not None and orphan_root.users == 0:
+            bpy.data.collections.remove(orphan_root)
     bpy.data.scenes.remove(second_scene)
-    if second_root.users == 0:
-        bpy.data.collections.remove(second_root)
     output = Path(request["output_path"])
+    _runtime_module("io.blender_worker_runtime").suspend_addon_handlers()
     bpy.ops.wm.save_as_mainfile(filepath=str(output), compress=False)
     _open_blend(output)
     _validate_worker_scene(page_id, expected_sources={first_id, second_id})
@@ -364,6 +407,8 @@ def _worker_merge(page_id: str, source_path: Path, request: dict[str, Any]) -> d
         "objectMaps": maps,
         "linkGroupMaps": link_group_maps,
         "pageData": worker_request["page_data"],
+        "links": links,
+        "nativePayloads": _native_layer_payloads(page_id),
     }
 
 
@@ -619,16 +664,41 @@ def _remap_uid(uid: str, old_page: str, new_page: str, maps) -> str:
 
 def _apply_scene_metadata(scene, page_id: str, request: Mapping[str, Any]) -> None:
     schema = _runtime_module("io.schema")
+    work_info = _runtime_module("core.work_info")
     work = scene.bmanga_work
-    schema.work_from_dict(work, dict(request["work_data"]))
-    schema.pages_from_dict(work, dict(request["pages_data"]))
-    page = next((entry for entry in work.pages if str(entry.id) == page_id), None)
-    if page is None:
-        raise SpreadContentError(f"{page_id} のページ情報がありません")
-    schema.page_from_dict(page, dict(request["page_data"]))
+    with work_info.suppress_page_number_range_update():
+        schema.work_from_dict(work, dict(request["work_data"]))
+        schema.pages_from_dict(work, dict(request["pages_data"]))
+        page = next((entry for entry in work.pages if str(entry.id) == page_id), None)
+        if page is None:
+            raise SpreadContentError(f"{page_id} のページ情報がありません")
+        schema.page_from_dict(page, dict(request["page_data"]))
     work.work_dir = str(request.get("work_dir", work.work_dir))
     work.loaded = True
     scene.bmanga_current_page_id = page_id
+
+
+def _native_layer_payloads(page_id: str) -> dict[str, list[dict[str, Any]]]:
+    layer_model = _runtime_module("utils.layer_object_model")
+    values: dict[str, list[dict[str, Any]]] = {"gp": [], "effect": []}
+    for kind in values:
+        for obj in layer_model.iter_layer_objects(kind):
+            parent_key = layer_model.parent_key(obj)
+            if parent_key.split(":", 1)[0] != page_id:
+                continue
+            values[kind].append(
+                {
+                    "id": layer_model.stable_id(obj),
+                    "title": layer_model.display_title(obj),
+                    "parentKey": parent_key,
+                    "folderKey": layer_model.folder_id(obj),
+                    "visible": layer_model.user_visible(obj),
+                    "locked": layer_model.user_locked(obj),
+                    "nativeUid": layer_model.stable_id(obj),
+                    "nodeUid": str(obj.get("bmanga_domain_node_uid", "") or ""),
+                }
+            )
+    return values
 
 
 def _worker_split(page_id: str, source_path: Path, request: dict[str, Any]) -> dict[str, Any]:
@@ -665,10 +735,16 @@ def _worker_split(page_id: str, source_path: Path, request: dict[str, Any]) -> d
             links[mapped] = str(reverse_groups.get(group, group))
     scene[LINK_PROP] = json.dumps(links, ensure_ascii=False, separators=(",", ":"))
     output = Path(request["output_path"])
+    _runtime_module("io.blender_worker_runtime").suspend_addon_handlers()
     bpy.ops.wm.save_as_mainfile(filepath=str(output), compress=False)
     _open_blend(output)
     _validate_worker_scene(page_id, expected_sources={source_id})
-    return {"operation": "split", "pageId": page_id}
+    return {
+        "operation": "split",
+        "pageId": page_id,
+        "links": links,
+        "nativePayloads": _native_layer_payloads(page_id),
+    }
 
 
 def _filter_tree_for_source(root, source_id: str, memberships) -> None:

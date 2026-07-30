@@ -528,7 +528,7 @@ def main() -> None:
             assert saved["flashWhiteLineValleyWidthPct"] == 0.0
             assert saved["flashWhiteLinePeakWidthPct"] == 100.0
             assert saved["flashWhiteOutlineCount"] == 5
-            assert saved["whiteOutlineSettingsVersion"] == 2
+            assert "whiteOutlineSettingsVersion" not in saved
             assert saved["flashWhiteOutlineWhiteBrushMm"] == 0.3
             assert saved["flashWhiteOutlineWhiteLineCount"] == 24
             assert saved["flashWhiteOutlineBlackLineCount"] == 3

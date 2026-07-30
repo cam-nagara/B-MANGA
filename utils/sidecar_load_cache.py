@@ -42,28 +42,22 @@ def signature_for_blend(work_dir: Path, blend_path: Path) -> str:
         rel = blend_path.resolve().relative_to(work_dir.resolve())
     except (OSError, ValueError):
         return ""
-    work_digest = _canonical_json_digest(
-        paths.work_meta_path(work_dir),
-        ("lastSaved",),
-    )
-    pages_digest = _canonical_json_digest(
-        paths.pages_meta_path(work_dir),
-        ("lastModified",),
-    )
-    if not work_digest or not pages_digest:
+    project_digest = _canonical_json_digest(paths.project_meta_path(work_dir))
+    if not project_digest:
         return ""
-    parts.append(("work", work_digest))
-    parts.append(("pages", pages_digest))
-    page_id = ""
-    if len(rel.parts) >= 2 and paths.is_valid_page_id(rel.parts[0]):
-        page_id = str(rel.parts[0])
-    if page_id:
+    parts.append(("project", project_digest))
+    page_uid = ""
+    if len(rel.parts) >= 3 and rel.parts[0] == paths.PAGES_DIR_NAME:
+        candidate = str(rel.parts[1])
+        if paths.is_valid_page_uid(candidate):
+            page_uid = candidate
+    if page_uid:
         page_digest = _canonical_json_digest(
-            paths.page_meta_path(work_dir, page_id),
+            paths.page_meta_path(work_dir, page_uid),
         )
         if not page_digest:
             return ""
-        parts.append((page_id, page_digest))
+        parts.append((page_uid, page_digest))
     payload = json.dumps(
         {
             "version": SIGNATURE_VERSION,

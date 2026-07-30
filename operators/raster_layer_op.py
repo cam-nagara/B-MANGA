@@ -756,8 +756,8 @@ def save_raster_png(context, entry, *, force: bool = False) -> bool:
         return False
     work_dir = Path(work.work_dir)
     abs_path = _abs_png_path(work_dir, entry)
-    from ..io.project_content_migration_lock import guard_path_write
-    from ..io.project_content_save_baseline import record_successful_write
+    from ..io.project_file_lock import guard_path_write
+    from ..io.save_baseline import record_successful_write
 
     with guard_path_write(abs_path):
         old_format = str(getattr(image, "file_format", "") or "")

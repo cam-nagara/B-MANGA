@@ -6,15 +6,25 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Iterable
 
-WORK_META_NAME = "work.json"
+try:
+    from ..bmanga_core.domain_ids import UIDKind, derived_uid, is_uid, validate_uid
+except ImportError:  # pure testで単独moduleとして読む場合
+    from bmanga_core.domain_ids import UIDKind, derived_uid, is_uid, validate_uid
+
+PROJECT_META_NAME = "project.json"
 WORK_BLEND_NAME = "work.blend"
-PAGES_META_NAME = "pages.json"
+PAGES_DIR_NAME = "pages"
 PAGE_META_NAME = "page.json"
 PAGE_BLEND_NAME = "page.blend"
+PAGE_ASSETS_DIR_NAME = "assets"
+COMAS_DIR_NAME = "comas"
+COMA_BLEND_NAME = "scene.blend"
+COMA_PREVIEW_NAME = "preview.png"
 ASSETS_DIR_NAME = "assets"
 ASSETS_TEMPLATES_DIR = "templates"
 ASSETS_BRUSHES_DIR = "brushes"
@@ -31,14 +41,47 @@ RASTER_TRASH_DIR_NAME = ".trash"
 
 BMANGA_DIR_SUFFIX = ".bmanga"
 
-
 # 単ページ ("p0001") と見開き ("p0020-0021") のみ許可
 _PAGE_ID_RE = re.compile(r"^p\d{4}(-\d{4})?$")
 _COMA_ID_RE = re.compile(r"^c\d{2}$")
 
 
+class WorkPathBoundaryError(RuntimeError):
+    """作品root外へ解決される物理パスを拒否する。"""
+
+
+def assert_work_owned_path(work_dir: Path, path: Path) -> Path:
+    """junction/symlink解決後も``path``が作品root内であることを保証する。"""
+
+    root = Path(work_dir).resolve(strict=False)
+    candidate = Path(path)
+    try:
+        resolved = candidate.resolve(strict=False)
+        resolved.relative_to(root)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise WorkPathBoundaryError(
+            f"work path escapes project root: {candidate}"
+        ) from exc
+    return candidate
+
+
+def _work_owned_path(work_dir: Path, *parts: str) -> Path:
+    return assert_work_owned_path(
+        work_dir,
+        Path(work_dir).joinpath(*parts),
+    )
+
+
 def is_valid_page_id(page_id: str) -> bool:
     return isinstance(page_id, str) and bool(_PAGE_ID_RE.match(page_id))
+
+
+def is_valid_page_uid(value: str) -> bool:
+    return is_uid(value, UIDKind.PAGE)
+
+
+def is_valid_coma_uid(value: str) -> bool:
+    return is_uid(value, UIDKind.COMA)
 
 
 def is_valid_coma_id(coma_id: str) -> bool:
@@ -84,90 +127,224 @@ def format_coma_id(index: int) -> str:
     return f"c{index:02d}"
 
 
-def work_meta_path(work_dir: Path) -> Path:
-    return Path(work_dir) / WORK_META_NAME
+def project_meta_path(work_dir: Path) -> Path:
+    return _work_owned_path(work_dir, PROJECT_META_NAME)
 
 
-def pages_meta_path(work_dir: Path) -> Path:
-    return Path(work_dir) / PAGES_META_NAME
+def resolve_page_uid(work_dir: Path, page_ref: str) -> str:
+    """内部UIDまたは表示IDからpage UIDを厳格に解決する。"""
+
+    if is_uid(page_ref, UIDKind.PAGE):
+        return validate_uid(page_ref, UIDKind.PAGE)
+    display_id = validate_page_id(page_ref)
+    project = _read_domain_json(
+        project_meta_path(work_dir),
+        "bmanga.project",
+        work_dir=work_dir,
+    )
+    pages = project.get("pages")
+    if not isinstance(pages, dict):
+        raise ValueError("project.json pages must be an object")
+    for uid, summary in pages.items():
+        if not isinstance(summary, dict):
+            raise ValueError("project.json page summary must be an object")
+        if summary.get("displayId") == display_id:
+            return validate_uid(uid, UIDKind.PAGE)
+    project_uid = validate_uid(project.get("projectUid"), UIDKind.PROJECT)
+    return derived_uid(UIDKind.PAGE, project_uid, display_id)
 
 
-def page_dir(work_dir: Path, page_id: str) -> Path:
-    return Path(work_dir) / validate_page_id(page_id)
+def page_display_id(work_dir: Path, page_uid: str) -> str:
+    uid = validate_uid(page_uid, UIDKind.PAGE)
+    project = _read_domain_json(
+        project_meta_path(work_dir),
+        "bmanga.project",
+        work_dir=work_dir,
+    )
+    pages = project.get("pages")
+    if not isinstance(pages, dict) or not isinstance(pages.get(uid), dict):
+        raise KeyError(f"page UID is not registered: {uid}")
+    return validate_page_id(str(pages[uid].get("displayId", "")))
 
 
-def page_meta_path(work_dir: Path, page_id: str) -> Path:
-    return page_dir(work_dir, page_id) / PAGE_META_NAME
+def page_dir(work_dir: Path, page_ref: str) -> Path:
+    page_uid = resolve_page_uid(work_dir, page_ref)
+    return _work_owned_path(work_dir, PAGES_DIR_NAME, page_uid)
 
 
-def page_blend_path(work_dir: Path, page_id: str) -> Path:
-    """ページ用 .blend のパス (``<work>.bmanga/pNNNN/page.blend``)."""
-    return page_dir(work_dir, page_id) / PAGE_BLEND_NAME
+def page_meta_path(work_dir: Path, page_ref: str) -> Path:
+    return assert_work_owned_path(
+        work_dir,
+        page_dir(work_dir, page_ref) / PAGE_META_NAME,
+    )
+
+
+def page_blend_path(work_dir: Path, page_ref: str) -> Path:
+    """ページ用 .blend のパスをUID directory内へ構築する。"""
+
+    return assert_work_owned_path(
+        work_dir,
+        page_dir(work_dir, page_ref) / PAGE_BLEND_NAME,
+    )
+
+
+def page_assets_dir(work_dir: Path, page_ref: str) -> Path:
+    return assert_work_owned_path(
+        work_dir,
+        page_dir(work_dir, page_ref) / PAGE_ASSETS_DIR_NAME,
+    )
+
+
+def page_comas_dir(work_dir: Path, page_ref: str) -> Path:
+    return assert_work_owned_path(
+        work_dir,
+        page_dir(work_dir, page_ref) / COMAS_DIR_NAME,
+    )
 
 
 def work_blend_path(work_dir: Path) -> Path:
     """作品マスター .blend のパス (``<work>.bmanga/work.blend``)."""
-    return Path(work_dir) / WORK_BLEND_NAME
+    return _work_owned_path(work_dir, WORK_BLEND_NAME)
 
 
-def coma_dir(work_dir: Path, page_id: str, coma_id: str) -> Path:
-    return page_dir(work_dir, page_id) / validate_coma_id(coma_id)
+def resolve_coma_uid(work_dir: Path, page_ref: str, coma_ref: str) -> str:
+    """内部UIDまたは表示IDからcoma UIDを解決する。
+
+    未checkpointの新規コマはpage UIDと表示IDから決定的に採番する。
+    checkpoint後はpage.jsonに保存したnativeUidを正とする。
+    """
+
+    if is_uid(coma_ref, UIDKind.COMA):
+        return validate_uid(coma_ref, UIDKind.COMA)
+    coma_id = validate_coma_id(coma_ref)
+    page_uid = resolve_page_uid(work_dir, page_ref)
+    meta = page_meta_path(work_dir, page_uid)
+    if meta.is_file():
+        page = _read_domain_json(
+            meta,
+            "bmanga.page",
+            work_dir=work_dir,
+        )
+        tree = page.get("tree")
+        if not isinstance(tree, dict):
+            raise ValueError("page.json tree must be an object")
+        nodes = tree.get("nodes")
+        if not isinstance(nodes, dict):
+            raise ValueError("page.json nodes must be an object")
+        for node in nodes.values():
+            if not isinstance(node, dict):
+                raise ValueError("page.json node must be an object")
+            if node.get("kind") != "coma" or node.get("displayId") != coma_id:
+                continue
+            native_uid = node.get("nativeUid")
+            if native_uid:
+                return validate_uid(native_uid, UIDKind.COMA)
+    return derived_uid(UIDKind.COMA, page_uid, coma_id)
 
 
-def coma_blend_path(work_dir: Path, page_id: str, coma_id: str) -> Path:
-    return coma_dir(work_dir, page_id, coma_id) / f"{validate_coma_id(coma_id)}.blend"
+def coma_display_id(work_dir: Path, page_ref: str, coma_uid: str) -> str:
+    uid = validate_uid(coma_uid, UIDKind.COMA)
+    page_uid = resolve_page_uid(work_dir, page_ref)
+    page = _read_domain_json(
+        page_meta_path(work_dir, page_uid),
+        "bmanga.page",
+        work_dir=work_dir,
+    )
+    tree = page.get("tree")
+    if not isinstance(tree, dict):
+        raise ValueError("page.json tree must be an object")
+    nodes = tree.get("nodes")
+    if not isinstance(nodes, dict):
+        raise ValueError("page.json nodes must be an object")
+    for node in nodes.values():
+        if not isinstance(node, dict):
+            continue
+        if node.get("kind") == "coma" and node.get("nativeUid") == uid:
+            return validate_coma_id(str(node.get("displayId", "")))
+    raise KeyError(f"coma UID is not registered: {uid}")
 
 
-def coma_json_path(work_dir: Path, page_id: str, coma_id: str) -> Path:
-    return coma_dir(work_dir, page_id, coma_id) / f"{validate_coma_id(coma_id)}.json"
+def coma_dir(work_dir: Path, page_ref: str, coma_ref: str) -> Path:
+    coma_uid = resolve_coma_uid(work_dir, page_ref, coma_ref)
+    return assert_work_owned_path(
+        work_dir,
+        page_comas_dir(work_dir, page_ref) / coma_uid,
+    )
 
 
-def coma_thumb_path(work_dir: Path, page_id: str, coma_id: str) -> Path:
-    validate_coma_id(coma_id)
-    return coma_dir(work_dir, page_id, coma_id) / "thumb.png"
+def coma_blend_path(work_dir: Path, page_ref: str, coma_ref: str) -> Path:
+    return assert_work_owned_path(
+        work_dir,
+        coma_dir(work_dir, page_ref, coma_ref) / COMA_BLEND_NAME,
+    )
 
 
-def coma_preview_path(work_dir: Path, page_id: str, coma_id: str) -> Path:
-    return coma_dir(work_dir, page_id, coma_id) / f"{validate_coma_id(coma_id)}_preview.png"
+def coma_thumb_path(work_dir: Path, page_ref: str, coma_ref: str) -> Path:
+    return assert_work_owned_path(
+        work_dir,
+        coma_dir(work_dir, page_ref, coma_ref) / COMA_PREVIEW_NAME,
+    )
 
 
-def coma_passes_dir(work_dir: Path, page_id: str, coma_id: str) -> Path:
-    return coma_dir(work_dir, page_id, coma_id) / "passes"
+def coma_preview_path(work_dir: Path, page_ref: str, coma_ref: str) -> Path:
+    return assert_work_owned_path(
+        work_dir,
+        coma_dir(work_dir, page_ref, coma_ref) / COMA_PREVIEW_NAME,
+    )
+
+
+def coma_passes_dir(work_dir: Path, page_ref: str, coma_ref: str) -> Path:
+    return assert_work_owned_path(
+        work_dir,
+        coma_dir(work_dir, page_ref, coma_ref) / "passes",
+    )
 
 
 def coma_passes_cube_dir(work_dir: Path, page_id: str, coma_id: str) -> Path:
-    return coma_passes_dir(work_dir, page_id, coma_id) / "cube"
+    return assert_work_owned_path(
+        work_dir,
+        coma_passes_dir(work_dir, page_id, coma_id) / "cube",
+    )
 
 
 def assets_dir(work_dir: Path) -> Path:
-    return Path(work_dir) / ASSETS_DIR_NAME
+    return _work_owned_path(work_dir, ASSETS_DIR_NAME)
 
 
 def scenario_dir(work_dir: Path) -> Path:
-    return Path(work_dir) / SCENARIO_DIR_NAME
+    return _work_owned_path(work_dir, SCENARIO_DIR_NAME)
 
 
 def scenario_file(work_dir: Path) -> Path:
-    return scenario_dir(work_dir) / SCENARIO_FILE_NAME
+    return assert_work_owned_path(
+        work_dir,
+        scenario_dir(work_dir) / SCENARIO_FILE_NAME,
+    )
 
 
 def exports_dir(work_dir: Path) -> Path:
-    return Path(work_dir) / EXPORTS_DIR_NAME
+    return _work_owned_path(work_dir, EXPORTS_DIR_NAME)
 
 
 def raster_dir(work_dir: Path) -> Path:
-    return Path(work_dir) / RASTER_DIR_NAME
+    return _work_owned_path(work_dir, RASTER_DIR_NAME)
 
 
 def raster_trash_dir(work_dir: Path) -> Path:
-    return raster_dir(work_dir) / RASTER_TRASH_DIR_NAME
+    return assert_work_owned_path(
+        work_dir,
+        raster_dir(work_dir) / RASTER_TRASH_DIR_NAME,
+    )
 
 
 def raster_png_path(work_dir: Path, raster_id: str) -> Path:
     safe_id = re.sub(r"[^0-9a-fA-F]", "", str(raster_id or ""))[:12]
     if not safe_id:
         raise ValueError(f"invalid raster id: {raster_id!r}")
-    return raster_dir(work_dir) / f"{safe_id}.png"
+    return assert_work_owned_path(
+        work_dir,
+        raster_dir(work_dir) / f"{safe_id}.png",
+    )
 
 
 def ensure_bmanga_suffix(path: Path) -> Path:
@@ -217,3 +394,35 @@ def next_available_coma_index(existing_ids: Iterable[str]) -> int:
     if i > 99:
         raise ValueError("coma count exceeds maximum c99")
     return i
+
+
+def _read_domain_json(
+    path: Path,
+    expected_schema: str,
+    *,
+    work_dir: Path,
+) -> dict:
+    target = assert_work_owned_path(work_dir, path).resolve(strict=False)
+    try:
+        raw = target.read_bytes()
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"required Domain file is missing: {path}") from exc
+    if raw.startswith(b"\xef\xbb\xbf"):
+        raw = raw[3:]
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"invalid Domain JSON: {path}") from exc
+    _validate_domain_json(data, target, expected_schema)
+    return data
+
+
+def _validate_domain_json(
+    data: object,
+    path: Path,
+    expected_schema: str,
+) -> None:
+    if not isinstance(data, dict) or data.get("schema") != expected_schema:
+        raise ValueError(f"旧形式または未対応形式です: {path.name}")
+    if data.get("schemaVersion") != 1:
+        raise ValueError(f"未対応schemaVersionです: {path.name}")

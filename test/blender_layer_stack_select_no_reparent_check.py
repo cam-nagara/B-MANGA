@@ -76,6 +76,7 @@ def main() -> None:
         meldex_scenario_import,
         page_io,
         text_presets,
+        work_io,
     )
     from bmanga_dev_select_no_reparent.utils import layer_stack as layer_stack_utils
     from bmanga_dev_select_no_reparent.utils import page_file_scene
@@ -97,6 +98,8 @@ def main() -> None:
     ]
 
     page = page_io.register_new_page(work)
+    work_io.create_bmanga_skeleton(temp_root)
+    work_io.save_work_json(temp_root, work)
     page_io.ensure_page_dir(temp_root, page.id)
     page.detail_loaded = True
     coma = page.comas.add()
@@ -107,6 +110,7 @@ def main() -> None:
     coma.rect_height_mm = 257.0
     page.coma_count = 1
     work.active_page_index = 0
+    page_io.save_page_json(temp_root, page)
 
     context = bpy.context
     scene = context.scene

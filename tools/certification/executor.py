@@ -62,8 +62,16 @@ def _python_command(
     case_dir: Path,
 ) -> tuple[list[str], Path, dict[str, str]]:
     source = root / case.source
+    # pytest自体は ``test/`` をcwdにして既存スクリプトとの互換を保つ。一方、
+    # Phase 3以降のpure testは製品rootの ``bmanga_core`` 等をimportするため、
+    # subprocessにもrootを明示的に渡す必要がある。
+    inherited_pythonpath = os.environ.get("PYTHONPATH", "")
+    pythonpath = str(root)
+    if inherited_pythonpath:
+        pythonpath = f"{pythonpath}{os.pathsep}{inherited_pythonpath}"
+    env = {"PYTHONPATH": pythonpath}
     if case.mode == "python_script":
-        return [sys.executable, source.name, *case.args], root / "test", {}
+        return [sys.executable, source.name, *case.args], root / "test", env
     junit = case_dir / "junit.xml"
     basetemp = case_dir / "pytest_tmp"
     command = [
@@ -78,7 +86,7 @@ def _python_command(
         f"--junitxml={junit}",
         *case.args,
     ]
-    return command, root / "test", {}
+    return command, root / "test", env
 
 
 def _blender_command(

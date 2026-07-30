@@ -248,15 +248,15 @@ def reparent_stack_item(
     # 足すと、保存ガード (詳細未読込ページは page.json を書かない) によって
     # 移したレイヤーが保存されず消える。
     if target.page is not None and not bool(getattr(target.page, "detail_loaded", True)):
-        try:
-            from ..core.work import get_work
-            from . import page_detail
+        from ..core.work import get_work
+        from . import page_detail
 
-            work = get_work(context)
-            if work is not None:
-                page_detail.ensure_page_detail(work, target.page)
-        except Exception:  # noqa: BLE001
-            _logger.exception("reparent: target page detail load failed")
+        work = get_work(context)
+        if work is None:
+            raise page_detail.PageDetailLoadError(
+                "reparent target has no owning work"
+            )
+        page_detail.ensure_page_detail(work, target.page)
 
     kind = getattr(item, "kind", "")
     # NOTE: item.parent_key は位置ベースの heuristic で決まるため、エントリ実体の
@@ -1427,8 +1427,6 @@ def _reparent_coma(context, item, target: ClickTarget) -> bool:
     if coma_index < 0:
         return False
     old_parent_key = coma_stack_key(src_page, src_entry)
-    src_panel_stem = str(getattr(src_entry, "coma_id", "") or getattr(src_entry, "id", "") or "")
-    src_panel_id = str(getattr(src_entry, "id", "") or "")
     if target.kind == "outside":
         final_stem = _unique_collection_id(work.shared_comas, coma_id, "shared_coma", id_attr="coma_id")
         new_entry = work.shared_comas.add()
@@ -1453,7 +1451,6 @@ def _reparent_coma(context, item, target: ClickTarget) -> bool:
 
     # 既存 BMANGA_OT_coma_move_to_page をそのまま活用するため、active_coma を一時設定して invoke
     # ただし direct API がないので、operator を呼ぶ
-    target_page_before = {coma_stack_key(target.page, panel) for panel in getattr(target.page, "comas", [])}
     work.active_page_index = src_page_idx
     src_page.active_coma_index = coma_index
     try:
@@ -1466,29 +1463,9 @@ def _reparent_coma(context, item, target: ClickTarget) -> bool:
         return False
     if "FINISHED" not in ret:
         return False
-    moved_panel = None
-    for panel in getattr(target.page, "comas", []):
-        key = coma_stack_key(target.page, panel)
-        if key not in target_page_before:
-            moved_panel = panel
-            break
-    if moved_panel is None and len(getattr(target.page, "comas", [])):
-        moved_panel = target.page.comas[-1]
-    if moved_panel is not None:
-        new_parent_key = coma_stack_key(target.page, moved_panel)
-        _move_page_coma_children_to_page(
-            context,
-            src_page,
-            target.page,
-            src_panel_stem,
-            src_panel_id,
-            old_parent_key,
-            new_parent_key,
-        )
-        try:
-            item.parent_key = page_stack_key(target.page)
-        except Exception:  # noqa: BLE001
-            pass
+    # Operator内でコマ子要素の移送とレイヤースタック再同期まで完了する。
+    # sync後は呼出元の ``item`` がCollection再構築前の参照になり得るため、
+    # ここで書き戻すと別の行（実際には移送したフキダシ）を誤更新する。
     return True
 
 

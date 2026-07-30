@@ -319,7 +319,9 @@ def main() -> None:
         if bleed_mat is None or not bleed_mat.name.startswith(paper_guide_object.PAPER_BLEED_OUTER_FILL_VIEW_MATERIAL):
             raise AssertionError("裁ち落とし枠外塗りの表示素材がありません")
         bleed_obj_name = bleed_obj.name
-        reopen_path = temp_root / "overlay_fill_reopen.blend"
+        # 作品外のSave AsコピーはB-MANGA正本ではない。保存・再読込の検証は
+        # 正規のwork.blendで行い、外部コピーを読み込めるという旧前提を持たない。
+        reopen_path = Path(work.work_dir) / "work.blend"
         bpy.ops.wm.save_as_mainfile(filepath=str(reopen_path))
         bpy.ops.wm.open_mainfile(filepath=str(reopen_path))
         work_after = get_work(bpy.context)

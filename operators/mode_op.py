@@ -16,8 +16,8 @@ from bpy.types import Operator
 
 from ..core.mode import MODE_PAGE, MODE_COMA, get_mode, set_mode
 from ..core.work import get_active_page, get_work
-from ..io import blend_io, page_io, work_io
-from ..utils import file_transition_runtime, geom, log, paths
+from ..io import blend_io, domain_projection, page_io, work_io
+from ..utils import file_transition_runtime, geom, log, page_file_scene, paths
 from . import coma_modal_state
 
 _logger = log.get_logger(__name__)
@@ -58,6 +58,33 @@ def _find_page_by_id(work, page_id: str):
         if str(getattr(pg, "id", "") or "") == page_id:
             return pg
     return None
+
+
+def _selected_domain_target(work, page) -> tuple[str, str]:
+    index = int(getattr(page, "active_coma_index", -1))
+    if not (0 <= index < len(page.comas)):
+        return "", ""
+    project_uid = domain_projection.ensure_project_uid(work)
+    page_uid = domain_projection.ensure_page_uid(page, project_uid)
+    coma_uid = domain_projection.ensure_coma_uid(page.comas[index], page_uid)
+    return page_uid, coma_uid
+
+
+def _restore_domain_target(work, page_uid: str, coma_uid: str):
+    for page_index, page in enumerate(getattr(work, "pages", ())):
+        if str(page.get(domain_projection.PAGE_UID_PROP, "") or "") != page_uid:
+            continue
+        for coma_index, coma in enumerate(getattr(page, "comas", ())):
+            if (
+                str(coma.get(domain_projection.COMA_UID_PROP, "") or "")
+                != coma_uid
+            ):
+                continue
+            work.active_page_index = page_index
+            page.active_coma_index = coma_index
+            return page
+    return None
+
 
 def _auto_render_thumb_before_return(context, work, *, force: bool) -> None:
     if work is None or not bool(getattr(work, "auto_render_coma_thumb_on_return", True)):
@@ -398,8 +425,6 @@ class BMANGA_OT_enter_coma_mode(Operator):
         return {"CANCELLED"}
 
     def execute(self, context):
-        coma_modal_state.finish_all(context)
-        page_dirty = file_transition_runtime.scene_content_dirty(context.scene)
         work = get_work(context)
         page = get_active_page(context)
         if (
@@ -408,6 +433,18 @@ class BMANGA_OT_enter_coma_mode(Operator):
             or not (0 <= page.active_coma_index < len(page.comas))
         ):
             self.report({"WARNING"}, "編集対象のコマが選択されていません")
+            return {"CANCELLED"}
+        selected_page_uid, selected_coma_uid = _selected_domain_target(work, page)
+        coma_modal_state.finish_all(context)
+        page_dirty = file_transition_runtime.scene_content_dirty(context.scene)
+        work = get_work(context)
+        page = (
+            _restore_domain_target(work, selected_page_uid, selected_coma_uid)
+            if work is not None
+            else None
+        )
+        if page is None:
+            self.report({"WARNING"}, "選択中のコマを復元できませんでした")
             return {"CANCELLED"}
 
         try:
@@ -422,7 +459,11 @@ class BMANGA_OT_enter_coma_mode(Operator):
             return {"CANCELLED"}
 
         work = get_work(context)
-        page = get_active_page(context)
+        page = (
+            _restore_domain_target(work, selected_page_uid, selected_coma_uid)
+            if work is not None
+            else None
+        )
         if (
             work is None
             or page is None
@@ -848,7 +889,7 @@ class BMANGA_OT_exit_coma_mode(Operator):
 
 
 def _current_blend_is_coma_blend() -> tuple[Path | None, str, str]:
-    """開いている mainfile が ``pNNNN/cNN/cNN.blend`` 形式かを判定.
+    """開いているmainfileがUIDコマ用scene.blendか判定する。
 
     Returns ``(work_dir, page_id, coma_id)`` を返す。マッチしなければ
     ``(None, "", "")``。``bmanga_mode`` / ``bmanga_current_coma_id`` 等の
@@ -861,17 +902,12 @@ def _current_blend_is_coma_blend() -> tuple[Path | None, str, str]:
         path = Path(fp).resolve()
     except OSError:
         return None, "", ""
-    parts = path.parts
-    if len(parts) < 4:
+    work_dir = page_file_scene.find_work_root(path)
+    if work_dir is None:
         return None, "", ""
-    page_id, coma_id, fname = parts[-3], parts[-2], parts[-1]
-    if not (
-        paths.is_valid_page_id(page_id)
-        and paths.is_valid_coma_id(coma_id)
-        and fname == f"{coma_id}.blend"
-    ):
+    role, page_id, coma_id = page_file_scene.role_from_path(path, work_dir)
+    if role != page_file_scene.ROLE_COMA:
         return None, "", ""
-    work_dir = path.parents[2]
     return work_dir, page_id, coma_id
 
 

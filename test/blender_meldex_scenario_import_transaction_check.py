@@ -69,6 +69,18 @@ def _first_body(page_detail, work) -> str:
     )
 
 
+def _nodes_of_kind(document: dict, kind: str) -> list[dict]:
+    tree = document.get("tree")
+    assert isinstance(tree, dict), document
+    nodes = tree.get("nodes")
+    assert isinstance(nodes, dict), tree
+    return [
+        node
+        for node in nodes.values()
+        if isinstance(node, dict) and node.get("kind") == kind
+    ]
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_meldex_transaction_"))
     addon = None
@@ -85,7 +97,7 @@ def main() -> None:
             balloon_presets,
             meldex_scenario_import,
             page_io,
-            project_content_save_baseline as baseline,
+            save_baseline as baseline,
             text_presets,
         )
         from bmanga_dev_meldex_import_transaction.utils import json_io, page_detail, paths
@@ -136,22 +148,22 @@ def main() -> None:
         page_json.write_bytes(original_page)
         baseline.record_successful_write(page_json)
 
-        # Dropbox等が読込後にpages.jsonを書き換えた場合は、その内容を保ったまま
+        # Dropbox等が読込後にproject.jsonを書き換えた場合は、その内容を保ったまま
         # 何も変更せず中止する。
-        pages_json = paths.pages_meta_path(work_dir)
-        original_pages = pages_json.read_bytes()
-        external_pages = b'{"external":"dropbox"}'
-        pages_json.write_bytes(external_pages)
+        project_json = paths.project_meta_path(work_dir)
+        original_project = project_json.read_bytes()
+        external_project = b'{"external":"dropbox"}'
+        project_json.write_bytes(external_project)
         try:
             meldex_scenario_import.import_payload(bpy.context, work, _payload())
         except RuntimeError as exc:
             assert "変更" in str(exc) or "更新" in str(exc) or "競合" in str(exc), exc
         else:
             raise AssertionError("外部変更を伴う取込が中止されなかった")
-        assert pages_json.read_bytes() == external_pages
+        assert project_json.read_bytes() == external_project
         assert len(work.pages) == 1
-        pages_json.write_bytes(original_pages)
-        baseline.record_successful_write(pages_json)
+        project_json.write_bytes(original_project)
+        baseline.record_successful_write(project_json)
 
         # 新規2ページと既存ページを書いた後の失敗でも、全ファイル・メモリ・
         # 新規ディレクトリを取込前へ戻す。
@@ -180,8 +192,8 @@ def main() -> None:
         assert _json_snapshot(work_dir) == before_failure
         assert len(work.pages) == 1 and not work.pages[0].detail_loaded
         assert int(work.balloon_id_counter) == before_counter
-        assert not (work_dir / "p0002").exists()
-        assert not (work_dir / "p0003").exists()
+        assert not paths.page_dir(work_dir, "p0002").exists()
+        assert not paths.page_dir(work_dir, "p0003").exists()
         assert not (work_dir / ".bmanga-save-recovery-v1").exists()
 
         # 初回のscenario/imported.json書込みが完了した直後に失敗しても、
@@ -209,8 +221,8 @@ def main() -> None:
             json_io.write_json = original_write_json
         assert _json_snapshot(work_dir) == before_failure
         assert len(work.pages) == 1 and not work.pages[0].detail_loaded
-        assert not (work_dir / "p0002").exists()
-        assert not (work_dir / "p0003").exists()
+        assert not paths.page_dir(work_dir, "p0002").exists()
+        assert not paths.page_dir(work_dir, "p0003").exists()
         assert not paths.scenario_dir(work_dir).exists()
 
         # 同じ内容で再試行し、復元前の差分書込キャッシュがpage.json保存を
@@ -219,11 +231,36 @@ def main() -> None:
         assert result == {"pagesAdded": 2, "created": 3, "updated": 0, "ignored": 0}, result
         assert len(work.pages) == 3
         saved_page = json.loads(page_json.read_text(encoding="utf-8"))
-        assert saved_page["texts"][0]["body"] == "初回本文"
-        saved_work = json.loads(paths.work_meta_path(work_dir).read_text(encoding="utf-8"))
-        assert saved_work["balloonIdCounter"] == int(work.balloon_id_counter) > 0
-        assert paths.coma_json_path(work_dir, "p0002", "c01").is_file()
-        assert paths.coma_json_path(work_dir, "p0003", "c01").is_file()
+        saved_texts = _nodes_of_kind(saved_page, "text")
+        assert saved_texts[0]["settings"]["body"] == "初回本文"
+        saved_project = json.loads(
+            paths.project_meta_path(work_dir).read_text(encoding="utf-8")
+        )
+        assert (
+            saved_project["settings"]["balloonIdCounter"]
+            == int(work.balloon_id_counter)
+            > 0
+        )
+        assert len(
+            _nodes_of_kind(
+                json.loads(
+                    paths.page_meta_path(work_dir, "p0002").read_text(
+                        encoding="utf-8"
+                    )
+                ),
+                "coma",
+            )
+        ) == 1
+        assert len(
+            _nodes_of_kind(
+                json.loads(
+                    paths.page_meta_path(work_dir, "p0003").read_text(
+                        encoding="utf-8"
+                    )
+                ),
+                "coma",
+            )
+        ) == 1
         assert not (work_dir / ".bmanga-save-recovery-v1").exists()
 
         # ページ群を保存し終え、最後のimported.jsonで失敗しても、取込前の
@@ -272,9 +309,9 @@ def main() -> None:
         assert result["pagesAdded"] == 0 and result["updated"] == 3
         assert _first_body(page_detail, work) == "再起動後の本文"
 
-        # pages.jsonに無いページフォルダーは既存データの可能性があるため再利用せず、
+        # project.jsonに無いページフォルダーは既存データの可能性があるため再利用せず、
         # 中身を一切変更しない。
-        orphan = work_dir / "p0004"
+        orphan = paths.page_dir(work_dir, "p0004")
         orphan.mkdir()
         (orphan / "unknown.txt").write_text("keep", encoding="utf-8")
         try:

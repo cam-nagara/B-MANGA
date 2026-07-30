@@ -156,8 +156,9 @@ def main() -> None:
             layer_stack,
             layer_transfer_group,
             page_grid,
+            paths,
         )
-        from bmanga_transfer_group_test.io import project_content_save_baseline
+        from bmanga_transfer_group_test.io import save_baseline
         from bmanga_transfer_group_test.utils.layer_hierarchy import coma_stack_key
         from bmanga_transfer_group_test.utils.layer_reparent import ClickTarget
 
@@ -191,7 +192,7 @@ def main() -> None:
 
         # ソースblend保存を強制失敗させ、ページデータ・リンク・退避ステージが
         # すべて元へ戻ることを確認する。
-        page_json_path = Path(work.work_dir) / source.id / "page.json"
+        page_json_path = paths.page_meta_path(Path(work.work_dir), source.id)
         page_json_before = page_json_path.read_bytes()
         original_save_page_blend = layer_transfer_group.blend_io.save_page_blend
         layer_transfer_group.blend_io.save_page_blend = lambda *_args, **_kwargs: False
@@ -205,7 +206,10 @@ def main() -> None:
             layer_transfer_group.blend_io.save_page_blend = original_save_page_blend
         assert rolled_back == 0
         assert page_json_path.read_bytes() == page_json_before
-        stage_path = Path(work.work_dir) / target.id / "_staged_imports.json"
+        stage_path = layer_transfer_group.cross_page_stage.staged_path(
+            Path(work.work_dir),
+            target.id,
+        )
         if stage_path.is_file():
             rolled_back_stage = json.loads(stage_path.read_text(encoding="utf-8"))
             assert not rolled_back_stage.get("asset_bundles")
@@ -229,7 +233,7 @@ def main() -> None:
         text_index, _text_item = _stack_item(context, "text", text.id)
         layer_stack.clear_all_selection(context)
         layer_stack.select_stack_index(context, text_index)
-        source_blend_path = Path(work.work_dir) / source.id / "page.blend"
+        source_blend_path = paths.page_blend_path(Path(work.work_dir), source.id)
         original_mark_ready = layer_transfer_group.cross_page_stage.mark_asset_bundle_ready
 
         def simulate_process_exit(*_args, **_kwargs):
@@ -248,24 +252,30 @@ def main() -> None:
                 assert "forced transfer process exit" in str(exc)
         finally:
             layer_transfer_group.cross_page_stage.mark_asset_bundle_ready = original_mark_ready
-        recovery_root = Path(work.work_dir) / source.id / "_transfer_recovery"
+        recovery_root = (
+            paths.page_dir(Path(work.work_dir), source.id)
+            / "_transfer_recovery"
+        )
         assert any(recovery_root.glob("*/transaction.json"))
         assert not any(
             "_transfer_recovery" in tracked.parts
-            for tracked in project_content_save_baseline.tracked_paths(work.work_dir)
+            for tracked in save_baseline.tracked_paths(work.work_dir)
         )
         restored_paths = layer_transfer_group.recover_interrupted_transfers(
             Path(work.work_dir)
         )
         assert source_blend_path in restored_paths
         recovered_page_json = json.loads(page_json_path.read_text(encoding="utf-8"))
+        recovered_nodes = recovered_page_json["tree"]["nodes"].values()
         assert any(
-            item.get("id") == "balloon_transfer"
-            for item in recovered_page_json.get("balloons", [])
+            item.get("kind") == "balloon"
+            and item.get("displayId") == "balloon_transfer"
+            for item in recovered_nodes
         )
         assert any(
-            item.get("id") == "text_transfer"
-            for item in recovered_page_json.get("texts", [])
+            item.get("kind") == "text"
+            and item.get("displayId") == "text_transfer"
+            for item in recovered_nodes
         )
         assert not recovery_root.exists()
         if stage_path.is_file():
@@ -317,7 +327,7 @@ def main() -> None:
         assert len(source.comas) == 0
         assert not any(
             "_transfer_recovery" in tracked.parts
-            for tracked in project_content_save_baseline.tracked_paths(work.work_dir)
+            for tracked in save_baseline.tracked_paths(work.work_dir)
         )
         staged = json.loads(stage_path.read_text(encoding="utf-8"))
         assert staged["asset_bundles"][0].get("state") == "ready"
@@ -354,15 +364,17 @@ def main() -> None:
         assert len(target.comas) > 0
         tracked = {
             path.resolve()
-            for path in project_content_save_baseline.tracked_paths(work.work_dir)
+            for path in save_baseline.tracked_paths(work.work_dir)
         }
-        target_coma_jsons = [
-            Path(work.work_dir) / target.id / coma.coma_id / f"{coma.coma_id}.json"
+        target_coma_blends = [
+            paths.coma_blend_path(work.work_dir, target.id, coma.coma_id)
             for coma in target.comas
             if str(getattr(coma, "coma_id", "") or "")
         ]
         untracked_existing = [
-            path for path in target_coma_jsons if path.is_file() and path.resolve() not in tracked
+            path
+            for path in target_coma_blends
+            if path.is_file() and path.resolve() not in tracked
         ]
         assert not untracked_existing, (
             [coma.coma_id for coma in target.comas],
@@ -383,8 +395,7 @@ def main() -> None:
         source_page_id = str(work.pages[0].id)
         target_page_id = str(work.pages[1].id)
         broken_recovery = (
-            Path(work.work_dir)
-            / source_page_id
+            paths.page_dir(Path(work.work_dir), source_page_id)
             / "_transfer_recovery"
             / broken_stage_id
         )

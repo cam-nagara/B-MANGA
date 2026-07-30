@@ -718,14 +718,14 @@ def _make_background(context, name: str, *, kind: str, page_id: str = ""):
 
 def _force_coma_file_mode(context) -> None:
     from bmanga_dev_ui_micro.core.mode import MODE_COMA, set_mode
+    from bmanga_dev_ui_micro.utils import paths
 
     work = context.scene.bmanga_work
     page = work.pages[0]
     coma = page.comas[0]
     work_dir = Path(work.work_dir)
-    coma_dir = work_dir / page.id / coma.coma_id
-    coma_dir.mkdir(parents=True, exist_ok=True)
-    coma_path = coma_dir / f"{coma.coma_id}.blend"
+    coma_path = paths.coma_blend_path(work_dir, page.id, coma.coma_id)
+    coma_path.parent.mkdir(parents=True, exist_ok=True)
     if not bpy.data.filepath or Path(bpy.data.filepath).resolve() != coma_path.resolve():
         result = bpy.ops.wm.save_as_mainfile(filepath=str(coma_path))
         assert "FINISHED" in result, result

@@ -1,6 +1,6 @@
 """作品単位の協調排他ロック。
 
-移行処理と通常保存が同じ作品を同時に書き換えないための小さな基盤。
+Domain checkpointとNative保存が同じ作品を同時に書き換えないための基盤。
 Windows では ``msvcrt.locking``、それ以外では ``flock`` を使う。OS が
 ファイルハンドルを閉じるため、プロセスが異常終了してもロック自体は残らない。
 """
@@ -15,7 +15,7 @@ import time
 from typing import BinaryIO, Iterator
 
 
-LOCK_FILE_SUFFIX = ".detail-data-migration.lock"
+LOCK_FILE_SUFFIX = ".project-write.lock"
 
 
 class WorkLockError(RuntimeError):
@@ -180,13 +180,13 @@ def guard_path_write(path: str | os.PathLike[str]) -> Iterator[Path | None]:
         return
     with work_lock(work):
         try:
-            from .project_content_native_save_guard import (
+            from .native_save_guard import (
                 active_native_save_source,
                 find_pending_native_save_journals,
                 owns_active_native_save,
             )
         except ImportError:  # ファイル単体でロードする純Pythonテスト用
-            from project_content_native_save_guard import (  # type: ignore
+            from native_save_guard import (  # type: ignore
                 active_native_save_source,
                 find_pending_native_save_journals,
                 owns_active_native_save,
@@ -197,7 +197,7 @@ def guard_path_write(path: str | os.PathLike[str]) -> Iterator[Path | None]:
                 "前回の保存復旧が残っています。作品を開き直してから保存してください"
             )
         try:
-            from .project_content_save_baseline import (
+            from .save_baseline import (
                 SaveBaselineConflictError,
                 SaveBaselineUnavailableError,
                 assert_no_external_changes,
@@ -205,7 +205,7 @@ def guard_path_write(path: str | os.PathLike[str]) -> Iterator[Path | None]:
                 initialize_new_work_baseline,
             )
         except ImportError:  # ファイル単体でロードする純Pythonテスト用
-            from project_content_save_baseline import (  # type: ignore
+            from save_baseline import (  # type: ignore
                 SaveBaselineConflictError,
                 SaveBaselineUnavailableError,
                 assert_no_external_changes,
@@ -217,7 +217,7 @@ def guard_path_write(path: str | os.PathLike[str]) -> Iterator[Path | None]:
             if active_source is None:
                 assert_no_external_changes(work)
         except SaveBaselineUnavailableError as exc:
-            if (work / "work.json").exists():
+            if (work / "project.json").exists():
                 raise WorkLockError(
                     "作品の読込基準がありません。作品を開き直してから保存してください"
                 ) from exc

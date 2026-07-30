@@ -292,11 +292,12 @@ def _check_fill_and_gradient(context, wm) -> None:
     fill_ids = _ids(preset_op._fill_tool_preset_enum_items(None, context))
     assert fill_ids, "囲い塗りプリセットが空です"
     _assert_exact(fill_ids, "fill")
-    for name in fill_ids:
+    for index, name in enumerate(fill_ids):
         if not name or name == "NONE":
             continue
         wm.bmanga_fill_tool_preset_selector = name
         entry = scene.bmanga_fill_layers.add()
+        entry.id = f"fill_preset_{index:04d}"
         assert preset_op.apply_fill_preset_to_entry(context, entry), name
         preset = fill_presets.load_preset_by_name(name)
         assert preset is not None, name
@@ -306,11 +307,12 @@ def _check_fill_and_gradient(context, wm) -> None:
     grad_ids = _ids(preset_op._gradient_tool_preset_enum_items(None, context))
     assert grad_ids, "グラデーションプリセットが空です"
     _assert_exact(grad_ids, "gradient")
-    for name in grad_ids:
+    for index, name in enumerate(grad_ids):
         if not name or name == "NONE":
             continue
         wm.bmanga_gradient_tool_preset_selector = name
         entry = scene.bmanga_fill_layers.add()
+        entry.id = f"gradient_preset_{index:04d}"
         assert preset_op.apply_gradient_preset_to_entry(context, entry), name
         preset = gradient_presets.load_preset_by_name(name)
         assert preset is not None, name
@@ -330,9 +332,10 @@ def _check_text_presets(context, wm, page, work_dir: Path) -> None:
     names = [name for name in _ids(items) if name and name != "NONE"]
     assert names, items
     _assert_exact(names, "text")
-    for name in names:
+    for index, name in enumerate(names):
         wm.bmanga_text_tool_preset_selector = name
         entry = page.texts.add()
+        entry.id = f"text_preset_{index:04d}"
         assert preset_op.apply_text_preset_to_entry(context, entry), name
         preset = next(p for p in text_presets.list_all_presets(work_dir) if p.name == name)
         snapshot = text_presets.snapshot_from_entry(entry)
@@ -394,6 +397,7 @@ def _check_tail_presets(context, wm, page, work_dir: Path) -> None:
     balloon_tail_detail_op = _sub("operators.balloon_tail_detail_op")
     tail_presets = _sub("io.tail_presets")
     entry = page.balloons.add()
+    entry.id = "tail_preset_probe"
     tail = entry.tails.add()
     names = [name for name in _ids(balloon_tail_detail_op._tail_preset_enum_items(None, context)) if name]
     assert names, "しっぽプリセットが空です"
@@ -415,9 +419,10 @@ def _check_image_path_presets(context, wm, work_dir: Path) -> None:
     names = [name for name in _ids(preset_op._image_path_tool_preset_enum_items(None, context)) if name]
     assert names, "パターンカーブプリセットが空です"
     _assert_exact(names, "image_path")
-    for name in names:
+    for index, name in enumerate(names):
         wm.bmanga_image_path_tool_preset_selector = name
         entry = scene.bmanga_image_path_layers.add()
+        entry.id = f"image_path_preset_{index:04d}"
         assert preset_op.apply_image_path_preset_to_entry(context, entry), name
         preset = image_path_presets.load_preset_by_name(name, work_dir)
         assert preset is not None, name

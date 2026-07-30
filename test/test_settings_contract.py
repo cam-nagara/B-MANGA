@@ -48,12 +48,12 @@ def test_generated_settings_contract_matches_current_source_exactly():
     assert _json(UI_PATH) == normalized_ui
     assert MATRIX_PATH.read_text(encoding="utf-8") == render_markdown(registry)
     summary = registry["summary"]
-    assert summary["property_binding_count"] == 1644
-    assert summary["field_count"] == 1569
+    assert summary["property_binding_count"] == 1642
+    assert summary["field_count"] == 1567
     assert summary["projection_count"] == 75
     assert summary["schema_field_count"] == 840
     assert summary["preset_field_count"] == 631
-    assert summary["retired_field_count"] == 1
+    assert summary["retired_field_count"] == 3
 
 
 def test_every_property_projection_declares_all_phase2_policies():
@@ -207,8 +207,8 @@ def test_detail_ui_matrix_has_explicit_resolution_and_visibility_contracts():
 
 def test_registry_separates_schema_session_derived_and_external_fields():
     registry = load_settings_registry(REGISTRY_PATH)
-    assert len(registry.specs) == 1644
-    assert len(registry.canonical_specs) == 1569
+    assert len(registry.specs) == 1642
+    assert len(registry.canonical_specs) == 1567
     assert len(registry.schema_specs) == 840
     assert all(
         spec.category

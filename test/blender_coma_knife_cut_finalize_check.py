@@ -120,6 +120,8 @@ def _prepare_case(temp_root: Path):
     work = bpy.context.scene.bmanga_work
     work.paper.read_direction = "left"
     page = work.pages[0]
+    if not bool(page.detail_loaded):
+        page_io.load_page_json(Path(work.work_dir), page)
     while len(page.comas) > 0:
         page.comas.remove(len(page.comas) - 1)
 
@@ -156,7 +158,13 @@ def main() -> None:
         work, work_dir = _prepare_case(temp_root)
 
         from bmanga_dev_coma_knife_finalize.operators import coma_knife_cut_op
-        from bmanga_dev_coma_knife_finalize.utils import coma_plane, layer_object_sync, object_naming as on
+        from bmanga_dev_coma_knife_finalize.io import domain_runtime
+        from bmanga_dev_coma_knife_finalize.utils import (
+            coma_plane,
+            layer_object_sync,
+            object_naming as on,
+            paths,
+        )
 
         scene = bpy.context.scene
         page = work.pages[0]
@@ -221,10 +229,22 @@ def main() -> None:
         ]
         if not parent_collections or str(parent_collections[0].get(on.PROP_ID, "") or "") != f"{page.id}:c01":
             raise AssertionError("輪郭ぼかしのコマ面が新しいコマ階層へ入っていません")
-        for coma_id in ids:
-            meta_path = work_dir / page.id / coma_id / f"{coma_id}.json"
-            if not meta_path.is_file():
-                raise AssertionError(f"コマ用ファイル名が再採番に追従していません: {meta_path}")
+        page_uid = paths.resolve_page_uid(work_dir, page.id)
+        document = domain_runtime.repository_for(work_dir).load_page(page_uid)
+        stored_ids = sorted(
+            node.display_id
+            for node in document.nodes.values()
+            if node.kind == "coma"
+        )
+        if stored_ids != sorted(ids):
+            raise AssertionError(
+                f"page Domainが再採番後のコマIDと一致しません: {stored_ids}"
+            )
+        if any(
+            (work_dir / page.id / coma_id / f"{coma_id}.json").exists()
+            for coma_id in ids
+        ):
+            raise AssertionError("廃止した表示ID別コマsidecarが再生成されています")
         if any("__bmanga_coma_tmp__" in coll.name for coll in bpy.data.collections):
             raise AssertionError("再採番用の一時コマ階層が残っています")
         print("BMANGA_COMA_KNIFE_CUT_FINALIZE_OK", flush=True)

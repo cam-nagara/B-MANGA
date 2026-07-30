@@ -19,6 +19,7 @@ from . import (
     object_naming as on,
 )
 from . import page_grid
+from .asset_instantiation_transaction import atomic_asset_instantiation
 from .geom import m_to_mm, mm_to_m
 from .layer_hierarchy import coma_containing_point, coma_stack_key
 
@@ -251,6 +252,7 @@ def payload_from_collection(collection) -> dict | None:
 
 
 @observed_operation("asset.instantiate")
+@atomic_asset_instantiation
 def instantiate_payload(
     context,
     payload: dict,
@@ -340,7 +342,7 @@ def instantiate_payload(
     new_uids_by_source: dict[str, str] = {}
     made: list[object] = []
     newly_made: list[object] = []
-    newly_made_with_kind: list[tuple[str, object]] = []
+    newly_made_with_kind: list[tuple[str, str]] = []
     original_text_parents = {
         str(getattr(text, "id", "") or ""): str(
             getattr(text, "parent_balloon_id", "") or ""
@@ -374,7 +376,7 @@ def instantiate_payload(
                 entry,
                 dx,
                 dy,
-                persist_sidecars=not bool(stage_id),
+                persist_sidecars=False,
             )
             if obj is not None:
                 was_created = True
@@ -424,6 +426,8 @@ def instantiate_payload(
             )
             was_created = obj is not None
         if obj is None:
+            if kind in SUPPORTED_LAYER_KINDS:
+                raise RuntimeError(f"素材レイヤーを生成できませんでした: {kind}")
             continue
         if stage_id and was_created:
             from . import cross_page_stage
@@ -443,7 +447,18 @@ def instantiate_payload(
         made.append(obj)
         if was_created:
             newly_made.append(obj)
-            newly_made_with_kind.append((kind, obj))
+            rollback_identity = _entry_id(obj)
+            if not rollback_identity:
+                from . import cross_page_stage
+
+                cross_page_stage._remove_asset_target(  # noqa: SLF001
+                    context,
+                    page,
+                    kind,
+                    obj[0] if isinstance(obj, tuple) else obj,
+                )
+                raise RuntimeError(f"生成素材の固定IDがありません: {kind}")
+            newly_made_with_kind.append((kind, rollback_identity))
         old_id = str(entry.get("source_id", "") or "")
         new_id = _entry_id(obj)
         if old_id and new_id:
@@ -485,7 +500,7 @@ def instantiate_payload(
 def _rollback_instantiated_asset(
     context,
     page,
-    created: list[tuple[str, object]],
+    created: list[tuple[str, str]],
     original_text_parents: dict[str, str],
     original_link_json: str,
     original_active_indexes: tuple[int, int, int],
@@ -495,8 +510,16 @@ def _rollback_instantiated_asset(
     from . import cross_page_stage
 
     failures: list[str] = []
-    for kind, target in reversed(created):
-        removal_target = target[0] if isinstance(target, tuple) else target
+    for kind, identity in reversed(created):
+        removal_target = cross_page_stage.find_asset_target(
+            context,
+            page,
+            kind,
+            identity,
+        )
+        if removal_target is None:
+            # 同期処理が空の生成物を先に除去済みなら、rollback目的は達成済み。
+            continue
         try:
             removed = cross_page_stage._remove_asset_target(  # noqa: SLF001
                 context,
@@ -568,7 +591,6 @@ def process_dropped_collection_instance(context, obj) -> bool:
         bpy.data.objects.remove(obj, do_unlink=True)
         return True
     except Exception:  # noqa: BLE001
-        obj[ASSET_INSTANCE_DONE_PROP] = True
         _logger.exception("B-MANGA asset instance import failed")
         return False
 

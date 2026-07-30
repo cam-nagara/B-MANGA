@@ -164,6 +164,7 @@ def _test_page_file_basic_frame_and_merge(temp_root: Path) -> None:
     work = bpy.context.scene.bmanga_work
     page = work.pages[1]
     work_dir = Path(work.work_dir)
+    page_io.load_page_json(work_dir, page)
     page.comas.clear()
     page.coma_count = 1
     page_io.save_page_json(work_dir, page)

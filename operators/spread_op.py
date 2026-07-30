@@ -15,8 +15,20 @@ from pathlib import Path
 from bpy.props import BoolProperty, FloatProperty, IntProperty, StringProperty
 from bpy.types import Operator
 
+from ..bmanga_core.domain_ids import UIDKind, new_uid
+from ..bmanga_core.domain_store import (
+    ApplyPagePatch,
+    ApplyProjectPatch,
+    page_patch,
+    project_patch,
+)
 from ..core.work import get_work
-from ..io import schema, spread_page_content
+from ..io import (
+    domain_projection,
+    domain_runtime,
+    schema,
+    spread_page_content,
+)
 from ..utils import (
     detail_popup,
     log,
@@ -37,6 +49,45 @@ def _json_payloads(work_data: dict, pages_data: dict) -> tuple[dict, dict]:
     work_json["lastSaved"] = timestamp
     pages_json["lastModified"] = timestamp
     return work_json, pages_json
+
+
+def _page_uid_map(work) -> dict[str, str]:
+    project_uid = domain_projection.ensure_project_uid(work)
+    return {
+        str(page.id): domain_projection.ensure_page_uid(page, project_uid)
+        for page in work.pages
+    }
+
+
+def _coma_uid_map(page, page_uid: str) -> dict[str, str]:
+    return {
+        str(getattr(coma, "coma_id", "") or getattr(coma, "id", "") or ""):
+        domain_projection.ensure_coma_uid(coma, page_uid)
+        for coma in page.comas
+    }
+
+
+def _mapped_coma_uids(
+    display_map: dict[str, str],
+    source_uids: dict[str, str],
+) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for old_display_id, new_display_id in display_map.items():
+        coma_uid = source_uids.get(old_display_id)
+        if not coma_uid:
+            raise spread_page_content.SpreadContentError(
+                f"コマUIDを確認できません: {old_display_id}"
+            )
+        if new_display_id in result:
+            raise spread_page_content.SpreadContentError(
+                f"結合後のコマIDが重複しています: {new_display_id}"
+            )
+        result[new_display_id] = coma_uid
+    return result
+
+
+def _storage_identity_map(coma_uids: dict[str, str]) -> dict[str, str]:
+    return {uid: uid for uid in coma_uids.values()}
 
 
 def _merged_pages_payload(
@@ -223,8 +274,18 @@ class BMANGA_OT_pages_merge_spread(Operator):
         if self.left_index < 0:
             self.left_index = work.active_page_index
         if 0 <= self.left_index < len(work.pages) - 1:
-            page_detail.ensure_page_detail(work, work.pages[self.left_index])
-            page_detail.ensure_page_detail(work, work.pages[self.left_index + 1])
+            try:
+                page_detail.ensure_page_detail(
+                    work,
+                    work.pages[self.left_index],
+                )
+                page_detail.ensure_page_detail(
+                    work,
+                    work.pages[self.left_index + 1],
+                )
+            except page_detail.PageDetailLoadError as exc:
+                self.report({"ERROR"}, f"ページ情報を読み込めません: {exc}")
+                return {"CANCELLED"}
         return detail_popup.invoke_props_dialog(context, event, self, width=450)
 
     def draw(self, context):
@@ -271,8 +332,12 @@ class BMANGA_OT_pages_merge_spread(Operator):
         if first.spread or second.spread:
             self.report({"ERROR"}, "既に見開きのページは結合できません")
             return {"CANCELLED"}
-        page_detail.ensure_page_detail(work, first)
-        page_detail.ensure_page_detail(work, second)
+        try:
+            page_detail.ensure_page_detail(work, first)
+            page_detail.ensure_page_detail(work, second)
+        except page_detail.PageDetailLoadError as exc:
+            self.report({"ERROR"}, f"ページ情報を読み込めません: {exc}")
+            return {"CANCELLED"}
         first_id = str(first.id)
         second_id = str(second.id)
         try:
@@ -283,6 +348,15 @@ class BMANGA_OT_pages_merge_spread(Operator):
             self.report({"ERROR"}, "ページ ID が不正です")
             return {"CANCELLED"}
         work_dir = Path(work.work_dir)
+        project_uid = domain_projection.ensure_project_uid(work)
+        page_uids = _page_uid_map(work)
+        first_page_uid = page_uids[first_id]
+        second_page_uid = page_uids[second_id]
+        spread_page_uid = new_uid(UIDKind.PAGE)
+        source_coma_uids = {
+            first_id: _coma_uid_map(first, first_page_uid),
+            second_id: _coma_uid_map(second, second_page_uid),
+        }
         right_offset = page_grid.spread_right_page_offset_mm_for_values(
             float(work.paper.canvas_width_mm),
             bool(self.tombo_aligned),
@@ -307,6 +381,18 @@ class BMANGA_OT_pages_merge_spread(Operator):
                 page_id: maps["coma"]
                 for page_id, maps in id_maps.items()
             }
+            merged_coma_uids: dict[str, str] = {}
+            for page_id in (first_id, second_id):
+                merged_coma_uids.update(
+                    _mapped_coma_uids(
+                        coma_maps[page_id],
+                        source_coma_uids[page_id],
+                    )
+                )
+            coma_storage_maps = {
+                page_id: _storage_identity_map(source_coma_uids[page_id])
+                for page_id in (first_id, second_id)
+            }
             merged_work_data, global_sources = spread_metadata.merge_work_data(
                 schema.work_to_dict(work),
                 first_page_id=first_id,
@@ -325,11 +411,33 @@ class BMANGA_OT_pages_merge_spread(Operator):
                 tombo_aligned=bool(self.tombo_aligned),
                 tombo_gap_mm=float(self.tombo_gap_mm),
             )
-            work_json, pages_json = _json_payloads(merged_work_data, merged_pages_data)
+            work_payload, pages_payload = _json_payloads(
+                merged_work_data,
+                merged_pages_data,
+            )
+            next_page_uids = dict(page_uids)
+            next_page_uids[spread_id] = spread_page_uid
+            store = domain_runtime.store_for(
+                work_dir,
+                initial_project=domain_projection.project_document_from_work(work),
+            )
+            project_candidate = domain_projection.project_document_from_payload(
+                project_uid=project_uid,
+                revision=store.project.revision,
+                work_payload=work_payload,
+                pages_payload=pages_payload,
+                page_uids=next_page_uids,
+            )
             manifest = {
-                "version": 1,
+                "version": 2,
                 "spreadId": spread_id,
+                "spreadPageUid": spread_page_uid,
                 "sourcePages": [first_id, second_id],
+                "sourcePageUids": {
+                    first_id: first_page_uid,
+                    second_id: second_page_uid,
+                },
+                "sourceComaUids": source_coma_uids,
                 "rightOffsetMm": right_offset,
                 "idMaps": id_maps,
                 "globalSources": global_sources,
@@ -344,23 +452,72 @@ class BMANGA_OT_pages_merge_spread(Operator):
                 "id_maps": id_maps,
                 "entity_sources": manifest_parts["entitySources"],
                 "work_dir": str(work_dir),
-                "work_data": work_json,
-                "pages_data": pages_json,
+                "work_data": work_payload,
+                "pages_data": pages_payload,
                 "page_data": merged_data,
             }
-            outcome = spread_page_content.merge_page_content(
-                work_dir,
-                first_id,
-                second_id,
-                spread_id,
-                request=request,
-                coma_maps=coma_maps,
-                manifest=manifest,
-                work_json=work_json,
-                pages_json=pages_json,
-                page_json=merged_data,
-                fail_phase=str(self.fail_phase or ""),
-            )
+            with store.transaction():
+                store.execute(
+                    ApplyProjectPatch(
+                        project_patch(
+                            store.project,
+                            project_candidate,
+                            require_candidate_revision=False,
+                        )
+                    )
+                )
+
+                def build_domain_page(final_page_data, _manifest, worker_result):
+                    native_payloads = dict(
+                        worker_result.get("nativePayloads", {}) or {}
+                    )
+                    candidate = domain_projection.page_document_from_payload(
+                        project_uid=project_uid,
+                        page_uid=spread_page_uid,
+                        revision=0,
+                        work_payload=work_payload,
+                        page_payload=final_page_data,
+                        coma_uids=merged_coma_uids,
+                        native_payloads=tuple(native_payloads.items()),
+                    )
+                    candidate.links = (
+                        domain_projection.domain_links_from_projection_mapping(
+                            candidate,
+                            dict(worker_result.get("links", {}) or {}),
+                        )
+                    )
+                    candidate.validate()
+                    store.execute(
+                        ApplyPagePatch(
+                            page_patch(
+                                store.pages.get(candidate.page_uid),
+                                candidate,
+                                require_candidate_revision=False,
+                            )
+                        )
+                    )
+                    return store.pages[spread_page_uid]
+
+                outcome = spread_page_content.merge_page_content(
+                    work_dir,
+                    first_id,
+                    second_id,
+                    spread_id,
+                    first_page_uid=first_page_uid,
+                    second_page_uid=second_page_uid,
+                    spread_page_uid=spread_page_uid,
+                    request=request,
+                    coma_storage_maps=coma_storage_maps,
+                    manifest=manifest,
+                    page_json=merged_data,
+                    project_document=store.project,
+                    page_document_factory=build_domain_page,
+                    fail_phase=str(self.fail_phase or ""),
+                )
+                store.mark_checkpointed(
+                    project=True,
+                    page_uids=(spread_page_uid,),
+                )
         except Exception as exc:  # noqa: BLE001
             _logger.exception("pages_merge_spread failed")
             self.report({"ERROR"}, f"見開き統合失敗: {exc}")
@@ -377,6 +534,11 @@ class BMANGA_OT_pages_merge_spread(Operator):
                     second_page_id=second_id,
                     tombo_aligned=bool(self.tombo_aligned),
                     tombo_gap_mm=float(self.tombo_gap_mm),
+                )
+                domain_projection.bind_project_document(work, store.project)
+                domain_projection.bind_page_document(
+                    merged,
+                    outcome["domainPage"],
                 )
         except Exception:  # noqa: BLE001
             _logger.exception("spread: committed page metadata could not refresh in memory")
@@ -434,7 +596,11 @@ class BMANGA_OT_pages_split_spread(Operator):
         if len(spread.original_pages) < 2:
             self.report({"ERROR"}, "結合元ページ情報が失われているため解除できません")
             return {"CANCELLED"}
-        page_detail.ensure_page_detail(work, spread)
+        try:
+            page_detail.ensure_page_detail(work, spread)
+        except page_detail.PageDetailLoadError as exc:
+            self.report({"ERROR"}, f"ページ情報を読み込めません: {exc}")
+            return {"CANCELLED"}
         work_dir = Path(work.work_dir)
         spread_id = str(spread.id)
         first_id = str(spread.original_pages[0].page_id)
@@ -446,6 +612,29 @@ class BMANGA_OT_pages_split_spread(Operator):
             if list(manifest.get("sourcePages", [])) != list(page_ids):
                 raise spread_page_content.SpreadContentError(
                     "結合元ページ情報と保存済み解除情報が一致しません"
+                )
+            spread_page_uid = domain_projection.ensure_page_uid(
+                spread,
+                domain_projection.ensure_project_uid(work),
+            )
+            if manifest.get("spreadPageUid") != spread_page_uid:
+                raise spread_page_content.SpreadContentError(
+                    "見開きUIDと保存済み解除情報が一致しません"
+                )
+            source_page_uids = manifest.get("sourcePageUids")
+            source_coma_uids = manifest.get("sourceComaUids")
+            if not isinstance(source_page_uids, dict) or not isinstance(
+                source_coma_uids,
+                dict,
+            ):
+                raise spread_page_content.SpreadContentError(
+                    "見開きのDomain解除情報がありません"
+                )
+            if set(source_page_uids) != set(page_ids) or set(
+                source_coma_uids
+            ) != set(page_ids):
+                raise spread_page_content.SpreadContentError(
+                    "結合元UID情報が不完全です"
                 )
             right_offset = float(manifest.get("rightOffsetMm", 0.0) or 0.0)
             split_data = spread_metadata.split_page(
@@ -467,7 +656,10 @@ class BMANGA_OT_pages_split_spread(Operator):
             split_pages_data = _split_pages_payload(
                 pages_snapshot, index, page_ids, split_data, manifest
             )
-            work_json, pages_json = _json_payloads(split_work_data, split_pages_data)
+            work_payload, pages_payload = _json_payloads(
+                split_work_data,
+                split_pages_data,
+            )
             memberships = spread_metadata.source_memberships(manifest)
             requests = {
                 page_id: {
@@ -480,27 +672,109 @@ class BMANGA_OT_pages_split_spread(Operator):
                         spread_metadata.reverse_link_groups_for_source(manifest, page_id)
                     ),
                     "work_dir": str(work_dir),
-                    "work_data": work_json,
-                    "pages_data": pages_json,
+                    "work_data": work_payload,
+                    "pages_data": pages_payload,
                     "page_data": split_data[page_id],
                 }
                 for page_id in page_ids
             }
-            coma_maps = {
-                page_id: spread_metadata.coma_storage_map_for_source(manifest, page_id)
+            coma_storage_maps = {
+                page_id: _storage_identity_map(
+                    {
+                        str(display_id): str(uid)
+                        for display_id, uid in source_coma_uids[page_id].items()
+                    }
+                )
                 for page_id in page_ids
             }
-            spread_page_content.split_page_content(
-                work_dir,
-                spread_id,
-                page_ids,
-                requests=requests,
-                coma_maps=coma_maps,
-                work_json=work_json,
-                pages_json=pages_json,
-                page_jsons=split_data,
-                fail_phase=str(self.fail_phase or ""),
+            next_page_uids = _page_uid_map(work)
+            next_page_uids.update(
+                {
+                    page_id: str(source_page_uids[page_id])
+                    for page_id in page_ids
+                }
             )
+            project_uid = domain_projection.ensure_project_uid(work)
+            store = domain_runtime.store_for(
+                work_dir,
+                initial_project=domain_projection.project_document_from_work(work),
+            )
+            project_candidate = domain_projection.project_document_from_payload(
+                project_uid=project_uid,
+                revision=store.project.revision,
+                work_payload=work_payload,
+                pages_payload=pages_payload,
+                page_uids=next_page_uids,
+            )
+            with store.transaction():
+                store.execute(
+                    ApplyProjectPatch(
+                        project_patch(
+                            store.project,
+                            project_candidate,
+                            require_candidate_revision=False,
+                        )
+                    )
+                )
+                def build_split_domain_page(page_id, worker_result):
+                    native_payloads = dict(
+                        worker_result.get("nativePayloads", {}) or {}
+                    )
+                    candidate = domain_projection.page_document_from_payload(
+                        project_uid=project_uid,
+                        page_uid=str(source_page_uids[page_id]),
+                        revision=0,
+                        work_payload=work_payload,
+                        page_payload=split_data[page_id],
+                        coma_uids={
+                            str(display_id): str(uid)
+                            for display_id, uid in source_coma_uids[page_id].items()
+                        },
+                        native_payloads=tuple(native_payloads.items()),
+                    )
+                    candidate.links = (
+                        domain_projection.domain_links_from_projection_mapping(
+                            candidate,
+                            dict(worker_result.get("links", {}) or {}),
+                        )
+                    )
+                    candidate.validate()
+                    return candidate
+
+                page_documents = spread_page_content.split_page_content(
+                    work_dir,
+                    spread_id,
+                    page_ids,
+                    spread_page_uid=spread_page_uid,
+                    page_uids={
+                        page_id: str(source_page_uids[page_id])
+                        for page_id in page_ids
+                    },
+                    requests=requests,
+                    coma_storage_maps=coma_storage_maps,
+                    page_jsons=split_data,
+                    project_document=store.project,
+                    page_document_factory=build_split_domain_page,
+                    fail_phase=str(self.fail_phase or ""),
+                )
+                for page_id in page_ids:
+                    candidate = page_documents[page_id]
+                    store.execute(
+                        ApplyPagePatch(
+                            page_patch(
+                                store.pages.get(candidate.page_uid),
+                                candidate,
+                                require_candidate_revision=False,
+                            )
+                        )
+                    )
+                    page_documents[page_id] = store.pages[
+                        str(source_page_uids[page_id])
+                    ]
+                store.mark_checkpointed(
+                    project=True,
+                    page_uids=tuple(str(source_page_uids[value]) for value in page_ids),
+                )
         except Exception as exc:  # noqa: BLE001
             _logger.exception("pages_split_spread failed")
             self.report({"ERROR"}, f"見開き解除失敗: {exc}")
@@ -508,9 +782,15 @@ class BMANGA_OT_pages_split_spread(Operator):
         try:
             with _suspend_data_side_effects():
                 _apply_work_data(work, split_work_data)
-                _configure_split_summaries(
+                split_entries = _configure_split_summaries(
                     work, index, page_ids, split_data, manifest
                 )
+                domain_projection.bind_project_document(work, store.project)
+                for page_id, entry in split_entries.items():
+                    domain_projection.bind_page_document(
+                        entry,
+                        page_documents[page_id],
+                    )
         except Exception:  # noqa: BLE001
             _logger.exception("spread: committed split metadata could not refresh in memory")
             self.report({"WARNING"}, "見開き解除は保存済みです。作品を開き直してください")

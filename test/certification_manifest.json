@@ -117,14 +117,27 @@
       "artifacts": [],
       "blender_args": [],
       "completion_token": "BMANGA_ASSET_EXTENDED_LAYERS_OK",
-      "expected_tracebacks": [],
-      "mode": "blender_headless",
+      "expected_tracebacks": [
+        {
+          "count": 2,
+          "pattern": "^RuntimeError: 素材レイヤーを生成できませんでした: raster$"
+        },
+        {
+          "count": 1,
+          "pattern": "^OSError: simulated write failure$"
+        },
+        {
+          "count": 1,
+          "pattern": "^RuntimeError: ラスター素材を生成できませんでした$"
+        }
+      ],
+      "mode": "blender_wrapper",
       "phase0_category": "baseline_pass",
-      "reason": "",
+      "reason": "破損ラスター素材と書込失敗を意図的に注入し、素材一式・PNG・JSONを全件rollbackして再試行可能な状態を維持する負系テスト",
       "required": true,
-      "review": "",
+      "review": "phase3-asset-atomicity-audit-2026-07-30",
       "source": "test/blender_asset_extended_layers_check.py",
-      "source_sha256": "1bcc06c1905943b97197b5dafe92d5f96e5a899ba1365ac52aef7a101dbfba31",
+      "source_sha256": "11db6bb041125e8284d3f6c237ae1074289d085e3883ba7a8a7418079d3bd81c",
       "test_id": "test:test.blender.asset.extended.layers.check",
       "timeout_seconds": 180
     },
@@ -1372,7 +1385,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_b_manga_render_bmanga_alignment_check.py",
-      "source_sha256": "26cfd3eca24f7f4632dd9b28ae5e85c935898d8bf51aed34d7d3859260f98866",
+      "source_sha256": "1e0b99b73679d71be6ff4b25c4b6361a8982e0594cf93854e55061737af696d4",
       "test_id": "test:test.blender.b.manga.render.bmanga.alignment.check",
       "timeout_seconds": 180
     },
@@ -1768,13 +1781,13 @@
       "expected_tracebacks": [],
       "mode": "blender_headless",
       "phase0_category": "missing_sentinel",
-      "reason": "",
+      "reason": "フキダシ全形状・全線種と効果線5種の高解像度一覧を複数回レンダリングする必須視覚監査で、Blender 5.2実測が180秒を超えるため専用上限を与える",
       "required": true,
-      "review": "",
+      "review": "phase3-timeout-audit-2026-07-30",
       "source": "test/blender_balloon_effect_pattern_visual_audit.py",
       "source_sha256": "6644839b8d8b5d69349ee160725d967d347620785969888f2904e67effe6d502",
       "test_id": "test:test.blender.balloon.effect.pattern.visual.audit",
-      "timeout_seconds": 180
+      "timeout_seconds": 600
     },
     {
       "args": [],
@@ -2348,7 +2361,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_balloon_uni_flash_check.py",
-      "source_sha256": "b0bd760bc70b95e783f001b8347c30aa1c6f6e3a4bb18ec73dccc0559a4159ec",
+      "source_sha256": "1556485a35b4c21c5eaed61bf657bd3c278a23bc554bc58da91e4d5542d6666f",
       "test_id": "test:test.blender.balloon.uni.flash.check",
       "timeout_seconds": 180
     },
@@ -2732,7 +2745,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_border_preset_file_roundtrip_visual_check.py",
-      "source_sha256": "a952dc12104a7daf91c6e37f75e214d29ae6d10ba19b5be2553432d3140c072c",
+      "source_sha256": "4288b6022dfa9e1726b9705c40eaf3268e319dea80ade5a7070b01c814d40897",
       "test_id": "test:test.blender.border.preset.file.roundtrip.visual.check",
       "timeout_seconds": 180
     },
@@ -2748,7 +2761,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_border_preset_management_check.py",
-      "source_sha256": "a3de96cae19cd1257b76160498252f348cc932b4c66a060a70ca4bc280b5fbaa",
+      "source_sha256": "b554bf41d4daa2bdd03aaa9b3b1e25314f10d4806504969ac0a60bed2a5cc1f9",
       "test_id": "test:test.blender.border.preset.management.check",
       "timeout_seconds": 180
     },
@@ -2796,7 +2809,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_coma_basic_frame_merge_check.py",
-      "source_sha256": "352f5918c5a2c3e2405f8cb74b32aff128f655c9ad3424b7b39c1cdcd7219a83",
+      "source_sha256": "2c3629d174f3b98ba946f6dfd5fcfdcafd0217d8bdbbcab5ae872f71c9790e2b",
       "test_id": "test:test.blender.coma.basic.frame.merge.check",
       "timeout_seconds": 180
     },
@@ -2812,7 +2825,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_coma_blur_curve_ui_check.py",
-      "source_sha256": "28116c7cdf848f3dfcfb819ddf4887a93f2a1ad64b26daad10689fd2ffafe7e0",
+      "source_sha256": "25c022c38b8da97cad643c066646a3d780bec6545d695b781fbba728b5ef3863",
       "test_id": "test:test.blender.coma.blur.curve.ui.check",
       "timeout_seconds": 180
     },
@@ -2844,7 +2857,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_coma_border_texture_visual_check.py",
-      "source_sha256": "f8faa04f64a01b6f4676f10dde5950f9b9bd89576fc52294c2d0086beff87719",
+      "source_sha256": "8ca3c526bbcb1de0ec8b9a4bcce9ef12bb8ef6f344acaa36343a21de9244abda",
       "test_id": "test:test.blender.coma.border.texture.visual.check",
       "timeout_seconds": 180
     },
@@ -2892,7 +2905,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_coma_camera_roundtrip_check.py",
-      "source_sha256": "3e138f494731d521f8ed71b21766fd077712e987cc15a3cc5e7ebeb11898b140",
+      "source_sha256": "75ce2899fb3af50765b3d91e11c06adc4773136e72ca7fd7262e6675f54a733d",
       "test_id": "test:test.blender.coma.camera.roundtrip.check",
       "timeout_seconds": 180
     },
@@ -3036,7 +3049,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_coma_id_duplicate_check.py",
-      "source_sha256": "deb5a842f14404ee92db4a2831616463797a754b01c63ff8791b5a7cd7146273",
+      "source_sha256": "7ce57c9bac0d308dcd80424b111c4355dfdd13dae7d9130b2dfa5be8f71c505c",
       "test_id": "test:test.blender.coma.id.duplicate.check",
       "timeout_seconds": 180
     },
@@ -3052,7 +3065,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_coma_knife_cut_finalize_check.py",
-      "source_sha256": "14b9f6fad1a73d860a9d2dc2d3b0f44026f7bd83b12ff99e2586111f42072ca1",
+      "source_sha256": "ef6e117513235e7905455b0e2def2fe6f03b01fd1db50aa4b8f27c6a6dccd177",
       "test_id": "test:test.blender.coma.knife.cut.finalize.check",
       "timeout_seconds": 180
     },
@@ -3140,6 +3153,38 @@
       "args": [],
       "artifacts": [],
       "blender_args": [],
+      "completion_token": "BMANGA_COMA_MOVE_TRANSACTION_OK",
+      "expected_tracebacks": [],
+      "mode": "blender_headless",
+      "phase0_category": "new",
+      "reason": "",
+      "required": true,
+      "review": "",
+      "source": "test/blender_coma_move_transaction_check.py",
+      "source_sha256": "87803f27dbfbc2d4c8bcccfbc956100b845b4ae4c4533ac5fa5652571ef6ef3f",
+      "test_id": "test:test.blender.coma.move.transaction.check",
+      "timeout_seconds": 180
+    },
+    {
+      "args": [],
+      "artifacts": [],
+      "blender_args": [],
+      "completion_token": "BMANGA_COMA_NATIVE_TRANSACTION_CRASH_OK",
+      "expected_tracebacks": [],
+      "mode": "blender_headless",
+      "phase0_category": "new",
+      "reason": "",
+      "required": true,
+      "review": "",
+      "source": "test/blender_coma_native_transaction_crash_check.py",
+      "source_sha256": "5a14b638c2eea0da9aca499786ca007f813f296efd796b4ce6c702bba39c542f",
+      "test_id": "test:test.blender.coma.native.transaction.crash.check",
+      "timeout_seconds": 180
+    },
+    {
+      "args": [],
+      "artifacts": [],
+      "blender_args": [],
       "completion_token": "BMANGA_COMA_NUMBER_AND_SELECTION_OK",
       "expected_tracebacks": [],
       "mode": "blender_headless",
@@ -3150,6 +3195,22 @@
       "source": "test/blender_coma_number_and_selection_check.py",
       "source_sha256": "51684edeefc02579bac47d82a310e274a4a15abd797c0a9ba5422a62717418e7",
       "test_id": "test:test.blender.coma.number.and.selection.check",
+      "timeout_seconds": 180
+    },
+    {
+      "args": [],
+      "artifacts": [],
+      "blender_args": [],
+      "completion_token": "BMANGA_COMA_OPERATION_ROLLBACK_OK",
+      "expected_tracebacks": [],
+      "mode": "blender_headless",
+      "phase0_category": "new",
+      "reason": "",
+      "required": true,
+      "review": "",
+      "source": "test/blender_coma_operation_rollback_check.py",
+      "source_sha256": "3ede09b9c9e536578b68964f7238b1f280bf9a97830c88f859a2dd25ae250d17",
+      "test_id": "test:test.blender.coma.operation.rollback.check",
       "timeout_seconds": 180
     },
     {
@@ -3244,7 +3305,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_coma_preview_scale_check.py",
-      "source_sha256": "92840ddba49fead903aa5ae17b57a7b5f1a5c5c997b6a5cc36f491196ae81904",
+      "source_sha256": "4e80da4fbd55f3f5acbdf65994e6fa2ff1df74d736dedf3f739a8279ae75c43e",
       "test_id": "test:test.blender.coma.preview.scale.check",
       "timeout_seconds": 180
     },
@@ -3292,7 +3353,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_coma_template_check.py",
-      "source_sha256": "a0f78e14e8342e2629de7a9320930d426283ceadc1ef35e31e0a4c6ad2b304cc",
+      "source_sha256": "7894812d94c4b606e8297b20fd97bc920b999d8774ea5ad8866c4a9a36fb1581",
       "test_id": "test:test.blender.coma.template.check",
       "timeout_seconds": 180
     },
@@ -3468,40 +3529,8 @@
       "required": false,
       "review": "phase1-stable-uid-audit-2026-07-29",
       "source": "test/blender_data_name_organizer_check.py",
-      "source_sha256": "169734da2de6dae4dda1475706ef0c94d9196418a461b426fc412b961114bdb7",
+      "source_sha256": "65554c206f92c57129e13e55eebb44838eb9996a8c4fddf28ac9fb7cb63d3d81",
       "test_id": "test:test.blender.data.name.organizer.check",
-      "timeout_seconds": 180
-    },
-    {
-      "args": [],
-      "artifacts": [],
-      "blender_args": [],
-      "completion_token": "DETAIL_DIALOG_CONTENT_CONVERSION_CHECK_OK",
-      "expected_tracebacks": [],
-      "mode": "blender_headless",
-      "phase0_category": "missing_sentinel",
-      "reason": "",
-      "required": true,
-      "review": "",
-      "source": "test/blender_detail_dialog_content_conversion_check.py",
-      "source_sha256": "bebe0b6d98b4d056be9b52db6f5f6eabd2b02dc3cc5c28b5f812bdcbfcee71c8",
-      "test_id": "test:test.blender.detail.dialog.content.conversion.check",
-      "timeout_seconds": 180
-    },
-    {
-      "args": [],
-      "artifacts": [],
-      "blender_args": [],
-      "completion_token": "DETAIL_DIALOG_DATA_MIGRATION_CHECK_OK",
-      "expected_tracebacks": [],
-      "mode": "blender_headless",
-      "phase0_category": "missing_sentinel",
-      "reason": "既定controller経路の完了トークンを指定する。RESTART_VERIFYはcontrollerが起動する子プロセス専用で、単独manifest caseの完了条件ではない",
-      "required": true,
-      "review": "phase1-sentinel-audit-2026-07-29",
-      "source": "test/blender_detail_dialog_data_migration_check.py",
-      "source_sha256": "ce97efc4ad1c9ce76b7f92b72dca856749330fb97487cab3035bf04abd46bf63",
-      "test_id": "test:test.blender.detail.dialog.data.migration.check",
       "timeout_seconds": 180
     },
     {
@@ -3574,63 +3603,6 @@
       "args": [],
       "artifacts": [],
       "blender_args": [],
-      "completion_token": "DETAIL_MIGRATION_OPEN_FILE_RELOAD_CHECK_OK",
-      "expected_tracebacks": [
-        {
-          "count": 2,
-          "pattern": "^(?:[\\w.]+\\.)?SaveBaselineUnavailableError: 作品の読込基準がありません。作品を開き直してください$"
-        },
-        {
-          "count": 2,
-          "pattern": "^(?:[\\w.]+\\.)?WorkLockError: 作品の読込基準がありません。作品を開き直してから保存してください$"
-        },
-        {
-          "count": 1,
-          "pattern": "^(?:[\\w.]+\\.)?MigrationError: 変換後検証が不合格でした: p0001$"
-        },
-        {
-          "count": 1,
-          "pattern": "^(?:[\\w.]+\\.)?MigrationExecutionError: 変換後検証が不合格でした: p0001$"
-        },
-        {
-          "count": 1,
-          "pattern": "^(?:[\\w.]+\\.)?SaveBaselineConflictError: 別のBlender画面で作品データが更新されています: work\\.json$"
-        },
-        {
-          "count": 1,
-          "pattern": "^(?:[\\w.]+\\.)?WorkLockError: 別のBlender画面で作品データが更新されています: work\\.json$"
-        }
-      ],
-      "mode": "blender_wrapper",
-      "phase0_category": "silent_failure",
-      "reason": "移行中断・外部更新競合を意図的に注入し、WorkLockErrorのtracebackをログへ残した上でrollback・再読込と最終sentinelを検証する負系テスト",
-      "required": true,
-      "review": "phase1-expected-failure-audit-2026-07-29",
-      "source": "test/blender_detail_migration_open_file_reload_check.py",
-      "source_sha256": "6225f77dce251c7503998c922707db9201a7fae0fa22d3eb382ff4477661e476",
-      "test_id": "test:test.blender.detail.migration.open.file.reload.check",
-      "timeout_seconds": 180
-    },
-    {
-      "args": [],
-      "artifacts": [],
-      "blender_args": [],
-      "completion_token": "DETAIL_MIGRATION_WORKER_OWNERSHIP_CHECK_OK",
-      "expected_tracebacks": [],
-      "mode": "blender_headless",
-      "phase0_category": "missing_sentinel",
-      "reason": "",
-      "required": true,
-      "review": "",
-      "source": "test/blender_detail_migration_worker_ownership_check.py",
-      "source_sha256": "0f9bfc4a9f8f76265c0e64b0ac65bf38019511356e7c4292fcbcde2d3f0a9d73",
-      "test_id": "test:test.blender.detail.migration.worker.ownership.check",
-      "timeout_seconds": 180
-    },
-    {
-      "args": [],
-      "artifacts": [],
-      "blender_args": [],
       "completion_token": "BMANGA_DETAIL_PRESET_FIXED_TARGET_OK",
       "expected_tracebacks": [],
       "mode": "blender_headless",
@@ -3639,7 +3611,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_detail_preset_apply_check.py",
-      "source_sha256": "384a9c32e86ee8afefb8391f25763e52d212b4f8994b66e1e43bb2c5121579e3",
+      "source_sha256": "9403b67e81db1722ff2edfad6aabee8fc12970bfbabc3ed3166ab19e4f64af8f",
       "test_id": "test:test.blender.detail.preset.apply.check",
       "timeout_seconds": 180
     },
@@ -3721,6 +3693,22 @@
       "source": "test/blender_detail_transaction_action_check.py",
       "source_sha256": "6fcf9c88d4b99f139acfc1a55036faf66e271a83623a8791b52215ad01f36972",
       "test_id": "test:test.blender.detail.transaction.action.check",
+      "timeout_seconds": 180
+    },
+    {
+      "args": [],
+      "artifacts": [],
+      "blender_args": [],
+      "completion_token": "BMANGA_DOMAIN_RESTART_ROUNDTRIP_OK",
+      "expected_tracebacks": [],
+      "mode": "blender_headless",
+      "phase0_category": "new",
+      "reason": "",
+      "required": true,
+      "review": "",
+      "source": "test/blender_domain_restart_roundtrip_check.py",
+      "source_sha256": "6b2cf97fc26e964d75c3f24303d8567e3bb986882fbb0b102c69a265fb9fb8a3",
+      "test_id": "test:test.blender.domain.restart.roundtrip.check",
       "timeout_seconds": 180
     },
     {
@@ -4023,7 +4011,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_file_transition_cache_check.py",
-      "source_sha256": "03915c769b01d1e5de99ff9b962615e7f1a47b44783960a43c6236515dc6385b",
+      "source_sha256": "342b15a2580ab23dec21fd5272c42b74491609a2d057e65beb8fa5ddeba4c464",
       "test_id": "test:test.blender.file.transition.cache.check",
       "timeout_seconds": 180
     },
@@ -4423,7 +4411,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_layer_stack_cross_kind_move_check.py",
-      "source_sha256": "4bd2192f47761d55a88b87a37f8b150e00727781e441eb829dbc86d230a76fdd",
+      "source_sha256": "2f46dcd0ceb5691b1621dbac33651a5c1ba38311235ea0d6884da14c461db284",
       "test_id": "test:test.blender.layer.stack.cross.kind.move.check",
       "timeout_seconds": 180
     },
@@ -4460,7 +4448,7 @@
       "required": true,
       "review": "phase1-expected-failure-audit-2026-07-29",
       "source": "test/blender_layer_stack_dnd_reparent_check.py",
-      "source_sha256": "06dcfad67ae1a8bbbe68fee2a3aab2bb53f5d5d728a7a3f2c4cb1f61769de696",
+      "source_sha256": "85b7e154a49ecf6f774bb013c3802cef08cdd35454ff8efa6f7365163ac63cd8",
       "test_id": "test:test.blender.layer.stack.dnd.reparent.check",
       "timeout_seconds": 180
     },
@@ -4476,7 +4464,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_layer_stack_flat_move_into_coma_check.py",
-      "source_sha256": "8e44cf979cbb1ef8d5f5ab36c8863d873df19cd58a3cd91d44737c5e9a826de8",
+      "source_sha256": "375849cbbe17d7f67ef515b66184741d491c05ab9df28a313b6942ca8a341f08",
       "test_id": "test:test.blender.layer.stack.flat.move.into.coma.check",
       "timeout_seconds": 180
     },
@@ -4524,7 +4512,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_layer_stack_select_no_reparent_check.py",
-      "source_sha256": "e73587978c7d03f0fe615a1d838cd7c29b5597a830ae96ffa140f5f2b9839e36",
+      "source_sha256": "8805095f96b4dde41943be9a421d9cc2eb86995094ae18b5f9b8c81ed59c99b8",
       "test_id": "test:test.blender.layer.stack.select.no.reparent.check",
       "timeout_seconds": 180
     },
@@ -4572,7 +4560,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_layer_stack_z_order_refresh_check.py",
-      "source_sha256": "812c335b13b4df0ba48f039593fb2d51b181126c543209f49a6e716e6e44d41a",
+      "source_sha256": "d6e06d971ce42c227116da66de1b29b23cab7c4f5cfc3ca498b3fa9e15785b44",
       "test_id": "test:test.blender.layer.stack.z.order.refresh.check",
       "timeout_seconds": 180
     },
@@ -4684,7 +4672,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_meldex_presentation_v2_check.py",
-      "source_sha256": "a44b5d333ac3e50c52baa3a362bf13b62c14630da60eded1fbd7312261c3b665",
+      "source_sha256": "e293479f5e6716fd15e21fe37c17b7caaa6db8ae83a57e0bd8750853940a164c",
       "test_id": "test:test.blender.meldex.presentation.v2.check",
       "timeout_seconds": 180
     },
@@ -4732,7 +4720,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_meldex_scenario_import_check.py",
-      "source_sha256": "763096774e9c9587f5b4c61b1dd56ada351fe166129749a47af80e0027395f9b",
+      "source_sha256": "a3232dcb5e1659763068d1a380186a8584301cf2eee4f89e3d884c4a327e4c6e",
       "test_id": "test:test.blender.meldex.scenario.import.check",
       "timeout_seconds": 180
     },
@@ -4745,6 +4733,10 @@
         {
           "count": 1,
           "pattern": "^(?:[\\w.]+\\.)?JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 \\(char 1\\)$"
+        },
+        {
+          "count": 1,
+          "pattern": "^(?:[\\w.]+\\.)?RepositoryError: invalid JSON: .+[\\\\/]page\\.json$"
         }
       ],
       "mode": "blender_wrapper",
@@ -4753,7 +4745,7 @@
       "required": true,
       "review": "phase1-expected-failure-audit-2026-07-29",
       "source": "test/blender_meldex_scenario_import_transaction_check.py",
-      "source_sha256": "4b3bf31565db0fa2409a1f231defefd9cdbc0e58b563ff9ac32a20c8809fe284",
+      "source_sha256": "8d842d352ec7cc6f093388ec881547639b0f23b7b755e1ef7c938e71c909a887",
       "test_id": "test:test.blender.meldex.scenario.import.transaction.check",
       "timeout_seconds": 180
     },
@@ -4797,24 +4789,20 @@
       "expected_tracebacks": [
         {
           "count": 1,
-          "pattern": "^(?:[\\w.]+\\.)?SaveBaselineUnavailableError: 作品の読込基準がありません。作品を開き直してください$"
-        },
-        {
-          "count": 1,
-          "pattern": "^(?:[\\w.]+\\.)?WorkLockError: 作品の読込基準がありません。作品を開き直してから保存してください$"
-        },
-        {
-          "count": 1,
           "pattern": "^OSError: temporary sharing violation$"
+        },
+        {
+          "count": 1,
+          "pattern": "^RuntimeError: 作品情報とBlenderファイルを保存できませんでした$"
         }
       ],
       "mode": "blender_wrapper",
       "phase0_category": "expected_traceback_marker",
-      "reason": "native保存後の再読込失敗と一時共有違反を意図的に注入し、復旧経路を検証する負系テスト",
+      "reason": "native保存後の再読込失敗・一時共有違反・作品切替前の保存失敗を意図的に注入し、復旧と切替中止を検証する負系テスト",
       "required": true,
-      "review": "phase1-expected-failure-audit-2026-07-29",
+      "review": "phase3-native-save-atomicity-audit-2026-07-30",
       "source": "test/blender_native_save_reload_fallback_check.py",
-      "source_sha256": "69a5bf923210dcd4792212234d7d2e024f44abeb73668501bd34677c0f5dcc91",
+      "source_sha256": "d46cacbe26cae8bea51ca1262e5ce98eeda38265f1ea98ad043cc1d79960a072",
       "test_id": "test:test.blender.native.save.reload.fallback.check",
       "timeout_seconds": 180
     },
@@ -4830,7 +4818,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_native_stale_save_guard_check.py",
-      "source_sha256": "62b083947b42ff8926ebe2f57680de4d25fda8c74c60df9f5379bf3d9269a84a",
+      "source_sha256": "79ca0465aac4001ba88a2b44dac9c382e86e809f34b30a1e33b6baee3872b5e9",
       "test_id": "test:test.blender.native.stale.save.guard.check",
       "timeout_seconds": 180
     },
@@ -4928,7 +4916,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_object_tool_coma_open_deferred_ui_check.py",
-      "source_sha256": "78b58c181b054925afd8fdb1f1f6070e5182875a1520d7b6d8181ee4b24e0f2e",
+      "source_sha256": "56aaff28b7d430927258b2d3a84b103212fd426de0d15847cf54a8c3db2c73ef",
       "test_id": "test:test.blender.object.tool.coma.open.deferred.ui.check",
       "timeout_seconds": 180
     },
@@ -5090,7 +5078,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_page_coma_preview_restore_check.py",
-      "source_sha256": "ecdbef9e2a9cb07d590e93f17893cc2586144fb361b3d367ffd5c8b4080ba798",
+      "source_sha256": "c4274e69434f41c39edf94cb1a3163439595a1496e58def4f1744cc226c14b3b",
       "test_id": "test:test.blender.page.coma.preview.restore.check",
       "timeout_seconds": 180
     },
@@ -5127,7 +5115,7 @@
       "required": true,
       "review": "phase1-expected-failure-audit-2026-07-29",
       "source": "test/blender_page_duplicate_delete_transaction_check.py",
-      "source_sha256": "f14c3d598523fb59808ce95fc46a703a136a0e5727fee72429d1ac9c58111ec4",
+      "source_sha256": "a55551bcf51c4bbde8073b56e50cff209791b9eaee1e7095df8a6190afe6f453",
       "test_id": "test:test.blender.page.duplicate.delete.transaction.check",
       "timeout_seconds": 180
     },
@@ -5143,7 +5131,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_page_export_range_scale_check.py",
-      "source_sha256": "ff0b0c6361139bd89010a3fcc68bcc20a095ed763b11f31355c0570893779591",
+      "source_sha256": "6d76d999ae9cbfd27b7bb81996a4b92bddcd7d4bade2abe73647044c2641fd8f",
       "test_id": "test:test.blender.page.export.range.scale.check",
       "timeout_seconds": 180
     },
@@ -5223,7 +5211,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_page_file_stage_check.py",
-      "source_sha256": "e0ebcc23b8cd5c765dbba2fda31ffdffb7172a49a517d1f7ff477124c959b3a1",
+      "source_sha256": "b388489cff18b6299b58c2901d7153255dcf98b2d2dd197d2214239c3d101cb8",
       "test_id": "test:test.blender.page.file.stage.check",
       "timeout_seconds": 180
     },
@@ -5303,7 +5291,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_page_overlay_fill_psd_layers_check.py",
-      "source_sha256": "d6ca5565295abe17e4ea658338c75ec87cf6c7d153565a540b930899a910b237",
+      "source_sha256": "88a54aba089b4427711f85e3f11b9cb67a97ffb2b7b6691c419d7c7a466c22cf",
       "test_id": "test:test.blender.page.overlay.fill.psd.layers.check",
       "timeout_seconds": 180
     },
@@ -5319,7 +5307,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_page_overview_open_page_deferred_ui_check.py",
-      "source_sha256": "8edf05d5663f94d116cf8f1f0f81155418b27fc8a2a8cbb807a7dfce333ae228",
+      "source_sha256": "3fd076f4f00f445a7b22c7f3618ad509d1e6c46bc0fd9feecbb50b57998f1594",
       "test_id": "test:test.blender.page.overview.open.page.deferred.ui.check",
       "timeout_seconds": 180
     },
@@ -5591,7 +5579,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_phase0_open_performance_check.py",
-      "source_sha256": "b6f3dd39fcb4b67d5dd3cb1fe11cf075060b33ad96222af0e3590e525f959e65",
+      "source_sha256": "5ec54b82c056b03e8c73bea41fe2abfd0992e9602874fec0380ccc6069bfca7b",
       "test_id": "test:test.blender.phase0.open.performance.check",
       "timeout_seconds": 900
     },
@@ -5616,14 +5604,19 @@
       "artifacts": [],
       "blender_args": [],
       "completion_token": "BMANGA_PHASE1_FAULT_INJECTION_CHECK_OK",
-      "expected_tracebacks": [],
-      "mode": "blender_headless",
+      "expected_tracebacks": [
+        {
+          "count": 1,
+          "pattern": "^RuntimeError: 素材レイヤーを生成できませんでした: raster$"
+        }
+      ],
+      "mode": "blender_wrapper",
       "phase0_category": "new",
-      "reason": "",
+      "reason": "複数素材の途中生成失敗と保存失敗を意図的に注入し、Blender実体・画像・JSON・再試行フラグを全件rollbackする負系テスト",
       "required": true,
-      "review": "",
+      "review": "phase3-asset-atomicity-audit-2026-07-30",
       "source": "test/blender_phase1_fault_injection_check.py",
-      "source_sha256": "ba9246cc0804ac216ee272876e1b0aa91eda5787075519af5193d41d13f05545",
+      "source_sha256": "9f0f11b542c8719bf9d8d4a33b253809d8cebb1e43e24b239617692c2a94ed6d",
       "test_id": "test:test.blender.phase1.fault.injection.check",
       "timeout_seconds": 180
     },
@@ -5641,6 +5634,43 @@
       "source": "test/blender_phase1_operator_signature_check.py",
       "source_sha256": "4560b8a82f89abd5811cdcb8297aaa8792e920ff6260b144445232c2a811f616",
       "test_id": "test:test.blender.phase1.operator.signature.check",
+      "timeout_seconds": 180
+    },
+    {
+      "args": [],
+      "artifacts": [],
+      "blender_args": [],
+      "completion_token": "BMANGA_PHASE3_PROJECTION_FAILURE_CHECK_OK",
+      "expected_tracebacks": [
+        {
+          "count": 1,
+          "pattern": "^RuntimeError: Blender本体の保存が完了しませんでした$"
+        }
+      ],
+      "mode": "blender_wrapper",
+      "phase0_category": "new",
+      "reason": "native blend保存中のDomain投影失敗を意図的に注入し、blendとJSONの不一致世代を公開しないことを検証する負系テスト",
+      "required": true,
+      "review": "phase3-native-save-atomicity-audit-2026-07-30",
+      "source": "test/blender_phase3_projection_failure_check.py",
+      "source_sha256": "cd53fe23e5fbffa91e65952a6943f841370848b4a81befc23dc65a45f6a75fe3",
+      "test_id": "test:test.blender.phase3.projection.failure.check",
+      "timeout_seconds": 180
+    },
+    {
+      "args": [],
+      "artifacts": [],
+      "blender_args": [],
+      "completion_token": "BMANGA_PHASE3_STRICT_DOMAIN_LOAD_OK",
+      "expected_tracebacks": [],
+      "mode": "blender_headless",
+      "phase0_category": "new",
+      "reason": "",
+      "required": true,
+      "review": "",
+      "source": "test/blender_phase3_strict_domain_load_check.py",
+      "source_sha256": "61c4c6daebb15b13a204fa0d427699b2dcf187de0cd08770f35c2cedc783f10d",
+      "test_id": "test:test.blender.phase3.strict.domain.load.check",
       "timeout_seconds": 180
     },
     {
@@ -5756,7 +5786,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_preview_propagation_visual_audit.py",
-      "source_sha256": "58a2c723aa3bede52b4afdceb79884001ba7ccdad4c5bad083c5b4af54f283e9",
+      "source_sha256": "482c164023ff805500050dec1ef0a9ab0e483582239c6680b0fee7cc301ebb75",
       "test_id": "test:test.blender.preview.propagation.visual.audit",
       "timeout_seconds": 180
     },
@@ -5820,7 +5850,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_real_object_safety_check.py",
-      "source_sha256": "f3e9c70c7982020c050df4ef1d2f7e7296e812a2d2bd6fa51d857e1f884e280a",
+      "source_sha256": "951307173ef3e323c2e7adf529e8d392ff0bf83364ba710b1e1f99647d88f8b1",
       "test_id": "test:test.blender.real.object.safety.check",
       "timeout_seconds": 180
     },
@@ -5852,7 +5882,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_recent_fixes_visual_audit.py",
-      "source_sha256": "4f287192dbf99ee05df7a831e2a3431f3253066a2ef041369803eccd158b3be6",
+      "source_sha256": "b7cc097c6b8b33a05310c8b374a1d0a68d9729a272b758e2bd3305d0bb2a860c",
       "test_id": "test:test.blender.recent.fixes.visual.audit",
       "timeout_seconds": 180
     },
@@ -6193,7 +6223,7 @@
       "required": true,
       "review": "phase1-expected-failure-audit-2026-07-29",
       "source": "test/blender_spread_content_roundtrip_check.py",
-      "source_sha256": "0ae56f80085d4487541f0c7433fd9fc80dfe14f917cbd0473bdf2f3c5cf25b80",
+      "source_sha256": "ad4c5376031c0e08a7abffe9b1d3a86cfa770af55311fcb27c7b63053d346188",
       "test_id": "test:test.blender.spread.content.roundtrip.check",
       "timeout_seconds": 180
     },
@@ -6614,7 +6644,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_tool_preset_switching_check.py",
-      "source_sha256": "ae15faa461814f541cbbaf4aeb4186f50f2fab73a24d47a3fa992bbc237eb802",
+      "source_sha256": "badd9f62528fe24f13c852dd258890a1343d8f750b49c77d253d13c548388dd3",
       "test_id": "test:test.blender.tool.preset.switching.check",
       "timeout_seconds": 180
     },
@@ -6639,7 +6669,7 @@
       "required": true,
       "review": "phase1-expected-failure-audit-2026-07-29",
       "source": "test/blender_transfer_group_alt_dnd_check.py",
-      "source_sha256": "1ed9595262682e8b9cd887bf4bdc23599670765992ba0c3a94c172734a98d727",
+      "source_sha256": "947883e4b87495098f6a66ee52d204e900773c601a217ae686188b3f17a5e96b",
       "test_id": "test:test.blender.transfer.group.alt.dnd.check",
       "timeout_seconds": 180
     },
@@ -6655,7 +6685,7 @@
       "required": true,
       "review": "phase1-timeout-audit-2026-07-29",
       "source": "test/blender_ui_micro_behavior_matrix_check.py",
-      "source_sha256": "dfe717c2780fb9ecb827d25bd0331d230f0a1d2eb5e51219073550a906967d17",
+      "source_sha256": "70621e100c9e02692b2b4c71f4dc101735224c1fa2e520e606f6469aef1d153d",
       "test_id": "test:test.blender.ui.micro.behavior.matrix.check",
       "timeout_seconds": 900
     },
@@ -6767,7 +6797,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_white_outline_spacing_graph_check.py",
-      "source_sha256": "2c4ec7718092c0c35e2fd1a502b450c712eeedf9dda12cbe6c517ed48f26416d",
+      "source_sha256": "c2bcc83e201114a32b13a9a1eb19b2ad8ddaa9ec7d6dfd67eb9be84f96be90e3",
       "test_id": "test:test.blender.white.outline.spacing.graph.check",
       "timeout_seconds": 180
     },
@@ -6783,7 +6813,7 @@
       "required": true,
       "review": "",
       "source": "test/blender_work_file_slim_check.py",
-      "source_sha256": "ee3dafd5f4c592eb44e98009b66a5aec6f581711cffb105923fd0e4a5d87299f",
+      "source_sha256": "209547bed0eb1edf296b159e3e84aa74702c292aecfc1dde0bb8675348c6ffbb",
       "test_id": "test:test.blender.work.file.slim.check",
       "timeout_seconds": 180
     },
@@ -6847,7 +6877,7 @@
       "required": false,
       "review": "phase1-manifest-audit-2026-07-29",
       "source": "test/bmanga_ai_audit_runner.py",
-      "source_sha256": "fe3abaabc1d16e038646127324e3d184a746c9e9215814dde6bb3aa52ca9e562",
+      "source_sha256": "db170322c423da6bcf65da1cbf22f73c47ea514ace612c2e96981232c23773a7",
       "test_id": "test:test.bmanga.ai.audit.runner",
       "timeout_seconds": 180
     },
@@ -7006,9 +7036,9 @@
       "reason": "",
       "required": true,
       "review": "",
-      "source": "test/test_detail_migration_manifest.py",
-      "source_sha256": "c8bb81066de652596a6ddde75c5f4ee2b30aecc5afdb9cee7e3750c1aee34389",
-      "test_id": "test:test.test.detail.migration.manifest",
+      "source": "test/test_detail_target_state_bridge.py",
+      "source_sha256": "52e9ec6307699644639ac341836bb7cf9bffc0bb0307884f8785313a6aa4910c",
+      "test_id": "test:test.test.detail.target.state.bridge",
       "timeout_seconds": 180
     },
     {
@@ -7018,13 +7048,45 @@
       "completion_token": "",
       "expected_tracebacks": [],
       "mode": "python_pytest",
-      "phase0_category": "python_pass",
+      "phase0_category": "new",
       "reason": "",
       "required": true,
       "review": "",
-      "source": "test/test_detail_target_state_bridge.py",
-      "source_sha256": "52e9ec6307699644639ac341836bb7cf9bffc0bb0307884f8785313a6aa4910c",
-      "test_id": "test:test.test.detail.target.state.bridge",
+      "source": "test/test_domain_ids.py",
+      "source_sha256": "bc0cfdf093b5038657af07f352e43d06acbdf79b45b6af06cec065ef4cc4fa3a",
+      "test_id": "test:test.test.domain.ids",
+      "timeout_seconds": 180
+    },
+    {
+      "args": [],
+      "artifacts": [],
+      "blender_args": [],
+      "completion_token": "",
+      "expected_tracebacks": [],
+      "mode": "python_pytest",
+      "phase0_category": "new",
+      "reason": "",
+      "required": true,
+      "review": "",
+      "source": "test/test_domain_repository.py",
+      "source_sha256": "ab92599a8956143394f58c507cb795bb723aecea5edaf5ee1cbed338edcbc281",
+      "test_id": "test:test.test.domain.repository",
+      "timeout_seconds": 180
+    },
+    {
+      "args": [],
+      "artifacts": [],
+      "blender_args": [],
+      "completion_token": "",
+      "expected_tracebacks": [],
+      "mode": "python_pytest",
+      "phase0_category": "new",
+      "reason": "",
+      "required": true,
+      "review": "",
+      "source": "test/test_domain_store.py",
+      "source_sha256": "e7364e855354b4b74832f6380fa3ae246d1fc391e56aabd02b04d0b8da1fcfd5",
+      "test_id": "test:test.test.domain.store",
       "timeout_seconds": 180
     },
     {
@@ -7055,7 +7117,7 @@
       "required": true,
       "review": "",
       "source": "test/test_layer_uid.py",
-      "source_sha256": "dcc3f3b4489f84d5375fb4dccd41accc3f1fe8627d1886a2a7ad429edbc4c692",
+      "source_sha256": "e46772ce54deabf77db06fc533dc7dcf8044d39026e8aa78dfe39eaad0d43d3f",
       "test_id": "test:test.test.layer.uid",
       "timeout_seconds": 180
     },
@@ -7119,8 +7181,24 @@
       "required": true,
       "review": "",
       "source": "test/test_native_save_guard_recovery.py",
-      "source_sha256": "a67cfe66357368b4d1c884555d3b8d9d86c8e46e9ffaf32ce14e36d21ce1aed6",
+      "source_sha256": "b1fd0c9c56186a7b1751492209305e9fb3fd508312012ef37742ac8e47a80db8",
       "test_id": "test:test.test.native.save.guard.recovery",
+      "timeout_seconds": 180
+    },
+    {
+      "args": [],
+      "artifacts": [],
+      "blender_args": [],
+      "completion_token": "",
+      "expected_tracebacks": [],
+      "mode": "python_pytest",
+      "phase0_category": "new",
+      "reason": "",
+      "required": true,
+      "review": "",
+      "source": "test/test_native_tree_transaction.py",
+      "source_sha256": "bcf4efa5ce23a1e0786286c580f40b56cc872b8f5705c0ca9b26c487091fc826",
+      "test_id": "test:test.test.native.tree.transaction",
       "timeout_seconds": 180
     },
     {
@@ -7151,7 +7229,7 @@
       "required": true,
       "review": "",
       "source": "test/test_paths.py",
-      "source_sha256": "a454a85e41c8439b4899b8865a833561c87366baee147c96f819ff4ae64d87be",
+      "source_sha256": "f3463d639fe6e963e12cc710615a0a838cf53c48688be7f3543c1cee39fe48f2",
       "test_id": "test:test.test.paths",
       "timeout_seconds": 180
     },
@@ -7178,6 +7256,22 @@
       "completion_token": "",
       "expected_tracebacks": [],
       "mode": "python_pytest",
+      "phase0_category": "new",
+      "reason": "",
+      "required": true,
+      "review": "",
+      "source": "test/test_phase3_architecture.py",
+      "source_sha256": "ce2a21c1a9bf5f1e5a348d5ac41eeaf68ec1ad25f5ef6998fb7ded10a1b05397",
+      "test_id": "test:test.test.phase3.architecture",
+      "timeout_seconds": 180
+    },
+    {
+      "args": [],
+      "artifacts": [],
+      "blender_args": [],
+      "completion_token": "",
+      "expected_tracebacks": [],
+      "mode": "python_pytest",
       "phase0_category": "python_pass",
       "reason": "",
       "required": true,
@@ -7185,54 +7279,6 @@
       "source": "test/test_popup_target_placement_contract.py",
       "source_sha256": "465411e99fd5b2e4a51b9ef522945a09ee9aebc376cf0011e60adc931cb74f6f",
       "test_id": "test:test.test.popup.target.placement.contract",
-      "timeout_seconds": 180
-    },
-    {
-      "args": [],
-      "artifacts": [],
-      "blender_args": [],
-      "completion_token": "",
-      "expected_tracebacks": [],
-      "mode": "python_pytest",
-      "phase0_category": "python_pass",
-      "reason": "",
-      "required": true,
-      "review": "",
-      "source": "test/test_project_content_migration.py",
-      "source_sha256": "75fa96944759b4ce41120a3d7f5f50f8e98ccd76bd49b81b36bb7954ff3b6ff0",
-      "test_id": "test:test.test.project.content.migration",
-      "timeout_seconds": 180
-    },
-    {
-      "args": [],
-      "artifacts": [],
-      "blender_args": [],
-      "completion_token": "PROJECT_CONTENT_MIGRATION_PROGRESS_OK",
-      "expected_tracebacks": [],
-      "mode": "python_script",
-      "phase0_category": "python_pass",
-      "reason": "",
-      "required": true,
-      "review": "",
-      "source": "test/test_project_content_migration_progress.py",
-      "source_sha256": "08e046f52faf9af27a568ef88037d3d94c6fa1de65e4e0cbc50b21d940a0033d",
-      "test_id": "test:test.test.project.content.migration.progress",
-      "timeout_seconds": 180
-    },
-    {
-      "args": [],
-      "artifacts": [],
-      "blender_args": [],
-      "completion_token": "",
-      "expected_tracebacks": [],
-      "mode": "python_pytest",
-      "phase0_category": "python_pass",
-      "reason": "",
-      "required": true,
-      "review": "",
-      "source": "test/test_project_content_migration_safety.py",
-      "source_sha256": "b3da80630093f4d9bfed27b2037dc3852674f0385aaa9624d4059cafa9011c64",
-      "test_id": "test:test.test.project.content.migration.safety",
       "timeout_seconds": 180
     },
     {
@@ -7263,7 +7309,7 @@
       "required": true,
       "review": "",
       "source": "test/test_refactor_certification_classification.py",
-      "source_sha256": "ce3e81f05aeec7ee7c5fe056df6a6485e43493594bd06fbb273a8ea5961db5d9",
+      "source_sha256": "8f598952c1ab4e98241b7c8e0cd39377c84202f95ba7883c5177b0166e10c78c",
       "test_id": "test:test.test.refactor.certification.classification",
       "timeout_seconds": 180
     },
@@ -7295,7 +7341,7 @@
       "required": true,
       "review": "",
       "source": "test/test_settings_contract.py",
-      "source_sha256": "3c4563d7fda3140e1482447f71266efb6942181713a85bfc92876ff0922a1d63",
+      "source_sha256": "45376cb6bdc10065b8952ef18f30d8a55f6ce3cedaea10b092044f922f962fd4",
       "test_id": "test:test.test.settings.contract",
       "timeout_seconds": 180
     },
@@ -7311,7 +7357,7 @@
       "required": true,
       "review": "",
       "source": "test/test_spread_content_transaction.py",
-      "source_sha256": "62a013f486c0a790169d068cf3861e62128dd5021655761190c1d96fb3cd620d",
+      "source_sha256": "dadf946391264fc25ee948b657e14c67d2478e5ec7d27e09d2c1c6907f70766b",
       "test_id": "test:test.test.spread.content.transaction",
       "timeout_seconds": 180
     },

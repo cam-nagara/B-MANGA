@@ -10,17 +10,17 @@ from typing import Iterator
 
 from ..utils import page_detail, paths
 from . import page_io, schema
-from .project_content_migration_lock import (
+from .project_file_lock import (
     allow_owned_recovery_journal,
     guard_path_write,
     work_lock,
 )
-from .project_content_migration_storage import read_json_mapping
-from .project_content_save_baseline import (
+from .durable_storage import read_json_mapping
+from .save_baseline import (
     record_observed_read,
     record_successful_write,
 )
-from .project_content_sidecar_save_guard import (
+from .sidecar_save_guard import (
     begin_sidecar_save,
     commit_sidecars,
     mark_sidecar_writes_started,
@@ -129,7 +129,12 @@ def _preload_affected_pages(work, required_pages: int) -> None:
             raise ScenarioImportTransactionError(
                 f"{page.id} のページ情報ファイルがないため、シナリオ取込を中止しました"
             )
-        page_detail.ensure_page_detail(work, page)
+        try:
+            page_detail.ensure_page_detail(work, page)
+        except page_detail.PageDetailLoadError as exc:
+            raise ScenarioImportTransactionError(
+                f"{page.id} のページ情報を読み込めないため、シナリオ取込を中止しました"
+            ) from exc
         if not bool(getattr(page, "detail_loaded", False)):
             raise ScenarioImportTransactionError(
                 f"{page.id} のページ情報を読み込めないため、シナリオ取込を中止しました"
@@ -155,15 +160,7 @@ def _prepare_plan(work, work_dir: Path, required_pages: int) -> ScenarioImportPl
 
 def _sidecar_targets(plan: ScenarioImportPlan, *, save_payload_copy: bool) -> tuple[Path, ...]:
     targets = list(plan.page_json_paths)
-    targets.append(paths.pages_meta_path(plan.work_dir))
-    # フキダシIDは作品全体の単調増加カウンターを使うため、ページ追加の
-    # 有無にかかわらず work.json も同じ取引で永続化する。
-    targets.append(paths.work_meta_path(plan.work_dir))
-    if plan.new_page_ids:
-        targets.extend(
-            paths.coma_json_path(plan.work_dir, page_id, "c01")
-            for page_id in plan.new_page_ids
-        )
+    targets.append(paths.project_meta_path(plan.work_dir))
     if save_payload_copy:
         targets.append(paths.scenario_file(plan.work_dir))
     return tuple(targets)
@@ -184,9 +181,40 @@ def _commit_sidecars_checked(token) -> None:
         raise
 
 
+def _reload_domain_runtime(work_dir: Path):
+    """復元済みsidecarを正本としてDomain Storeも取引開始前へ戻す。"""
+    from . import domain_runtime
+
+    repository = domain_runtime.repository_for(work_dir)
+    project = repository.load_project()
+    pages = tuple(
+        repository.load_page(summary.uid)
+        for summary in project.pages
+    )
+    domain_runtime.install_store(work_dir, project, pages)
+    return project, pages
+
+
+def _bind_restored_domain(work, project, pages) -> None:
+    """復元したUI projectionへ正本のUID/revisionを再束縛する。"""
+    from . import domain_projection
+
+    domain_projection.bind_project_document(work, project)
+    summaries = {summary.display_id: summary for summary in project.pages}
+    documents = {page.page_uid: page for page in pages}
+    for page_entry in work.pages:
+        summary = summaries.get(str(getattr(page_entry, "id", "") or ""))
+        if summary is None:
+            continue
+        document = documents.get(summary.uid)
+        if document is not None:
+            domain_projection.bind_page_document(page_entry, document)
+
+
 def _rollback(work, snapshot: _MemorySnapshot, token, targets: tuple[Path, ...]) -> None:
     first_error: BaseException | None = None
     restored = False
+    restored_domain = None
     if token is not None:
         try:
             restore_sidecars(token)
@@ -203,11 +231,25 @@ def _rollback(work, snapshot: _MemorySnapshot, token, targets: tuple[Path, ...])
             except BaseException as exc:
                 if first_error is None:
                     first_error = exc
+        try:
+            from . import domain_runtime
+
+            domain_runtime.repository_for(token.work_dir).accept_recovered_files(targets)
+            restored_domain = _reload_domain_runtime(token.work_dir)
+        except BaseException as exc:
+            if first_error is None:
+                first_error = exc
     try:
         _restore_memory(work, snapshot)
     except BaseException as exc:
         if first_error is None:
             first_error = exc
+    if restored_domain is not None:
+        try:
+            _bind_restored_domain(work, *restored_domain)
+        except BaseException as exc:
+            if first_error is None:
+                first_error = exc
     if first_error is not None:
         raise ScenarioImportTransactionError(
             "シナリオ取込を完全には復元できませんでした。作品を開き直してください"
@@ -230,7 +272,7 @@ def scenario_import_transaction(
         targets: tuple[Path, ...] = ()
         try:
             # 作品全体のDropbox/別画面競合を、何も変更しない段階で検査する。
-            with guard_path_write(paths.pages_meta_path(work_dir)):
+            with guard_path_write(paths.project_meta_path(work_dir)):
                 pass
             plan = _prepare_plan(work, work_dir, required_pages)
             _preload_affected_pages(work, required_pages)
@@ -238,12 +280,8 @@ def scenario_import_transaction(
                 _observe_existing_import_copy(paths.scenario_file(work_dir))
             targets = _sidecar_targets(plan, save_payload_copy=save_payload_copy)
             prune_dirs = tuple(
-                directory
+                paths.page_dir(work_dir, page_id)
                 for page_id in plan.new_page_ids
-                for directory in (
-                    paths.coma_dir(work_dir, page_id, "c01"),
-                    paths.page_dir(work_dir, page_id),
-                )
             )
             scenario_dir = paths.scenario_dir(work_dir)
             if save_payload_copy and not scenario_dir.exists():

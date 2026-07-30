@@ -85,8 +85,8 @@ def _validate_png_bytes(payload: bytes) -> None:
 
 def _atomic_write_verified_bytes(path: Path, payload: bytes) -> str:
     """同一フォルダー内でatomic writeし、再読込hashまで確認する。"""
-    from ..io.project_content_migration_lock import guard_path_write
-    from ..io.project_content_save_baseline import record_successful_write
+    from ..io.project_file_lock import guard_path_write
+    from ..io.save_baseline import record_successful_write
 
     _validate_png_bytes(payload)
     expected_hash = hashlib.sha256(payload).hexdigest()
@@ -133,8 +133,8 @@ def _remove_raster_entry(coll, raster) -> None:
 
 def remove_staged_raster(context, raster) -> bool:
     """素材ステージが作ったラスター実体とPNGを検証付きで取り除く。"""
-    from ..io.project_content_migration_lock import guard_path_write
-    from ..io.project_content_save_baseline import record_successful_write
+    from ..io.project_file_lock import guard_path_write
+    from ..io.save_baseline import record_successful_write
 
     work = get_work(context)
     coll = getattr(getattr(context, "scene", None), "bmanga_raster_layers", None)
@@ -314,8 +314,8 @@ def instantiate_coma(
         coma_io.save_coma_meta(work_dir, page.id, panel)
         page_io.save_page_json(work_dir, page)
         page_io.save_pages_json(work_dir, work)
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception:
+        raise
     return panel
 
 
@@ -329,8 +329,7 @@ def instantiate_raster(
     folder_id: str = "",
 ):
     from ..operators import raster_layer_op
-    from ..io.project_content_migration_lock import guard_path_write
-    from ..io.project_content_save_baseline import record_successful_write
+    from ..io.save_baseline import record_successful_write
 
     work = get_work(context)
     coll = getattr(getattr(context, "scene", None), "bmanga_raster_layers", None)
@@ -352,7 +351,6 @@ def instantiate_raster(
     if hasattr(raster, "folder_key"):
         raster.folder_key = folder_id
     path = Path(work.work_dir) / raster.filepath_rel
-    path_existed = path.exists()
     try:
         if png_payload is not None:
             _atomic_write_verified_bytes(path, png_payload)
@@ -370,22 +368,10 @@ def instantiate_raster(
         context.scene.bmanga_active_raster_layer_index = len(coll) - 1
         context.scene.bmanga_active_layer_kind = "raster"
         return raster
-    except Exception:  # noqa: BLE001
-        plane = on.find_object_by_bmanga_id(raster_id, kind="raster")
-        if plane is not None:
-            bpy.data.objects.remove(plane, do_unlink=True)
-        image = bpy.data.images.get(raster.image_name)
-        if image is not None:
-            bpy.data.images.remove(image)
-        try:
-            if not path_existed:
-                with guard_path_write(path):
-                    path.unlink(missing_ok=True)
-                    record_successful_write(path)
-        except Exception:  # noqa: BLE001
-            _logger.exception("failed staged raster cleanup: %s", path)
-        _remove_raster_entry(coll, raster)
-        return None
+    except Exception as exc:
+        # 呼び出し側の素材トランザクションが、生成済みentryを固定IDで
+        # 再解決してObject/Image/PNGをまとめてrollbackする。
+        raise RuntimeError("ラスター素材を生成できませんでした") from exc
 
 
 def instantiate_image(

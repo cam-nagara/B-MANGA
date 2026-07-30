@@ -143,12 +143,6 @@ def _finalize_page_scene(context, work, page_id: str) -> bool:
     except Exception:  # noqa: BLE001
         _logger.exception("page file: purge other page data failed")
     try:
-        from ..utils import page_preview_object
-
-        page_preview_object.sync_page_previews(context, work)
-    except Exception:  # noqa: BLE001
-        _logger.exception("page file: page preview setup failed")
-    try:
         from . import raster_layer_op
 
         raster_layer_op.ensure_all_raster_runtime(context)
@@ -234,15 +228,6 @@ class BMANGA_OT_open_page_file(Operator):
         work = get_work(context)
         if work is None or not work.loaded or not work.work_dir:
             self.report({"ERROR"}, "作品が開かれていません")
-            return {"CANCELLED"}
-        from . import detail_data_migration_op
-
-        if detail_data_migration_op.work_requires_detail_migration(work):
-            self.report({"WARNING"}, "先に作品データの安全な更新を完了してください")
-            if not bpy.app.background:
-                bpy.ops.bmanga.detail_data_migrate(
-                    "INVOKE_DEFAULT", work_dir=str(work.work_dir)
-                )
             return {"CANCELLED"}
         if 0 <= int(self.index) < len(work.pages):
             work.active_page_index = int(self.index)

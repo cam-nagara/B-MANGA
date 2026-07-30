@@ -290,7 +290,9 @@ def _check_main_addon() -> list[dict[str, Any]]:
         results.append(_check_tool_presets(package_name, context))
         results.append(_check_layer_order(package_name, context, scene, page))
         results.append(_check_effect_detail_graph(package_name, context, scene, page))
-        results.append(_check_page_preview_update(context, temp_root, page))
+        results.append(
+            _check_page_preview_update(package_name, context, temp_root, page)
+        )
         return results
     finally:
         _unregister(mod)
@@ -517,8 +519,20 @@ def _check_effect_detail_graph(package_name: str, context, scene, page) -> dict[
     )
 
 
-def _check_page_preview_update(context, temp_root: Path, page) -> dict[str, Any]:
-    preview_path = temp_root / "RecentFixesVisual.bmanga" / str(page.id) / "page_preview.png"
+def _check_page_preview_update(
+    package_name: str,
+    context,
+    temp_root: Path,
+    page,
+) -> dict[str, Any]:
+    paths = _sub(package_name, "utils.paths")
+    preview_path = (
+        paths.page_dir(
+            temp_root / "RecentFixesVisual.bmanga",
+            str(page.id),
+        )
+        / "page_preview.png"
+    )
     before = preview_path.stat().st_mtime if preview_path.is_file() else 0.0
     result = bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
     assert "FINISHED" in result, result

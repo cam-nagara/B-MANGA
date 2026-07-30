@@ -191,13 +191,19 @@ def main() -> None:
             raise AssertionError("作品ファイルがページ詳細を常駐させています")
 
         page_preview_object = _submodule("utils.page_preview_object")
+        paths = _submodule("utils.paths")
+        page_preview_path = paths.page_dir(work_path, "p0001") / "page_preview.png"
         _mark("STEP work_preview_sync")
         page_preview_object.sync_page_previews(bpy.context, work, force=True)
-        work_preview_1 = _copy_image(work_path / "p0001" / "page_preview.png", "01_work_edit_page_preview.png")
+        work_preview_1 = _copy_image(
+            page_preview_path, "01_work_edit_page_preview.png"
+        )
 
         _mark("STEP open_page_file")
         assert bpy.ops.bmanga.open_page_file(index=0) == {"FINISHED"}
-        work_page_preview = _copy_image(work_path / "p0001" / "page_preview.png", "02_work_edit_page_file_preview.png")
+        work_page_preview = _copy_image(
+            page_preview_path, "02_work_edit_page_file_preview.png"
+        )
         work = bpy.context.scene.bmanga_work
         _configure_fast_render(bpy.context.scene, work)
         _set_first_coma_color(work, (0.97, 0.82, 0.28, 1.0))
@@ -218,7 +224,9 @@ def main() -> None:
         work = bpy.context.scene.bmanga_work
         page_preview_object = _submodule("utils.page_preview_object")
         page_preview_object.sync_page_previews(bpy.context, work, force=True)
-        page_work_preview = _copy_image(work_path / "p0001" / "page_preview.png", "04_page_edit_work_preview.png")
+        page_work_preview = _copy_image(
+            page_preview_path, "04_page_edit_work_preview.png"
+        )
 
         _mark("STEP reopen_page_file")
         assert bpy.ops.bmanga.open_page_file(index=0) == {"FINISHED"}
@@ -242,7 +250,6 @@ def main() -> None:
         marker = _add_camera_marker("preview_propagation_marker", (1.0, 0.02, 0.01, 1.0))
         _mark("STEP work_save_in_coma")
         assert bpy.ops.bmanga.work_save() == {"FINISHED"}
-        paths = _submodule("utils.paths")
         page = work.pages[0]
         coma = page.comas[0]
         saved_thumb_path = paths.coma_thumb_path(Path(work.work_dir), page.id, coma.coma_id)
@@ -281,7 +288,9 @@ def main() -> None:
         page_preview_object = _submodule("utils.page_preview_object")
         _mark("STEP work_after_coma_sync")
         page_preview_object.sync_page_previews(bpy.context, work, force=True)
-        work_preview_2 = _copy_image(work_path / "p0001" / "page_preview.png", "08_work_after_coma_preview.png")
+        work_preview_2 = _copy_image(
+            page_preview_path, "08_work_after_coma_preview.png"
+        )
 
         entries = [
             ("作品ファイル -> 初期ページ画像", work_preview_1),

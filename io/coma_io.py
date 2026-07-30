@@ -1,7 +1,7 @@
-"""コマファイル (cNN/cNN.blend / cNN/cNN.json / thumb.png) の I/O.
+"""UIDコマdirectory (scene.blend / preview.png) のI/O。
 
-計画書 4.4 / 3.3.3 参照。ファイル名採番・重複時リネーム・他ページへの
-移動・複製を担当。cNN.blend の実ロード/セーブは operators/ 層で
+表示用cNNはパスから分離する。採番・他ページへの移動・複製を担当し、
+scene.blendの実ロード/セーブはoperators層で
 bpy.ops.wm.* を呼ぶ。
 """
 
@@ -10,10 +10,11 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from ..utils import json_io, log, paths
-from . import schema
-from .project_content_migration_lock import guard_path_write
-from .project_content_save_baseline import record_successful_tree_change
+from ..bmanga_core.domain_ids import UIDKind, derived_uid
+from ..utils import log, paths
+from . import domain_projection, domain_runtime, page_io, schema
+from .project_file_lock import guard_path_write
+from .save_baseline import record_successful_tree_change
 
 _logger = log.get_logger(__name__)
 
@@ -22,13 +23,18 @@ _logger = log.get_logger(__name__)
 
 
 def existing_coma_ids(work_dir: Path, page_id: str) -> list[str]:
-    """ページ内の既存 cNN ID を列挙."""
-    paths.validate_page_id(page_id)
-    page_path = paths.page_dir(Path(work_dir), page_id)
-    if not page_path.is_dir():
+    """page.jsonのDomain treeから既存の表示用cNN IDを列挙する。"""
+
+    page_uid = paths.resolve_page_uid(work_dir, page_id)
+    repository = domain_runtime.repository_for(work_dir)
+    if not repository.page_path(page_uid).is_file():
         return []
-    ids = {p.name for p in page_path.iterdir() if p.is_dir() and paths.is_valid_coma_id(p.name)}
-    return sorted(ids)
+    document = repository.load_page(page_uid)
+    return sorted(
+        node.display_id
+        for node in document.nodes.values()
+        if node.kind == "coma" and paths.is_valid_coma_id(node.display_id)
+    )
 
 
 def page_data_coma_ids(page) -> set[str]:
@@ -57,26 +63,37 @@ def allocate_new_coma_id(work_dir: Path, page_id: str, *, page=None) -> str:
     return paths.format_coma_id(idx)
 
 
-# ---------- cNN.json ----------
+# ---------- page.json内のコマDomain ----------
 
 
 def save_coma_meta(work_dir: Path, page_id: str, entry) -> Path:
-    paths.validate_page_id(page_id)
-    paths.validate_coma_id(entry.coma_id)
-    out = paths.coma_json_path(Path(work_dir), page_id, entry.coma_id)
-    data = schema.coma_entry_to_dict(entry)
-    json_io.write_json(out, data)
-    return out
+    """コマ単独sidecarを作らず、所有pageのDomain checkpointへ集約する。"""
+
+    page = _owning_page(entry, page_id)
+    return page_io.save_page_json(Path(work_dir), page)
 
 
 def load_coma_meta(work_dir: Path, page_id: str, coma_id: str, entry) -> dict:
-    paths.validate_page_id(page_id)
-    paths.validate_coma_id(coma_id)
-    path = paths.coma_json_path(Path(work_dir), page_id, coma_id)
-    if not path.is_file():
+    page_uid = paths.resolve_page_uid(work_dir, page_id)
+    repository = domain_runtime.repository_for(work_dir)
+    if not repository.page_path(page_uid).is_file():
         return {}
-    data = json_io.read_json(path)
+    document = repository.load_page(page_uid)
+    node = next(
+        (
+            candidate
+            for candidate in document.nodes.values()
+            if candidate.kind == "coma" and candidate.display_id == coma_id
+        ),
+        None,
+    )
+    if node is None:
+        return {}
+    data = dict(node.settings)
+    data.update({"id": node.display_id, "comaId": node.display_id, "title": node.title})
     schema.coma_entry_from_dict(entry, data)
+    coma_uid = node.native_uid or derived_uid(UIDKind.COMA, page_uid, coma_id)
+    entry[domain_projection.COMA_UID_PROP] = coma_uid
     return data
 
 
@@ -84,36 +101,23 @@ def load_coma_meta(work_dir: Path, page_id: str, coma_id: str, entry) -> dict:
 
 
 def _coma_artifact_files(work_dir: Path, page_id: str, coma_id: str) -> list[Path]:
-    """cNN に関連する主要ファイル (.blend/.json/thumb.png) を列挙."""
+    """UIDコマに関連するNative dataとpreviewを列挙する。"""
+
     pd = paths.coma_dir(Path(work_dir), page_id, coma_id)
-    candidates = [
-        pd / f"{coma_id}.blend",
-        pd / f"{coma_id}.json",
-        pd / "thumb.png",
-        pd / f"{coma_id}_thumb.png",
-        pd / f"{coma_id}_preview.png",
-    ]
+    candidates = [pd / paths.COMA_BLEND_NAME, pd / paths.COMA_PREVIEW_NAME]
     return [p for p in candidates if p.exists()]
 
 
 def _rename_coma_artifacts(coma_path: Path, old_id: str, new_id: str) -> list[Path]:
-    renamed: list[Path] = []
-    thumb = coma_path / "thumb.png"
-    if thumb.exists():
-        renamed.append(thumb)
-    for suffix in (".blend", ".json", "_thumb.png", "_preview.png"):
-        src = coma_path / f"{old_id}{suffix}"
-        if not src.exists():
-            continue
-        dst = coma_path / f"{new_id}{suffix}"
-        if src == dst:
-            renamed.append(dst)
-            continue
-        if dst.exists():
-            raise FileExistsError(f"destination already exists: {dst}")
-        src.rename(dst)
-        renamed.append(dst)
-    return renamed
+    del old_id, new_id
+    return [
+        path
+        for path in (
+            coma_path / paths.COMA_BLEND_NAME,
+            coma_path / paths.COMA_PREVIEW_NAME,
+        )
+        if path.exists()
+    ]
 
 
 def move_coma_files(
@@ -189,3 +193,16 @@ def remove_coma_files(work_dir: Path, page_id: str, coma_id: str) -> int:
         record_successful_tree_change(coma_path)
     _logger.info("coma removed: %s/%s", page_id, coma_id)
     return 1
+
+
+def _owning_page(entry, expected_page_id: str):
+    scene = getattr(entry, "id_data", None)
+    work = getattr(scene, "bmanga_work", None) if scene is not None else None
+    if work is None:
+        raise RuntimeError("coma projection has no owning work")
+    for page in getattr(work, "pages", ()):
+        if str(getattr(page, "id", "") or "") != expected_page_id:
+            continue
+        if any(candidate == entry for candidate in getattr(page, "comas", ())):
+            return page
+    raise RuntimeError(f"coma is not owned by page: {expected_page_id}")

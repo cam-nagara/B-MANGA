@@ -11,7 +11,13 @@ from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty
 from bpy.types import Operator
 
 from ..core.work import get_active_page, get_work
-from ..io import page_io, coma_io, schema
+from ..io import (
+    coma_move_transaction,
+    coma_operation_transaction,
+    page_io,
+    coma_io,
+    schema,
+)
 from ..utils import coma_child_reparent, detail_popup, edge_selection, object_selection
 from ..utils import layer_stack as layer_stack_utils
 from ..utils import log, page_grid, paths
@@ -35,9 +41,8 @@ def _require_active_page(op: Operator, context):
 
 
 def _save_page_and_pages(work, page, work_dir: Path) -> None:
-    page_io.save_page_json(work_dir, page)
     page.coma_count = len(page.comas)
-    page_io.save_pages_json(work_dir, work)
+    page_io.save_page_json(work_dir, page)
 
 
 def _sync_layer_stack_after_coma_change(context) -> None:
@@ -520,8 +525,15 @@ class BMANGA_OT_coma_remove(Operator):
         entry = page.comas[idx]
         stem = entry.coma_id
         work_dir = Path(work.work_dir)
+        transaction = None
         try:
-            coma_io.remove_coma_files(work_dir, page.id, stem)
+            transaction = coma_operation_transaction.ComaOperationTransaction(
+                context,
+                work,
+                page,
+                remove_ids=(stem,),
+            )
+            transaction.apply_native()
             layer_stack_utils.delete_gp_layers_for_parent_keys(
                 context, {layer_stack_utils.gp_parent_key_for_coma(page, entry)}
             )
@@ -533,7 +545,7 @@ class BMANGA_OT_coma_remove(Operator):
                 page.active_coma_index = -1
             elif idx >= len(page.comas):
                 page.active_coma_index = len(page.comas) - 1
-            _save_page_and_pages(work, page, work_dir)
+            transaction.commit()
             _sync_layer_stack_after_coma_change(context)
             # 削除コマの coma_plane Mesh / Material も即時掃除
             try:
@@ -543,6 +555,8 @@ class BMANGA_OT_coma_remove(Operator):
             except Exception:  # noqa: BLE001
                 _logger.exception("coma_remove: remove_coma_plane failed")
         except Exception as exc:  # noqa: BLE001
+            if transaction is not None:
+                transaction.abort()
             _logger.exception("panel_remove failed")
             self.report({"ERROR"}, f"コマ削除失敗: {exc}")
             return {"CANCELLED"}
@@ -569,9 +583,16 @@ class BMANGA_OT_coma_duplicate(Operator):
         idx = page.active_coma_index
         src = page.comas[idx]
         work_dir = Path(work.work_dir)
+        transaction = None
         try:
             new_stem = coma_io.allocate_new_coma_id(work_dir, page.id, page=page)
-            coma_io.copy_coma_files(work_dir, page.id, page.id, src.coma_id, new_stem)
+            transaction = coma_operation_transaction.ComaOperationTransaction(
+                context,
+                work,
+                page,
+                copy_pairs=((str(src.coma_id), new_stem),),
+            )
+            transaction.apply_native()
             # entry を複製
             new_entry = page.comas.add()
             _copy_coma_entry(src, new_entry)
@@ -588,8 +609,7 @@ class BMANGA_OT_coma_duplicate(Operator):
             page.active_coma_index = idx + 1
             if hasattr(context.scene, "bmanga_active_layer_kind"):
                 context.scene.bmanga_active_layer_kind = "coma"
-            coma_io.save_coma_meta(work_dir, page.id, new_entry)
-            _save_page_and_pages(work, page, work_dir)
+            transaction.commit()
             _sync_layer_stack_after_coma_change(context)
             # 複製でコマが増えた分の coma_plane Mesh を即時 ensure
             try:
@@ -601,6 +621,8 @@ class BMANGA_OT_coma_duplicate(Operator):
             except Exception:  # noqa: BLE001
                 _logger.exception("coma_duplicate: ensure_coma_plane failed")
         except Exception as exc:  # noqa: BLE001
+            if transaction is not None:
+                transaction.abort()
             _logger.exception("panel_duplicate failed")
             self.report({"ERROR"}, f"コマ複製失敗: {exc}")
             return {"CANCELLED"}
@@ -684,51 +706,24 @@ class BMANGA_OT_coma_move_to_page(Operator):
         if target_page is None:
             self.report({"ERROR"}, f"移動先ページが見つかりません: {self.target_page_id}")
             return {"CANCELLED"}
-        idx = page.active_coma_index
-        src_entry = page.comas[idx]
-        old_parent_key = layer_stack_utils.gp_parent_key_for_coma(page, src_entry)
-        work_dir = Path(work.work_dir)
         try:
-            # 移動先で衝突しないファイル名を採番
-            dst_stem = coma_io.allocate_new_coma_id(work_dir, target_page.id, page=target_page)
-            coma_io.move_coma_files(
-                work_dir, page.id, target_page.id, src_entry.coma_id, dst_stem
+            dst_stem = coma_move_transaction.move_coma_to_page(
+                context,
+                work,
+                page,
+                target_page,
+                page.active_coma_index,
             )
-            # 移動先 collection に追加
-            new_entry = target_page.comas.add()
-            _copy_coma_entry(src_entry, new_entry)
-            new_entry.coma_id = dst_stem
-            new_entry.id = dst_stem
-            new_entry.title = src_entry.title
-            new_parent_key = layer_stack_utils.gp_parent_key_for_coma(target_page, new_entry)
-            source_page_index = next((i for i, p in enumerate(work.pages) if p.id == page.id), -1)
-            target_page_index = next((i for i, p in enumerate(work.pages) if p.id == target_page.id), -1)
-            if source_page_index >= 0 and target_page_index >= 0:
-                src_ox, src_oy = page_grid.page_total_offset_mm(work, context.scene, source_page_index)
-                dst_ox, dst_oy = page_grid.page_total_offset_mm(work, context.scene, target_page_index)
-                # 手描き点はObjectローカル座標。移動先Objectの位置がページ原点を担う。
-                layer_stack_utils.translate_effect_layers_for_parent_keys(
-                    context, {old_parent_key}, dst_ox - src_ox, dst_oy - src_oy
-                )
-            layer_stack_utils.reparent_gp_layers(context, old_parent_key, new_parent_key)
-            layer_stack_utils.reparent_effect_layers(context, old_parent_key, new_parent_key)
-            coma_io.save_coma_meta(work_dir, target_page.id, new_entry)
-            # 元の collection から削除
-            page.comas.remove(idx)
-            if len(page.comas) == 0:
-                page.active_coma_index = -1
-            elif idx >= len(page.comas):
-                page.active_coma_index = len(page.comas) - 1
-            page_io.save_page_json(work_dir, page)
-            page_io.save_page_json(work_dir, target_page)
-            page.coma_count = len(page.comas)
-            target_page.coma_count = len(target_page.comas)
-            page_io.save_pages_json(work_dir, work)
-            _sync_layer_stack_after_coma_change(context)
         except Exception as exc:  # noqa: BLE001
             _logger.exception("panel_move_to_page failed")
             self.report({"ERROR"}, f"コマ移動失敗: {exc}")
             return {"CANCELLED"}
+        try:
+            _sync_layer_stack_after_coma_change(context)
+        except Exception:  # noqa: BLE001
+            # Domain/Nativeの確定後にderived UI同期だけ失敗しても、移動自体を
+            # 未完了とは報告しない。次回の通常同期で再構築できる。
+            _logger.exception("coma move derived layer-stack sync failed")
         self.report({"INFO"}, f"コマ移動: → {target_page.id}/{dst_stem}")
         return {"FINISHED"}
 
@@ -852,7 +847,20 @@ class BMANGA_OT_coma_merge_selected(Operator):
             (idx for _pi, _page, idx, _panel in refs if idx != survivor_index),
             reverse=True,
         )
+        transaction = None
         try:
+            removed_ids = tuple(
+                str(page.comas[idx].coma_id)
+                for idx in remove_indices
+                if 0 <= idx < len(page.comas)
+            )
+            transaction = coma_operation_transaction.ComaOperationTransaction(
+                context,
+                work,
+                page,
+                remove_ids=removed_ids,
+            )
+            transaction.apply_native()
             _set_coma_polygon(survivor, merged)
             if self.border_mode == "separate":
                 survivor.merged_border_mode = "separate"
@@ -866,19 +874,13 @@ class BMANGA_OT_coma_merge_selected(Operator):
                     continue
                 removed = page.comas[idx]
                 coma_child_reparent.reparent_coma_children(context, page, removed, survivor)
-                try:
-                    coma_io.remove_coma_files(work_dir, page.id, removed.coma_id)
-                except Exception:  # noqa: BLE001
-                    _logger.exception("panel_merge_selected: remove panel files failed")
                 page.comas.remove(idx)
                 if idx < survivor_index:
                     survivor_index -= 1
             page.active_coma_index = max(0, min(survivor_index, len(page.comas) - 1))
             work.active_page_index = page_index
             page.coma_count = len(page.comas)
-            for panel in page.comas:
-                coma_io.save_coma_meta(work_dir, page.id, panel)
-            _save_page_and_pages(work, page, work_dir)
+            transaction.commit()
             try:
                 from ..utils import coma_border_object, page_file_scene
 
@@ -898,6 +900,8 @@ class BMANGA_OT_coma_merge_selected(Operator):
             )
             object_selection.set_keys(context, [object_selection.coma_key(page, page.comas[page.active_coma_index])])
         except Exception as exc:  # noqa: BLE001
+            if transaction is not None:
+                transaction.abort()
             _logger.exception("panel_merge_selected failed")
             self.report({"ERROR"}, f"コマ結合失敗: {exc}")
             return {"CANCELLED"}
@@ -1005,9 +1009,18 @@ class BMANGA_OT_coma_split_template(Operator):
                 return {"CANCELLED"}
             split_grid, cell_w, cell_h = split_result
 
+        transaction = None
         try:
+            transaction = coma_operation_transaction.ComaOperationTransaction(
+                context,
+                work,
+                page,
+                remove_ids=(str(src.coma_id),)
+                if self.clear_existing
+                else (),
+            )
+            transaction.apply_native()
             if self.clear_existing:
-                coma_io.remove_coma_files(work_dir, page.id, src.coma_id)
                 layer_stack_utils.delete_gp_layers_for_parent_keys(
                     context, {layer_stack_utils.gp_parent_key_for_coma(page, src)}
                 )
@@ -1042,12 +1055,13 @@ class BMANGA_OT_coma_split_template(Operator):
                     else:
                         _set_coma_polygon(entry, split_grid[c][r])
                     entry.z_order = insert_z_base + r * cols + c
-                    coma_io.save_coma_meta(work_dir, page.id, entry)
             page.active_coma_index = first_new_index if len(page.comas) > first_new_index else -1
             work.active_page_index = page_index
-            _save_page_and_pages(work, page, work_dir)
+            transaction.commit()
             _sync_layer_stack_after_coma_change(context)
         except Exception as exc:  # noqa: BLE001
+            if transaction is not None:
+                transaction.abort()
             _logger.exception("panel_split_template failed")
             self.report({"ERROR"}, f"分割失敗: {exc}")
             return {"CANCELLED"}

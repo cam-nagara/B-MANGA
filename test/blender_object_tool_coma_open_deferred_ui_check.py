@@ -66,7 +66,7 @@ def _start_check(temp_root: Path) -> Path:
 
     from bmanga_dev_deferred_coma_open_ui.keymap import keymap as keymap_mod
     from bmanga_dev_deferred_coma_open_ui.operators import object_tool_op
-    from bmanga_dev_deferred_coma_open_ui.utils import object_selection
+    from bmanga_dev_deferred_coma_open_ui.utils import object_selection, paths
 
     state = keymap_mod.get_state()
     assert state is not None
@@ -112,7 +112,7 @@ def _start_check(temp_root: Path) -> Path:
     assert fake_tool.finished and fake_tool.keep_selection
     assert keymap_mod.is_visibility_update_suspended()
     assert Path(bpy.data.filepath).resolve() == work_path, "イベント中にコマファイルを開いています"
-    return temp_root / "DeferredOpen.bmanga" / "p0001" / "c04" / "c04.blend"
+    return paths.coma_blend_path(Path(work.work_dir), page.id, coma.coma_id)
 
 
 def _assert_opened(expected: Path) -> None:

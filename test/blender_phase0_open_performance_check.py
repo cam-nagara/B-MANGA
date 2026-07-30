@@ -136,8 +136,8 @@ def _populate_work_project(work_root: Path) -> None:
 
 
 def _capture_baseline(work_root: Path, blend_path: Path) -> None:
-    baseline = _sub("io.project_content_save_baseline")
-    page_paths = sorted(work_root.glob("p????/page.json"))
+    baseline = _sub("io.save_baseline")
+    page_paths = sorted(work_root.glob("pages/*/page.json"))
     baseline.capture_loaded_baseline(
         work_root,
         blend_path,
@@ -160,27 +160,38 @@ def _add_representative_coma_geometry() -> None:
 def _fixture_project(root: Path) -> Path:
     work_root = root / "Phase0Open.bmanga"
     _populate_work_project(work_root)
+    paths = _sub("utils.paths")
     if bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0) != {"FINISHED"}:
         raise RuntimeError("代表page.blendを作成できません")
-    page_blend = work_root / "p0001" / "page.blend"
+    page_blend = paths.page_blend_path(work_root, "p0001")
     bpy.ops.wm.save_as_mainfile(filepath=str(page_blend))
     _capture_baseline(work_root, page_blend)
     work = bpy.context.scene.bmanga_work
     work.active_page_index = 0
-    work.pages[0].active_coma_index = 0
+    page = work.pages[0]
+    page.active_coma_index = next(
+        index
+        for index, coma in enumerate(page.comas)
+        if str(getattr(coma, "coma_id", "") or getattr(coma, "id", "") or "") == "c01"
+    )
     if bpy.ops.bmanga.enter_coma_mode("EXEC_DEFAULT") != {"FINISHED"}:
         raise RuntimeError("代表c01.blendを作成できません")
     _add_representative_coma_geometry()
-    bpy.ops.wm.save_as_mainfile(filepath=str(work_root / "p0001" / "c01" / "c01.blend"))
+    bpy.ops.wm.save_as_mainfile(filepath=bpy.data.filepath)
     return work_root
 
 
 def _role_path(project: Path, role: str) -> Path:
+    paths = _sub("utils.paths")
     if role == "work":
         return project / "work.blend"
     if role == "page":
-        return project / "p0001" / "page.blend"
-    return project / "p0001" / "c01" / "c01.blend"
+        return paths.page_blend_path(project, "p0001")
+    coma_root = paths.page_dir(project, "p0001") / paths.COMAS_DIR_NAME
+    scenes = sorted(coma_root.glob(f"*/{paths.COMA_BLEND_NAME}"))
+    if len(scenes) != 1:
+        raise AssertionError(f"代表コマ実体が一意ではありません: {scenes}")
+    return scenes[0]
 
 
 def _tree_hash(root: Path) -> str:
@@ -246,15 +257,10 @@ def _install_load_counters() -> None:
 
 
 def _detail_identity(path: Path) -> tuple[str, str, str]:
-    if path.name == "page.json" and path.parent.name.startswith("p"):
-        return "page", path.parent.name, ""
-    if (
-        path.suffix.lower() == ".json"
-        and path.stem == path.parent.name
-        and path.parent.name.startswith("c")
-        and path.parent.parent.name.startswith("p")
-    ):
-        return "coma", path.parent.parent.name, path.parent.name
+    if path.name == "page.json" and path.parent.parent.name == "pages":
+        paths = _sub("utils.paths")
+        work_root = path.parents[2]
+        return "page", paths.page_display_id(work_root, path.parent.name), ""
     return "", "", ""
 
 

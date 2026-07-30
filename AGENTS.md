@@ -2,7 +2,7 @@
 
 このファイルは **Claude Code / Codex / Gemini CLI など複数の AI コーディングツールで本プロジェクトを共有開発する** ための連携ハブです。**新しいセッションを開始したらまずこのファイルを読み、最後に「コミット前チェックリスト」を満たしてから書き込みを行ってください。**
 
-最終更新: 2026-07-17 (Codex)
+最終更新: 2026-07-31 (Codex)
 
 ---
 
@@ -27,7 +27,7 @@
 - アドオン形式: Blender Extensions (`blender_manifest.toml`)。 `blender_version_min = "5.2.0"`（本体・Liner・Render 3マニフェスト共通、2026-07-18 5.1→5.2へ引き上げ）
 - Python: Blender 5.2 LTS 同梱版 (3.13.13)
 - 同梱 wheel: `wheels/` 配下 (`PyPSD`, `Pillow` 等、cp313含む)。 Blender Extensions の wheel ロード経由で import 可能
-- **5.2移行の経緯**: 2026-07-18 に Geometry Nodes モディファイア入力API・Compare/Random Valueノードのソケット仕様が5.2で破壊的変更されたため、`utils/geometry_nodes_bridge.py` と `addons/b_manga_line/`（新設 `gn_socket_compat.py` 経由）を両バージョン互換ヘルパー方式で修正済み。詳細・実機確認済み事実は `docs/blender_5_2_migration_plan_2026-07-18.md` 参照。5.1でも同一コードが動作することを実機確認済み。
+- **5.2専用化**: 2026-07-29の全体リファクタリングPhase 3で、Geometry Nodesを含む5.1以前のAPI互換分岐を削除した。`utils/geometry_nodes_bridge.py` と `addons/b_manga_line/gn_socket_compat.py` は5.2 LTS契約だけを扱う。移行前の経緯は `docs/blender_5_2_migration_plan_2026-07-18.md` 参照。
 
 ### 1.1 ユーザー実機への配備 (2026-07-19 記録)
 
@@ -43,6 +43,8 @@
 直近で大型のデータ構造刷新が完了している。 古い記述で迷ったときはここを参照。
 
 ### 2.1 完了済みの大型移行
+
+- **(Phase 3完了 / 2026-07-31 Codex, B-MANGA Next v0.6.603 / Render Next v0.1.39 / Liner Next v0.3.203)** 作品正本を新Domainへ統一。`project.json`、`pages/<page_uid>/page.json`、`comas/<coma_uid>/scene.blend`と安定UID／tree／link graphを採用し、PropertyGroupは一方向UI投影とした。Command／Event／Store／Repository／write-ahead journal、hash競合検知、起動時recoveryを導入し、旧形式変換・migration Operator・5.1以前のAPI分岐を削除した。必須429/429、current source hash欠落0、独立最終レビュー重大0・高0で合格。計画: [`docs/bmanga_full_refactoring_plan_2026-07-28.md`](docs/bmanga_full_refactoring_plan_2026-07-28.md)
 
 - **(Phase 1〜4実装済み／ユーザー実機合否待ち / 2026-07-28 Codex, v0.6.594)** ページ編集用の2D合成プレビューを試験導入。PNG書き出しと同じレイヤー順で全体をGPUオーバーレイ表示し、GP／効果線／ラスター編集中は背面合成・編集実体・前面合成へ分割する。72dpi以下を即時表示し150ms後に設定解像度へ更新、512MiB LRU、未保存ラスター反映、保存時の一時Image除去、Undo／Redo再合成を実装。レイヤー移動／オブジェクト移動中は切り出したGPU画像だけを動かし、確定時にデータを一括反映する。v0.6.593で高解像度時の自動縮小、保存失敗復帰、ラスター編集、ドラッグ確定失敗、Alt+D&D強制終了時の復旧を強化し、v0.6.594で焼き込み済み効果線Meshと生成図形／画像線を2D合成・PNG／PSDへ反映した。従来3D表示への切替を残し、ユーザー実機確認が通るまでは「2D合成表示（試験）」を既定オフとする。
 

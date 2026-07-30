@@ -1,12 +1,4 @@
-"""JSON スキーマの定義・バージョン・シリアライザ.
-
-work.json / pages.json / page.json / cNN.json の構造を 1 箇所に
-集約する。将来のフォーマット変更に備えて ``schemaVersion`` フィールドを
-各 JSON のトップレベルに付与する。
-
-PropertyGroup ↔ dict の変換は to_dict / from_dict で行い、dict は
-utils.json_io で書き出す。
-"""
+"""現行PropertyGroupとDomain設定dictの明示的な投影codec。"""
 
 from __future__ import annotations
 
@@ -14,7 +6,6 @@ import json
 from contextlib import ExitStack, contextmanager
 from typing import Any
 
-from . import balloon_white_outline_migration
 from .image_path_schema import image_path_layer_from_dict, image_path_layer_to_dict
 from ..core import balloon as balloon_core
 from ..utils import (
@@ -104,6 +95,17 @@ def _suspend_load_property_side_effects():
         except Exception:  # noqa: BLE001
             pass
         try:
+            from ..utils import page_preview_object
+
+            # 見開き結合・分割やDomain投影では、filesystem確定後に
+            # PropertyGroupを一括置換する。その途中で旧page UIDの
+            # プレビューを再生成すると、正しく削除済みのpage.jsonを
+            # 欠損として誤読するため、完全投影後の明示refreshまで止める。
+            _patch(page_preview_object, "sync_page_previews")
+            _patch(page_preview_object, "schedule_sync_page_previews")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
             yield
         finally:
             for module, name, original in reversed(patches):
@@ -177,13 +179,6 @@ def hex_to_rgba(code: str, alpha: float = 1.0) -> tuple[float, float, float, flo
         a = int(code[6:8], 16) / 255.0
         return (r, g, b, a)
     raise ValueError(f"invalid color hex: {code}")
-
-
-def _data_schema_version(data: dict[str, Any], default: int = 1) -> int:
-    try:
-        return int(data.get("schemaVersion", default) or default)
-    except Exception:  # noqa: BLE001
-        return default
 
 
 def _opacity_unit_is_percent(data: dict[str, Any]) -> bool:
@@ -911,15 +906,41 @@ def _view_settings_from_dict(work, data: dict[str, Any]) -> None:
         work.view_page_browser_fit = bool(settings.get("pageBrowserFit", True))
 
 
+_DOMAIN_NODE_UID_PROP = "bmanga_domain_node_uid"
+
+
+def _with_domain_node_uid(owner, payload: dict[str, Any]) -> dict[str, Any]:
+    """UI投影が保持する不変Node UIDをpayloadへ添付する。"""
+
+    try:
+        value = str(owner.get(_DOMAIN_NODE_UID_PROP, "") or "")
+    except (AttributeError, TypeError):
+        value = ""
+    if value:
+        payload["nodeUid"] = value
+    return payload
+
+
+def _restore_domain_node_uid(owner, payload: object) -> None:
+    if not isinstance(payload, dict):
+        return
+    value = str(payload.get("nodeUid", "") or "")
+    if not value:
+        return
+    try:
+        owner[_DOMAIN_NODE_UID_PROP] = value
+    except (AttributeError, TypeError):
+        pass
+
+
 def work_to_dict(work) -> dict[str, Any]:
-    """BMangaWorkData → work.json dict."""
+    """BMangaWorkData → Domain project projection payload."""
     scene = _scene_from_work(work)
     raster_layers = getattr(scene, "bmanga_raster_layers", None) if scene is not None else None
     image_layers = getattr(scene, "bmanga_image_layers", None) if scene is not None else None
     image_path_layers = getattr(scene, "bmanga_image_path_layers", None) if scene is not None else None
     return {
         "schemaVersion": WORK_SCHEMA_VERSION,
-        layer_uid.DETAIL_DATA_VERSION_KEY: layer_uid.detail_data_version_for_save(work),
         "balloonIdCounter": int(getattr(work, "balloon_id_counter", 0) or 0),
         "workInfo": work_info_to_dict(work.work_info),
         "nombre": nombre_to_dict(work.nombre),
@@ -938,19 +959,19 @@ def work_to_dict(work) -> dict[str, Any]:
         "viewSettings": _view_settings_to_dict(work),
         "safeAreaOverlay": safe_area_to_dict(work.safe_area_overlay),
         "raster_layers": [
-            raster_layer_to_dict(entry)
+            _with_domain_node_uid(entry, raster_layer_to_dict(entry))
             for entry in (raster_layers or [])
         ],
         "image_layers": [
-            image_layer_to_dict(entry)
+            _with_domain_node_uid(entry, image_layer_to_dict(entry))
             for entry in (image_layers or [])
         ],
         "fill_layers": [
-            fill_layer_to_dict(entry)
+            _with_domain_node_uid(entry, fill_layer_to_dict(entry))
             for entry in (getattr(scene, "bmanga_fill_layers", None) or [])
         ],
         "image_path_layers": [
-            image_path_layer_to_dict(entry)
+            _with_domain_node_uid(entry, image_path_layer_to_dict(entry))
             for entry in (image_path_layers or [])
         ],
         "shared_balloons": [
@@ -966,22 +987,16 @@ def work_to_dict(work) -> dict[str, Any]:
             for entry in getattr(work, "shared_comas", [])
         ],
         "layer_folders": [
-            layer_folder_to_dict(entry)
+            _with_domain_node_uid(entry, layer_folder_to_dict(entry))
             for entry in getattr(work, "layer_folders", [])
         ],
     }
 
 
 def work_from_dict(work, data: dict[str, Any]) -> None:
-    """work.json dict → BMangaWorkData.
-
-    schemaVersion が将来上がった場合はここでマイグレーションを挟む。
-    """
+    """Domain project projection payload → BMangaWorkData."""
     data = data or {}
-    work_schema_version = _data_schema_version(data, 1)
-    opacity_percent_schema = work_schema_version >= 5
-    if hasattr(work, "detail_data_version"):
-        work.detail_data_version = layer_uid.detail_data_version_from_mapping(data)
+    opacity_percent_schema = True
     if hasattr(work, "balloon_id_counter"):
         try:
             work.balloon_id_counter = max(0, int(data.get("balloonIdCounter", 0) or 0))
@@ -1012,6 +1027,7 @@ def work_from_dict(work, data: dict[str, Any]) -> None:
             for item in data.get("raster_layers", []) or []:
                 entry = raster_layers.add()
                 raster_layer_from_dict(entry, item, opacity_percent=opacity_percent_schema)
+                _restore_domain_node_uid(entry, item)
         if hasattr(scene, "bmanga_active_raster_layer_index"):
             scene.bmanga_active_raster_layer_index = 0 if len(raster_layers) else -1
     image_layers = getattr(scene, "bmanga_image_layers", None) if scene is not None else None
@@ -1021,6 +1037,7 @@ def work_from_dict(work, data: dict[str, Any]) -> None:
             for item in data.get("image_layers", []) or []:
                 entry = image_layers.add()
                 image_layer_from_dict(entry, item, opacity_percent=opacity_percent_schema)
+                _restore_domain_node_uid(entry, item)
         if hasattr(scene, "bmanga_active_image_layer_index"):
             scene.bmanga_active_image_layer_index = 0 if len(image_layers) else -1
     fill_layers = getattr(scene, "bmanga_fill_layers", None) if scene is not None else None
@@ -1030,6 +1047,7 @@ def work_from_dict(work, data: dict[str, Any]) -> None:
             for item in data.get("fill_layers", []) or []:
                 entry = fill_layers.add()
                 fill_layer_from_dict(entry, item, opacity_percent=opacity_percent_schema)
+                _restore_domain_node_uid(entry, item)
         if hasattr(scene, "bmanga_active_fill_layer_index"):
             scene.bmanga_active_fill_layer_index = 0 if len(fill_layers) else -1
     image_path_layers = getattr(scene, "bmanga_image_path_layers", None) if scene is not None else None
@@ -1039,6 +1057,7 @@ def work_from_dict(work, data: dict[str, Any]) -> None:
             for item in data.get("image_path_layers", data.get("imagePathLayers", [])) or []:
                 entry = image_path_layers.add()
                 image_path_layer_from_dict(entry, item, opacity_percent=opacity_percent_schema)
+                _restore_domain_node_uid(entry, item)
         if hasattr(scene, "bmanga_active_image_path_layer_index"):
             scene.bmanga_active_image_path_layer_index = 0 if len(image_path_layers) else -1
     if hasattr(work, "shared_balloons"):
@@ -1067,6 +1086,7 @@ def work_from_dict(work, data: dict[str, Any]) -> None:
         for item in data.get("layer_folders", data.get("layerFolders", [])) or []:
             entry = work.layer_folders.add()
             layer_folder_from_dict(entry, item)
+            _restore_domain_node_uid(entry, item)
 
 
 # ---------- PageEntry / pages.json ----------
@@ -1383,7 +1403,6 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "roundedCornerRadiusUnit": str(getattr(entry, "rounded_corner_radius_unit", "mm") or "mm"),
         "roundedCornerRadiusPercent": round(float(getattr(entry, "rounded_corner_radius_percent", 30.0)), 3),
         "lineStyle": entry.line_style,
-        "whiteOutlineSettingsVersion": balloon_white_outline_migration.SETTINGS_VERSION,
         "lineWidthMm": round(entry.line_width_mm, 3),
         "dashedSegmentLengthMm": round(float(getattr(entry, "dashed_segment_length_mm", 3.6)), 3),
         "dashedGapMm": round(float(getattr(entry, "dashed_gap_mm", 2.4)), 3),
@@ -1625,13 +1644,7 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
         entry.line_image_angle_deg = float(data.get("lineImageAngleDeg", 0.0))
         entry.line_image_jitter = float(data.get("lineImageJitter", 0.0))
     if hasattr(entry, "path_line_enabled"):
-        if "pathLineEnabled" in data:
-            entry.path_line_enabled = bool(data.get("pathLineEnabled", False))
-        else:
-            # 旧ファイル (パス線トグル導入前) の移行: 画像パスが入っていれば、
-            # 以前はパス線が主線を置き換えて表示されていたので、その見た目を
-            # 保つためトグルを ON 扱いにする (新規フキダシは既定 OFF)。
-            entry.path_line_enabled = bool(str(data.get("lineImagePath", "") or "").strip())
+        entry.path_line_enabled = bool(data.get("pathLineEnabled", False))
     entry.multi_line_count = int(data.get("multiLineCount", 3))
     entry.multi_line_width_mm = float(data.get("multiLineWidthMm", 0.3))
     entry.multi_line_spacing_mm = float(data.get("multiLineSpacingMm", 0.4))
@@ -1651,29 +1664,18 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
         entry.flash_white_outline_count = int(data.get("flashWhiteOutlineCount", 5))
     if hasattr(entry, "flash_white_outline_width_mm"):
         entry.flash_white_outline_width_mm = float(data.get("flashWhiteOutlineWidthMm", 10.0))
-    legacy_white_outline = (
-        entry.line_style == "white_outline"
-        and balloon_white_outline_migration.settings_version(data)
-        < balloon_white_outline_migration.SETTINGS_VERSION
-    )
     if hasattr(entry, "flash_white_outline_white_brush_mm"):
-        fallback_brush = (
-            balloon_white_outline_migration.legacy_white_brush_mm(data)
-            if legacy_white_outline
-            else 0.3
-        )
         entry.flash_white_outline_white_brush_mm = float(
-            data.get("flashWhiteOutlineWhiteBrushMm", fallback_brush)
+            data.get("flashWhiteOutlineWhiteBrushMm", 0.3)
         )
-    spacing_default = 0.25 if legacy_white_outline else 0.2
     if hasattr(entry, "flash_white_outline_spacing_mm"):
-        entry.flash_white_outline_spacing_mm = float(data.get("flashWhiteOutlineSpacingMm", spacing_default))
+        entry.flash_white_outline_spacing_mm = float(data.get("flashWhiteOutlineSpacingMm", 0.2))
     if hasattr(entry, "flash_white_outline_white_line_count"):
         entry.flash_white_outline_white_line_count = int(data.get("flashWhiteOutlineWhiteLineCount", 24))
     if hasattr(entry, "flash_white_outline_black_line_count"):
         entry.flash_white_outline_black_line_count = int(data.get("flashWhiteOutlineBlackLineCount", 3))
     if hasattr(entry, "flash_white_outline_black_spacing_mm"):
-        entry.flash_white_outline_black_spacing_mm = float(data.get("flashWhiteOutlineBlackSpacingMm", spacing_default))
+        entry.flash_white_outline_black_spacing_mm = float(data.get("flashWhiteOutlineBlackSpacingMm", 0.2))
     entry.multi_line_direction = data.get("multiLineDirection", "outside")
     entry.thorn_multi_line_valley_width_pct = float(
         data.get("thornMultiLineValleyWidthPct", default_flash_endpoint_width)
@@ -1692,17 +1694,7 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     entry.fill_opacity = _opacity_from_data(data, "fillOpacity", 100.0, percent_schema=opacity_percent)
     uni_flash_data = data.get("uniFlashParams")
     if isinstance(uni_flash_data, dict):
-        if legacy_white_outline:
-            balloon_white_outline_migration.prepare_legacy_values(entry, uni_flash_data)
         balloon_core.uni_flash_params_from_dict(entry, uni_flash_data)
-        if legacy_white_outline:
-            balloon_white_outline_migration.finish_legacy_migration(entry, data)
-    elif legacy_white_outline:
-        # 初期の白抜き線データには uniFlashParams 自体が無い場合がある。
-        # 当時の既定値を入れてから同じ一度限りの単位移行を行う。
-        balloon_white_outline_migration.prepare_legacy_values(entry, {})
-        balloon_core.uni_flash_params_from_dict(entry, {})
-        balloon_white_outline_migration.finish_legacy_migration(entry, data)
     elif entry.line_style == "uni_flash":
         peak_pct = max(0.0, float(getattr(entry, "line_peak_width_pct", 100.0) or 100.0))
         valley_pct = max(0.0, float(getattr(entry, "line_valley_width_pct", 0.0) or 0.0))
@@ -2108,7 +2100,7 @@ def _ruby_span_to_dict(span) -> dict[str, Any]:
 
 
 def page_to_dict(page_entry) -> dict[str, Any]:
-    """page.json (個別ページメタ) を書き出す.
+    """個別ページのDomain projection payloadを書き出す。
 
     page_entry は BMangaPageEntry。comas / balloons / texts をシリアライズする。
     """
@@ -2122,17 +2114,25 @@ def page_to_dict(page_entry) -> dict[str, Any]:
         "activeComaIndex": int(page_entry.active_coma_index),
         "activeBalloonIndex": int(page_entry.active_balloon_index),
         "activeTextIndex": int(page_entry.active_text_index),
-        "comas": [coma_entry_to_dict(p) for p in page_entry.comas],
-        "balloons": [balloon_entry_to_dict(b) for b in page_entry.balloons],
-        "texts": [text_entry_to_dict(t) for t in page_entry.texts],
+        "comas": [
+            _with_domain_node_uid(entry, coma_entry_to_dict(entry))
+            for entry in page_entry.comas
+        ],
+        "balloons": [
+            _with_domain_node_uid(entry, balloon_entry_to_dict(entry))
+            for entry in page_entry.balloons
+        ],
+        "texts": [
+            _with_domain_node_uid(entry, text_entry_to_dict(entry))
+            for entry in page_entry.texts
+        ],
     }
 
 
 def page_from_dict(page_entry, data: dict[str, Any]) -> None:
     with _suspend_load_property_side_effects():
         data = data or {}
-        page_schema_version = _data_schema_version(data, 1)
-        opacity_percent_schema = page_schema_version >= 2
+        opacity_percent_schema = True
         page_entry.id = data.get("id", page_entry.id)
         if "title" in data:
             page_entry.title = _normalize_generated_page_title(data["title"], page_entry.id)
@@ -2142,14 +2142,17 @@ def page_from_dict(page_entry, data: dict[str, Any]) -> None:
         for coma_data in data.get("comas", []):
             entry = page_entry.comas.add()
             coma_entry_from_dict(entry, coma_data)
+            _restore_domain_node_uid(entry, coma_data)
         page_entry.balloons.clear()
         for b_data in data.get("balloons", []):
             entry = page_entry.balloons.add()
             balloon_entry_from_dict(entry, b_data, opacity_percent=opacity_percent_schema)
+            _restore_domain_node_uid(entry, b_data)
         page_entry.texts.clear()
         for t_data in data.get("texts", []):
             entry = page_entry.texts.add()
             text_entry_from_dict(entry, t_data)
+            _restore_domain_node_uid(entry, t_data)
         idx = int(data.get("activeComaIndex", -1))
         if idx < -1 or idx >= len(page_entry.comas):
             idx = 0 if len(page_entry.comas) > 0 else -1

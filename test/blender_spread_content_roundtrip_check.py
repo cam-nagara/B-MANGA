@@ -5,8 +5,10 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -40,6 +42,15 @@ def _page_index(work, page_id: str) -> int:
 
 def _page(work, page_id: str):
     return work.pages[_page_index(work, page_id)]
+
+
+def _page_dir(work, page_id: str) -> Path:
+    from bmanga_dev.io import domain_projection
+
+    page = _page(work, page_id)
+    project_uid = domain_projection.ensure_project_uid(work)
+    page_uid = domain_projection.ensure_page_uid(page, project_uid)
+    return Path(work.work_dir) / "pages" / page_uid
 
 
 def _add_stroke(obj, seed: float) -> None:
@@ -145,9 +156,119 @@ def _protected_hashes(work_dir: Path) -> dict[str, str]:
         if not path.is_file():
             continue
         relative = path.relative_to(work_dir)
-        if relative.parts[0] in {"p0001", "p0002"} or relative.name in {"work.json", "pages.json"}:
+        if relative.name in {"page_preview.png", "page_preview.detail.png"}:
+            continue
+        if relative.parts[0] in {"pages", "assets"} or relative.name == "project.json":
             result[str(relative)] = hashlib.sha256(path.read_bytes()).hexdigest()
     return result
+
+
+def _run_spread_crash_process(
+    temp_root: Path,
+    work_dir: Path,
+    operation: str,
+) -> subprocess.CompletedProcess[str]:
+    child = temp_root / f"spread_{operation}_crash_child.py"
+    child.write_text(
+        """
+import importlib.util
+import os
+from pathlib import Path
+import sys
+import bpy
+
+root = Path(os.environ["BMANGA_SPREAD_CRASH_ROOT"])
+work_dir = Path(os.environ["BMANGA_SPREAD_CRASH_WORK"])
+operation = os.environ["BMANGA_SPREAD_CRASH_OPERATION"]
+name = "bmanga_dev"
+spec = importlib.util.spec_from_file_location(
+    name,
+    root / "__init__.py",
+    submodule_search_locations=[str(root)],
+)
+module = importlib.util.module_from_spec(spec)
+sys.modules[name] = module
+assert spec.loader is not None
+spec.loader.exec_module(module)
+module.register()
+assert "FINISHED" in bpy.ops.wm.open_mainfile(
+    filepath=str(work_dir / "work.blend"),
+    load_ui=False,
+)
+from bmanga_dev.io import native_tree_transaction
+
+original = native_tree_transaction.NativeTreeTransaction.apply_additions
+
+def terminate_after_native(self):
+    original(self)
+    os._exit(79)
+
+native_tree_transaction.NativeTreeTransaction.apply_additions = (
+    terminate_after_native
+)
+if operation == "merge":
+    bpy.ops.bmanga.pages_merge_spread("EXEC_DEFAULT", left_index=0)
+else:
+    bpy.ops.bmanga.pages_split_spread("EXEC_DEFAULT", spread_index=0)
+os._exit(78)
+""".lstrip(),
+        encoding="utf-8",
+    )
+    environment = dict(os.environ)
+    environment.update(
+        {
+            "BMANGA_SPREAD_CRASH_ROOT": str(ROOT),
+            "BMANGA_SPREAD_CRASH_WORK": str(work_dir),
+            "BMANGA_SPREAD_CRASH_OPERATION": operation,
+        }
+    )
+    return subprocess.run(
+        [
+            bpy.app.binary_path,
+            "--background",
+            "--factory-startup",
+            "--python",
+            str(child),
+        ],
+        cwd=str(ROOT),
+        env=environment,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=480,
+        check=False,
+    )
+
+
+def _exercise_spread_process_crash(
+    temp_root: Path,
+    work_dir: Path,
+    operation: str,
+) -> None:
+    from bmanga_dev.bmanga_core.domain_repository import ProjectRepository
+    from bmanga_dev.io import native_tree_transaction
+
+    assert "FINISHED" in bpy.ops.wm.save_as_mainfile(
+        filepath=str(work_dir / "work.blend"),
+        check_existing=False,
+    )
+    before = _protected_hashes(work_dir)
+    completed = _run_spread_crash_process(
+        temp_root,
+        work_dir,
+        operation,
+    )
+    assert completed.returncode == 79, completed.stdout + completed.stderr
+    assert tuple((work_dir / "journal").glob("native-op-*.json"))
+    repository = ProjectRepository(work_dir)
+    repository.recover()
+    assert native_tree_transaction.recover_pending_native_transactions(
+        work_dir,
+        repository=repository,
+    ) == 1
+    assert _protected_hashes(work_dir) == before
+    assert not tuple((work_dir / "journal").glob("native-op-*.json"))
 
 
 def _tracked_objects():
@@ -159,10 +280,9 @@ def _tracked_objects():
     ]
 
 
-def _assert_no_source_content_dirs(work_dir: Path, stage: str) -> None:
+def _assert_no_source_content_dirs(source_page_dirs: tuple[Path, ...], stage: str) -> None:
     invalid = {}
-    for page_id in ("p0001", "p0002"):
-        page_dir = work_dir / page_id
+    for page_dir in source_page_dirs:
         if not page_dir.exists():
             continue
         items = list(page_dir.rglob("*"))
@@ -177,7 +297,7 @@ def _assert_no_source_content_dirs(work_dir: Path, stage: str) -> None:
             )
         ]
         if not items or unsafe:
-            invalid[page_id] = unsafe or ["<empty>"]
+            invalid[page_dir.name] = unsafe or ["<empty>"]
     assert not invalid, f"{stage}: 元ページ内容が再生成されました: {invalid}"
 
 
@@ -202,7 +322,7 @@ def _verify_merged(spread_id: str) -> None:
     for obj in objects:
         assert str(obj.get("bmanga_parent_key", "") or "").startswith(spread_id)
     links = json.loads(str(bpy.context.scene.get(spread_page_content.LINK_PROP, "{}")))
-    assert len(links) == 12
+    assert len(links) == 12, links
     assert len(set(links.values())) == 10
 
 
@@ -230,14 +350,18 @@ def _verify_split_page(page_id: str, expected_x: float) -> None:
         parent = str(obj.get("bmanga_parent_key", "") or "")
         assert parent in {page_id, f"{page_id}:c01"}
     links = json.loads(str(bpy.context.scene.get("bmanga_layer_link_groups", "{}")))
-    assert links == {
-        "gp:spread_gp_page": "group-page",
-        "gp:spread_gp_coma": "group-coma",
-        "effect:spread_effect_page": "group-page-effect",
-        "effect:spread_effect_coma": "group-coma-effect",
-        f"balloon:{page_id}:balloon_0001": "group-balloon",
-        f"text:{page_id}:text_0001": "group-balloon",
-    }
+    balloon_uid = f"balloon:{page_id}:balloon_0001"
+    text_uid = f"text:{page_id}:text_0001"
+    assert set(links) == {
+        "gp:spread_gp_page",
+        "gp:spread_gp_coma",
+        "effect:spread_effect_page",
+        "effect:spread_effect_coma",
+        balloon_uid,
+        text_uid,
+    }, links
+    assert links[balloon_uid] == links[text_uid], links
+    assert len(set(links.values())) == 5, links
 
 
 def main() -> None:
@@ -258,6 +382,7 @@ def main() -> None:
         _build_page("p0002", 24.0)
         work = get_work(bpy.context)
         work_dir = Path(work.work_dir)
+        source_page_dirs = tuple(_page_dir(work, page_id) for page_id in ("p0001", "p0002"))
 
         # 確定途中の強制失敗で、ディレクトリ・JSON・メモリを完全復元する。
         before = _protected_hashes(work_dir)
@@ -276,35 +401,61 @@ def main() -> None:
             if before.get(key) != after.get(key)
         }
         assert [str(page.id) for page in get_work(bpy.context).pages[:2]] == ["p0001", "p0002"]
-        assert not (work_dir / "p0001-0002").exists()
+        assert {
+            path.resolve() for path in (work_dir / "pages").iterdir() if path.is_dir()
+        } == {path.resolve() for path in source_page_dirs}
 
+        _exercise_spread_process_crash(
+            temp_root,
+            work_dir,
+            "merge",
+        )
         result = bpy.ops.bmanga.pages_merge_spread("EXEC_DEFAULT", left_index=0)
         assert result == {"FINISHED"}, result
         spread_id = "p0001-0002"
-        assert (work_dir / spread_id / "page.blend").is_file()
-        _assert_no_source_content_dirs(work_dir, "結合直後")
+        work = get_work(bpy.context)
+        assert (_page_dir(work, spread_id) / "page.blend").is_file()
+        _assert_no_source_content_dirs(source_page_dirs, "結合直後")
         result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
         assert result == {"FINISHED"}, result
-        _assert_no_source_content_dirs(work_dir, "見開きを開いた直後")
+        _assert_no_source_content_dirs(source_page_dirs, "見開きを開いた直後")
         _verify_merged(spread_id)
         assert "FINISHED" in bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
-        _assert_no_source_content_dirs(work_dir, "見開きを閉じた直後")
+        _assert_no_source_content_dirs(source_page_dirs, "見開きを閉じた直後")
 
         # 保存後の再読込でも両ページ由来の実体が残る。
         result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
         assert result == {"FINISHED"}, result
-        _assert_no_source_content_dirs(work_dir, "見開きを再度開いた直後")
+        _assert_no_source_content_dirs(source_page_dirs, "見開きを再度開いた直後")
         _verify_merged(spread_id)
         assert "FINISHED" in bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
-        _assert_no_source_content_dirs(work_dir, "見開きを再度閉じた直後")
+        _assert_no_source_content_dirs(source_page_dirs, "見開きを再度閉じた直後")
 
+        _exercise_spread_process_crash(
+            temp_root,
+            work_dir,
+            "split",
+        )
         result = bpy.ops.bmanga.pages_split_spread("EXEC_DEFAULT", spread_index=0)
         assert result == {"FINISHED"}, result
         split_json_hashes = {}
         for page_id, x_mm in (("p0001", 12.0), ("p0002", 24.0)):
-            page_json_path = work_dir / page_id / "page.json"
+            work = get_work(bpy.context)
+            page_dir = _page_dir(work, page_id)
+            page_json_path = page_dir / "page.json"
             split_json_hashes[page_id] = hashlib.sha256(page_json_path.read_bytes()).hexdigest()
-            page_json = json.loads(page_json_path.read_text(encoding="utf-8"))
+            from bmanga_dev.bmanga_core.domain_repository import ProjectRepository
+            from bmanga_dev.io import domain_projection
+
+            repository = ProjectRepository(work_dir)
+            project_document = repository.load_project()
+            page_document = repository.load_page(
+                next(page.uid for page in project_document.pages if page.display_id == page_id)
+            )
+            page_json = domain_projection.page_payload_from_document(
+                page_document,
+                display_id=page_id,
+            )
             assert abs(float(page_json["balloons"][0]["xMm"]) - x_mm) < 1.0e-4, (
                 page_id,
                 page_json,
@@ -318,7 +469,8 @@ def main() -> None:
             _verify_split_page(page_id, x_mm)
             assert "FINISHED" in bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
             for pending_id in (("p0002",) if page_id == "p0001" else ()):
-                pending_path = work_dir / pending_id / "page.json"
+                work = get_work(bpy.context)
+                pending_path = _page_dir(work, pending_id) / "page.json"
                 assert hashlib.sha256(pending_path.read_bytes()).hexdigest() == split_json_hashes[pending_id]
         print("BMANGA_SPREAD_CONTENT_ROUNDTRIP_OK")
     finally:

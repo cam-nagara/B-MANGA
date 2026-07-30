@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import copy
-from contextlib import ExitStack
 from dataclasses import dataclass
 import hashlib
 import json
@@ -16,22 +15,29 @@ import uuid
 
 import bpy
 
-from ..utils import json_io, layer_links, log, page_range, paths
-from . import page_io, schema, work_io
-from .project_content_migration_lock import (
-    allow_owned_recovery_journal,
+from ..bmanga_core.domain_ids import UIDKind, new_uid
+from ..bmanga_core.domain_store import (
+    ApplyPagePatch,
+    ApplyProjectPatch,
+    page_patch,
+    project_patch,
+)
+from ..utils import layer_links, log, page_range, paths
+from . import (
+    blender_worker_runtime,
+    domain_projection,
+    domain_runtime,
+    native_tree_transaction,
+    page_io,
+    schema,
+)
+from .project_file_lock import (
     guard_path_write,
     work_lock,
 )
-from .project_content_save_baseline import (
+from .save_baseline import (
     record_successful_tree_change,
     record_successful_write,
-)
-from .project_content_sidecar_save_guard import (
-    begin_sidecar_save,
-    commit_sidecars,
-    mark_sidecar_writes_started,
-    restore_sidecars,
 )
 
 
@@ -54,12 +60,17 @@ class _MemorySnapshot:
     work_dir: str
     loaded: bool
     link_json: str
+    project_uid: str
+    project_revision: int
+    page_identities: dict[str, tuple[str, int, dict[str, str]]]
 
 
 @dataclass(slots=True)
 class _DuplicatePlan:
     source_page_id: str
+    source_page_uid: str
     target_page_id: str
+    target_page_uid: str
     target_dir: Path
     stage_dir: Path
     work_data: dict[str, Any]
@@ -68,11 +79,13 @@ class _DuplicatePlan:
     layer_maps: dict[str, dict[str, str]]
     worker_result: dict[str, Any]
     staged_rasters: list[tuple[Path, Path]]
+    target_coma_uids: dict[str, str]
 
 
 @dataclass(slots=True)
 class _DeletePlan:
     page_id: str
+    page_uid: str
     page_dir: Path
     page_quarantine: Path
     work_data: dict[str, Any]
@@ -85,10 +98,24 @@ class _DeletePlan:
 def _capture_memory(context, work) -> _MemorySnapshot:
     details: dict[str, dict[str, Any]] = {}
     loaded: dict[str, bool] = {}
+    page_identities: dict[str, tuple[str, int, dict[str, str]]] = {}
     for page in work.pages:
         page_id = str(getattr(page, "id", "") or "")
         details[page_id] = schema.page_to_dict(page)
         loaded[page_id] = bool(getattr(page, "detail_loaded", True))
+        coma_uids = {
+            str(
+                getattr(coma, "coma_id", "")
+                or getattr(coma, "id", "")
+                or ""
+            ): str(coma.get(domain_projection.COMA_UID_PROP, "") or "")
+            for coma in getattr(page, "comas", ())
+        }
+        page_identities[page_id] = (
+            str(page.get(domain_projection.PAGE_UID_PROP, "") or ""),
+            int(page.get(domain_projection.PAGE_REVISION_PROP, 0) or 0),
+            coma_uids,
+        )
     scene = getattr(context, "scene", None)
     link_json = str(scene.get(layer_links.LINK_PROP, "") or "") if scene is not None else ""
     return _MemorySnapshot(
@@ -99,6 +126,13 @@ def _capture_memory(context, work) -> _MemorySnapshot:
         work_dir=str(getattr(work, "work_dir", "") or ""),
         loaded=bool(getattr(work, "loaded", False)),
         link_json=link_json,
+        project_uid=str(
+            work.get(domain_projection.PROJECT_UID_PROP, "") or ""
+        ),
+        project_revision=int(
+            work.get(domain_projection.PROJECT_REVISION_PROP, 0) or 0
+        ),
+        page_identities=page_identities,
     )
 
 
@@ -121,8 +155,12 @@ def _apply_memory(
         detail = page_details.get(page_id)
         if detail is not None:
             schema.page_from_dict(page, copy.deepcopy(detail))
-        page.detail_loaded = bool(detail_loaded.get(page_id, detail is not None))
-        page.coma_count = len(page.comas)
+        is_loaded = bool(detail_loaded.get(page_id, detail is not None))
+        page.detail_loaded = is_loaded
+        # 未読込ページのcomasは意図的に空。pages summaryから復元した件数を
+        # 0で上書きすると、失敗rollback後だけページ一覧の件数が消える。
+        if is_loaded:
+            page.coma_count = len(page.comas)
     work.work_dir = work_dir
     work.loaded = loaded
 
@@ -138,9 +176,52 @@ def _restore_memory(context, work, snapshot: _MemorySnapshot) -> None:
         work_dir=snapshot.work_dir,
         loaded=snapshot.loaded,
     )
+    if snapshot.project_uid:
+        work[domain_projection.PROJECT_UID_PROP] = snapshot.project_uid
+        work[domain_projection.PROJECT_REVISION_PROP] = snapshot.project_revision
+    for page in getattr(work, "pages", ()):
+        page_id = str(getattr(page, "id", "") or "")
+        identity = snapshot.page_identities.get(page_id)
+        if identity is None:
+            continue
+        page_uid, revision, coma_uids = identity
+        if page_uid:
+            page[domain_projection.PAGE_UID_PROP] = page_uid
+            page[domain_projection.PAGE_REVISION_PROP] = revision
+        for coma in getattr(page, "comas", ()):
+            coma_id = str(
+                getattr(coma, "coma_id", "")
+                or getattr(coma, "id", "")
+                or ""
+            )
+            coma_uid = coma_uids.get(coma_id, "")
+            if coma_uid:
+                coma[domain_projection.COMA_UID_PROP] = coma_uid
     scene = getattr(context, "scene", None)
     if scene is not None:
         scene[layer_links.LINK_PROP] = snapshot.link_json
+
+
+def _bind_domain_identities(
+    work,
+    work_dir: Path,
+    project_document,
+    *,
+    page_overrides: dict[str, object] | None = None,
+) -> None:
+    domain_projection.bind_project_document(work, project_document)
+    repository = domain_runtime.repository_for(work_dir)
+    overrides = page_overrides or {}
+    by_display = {str(page.id): page for page in work.pages}
+    for summary in project_document.pages:
+        entry = by_display.get(summary.display_id)
+        if entry is None or not bool(getattr(entry, "detail_loaded", False)):
+            continue
+        document = overrides.get(summary.uid)
+        if document is None and repository.page_path(summary.uid).is_file():
+            document = repository.load_page(summary.uid)
+        if document is not None:
+            domain_projection.bind_page_document(entry, document)
 
 
 def _persisted_page_detail(
@@ -152,10 +233,23 @@ def _persisted_page_detail(
     page_path = paths.page_meta_path(work_dir, page_id)
     if not page_path.is_file():
         return copy.deepcopy(snapshot.page_details.get(page_id, {}))
-    value = json_io.read_json(page_path)
-    if not isinstance(value, dict):
-        raise ValueError(f"ページ情報がオブジェクトではありません: {page_path}")
-    return copy.deepcopy(value)
+    document = domain_runtime.repository_for(work_dir).load_page(
+        paths.resolve_page_uid(work_dir, page_id)
+    )
+    summary = next(
+        (
+            value
+            for value in snapshot.pages_data.get("pages", ())
+            if isinstance(value, dict) and str(value.get("id", "") or "") == page_id
+        ),
+        {},
+    )
+    return domain_projection.page_payload_from_document(
+        document,
+        display_id=page_id,
+        title=str(summary.get("title", "") or ""),
+        spread=bool(summary.get("spread", False)),
+    )
 
 
 def _replace_page_key(value: object, source_page_id: str, target_page_id: str) -> str:
@@ -406,8 +500,6 @@ def _run_page_blend_worker(
 ) -> dict[str, Any]:
     if not page_blend.is_file():
         return {"idMaps": {}}
-    from . import detail_data_blender_worker_runtime
-
     request = {
         "sourcePageId": source_page_id,
         "targetPageId": target_page_id,
@@ -416,7 +508,7 @@ def _run_page_blend_worker(
         "balloonIds": [str(item.get("id", "") or "") for item in target_detail.get("balloons", [])],
         "textIds": [str(item.get("id", "") or "") for item in target_detail.get("texts", [])],
     }
-    return detail_data_blender_worker_runtime.run_worker(
+    return blender_worker_runtime.run_worker(
         bpy.app.binary_path,
         Path(__file__).with_name("page_operation_blender_worker.py"),
         "convert",
@@ -429,7 +521,21 @@ def _run_page_blend_worker(
 def _publish_directory(stage: Path, target: Path) -> None:
     with guard_path_write(target):
         if target.exists():
-            raise FileExistsError(target)
+            unexpected = [
+                item
+                for item in target.iterdir()
+                if not (
+                    item.is_file()
+                    and item.name.startswith((".page.json.stage-", ".page.json.backup-"))
+                )
+            ]
+            if unexpected:
+                raise FileExistsError(target)
+            for item in tuple(stage.iterdir()):
+                os.replace(item, target / item.name)
+            stage.rmdir()
+            record_successful_tree_change(target)
+            return
         moved = False
         try:
             os.replace(stage, target)
@@ -480,34 +586,6 @@ def _complete_rollback(actions) -> None:
         raise RuntimeError("ページ操作を完全には復元できませんでした") from first_error
 
 
-def _restore_sidecar_files(token, paths_to_record: tuple[Path, ...]) -> None:
-    if token is None:
-        return
-    restore_sidecars(token)
-    for path in paths_to_record:
-        record_successful_write(path)
-
-
-def _commit_sidecars_checked(token) -> None:
-    """確定書込みが失敗した時だけ、復元可能な状態へ戻す。"""
-    try:
-        commit_sidecars(token)
-    except BaseException:
-        try:
-            durable_status = str(json_io.read_json(token.journal_path).get("status", ""))
-        except BaseException:
-            durable_status = ""
-        if durable_status == "committed":
-            _logger.warning(
-                "ページ操作は確定済みですが、保存退避物の後片付けに失敗しました: %s",
-                token.transaction_dir,
-            )
-            return
-        if durable_status in {"secured", "writing", "restored"}:
-            token.status = durable_status
-        raise
-
-
 def _load_link_map(raw: str) -> dict[str, str]:
     try:
         value = json.loads(raw) if raw else {}
@@ -516,7 +594,7 @@ def _load_link_map(raw: str) -> dict[str, str]:
     return {str(key): str(group) for key, group in value.items()} if isinstance(value, dict) else {}
 
 
-def _clone_current_links(context, source_raw: str, uid_map: dict[str, str]) -> None:
+def _cloned_link_map(source_raw: str, uid_map: dict[str, str]) -> dict[str, str]:
     mapping = _load_link_map(source_raw)
     groups: dict[str, list[str]] = {}
     for old_uid, group in mapping.items():
@@ -529,6 +607,10 @@ def _clone_current_links(context, source_raw: str, uid_map: dict[str, str]) -> N
             continue
         group_id = f"layer_link_{uuid.uuid4().hex}"
         mapping.update({uid: group_id for uid in unique})
+    return mapping
+
+
+def _save_link_map(context, mapping: dict[str, str]) -> None:
     scene = getattr(context, "scene", None)
     if scene is not None:
         scene[layer_links.LINK_PROP] = json.dumps(mapping, ensure_ascii=False, separators=(",", ":"))
@@ -562,12 +644,14 @@ def _prepare_duplicate_plan(
     snapshot: _MemorySnapshot,
     source_index: int,
     source_page_id: str,
+    source_page_uid: str,
     target_page_id: str,
+    target_page_uid: str,
     work_dir: Path,
     transaction_root: Path,
 ) -> _DuplicatePlan:
     source_dir = paths.page_dir(work_dir, source_page_id)
-    stage_dir = transaction_root / target_page_id
+    stage_dir = transaction_root / target_page_uid
     _check_copy_source(source_dir)
     shutil.copytree(source_dir, stage_dir)
     work_data = copy.deepcopy(snapshot.work_data)
@@ -577,8 +661,28 @@ def _prepare_duplicate_plan(
     target_detail = _retarget_page_detail(
         source_detail, source_page_id, target_page_id, folder_map
     )
+    target_coma_uids = {
+        str(item.get("comaId") or item.get("id") or ""): new_uid(UIDKind.COMA)
+        for item in target_detail.get("comas", ())
+        if isinstance(item, dict) and str(item.get("comaId") or item.get("id") or "")
+    }
+    source_document = domain_runtime.repository_for(work_dir).load_page(source_page_uid)
+    source_coma_uids = {
+        node.display_id: node.native_uid
+        for node in source_document.nodes.values()
+        if node.kind == "coma" and node.native_uid
+    }
+    coma_root = stage_dir / paths.COMAS_DIR_NAME
+    for coma_id, target_coma_uid in target_coma_uids.items():
+        source_coma_uid = source_coma_uids.get(coma_id)
+        if not source_coma_uid:
+            continue
+        source_coma_dir = coma_root / source_coma_uid
+        target_coma_dir = coma_root / target_coma_uid
+        if source_coma_dir.is_dir():
+            os.replace(source_coma_dir, target_coma_dir)
     pages_data = _new_pages_data(snapshot, source_index, target_page_id, target_detail)
-    json_io.write_json(stage_dir / paths.PAGE_META_NAME, target_detail)
+    (stage_dir / paths.PAGE_META_NAME).unlink(missing_ok=True)
     worker_result = _run_page_blend_worker(
         stage_dir / paths.PAGE_BLEND_NAME,
         source_page_id,
@@ -588,13 +692,25 @@ def _prepare_duplicate_plan(
         target_detail,
     )
     return _DuplicatePlan(
-        source_page_id, target_page_id, paths.page_dir(work_dir, target_page_id), stage_dir,
+        source_page_id,
+        source_page_uid,
+        target_page_id,
+        target_page_uid,
+        work_dir / paths.PAGES_DIR_NAME / target_page_uid,
+        stage_dir,
         work_data, pages_data, target_detail, layer_maps, worker_result,
         _stage_rasters(snapshot, layer_maps, work_dir, transaction_root),
+        target_coma_uids,
     )
 
 
-def _apply_duplicate_plan(context, work, snapshot: _MemorySnapshot, plan: _DuplicatePlan) -> None:
+def _apply_duplicate_plan(
+    context,
+    work,
+    snapshot: _MemorySnapshot,
+    plan: _DuplicatePlan,
+    link_map: dict[str, str],
+) -> None:
     details = copy.deepcopy(snapshot.page_details)
     details[plan.target_page_id] = plan.target_detail
     loaded = dict(snapshot.detail_loaded)
@@ -603,6 +719,45 @@ def _apply_duplicate_plan(context, work, snapshot: _MemorySnapshot, plan: _Dupli
         context, work, plan.work_data, plan.pages_data, details, loaded,
         work_dir=snapshot.work_dir, loaded=snapshot.loaded,
     )
+    _save_link_map(context, link_map)
+    page_range.sync_end_number_to_page_count(work)
+
+
+def _commit_duplicate_plan(
+    context, work, snapshot: _MemorySnapshot, plan: _DuplicatePlan, work_dir: Path
+) -> None:
+    project_uid = domain_projection.ensure_project_uid(work)
+    page_uids = {
+        str(page.id): domain_projection.ensure_page_uid(page, project_uid)
+        for page in work.pages
+    }
+    page_uids[plan.target_page_id] = plan.target_page_uid
+    store = domain_runtime.store_for(
+        work_dir,
+        initial_project=domain_projection.project_document_from_work(work),
+    )
+    project_candidate = domain_projection.project_document_from_payload(
+        project_uid=project_uid,
+        revision=store.project.revision,
+        work_payload=plan.work_data,
+        pages_payload=plan.pages_data,
+        page_uids=page_uids,
+    )
+    page_candidate = domain_projection.page_document_from_payload(
+        project_uid=project_uid,
+        page_uid=plan.target_page_uid,
+        revision=0,
+        work_payload=plan.work_data,
+        page_payload=plan.target_detail,
+        coma_uids=plan.target_coma_uids,
+        native_payloads=tuple(
+            (str(kind), tuple(values))
+            for kind, values in dict(
+                plan.worker_result.get("nativePayloads", {}) or {}
+            ).items()
+            if str(kind) in {"gp", "effect"} and isinstance(values, list)
+        ),
+    )
     uid_map = _page_entry_uid_map(
         plan.source_page_id,
         plan.target_page_id,
@@ -610,35 +765,101 @@ def _apply_duplicate_plan(context, work, snapshot: _MemorySnapshot, plan: _Dupli
         plan.layer_maps,
         plan.worker_result,
     )
-    _clone_current_links(context, snapshot.link_json, uid_map)
-    page_range.sync_end_number_to_page_count(work)
+    worker_link_map = plan.worker_result.get("linkMap", {})
+    link_map = (
+        {
+            str(uid): str(group)
+            for uid, group in worker_link_map.items()
+            if str(uid) and str(group)
+        }
+        if isinstance(worker_link_map, dict)
+        else _cloned_link_map(snapshot.link_json, uid_map)
+    )
+    page_candidate.links = domain_projection.domain_links_from_projection_mapping(
+        page_candidate,
+        link_map,
+    )
+    page_candidate.validate()
+    repository = domain_runtime.repository_for(work_dir)
+    owner = native_tree_transaction.Owner("page", plan.target_page_uid)
+    additions = [
+        native_tree_transaction.Addition(
+            plan.stage_dir,
+            plan.target_dir,
+            owner,
+        ),
+        *(
+            native_tree_transaction.Addition(stage, target, owner)
+            for stage, target in plan.staged_rasters
+        ),
+    ]
+    native_transaction = native_tree_transaction.NativeTreeTransaction(
+        work_dir,
+        repository=repository,
+        additions=additions,
+    )
+    native_transaction.prepare()
+    with store.transaction():
+        store.execute(
+            ApplyProjectPatch(
+                project_patch(
+                    store.project,
+                    project_candidate,
+                    require_candidate_revision=False,
+                )
+            )
+        )
+        store.execute(
+            ApplyPagePatch(
+                page_patch(
+                    store.pages.get(page_candidate.page_uid),
+                    page_candidate,
+                    require_candidate_revision=False,
+                )
+            )
+        )
+        project_document = store.project
+        page_document = store.pages[plan.target_page_uid]
 
-
-def _commit_duplicate_plan(
-    context, work, snapshot: _MemorySnapshot, plan: _DuplicatePlan, work_dir: Path
-) -> None:
-    sidecar_paths = (paths.pages_meta_path(work_dir), paths.work_meta_path(work_dir))
-    sidecar = begin_sidecar_save(work_dir, sidecar_paths)
-    published: list[Path] = []
-    with allow_owned_recovery_journal(sidecar.journal_path):
         try:
-            _publish_directory(plan.stage_dir, plan.target_dir)
-            published.append(plan.target_dir)
-            for stage, target in plan.staged_rasters:
-                _publish_file(stage, target)
-                published.append(target)
-            _apply_duplicate_plan(context, work, snapshot, plan)
-            mark_sidecar_writes_started(sidecar)
-            page_io.save_pages_json(work_dir, work)
-            work_io.save_work_json(work_dir, work)
-            _commit_sidecars_checked(sidecar)
+            native_transaction.apply()
+            _apply_duplicate_plan(context, work, snapshot, plan, link_map)
+            _bind_domain_identities(
+                work,
+                work_dir,
+                project_document,
+                page_overrides={plan.target_page_uid: page_document},
+            )
+            repository.checkpoint(
+                project_document,
+                [page_document],
+            )
+            native_transaction.recover()
         except BaseException:
-            _complete_rollback((
-                lambda: _remove_published(published),
-                lambda: _restore_sidecar_files(sidecar, sidecar_paths),
-                lambda: _restore_memory(context, work, snapshot),
-            ))
+            domain_committed = False
+            recovery_complete = False
+            try:
+                domain_committed = native_transaction.recover()
+                recovery_complete = True
+            finally:
+                if recovery_complete and not domain_committed:
+                    _restore_memory(context, work, snapshot)
+                elif not recovery_complete:
+                    work.loaded = False
             raise
+        store.mark_checkpointed(
+            project=True,
+            page_uids=(plan.target_page_uid,),
+        )
+        try:
+            record_successful_write(repository.project_path)
+            record_successful_write(repository.page_path(plan.target_page_uid))
+            record_successful_tree_change(
+                plan.target_dir,
+                *(target for _stage, target in plan.staged_rasters),
+            )
+        except Exception:  # noqa: BLE001
+            _logger.exception("page duplicate baseline refresh failed")
 
 
 def duplicate_page(context, work, source_index: int) -> str:
@@ -647,15 +868,28 @@ def duplicate_page(context, work, source_index: int) -> str:
     with work_lock(work_dir, blocking=True):
         snapshot = _capture_memory(context, work)
         source_page_id = str(work.pages[source_index].id)
+        project_uid = domain_projection.ensure_project_uid(work)
+        source_page_uid = domain_projection.ensure_page_uid(
+            work.pages[source_index],
+            project_uid,
+        )
         target_page_id = page_io.allocate_new_page_id(work)
-        with guard_path_write(paths.pages_meta_path(work_dir)):
+        target_page_uid = new_uid(UIDKind.PAGE)
+        with guard_path_write(paths.project_meta_path(work_dir)):
             pass
         transaction_root = Path(tempfile.mkdtemp(
             prefix=f".{work_dir.name}.page-duplicate-", dir=str(work_dir.parent)
         ))
         try:
             plan = _prepare_duplicate_plan(
-                snapshot, source_index, source_page_id, target_page_id, work_dir, transaction_root
+                snapshot,
+                source_index,
+                source_page_id,
+                source_page_uid,
+                target_page_id,
+                target_page_uid,
+                work_dir,
+                transaction_root,
             )
             _commit_duplicate_plan(context, work, snapshot, plan, work_dir)
             return target_page_id
@@ -781,7 +1015,11 @@ def _remove_deleted_links(context, raw: str, removed_uids: set[str]) -> None:
 
 
 def _prepare_delete_plan(
-    snapshot: _MemorySnapshot, page_id: str, work_dir: Path, transaction_root: Path
+    snapshot: _MemorySnapshot,
+    page_id: str,
+    page_uid: str,
+    work_dir: Path,
+    transaction_root: Path,
 ) -> _DeletePlan:
     page_dir = paths.page_dir(work_dir, page_id)
     if page_dir.is_symlink():
@@ -800,8 +1038,9 @@ def _prepare_delete_plan(
     )
     return _DeletePlan(
         page_id,
+        page_uid,
         page_dir,
-        transaction_root / page_id,
+        transaction_root / page_uid,
         work_data,
         pages_data,
         details,
@@ -851,8 +1090,6 @@ def _rollback_delete(
     plan: _DeletePlan,
     page_moved: bool,
     raster_moves: list[tuple[Path, Path]],
-    sidecar,
-    sidecar_paths: tuple[Path, ...],
 ) -> None:
     actions = [
         (lambda source=source, quarantine=quarantine: _restore_quarantine(source, quarantine))
@@ -860,10 +1097,7 @@ def _rollback_delete(
     ]
     if page_moved:
         actions.append(lambda: _restore_quarantine(plan.page_dir, plan.page_quarantine))
-    actions.extend((
-        lambda: _restore_sidecar_files(sidecar, sidecar_paths),
-        lambda: _restore_memory(context, work, snapshot),
-    ))
+    actions.append(lambda: _restore_memory(context, work, snapshot))
     _complete_rollback(actions)
 
 
@@ -879,52 +1113,131 @@ def _cleanup_committed_delete(transaction_root: Path) -> None:
 
 
 def delete_page(context, work, page_index: int) -> str:
-    """ページを同一ボリュームへ隔離し、JSON確定後だけ実削除する。"""
+    """ページを隔離し、Domain checkpoint成功後だけ実削除する。"""
     work_dir = Path(str(getattr(work, "work_dir", "") or "")).resolve(strict=True)
     with work_lock(work_dir, blocking=True):
         snapshot = _capture_memory(context, work)
-        page_id = str(work.pages[page_index].id)
-        with guard_path_write(paths.pages_meta_path(work_dir)):
+        page_entry = work.pages[page_index]
+        page_id = str(page_entry.id)
+        project_uid = domain_projection.ensure_project_uid(work)
+        page_uid = domain_projection.ensure_page_uid(page_entry, project_uid)
+        with guard_path_write(paths.project_meta_path(work_dir)):
             pass
         transaction_root = Path(tempfile.mkdtemp(
             prefix=f".{work_dir.name}.page-delete-", dir=str(work_dir.parent)
         ))
-        sidecar_paths = (paths.pages_meta_path(work_dir), paths.work_meta_path(work_dir))
-        plan = None
-        sidecar = None
-        page_moved, raster_moves = False, []
+        plan = _prepare_delete_plan(
+            snapshot,
+            page_id,
+            page_uid,
+            work_dir,
+            transaction_root,
+        )
+        page_uids = {
+            str(page.id): domain_projection.ensure_page_uid(page, project_uid)
+            for page in work.pages
+        }
+        store = domain_runtime.store_for(
+            work_dir,
+            initial_project=domain_projection.project_document_from_work(work),
+        )
+        project_candidate = domain_projection.project_document_from_payload(
+            project_uid=project_uid,
+            revision=store.project.revision,
+            work_payload=plan.work_data,
+            pages_payload=plan.pages_data,
+            page_uids=page_uids,
+        )
+        repository = domain_runtime.repository_for(work_dir)
+        owner = native_tree_transaction.Owner("page", page_uid)
+        removals = []
+        if plan.page_dir.exists():
+            removals.append(
+                native_tree_transaction.Removal(plan.page_dir, owner)
+            )
+        retained = {
+            str(item.get("filepath_rel", "") or "")
+            for item in plan.work_data.get("raster_layers", []) or []
+            if isinstance(item, dict)
+            and str(item.get("filepath_rel", "") or "")
+        }
+        for entry in plan.removed_rasters:
+            if str(entry.get("filepath_rel", "") or "") in retained:
+                continue
+            source = _raster_source(work_dir, entry)
+            if source is not None:
+                removals.append(
+                    native_tree_transaction.Removal(source, owner)
+                )
+        native_transaction = (
+            native_tree_transaction.NativeTreeTransaction(
+                work_dir,
+                repository=repository,
+                removals=removals,
+            )
+            if removals
+            else None
+        )
+        if native_transaction is not None:
+            native_transaction.prepare()
         committed = False
-        rollback_complete = False
-        with ExitStack() as recovery_access:
-            try:
-                plan = _prepare_delete_plan(snapshot, page_id, work_dir, transaction_root)
-                sidecar = begin_sidecar_save(work_dir, sidecar_paths)
-                recovery_access.enter_context(
-                    allow_owned_recovery_journal(sidecar.journal_path)
+        with store.transaction():
+            store.execute(
+                ApplyProjectPatch(
+                    project_patch(
+                        store.project,
+                        project_candidate,
+                        require_candidate_revision=False,
+                    )
                 )
-                page_moved = _quarantine_path(plan.page_dir, plan.page_quarantine)
-                _quarantine_delete_rasters(
-                    plan, work_dir, transaction_root, raster_moves
-                )
+            )
+            project_document = store.project
+
+            def apply_delete_projection() -> None:
                 _apply_delete_plan(context, work, snapshot, plan)
-                mark_sidecar_writes_started(sidecar)
-                page_io.save_pages_json(work_dir, work)
-                work_io.save_work_json(work_dir, work)
-                _commit_sidecars_checked(sidecar)
+                _bind_domain_identities(work, work_dir, project_document)
+
+            try:
+                if native_transaction is not None:
+                    native_transaction.apply()
+                apply_delete_projection()
+                repository.checkpoint(
+                    project_document,
+                )
+                if native_transaction is not None:
+                    native_transaction.recover()
                 committed = True
+                store.mark_checkpointed(project=True, page_uids=())
+                try:
+                    record_successful_write(repository.project_path)
+                    record_successful_tree_change(
+                        plan.page_dir,
+                        *(
+                            removal.source
+                            for removal in removals
+                            if removal.source != plan.page_dir
+                        ),
+                    )
+                except Exception:  # noqa: BLE001
+                    _logger.exception("page delete baseline refresh failed")
                 return page_id
             except BaseException:
-                if plan is not None:
-                    _rollback_delete(
-                        context, work, snapshot, plan, page_moved, raster_moves,
-                        sidecar, sidecar_paths,
-                    )
-                rollback_complete = True
+                domain_committed = False
+                recovery_complete = native_transaction is None
+                try:
+                    if native_transaction is not None:
+                        domain_committed = native_transaction.recover()
+                        recovery_complete = True
+                finally:
+                    if recovery_complete and not domain_committed:
+                        _restore_memory(context, work, snapshot)
+                    elif not recovery_complete:
+                        work.loaded = False
                 raise
             finally:
                 if committed:
                     _cleanup_committed_delete(transaction_root)
-                elif rollback_complete:
+                else:
                     shutil.rmtree(transaction_root, ignore_errors=True)
 
 

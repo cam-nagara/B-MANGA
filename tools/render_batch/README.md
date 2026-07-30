@@ -25,7 +25,7 @@ Blenderを画面なしで起動し、指定ファイルの指定プリセット�
 
 ## 必要なもの
 
-- 各PCに **Blender 5.1**（バージョンは全PCで統一）
+- 各PCに **Blender 5.2 LTS**（バージョンは全PCで統一）
 - 各PCに **B-MANGA Render** が導入済み（バージョン統一）
 - 全PCから**同じパスで見える共有フォルダ**（Dropbox。ドライブレターまで統一）
 - Python 3（Windows標準のPythonで可。追加インストール不要 / Tkinter使用）
@@ -40,7 +40,7 @@ python tools/render_batch/run_app.py
 
 - **共有フォルダ**: Dropbox上のフォルダを指定（全PCで同じパス）
 - **自PC名**: 空ならコンピュータ名を使用（記録に残ります）
-- **Blender実行ファイル**: 既定は `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe`
+- **Blender実行ファイル**: 既定は `C:\Program Files\Blender Foundation\Blender 5.2\blender.exe`
 - **同期猶予(秒)**: Dropboxの同期を待つ時間。`3`前後を推奨
 - **監視間隔(秒)**: 実行待ちを見に行く間隔
 

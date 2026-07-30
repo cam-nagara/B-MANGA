@@ -2,21 +2,13 @@
 
 Blender の ``as_pointer()``、表示名、一覧 index は保存後に安定しないため、
 管理オブジェクト／フォルダーの永続 ID と行種別だけから UID を組み立てる。
-このモジュールは移行前検査からも使えるよう Blender API に依存しない。
+Blender APIに依存しない。
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from collections.abc import Mapping
 import re
-from typing import Any
-
-
-CURRENT_DETAIL_DATA_VERSION = 1
-LEGACY_DETAIL_DATA_VERSION = 0
-DETAIL_DATA_VERSION_KEY = "detailDataVersion"
-SCENE_DETAIL_DATA_VERSION_PROP = "bmanga_detail_data_version"
 
 MANAGED_UID_KINDS = frozenset({"gp", "effect", "layer_folder"})
 # リンク保存には管理Objectだけでなく、Scene上の実レイヤーとページ内要素も入る。
@@ -195,56 +187,3 @@ def make_virtual_uid(role: str, *owner_ids: str) -> str:
     else:
         raise LayerUIDError(f"unsupported virtual UID role: {role!r}")
     return make_uid(role, key)
-
-
-def normalize_detail_data_version(value: object, *, default: int) -> int:
-    """非負整数の形式版だけを受け入れ、未知の将来版も保持する。"""
-    fallback = max(0, int(default))
-    if isinstance(value, bool):
-        return fallback
-    if isinstance(value, int):
-        return value if value >= 0 else fallback
-    if isinstance(value, str) and value.isdecimal():
-        return int(value)
-    return fallback
-
-
-def detail_data_version_from_mapping(data: object) -> int:
-    """旧 work.json の項目欠落を形式版 0 として読む。"""
-    if not isinstance(data, Mapping):
-        return LEGACY_DETAIL_DATA_VERSION
-    return normalize_detail_data_version(
-        data.get(DETAIL_DATA_VERSION_KEY),
-        default=LEGACY_DETAIL_DATA_VERSION,
-    )
-
-
-def detail_data_version_for_save(work: Any) -> int:
-    """通常保存で現在の形式版を落とさず、未定義の新規作品は現行版にする。"""
-    return normalize_detail_data_version(
-        getattr(work, "detail_data_version", CURRENT_DETAIL_DATA_VERSION),
-        default=CURRENT_DETAIL_DATA_VERSION,
-    )
-
-
-def scene_detail_data_version(scene: Any) -> int:
-    """ページ用blendに保存した形式版を読む。欠落は旧版として扱う。"""
-
-    if scene is None:
-        return LEGACY_DETAIL_DATA_VERSION
-    try:
-        value = scene.get(SCENE_DETAIL_DATA_VERSION_PROP)
-    except (AttributeError, TypeError):
-        return LEGACY_DETAIL_DATA_VERSION
-    return normalize_detail_data_version(
-        value,
-        default=LEGACY_DETAIL_DATA_VERSION,
-    )
-
-
-def stamp_scene_detail_data_version(scene: Any) -> None:
-    """現在のページ形式版をSceneへ永続スタンプする。"""
-
-    if scene is None:
-        raise LayerUIDError("scene is required for detail data version stamp")
-    scene[SCENE_DETAIL_DATA_VERSION_PROP] = CURRENT_DETAIL_DATA_VERSION

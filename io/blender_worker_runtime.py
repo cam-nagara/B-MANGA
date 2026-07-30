@@ -1,21 +1,21 @@
-"""詳細データ移行の子Blender起動と所有トークン境界。"""
+"""隔離したBlender subprocessを起動する共通runtime。"""
 
 from __future__ import annotations
 
 import argparse
 import json
 import os
-from pathlib import Path
 import secrets
 import subprocess
 import tempfile
 import traceback
-from typing import Any, Mapping
 import uuid
+from pathlib import Path
+from typing import Any, Mapping
 
 
-WORKER_TOKEN_ENV = "BMANGA_DETAIL_MIGRATION_WORKER_TOKEN"
-WORKER_CLAIM_ENV = "BMANGA_DETAIL_MIGRATION_WORKER_CLAIM"
+WORKER_TOKEN_ENV = "BMANGA_BLENDER_WORKER_TOKEN"
+WORKER_CLAIM_ENV = "BMANGA_BLENDER_WORKER_CLAIM"
 
 
 def run_worker(
@@ -27,21 +27,27 @@ def run_worker(
     *,
     request: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    with tempfile.TemporaryDirectory(prefix="bmanga_detail_blender_migration_") as temp:
-        root = Path(temp)
+    with tempfile.TemporaryDirectory(prefix="bmanga_blender_worker_") as directory:
+        root = Path(directory)
         output = root / "result.json"
         request_path = root / "request.json"
         if request is not None:
-            _write_json(request_path, dict(request))
+            _write_json(request_path, request)
         token = uuid.uuid4().hex
-        command = worker_command(
-            binary_path, script_path, mode, page_id, page_path, output, request_path, token
-        )
         environment = os.environ.copy()
         environment[WORKER_TOKEN_ENV] = token
         environment.pop(WORKER_CLAIM_ENV, None)
         result = subprocess.run(
-            command,
+            worker_command(
+                binary_path,
+                script_path,
+                mode,
+                page_id,
+                page_path,
+                output,
+                request_path,
+                token,
+            ),
             capture_output=True,
             text=True,
             timeout=900,
@@ -49,11 +55,11 @@ def run_worker(
             env=environment,
         )
         if not output.is_file():
-            raise RuntimeError(worker_failure_message(result, "結果ファイルがありません"))
+            raise RuntimeError(_failure_message(result, "結果ファイルがありません"))
         payload = _read_json(output)
         if result.returncode != 0 or not bool(payload.get("ok", False)):
-            detail = str(payload.get("error", "変換ワーカーが失敗しました"))
-            raise RuntimeError(worker_failure_message(result, detail))
+            detail = str(payload.get("error", "Blender workerが失敗しました"))
+            raise RuntimeError(_failure_message(result, detail))
         return payload
 
 
@@ -72,14 +78,14 @@ def worker_command(
         "--background",
         "--factory-startup",
         "--python",
-        str(script_path.resolve()),
+        str(Path(script_path).resolve()),
         "--",
         "--mode",
         str(mode),
         "--page-id",
         str(page_id),
         "--page-path",
-        str(page_path.resolve()),
+        str(Path(page_path).resolve()),
         "--output",
         str(output),
         "--request",
@@ -90,19 +96,38 @@ def worker_command(
 
 
 def claim_worker_runtime(worker_token: str) -> None:
-    """明示トークンを継承した子Blenderだけを移行対象の所有者にする。"""
-
     inherited = str(os.environ.get(WORKER_TOKEN_ENV, "") or "")
     supplied = str(worker_token or "")
-    if not inherited or not supplied or not secrets.compare_digest(inherited, supplied):
-        raise RuntimeError("移行ワーカーの所有トークンを確認できません")
+    if not inherited or not supplied or not secrets.compare_digest(
+        inherited,
+        supplied,
+    ):
+        raise RuntimeError("Blender workerの所有トークンを確認できません")
     os.environ[WORKER_CLAIM_ENV] = supplied
 
 
-def worker_failure_message(result, detail: str) -> str:
-    stdout = str(getattr(result, "stdout", "") or "")[-3000:]
-    stderr = str(getattr(result, "stderr", "") or "")[-3000:]
-    return f"{detail}\nBlender stdout:\n{stdout}\nBlender stderr:\n{stderr}"
+def suspend_addon_handlers() -> None:
+    """ワーカー生成物の保存・再読込から通常UI用handlerを隔離する。"""
+    import bpy
+
+    handler_lists = (
+        "load_post",
+        "save_pre",
+        "save_post",
+        "save_post_fail",
+        "undo_pre",
+        "redo_pre",
+        "undo_post",
+        "redo_post",
+    )
+    for list_name in handler_lists:
+        callbacks = getattr(bpy.app.handlers, list_name, None)
+        if callbacks is None:
+            continue
+        for callback in tuple(callbacks):
+            module_name = str(getattr(callback, "__module__", "") or "")
+            if module_name.endswith(".utils.handlers"):
+                callbacks.remove(callback)
 
 
 def worker_main(
@@ -145,6 +170,12 @@ def read_json(path: Path) -> dict[str, Any]:
     return _read_json(path)
 
 
+def _failure_message(result, detail: str) -> str:
+    stdout = str(getattr(result, "stdout", "") or "")[-3000:]
+    stderr = str(getattr(result, "stderr", "") or "")[-3000:]
+    return f"{detail}\nBlender stdout:\n{stdout}\nBlender stderr:\n{stderr}"
+
+
 def _write_json(path: Path, value: Mapping[str, Any]) -> None:
     path.write_text(
         json.dumps(dict(value), ensure_ascii=False, indent=2) + "\n",
@@ -155,16 +186,17 @@ def _write_json(path: Path, value: Mapping[str, Any]) -> None:
 def _read_json(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
-        raise TypeError("移行ワーカー結果のルートがオブジェクトではありません")
+        raise TypeError("Blender worker結果のルートがobjectではありません")
     return value
 
 
-__all__ = [
+__all__ = (
     "WORKER_CLAIM_ENV",
     "WORKER_TOKEN_ENV",
     "claim_worker_runtime",
     "read_json",
     "run_worker",
+    "suspend_addon_handlers",
     "worker_main",
     "worker_command",
-]
+)

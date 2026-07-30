@@ -305,6 +305,9 @@ def main() -> None:
         context = bpy.context
         work = context.scene.bmanga_work
         page = work.pages[0]
+        from bmanga_dev_border_preset_manage.io import page_io
+
+        page_io.load_page_json(Path(work.work_dir), page)
         coma = _make_coma(page)
         _assert_detail_ui(context, coma)
         _assert_white_margin_material_colors(context, work, page, coma)

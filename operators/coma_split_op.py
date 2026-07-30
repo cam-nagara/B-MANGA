@@ -16,7 +16,7 @@ from bpy.props import EnumProperty, FloatProperty
 from bpy.types import Operator
 
 from ..core.work import get_work
-from ..io import coma_io, page_io
+from ..io import coma_io, coma_operation_transaction
 from ..utils import (
     detail_popup,
     layer_stack as layer_stack_utils,
@@ -169,7 +169,8 @@ def _do_split(
     from .coma_knife_cut_op import (
         _split_convex_polygon_by_line,
         _ordered_split_polygons,
-        _reassign_coma_z_order_by_reading_order,
+        _first_poly_is_front,
+        _set_split_pair_z_order,
         _effective_gap_mm,
     )
     from .coma_op import _copy_coma_entry, blank_generated_coma_title
@@ -188,34 +189,45 @@ def _do_split(
     first_poly, second_poly = _ordered_split_polygons(result[0], result[1], read_dir)
 
     new_stem = coma_io.allocate_new_coma_id(work_dir, page.id, page=page)
+    transaction = coma_operation_transaction.ComaOperationTransaction(
+        context,
+        work,
+        page,
+        copy_pairs=((str(panel.coma_id), new_stem),),
+    )
     try:
-        coma_io.copy_coma_files(work_dir, page.id, page.id, panel.coma_id, new_stem)
-    except Exception:  # noqa: BLE001
-        _logger.warning("coma_split: copy_coma_files failed for %s", panel.coma_id)
-    new_entry = page.comas.add()
-    _copy_coma_entry(panel, new_entry)
-    new_entry.coma_id = new_stem
-    new_entry.id = new_stem
-    new_entry.title = blank_generated_coma_title()
+        transaction.apply_native()
+        new_entry = page.comas.add()
+        _copy_coma_entry(panel, new_entry)
+        new_entry.coma_id = new_stem
+        new_entry.id = new_stem
+        new_entry.title = blank_generated_coma_title()
 
-    from .coma_knife_cut_op import _coma_id_number
-    if _coma_id_number(str(getattr(panel, "coma_id", "") or "")) <= _coma_id_number(new_stem):
-        _set_coma_polygon(panel, first_poly)
-        _set_coma_polygon(new_entry, second_poly)
-    else:
-        _set_coma_polygon(panel, second_poly)
-        _set_coma_polygon(new_entry, first_poly)
-    _reassign_coma_z_order_by_reading_order(page, read_dir)
-    try:
-        coma_io.save_coma_meta(work_dir, page.id, panel)
-        coma_io.save_coma_meta(work_dir, page.id, new_entry)
-    except Exception:  # noqa: BLE001
-        _logger.exception("coma_split: save_coma_meta failed")
-    page.coma_count = len(page.comas)
-    try:
-        page_io.save_page_json(work_dir, page)
-    except Exception:  # noqa: BLE001
-        _logger.exception("coma_split: save_page_json failed")
+        from .coma_knife_cut_op import _coma_id_number
+        if _coma_id_number(
+            str(getattr(panel, "coma_id", "") or "")
+        ) <= _coma_id_number(new_stem):
+            _set_coma_polygon(panel, first_poly)
+            _set_coma_polygon(new_entry, second_poly)
+            panel_is_front = _first_poly_is_front(first_poly, second_poly)
+        else:
+            _set_coma_polygon(panel, second_poly)
+            _set_coma_polygon(new_entry, first_poly)
+            panel_is_front = not _first_poly_is_front(
+                first_poly,
+                second_poly,
+            )
+        _set_split_pair_z_order(
+            page,
+            panel,
+            new_entry,
+            panel_is_front,
+        )
+        page.coma_count = len(page.comas)
+        transaction.commit()
+    except BaseException:
+        transaction.abort()
+        raise
     return True
 
 

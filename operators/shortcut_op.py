@@ -455,46 +455,18 @@ def _try_call_op(op_callable, *args, **kwargs) -> bool:
 
 
 def _gp_cut_to_clipboard(context) -> bool:
-    """選択 GP ストロークをクリップボードへコピー + 削除.
-
-    GP v3 / legacy で operator 名が異なるため複数候補を順に試す。
-    """
+    """選択中のGrease Pencilストロークをコピーして削除する。"""
     # クリップボードへコピー
-    copied = False
-    for op in (
-        getattr(bpy.ops.grease_pencil, "copy", None),
-        getattr(bpy.ops.gpencil, "copy", None),
-    ):
-        if op is None:
-            continue
-        if _try_call_op(op):
-            copied = True
-            break
-    if not copied:
+    if not _try_call_op(bpy.ops.grease_pencil.copy):
         return False
     # 選択削除
-    for op in (
-        getattr(bpy.ops.grease_pencil, "delete", None),
-        getattr(bpy.ops.gpencil, "delete", None),
-    ):
-        if op is None:
-            continue
-        if _try_call_op(op):
-            return True
-    return True  # 削除に失敗してもコピーは成功
+    _try_call_op(bpy.ops.grease_pencil.delete)
+    return True
 
 
 def _gp_paste_clipboard(context) -> bool:
     """クリップボードから GP ストロークを貼付."""
-    for op in (
-        getattr(bpy.ops.grease_pencil, "paste", None),
-        getattr(bpy.ops.gpencil, "paste", None),
-    ):
-        if op is None:
-            continue
-        if _try_call_op(op):
-            return True
-    return False
+    return _try_call_op(bpy.ops.grease_pencil.paste)
 
 
 def _create_gp_object_for_paste(context, source_obj):

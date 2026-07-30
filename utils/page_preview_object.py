@@ -568,7 +568,7 @@ def _preview_png_path(
         if resolved_variant == PREVIEW_RENDER_VARIANT_DETAIL
         else PREVIEW_FILENAME
     )
-    return work_dir / page_id / filename
+    return paths.page_dir(work_dir, page_id) / filename
 
 
 def preview_png_for_display(work, page_id: str, *, scene=None) -> Path | None:
@@ -827,8 +827,8 @@ def ensure_preview_png(
 
 
 def _save_preview_png(image, path: Path, *, variant: str, signature: str) -> None:
-    from ..io.project_content_migration_lock import guard_path_write
-    from ..io.project_content_save_baseline import record_successful_write
+    from ..io.project_file_lock import guard_path_write
+    from ..io.save_baseline import record_successful_write
 
     # プレビューも作品フォルダー内の保存物なので、別画面の更新を上書きする
     # 前に共通ロックと読込基準を照合する。自画面の保存が完了した時点だけ

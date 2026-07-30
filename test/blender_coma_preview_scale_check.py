@@ -78,7 +78,10 @@ def main() -> None:
 
         work_dir = Path(work.work_dir)
         thumb = paths.coma_thumb_path(work_dir, page.id, entry.coma_id)
-        old_preview = paths.coma_preview_path(work_dir, page.id, entry.coma_id)
+        old_preview = (
+            paths.coma_dir(work_dir, page.id, entry.coma_id)
+            / f"{entry.coma_id}_preview.png"
+        )
         old_preview.parent.mkdir(parents=True, exist_ok=True)
         Image.new("RGBA", (1024, 512), (255, 0, 0, 255)).save(old_preview)
         assert coma_preview.coma_preview_source_path(work_dir, page.id, entry) is None

@@ -3918,51 +3918,6 @@
     {
       "accessor_bindings": [],
       "aliases": [
-        "field:bmanga:operators.detail.data.migration.op.py:bmanga.ot.detail.data.migrate.85fec72610b7:work.dir.f0a7f8f12205"
-      ],
-      "cache_dependencies": [],
-      "cache_policy": "no_persistent_cache",
-      "cancel_contract": "無効値をRNA制約で拒否し、直前の有効値を維持する",
-      "category": "session_state",
-      "classification_reason": "Phase 0 ownership分類を維持: operator_input",
-      "codec_bindings": [
-        "session:not_saved:BMANGA_OT_detail_data_migrate.work_dir"
-      ],
-      "codec_policy": "none",
-      "default": "",
-      "dirty_bindings": [
-        "session:not_persistent:BMANGA_OT_detail_data_migrate.work_dir"
-      ],
-      "dirty_policy": "session_only",
-      "field_id": "field:bmanga:bmanga.detail.data.migrate.be459874b861:work.dir.f0a7f8f12205",
-      "field_name": "work_dir",
-      "input_contract": "operator_inputのRNA UI値（型=StringProperty, 制約=RNA宣言）",
-      "legacy_save_policy": "not_saved",
-      "maximum": "",
-      "minimum": "",
-      "owner_name": "BMANGA_OT_detail_data_migrate",
-      "preset_families": [],
-      "preset_policy": "excluded",
-      "property_type": "StringProperty",
-      "save_policy": "not_saved",
-      "save_reload_contract": "一時状態のため作品・user configへ保存しない",
-      "schema_decision": "exclude_session_state",
-      "schema_member": false,
-      "source": "operators/detail_data_migration_op.py",
-      "state_class": "operator_input",
-      "symbol": "BMANGA_OT_detail_data_migrate.work_dir",
-      "target": "bmanga",
-      "test_ids": [
-        "test:test.test.settings.contract"
-      ],
-      "test_policy": "session_lifetime_characterization",
-      "ui_location": "BMANGA_OT_detail_data_migrate / work_dir",
-      "unit_conversion": "identity",
-      "update_callback": ""
-    },
-    {
-      "accessor_bindings": [],
-      "aliases": [
         "field:bmanga:operators.detail.preset.management.op.py:bmanga.ot.detail.preset.add.cdd69046e962:description.c9046f7a37ad"
       ],
       "cache_dependencies": [],
@@ -49310,51 +49265,6 @@
     {
       "accessor_bindings": [],
       "aliases": [
-        "field:bmanga:core.work.py:bmangaworkdata.832007b28aab:detail.data.version.21289755047a"
-      ],
-      "cache_dependencies": [],
-      "cache_policy": "derived_cache_only",
-      "cancel_contract": "無効値をRNA制約で拒否し、直前の有効値を維持する",
-      "category": "derived_display",
-      "classification_reason": "Domain外の保存形式version marker",
-      "codec_bindings": [
-        "derived:recompute_from_source:BMangaWorkData.detail_data_version"
-      ],
-      "codec_policy": "source_field_codec",
-      "default": "",
-      "dirty_bindings": [
-        "derived:source_owned:BMangaWorkData.detail_data_version"
-      ],
-      "dirty_policy": "never_dirty",
-      "field_id": "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:detail.data.version.21289755047a",
-      "field_name": "detail_data_version",
-      "input_contract": "persistent_domainのRNA UI値（型=IntProperty, 制約={'min': 0}）",
-      "legacy_save_policy": "domain_codec",
-      "maximum": "",
-      "minimum": 0,
-      "owner_name": "BMangaWorkData",
-      "preset_families": [],
-      "preset_policy": "excluded",
-      "property_type": "IntProperty",
-      "save_policy": "not_saved",
-      "save_reload_contract": "保存後の再読込で同じUI値と依存状態を復元する",
-      "schema_decision": "exclude_derived_display",
-      "schema_member": false,
-      "source": "core/work.py",
-      "state_class": "persistent_domain",
-      "symbol": "BMangaWorkData.detail_data_version",
-      "target": "bmanga",
-      "test_ids": [
-        "test:test.test.settings.contract"
-      ],
-      "test_policy": "recompute_characterization",
-      "ui_location": "BMangaWorkData / 作品詳細データ形式版",
-      "unit_conversion": "identity",
-      "update_callback": ""
-    },
-    {
-      "accessor_bindings": [],
-      "aliases": [
         "field:bmanga:core.work.py:bmangaworkdata.832007b28aab:layer.folders.c4ad51be5840"
       ],
       "cache_dependencies": [],
@@ -79454,7 +79364,7 @@
     }
   ],
   "generator": "tools.settings_contract",
-  "phase0_field_id_digest": "2d42af08dd29b1c3b8cabaebfe55bc9cfcad3f2e5e99d19576e3e5e986169d2d",
+  "phase0_field_id_digest": "74e1508b79e3f57738a28a1b2c3d192e96c4790804632b52f27f036be35fd215",
   "phase0_schema_version": 4,
   "retired_fields": [
     {
@@ -79466,40 +79376,60 @@
       "source": "panels/coma_list_panel.py",
       "state_class": "operator_input",
       "symbol": "BMANGA_OT_coma_enter_from_list.index"
+    },
+    {
+      "aliases": [
+        "field:bmanga:operators.detail.data.migration.op.py:bmanga.ot.detail.data.migrate.85fec72610b7:work.dir.f0a7f8f12205"
+      ],
+      "field_id": "field:bmanga:bmanga.detail.data.migrate.be459874b861:work.dir.f0a7f8f12205",
+      "reason": "Phase 0後にProperty宣言を削除済み",
+      "source": "operators/detail_data_migration_op.py",
+      "state_class": "operator_input",
+      "symbol": "BMANGA_OT_detail_data_migrate.work_dir"
+    },
+    {
+      "aliases": [
+        "field:bmanga:core.work.py:bmangaworkdata.832007b28aab:detail.data.version.21289755047a"
+      ],
+      "field_id": "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:detail.data.version.21289755047a",
+      "reason": "Phase 0後にProperty宣言を削除済み",
+      "source": "core/work.py",
+      "state_class": "persistent_domain",
+      "symbol": "BMangaWorkData.detail_data_version"
     }
   ],
   "schema_version": 1,
   "summary": {
     "counts_by_category": {
-      "derived_display": 31,
+      "derived_display": 30,
       "external_integration": 293,
       "persistent_domain": 795,
-      "session_state": 480,
+      "session_state": 479,
       "user_setting": 45
     },
     "counts_by_state_class": {
       "derived_display": 6,
       "derived_value_proxy": 21,
       "multi_context_projection": 321,
-      "operator_input": 438,
+      "operator_input": 437,
       "persistent_blender_property": 145,
-      "persistent_domain": 470,
+      "persistent_domain": 469,
       "user_preferences": 45,
       "user_preset": 82,
       "window_manager_transient": 16,
       "window_manager_transient_proxy": 100
     },
     "counts_by_target": {
-      "bmanga": 1351,
+      "bmanga": 1349,
       "line": 251,
       "render": 42
     },
-    "field_count": 1569,
+    "field_count": 1567,
     "phase0_property_binding_count": 1645,
     "preset_field_count": 631,
     "projection_count": 75,
-    "property_binding_count": 1644,
-    "retired_field_count": 1,
+    "property_binding_count": 1642,
+    "retired_field_count": 3,
     "schema_field_count": 840
   }
 }

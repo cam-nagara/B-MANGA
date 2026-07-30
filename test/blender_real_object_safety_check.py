@@ -217,8 +217,10 @@ def main() -> None:
         if len(old_safe_mesh.materials) == 0:
             old_safe_mesh.materials.append(old_safe_mat)
 
-        reopen_path = temp_root / "real_object_safety_reopen.blend"
-        bpy.ops.wm.save_as_mainfile(filepath=str(reopen_path))
+        # 作品外のSave AsコピーはB-MANGA正本ではない。現在の正規page.blendを
+        # 保存し、後段のアドオン無効化・再読込検証にも同じ正本を使う。
+        reopen_path = Path(bpy.data.filepath).resolve()
+        bpy.ops.wm.save_mainfile(compress=True)
 
         _force_full_outliner_mirror(scene, work)
         text_coll = outliner_model.ensure_text_collection(scene)

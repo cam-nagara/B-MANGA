@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -80,48 +81,54 @@ def _save_composited_preview(source: bpy.types.Image, alpha: bpy.types.Image, pa
 
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    _load_addon()
-    from bmanga_dev_border_texture_visual.utils import coma_border_object, coma_border_texture, coma_plane, paths
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_border_texture_visual_"))
+    try:
+        _load_addon()
+        from bmanga_dev_border_texture_visual.utils import (
+            coma_border_object,
+            coma_border_texture,
+            coma_plane,
+            paths,
+        )
 
-    scene = bpy.context.scene
-    work = scene.bmanga_work
-    work.loaded = True
-    work_dir = Path(tempfile.mkdtemp(prefix="bmanga_border_texture_visual_")) / "Visual.bmanga"
-    work.work_dir = str(work_dir)
-    page = work.pages.add()
-    page.id = "p0001"
-    page.title = "1ページ"
-    coma = page.comas.add()
-    coma.id = "c01"
-    coma.coma_id = "c01"
-    coma.title = "コマ1"
-    coma.rect_width_mm = 120.0
-    coma.rect_height_mm = 80.0
-    coma.border.style = "brush"
-    coma.border.width_mm = 3.0
-    coma.border.blur_amount = 1.0
-    coma.border.blur_dither = False
-    coma.border.color = (0.0, 0.0, 0.0, 1.0)
-    _write_preview_image(paths.coma_thumb_path(work_dir, page.id, coma.coma_id))
+        work_dir = temp_root / "Visual.bmanga"
+        assert bpy.ops.bmanga.work_new(filepath=str(work_dir)) == {"FINISHED"}
+        assert bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0) == {"FINISHED"}
+        scene = bpy.context.scene
+        work = scene.bmanga_work
+        page = work.pages[0]
+        coma = page.comas[0]
+        coma.rect_width_mm = 120.0
+        coma.rect_height_mm = 80.0
+        coma.border.style = "brush"
+        coma.border.width_mm = 3.0
+        coma.border.blur_amount = 1.0
+        coma.border.blur_dither = False
+        coma.border.color = (0.0, 0.0, 0.0, 1.0)
+        _write_preview_image(paths.coma_thumb_path(work_dir, page.id, coma.coma_id))
 
-    obj = coma_border_object.ensure_coma_border_object(scene, work, page, coma)
-    plane = coma_plane.find_coma_plane_object(page.id, coma.id)
-    assert obj is plane and plane is not None, "輪郭ぼかしがコマ面に適用されません"
-    plane.hide_render = False
-    leaked = [
-        image.name for image in bpy.data.images
-        if image.name.startswith(coma_border_texture.COMA_PLANE_ALPHA_IMAGE_PREFIX)
-    ]
-    assert not leaked, f"コマ面の透明マスク画像が生成されています: {leaked}"
-    attr = plane.data.attributes.get(coma_plane.COMA_PLANE_SOFT_MASK_ATTR)
-    assert attr is not None, "コマ面メッシュに輪郭ぼかし濃度がありません"
-    mat = plane.data.materials[0]
-    assert mat.node_tree.nodes.get("BManga_ComaSoftMask") is not None, (
-        "コマ面素材に輪郭ぼかし濃度ノードがありません"
-    )
+        obj = coma_border_object.ensure_coma_border_object(scene, work, page, coma)
+        plane = coma_plane.find_coma_plane_object(page.id, coma.id)
+        assert obj is plane and plane is not None, "輪郭ぼかしがコマ面に適用されません"
+        plane.hide_render = False
+        leaked = [
+            image.name
+            for image in bpy.data.images
+            if image.name.startswith(coma_border_texture.COMA_PLANE_ALPHA_IMAGE_PREFIX)
+        ]
+        assert not leaked, f"コマ面の透明マスク画像が生成されています: {leaked}"
+        attr = plane.data.attributes.get(coma_plane.COMA_PLANE_SOFT_MASK_ATTR)
+        assert attr is not None, "コマ面メッシュに輪郭ぼかし濃度がありません"
+        mat = plane.data.materials[0]
+        assert mat.node_tree.nodes.get("BManga_ComaSoftMask") is not None, (
+            "コマ面素材に輪郭ぼかし濃度ノードがありません"
+        )
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    print("BMANGA_COMA_BORDER_TEXTURE_VISUAL_CHECK_OK")
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
+        print("BMANGA_COMA_BORDER_TEXTURE_VISUAL_CHECK_OK")
+    finally:
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+        shutil.rmtree(temp_root, ignore_errors=True)
 
 
 main()

@@ -131,7 +131,14 @@ def main() -> None:
         scene = bpy.context.scene
         assert scene.bmanga_current_coma_page_id == "p0001"
         assert scene.bmanga_current_coma_id == "c01"
-        assert Path(bpy.data.filepath).resolve() == (work_dir / "p0001" / "c01" / "c01.blend").resolve()
+        from bmanga_dev_align.utils import paths
+
+        passes_dir = paths.coma_passes_dir(work_dir, "p0001", "c01")
+        assert Path(bpy.data.filepath).resolve() == paths.coma_blend_path(
+            work_dir,
+            "p0001",
+            "c01",
+        ).resolve()
 
         _add_managed_page_image(scene)
         scene.camera.data.type = "PANO"
@@ -167,7 +174,7 @@ def main() -> None:
 
         context = bmanga_context.scene_context(scene)
         assert context.is_bmanga_coma
-        assert context.passes_dir == work_dir / "p0001" / "c01" / "passes"
+        assert context.passes_dir == passes_dir
         assert "ページ画像_現在" in context.managed_page_images
 
         scene.render.resolution_x = 1200
@@ -175,7 +182,7 @@ def main() -> None:
         _run_fisheye_preset_without_render(bpy.context, render)
         render.core._apply_output_resolution_mode(scene)
         assert scene.render.resolution_x == 600 and scene.render.resolution_y == 600
-        assert scene["bmanga_render_fisheye_output_dir"] == str(work_dir / "p0001" / "c01" / "passes")
+        assert scene["bmanga_render_fisheye_output_dir"] == str(passes_dir)
         assert str(scene["bmanga_render_fisheye_output_name"]).startswith("c01_")
         assert scene.bmanga_coma_camera_fisheye_layout_mode is True
         assert abs(float(scene.bmanga_coma_camera_fisheye_fov) - 4.0) < 1.0e-6
@@ -184,7 +191,7 @@ def main() -> None:
         scene["bmanga_render_fisheye_output_dir"] = "//passes\\"
         scene["bmanga_render_fisheye_output_name"] = "fisheye"
         assert render.eevr_bridge.setup(scene, scene.camera)
-        assert scene["bmanga_render_fisheye_output_dir"] == str(work_dir / "p0001" / "c01" / "passes")
+        assert scene["bmanga_render_fisheye_output_dir"] == str(passes_dir)
         assert scene["bmanga_render_fisheye_output_name"] == "c01_fisheye"
 
         print("BMANGA_RENDER_BMANGA_ALIGNMENT_OK")

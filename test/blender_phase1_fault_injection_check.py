@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -29,13 +30,19 @@ def _load_package():
 
 
 def _expect_injected(callable_):
-    from bmanga_phase1_fault.bmanga_core.faults import FaultInjectedError
+    from bmanga_phase1_fault.bmanga_core.faults import (
+        FaultInjectedError,
+        fault_snapshot,
+    )
 
     try:
-        callable_()
+        result = callable_()
     except FaultInjectedError:
         return
-    raise AssertionError("armed fault point did not raise FaultInjectedError")
+    raise AssertionError(
+        "armed fault point did not raise FaultInjectedError: "
+        f"result={result!r}, faults={fault_snapshot()!r}"
+    )
 
 
 def main() -> None:
@@ -53,12 +60,12 @@ def main() -> None:
     )
     from bmanga_phase1_fault.io import blend_io
     from bmanga_phase1_fault.io import page_io, work_io
-    from bmanga_phase1_fault.io.project_content_save_baseline import (
+    from bmanga_phase1_fault.io.save_baseline import (
         capture_loaded_baseline,
         snapshot_baseline_registry,
     )
     from bmanga_phase1_fault.operators import io_op
-    from bmanga_phase1_fault.utils import asset_bundle, json_io
+    from bmanga_phase1_fault.utils import asset_bundle, json_io, paths
 
     reset_observability()
     with isolated_faults(), tempfile.TemporaryDirectory(
@@ -165,7 +172,6 @@ def main() -> None:
         )
 
         asset_work_dir = root / "AssetStage.bmanga"
-        (asset_work_dir / "p0001").mkdir(parents=True)
         work = bpy.context.scene.bmanga_work
         work.loaded = True
         work.work_dir = str(asset_work_dir)
@@ -174,6 +180,10 @@ def main() -> None:
         page.id = "p0001"
         page.in_page_range = True
         work.active_page_index = 0
+        work_io.create_bmanga_skeleton(asset_work_dir)
+        work_io.save_work_json(asset_work_dir, work)
+        page_io.save_page_json(asset_work_dir, page)
+        page_io.load_page_json(asset_work_dir, page)
         arm_fault(FaultPoint.ASSET_INSTANTIATE_AFTER_STAGE)
         _expect_injected(
             lambda: asset_bundle.instantiate_payload(
@@ -231,22 +241,120 @@ def main() -> None:
         assert result["created_new_count"] == 1
         assert len(work.layer_folders) == before_folders + 1
 
+        # 複数レイヤー素材の後半が失敗しても、前半だけを残さない。
+        before_balloons = len(page.balloons)
+        before_rasters = len(bpy.context.scene.bmanga_raster_layers)
+        before_page_json = paths.page_meta_path(
+            asset_work_dir,
+            "p0001",
+        ).read_bytes()
+        partial_payload = {
+            "name": "partial-failure",
+            "origin": {"x": 0.0, "y": 0.0},
+            "entries": [
+                {
+                    "kind": "balloon",
+                    "source_id": "source-balloon",
+                    "data": {
+                        "id": "source-balloon",
+                        "shape": "ellipse",
+                        "width_mm": 40.0,
+                        "height_mm": 30.0,
+                    },
+                },
+                {
+                    "kind": "raster",
+                    "source_id": "source-raster",
+                    "data": {"id": "source-raster", "name": "壊れたラスター"},
+                    "png_base64": "not-valid-base64***",
+                },
+            ],
+        }
+        try:
+            asset_bundle.instantiate_payload(
+                bpy.context,
+                partial_payload,
+                target_page=page,
+                defer_to_page_file=False,
+            )
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("partial asset failure was accepted")
+        assert len(page.balloons) == before_balloons
+        assert len(bpy.context.scene.bmanga_raster_layers) == before_rasters
+        assert paths.page_meta_path(
+            asset_work_dir,
+            "p0001",
+        ).read_bytes() == before_page_json
+
+        # Domain checkpoint失敗も生成物を残さず、呼び出し元へ伝播する。
+        persist_payload = {
+            "name": "persist-failure",
+            "origin": {"x": 0.0, "y": 0.0},
+            "entries": [partial_payload["entries"][0]],
+        }
+        original_page_save = page_io.save_page_json
+        page_io.save_page_json = lambda *_args, **_kwargs: (
+            (_ for _ in ()).throw(OSError("forced checkpoint failure"))
+        )
+        try:
+            try:
+                asset_bundle.instantiate_payload(
+                    bpy.context,
+                    persist_payload,
+                    target_page=page,
+                    defer_to_page_file=False,
+                )
+            except OSError:
+                pass
+            else:
+                raise AssertionError("asset checkpoint failure was swallowed")
+        finally:
+            page_io.save_page_json = original_page_save
+        assert len(page.balloons) == before_balloons
+
+        # ドロップ元は全成功後だけ完了・削除する。失敗時は再試行可能に残す。
+        drop_collection = bpy.data.collections.new("Phase1FailedDrop")
+        drop_collection[asset_bundle.ASSET_KIND_PROP] = (
+            asset_bundle.ASSET_KIND_LAYER_BUNDLE
+        )
+        drop_collection[asset_bundle.ASSET_PAYLOAD_PROP] = (
+            '{"version":1,"entries":[{"kind":"raster",'
+            '"png_base64":"not-valid-base64***"}]}'
+        )
+        drop_object = bpy.data.objects.new("Phase1FailedDropInstance", None)
+        bpy.context.scene.collection.objects.link(drop_object)
+        drop_object.instance_type = "COLLECTION"
+        drop_object.instance_collection = drop_collection
+        original_target_page = asset_bundle._is_target_page_file
+        asset_bundle._is_target_page_file = lambda *_args, **_kwargs: True
+        try:
+            assert not asset_bundle.process_dropped_collection_instance(
+                bpy.context,
+                drop_object,
+            )
+        finally:
+            asset_bundle._is_target_page_file = original_target_page
+        assert bpy.data.objects.get(drop_object.name) is drop_object
+        assert not bool(
+            drop_object.get(asset_bundle.ASSET_INSTANCE_DONE_PROP, False)
+        )
+        bpy.data.objects.remove(drop_object, do_unlink=True)
+        bpy.data.collections.remove(drop_collection, do_unlink=True)
+
         open_work_dir = asset_work_dir
         work_io.create_bmanga_skeleton(open_work_dir)
         work_io.save_work_json(open_work_dir, work)
         page_io.save_pages_json(open_work_dir, work)
         page_io.save_page_json(open_work_dir, page)
         source_blend = open_work_dir / "work.blend"
-        blend_path = open_work_dir / "p0001" / "page.blend"
-        bpy.ops.wm.save_as_mainfile(
-            filepath=str(source_blend),
-            check_existing=False,
-        )
-        bpy.ops.wm.save_as_mainfile(
-            filepath=str(blend_path),
-            check_existing=False,
-            copy=True,
-        )
+        blend_path = paths.page_blend_path(open_work_dir, "p0001")
+        # 製品内の初回正規ファイル生成と同じ、保存先を明示許可するadapterを
+        # 通す。直接Save Asは別の正規ファイルを誤上書きし得るため拒否対象。
+        assert blend_io.save_work_blend(open_work_dir)
+        blend_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_blend, blend_path)
         capture_loaded_baseline(open_work_dir, source_blend)
         baseline_before_open = snapshot_baseline_registry()
         arm_fault(FaultPoint.OPEN_MAINFILE)
@@ -357,7 +465,7 @@ def main() -> None:
     assert counters["json.read.success"] >= 2
     assert counters["asset.create.failure"] == 5
     assert counters["asset.create.success"] == 1
-    assert counters["asset.instantiate.failure"] == 4
+    assert counters["asset.instantiate.failure"] == 7
     assert counters["asset.instantiate.success"] == 1
     assert counters["open.mainfile.failure"] == 5
     assert counters["open.mainfile.success"] == 1

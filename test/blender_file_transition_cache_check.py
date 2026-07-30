@@ -98,11 +98,12 @@ def _assert_preview_variants(work, page) -> None:
 
 def _assert_sidecar_change_invalidates(work_dir: Path) -> None:
     cache = _module("utils.sidecar_load_cache")
+    paths = _module("utils.paths")
     blend_path = Path(bpy.data.filepath)
     scene = bpy.context.scene
     assert cache.current(scene, work_dir, blend_path)
     page_id = str(scene.bmanga_current_page_id)
-    page_json = work_dir / page_id / "page.json"
+    page_json = paths.page_meta_path(work_dir, page_id)
     original = page_json.read_text(encoding="utf-8")
     data = json.loads(original)
     data["_transitionCacheProbe"] = True

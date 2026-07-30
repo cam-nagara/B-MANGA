@@ -139,6 +139,7 @@ def main() -> int:
             meldex_text_presentation,
             page_io,
             text_presets,
+            work_io,
         )
         from bmanga_dev_meldex_presentation_v2.utils import color_space
         from bmanga_dev_meldex_presentation_v2.utils import page_detail
@@ -154,9 +155,12 @@ def main() -> int:
         work.loaded = True
         work.work_dir = str(temp_root)
         page = page_io.register_new_page(work)
+        work_io.create_bmanga_skeleton(temp_root)
+        work_io.save_work_json(temp_root, work)
         page_io.ensure_page_dir(temp_root, page.id)
         page.detail_loaded = True
         work.active_page_index = 0
+        page_io.save_page_json(temp_root, page)
 
         annotations = addon.preferences.BMangaPreferences.__annotations__
         _check("meldex_apply_text_presentation" in annotations, "新しい本文・ルビ共通チェックが登録される")

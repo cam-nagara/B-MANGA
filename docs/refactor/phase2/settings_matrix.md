@@ -3,11 +3,11 @@
 この文書は `python -m tools.settings_contract` で自動生成する。
 手編集せず、FieldSpecまたは現行RNAを変更したら再生成すること。
 
-- 全Property: 1569
-- RNA投影: 1644
+- 全Property: 1567
+- RNA投影: 1642
 - 新Domain/user settings schema候補: 840
 - preset対象: 631
-- Phase 0後の廃止field: 1
+- Phase 0後の廃止field: 3
 
 | Field ID | Category / decision | RNA | New save / codec | Legacy | Preset | Cache | Test | Unit |
 |---|---|---|---|---|---|---|---|---|
@@ -98,7 +98,6 @@
 | `field:bmanga:bmanga.coma.split.template.2c6f6c5c3987:target.from.edge.selection.e0974c863679` | session_state / exclude_session_state | `BMANGA_OT_coma_split_template.target_from_edge_selection` | not_saved / none | not_saved | excluded | no_persistent_cache | session_lifetime_characterization | identity |
 | `field:bmanga:bmanga.coma.split.template.2c6f6c5c3987:target.page.id.7543ae61635a` | session_state / exclude_session_state | `BMANGA_OT_coma_split_template.target_page_id` | not_saved / none | not_saved | excluded | no_persistent_cache | session_lifetime_characterization | identity |
 | `field:bmanga:bmanga.coma.z.order.ab5fdc4b4d51:direction.93c4abe27cf1` | session_state / exclude_session_state | `BMANGA_OT_coma_z_order.direction` | not_saved / none | not_saved | excluded | no_persistent_cache | session_lifetime_characterization | identity |
-| `field:bmanga:bmanga.detail.data.migrate.be459874b861:work.dir.f0a7f8f12205` | session_state / exclude_session_state | `BMANGA_OT_detail_data_migrate.work_dir` | not_saved / none | not_saved | excluded | no_persistent_cache | session_lifetime_characterization | identity |
 | `field:bmanga:bmanga.detail.preset.add.9766c90c0531:description.c9046f7a37ad` | session_state / exclude_session_state | `BMANGA_OT_detail_preset_add.description` | not_saved / none | not_saved | excluded | no_persistent_cache | session_lifetime_characterization | identity |
 | `field:bmanga:bmanga.detail.preset.add.9766c90c0531:preset.name.78e56c7450ed` | session_state / exclude_session_state | `BMANGA_OT_detail_preset_add.preset_name` | not_saved / none | not_saved | excluded | no_persistent_cache | session_lifetime_characterization | identity |
 | `field:bmanga:bmanga.detail.preset.add.9766c90c0531:preset.type.fb702886a9c2` | session_state / exclude_session_state | `BMANGA_OT_detail_preset_add.preset_type` | not_saved / none | not_saved | excluded | no_persistent_cache | session_lifetime_characterization | identity |
@@ -1028,7 +1027,6 @@
 | `field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:balloon.id.counter.8e3c859270d8` | persistent_domain / include_persistent_domain | `BMangaWorkData.balloon_id_counter` | domain_codec / json_or_blend_codec | domain_codec | excluded | no_cache_dependencies | load_change_cancel_save_characterization | identity |
 | `field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:coma.blend.template.path.f3b468489ba9` | persistent_domain / include_persistent_domain | `BMangaWorkData.coma_blend_template_path` | domain_codec / json_or_blend_codec | domain_codec | excluded | no_cache_dependencies | load_change_cancel_save_characterization | identity |
 | `field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:coma.gap.cf1f16737563` | persistent_domain / include_persistent_domain | `BMangaWorkData.coma_gap` | domain_codec / json_or_blend_codec | domain_codec | excluded | no_cache_dependencies | load_change_cancel_save_characterization | identity |
-| `field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:detail.data.version.21289755047a` | derived_display / exclude_derived_display | `BMangaWorkData.detail_data_version` | not_saved / source_field_codec | domain_codec | excluded | derived_cache_only | recompute_characterization | identity |
 | `field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:layer.folders.c4ad51be5840` | persistent_domain / include_persistent_domain | `BMangaWorkData.layer_folders` | domain_codec / json_or_blend_codec | domain_codec | excluded | no_cache_dependencies | load_change_cancel_save_characterization | identity |
 | `field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:loaded.2cab953f2b36` | session_state / exclude_session_state | `BMangaWorkData.loaded` | not_saved / none | domain_codec | excluded | no_persistent_cache | session_lifetime_characterization | identity |
 | `field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:nombre.0bfe93928a49` | persistent_domain / include_persistent_domain | `BMangaWorkData.nombre` | domain_codec / json_or_blend_codec | domain_codec | excluded | no_cache_dependencies | load_change_cancel_save_characterization | identity |

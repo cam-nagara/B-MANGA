@@ -19,10 +19,10 @@ _RUNTIME_PACKAGE = (__package__ or "").split(".", 1)[0]
 
 def _load_worker_runtime_module():
     if __package__:
-        return importlib.import_module(f"{__package__}.detail_data_blender_worker_runtime")
+        return importlib.import_module(f"{__package__}.blender_worker_runtime")
     name = "bmanga_page_operation_worker_runtime"
     spec = importlib.util.spec_from_file_location(
-        name, ROOT / "io" / "detail_data_blender_worker_runtime.py"
+        name, ROOT / "io" / "blender_worker_runtime.py"
     )
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
@@ -223,7 +223,10 @@ def _entry_uid_map(request: dict[str, Any], id_maps: dict[str, dict[str, str]]) 
     return result
 
 
-def _retarget_links(request: dict[str, Any], id_maps: dict[str, dict[str, str]]) -> None:
+def _retarget_links(
+    request: dict[str, Any],
+    id_maps: dict[str, dict[str, str]],
+) -> dict[str, str]:
     layer_links = _runtime_module("utils.layer_links")
     scene = bpy.context.scene
     raw = str(scene.get(layer_links.LINK_PROP, "") or "")
@@ -255,6 +258,7 @@ def _retarget_links(request: dict[str, Any], id_maps: dict[str, dict[str, str]])
         group = f"layer_link_{uuid.uuid4().hex}"
         rewritten.update({uid: group for uid in unique})
     scene[layer_links.LINK_PROP] = json.dumps(rewritten, ensure_ascii=False, separators=(",", ":"))
+    return rewritten
 
 
 def _stamp_scene_page(target_page_id: str) -> None:
@@ -294,6 +298,30 @@ def _validate(source_page_id: str, target_page_id: str, id_maps: dict[str, dict[
         raise RuntimeError("複製後のページCollectionがありません")
 
 
+def _native_payloads(target_page_id: str) -> dict[str, list[dict[str, Any]]]:
+    layer_model = _runtime_module("utils.layer_object_model")
+    result: dict[str, list[dict[str, Any]]] = {"gp": [], "effect": []}
+    for kind in result:
+        for obj in layer_model.iter_layer_objects(kind):
+            parent_key = layer_model.parent_key(obj)
+            if parent_key != target_page_id and not parent_key.startswith(
+                f"{target_page_id}:"
+            ):
+                continue
+            result[kind].append(
+                {
+                    "id": layer_model.stable_id(obj),
+                    "title": layer_model.display_title(obj),
+                    "parentKey": parent_key,
+                    "folderKey": layer_model.folder_id(obj),
+                    "visible": layer_model.user_visible(obj),
+                    "locked": layer_model.user_locked(obj),
+                    "nativeUid": layer_model.stable_id(obj),
+                }
+            )
+    return result
+
+
 def _convert(_page_id: str, page_path: Path, request_path: Path) -> dict[str, Any]:
     request = _WORKER_RUNTIME.read_json(request_path)
     source_page_id = str(request["sourcePageId"])
@@ -307,13 +335,18 @@ def _convert(_page_id: str, page_path: Path, request_path: Path) -> dict[str, An
     _retarget_entry_objects(
         request, source_page_id, target_page_id, folder_map
     )
-    _retarget_links(request, id_maps)
+    link_map = _retarget_links(request, id_maps)
     _stamp_scene_page(target_page_id)
     _validate(source_page_id, target_page_id, id_maps)
+    _WORKER_RUNTIME.suspend_addon_handlers()
     bpy.ops.wm.save_as_mainfile(filepath=str(page_path.resolve()))
     bpy.ops.wm.open_mainfile(filepath=str(page_path.resolve()), load_ui=False)
     _validate(source_page_id, target_page_id, id_maps)
-    return {"idMaps": id_maps}
+    return {
+        "idMaps": id_maps,
+        "linkMap": link_map,
+        "nativePayloads": _native_payloads(target_page_id),
+    }
 
 
 def _inspect(_page_id: str, page_path: Path) -> dict[str, Any]:

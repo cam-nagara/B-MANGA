@@ -1,4 +1,4 @@
-"""同一詳細データ版の別Blender画面による上書きを検出する基準hash。"""
+"""別Blender画面による上書きを検出する基準hash。"""
 
 from __future__ import annotations
 
@@ -11,9 +11,9 @@ import threading
 from typing import Iterable
 
 try:
-    from .project_content_migration_lock import find_work_root
+    from .project_file_lock import find_work_root
 except ImportError:  # ファイル単体でロードする純Pythonテスト用
-    from project_content_migration_lock import find_work_root  # type: ignore
+    from project_file_lock import find_work_root  # type: ignore
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,12 +80,7 @@ def _canonical_json_bytes(path: Path, raw: bytes) -> bytes:
         return raw
     if isinstance(data, dict):
         data = dict(data)
-        # 通常保存ごとに変わる時刻だけを比較対象から外す。内容本体の変更は
-        # 引き続き検出するため、ファイルごとの既知キーに限定する。
-        if path.name == "work.json":
-            data.pop("lastSaved", None)
-        elif path.name == "pages.json":
-            data.pop("lastModified", None)
+        # Domain JSONはcanonical内容全体を比較する。
     return json.dumps(
         data,
         ensure_ascii=False,
@@ -126,14 +121,14 @@ def _matches_fingerprint(path: Path, expected: FileFingerprint) -> bool:
 
 
 def _default_paths(work: Path, blend: Path) -> set[Path]:
-    paths = {work / "work.json", work / "pages.json", blend}
+    paths = {work / "project.json", blend}
     try:
         rel = blend.resolve(strict=False).relative_to(work.resolve(strict=True))
     except ValueError:
         return paths
     parts = rel.parts
-    if parts and len(parts[0]) == 5 and parts[0].startswith("p"):
-        paths.add(work / parts[0] / "page.json")
+    if len(parts) >= 3 and parts[0] == "pages" and parts[1].startswith("page_"):
+        paths.add(work / "pages" / parts[1] / "page.json")
     return paths
 
 
@@ -161,12 +156,12 @@ def capture_loaded_baseline(
 
 
 def initialize_new_work_baseline(work_dir: str | os.PathLike[str]) -> None:
-    """work.json作成前の新規作品だけ、存在しない初期値を登録する。"""
+    """project.json作成前の新規作品だけ、存在しない初期値を登録する。"""
 
     work = Path(work_dir).resolve(strict=True)
-    if (work / "work.json").exists():
+    if (work / "project.json").exists():
         raise SaveBaselineUnavailableError("既存作品を新規作品として基準化できません")
-    paths = {work / "work.json", work / "pages.json"}
+    paths = {work / "project.json"}
     with _registry_lock:
         _baselines[_work_key(work)] = {
             _path_key(path): fingerprint(path) for path in paths

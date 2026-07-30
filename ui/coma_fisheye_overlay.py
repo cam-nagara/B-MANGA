@@ -17,7 +17,7 @@ import gpu
 from gpu_extras.batch import batch_for_shader
 
 from ..core.work import get_work
-from ..utils import log, paths
+from ..utils import log, page_file_scene
 
 _logger = log.get_logger(__name__)
 
@@ -27,21 +27,15 @@ _handle = None
 
 
 def _is_coma_blend_file() -> bool:
-    """blend ファイルパスから、 コマ用 blend (pNNNN/cNN/cNN.blend) か判定."""
+    """現在のmainfileがUIDコマ用scene.blendか判定する。"""
     blend_path = bpy.data.filepath
     if not blend_path:
         return False
     try:
-        p = Path(blend_path)
-        coma_dir = p.parent
-        page_dir = coma_dir.parent
-        if not paths.is_valid_coma_id(coma_dir.name):
-            return False
-        if not paths.is_valid_page_id(page_dir.name):
-            return False
-        if p.name != f"{coma_dir.name}.blend":
-            return False
-        return True
+        role, _page_id, _coma_id = page_file_scene.role_from_path(
+            Path(blend_path)
+        )
+        return role == page_file_scene.ROLE_COMA
     except Exception:  # noqa: BLE001
         return False
 

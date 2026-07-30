@@ -64,7 +64,7 @@ def write_json(path: str | os.PathLike, data: Any, *, indent: int = 2) -> None:
 
 def _path_write_guard(path: Path):
     try:
-        from ..io.project_content_migration_lock import guard_path_write
+        from ..io.project_file_lock import guard_path_write
     except (ImportError, ValueError):
         if __package__:
             raise
@@ -74,7 +74,7 @@ def _path_write_guard(path: Path):
 
 def _record_successful_write(path: Path) -> None:
     try:
-        from ..io.project_content_save_baseline import record_successful_write
+        from ..io.save_baseline import record_successful_write
     except (ImportError, ValueError):
         if __package__:
             raise
@@ -84,7 +84,7 @@ def _record_successful_write(path: Path) -> None:
 
 def _record_observed_read(path: Path) -> None:
     try:
-        from ..io.project_content_save_baseline import record_observed_read
+        from ..io.save_baseline import record_observed_read
     except (ImportError, ValueError):
         if __package__:
             raise

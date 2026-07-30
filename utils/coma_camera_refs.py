@@ -733,7 +733,7 @@ def _loaded_page_scene(loaded_scenes, work_dir: Path, page_id: str):
         if work is None:
             continue
         try:
-            _reload_loaded_work_metadata(work, work_dir)
+            _reload_loaded_work_metadata(work, work_dir, page_id)
         except Exception:  # noqa: BLE001
             _logger.exception("panel camera loaded work metadata sync failed")
         page = find_page_by_id(work, page_id)
@@ -750,14 +750,17 @@ def _loaded_page_scene(loaded_scenes, work_dir: Path, page_id: str):
     return None, None, None
 
 
-def _reload_loaded_work_metadata(work, work_dir: Path) -> None:
-    from ..io import page_io, work_io
+def _reload_loaded_work_metadata(work, work_dir: Path, page_id: str) -> None:
+    from ..io import work_io
     from . import handlers
 
     work_io.load_work_json(work_dir, work)
-    page_io.load_pages_json(work_dir, work)
     # ファイルの役割に応じた詳細読込 (自ページのみ等) を handlers と共有する
-    handlers._reload_all_pages_panels(work, work_dir)
+    handlers._reload_all_pages_panels(
+        work,
+        work_dir,
+        detail_filter={page_id},
+    )
     work.work_dir = str(Path(work_dir).resolve())
     work.loaded = True
 
@@ -925,10 +928,9 @@ def _coma_points_mm(panel) -> list[tuple[float, float]]:
 def _reference_is_stale(work_dir: Path, page, out: Path, *, include_work_blend: bool) -> bool:
     if not out.is_file():
         return True
-    latest = _path_mtime(paths.work_meta_path(work_dir))
+    latest = _path_mtime(paths.project_meta_path(work_dir))
     if include_work_blend:
         latest = max(latest, _path_mtime(paths.work_blend_path(work_dir)))
-    latest = max(latest, _path_mtime(paths.pages_meta_path(work_dir)))
     latest = max(latest, _path_mtime(paths.page_meta_path(work_dir, page.id)))
     for panel in getattr(page, "comas", []):
         source = coma_preview.coma_preview_source_path(work_dir, page.id, panel)

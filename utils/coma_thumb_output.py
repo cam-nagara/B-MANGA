@@ -1,4 +1,4 @@
-"""コマ用blendファイル内の ``thumb.png`` 出力ノード管理."""
+"""コマ用scene.blend内の``preview.png``出力node管理。"""
 
 from __future__ import annotations
 
@@ -11,15 +11,15 @@ from . import log, paths
 
 _logger = log.get_logger(__name__)
 
-THUMB_FILE_NAME = "thumb.png"
-THUMB_SOCKET_NAME = "thumb"
+THUMB_FILE_NAME = paths.COMA_PREVIEW_NAME
+THUMB_SOCKET_NAME = Path(THUMB_FILE_NAME).stem
 THUMB_NODE_NAME = THUMB_FILE_NAME
 THUMB_SCALE_NODE_NAME = "BManga_ThumbScale"
 DEFAULT_THUMB_SCALE_PERCENTAGE = 12.5
 
 
 def expected_thumb_path(scene=None) -> Path | None:
-    """現在の編集コマに対応する ``thumb.png`` のパスを返す."""
+    """現在の編集コマに対応するpreview画像pathを返す。"""
     scene = scene or getattr(bpy.context, "scene", None)
     work = getattr(scene, "bmanga_work", None) if scene is not None else None
     work_dir_text = str(getattr(work, "work_dir", "") or "")
@@ -35,22 +35,24 @@ def expected_thumb_path(scene=None) -> Path | None:
 
 
 def expected_thumb_path_for_current_file() -> Path | None:
-    """現在の cNN.blend パスから ``thumb.png`` のパスを返す."""
+    """現在のUIDコマ用scene.blendからpreview画像pathを返す。"""
     filepath = str(getattr(bpy.data, "filepath", "") or "")
     if not filepath:
         return None
     blend_path = Path(filepath)
-    if blend_path.name != f"{blend_path.parent.name}.blend":
+    if blend_path.name != paths.COMA_BLEND_NAME:
         return None
-    coma_id = blend_path.parent.name
-    page_id = blend_path.parent.parent.name
-    if not paths.is_valid_coma_id(coma_id) or not paths.is_valid_page_id(page_id):
+    if not paths.is_valid_coma_uid(blend_path.parent.name):
+        return None
+    if blend_path.parent.parent.name != paths.COMAS_DIR_NAME:
+        return None
+    if not paths.is_valid_page_uid(blend_path.parent.parent.parent.name):
         return None
     return blend_path.parent / THUMB_FILE_NAME
 
 
 def ensure_thumb_output_node(scene=None) -> bool:
-    """現在の Scene に ``thumb.png`` 用のファイル出力ノードを用意する.
+    """現在のSceneにpreview画像用のfile output nodeを用意する。
 
     レンダリング設定や解像度は変更しない。縮小は自動レンダリング時に
     Blender の「解像度スケール」で行い、コンポジター上には縮小用ノードを
@@ -203,7 +205,7 @@ def _legacy_thumb_socket(node):
         while len(slots) > 0:
             slots.remove(slots[0])
         slot = slots.new(THUMB_SOCKET_NAME)
-        slot.path = "thumb"
+        slot.path = THUMB_SOCKET_NAME
         node.base_path = "//"
         node.format.file_format = "PNG"
         node.format.color_mode = "RGBA"
@@ -331,7 +333,7 @@ def _restore_node_mutes(states) -> None:
 
 
 def render_thumb_png(context=None) -> bool:
-    """``thumb.png`` だけを現在の「コマ画像縮小率」でレンダリングする."""
+    """``preview.png`` だけを現在の「コマ画像縮小率」でレンダリングする."""
     context = context or bpy.context
     scene = getattr(context, "scene", None)
     if scene is None:

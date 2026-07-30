@@ -15,8 +15,8 @@ from ..io import (
     meldex_scenario_import_transaction,
 )
 from ..io.meldex_contract import ContractError
-from ..io.project_content_migration_lock import WorkLockError
-from ..io.project_content_sidecar_save_guard import SidecarSaveError
+from ..io.project_file_lock import WorkLockError
+from ..io.sidecar_save_guard import SidecarSaveError
 from ..utils import log, page_file_scene
 
 

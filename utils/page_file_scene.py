@@ -53,23 +53,66 @@ def role_from_parts(parts: tuple[str, ...]) -> tuple[str, str, str]:
     if len(parts) == 1 and parts[0] == paths.WORK_BLEND_NAME:
         return ROLE_WORK, "", ""
     if (
-        len(parts) == 2
-        and paths.is_valid_page_id(parts[0])
-        and parts[1] == paths.PAGE_BLEND_NAME
-    ):
-        return ROLE_PAGE, parts[0], ""
-    if (
         len(parts) == 3
-        and paths.is_valid_page_id(parts[0])
-        and paths.is_valid_coma_id(parts[1])
-        and parts[2] == f"{parts[1]}.blend"
+        and parts[0] == paths.PAGES_DIR_NAME
+        and paths.is_valid_page_uid(parts[1])
+        and parts[2] == paths.PAGE_BLEND_NAME
     ):
-        return ROLE_COMA, parts[0], parts[1]
+        return ROLE_PAGE, parts[1], ""
+    if (
+        len(parts) == 5
+        and parts[0] == paths.PAGES_DIR_NAME
+        and paths.is_valid_page_uid(parts[1])
+        and parts[2] == paths.COMAS_DIR_NAME
+        and paths.is_valid_coma_uid(parts[3])
+        and parts[4] == paths.COMA_BLEND_NAME
+    ):
+        return ROLE_COMA, parts[1], parts[3]
     return ROLE_UNKNOWN, "", ""
 
 
 def role_from_path(blend_path: Path, work_dir: Path | None = None) -> tuple[str, str, str]:
-    return role_from_parts(relative_parts(Path(blend_path), work_dir))
+    root = Path(work_dir) if work_dir is not None else find_work_root(blend_path)
+    role, page_ref, coma_ref = role_from_parts(
+        relative_parts(Path(blend_path), root)
+    )
+    if root is None or role not in {ROLE_PAGE, ROLE_COMA}:
+        return role, page_ref, coma_ref
+    try:
+        page_id = paths.page_display_id(root, page_ref)
+        coma_id = (
+            paths.coma_display_id(root, page_ref, coma_ref)
+            if role == ROLE_COMA
+            else ""
+        )
+        return role, page_id, coma_id
+    except (FileNotFoundError, KeyError, ValueError):
+        return ROLE_UNKNOWN, "", ""
+
+
+def canonical_role_from_path(
+    blend_path: Path,
+    work_dir: Path,
+    *,
+    require_exists: bool = True,
+) -> tuple[str, str, str]:
+    """物理的に同一作品内にあるDomain登録済みの正規Blendだけを分類する."""
+
+    try:
+        root = Path(work_dir).resolve(strict=True)
+        current = Path(blend_path).resolve(strict=require_exists)
+        if require_exists and not current.is_file():
+            return ROLE_UNKNOWN, "", ""
+        current.relative_to(root)
+        project_path = paths.project_meta_path(root)
+        if not project_path.is_file():
+            return ROLE_UNKNOWN, "", ""
+    except (OSError, RuntimeError, ValueError):
+        return ROLE_UNKNOWN, "", ""
+    role, page_id, coma_id = role_from_path(current, root)
+    if role not in {ROLE_WORK, ROLE_PAGE, ROLE_COMA}:
+        return ROLE_UNKNOWN, "", ""
+    return role, page_id, coma_id
 
 
 def current_role(context=None) -> tuple[str, str, str]:

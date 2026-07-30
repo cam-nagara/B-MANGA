@@ -1,7 +1,34 @@
 # CHANGELOG
 
 このファイルは B-MANGA の主要な変更履歴を記録します。
-Blender 5.2 LTS を対象としています（開発基準バージョン。5.1でも動作確認済み）。
+Blender 5.2 LTS 専用です。
+
+## 2026-07-29 — 全体リファクタリングPhase 3の新Domain・UID・Repositoryを導入 (B-MANGA Next v0.6.603 / Render Next v0.1.39 / Liner Next v0.3.203)
+
+### 症状
+- 作品設定、ページ詳細、Blender実体、PropertyGroupの間に複数の保存正本と双方向同期が残り、保存順や画面遷移によって古い内容へ戻る余地があった。
+- `work.json`、`pages.json`、表示用の`pNNNN/cNN`ディレクトリ、旧migration Operatorと互換分岐が新規作品の実行経路にも混在していた。
+- 複数JSONと`.blend`の保存途中で失敗・強制終了すると、世代が揃わない状態を通常作品として残す危険があった。
+
+### 原因
+- BlenderのPropertyGroupを保存正本として直接読み書きし、UID、親子tree、link graph、Transaction、Repositoryの境界が明示されていなかった。
+- 複数ファイル確定を個別のatomic writeだけで扱い、checkpoint全体のwrite-ahead journalと起動時recoveryを持っていなかった。
+- ページ投影中の画像レイヤーupdateがページpreviewを再入させ、同じ`page.json`を再帰読込してコマを空にする経路があった。
+
+### 修正
+- `bmanga_core`へBlender非依存のDomain Model、安定UID、tree、link graph、Command、Event、Store、Repositoryを追加した。作品正本を`project.json`、ページ正本を`pages/<page_uid>/page.json`、コマ実体を`comas/<coma_uid>/scene.blend`へ統一した。
+- PropertyGroupは明示的な一方向UI投影へ変更し、保存時はCommand境界からDomainへ取り込む。投影全体でProperty callbackを停止し、読込中フラグを先に立ててpreviewの再入を防止した。
+- `PREPARED`、`NATIVE_SAVED`、`INSTALLING`、`COMMITTED`のwrite-ahead journal、hash競合検知、同一ディレクトリstage/backup、起動時の冪等recoveryを実装した。
+- 旧形式の自動変換、旧migration Operator、schema fallback、Blender 5.1以前のAPI分岐を削除した。旧`work.json`／`pages.json`は明示エラーで停止する。
+- ページ移動、複製、削除、見開き、Alt+D&D、Meldex取込、ネイティブ保存保護を新UID／Repositoryへ接続した。B-MANGA RenderもUIDコマディレクトリの`scene.blend`からpass保存先を解決する。
+- 外部コピー、作品内の別名コピー、異なる正規work/page/coma間の直接Save Asを副作用前に拒否した。Blender本体が保存を続けても保存先の全byteをjournalから復元し、元の正規ファイルへ再読込する。B-MANGA内部の明示保存だけを限定contextで許可する。
+
+### 検証（Blender 5.2 LTS実機）
+- 新規作品を別Blender processで再起動し、`project.json`／`page.json`のbyte一致、UID、親子、リンク、本文、設定を確認した。コマID変更後もnative UIDとlink UIDが維持され、旧ファイルが生成されないことを検証した。
+- 操作内rollback、checkpoint失敗、install途中失敗、外部更新競合、プロセスクラッシュ前後のjournal recoveryを独立テストで合格させた。
+- 画像・テキスト・フキダシを含む4ページを保存・再読込し、4種類の枠線presetでコマ編集と画像生成まで完走した。
+- manifest全462件のうち必須429/429（Blender headless 244、wrapper 111、UI 39、純Python 35）をcurrent source hashで合格し、履歴21・補助12も分類済み、missing／stale 0とした。wrapper全走行中に1件だけBlenderがテスト開始前に無出力終了したが、同一source hashの単独再実行6/6で合格し、統合集計で欠落0を確認した。
+- 独立レビューで検出した重大・高指摘を全件修正し、最終再レビューは重大0・高0。正規ファイル間の交差Save As、外部・別名コピー、Domain厳格読込、native保存・復旧を回帰テスト化した。
 
 ## 2026-07-29 — 全体リファクタリングPhase 2の設定契約を確定 (B-MANGA Next v0.6.602)
 

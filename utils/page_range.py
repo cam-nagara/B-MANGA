@@ -223,7 +223,7 @@ def ensure_pages_for_number_range(context) -> int:
             entry = page_io.register_new_page(work)
             if hasattr(entry, "in_page_range"):
                 entry.in_page_range = True
-            page_io.ensure_page_dir(work_dir, entry.id)
+            page_io.ensure_page_dir(work_dir, entry)
             create_basic_frame_coma(work, entry, work_dir)
             gp_object_layer.ensure_default_page_layer(context.scene, entry.id)
             created += 1

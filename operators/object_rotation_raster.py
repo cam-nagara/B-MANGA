@@ -75,7 +75,7 @@ def _resolve_page_index(work, entry) -> int:
     page_key = parent_key.split(":", 1)[0] if parent_key else ""
     page_index, page = object_tool_selection.page_index_for_key(work, page_key)
     if page is None:
-        page_index = int(getattr(work, "active_page_index", -1) or -1)
+        page_index = int(getattr(work, "active_page_index", -1))
         pages = getattr(work, "pages", []) or []
         if not (0 <= page_index < len(pages)):
             page_index = -1

@@ -86,6 +86,7 @@ def main() -> None:
         meldex_scenario_import,
         page_io,
         text_presets,
+        work_io,
     )
     from bmanga_dev_flat_move_into_coma.utils import (
         layer_stack as layer_stack_utils,
@@ -109,6 +110,8 @@ def main() -> None:
     ]
 
     page = page_io.register_new_page(work)
+    work_io.create_bmanga_skeleton(temp_root)
+    work_io.save_work_json(temp_root, work)
     page_io.ensure_page_dir(temp_root, page.id)
     page.detail_loaded = True
     coma = page.comas.add()

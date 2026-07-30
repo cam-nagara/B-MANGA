@@ -32,6 +32,8 @@ class FaultPoint(StrEnum):
     EXPORT_WRITE = "export.write.before"
     EXPORT_WRITE_AFTER_STAGE = "export.write.after_stage"
     EXPORT_WRITE_AFTER_COMMIT = "export.write.after_commit"
+    CHECKPOINT_AFTER_INSTALL = "checkpoint.after_install"
+    CHECKPOINT_AFTER_COMMIT = "checkpoint.after_commit"
 
 
 class FaultInjectedError(RuntimeError):

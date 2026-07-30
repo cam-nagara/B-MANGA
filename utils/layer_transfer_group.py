@@ -286,7 +286,7 @@ def _execute_cross_page(context, group: TransferGroup, target_page, drop_world_x
     moved_comas: list[_ComaMove] = []
     recovery_dir: Path | None = None
     backup: dict[Path, Path | None] = {}
-    from ..io.project_content_migration_lock import work_lock
+    from ..io.project_file_lock import work_lock
 
     try:
         with work_lock(work_dir, blocking=True):
@@ -548,8 +548,7 @@ def _backup_source_files(
     source_paths = (
         paths.page_blend_path(work_dir, page_id),
         paths.page_meta_path(work_dir, page_id),
-        paths.work_meta_path(work_dir),
-        paths.pages_meta_path(work_dir),
+        paths.project_meta_path(work_dir),
     )
     backup: dict[Path, Path | None] = {}
     for index, source in enumerate(source_paths):
@@ -594,9 +593,9 @@ def _create_recovery_backup(
             source_page_id,
             recovery_dir / "crash",
         )
-        if not _restore_source_files(rollback_backup):
+        if not _restore_source_files(work_dir, rollback_backup):
             raise RuntimeError("source pre-transfer files restore failed")
-        from ..io.project_content_save_baseline import record_successful_tree_change
+        from ..io.save_baseline import record_successful_tree_change
 
         record_successful_tree_change(recovery_dir)
         manifest = {
@@ -633,10 +632,10 @@ def _create_recovery_backup(
         return recovery_dir, rollback_backup
     except Exception:
         if rollback_backup:
-            _restore_source_files(rollback_backup)
+            _restore_source_files(work_dir, rollback_backup)
         shutil.rmtree(recovery_dir, ignore_errors=True)
         try:
-            from ..io.project_content_save_baseline import record_successful_tree_change
+            from ..io.save_baseline import record_successful_tree_change
 
             record_successful_tree_change(recovery_dir)
         except Exception:  # noqa: BLE001
@@ -690,18 +689,21 @@ def _rollback(
     except Exception:  # noqa: BLE001
         rollback_ok = False
         _logger.exception("transfer memory rollback failed")
-    if not _restore_source_files(backup):
+    if not _restore_source_files(work_dir, backup):
         rollback_ok = False
     if rollback_ok:
         _remove_recovery_dir(recovery_dir)
 
 
-def _restore_source_files(backup: dict[Path, Path | None]) -> bool:
+def _restore_source_files(
+    work_dir: Path,
+    backup: dict[Path, Path | None],
+) -> bool:
     restored = True
     for destination, saved in backup.items():
         try:
-            from ..io.project_content_migration_lock import guard_path_write
-            from ..io.project_content_save_baseline import record_successful_write
+            from ..io.project_file_lock import guard_path_write
+            from ..io.save_baseline import record_successful_write
 
             with guard_path_write(destination):
                 if saved is None:
@@ -714,6 +716,14 @@ def _restore_source_files(backup: dict[Path, Path | None]) -> bool:
             restored = False
             _logger.exception("transfer file rollback failed: %s", destination)
     page_io.invalidate_page_json_write_cache(tuple(backup))
+    if restored:
+        try:
+            from ..io import domain_runtime
+
+            domain_runtime.repository_for(work_dir).accept_recovered_files(backup)
+        except Exception:  # noqa: BLE001
+            restored = False
+            _logger.exception("transfer repository recovery baseline update failed")
     return restored
 
 
@@ -722,7 +732,7 @@ def _remove_recovery_dir(recovery_dir: Path | None) -> None:
         return
     try:
         shutil.rmtree(recovery_dir)
-        from ..io.project_content_save_baseline import record_successful_tree_change
+        from ..io.save_baseline import record_successful_tree_change
 
         record_successful_tree_change(recovery_dir)
         parent = recovery_dir.parent
@@ -737,11 +747,15 @@ def recover_interrupted_transfers(work_dir: Path) -> tuple[Path, ...]:
     root = Path(work_dir).resolve()
     if not root.is_dir():
         return ()
-    from ..io.project_content_migration_lock import work_lock
+    from ..io.project_file_lock import work_lock
 
     restored: set[Path] = set()
     with work_lock(root, blocking=True):
-        manifests = list(root.glob(f"p????/{_RECOVERY_DIR_NAME}/*/{_RECOVERY_MANIFEST_NAME}"))
+        manifests = list(
+            root.glob(
+                f"pages/page_*/{_RECOVERY_DIR_NAME}/*/{_RECOVERY_MANIFEST_NAME}"
+            )
+        )
         # 壊れたmanifestも「復旧資料あり」とみなし、対応するprepared stageを
         # orphan掃除で消さない。資料を残せば再試行・手動救出ができる。
         journal_ids = {manifest_path.parent.name for manifest_path in manifests}
@@ -764,7 +778,7 @@ def recover_interrupted_transfers(work_dir: Path) -> tuple[Path, ...]:
                 backup = _load_recovery_files(root, manifest_path.parent, manifest)
                 if not _restore_manifest_comas(root, manifest):
                     continue
-                if not _restore_source_files(backup):
+                if not _restore_source_files(root, backup):
                     continue
                 _remove_stage(root, target_page_id, stage_id)
                 if _recovery_stage_state(root, target_page_id, stage_id):
@@ -845,17 +859,24 @@ def _recovery_stage_state(work_dir: Path, page_id: str, stage_id: str) -> str:
 
 
 def _remove_orphan_prepared_stages(work_dir: Path, journal_ids: set[str]) -> None:
-    for page_dir in work_dir.iterdir():
-        if not page_dir.is_dir() or not paths.is_valid_page_id(page_dir.name):
+    pages_root = work_dir / paths.PAGES_DIR_NAME
+    if not pages_root.is_dir():
+        return
+    for page_dir in pages_root.iterdir():
+        if not page_dir.is_dir() or not paths.is_valid_page_uid(page_dir.name):
             continue
-        data = cross_page_stage._read(cross_page_stage.staged_path(work_dir, page_dir.name))
+        try:
+            page_id = paths.page_display_id(work_dir, page_dir.name)
+        except (KeyError, ValueError):
+            continue
+        data = cross_page_stage._read(cross_page_stage.staged_path(work_dir, page_id))
         for entry in tuple(data.get(cross_page_stage.ASSET_ENTRIES_KEY, []) or []):
             if not isinstance(entry, dict):
                 continue
             stage_id = str(entry.get("stage_id", "") or "")
             state = str(entry.get("state", "ready") or "ready")
             if stage_id and state == "prepared" and stage_id not in journal_ids:
-                _remove_stage(work_dir, page_dir.name, stage_id)
+                _remove_stage(work_dir, page_id, stage_id)
 
 
 def _restore_layer_objects(context, snapshots, page_id: str) -> None:

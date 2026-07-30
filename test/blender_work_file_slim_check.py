@@ -46,6 +46,14 @@ def _sub(path: str):
     return importlib.import_module(f"{MOD_NAME}.{path}")
 
 
+def _domain_nodes(document: dict, kind: str) -> list[dict]:
+    return [
+        node
+        for node in document.get("tree", {}).get("nodes", {}).values()
+        if node.get("kind") == kind
+    ]
+
+
 def main() -> None:
     _load_addon()
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_work_slim_"))
@@ -56,6 +64,7 @@ def main() -> None:
     page_file_scene = _sub("utils.page_file_scene")
     page_detail = _sub("utils.page_detail")
     handlers = _sub("utils.handlers")
+    paths = _sub("utils.paths")
 
     # --- 列数の初期値 ---
     assert int(bpy.context.scene.bmanga_overview_cols) == 8, bpy.context.scene.bmanga_overview_cols
@@ -86,10 +95,10 @@ def main() -> None:
     )
     assert entry is not None
     assert handlers.save_scene_work_to_disk(bpy.context, reason="test"), "保存に失敗"
-    page_json = work_dir / "p0001" / "page.json"
+    page_json = paths.page_meta_path(work_dir, "p0001")
     saved = json.loads(page_json.read_text(encoding="utf-8"))
-    assert len(saved.get("comas", [])) >= 1, "コマが page.json にありません"
-    assert len(saved.get("balloons", [])) == 1, "フキダシが page.json にありません"
+    assert len(_domain_nodes(saved, "coma")) >= 1, "コマが page.json にありません"
+    assert len(_domain_nodes(saved, "balloon")) == 1, "フキダシが page.json にありません"
     print("PAGE_SCENE_DETAIL_OK", flush=True)
 
     # --- 作品ファイルへ戻る: 詳細を持たない ---
@@ -109,7 +118,9 @@ def main() -> None:
     assert handlers.save_scene_work_to_disk(bpy.context, reason="test-slim")
     after = page_json.read_text(encoding="utf-8")
     saved = json.loads(after)
-    assert len(saved.get("comas", [])) >= 1 and len(saved.get("balloons", [])) == 1, (
+    assert len(_domain_nodes(saved, "coma")) >= 1 and len(
+        _domain_nodes(saved, "balloon")
+    ) == 1, (
         "作品ファイルからの保存で page.json が空データに上書きされました"
     )
     del before
@@ -142,8 +153,26 @@ def main() -> None:
 
     # --- 見開き結合: 作品ファイルから実行しても内容が保持される ---
     page_detail.clear_page_detail(page)  # スリム状態へ戻す
-    coma_count_p1 = len(json.loads((work_dir / "p0001" / "page.json").read_text(encoding="utf-8")).get("comas", []))
-    coma_count_p2 = len(json.loads((work_dir / "p0002" / "page.json").read_text(encoding="utf-8")).get("comas", []))
+    coma_count_p1 = len(
+        _domain_nodes(
+            json.loads(
+                paths.page_meta_path(work_dir, "p0001").read_text(
+                    encoding="utf-8"
+                )
+            ),
+            "coma",
+        )
+    )
+    coma_count_p2 = len(
+        _domain_nodes(
+            json.loads(
+                paths.page_meta_path(work_dir, "p0002").read_text(
+                    encoding="utf-8"
+                )
+            ),
+            "coma",
+        )
+    )
     result = bpy.ops.bmanga.pages_merge_spread("EXEC_DEFAULT", left_index=0)
     assert "FINISHED" in result, result
     merged = work.pages[0]
@@ -152,9 +181,13 @@ def main() -> None:
     assert len(merged.comas) == 0 and len(merged.balloons) == 0, (
         "見開き結合後の作品一覧がページ詳細を保持しています"
     )
-    merged_json = json.loads((work_dir / merged.dir_rel.strip("/") / "page.json").read_text(encoding="utf-8"))
-    assert len(merged_json.get("comas", [])) == coma_count_p1 + coma_count_p2
-    assert len(merged_json.get("balloons", [])) == 1
+    merged_json = json.loads(
+        paths.page_meta_path(work_dir, str(merged.id)).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert len(_domain_nodes(merged_json, "coma")) == coma_count_p1 + coma_count_p2
+    assert len(_domain_nodes(merged_json, "balloon")) == 1
     result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
     assert "FINISHED" in result, result
     work = bpy.context.scene.bmanga_work

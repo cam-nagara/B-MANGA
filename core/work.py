@@ -1,6 +1,6 @@
 """作品データの集約 PropertyGroup.
 
-work.json 全体を Blender 内で保持する root コンテナ。Scene.bmanga_work に
+DomainのUI投影をBlender内で保持するroot container。Scene.bmanga_workに
 PointerProperty で attach する。
 
 依存順: 参照先 (paper / work_info / safe_area_overlay / page) を先に
@@ -19,7 +19,7 @@ from bpy.props import (
     StringProperty,
 )
 
-from ..utils import layer_uid, log
+from ..utils import log
 from .balloon import BMangaBalloonEntry
 from .coma import BMangaComaEntry
 from .layer_folder import BMangaLayerFolder
@@ -72,13 +72,6 @@ class BMangaWorkData(bpy.types.PropertyGroup):
     loaded: BoolProperty(  # type: ignore[valid-type]
         name="作品ロード済み",
         default=False,
-    )
-    detail_data_version: IntProperty(  # type: ignore[valid-type]
-        name="作品詳細データ形式版",
-        description="手描き・効果線・レイヤーリンクを含む作品詳細データの形式版",
-        default=layer_uid.CURRENT_DETAIL_DATA_VERSION,
-        min=0,
-        options={"HIDDEN"},
     )
     work_dir: StringProperty(  # type: ignore[valid-type]
         name="作品ディレクトリ",

@@ -94,10 +94,10 @@ def _collect_used_balloon_ids(work) -> set[str]:
 
 
 def _ensure_balloon_id_counter(work) -> int:
-    """採番カウンターを初期化して返す (旧作品はディスクの page.json を一度だけ走査).
+    """採番カウンターを初期化して返す。
 
-    詳細未読込のページがあってもフキダシ id が衝突しないよう、過去に使われた
-    最大番号を作品単位で記憶する (単調増加・再利用しない)。
+    詳細未読込のページも Domain tree を走査し、過去に使われた最大番号を
+    作品単位で記憶する (単調増加・再利用しない)。
     """
     import json as _json
     import re
@@ -125,17 +125,19 @@ def _ensure_balloon_id_counter(work) -> int:
         for p in getattr(work, "pages", []) or []:
             if bool(getattr(p, "detail_loaded", False)):
                 continue  # メモリ側で確認済み
-            try:
-                meta = _paths.page_meta_path(work_dir, str(getattr(p, "id", "") or ""))
-                if not meta.is_file():
-                    continue
-                data = _json.loads(meta.read_text(encoding="utf-8"))
-                for b in data.get("balloons", []) or []:
-                    m = pat.match(str(b.get("id", "") or ""))
-                    if m:
-                        max_n = max(max_n, int(m.group(1)))
-            except Exception:  # noqa: BLE001
+            meta = _paths.page_meta_path(work_dir, str(getattr(p, "id", "") or ""))
+            if not meta.is_file():
                 continue
+            data = _json.loads(meta.read_text(encoding="utf-8"))
+            nodes = data.get("tree", {}).get("nodes", {})
+            if not isinstance(nodes, dict):
+                raise ValueError(f"Domain tree nodes が不正です: {meta}")
+            for node in nodes.values():
+                if not isinstance(node, dict) or node.get("kind") != "balloon":
+                    continue
+                m = pat.match(str(node.get("displayId", "") or ""))
+                if m:
+                    max_n = max(max_n, int(m.group(1)))
     try:
         work.balloon_id_counter = max_n
     except Exception:  # noqa: BLE001

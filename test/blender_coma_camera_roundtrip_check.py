@@ -230,17 +230,24 @@ def _assert_thumb_output_node(coma_thumb_output) -> None:
     assert tree is not None
     nodes = [
         node for node in tree.nodes
-        if node.bl_idname == "CompositorNodeOutputFile" and node.name == "thumb.png"
+        if (
+            node.bl_idname == "CompositorNodeOutputFile"
+            and node.name == coma_thumb_output.THUMB_NODE_NAME
+        )
     ]
     assert len(nodes) == 1
     node = nodes[0]
-    assert node.label == "thumb.png"
+    assert node.label == coma_thumb_output.THUMB_NODE_NAME
     assert node.directory == "//"
     assert node.file_name == ""
     assert node.format.media_type == "IMAGE"
     assert node.format.file_format == "PNG"
-    assert node.inputs.get("thumb") is not None
-    assert any(link.to_node == node and link.to_socket == node.inputs["thumb"] for link in tree.links)
+    socket_name = coma_thumb_output.THUMB_SOCKET_NAME
+    assert node.inputs.get(socket_name) is not None
+    assert any(
+        link.to_node == node and link.to_socket == node.inputs[socket_name]
+        for link in tree.links
+    )
 
 
 def _assert_thumb_output_renders(paths, work, page, entry) -> None:
@@ -257,7 +264,7 @@ def _assert_thumb_output_renders(paths, work, page, entry) -> None:
         float(work.page_preview_scale_percentage),
     )
     try:
-        # thumb.png は「コマ画像縮小率」を Blender の解像度スケールとして
+        # preview.png は「コマ画像縮小率」を Blender の解像度スケールとして
         # 適用して出力する。ここではレンダー成否を検証したいだけなので、
         # 100% に固定して縮尺の影響を外す。
         work.page_preview_scale_percentage = 100.0
@@ -267,7 +274,7 @@ def _assert_thumb_output_renders(paths, work, page, entry) -> None:
         scene.render.resolution_y = 16
         scene.render.resolution_percentage = 100
         assert _cto.render_thumb_png(bpy.context)
-        assert thumb.is_file(), f"thumb.png was not rendered: {thumb}"
+        assert thumb.is_file(), f"preview.png was not rendered: {thumb}"
         evidence = _image_evidence(thumb)
         assert evidence["size"] == [16, 16], evidence
     finally:

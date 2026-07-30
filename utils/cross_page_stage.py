@@ -65,8 +65,8 @@ def _write_or_remove(path: Path, data: dict) -> None:
         json_io.write_json(path, data)
         return
     try:
-        from ..io.project_content_migration_lock import guard_path_write
-        from ..io.project_content_save_baseline import record_successful_write
+        from ..io.project_file_lock import guard_path_write
+        from ..io.save_baseline import record_successful_write
 
         with guard_path_write(path):
             path.unlink(missing_ok=True)
@@ -81,7 +81,7 @@ def _append_unique(work_dir: Path, page_id: str, key: str, entry: dict, identity
     path = staged_path(work_dir, page_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        from ..io.project_content_migration_lock import work_lock
+        from ..io.project_file_lock import work_lock
 
         with work_lock(Path(work_dir)):
             data = _read(path)
@@ -166,7 +166,7 @@ def discard_asset_bundle_stage(
 
     path = staged_path(work_dir, page_id)
     try:
-        from ..io.project_content_migration_lock import work_lock
+        from ..io.project_file_lock import work_lock
 
         with work_lock(Path(work_dir), blocking=True):
             data = _read(path)
@@ -195,7 +195,7 @@ def mark_asset_bundle_ready(work_dir: Path, page_id: str, stage_id: str) -> bool
     """準備済みページ間移送を、移動元保存後にだけ復元可能へ昇格する."""
     path = staged_path(work_dir, page_id)
     try:
-        from ..io.project_content_migration_lock import work_lock
+        from ..io.project_file_lock import work_lock
 
         with work_lock(work_dir, blocking=True):
             data = _read(path)
@@ -287,7 +287,7 @@ def _remove_processed_entries(
         return 0
     path = staged_path(work_dir, page_id)
     try:
-        from ..io.project_content_migration_lock import work_lock
+        from ..io.project_file_lock import work_lock
 
         with work_lock(work_dir, blocking=True):
             latest = _read(path)
@@ -596,8 +596,15 @@ def _asset_stage_targets(context, page, stage_id: str) -> list[tuple[str, object
 
 
 def _remove_collection_item(collection, target) -> bool:
+    target_pointer = target.as_pointer()
+    target_id = str(
+        getattr(target, "id", "") or getattr(target, "coma_id", "") or ""
+    )
     for index, current in enumerate(collection):
-        if current == target:
+        current_id = str(
+            getattr(current, "id", "") or getattr(current, "coma_id", "") or ""
+        )
+        if current.as_pointer() == target_pointer or (target_id and current_id == target_id):
             collection.remove(index)
             return True
     return False
@@ -698,11 +705,11 @@ def _manifest_asset_created(context, page, stage_id: str, index: int, kind: str)
     identity = str(record.get("id", "") or "")
     if not identity:
         return None
-    if kind in {"gp", "effect"}:
-        from . import layer_object_model
+    return find_asset_target(context, page, kind, identity)
 
-        return layer_object_model.find_layer_object(kind, identity)
-    collections = {
+
+def _asset_collections(context, page) -> dict[str, object]:
+    return {
         "coma": getattr(page, "comas", []),
         "layer_folder": getattr(getattr(context.scene, "bmanga_work", None), "layer_folders", []),
         "balloon": getattr(page, "balloons", []),
@@ -712,7 +719,16 @@ def _manifest_asset_created(context, page, stage_id: str, index: int, kind: str)
         "image_path": getattr(context.scene, "bmanga_image_path_layers", []),
         "fill": getattr(context.scene, "bmanga_fill_layers", []),
     }
-    for entry in collections.get(kind, []):
+
+
+def find_asset_target(context, page, kind: str, identity: str):
+    """同期後の現行コレクションから素材生成物を固定IDで再解決する。"""
+
+    if kind in {"gp", "effect"}:
+        from . import layer_object_model
+
+        return layer_object_model.find_layer_object(kind, identity)
+    for entry in _asset_collections(context, page).get(kind, []):
         current = str(
             getattr(entry, "coma_id", "") or getattr(entry, "id", "") or ""
         )
@@ -731,16 +747,7 @@ def find_asset_created(context, page, stage_id: str, index: int, kind: str):
         except Exception:  # noqa: BLE001
             return False
 
-    collections = {
-        "coma": getattr(page, "comas", []),
-        "layer_folder": getattr(getattr(context.scene, "bmanga_work", None), "layer_folders", []),
-        "balloon": getattr(page, "balloons", []),
-        "text": getattr(page, "texts", []),
-        "raster": getattr(context.scene, "bmanga_raster_layers", []),
-        "image": getattr(context.scene, "bmanga_image_layers", []),
-        "image_path": getattr(context.scene, "bmanga_image_path_layers", []),
-        "fill": getattr(context.scene, "bmanga_fill_layers", []),
-    }
+    collections = _asset_collections(context, page)
     if kind in collections:
         found = next((entry for entry in collections[kind] if matches(entry)), None)
         return found or _manifest_asset_created(context, page, stage_id, index, kind)
@@ -859,7 +866,7 @@ def process_staged_imports(context, *, page_id: str = "") -> int:
     if not path.is_file():
         return 0
     try:
-        from ..io.project_content_migration_lock import work_lock
+        from ..io.project_file_lock import work_lock
 
         with work_lock(work_dir, blocking=True):
             return _process_staged_imports_locked(context, work_dir, page, page_id, path)
@@ -941,7 +948,7 @@ def commit_staged_imports_after_save(
     if not path.is_file():
         return 0
     try:
-        from ..io.project_content_migration_lock import work_lock
+        from ..io.project_file_lock import work_lock
 
         with work_lock(work_dir):
             data = _read(path)

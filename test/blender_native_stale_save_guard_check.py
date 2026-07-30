@@ -1,4 +1,4 @@
-"""Blender 5.1実機: 旧セッションのネイティブ保存から現行pageを保護する。"""
+"""Blender 5.2実機: Domain作品を古い画面のネイティブ保存から保護する。"""
 
 from __future__ import annotations
 
@@ -17,6 +17,15 @@ import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_NAME = "bmanga_native_stale_save_guard_test"
+PROJECT_UID = "project_11111111111111111111111111111111"
+PAGE_UIDS = (
+    "page_11111111111111111111111111111111",
+    "page_22222222222222222222222222222222",
+)
+ROOT_UIDS = (
+    "node_11111111111111111111111111111111",
+    "node_22222222222222222222222222222222",
+)
 
 
 def _load_addon():
@@ -36,7 +45,8 @@ def _load_addon():
 def _write_json(path: Path, value: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        json.dumps(value, ensure_ascii=False, indent=2) + "\n",
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        + "\n",
         encoding="utf-8",
     )
 
@@ -49,64 +59,93 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _create_page(path: Path, label: str, version: int) -> None:
+def _save_probe_blend(path: Path, label: str) -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    scene = bpy.context.scene
-    scene["native_guard_payload"] = label
-    scene["bmanga_detail_data_version"] = version
+    bpy.context.scene["native_guard_payload"] = label
     path.parent.mkdir(parents=True, exist_ok=True)
     result = bpy.ops.wm.save_as_mainfile(filepath=str(path), compress=False)
     assert "FINISHED" in result
 
 
-def _create_work(root: Path) -> tuple[Path, tuple[Path, Path]]:
+def _page_summary(index: int) -> dict:
+    return {
+        "uid": PAGE_UIDS[index],
+        "displayId": f"p{index + 1:04d}",
+        "displayNumber": index + 1,
+        "title": f"{index + 1}ページ",
+        "spread": False,
+        "sourcePageUids": [],
+        "settings": {},
+    }
+
+
+def _page_document(index: int) -> dict:
+    root_uid = ROOT_UIDS[index]
+    return {
+        "schema": "bmanga.page",
+        "schemaVersion": 1,
+        "projectUid": PROJECT_UID,
+        "pageUid": PAGE_UIDS[index],
+        "revision": 0,
+        "settings": {},
+        "tree": {
+            "rootUid": root_uid,
+            "nodes": {
+                root_uid: {
+                    "uid": root_uid,
+                    "kind": "page",
+                    "displayId": f"p{index + 1:04d}",
+                    "title": f"{index + 1}ページ",
+                    "settings": {},
+                    "nativeUid": "",
+                }
+            },
+            "children": {root_uid: []},
+        },
+        "links": {},
+    }
+
+
+def _create_work(root: Path) -> tuple[Path, tuple[Path, Path], Path]:
     work = root / "NativeSaveGuard.bmanga"
-    pages = (work / "p0001" / "page.blend", work / "p0002" / "page.blend")
+    external = root / "external-current.blend"
+    _save_probe_blend(external, "EXTERNAL-CURRENT")
+    pages = tuple(
+        work / "pages" / page_uid / "page.blend" for page_uid in PAGE_UIDS
+    )
+    _save_probe_blend(work / "work.blend", "WORK")
     for index, page in enumerate(pages, 1):
-        _create_page(page, f"CURRENT-{index}", 1)
+        _save_probe_blend(page, f"OPEN-BASELINE-{index}")
+        _write_json(page.parent / "page.json", _page_document(index - 1))
+    summaries = [_page_summary(0), _page_summary(1)]
     _write_json(
-        work / "work.json",
-        {"schemaVersion": 9, "detailDataVersion": 1, "title": "保存保護"},
-    )
-    _write_json(
-        work / "pages.json",
+        work / "project.json",
         {
-            "schemaVersion": 2,
-            "pages": [
-                {"id": "p0001", "title": "1ページ", "dirRel": "p0001"},
-                {"id": "p0002", "title": "2ページ", "dirRel": "p0002"},
-            ],
+            "schema": "bmanga.project",
+            "schemaVersion": 1,
+            "projectUid": PROJECT_UID,
+            "revision": 0,
+            "settings": {},
+            "pageOrder": list(PAGE_UIDS),
+            "pages": {summary["uid"]: summary for summary in summaries},
         },
     )
-    return work, pages
+    return work, pages, external
 
 
-def _create_legacy_work(root: Path) -> tuple[Path, Path]:
-    work = root / "LegacyNativeSave.bmanga"
-    page = work / "p0001" / "page.blend"
-    _create_page(page, "LEGACY-ORIGINAL", 0)
-    _write_json(work / "work.json", {"schemaVersion": 9, "detailDataVersion": 0})
-    _write_json(
-        work / "pages.json",
-        {
-            "schemaVersion": 2,
-            "pages": [{"id": "p0001", "title": "旧ページ", "dirRel": "p0001"}],
-        },
-    )
-    return work, page
-
-
-def _make_open_scene_stale(page: Path, label: str) -> None:
+def _open_page(page: Path, label: str) -> None:
     result = bpy.ops.wm.open_mainfile(filepath=str(page), load_ui=False)
     assert "FINISHED" in result
-    scene = bpy.context.scene
-    scene["native_guard_payload"] = label
-    scene["bmanga_detail_data_version"] = 0
+    bpy.context.scene["native_guard_payload"] = label
+
+
+def _make_open_scene_stale(page: Path, external: Path, label: str) -> str:
+    _open_page(page, label)
+    shutil.copy2(external, page)
+    return _sha256(page)
 
 
 def _non_project_save_does_not_arm_guard(root: Path) -> None:
-    """アドオン登録中の通常blend保存へ作品用保護を持ち込まない。"""
-
     handlers = importlib.import_module(f"{MODULE_NAME}.utils.handlers")
     bpy.ops.wm.read_factory_settings(use_empty=True)
     generic = root / "ordinary.blend"
@@ -121,49 +160,46 @@ def _project_save_as_outside_does_not_arm_wrong_source(
     work: Path,
     page: Path,
 ) -> None:
-    """作品を別名保存しても、切替前のpageをトランザクション対象にしない。"""
-
     handlers = importlib.import_module(f"{MODULE_NAME}.utils.handlers")
-    guard = importlib.import_module(
-        f"{MODULE_NAME}.io.project_content_native_save_guard"
-    )
-    result = bpy.ops.wm.open_mainfile(filepath=str(page), load_ui=False)
-    assert "FINISHED" in result
+    guard = importlib.import_module(f"{MODULE_NAME}.io.native_save_guard")
+    _open_page(page, "SAVE-AS-OUTSIDE")
     original = _sha256(page)
     outside = root / "project-save-as-copy.blend"
-    bpy.context.scene["native_guard_payload"] = "SAVE-AS-OUTSIDE"
     result = bpy.ops.wm.save_as_mainfile(filepath=str(outside), compress=False)
     assert "FINISHED" in result
-    assert outside.is_file(), "別名保存先が作成されていません"
-    assert page.is_file() and _sha256(page) == original, "元のpageが変更されました"
+    assert outside.is_file()
+    assert page.is_file() and _sha256(page) == original
     assert handlers._native_save_token is None
     assert not guard.find_pending_native_save_journals(work)
 
 
-def _normal_save_is_restored(page: Path) -> None:
+def _normal_save_is_committed(page: Path) -> None:
+    _open_page(page, "NORMAL-COMMIT")
     original = _sha256(page)
-    _make_open_scene_stale(page, "STALE-NORMAL")
     result = bpy.ops.wm.save_as_mainfile(filepath=str(page), compress=False)
     assert "FINISHED" in result
-    assert _sha256(page) == original, "save_post後に現行pageが復元されていません"
+    assert _sha256(page) != original, "競合のない通常保存が確定しませんでした"
 
 
-def _crashed_save_is_restored_on_load(page: Path) -> None:
+def _conflicting_save_is_restored(page: Path, external: Path) -> None:
+    current = _make_open_scene_stale(page, external, "STALE-NORMAL")
+    result = bpy.ops.wm.save_as_mainfile(filepath=str(page), compress=False)
+    assert "FINISHED" in result
+    assert _sha256(page) == current, "外部更新後の古い画面が保存されました"
+
+
+def _crashed_save_is_restored_on_load(page: Path, external: Path) -> None:
     handlers = importlib.import_module(f"{MODULE_NAME}.utils.handlers")
-    guard = importlib.import_module(
-        f"{MODULE_NAME}.io.project_content_native_save_guard"
-    )
-    original = _sha256(page)
-    _make_open_scene_stale(page, "STALE-CRASH")
+    guard = importlib.import_module(f"{MODULE_NAME}.io.native_save_guard")
+    current = _make_open_scene_stale(page, external, "STALE-CRASH")
     save_post = handlers._bmanga_on_save_post
     bpy.app.handlers.save_post.remove(save_post)
     try:
         result = bpy.ops.wm.save_as_mainfile(filepath=str(page), compress=False)
         assert "FINISHED" in result
-        assert _sha256(page) != original, "save_postを外した失敗注入が成立していません"
+        assert _sha256(page) != current, "save_post除外の失敗注入が成立しません"
         token = handlers._native_save_token
         assert token is not None and token.requires_restore
-        # プロセス強制終了ならOSが解放する部分だけを模擬し、復元は行わない。
         guard._release(token)
         handlers._native_save_token = None
     finally:
@@ -172,38 +208,13 @@ def _crashed_save_is_restored_on_load(page: Path) -> None:
 
     result = bpy.ops.wm.open_mainfile(filepath=str(page), load_ui=False)
     assert "FINISHED" in result
-    assert _sha256(page) == original, "次回load_postで現行pageが復旧されていません"
-
-
-def _previous_token_is_rearmed_for_the_next_save(page: Path) -> None:
-    handlers = importlib.import_module(f"{MODULE_NAME}.utils.handlers")
-    original = _sha256(page)
-    _make_open_scene_stale(page, "STALE-FIRST-SAVE")
-    save_post = handlers._bmanga_on_save_post
-    bpy.app.handlers.save_post.remove(save_post)
-    try:
-        result = bpy.ops.wm.save_as_mainfile(filepath=str(page), compress=False)
-        assert "FINISHED" in result
-        assert handlers._native_save_token is not None
-    finally:
-        if save_post not in bpy.app.handlers.save_post:
-            bpy.app.handlers.save_post.append(save_post)
-
-    # 前回tokenをsave_preで復旧しても、この2回目の本体保存自体は止まらない。
-    # 今回用guardが再armされていなければ、ここで古い画面が上書きしてしまう。
-    bpy.context.scene["native_guard_payload"] = "STALE-SECOND-SAVE"
-    result = bpy.ops.wm.save_as_mainfile(filepath=str(page), compress=False)
-    assert "FINISHED" in result
-    assert _sha256(page) == original, "前回token復旧直後の再保存が保護されていません"
+    assert _sha256(page) == current, "次回load_postで外部更新版を復旧できません"
 
 
 def _atomic_raster_failure_preserves_original(page: Path) -> None:
     raster_module = importlib.import_module(f"{MODULE_NAME}.operators.raster_layer_op")
-    baseline = importlib.import_module(
-        f"{MODULE_NAME}.io.project_content_save_baseline"
-    )
-    result = bpy.ops.wm.open_mainfile(filepath=str(page), load_ui=False)
-    assert "FINISHED" in result
+    baseline = importlib.import_module(f"{MODULE_NAME}.io.save_baseline")
+    _open_page(page, "RASTER-ATOMIC")
     scene = bpy.context.scene
     entry = scene.bmanga_raster_layers.add()
     entry.id = "atomic_failure_probe"
@@ -213,8 +224,7 @@ def _atomic_raster_failure_preserves_original(page: Path) -> None:
     image.pixels[:] = [0.25, 0.5, 0.75, 1.0] * 4
     image.update()
     entry["bmanga_raster_dirty"] = True
-    work_dir = Path(scene.bmanga_work.work_dir)
-    png_path = work_dir / entry.filepath_rel
+    png_path = Path(scene.bmanga_work.work_dir) / entry.filepath_rel
     png_path.parent.mkdir(parents=True, exist_ok=True)
     original = base64.b64decode(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAHnOcQAAAAABJRU5ErkJggg=="
@@ -235,48 +245,23 @@ def _atomic_raster_failure_preserves_original(page: Path) -> None:
             raise AssertionError("PNG検証失敗が送出されませんでした")
     finally:
         raster_module._validate_png_file = validate
-    assert png_path.read_bytes() == original, "失敗時に既存PNGが変化しました"
-    assert bool(entry.get("bmanga_raster_dirty", False)), "失敗後にdirtyが消えました"
-
-
-def _legacy_save_policy_is_correct(work: Path, page: Path) -> None:
-    _make_open_scene_stale(page, "LEGACY-UNSAVED-EDIT")
-    before = _sha256(page)
-    result = bpy.ops.wm.save_as_mainfile(filepath=str(page), compress=False)
-    assert "FINISHED" in result
-    allowed = _sha256(page)
-    assert allowed != before, "旧版0同士の未保存内容をCtrl+Sで残せません"
-
-    # 未完了トランザクションがある場合だけ、同じ版0でも保存結果を復元する。
-    journal = (
-        work.parent
-        / f".{work.name}.detail-data-migration-v1"
-        / "interrupted-probe"
-        / "migration-journal.json"
-    )
-    _write_json(journal, {"status": "interrupted"})
-    bpy.context.scene["native_guard_payload"] = "MUST-NOT-OVERWRITE"
-    bpy.context.scene["bmanga_detail_data_version"] = 0
-    result = bpy.ops.wm.save_as_mainfile(filepath=str(page), compress=False)
-    assert "FINISHED" in result
-    assert _sha256(page) == allowed, "未完了移行中のCtrl+Sがpageを変更しました"
+    assert png_path.read_bytes() == original
+    assert bool(entry.get("bmanga_raster_dirty", False))
 
 
 def main() -> None:
-    root = Path(tempfile.mkdtemp(prefix="bmanga_native_save_guard_", dir=r"C:\tmp"))
+    root = Path(tempfile.mkdtemp(prefix="bmanga_native_save_guard_"))
     addon = None
     succeeded = False
     try:
-        work, pages = _create_work(root)
-        legacy_work, legacy_page = _create_legacy_work(root)
+        work, pages, external = _create_work(root)
         addon = _load_addon()
         _non_project_save_does_not_arm_guard(root)
         _project_save_as_outside_does_not_arm_wrong_source(root, work, pages[0])
-        _legacy_save_policy_is_correct(legacy_work, legacy_page)
-        _normal_save_is_restored(pages[0])
+        _normal_save_is_committed(pages[0])
+        _conflicting_save_is_restored(pages[0], external)
         _atomic_raster_failure_preserves_original(pages[0])
-        _crashed_save_is_restored_on_load(pages[1])
-        _previous_token_is_rearmed_for_the_next_save(pages[0])
+        _crashed_save_is_restored_on_load(pages[1], external)
         succeeded = True
         print("BLENDER_NATIVE_STALE_SAVE_GUARD_OK")
     finally:

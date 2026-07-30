@@ -304,10 +304,28 @@ def _set_coma_scene_state(context, work, page_id: str, coma_id: str) -> bool:
             active_coma_index = idx
             break
     if active_coma_index < 0:
+        available = [
+            {
+                "id": str(getattr(entry, "id", "") or ""),
+                "coma_id": str(getattr(entry, "coma_id", "") or ""),
+            }
+            for entry in getattr(page, "comas", ())
+        ]
+        from . import page_file_scene
+
+        current_path = Path(str(getattr(bpy.data, "filepath", "") or ""))
+        current_role = page_file_scene.role_from_path(
+            current_path,
+            Path(str(getattr(work, "work_dir", "") or "")),
+        )
         _logger.error(
-            "bootstrap_new_coma_blend: panel not found: %s/%s",
+            "bootstrap_new_coma_blend: panel not found: %s/%s; "
+            "available=%s current=%s role=%s",
             page_id,
             coma_id,
+            available,
+            current_path,
+            current_role,
         )
         return False
     page.active_coma_index = active_coma_index

@@ -9,7 +9,7 @@
 仕組:
 - ``bpy.msgbus.subscribe_rna`` で ``ViewLayer.active_layer_collection`` を
   監視 → Outliner 変更を即時検出 (poll 不要)。
-  (Blender 5.1.1 では ``LayerCollection.active`` プロパティは存在しないため
+  (Blender 5.2では``LayerCollection.active``プロパティは存在しないため
   このキーを使用する。msgbus 購読は best-effort で、失敗しても下記
   depsgraph フォールバックが同期を担う。)
 - ``depsgraph_update_post`` フォールバック (msgbus 失効時 / B-MANGA 側変化を
@@ -355,7 +355,7 @@ def _resubscribe_msgbus() -> None:
         bpy.msgbus.clear_by_owner(_OWNER)
     except Exception:  # noqa: BLE001
         pass
-    # Blender 5.1.1 では LayerCollection.active プロパティは存在しないため、
+    # Blender 5.2ではLayerCollection.activeプロパティは存在しないため、
     # ViewLayer.active_layer_collection を購読対象にする。
     # msgbus は best-effort: 失敗しても depsgraph_update_post フォールバックが
     # 同期を駆動するため、例外は DEBUG ログのみで握りつぶす。

@@ -192,7 +192,7 @@ def _renumber_page_comas(context, page, read_direction: str) -> int:
         str(getattr(coma, "coma_id", "") or getattr(coma, "id", "") or "")
         for coma in comas
     ]
-    active_original = int(getattr(page, "active_coma_index", -1) or -1)
+    active_original = int(getattr(page, "active_coma_index", -1))
     ordered_indices = _reading_order_indices(page, read_direction)
     _move_comas_to_order(page, ordered_indices)
     if active_original in ordered_indices:

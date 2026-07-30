@@ -47,7 +47,7 @@ ADD_COMMAND_TYPE_ITEMS = tuple(
 
 ENGINE_ITEMS = (
     ("CYCLES", "Cycles", ""),
-    ("BLENDER_EEVEE_NEXT", "EEVEE", ""),  # 識別子は版互換のため保持。表記は5.1のUI(EEVEE)に合わせる
+    ("BLENDER_EEVEE_NEXT", "EEVEE", ""),
     ("BLENDER_WORKBENCH", "Workbench", ""),
 )
 

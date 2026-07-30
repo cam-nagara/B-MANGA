@@ -54,7 +54,13 @@ def main() -> None:
         work.loaded = True
         work.work_dir = str(temp_root)
         from bmanga_dev_meldex_import import preferences
-        from bmanga_dev_meldex_import.io import balloon_presets, meldex_scenario_import, page_io, text_presets
+        from bmanga_dev_meldex_import.io import (
+            balloon_presets,
+            meldex_scenario_import,
+            page_io,
+            text_presets,
+            work_io,
+        )
 
         preferences.get_preferences = lambda _context=None: SimpleNamespace(
             meldex_apply_text_presentation=False
@@ -62,13 +68,18 @@ def main() -> None:
 
         for _index in range(2):
             page = page_io.register_new_page(work)
-            page_io.ensure_page_dir(temp_root, page.id)
             page.detail_loaded = True
+        work_io.create_bmanga_skeleton(temp_root)
+        work_io.save_work_json(temp_root, work)
+        for page in work.pages:
+            page_io.ensure_page_dir(temp_root, page.id)
         work.active_page_index = 0
         coma = work.pages[0].comas.add()
         coma.id = "manual-coma"
         manual = work.pages[0].balloons.add()
         manual.id = "manual-balloon"
+        for page in work.pages:
+            page_io.save_page_json(temp_root, page)
         balloon_presets.list_all_presets = lambda _path: [SimpleNamespace(name="会話", data={})]
         first_font = r"C:\Windows\Fonts\YuGothM.ttc"
         dialogue_font = r"C:\Windows\Fonts\msgothic.ttc"

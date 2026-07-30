@@ -116,7 +116,9 @@ def _start_check(temp_root: Path) -> Path:
     work.active_page_index = 0
     scene.bmanga_overview_mode = True
     work_path = Path(bpy.data.filepath).resolve()
-    expected = temp_root / "PageOverviewOpen.bmanga" / "p0002" / "page.blend"
+    from bmanga_dev_page_overview_open_ui.utils import paths
+
+    expected = paths.page_blend_path(Path(work.work_dir), work.pages[1].id)
 
     event = _double_click_event_for_page(1)
     from bmanga_dev_page_overview_open_ui.operators import mode_op

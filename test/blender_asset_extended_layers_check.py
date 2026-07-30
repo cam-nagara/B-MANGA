@@ -178,7 +178,11 @@ def main() -> None:
         if "FINISHED" not in result:
             raise AssertionError(f"ページを開けません: {result}")
 
-        from bmanga_dev_asset_extended.utils import layer_stack as layer_stack_utils
+        from bmanga_dev_asset_extended.utils import (
+            cross_page_stage,
+            layer_stack as layer_stack_utils,
+            paths,
+        )
         from bmanga_dev_asset_extended.utils.layer_hierarchy import coma_stack_key
 
         context = bpy.context
@@ -267,7 +271,7 @@ def main() -> None:
         _drop_collection(context, coll, wx, wy)
         _drop_collection(context, raster_coll, wx + 15.0, wy)
         _drop_collection(context, gp_coll, wx - 15.0, wy)
-        staged_path = Path(work.work_dir) / page2.id / "_staged_imports.json"
+        staged_path = cross_page_stage.staged_path(Path(work.work_dir), page2.id)
         staged = json.loads(staged_path.read_text(encoding="utf-8"))
         asset_stages = staged.get("asset_bundles", [])
         if len(asset_stages) != 3:
@@ -287,7 +291,7 @@ def main() -> None:
         context = bpy.context
         work = context.scene.bmanga_work
         page2 = work.pages[1]
-        from bmanga_dev_asset_extended.utils import cross_page_stage, cross_page_transfer
+        from bmanga_dev_asset_extended.utils import cross_page_transfer
 
         def staged_entries(kind: str, stage_id: str):
             stage = asset_stage_by_id[stage_id]
@@ -329,7 +333,7 @@ def main() -> None:
         after = tuple(len(staged_entries(kind, sid)) for sid in stage_ids for kind in ("coma", "balloon", "raster", "gp"))
         if before != after:
             raise AssertionError("素材の復元処理を再呼出しすると内容が重複します")
-        page2_blend = Path(work.work_dir) / page2.id / "page.blend"
+        page2_blend = paths.page_blend_path(Path(work.work_dir), page2.id)
         bpy.ops.wm.open_mainfile(filepath=str(page2_blend), load_ui=False)
         context = bpy.context
         work = context.scene.bmanga_work
@@ -459,8 +463,8 @@ def main() -> None:
             if isinstance(entry, dict)
         }
         assert {corrupt_stage_id, write_fail_stage_id} <= remaining_failed_ids
-        from bmanga_dev_asset_extended.io.project_content_migration_lock import guard_path_write
-        from bmanga_dev_asset_extended.io.project_content_save_baseline import record_successful_write
+        from bmanga_dev_asset_extended.io.project_file_lock import guard_path_write
+        from bmanga_dev_asset_extended.io.save_baseline import record_successful_write
 
         with guard_path_write(staged_path):
             staged_path.unlink()

@@ -32,6 +32,37 @@ def _load_addon():
     return mod
 
 
+def _page_summary(work, page_id: str):
+    page = next(page for page in work.pages if str(page.id) == page_id)
+    return page
+
+
+def _page_dir(work, page_id: str) -> Path:
+    from bmanga_dev.io import domain_projection
+
+    page = _page_summary(work, page_id)
+    project_uid = domain_projection.ensure_project_uid(work)
+    page_uid = domain_projection.ensure_page_uid(page, project_uid)
+    return Path(work.work_dir) / "pages" / page_uid
+
+
+def _load_page_projection(work_dir: Path, page_id: str):
+    from bmanga_dev.bmanga_core.domain_repository import ProjectRepository
+    from bmanga_dev.io import domain_projection
+
+    repository = ProjectRepository(work_dir)
+    project = repository.load_project()
+    summary = next(page for page in project.pages if page.display_id == page_id)
+    document = repository.load_page(summary.uid)
+    payload = domain_projection.page_payload_from_document(
+        document,
+        display_id=summary.display_id,
+        title=summary.title,
+        spread=summary.spread,
+    )
+    return repository, project, document, payload
+
+
 def _stack(context):
     from bmanga_dev.utils import layer_stack as layer_stack_utils
 
@@ -283,12 +314,13 @@ def main() -> None:
         page2_coma_uid = layer_stack_utils.target_uid(COMA_KIND, page2_coma_key)
 
         # 別画面相当の同時追記は、移動トランザクション完了後に最新JSONへ合流する。
-        from bmanga_dev.utils import cross_page_transfer, json_io
-        from bmanga_dev.io.project_content_migration_lock import work_lock
+        from bmanga_dev.utils import cross_page_transfer
+        from bmanga_dev.io import domain_projection
+        from bmanga_dev.io.project_file_lock import work_lock
 
         parallel_entry = _add_text(page1, "dnd_parallel_primary", page1_key)
         work_dir_path = Path(work.work_dir)
-        target_meta = work_dir_path / page2_key / "page.json"
+        target_meta = _page_dir(work, page2_key) / "page.json"
         original_read_target = cross_page_transfer._read_target_page_json
         worker_errors: list[Exception] = []
         worker_threads: list[threading.Thread] = []
@@ -296,7 +328,10 @@ def main() -> None:
         def parallel_append() -> None:
             try:
                 with work_lock(work_dir_path, blocking=True):
-                    latest = json_io.read_json(target_meta)
+                    repository, project, document, latest = _load_page_projection(
+                        work_dir_path,
+                        page2_key,
+                    )
                     latest.setdefault("texts", []).append(
                         {
                             "id": "dnd_parallel_secondary",
@@ -305,7 +340,15 @@ def main() -> None:
                             "parent_key": page2_key,
                         }
                     )
-                    json_io.write_json(target_meta, latest)
+                    replacement = domain_projection.replace_page_projection_payload(
+                        document,
+                        latest,
+                    )
+                    repository.checkpoint(project, [replacement])
+                    from bmanga_dev.io.save_baseline import record_successful_write
+
+                    record_successful_write(repository.project_path)
+                    record_successful_write(repository.page_path(replacement.page_uid))
             except Exception as exc:  # noqa: BLE001
                 worker_errors.append(exc)
 
@@ -332,14 +375,17 @@ def main() -> None:
             worker.join(timeout=10.0)
             assert not worker.is_alive(), "別画面相当の追記が作品ロックで停止したままです"
         assert not worker_errors, worker_errors
-        merged_target = json_io.read_json(target_meta)
+        _repository, _project, _document, merged_target = _load_page_projection(
+            work_dir_path,
+            page2_key,
+        )
         merged_ids = {str(item.get("id", "") or "") for item in merged_target.get("texts", [])}
         assert {"dnd_parallel_primary", "dnd_parallel_secondary"} <= merged_ids
 
         # 同一IDの別画像が移動先にあっても上書きせず、新IDのPNGへ複製する。
         from bmanga_dev.utils import paths
-        from bmanga_dev.io.project_content_migration_lock import guard_path_write
-        from bmanga_dev.io.project_content_save_baseline import record_successful_write
+        from bmanga_dev.io.project_file_lock import guard_path_write
+        from bmanga_dev.io.save_baseline import record_successful_write
 
         collision_id = "abcdef123456"
         existing_png = paths.raster_png_path(work_dir_path, collision_id)
@@ -347,7 +393,7 @@ def main() -> None:
         with guard_path_write(existing_png):
             existing_png.write_bytes(b"target-raster-content")
             record_successful_write(existing_png)
-        legacy_source = work_dir_path / page1_key / "legacy" / "source.png"
+        legacy_source = _page_dir(work, page1_key) / "legacy" / "source.png"
         legacy_source.parent.mkdir(parents=True, exist_ok=True)
         with guard_path_write(legacy_source):
             legacy_source.write_bytes(b"source-raster-content")
@@ -394,8 +440,11 @@ def main() -> None:
             SimpleNamespace(kind="effect", key=failure_effect_id),
             SimpleNamespace(kind="gp", key=failure_gp_id),
         ]
-        failure_stage = work_dir_path / page2_key / "_staged_imports.json"
-        failure_target_before = json_io.read_json(target_meta)
+        failure_stage = cross_page_stage.staged_path(
+            work_dir_path,
+            page2_key,
+        )
+        failure_target_before = target_meta.read_bytes()
         failure_stage_before = failure_stage.read_bytes() if failure_stage.exists() else None
         raster_files_before = {
             path.name for path in (work_dir_path / "raster").glob("*.png")
@@ -415,7 +464,7 @@ def main() -> None:
                 layer_object_model.stable_id(obj) == failure_effect_id
                 for obj in layer_object_model.iter_layer_objects("effect")
             ) == 1, label
-            assert json_io.read_json(target_meta) == failure_target_before, label
+            assert target_meta.read_bytes() == failure_target_before, label
             current_stage = failure_stage.read_bytes() if failure_stage.exists() else None
             assert current_stage == failure_stage_before, label
             assert {
@@ -525,7 +574,10 @@ def main() -> None:
             page2_key,
             [SimpleNamespace(kind="text", key=f"{page1_key}:{detached_child_id}")],
         ) == 1
-        detached_target = json_io.read_json(target_meta)
+        _repository, _project, _document, detached_target = _load_page_projection(
+            work_dir_path,
+            page2_key,
+        )
         detached_target_text = next(
             entry
             for entry in detached_target.get("texts", [])
@@ -589,7 +641,12 @@ def main() -> None:
         _move_uid_below_parent(context, gp_uid, page2_coma_uid)
         gp_obj = layer_object_model.find_layer_object("gp", gp_id)
         assert gp_obj is None, "別ページへ移した手描きが移動元に残っています"
-        staged_path = Path(work.work_dir) / page2_key / "_staged_imports.json"
+        from bmanga_dev.utils import cross_page_stage
+
+        staged_path = cross_page_stage.staged_path(
+            Path(work.work_dir),
+            page2_key,
+        )
         staged = json.loads(staged_path.read_text(encoding="utf-8"))
         staged_gp = next(
             entry for entry in staged.get("gp_layers", [])
@@ -677,6 +734,11 @@ def main() -> None:
         coma_balloon_id = str(coma_balloon.id)
         coma_child_id = str(coma_child.id)
         coma_text_id = str(coma_text.id)
+        coma_image_id = str(coma_image.id)
+        coma_raster_id = str(coma_raster.id)
+        assert any(
+            balloon.id == coma_balloon_id for balloon in page1.balloons
+        ), [balloon.id for balloon in page1.balloons]
 
         page1_coma_uid = layer_stack_utils.target_uid(COMA_KIND, page1_coma_key)
         before_page2_comas = len(page2.comas)
@@ -689,18 +751,50 @@ def main() -> None:
             for panel in page2.comas
             if coma_stack_key(page2, panel) not in before_page2_coma_keys
         )
+        assert any(b.id == coma_balloon_id for b in page2.balloons), {
+            "source": [
+                (b.id, b.parent_key) for b in page1.balloons
+            ],
+            "target": [
+                (b.id, b.parent_key) for b in page2.balloons
+            ],
+            "oldParent": page1_coma_key,
+            "newParent": moved_coma_key,
+        }
         moved_coma_balloon = next(b for b in page2.balloons if b.id == coma_balloon_id)
         moved_coma_child = next(t for t in page2.texts if t.id == coma_child_id)
         moved_coma_text = next(t for t in page2.texts if t.id == coma_text_id)
+        moved_coma_image = next(
+            entry
+            for entry in context.scene.bmanga_image_layers
+            if entry.id == coma_image_id
+        )
+        moved_coma_raster = next(
+            entry
+            for entry in context.scene.bmanga_raster_layers
+            if entry.id == coma_raster_id
+        )
         assert not any(getattr(b, "id", "") == coma_balloon_id for b in page1.balloons)
         assert not any(getattr(t, "id", "") == coma_child_id for t in page1.texts)
-        assert moved_coma_balloon.parent_kind == "coma" and moved_coma_balloon.parent_key == moved_coma_key
+        assert moved_coma_balloon.parent_kind == "coma" and moved_coma_balloon.parent_key == moved_coma_key, {
+            "actualKind": moved_coma_balloon.parent_kind,
+            "actualKey": moved_coma_balloon.parent_key,
+            "expectedKey": moved_coma_key,
+            "targetComas": [
+                (
+                    str(getattr(panel, "id", "") or ""),
+                    str(getattr(panel, "coma_id", "") or ""),
+                    coma_stack_key(page2, panel),
+                )
+                for panel in page2.comas
+            ],
+        }
         assert moved_coma_child.parent_balloon_id == moved_coma_balloon.id
         assert moved_coma_child.parent_kind == "coma" and moved_coma_child.parent_key == moved_coma_key
         assert moved_coma_text.parent_kind == "coma" and moved_coma_text.parent_key == moved_coma_key
-        assert coma_image.parent_kind == "coma" and coma_image.parent_key == moved_coma_key
-        assert coma_raster.scope == "page" and coma_raster.parent_kind == "coma"
-        assert coma_raster.parent_key == moved_coma_key
+        assert moved_coma_image.parent_kind == "coma" and moved_coma_image.parent_key == moved_coma_key
+        assert moved_coma_raster.scope == "page" and moved_coma_raster.parent_kind == "coma"
+        assert moved_coma_raster.parent_key == moved_coma_key
         coma_gp = layer_object_model.find_layer_object("gp", coma_gp_id)
         coma_effect = layer_object_model.find_layer_object("effect", coma_effect_id)
         assert coma_gp is None, "移動済みコマの手描きが移動元に残っています"
@@ -758,8 +852,6 @@ def main() -> None:
 
         # 同じページ上で復元処理が二重に呼ばれても、同じ安定IDは一つだけ。
         from bmanga_dev.utils import cross_page_transfer
-        from bmanga_dev.utils import cross_page_stage
-
         # 確定待ちの読込後に別画面が追記・同一ID更新しても、最新内容を消さない。
         probe_page_id = "p0999"
         probe_original = {"bmanga_id": "effect_probe", "parent_key": probe_page_id, "value": 1}
@@ -800,7 +892,7 @@ def main() -> None:
         assert staged_path.exists(), "ページ保存前の再呼出しで退避ファイルが消えています"
 
         # 保存せずにページを再読込すると未保存実体は消えるが、退避から一度だけ再試行できる。
-        page2_blend = Path(work.work_dir) / page2_key / "page.blend"
+        page2_blend = _page_dir(work, page2_key) / "page.blend"
         bpy.ops.wm.open_mainfile(filepath=str(page2_blend), load_ui=False)
         context = bpy.context
         work = context.scene.bmanga_work

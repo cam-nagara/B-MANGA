@@ -6,7 +6,7 @@ Object/Collection 名はユーザーが Outliner からリネーム可能なの�
 は ``object["bmanga_id"]`` (custom property) に保持し、Object 名は派生表示
 として B-MANGA から自動生成する。
 
-Blender 5.1.1 実機で確認した制約:
+Blender 5.2 LTS実機で確認した制約:
     - ID name の上限は 255 バイト (UTF-8)。超過分は内部で黙って切り詰められる。
     - 同名衝突時は Blender が ``.001`` ``.002`` を自動付加する。
 
@@ -23,7 +23,7 @@ from typing import Iterable, Optional
 
 import bpy
 
-# Blender 5.1 の ID name 上限。実機検証で 255 バイトを確認 (`a` * 100 が通り
+# Blender 5.2のID name上限。実機検証で255バイトを確認（`a` * 100が通り
 # `"コマ" * 50` (150 文字) が 85 文字 = 255 バイトで打ち切られた)。
 MAX_OBJECT_NAME_BYTES = 255
 

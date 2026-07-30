@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import shutil
 import sys
+import tempfile
 import traceback
 from pathlib import Path
 
@@ -27,16 +29,16 @@ def _load_addon():
     return mod
 
 
-def _create_coma():
+def _create_coma(work_dir: Path):
+    work_path = work_dir / "ComaBlurUI.bmanga"
+    assert bpy.ops.bmanga.work_new(filepath=str(work_path)) == {"FINISHED"}
+    assert bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0) == {"FINISHED"}
     scene = bpy.context.scene
     work = scene.bmanga_work
-    work.loaded = True
     work.active_page_index = 0
-    page = work.pages.add()
-    page.id = "p0001"
-    page.title = "1ページ"
+    page = work.pages[0]
     page.active_coma_index = 0
-    coma = page.comas.add()
+    coma = page.comas[0] if page.comas else page.comas.add()
     coma.id = "c01"
     coma.coma_id = "c01"
     coma.title = "コマ1"
@@ -137,7 +139,8 @@ def _run_ui_check(scene, work, page, coma) -> None:
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _load_addon()
-    scene, work, page, coma = _create_coma()
+    fixture_dir = Path(tempfile.mkdtemp(prefix="bmanga_coma_blur_ui_"))
+    scene, work, page, coma = _create_coma(fixture_dir)
 
     attempts = {"count": 0}
 
@@ -145,12 +148,15 @@ def main() -> None:
         attempts["count"] += 1
         if bpy.context.window is None and attempts["count"] < 30:
             return 0.1
+        exit_code = 0
         try:
             _run_ui_check(scene, work, page, coma)
         except Exception:  # noqa: BLE001
             traceback.print_exc()
-            os._exit(1)
-        os._exit(0)
+            exit_code = 1
+        finally:
+            shutil.rmtree(fixture_dir, ignore_errors=True)
+        os._exit(exit_code)
         return None
 
     bpy.app.timers.register(_timer, first_interval=0.1)

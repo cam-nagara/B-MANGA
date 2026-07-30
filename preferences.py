@@ -125,7 +125,7 @@ def _on_log_level_changed(self, _context) -> None:  # noqa: ANN001 - Blender cal
 def _on_gpencil_follow_changed(self, _context=None) -> None:  # noqa: ANN001 - Blender callback
     """preferences.gpencil_follow_cursor 変更で watcher を即時起動/停止.
 
-    Blender 拡張環境 (特に 5.1.2 以降) では ``update=lambda ...`` のラムダから
+    Blender 5.2拡張環境では``update=lambda ...``のラムダから
     モジュール関数を参照すると globals 解決に失敗し
     ``NameError: name '...' is not defined`` になることがある。そのため
     ``update=`` には名前付き関数を直接渡し、この関数内では ``self`` と関数内

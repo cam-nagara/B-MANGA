@@ -66,7 +66,6 @@ DERIVED_FIELD_REASONS = {
     "BMangaPageEntry.coma_count": "ページ内容から再計算できる件数cache",
     "BMangaPageEntry.in_page_range": "作品のページ範囲から再計算する表示値",
     "BMangaPageEntry.thumbnail_rel": "再生成可能なthumbnail cache locator",
-    "BMangaWorkData.detail_data_version": "Domain外の保存形式version marker",
 }
 
 
