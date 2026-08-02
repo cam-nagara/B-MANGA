@@ -42,6 +42,40 @@
       "reason": "native blend保存中のDomain投影失敗を意図的に注入し、blendとJSONの不一致世代を公開しないことを検証する負系テスト",
       "review": "phase3-native-save-atomicity-audit-2026-07-30"
     },
+    "test/blender_lifecycle_coordinator_check.py": {
+      "mode": "blender_wrapper",
+      "expected_tracebacks": [
+        {
+          "pattern": "^RuntimeError: injected history projection failure$",
+          "count": 3
+        }
+      ],
+      "reason": "Undo／Redo後の投影失敗を3回連続注入し、無限再試行を止めて明示的な再読込要求へ移るPhase 4負系テスト",
+      "review": "phase4-history-reconcile-fault-audit-2026-08-01"
+    },
+    "test/blender_page_file_panel_role_check.py": {
+      "mode": "blender_wrapper",
+      "expected_tracebacks": [
+        {
+          "pattern": "^RuntimeError: Blenderファイルを保存できませんでした$",
+          "count": 1
+        },
+        {
+          "pattern": "^.*LifecycleError: source checkpoint failed$",
+          "count": 1
+        },
+        {
+          "pattern": "^.*LifecycleError: transition preparation failed$",
+          "count": 1
+        },
+        {
+          "pattern": "^.*LifecycleError: target open failed$",
+          "count": 1
+        }
+      ],
+      "reason": "dirtyなコマ保存失敗、戻り先work.blend欠落、target open失敗を意図的に注入し、open前中止と現在Main維持を検証するPhase 4負系テスト",
+      "review": "phase4-lifecycle-fault-injection-audit-2026-07-31"
+    },
     "test/blender_b_manga_line_auto_quad_repair_undo_check.py": {
       "mode": "historical",
       "required": false,
@@ -223,12 +257,16 @@
           "count": 1
         },
         {
-          "pattern": "^RuntimeError: 作品情報とBlenderファイルを保存できませんでした$",
+          "pattern": "^RuntimeError: Blenderファイルを保存できませんでした$",
+          "count": 1
+        },
+        {
+          "pattern": "^(?:[\\w.]+\\.)?LifecycleError: source checkpoint failed$",
           "count": 1
         }
       ],
-      "reason": "native保存後の再読込失敗・一時共有違反・作品切替前の保存失敗を意図的に注入し、復旧と切替中止を検証する負系テスト",
-      "review": "phase3-native-save-atomicity-audit-2026-07-30"
+      "reason": "native保存後の再読込失敗・一時共有違反・Lifecycle Coordinatorの作品切替checkpoint失敗を意図的に注入し、復旧と切替中止を検証する負系テスト",
+      "review": "phase4-lifecycle-negative-path-audit-2026-07-31"
     },
     "test/blender_page_duplicate_delete_transaction_check.py": {
       "mode": "blender_wrapper",
@@ -319,6 +357,11 @@
       "timeout_seconds": 600,
       "reason": "55ページ決定的fixtureの生成・保存を含み、Phase 0実測で約247秒を要するため、必須性能回帰として十分な上限を与える",
       "review": "phase1-timeout-audit-2026-07-29"
+    },
+    "test/blender_phase0_open_performance_check.py": {
+      "run_order": 0,
+      "reason": "P95性能ゲートを他の高負荷Blender実機ケースより先に隔離実行し、熱・I/O残留負荷による偽の性能回帰判定を防ぐ",
+      "review": "phase4-performance-isolation-audit-2026-08-01"
     },
     "test/blender_text_ime_toggle_check.py": {
       "mode": "support",

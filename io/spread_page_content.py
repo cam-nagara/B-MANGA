@@ -398,7 +398,6 @@ def _worker_merge(page_id: str, source_path: Path, request: dict[str, Any]) -> d
             bpy.data.collections.remove(orphan_root)
     bpy.data.scenes.remove(second_scene)
     output = Path(request["output_path"])
-    _runtime_module("io.blender_worker_runtime").suspend_addon_handlers()
     bpy.ops.wm.save_as_mainfile(filepath=str(output), compress=False)
     _open_blend(output)
     _validate_worker_scene(page_id, expected_sources={first_id, second_id})
@@ -735,7 +734,6 @@ def _worker_split(page_id: str, source_path: Path, request: dict[str, Any]) -> d
             links[mapped] = str(reverse_groups.get(group, group))
     scene[LINK_PROP] = json.dumps(links, ensure_ascii=False, separators=(",", ":"))
     output = Path(request["output_path"])
-    _runtime_module("io.blender_worker_runtime").suspend_addon_handlers()
     bpy.ops.wm.save_as_mainfile(filepath=str(output), compress=False)
     _open_blend(output)
     _validate_worker_scene(page_id, expected_sources={source_id})
@@ -976,6 +974,9 @@ def _worker_main(argv: list[str]) -> None:
             raise SpreadContentError("見開きワーカーの所有トークンを確認できません")
         os.environ[_WORKER_CLAIM_ENV] = args.worker_token
         _ensure_runtime()
+        worker_runtime = _runtime_module("io.blender_worker_runtime")
+        worker_runtime.suspend_addon_handlers()
+        worker_runtime.assert_addon_handlers_suspended()
         payload = _worker_convert(args.page_id, Path(args.page_path), Path(args.request))
         _write_json(output, {"ok": True, **payload})
     except BaseException as exc:

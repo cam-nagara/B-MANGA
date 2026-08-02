@@ -72,6 +72,7 @@ class BMangaWorkData(bpy.types.PropertyGroup):
     loaded: BoolProperty(  # type: ignore[valid-type]
         name="作品ロード済み",
         default=False,
+        options={"SKIP_SAVE"},
     )
     work_dir: StringProperty(  # type: ignore[valid-type]
         name="作品ディレクトリ",

@@ -30,6 +30,9 @@ def is_sync_candidate(obj: bpy.types.Object | None) -> bool:
 def sync_from_blender_object(scene: bpy.types.Scene, obj: bpy.types.Object | None) -> bool:
     if scene is None or obj is None:
         return False
+    scene_obj = getattr(scene, "objects", None)
+    if scene_obj is None or scene_obj.get(str(obj.name)) is not obj:
+        return False
     if object_preserve.is_preserved(obj):
         return False
     if not is_sync_candidate(obj):

@@ -75,16 +75,18 @@ def register() -> None:
     _suspend_retries = 0
     unregister()
     # persistent=True: 起動直後に作品ファイルを開いてもタイマーを維持する
-    bpy.app.timers.register(
+    from ..utils import lifecycle_scheduler
+
+    lifecycle_scheduler.schedule(
+        "keymap.startup_repair",
         _repair_tick,
         first_interval=_REPAIR_PASS_DELAYS[0],
         persistent=True,
+        restart_on_invalidate=True,
     )
 
 
 def unregister() -> None:
-    if bpy.app.timers.is_registered(_repair_tick):
-        try:
-            bpy.app.timers.unregister(_repair_tick)
-        except ValueError:
-            pass
+    from ..utils import lifecycle_scheduler
+
+    lifecycle_scheduler.cancel("keymap.startup_repair")

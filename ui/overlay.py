@@ -2047,7 +2047,13 @@ def schedule_viewport_overlays_enabled(*, enabled: bool, retries: int = 6, inter
         return interval if state["left"] > 0 else None
 
     try:
-        bpy.app.timers.register(_tick, first_interval=interval)
+        from ..utils import lifecycle_scheduler
+
+        lifecycle_scheduler.schedule(
+            "ui.overlay.apply_overlays",
+            _tick,
+            first_interval=interval,
+        )
     except Exception:  # noqa: BLE001
         pass
 

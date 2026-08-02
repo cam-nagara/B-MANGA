@@ -2693,13 +2693,26 @@ def schedule_effect_line_node_group_for_work(context=None, *, delay: float = 0.2
 
     _EFFECT_LINE_PREP_TIMER = _run
     try:
-        bpy.app.timers.register(_run, first_interval=max(0.0, float(delay)))
+        from . import lifecycle_scheduler
+
+        lifecycle_scheduler.schedule(
+            "geometry.effect_group",
+            _run,
+            first_interval=max(0.0, float(delay)),
+            on_cancel=_cancel_effect_line_group_schedule,
+        )
         return True
     except Exception:  # noqa: BLE001
         _EFFECT_LINE_PREP_TIMER = None
         _EFFECT_LINE_PREP_TIMER_SCHEDULED = False
         _logger.exception("geometry nodes bridge: effect line group timer failed")
         return False
+
+
+def _cancel_effect_line_group_schedule() -> None:
+    global _EFFECT_LINE_PREP_TIMER, _EFFECT_LINE_PREP_TIMER_SCHEDULED
+    _EFFECT_LINE_PREP_TIMER = None
+    _EFFECT_LINE_PREP_TIMER_SCHEDULED = False
 
 
 def _socket_specs(kind: str) -> dict[str, SocketSpec]:
@@ -2836,16 +2849,12 @@ def register() -> None:
 
 
 def unregister() -> None:
-    global _EFFECT_LINE_PREP_TIMER, _EFFECT_LINE_PREP_TIMER_SCHEDULED
-    timer = _EFFECT_LINE_PREP_TIMER
-    _EFFECT_LINE_PREP_TIMER = None
-    _EFFECT_LINE_PREP_TIMER_SCHEDULED = False
-    if timer is not None:
-        try:
-            if bpy.app.timers.is_registered(timer):
-                bpy.app.timers.unregister(timer)
-        except Exception:  # noqa: BLE001
-            pass
+    try:
+        from . import lifecycle_scheduler
+
+        lifecycle_scheduler.cancel("geometry.effect_group")
+    except Exception:  # noqa: BLE001
+        _cancel_effect_line_group_schedule()
     return None
 
 

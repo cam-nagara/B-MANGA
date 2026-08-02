@@ -10,9 +10,10 @@ import zlib
 from array import array
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import bpy
+import hashlib
 from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty
 from bpy.types import Operator
 
@@ -21,6 +22,9 @@ from ..utils import layer_stack as layer_stack_utils
 from ..utils import detail_popup, log, paths, percentage
 from ..utils.geom import mm_to_m, mm_to_px
 from . import object_rotation_raster  # noqa: F401 (import時にraster回転ハンドラーを登録)
+
+if TYPE_CHECKING:
+    from ..io.native_checkpoint_runtime import RasterPixelSnapshot
 
 _logger = log.get_logger(__name__)
 
@@ -278,6 +282,118 @@ def _save_image_to_atomic_png(image, destination: Path) -> None:
         os.replace(temp_path, destination)
     finally:
         temp_path.unlink(missing_ok=True)
+
+
+_RASTER_SNAPSHOT_CHUNK_FLOATS = 262_144
+
+
+def _capture_raster_pixel_snapshot(image, destination: Path):
+    """現在画素を固定サイズのsliceごとに圧縮し、RAM全量保持を避ける。"""
+
+    from ..io.native_checkpoint_runtime import RasterPixelSnapshot
+
+    width = int(image.size[0])
+    height = int(image.size[1])
+    if width <= 0 or height <= 0:
+        raise RuntimeError("raster image has no pixel buffer")
+    pixel_count = width * height
+    total_values = len(image.pixels)
+    if pixel_count <= 0 or total_values % pixel_count:
+        raise RuntimeError("raster image pixel buffer size is invalid")
+    channels = total_values // pixel_count
+    if channels <= 0:
+        raise RuntimeError("raster image has no channels")
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = destination.with_suffix(f"{destination.suffix}.tmp")
+    compressor = zlib.compressobj(level=1)
+    digest = hashlib.sha256()
+    raw_byte_count = 0
+    try:
+        with temp_path.open("xb") as handle:
+            for start in range(0, total_values, _RASTER_SNAPSHOT_CHUNK_FLOATS):
+                stop = min(total_values, start + _RASTER_SNAPSHOT_CHUNK_FLOATS)
+                values = image.pixels[start:stop]
+                pixels = (
+                    values
+                    if isinstance(values, array) and values.typecode == "f"
+                    else array("f", values)
+                )
+                if len(pixels) != stop - start:
+                    raise RuntimeError("raster image pixel slice is incomplete")
+                raw = memoryview(pixels).cast("B")
+                raw_byte_count += len(raw)
+                compressed = compressor.compress(raw)
+                if compressed:
+                    handle.write(compressed)
+                    digest.update(compressed)
+            tail = compressor.flush()
+            if tail:
+                handle.write(tail)
+                digest.update(tail)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, destination)
+    finally:
+        temp_path.unlink(missing_ok=True)
+    return RasterPixelSnapshot(
+        width,
+        height,
+        channels,
+        destination.resolve(strict=True),
+        digest.hexdigest(),
+        raw_byte_count,
+    )
+
+
+def capture_raster_pixel_snapshots(
+    context,
+    raster_ids,
+    *,
+    snapshot_dir: str | Path,
+) -> dict[str, "RasterPixelSnapshot"]:
+    """指定ラスターの現在画素を、本番書込み前の復旧用に保持する。"""
+
+    wanted = {str(value) for value in raster_ids if str(value)}
+    if not wanted:
+        return {}
+    scene = getattr(context, "scene", None)
+    coll = _raster_collection(scene) if scene is not None else None
+    snapshots: dict[str, RasterPixelSnapshot] = {}
+    failures: list[str] = []
+    first_error = None
+    for entry in coll or ():
+        raster_id = str(getattr(entry, "id", "") or "")
+        if raster_id not in wanted:
+            continue
+        image = ensure_raster_image(context, entry, create_missing=False)
+        try:
+            if image is None:
+                raise RuntimeError("raster image is not loaded")
+            from ..io import native_checkpoint_runtime
+
+            destination = native_checkpoint_runtime.snapshot_path(
+                snapshot_dir,
+                raster_id,
+            )
+            snapshots[raster_id] = _capture_raster_pixel_snapshot(
+                image,
+                destination,
+            )
+        except Exception as exc:  # noqa: BLE001
+            failures.append(raster_id)
+            first_error = first_error or exc
+        finally:
+            # 一時PNGへのsaveでBlenderのdirtyが落ちても、本番保存が成功する
+            # までは次回checkpoint対象から外さない。
+            try:
+                entry["bmanga_raster_dirty"] = True
+            except Exception:  # noqa: BLE001
+                pass
+    failures.extend(sorted(wanted - set(snapshots) - set(failures)))
+    if failures:
+        raise RasterSaveError(failures) from first_error
+    return snapshots
 
 
 def ensure_raster_image(context, entry, *, create_missing: bool = True, mark_missing: bool = False):
@@ -907,6 +1023,27 @@ def dirty_raster_paths(context) -> tuple[Path, ...]:
     return tuple(result)
 
 
+def dirty_raster_ids(context) -> tuple[str, ...]:
+    """次のcheckpointで画素保存するラスターの安定IDを返す。"""
+
+    scene = getattr(context, "scene", None)
+    coll = _raster_collection(scene) if scene is not None else None
+    if coll is None:
+        return ()
+    result = []
+    for entry in coll:
+        raster_id = str(getattr(entry, "id", "") or "")
+        image_name = str(
+            getattr(entry, "image_name", "") or raster_image_name(raster_id)
+        )
+        if raster_id and _entry_has_unsaved_pixels(
+            entry,
+            bpy.data.images.get(image_name),
+        ):
+            result.append(raster_id)
+    return tuple(result)
+
+
 def ensure_all_raster_runtime(context) -> int:
     scene = getattr(context, "scene", None)
     coll = _raster_collection(scene) if scene is not None else None
@@ -1065,7 +1202,19 @@ def _start_brush_grayscale_timer() -> None:
     if _brush_timer_running:
         return
     _brush_timer_running = True
-    bpy.app.timers.register(_brush_grayscale_timer, first_interval=0.05)
+    from ..utils import lifecycle_scheduler
+
+    lifecycle_scheduler.schedule(
+        "raster.grayscale",
+        _brush_grayscale_timer,
+        first_interval=0.05,
+        on_cancel=_stop_brush_grayscale_timer,
+    )
+
+
+def _stop_brush_grayscale_timer() -> None:
+    global _brush_timer_running
+    _brush_timer_running = False
 
 
 class BMANGA_OT_raster_layer_add(Operator):

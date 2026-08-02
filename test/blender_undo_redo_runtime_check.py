@@ -111,10 +111,15 @@ def _artifact_mtimes(work_dir: Path) -> dict[str, int]:
     return result
 
 
-def _assert_page_state(expected_delta: float) -> None:
+def _assert_page_state(
+    expected_delta: float,
+    *,
+    check_domain: bool = False,
+) -> None:
+    from bmanga_dev_undo_runtime.io import domain_projection, domain_runtime
     from bmanga_dev_undo_runtime.utils import page_file_scene
 
-    work, _page, balloon, text = _find_entries()
+    work, page, balloon, text = _find_entries()
     role, page_id, _coma_id = page_file_scene.current_role(bpy.context)
     assert work.loaded
     assert role == page_file_scene.ROLE_PAGE, role
@@ -128,6 +133,22 @@ def _assert_page_state(expected_delta: float) -> None:
         float(text.x_mm),
         TEXT_ORIGINAL_X + expected_delta,
     )
+    if check_domain:
+        project_uid = domain_projection.ensure_project_uid(work)
+        page_uid = domain_projection.ensure_page_uid(page, project_uid)
+        document = domain_runtime.store_for(work.work_dir).pages[page_uid]
+        nodes = {
+            (node.kind, node.display_id): node
+            for node in document.nodes.values()
+        }
+        assert abs(
+            float(nodes[("balloon", BALLOON_ID)].settings["xMm"])
+            - (ORIGINAL_X + expected_delta)
+        ) < 1.0e-5
+        assert abs(
+            float(nodes[("text", TEXT_ID)].settings["xMm"])
+            - (TEXT_ORIGINAL_X + expected_delta)
+        ) < 1.0e-5
 
 
 def _commit_micro_move() -> None:
@@ -231,12 +252,12 @@ def _tick():
             _stage = "check_undo"
             return 0.35
         if _stage == "check_undo":
-            _assert_page_state(0.0)
+            _assert_page_state(0.0, check_domain=True)
             assert _run_history_operator(bpy.ops.ed.redo) == {"FINISHED"}
             _stage = "check_redo"
             return 0.35
         if _stage == "check_redo":
-            _assert_page_state(DELTA_X)
+            _assert_page_state(DELTA_X, check_domain=True)
             _commit_return_to_origin()
             _stage = "check_noop_undo"
             assert _run_history_operator(bpy.ops.ed.undo) == {"FINISHED"}
@@ -244,7 +265,7 @@ def _tick():
         if _stage == "check_noop_undo":
             # 元へ戻したドラッグが空履歴を作っていれば、1回のUndoではここが
             # 24.01mmのままになる。24.00mmなら最終状態比較が機能している。
-            _assert_page_state(0.0)
+            _assert_page_state(0.0, check_domain=True)
             work, _page, _balloon, _text = _find_entries()
             assert _artifact_mtimes(Path(work.work_dir)) == _artifact_baseline
             _stage = "done"

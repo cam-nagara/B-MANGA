@@ -332,13 +332,14 @@ def main() -> None:
             for image in bpy.data.images
         )
         assert not fill_obj.hide_get()
-        preview_composite._on_save_post_fail()
+        preview_composite.on_lifecycle_save_fail()
         assert frame.full_image is not None
         assert fill_obj.hide_get()
         save_post_fail = getattr(bpy.app.handlers, "save_post_fail", None)
         if save_post_fail is not None:
             assert any(
-                getattr(handler, "__name__", "") == "_on_save_post_fail"
+                getattr(handler, "__name__", "")
+                == "_bmanga_on_save_post_fail"
                 for handler in save_post_fail
             )
 

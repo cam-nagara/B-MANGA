@@ -829,13 +829,17 @@ class PreviewCompositeService:
 
     def _schedule_timers(self) -> None:
         try:
-            if not bpy.app.timers.is_registered(_low_refresh_timer):
-                bpy.app.timers.register(
+            from . import lifecycle_scheduler
+
+            if not lifecycle_scheduler.is_scheduled("preview_composite.low"):
+                lifecycle_scheduler.schedule(
+                    "preview_composite.low",
                     _low_refresh_timer,
                     first_interval=LOW_TIMER_DELAY,
                 )
-            if not bpy.app.timers.is_registered(_high_refresh_timer):
-                bpy.app.timers.register(
+            if not lifecycle_scheduler.is_scheduled("preview_composite.high"):
+                lifecycle_scheduler.schedule(
+                    "preview_composite.high",
                     _high_refresh_timer,
                     first_interval=HIGH_DELAY_SECONDS,
                 )
@@ -898,25 +902,21 @@ def _high_refresh_timer():
     return SERVICE.run_high_timer()
 
 
-@persistent
-def _on_load_post(*_args) -> None:
+def on_lifecycle_load() -> None:
     SERVICE.reset(remove_images=True)
     if SERVICE.enabled(getattr(bpy.context, "scene", None)):
         SERVICE.mark_dirty(context=bpy.context)
 
 
-@persistent
-def _on_save_pre(*_args) -> None:
+def on_lifecycle_save_pre() -> None:
     SERVICE.before_save()
 
 
-@persistent
-def _on_save_post(*_args) -> None:
+def on_lifecycle_save_post() -> None:
     SERVICE.after_save()
 
 
-@persistent
-def _on_save_post_fail(*_args) -> None:
+def on_lifecycle_save_fail() -> None:
     SERVICE.after_save()
 
 
@@ -939,45 +939,46 @@ def _on_depsgraph_update_post(scene, depsgraph) -> None:
             return
 
 
-def _remove_named_handler(handlers, name: str) -> None:
+def _remove_owned_handler(handlers, name: str) -> None:
     for handler in list(handlers):
-        if getattr(handler, "__name__", "") == name:
+        if (
+            getattr(handler, "__name__", "") == name
+            and str(getattr(handler, "__module__", "")).endswith(
+                ".preview_composite"
+            )
+        ):
             handlers.remove(handler)
 
 
 def register() -> None:
-    _remove_named_handler(bpy.app.handlers.load_post, _on_load_post.__name__)
-    _remove_named_handler(bpy.app.handlers.save_pre, _on_save_pre.__name__)
-    _remove_named_handler(bpy.app.handlers.save_post, _on_save_post.__name__)
+    _remove_owned_handler(bpy.app.handlers.load_post, "_on_load_post")
+    _remove_owned_handler(bpy.app.handlers.save_pre, "_on_save_pre")
+    _remove_owned_handler(bpy.app.handlers.save_post, "_on_save_post")
     save_post_fail = getattr(bpy.app.handlers, "save_post_fail", None)
     if save_post_fail is not None:
-        _remove_named_handler(save_post_fail, _on_save_post_fail.__name__)
-    _remove_named_handler(
+        _remove_owned_handler(save_post_fail, "_on_save_post_fail")
+    _remove_owned_handler(
         bpy.app.handlers.depsgraph_update_post,
         _on_depsgraph_update_post.__name__,
     )
-    bpy.app.handlers.load_post.append(_on_load_post)
-    bpy.app.handlers.save_pre.append(_on_save_pre)
-    bpy.app.handlers.save_post.append(_on_save_post)
-    if save_post_fail is not None:
-        save_post_fail.append(_on_save_post_fail)
     bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph_update_post)
 
 
 def unregister() -> None:
-    for timer in (_low_refresh_timer, _high_refresh_timer):
-        try:
-            if bpy.app.timers.is_registered(timer):
-                bpy.app.timers.unregister(timer)
-        except Exception:  # noqa: BLE001
-            pass
-    _remove_named_handler(bpy.app.handlers.load_post, _on_load_post.__name__)
-    _remove_named_handler(bpy.app.handlers.save_pre, _on_save_pre.__name__)
-    _remove_named_handler(bpy.app.handlers.save_post, _on_save_post.__name__)
+    try:
+        from . import lifecycle_scheduler
+
+        lifecycle_scheduler.cancel("preview_composite.low")
+        lifecycle_scheduler.cancel("preview_composite.high")
+    except Exception:  # noqa: BLE001
+        pass
+    _remove_owned_handler(bpy.app.handlers.load_post, "_on_load_post")
+    _remove_owned_handler(bpy.app.handlers.save_pre, "_on_save_pre")
+    _remove_owned_handler(bpy.app.handlers.save_post, "_on_save_post")
     save_post_fail = getattr(bpy.app.handlers, "save_post_fail", None)
     if save_post_fail is not None:
-        _remove_named_handler(save_post_fail, _on_save_post_fail.__name__)
-    _remove_named_handler(
+        _remove_owned_handler(save_post_fail, "_on_save_post_fail")
+    _remove_owned_handler(
         bpy.app.handlers.depsgraph_update_post,
         _on_depsgraph_update_post.__name__,
     )

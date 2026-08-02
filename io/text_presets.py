@@ -59,6 +59,9 @@ class TextPreset:
     data: dict[str, Any]
 
 
+_GLOBAL_PRESET_CACHE: tuple[TextPreset, ...] | None = None
+
+
 def normalize_font_size_unit(value: Any) -> str:
     """サイズ単位を正規形 ("q" / "pt") へ揃える.
 
@@ -102,7 +105,12 @@ def _list_in_dir(base: Path, *, source: str) -> list[TextPreset]:
 
 
 def list_global_presets() -> list[TextPreset]:
-    return _list_in_dir(GLOBAL_PRESETS_DIR, source="global")
+    global _GLOBAL_PRESET_CACHE
+    if _GLOBAL_PRESET_CACHE is None:
+        _GLOBAL_PRESET_CACHE = tuple(
+            _list_in_dir(GLOBAL_PRESETS_DIR, source="global")
+        )
+    return list(_GLOBAL_PRESET_CACHE)
 
 
 def list_local_presets(work_dir: Path) -> list[TextPreset]:

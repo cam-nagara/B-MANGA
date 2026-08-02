@@ -58,6 +58,21 @@ def _view3d_context():
     return None
 
 
+def _view3d_override() -> dict:
+    view = _view3d_context()
+    if view is None:
+        raise RuntimeError("VIEW_3D が見つかりません")
+    window, screen, area, region, space, rv3d = view
+    return {
+        "window": window,
+        "screen": screen,
+        "area": area,
+        "region": region,
+        "space_data": space,
+        "region_data": rv3d,
+    }
+
+
 def _submodule(path: str):
     import importlib
 
@@ -166,12 +181,13 @@ def _check_object_tool_manual_page_open(event) -> None:
         lambda _ctx, _event: False
     )
     try:
-        r1 = tool._handle_left_press(bpy.context, event)
-        assert r1 == {"RUNNING_MODAL"}, r1
-        assert not opened, "1回目のクリックでページファイルを開こうとしています"
-        r2 = tool._handle_left_press(bpy.context, event)
-        assert r2 == {"FINISHED"}, r2
-        assert opened, "オブジェクトツールの連続クリックでページファイルを開けません"
+        with bpy.context.temp_override(**_view3d_override()):
+            r1 = tool._handle_left_press(bpy.context, event)
+            assert r1 == {"RUNNING_MODAL"}, r1
+            assert not opened, "1回目のクリックでページファイルを開こうとしています"
+            r2 = tool._handle_left_press(bpy.context, event)
+            assert r2 == {"FINISHED"}, r2
+            assert opened, "オブジェクトツールの連続クリックでページファイルを開けません"
     finally:
         object_tool_op.coma_edge_move_op.extend_selected_handle_at_event = original_extend
 
@@ -210,10 +226,11 @@ def _check_visible_handle_suppresses_page_open(event) -> None:
     original_extend = object_tool_op.coma_edge_move_op.extend_selected_handle_at_event
     object_tool_op.coma_edge_move_op.extend_selected_handle_at_event = lambda _ctx, _event: False
     try:
-        assert tool._handle_left_press(bpy.context, event) == {"RUNNING_MODAL"}
-        assert tool._handle_left_press(bpy.context, event) == {"RUNNING_MODAL"}
-        assert not opened, "表示ハンドル上の連続クリックでページファイルを開いています"
-        assert not tool._last_click_key, "表示ハンドル上のクリックがページ遷移履歴に残っています"
+        with bpy.context.temp_override(**_view3d_override()):
+            assert tool._handle_left_press(bpy.context, event) == {"RUNNING_MODAL"}
+            assert tool._handle_left_press(bpy.context, event) == {"RUNNING_MODAL"}
+            assert not opened, "表示ハンドル上の連続クリックでページファイルを開いています"
+            assert not tool._last_click_key, "表示ハンドル上のクリックがページ遷移履歴に残っています"
     finally:
         object_tool_op.coma_edge_move_op.extend_selected_handle_at_event = original_extend
 
@@ -224,10 +241,11 @@ def _check_pick_viewport_manual_open(event, expected_index: int) -> None:
     mode_op = _submodule("operators.mode_op")
 
     page_op._clear_page_open_click_state()
-    first = page_op._detect_page_open_double_click(bpy.context, event)
-    assert first is None, f"1回目のクリックで開いてしまいます: {first}"
-    second = page_op._detect_page_open_double_click(bpy.context, event)
-    assert second == expected_index, f"2回目のクリックで開けません: {second}"
+    with bpy.context.temp_override(**_view3d_override()):
+        first = page_op._detect_page_open_double_click(bpy.context, event)
+        assert first is None, f"1回目のクリックで開いてしまいます: {first}"
+        second = page_op._detect_page_open_double_click(bpy.context, event)
+        assert second == expected_index, f"2回目のクリックで開けません: {second}"
 
     # invoke 経路: 2回目の PRESS で FINISHED (遅延オープン予約) になること
     page_op._clear_page_open_click_state()
@@ -287,6 +305,23 @@ def _start_check(temp_root: Path) -> None:
 
     _check_spread_right_half_hit()
     event = _press_event_for_page(1)
+    mode_op = _submodule("operators.mode_op")
+    page_file_scene = _submodule("utils.page_file_scene")
+    coma_picker = _submodule("operators.coma_picker")
+    page_grid = _submodule("utils.page_grid")
+    with bpy.context.temp_override(**_view3d_override()):
+        pre_role = page_file_scene.current_role(bpy.context)
+        pre_hit = mode_op.page_file_index_from_viewport_event(bpy.context, event)
+        pre_world = coma_picker._event_world_mm(bpy.context, event)  # noqa: SLF001
+    offsets = [
+        page_grid.page_total_offset_mm(work, scene, index)
+        for index in range(len(work.pages))
+    ]
+    assert pre_hit == 1, (
+        "work.blendのp0002をページ遷移対象として解決できません: "
+        f"role={pre_role!r} hit={pre_hit!r} world={pre_world!r} "
+        f"offsets={offsets!r} overview={scene.bmanga_overview_mode!r}"
+    )
     _check_object_tool_manual_page_open(event)
     _check_visible_handle_suppresses_page_open(event)
     _check_pick_viewport_manual_open(event, 1)
@@ -296,10 +331,7 @@ def _start_check(temp_root: Path) -> None:
     result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
     assert result == {"FINISHED"}, result
     event = _press_event_for_page(1)
-    mode_op = _submodule("operators.mode_op")
-    page_file_scene = _submodule("utils.page_file_scene")
     page_preview_object = _submodule("utils.page_preview_object")
-    coma_picker = _submodule("operators.coma_picker")
     view = _view3d_context()
     assert view is not None
     window, screen, area, region, space, rv3d = view

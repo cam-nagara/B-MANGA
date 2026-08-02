@@ -20,10 +20,16 @@ class DomainValidationError(ValueError):
     """Domain文書が正規形を満たさない。"""
 
 
-def _mapping(value: object, label: str) -> dict[str, Any]:
+def _mapping(
+    value: object,
+    label: str,
+    *,
+    deep: bool = False,
+) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise DomainValidationError(f"{label} must be an object")
-    return copy.deepcopy(dict(value))
+    data = dict(value)
+    return copy.deepcopy(data) if deep else data
 
 
 def _text(value: object, label: str, *, allow_empty: bool = False) -> str:
@@ -105,7 +111,11 @@ class PageSummary:
             source_page_display_ids=tuple(
                 data.get("sourcePageDisplayIds", ())
             ),
-            settings=_mapping(data.get("settings", {}), "page summary settings"),
+            settings=_mapping(
+                data.get("settings", {}),
+                "page summary settings",
+                deep=True,
+            ),
         )
         result.validate()
         return result
@@ -150,7 +160,11 @@ class DomainNode:
             kind=data.get("kind"),
             display_id=data.get("displayId"),
             title=data.get("title", ""),
-            settings=_mapping(data.get("settings", {}), "node settings"),
+            settings=_mapping(
+                data.get("settings", {}),
+                "node settings",
+                deep=True,
+            ),
             native_uid=data.get("nativeUid", ""),
         )
         result.validate()
@@ -227,7 +241,11 @@ class ProjectDocument:
         result = cls(
             project_uid=data.get("projectUid"),
             revision=data.get("revision"),
-            settings=_mapping(data.get("settings"), "project settings"),
+            settings=_mapping(
+                data.get("settings"),
+                "project settings",
+                deep=True,
+            ),
             pages=pages,
         )
         result.validate()
@@ -341,7 +359,11 @@ class PageDocument:
             page_uid=data.get("pageUid"),
             revision=data.get("revision"),
             root_uid=tree.get("rootUid"),
-            settings=_mapping(data.get("settings"), "page settings"),
+            settings=_mapping(
+                data.get("settings"),
+                "page settings",
+                deep=True,
+            ),
             nodes=nodes,
             children=children,
             links=links,

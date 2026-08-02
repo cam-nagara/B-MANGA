@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import uuid
 
 import bpy
 from bpy.props import StringProperty
@@ -13,8 +14,7 @@ from ..core.mode import MODE_PAGE, MODE_COMA, get_mode, set_mode
 from ..core.work import get_work
 from ..core.work_info import suppress_page_number_range_update
 from ..io import blend_io, page_io, presets, work_io
-from ..utils import gpencil as gp_utils
-from ..utils import color_space, detail_popup, layer_object_model, log, page_grid, page_range, paths, view_settings
+from ..utils import color_space, detail_popup, log, page_grid, page_range, paths, view_settings
 
 _logger = log.get_logger(__name__)
 
@@ -163,6 +163,206 @@ def _schedule_layer_stack_sync(context, *, schedule: bool = True) -> None:
         _logger.exception("work layer stack sync failed")
 
 
+def _initialize_new_work_domain(
+    context,
+    work_dir: Path,
+    marker: Path,
+    token: str,
+):
+    from ..utils import new_work_transaction
+
+    on_committed = new_work_transaction.committed_artifact_recorder(
+        marker,
+        token,
+    )
+    work = get_work(context)
+    if work is None:
+        raise RuntimeError("シーンにB-MANGAデータが見つかりません")
+    new_work_transaction.create_directories(
+        marker,
+        token,
+        new_work_transaction.skeleton_directories(work_dir),
+    )
+    work_io.create_bmanga_skeleton(work_dir)
+    _apply_phase1_defaults(work)
+    work.work_dir = str(work_dir.resolve(strict=True))
+    work.loaded = True
+    work.work_info.work_name = work_dir.stem
+    view_settings.apply_preferences_to_work_defaults(work, context)
+    view_settings.apply_work_to_scene(context.scene, work)
+    work_io.save_work_json(
+        work_dir,
+        work,
+        on_committed=on_committed,
+    )
+    page_io.save_pages_json(
+        work_dir,
+        work,
+        on_committed=on_committed,
+    )
+    entry = page_io.register_new_page(work)
+    page_dir = paths.page_dir(work_dir, str(entry.id))
+    new_work_transaction.create_directories(
+        marker,
+        token,
+        (
+            page_dir,
+            paths.page_assets_dir(work_dir, str(entry.id)),
+            paths.page_comas_dir(work_dir, str(entry.id)),
+        ),
+    )
+    page_io.ensure_page_dir(work_dir, entry)
+    from .coma_op import create_basic_frame_coma
+
+    create_basic_frame_coma(
+        work,
+        entry,
+        work_dir,
+        on_committed=on_committed,
+    )
+    page_io.save_pages_json(
+        work_dir,
+        work,
+        on_committed=on_committed,
+    )
+    page_range.sync_end_number_to_page_count(work)
+    return work
+
+
+def _prepare_new_work_scene(
+    context,
+    work,
+    work_dir: Path,
+    marker: Path,
+    token: str,
+) -> None:
+    """空のhomefile上だけで新作品のSceneとwork.blendを確定する。"""
+
+    _cleanup_default_scene_objects()
+    page_grid.apply_page_collection_transforms(context, work)
+    set_mode(MODE_PAGE, context)
+    scene = context.scene
+    scene.bmanga_current_page_id = ""
+    scene.bmanga_current_coma_id = ""
+    scene.bmanga_current_coma_page_id = ""
+    scene.bmanga_overview_mode = True
+    if hasattr(scene, "bmanga_active_layer_kind"):
+        scene.bmanga_active_layer_kind = "page"
+    from ..utils import display_settings, geometry_nodes_bridge
+    from . import preset_op, raster_layer_op
+
+    display_settings.apply_standard_color_management(scene)
+    preset_op.sync_paper_preset_selector(context)
+    preset_op.sync_border_preset_selector(context)
+    _schedule_layer_stack_sync(context, schedule=False)
+    raster_layer_op.ensure_all_raster_runtime(context)
+    _disable_work_viewport_overlays(context)
+    geometry_nodes_bridge.ensure_effect_line_node_group_for_work(context)
+    from ..utils import page_file_scene, page_preview_object
+
+    page_file_scene.purge_work_list_runtime_data(scene)
+    page_preview_object.sync_page_previews(context, work)
+    page_file_scene.purge_work_list_runtime_data(scene)
+    page_file_scene.clear_work_list_page_details(scene)
+    from ..utils import handlers
+    from ..utils import new_work_transaction
+
+    with handlers.suppress_work_metadata_save():
+        if not blend_io.save_work_blend(
+            work_dir,
+            on_committed=new_work_transaction.committed_artifact_recorder(
+                marker,
+                token,
+            ),
+        ):
+            raise RuntimeError("作品一覧ファイルを保存できませんでした")
+
+
+def _open_new_work_target(
+    work_dir: Path,
+    marker: Path,
+    token: str,
+) -> bool:
+    if not blend_io.read_homefile():
+        return False
+    context = bpy.context
+    work = _initialize_new_work_domain(
+        context,
+        work_dir,
+        marker,
+        token,
+    )
+    _prepare_new_work_scene(
+        context,
+        work,
+        work_dir,
+        marker,
+        token,
+    )
+    return True
+
+
+def _unmanaged_session_is_dirty(context) -> bool:
+    work = get_work(context)
+    unmanaged = (
+        work is None
+        or not bool(getattr(work, "loaded", False))
+        or not str(getattr(work, "work_dir", "") or "")
+    )
+    return unmanaged and bool(getattr(bpy.data, "is_dirty", False))
+
+
+def _require_clean_unmanaged_session(
+    context,
+    *,
+    next_step: str,
+) -> None:
+    if _unmanaged_session_is_dirty(context):
+        raise RuntimeError(
+            "現在のBlenderファイルに未保存の変更があります。"
+            f"先に保存してから{next_step}"
+        )
+
+
+def _checkpoint_before_new_work(context) -> bool:
+    from ..utils import lifecycle_checkpoint, lifecycle_coordinator
+
+    work = get_work(context)
+    if (
+        work is None
+        or not bool(getattr(work, "loaded", False))
+        or not str(getattr(work, "work_dir", "") or "")
+    ):
+        _require_clean_unmanaged_session(
+            context,
+            next_step="新規作品を作成してください",
+        )
+        return True
+    source = lifecycle_coordinator.current_target(context)
+    if source.role not in {"work", "page", "coma"} or not source.filepath:
+        raise RuntimeError(
+            "現在の作品が正規ファイルではないため、安全に保存できません"
+        )
+    return lifecycle_checkpoint.checkpoint_succeeded(
+        context,
+        reason="create another work",
+        force_native=True,
+    )
+
+
+def _finish_new_work_view(context) -> None:
+    from ..ui import overlay as _overlay
+
+    _overlay.reset_viewport_background_to_theme(context)
+    _overlay.apply_bmanga_shading_mode(context)
+    _disable_work_viewport_overlays(context, schedule=True)
+    if getattr(context, "window", None) is not None:
+        bpy.ops.bmanga.view_fit_all("INVOKE_DEFAULT")
+    from . import object_tool_op
+
+    object_tool_op.schedule_object_tool_relaunch_after_file_open()
+
+
 class BMANGA_OT_work_new(Operator, ExportHelper):
     """新規作品を作成 (.bmanga ディレクトリを生成).
 
@@ -177,179 +377,80 @@ class BMANGA_OT_work_new(Operator, ExportHelper):
     filter_glob: StringProperty(default="*.bmanga", options={"HIDDEN"})  # type: ignore[valid-type]
 
     def execute(self, context):
-        work = get_work(context)
-        if work is None:
-            self.report({"ERROR"}, "シーンに B-MANGA データが見つかりません")
+        try:
+            _require_clean_unmanaged_session(
+                context,
+                next_step="新規作品を作成してください",
+            )
+        except RuntimeError as exc:
+            self.report(
+                {"ERROR"},
+                str(exc),
+            )
             return {"CANCELLED"}
-
         selected = Path(self.filepath)
         work_dir = paths.ensure_bmanga_suffix(selected)
         if work_dir.exists():
             self.report({"ERROR"}, f"既に存在します: {work_dir.name}")
             return {"CANCELLED"}
-
-        # 既存の作品データをリセットしてから新規作成
-        work.pages.clear()
-        for attr in ("shared_balloons", "shared_texts", "shared_comas", "layer_folders"):
-            coll = getattr(work, attr, None)
-            if coll is not None:
-                coll.clear()
-        raster_layers = getattr(context.scene, "bmanga_raster_layers", None)
-        if raster_layers is not None:
-            try:
-                from . import raster_layer_op
-
-                raster_layer_op.purge_all_raster_runtime(context.scene)
-            except Exception:  # noqa: BLE001
-                _logger.exception("work_new: old raster runtime purge failed")
-            raster_layers.clear()
-        if hasattr(context.scene, "bmanga_active_raster_layer_index"):
-            context.scene.bmanga_active_raster_layer_index = -1
-        # 前作品の page_pNNNN Collection / GP を掃除 (orphan 防止)
+        token = uuid.uuid4().hex
         try:
-            layer_object_model.remove_all_layer_objects()
-            gp_utils.remove_all_page_gpencils()
-        except Exception:  # noqa: BLE001
-            _logger.exception("work_new: orphan page collection cleanup failed")
-        work.active_page_index = -1
-        work.loaded = False
+            from ..utils import new_work_transaction
 
-        try:
-            work_io.create_bmanga_skeleton(work_dir)
-            _apply_phase1_defaults(work)
-            work.work_dir = str(work_dir.resolve())
-            work.loaded = True
-            work.work_info.work_name = work_dir.stem
-            view_settings.apply_preferences_to_work_defaults(work, context)
-            view_settings.apply_work_to_scene(context.scene, work)
-            work_io.save_work_json(work_dir, work)
-            page_io.save_pages_json(work_dir, work)
-
-            # 最初のページ p0001 を自動生成し、ページ一覧ファイルとして保存する。
-            # 各ページのフキダシ・テキスト等は、ページ用blendファイルで扱う。
-            entry = page_io.register_new_page(work)
-            page_io.ensure_page_dir(work_dir, entry)
-            from .coma_op import create_basic_frame_coma
-
-            create_basic_frame_coma(work, entry, work_dir)
-            page_io.save_pages_json(work_dir, work)
-            # 初期ページが 1 個できた状態で end を実ページ数に揃える
-            # (= start + len(work.pages) - 1)。バグ #2 対策: 仮に
-            # `_apply_phase1_defaults` の reset が何らかの理由で適用
-            # 失敗していた場合でも、ここで最終状態が 1, max(1, len(pages))
-            # に確定する。
-            page_range.sync_end_number_to_page_count(work)
-
-            # デフォルトシーンの Cube/Light/Camera を削除してから保存
-            # (ネームキャンバスに余計な 3D オブジェクトが載らないようにする)
-            _cleanup_default_scene_objects()
-
-            # ページ一覧ファイルでは各ページの実体を持たず、プレビュー画像だけを表示する。
-            gp_initial_obj = None
-            page_grid.apply_page_collection_transforms(context, work)
-
-            # overview 編集モード既定。保存前にモード/stem を確実にセット。
-            set_mode(MODE_PAGE, context)
-            context.scene.bmanga_current_page_id = ""
-            context.scene.bmanga_current_coma_id = ""
-            context.scene.bmanga_current_coma_page_id = ""
-            context.scene.bmanga_overview_mode = True
-            if hasattr(context.scene, "bmanga_active_layer_kind"):
-                context.scene.bmanga_active_layer_kind = "page"
-            try:
-                from ..utils import display_settings
-
-                display_settings.apply_standard_color_management(context.scene)
-            except Exception:  # noqa: BLE001
-                _logger.exception("work_new: color management setup failed")
-            try:
-                from . import preset_op
-
-                preset_op.sync_paper_preset_selector(context)
-                preset_op.sync_border_preset_selector(context)
-            except Exception:  # noqa: BLE001
-                _logger.exception("work_new: preset selector sync failed")
-
-            _schedule_layer_stack_sync(context, schedule=False)
-            try:
-                from . import raster_layer_op
-
-                raster_layer_op.ensure_all_raster_runtime(context)
-            except Exception:  # noqa: BLE001
-                _logger.exception("work_new: raster runtime setup failed")
-            _disable_work_viewport_overlays(context)
-            try:
-                from ..utils import geometry_nodes_bridge
-
-                geometry_nodes_bridge.ensure_effect_line_node_group_for_work(context)
-            except Exception:  # noqa: BLE001
-                _logger.exception("work_new: effect line display preparation failed")
-            try:
-                from ..utils import page_file_scene, page_preview_object
-
-                page_file_scene.purge_work_list_runtime_data(context.scene)
-                page_preview_object.sync_page_previews(context, work)
-                page_file_scene.purge_work_list_runtime_data(context.scene)
-                # 初回保存前は bpy.data.filepath が空で ROLE_WORK を判定できない。
-                # page.json とプレビュー生成後、work.blend に詳細を埋め込まない
-                # ことを明示的に確定する。
-                page_file_scene.clear_work_list_page_details(context.scene)
-            except Exception:  # noqa: BLE001
-                _logger.exception("work_new: page preview setup failed")
-            # 現在開いている別作品のpage/coma.blendから新規作成した場合、
-            # save_preが旧ファイルのroleをfallback判定して新作品へ投影しない
-            # ようにする。新作品Domainは直前までに明示checkpoint済み。
-            from ..utils import handlers
-
-            with handlers.suppress_work_metadata_save():
-                if not blend_io.save_work_blend(work_dir):
-                    raise RuntimeError("作品一覧ファイルを保存できませんでした")
+            marker = new_work_transaction.claim_directory(
+                work_dir,
+                token,
+            )
         except Exception as exc:  # noqa: BLE001
-            _logger.exception("work_new failed")
-            work.loaded = False
-            self.report({"ERROR"}, f"作成失敗: {exc}")
+            _logger.exception("work_new directory claim failed")
+            self.report({"ERROR"}, f"保存先を作成できませんでした: {exc}")
             return {"CANCELLED"}
 
-        # --- 作成直後の UX 整備 ---
-        # 0) 旧バージョンで白く書き換えられた可能性のあるビューポート背景を
-        #    テーマ既定 (灰色) に戻す + Solid+Flat 照明に切替 (B-MANGA の標準表示)
-        try:
-            from ..ui import overlay as _overlay
+        from ..utils import lifecycle_coordinator
 
-            _overlay.reset_viewport_background_to_theme(context)
-            _overlay.apply_bmanga_shading_mode(context)
-            _disable_work_viewport_overlays(context, schedule=True)
-        except Exception:  # noqa: BLE001
-            _logger.exception("work_new: shading/background setup failed")
+        target = lifecycle_coordinator.target_for_path(
+            paths.work_blend_path(work_dir),
+            work_root=work_dir,
+            context=context,
+        )
+        outcome = lifecycle_coordinator.run_transition(
+            context,
+            target,
+            checkpoint=lambda: _checkpoint_before_new_work(context),
+            open_target=lambda: _open_new_work_target(
+                work_dir,
+                marker,
+                token,
+            ),
+        )
+        if not outcome.succeeded:
+            try:
+                from ..io import domain_runtime
 
-        # 1) ビューポートを全ページフィット (overview モードを維持したままキャンバス可視化)
+                domain_runtime.forget_repository(work_dir)
+                unknown = new_work_transaction.cleanup_failed_work(
+                    work_dir,
+                    marker,
+                    token,
+                )
+                if unknown:
+                    self.report(
+                        {"WARNING"},
+                        "保存先に別のファイルが追加されたため、"
+                        "そのファイルとフォルダーを残しました",
+                    )
+            except Exception:  # noqa: BLE001
+                _logger.exception("work_new partial directory cleanup failed")
+            self.report({"ERROR"}, f"作成失敗: {outcome.error}")
+            return {"CANCELLED"}
         try:
-            # タイマー/E2E など window を持たない context では poll が成立しない。
-            # 作成処理自体は完了しているため、任意の表示調整だけを静かに省く。
-            if getattr(context, "window", None) is not None:
-                bpy.ops.bmanga.view_fit_all("INVOKE_DEFAULT")
+            new_work_transaction.release_marker(marker, token)
         except Exception:  # noqa: BLE001
-            _logger.exception("work_new: view_fit_all failed")
-
-        # 2) 初期ページ GP を view_layer の active に設定し、ユーザーがモード切替
-        #    (Draw / Edit) すればすぐ描画に入れる状態にする。モード遷移自体は
-        #    ユーザーの意図を尊重して自動化しない (Phase 2 設計方針)。
+            _logger.exception("work_new ownership marker cleanup failed")
         try:
-            view_layer = context.view_layer
-            if view_layer is not None and gp_initial_obj is not None:
-                for o in list(context.selected_objects):
-                    if o is not gp_initial_obj:
-                        try:
-                            o.select_set(False)
-                        except Exception:  # noqa: BLE001
-                            pass
-                view_layer.objects.active = gp_initial_obj
-                try:
-                    gp_initial_obj.select_set(True)
-                except Exception:  # noqa: BLE001
-                    pass
+            _finish_new_work_view(bpy.context)
         except Exception:  # noqa: BLE001
-            _logger.exception("work_new: set active GP failed")
+            _logger.exception("work_new final view setup failed")
 
         self.report({"INFO"}, f"作品を作成: {work_dir.name} (page p0001 を初期化)")
         return {"FINISHED"}
@@ -372,115 +473,90 @@ class BMANGA_OT_work_open(Operator, ImportHelper):
         return {"RUNNING_MODAL"}
 
     def execute(self, context):
-        work = get_work(context)
-        if work is None:
-            self.report({"ERROR"}, "シーンに B-MANGA データが見つかりません")
-            return {"CANCELLED"}
-
-        old_work_dir = Path(work.work_dir) if work.loaded and work.work_dir else None
-        if old_work_dir is not None and old_work_dir.is_dir():
-            try:
-                from ..utils import page_file_scene
-
-                role, page_id, coma_id = page_file_scene.current_role(context)
-                if role == page_file_scene.ROLE_WORK:
-                    saved = blend_io.save_work_blend(old_work_dir)
-                elif role == page_file_scene.ROLE_PAGE and paths.is_valid_page_id(page_id):
-                    saved = blend_io.save_page_blend(old_work_dir, page_id)
-                elif role == page_file_scene.ROLE_COMA and paths.is_valid_page_id(page_id) and paths.is_valid_coma_id(coma_id):
-                    saved = blend_io.save_coma_blend(
-                        old_work_dir,
-                        page_id,
-                        coma_id,
-                    )
-                else:
-                    raise RuntimeError("現在の作品ファイル種別を判定できません")
-                if not saved:
-                    raise RuntimeError(
-                        "作品情報とBlenderファイルを保存できませんでした"
-                    )
-            except Exception as exc:  # noqa: BLE001
-                _logger.exception("work_open: save current file failed")
-                self.report(
-                    {"ERROR"},
-                    f"現在の作品を保存できないため、切り替えませんでした: {exc}",
-                )
-                return {"CANCELLED"}
-
         selected = Path(self.filepath)
-        # ファイルを選ばれても親ディレクトリを作品ルートとして解釈
         work_dir = selected if selected.suffix == paths.BMANGA_DIR_SUFFIX else selected.parent
         if not work_dir.is_dir() or work_dir.suffix != paths.BMANGA_DIR_SUFFIX:
             self.report({"ERROR"}, f".bmanga フォルダを指定してください: {work_dir}")
             return {"CANCELLED"}
-        recovered, recovery_error = _recover_selected_work_before_open(work_dir)
-        if not recovered:
-            self.report(
-                {"ERROR"},
-                f"中断された保存を復旧できないため、作品を開きませんでした: {recovery_error}",
-            )
-            return {"CANCELLED"}
-
         try:
+            _require_clean_unmanaged_session(
+                context,
+                next_step="作品を開いてください",
+            )
+        except RuntimeError as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        target_path = paths.work_blend_path(work_dir)
+
+        from ..utils import lifecycle_checkpoint, lifecycle_coordinator
+
+        def _prepare() -> bool:
+            recovered, recovery_error = _recover_selected_work_before_open(
+                work_dir
+            )
+            if not recovered:
+                raise RuntimeError(
+                    "中断された保存を復旧できませんでした: "
+                    f"{recovery_error}"
+                )
+            return True
+
+        def _checkpoint() -> bool:
+            current_work = get_work(context)
+            if (
+                current_work is None
+                or not bool(getattr(current_work, "loaded", False))
+                or not str(getattr(current_work, "work_dir", "") or "")
+            ):
+                _require_clean_unmanaged_session(
+                    context,
+                    next_step="作品を開いてください",
+                )
+                return True
+            return lifecycle_checkpoint.checkpoint_succeeded(
+                context,
+                reason="open another work",
+                force_native=True,
+            )
+
+        def _open_target() -> bool:
             try:
                 from . import raster_layer_op
 
                 raster_layer_op.purge_all_raster_runtime(context.scene)
             except Exception:  # noqa: BLE001
                 _logger.exception("work_open: old raster runtime purge failed")
-            work_io.load_work_json(work_dir, work)
-            work.work_dir = str(work_dir.resolve())
-            work.loaded = True
-            set_mode(MODE_PAGE, context)
-            context.scene.bmanga_current_page_id = ""
-            context.scene.bmanga_current_coma_id = ""
-            context.scene.bmanga_current_coma_page_id = ""
-            context.scene.bmanga_overview_mode = True
-            if hasattr(context.scene, "bmanga_active_layer_kind"):
-                context.scene.bmanga_active_layer_kind = "page"
-            try:
-                from ..utils import display_settings
+            return bool(blend_io.open_work_blend(work_dir))
 
-                display_settings.apply_standard_color_management(context.scene)
-            except Exception:  # noqa: BLE001
-                _logger.exception("work_open: color management setup failed")
-            try:
-                from . import preset_op
-
-                preset_op.sync_paper_preset_selector(context)
-                preset_op.sync_border_preset_selector(context)
-            except Exception:  # noqa: BLE001
-                _logger.exception("work_open: preset selector sync failed")
-            try:
-                from . import raster_layer_op
-
-                raster_layer_op.ensure_all_raster_runtime(context)
-            except Exception:  # noqa: BLE001
-                _logger.exception("work_open: raster runtime setup failed")
-            _schedule_layer_stack_sync(context)
-        except FileNotFoundError as exc:
-            _logger.exception("work_open: missing file")
-            work.loaded = False
-            self.report({"ERROR"}, f"ファイルが見つかりません: {exc}")
-            return {"CANCELLED"}
-        except Exception as exc:  # noqa: BLE001
-            _logger.exception("work_open failed")
-            work.loaded = False
-            self.report({"ERROR"}, f"読み込み失敗: {exc}")
+        target = lifecycle_coordinator.target_for_path(
+            target_path,
+            work_root=work_dir,
+            context=context,
+        )
+        outcome = lifecycle_coordinator.run_transition(
+            context,
+            target,
+            prepare=_prepare,
+            checkpoint=_checkpoint,
+            open_target=_open_target,
+        )
+        if not outcome.succeeded:
+            if str(getattr(outcome.failed_phase, "value", "")) == "SAVING_SOURCE":
+                message = (
+                    "現在の作品を保存できないため、切り替えませんでした: "
+                    f"{outcome.error}"
+                )
+            else:
+                message = f"作品を開けませんでした: {outcome.error}"
+            self.report({"ERROR"}, message)
             return {"CANCELLED"}
 
-        # work.blend を自動オープン (なければ JSON のみ読み込んだ状態)
-        if blend_io.work_blend_exists(work_dir):
-            blend_io.open_work_blend(work_dir)
-            # load_post ハンドラが JSON 再同期と mode/stem の再設定を担う
-
-        # 背景をテーマ既定に戻す + Solid+Flat 照明に切替
         try:
             from ..ui import overlay as _overlay
 
-            _overlay.reset_viewport_background_to_theme(context)
-            _overlay.apply_bmanga_shading_mode(context)
-            _disable_work_viewport_overlays(context, schedule=True)
+            _overlay.reset_viewport_background_to_theme(bpy.context)
+            _overlay.apply_bmanga_shading_mode(bpy.context)
+            _disable_work_viewport_overlays(bpy.context, schedule=True)
         except Exception:  # noqa: BLE001
             _logger.exception("work_open: shading/background setup failed")
 
@@ -648,35 +724,17 @@ class BMANGA_OT_work_save(Operator):
             except Exception:  # noqa: BLE001
                 _logger.exception("work_save: page preview refresh failed")
 
-            # 2) .blend 保存. 外部コピーは入口で拒否済み。overviewモードなら
-            #    work.blend、ページ画面ならpage.blend、コマ編集モードなら
-            #    cNN.blendを期待パスとして保存する。
-            saved_blend = False
-            saved_path = ""
-            if file_role == "coma":
-                saved_blend = blend_io.save_coma_blend(
-                    work_dir,
-                    file_page_id,
-                    file_coma_id,
-                )
-                if saved_blend:
-                    saved_path = str(
-                        paths.coma_blend_path(
-                            work_dir,
-                            file_page_id,
-                            file_coma_id,
-                        )
-                    )
-            elif file_role == "page":
-                saved_blend = blend_io.save_page_blend(work_dir, file_page_id)
-                if saved_blend:
-                    saved_path = str(paths.page_blend_path(work_dir, file_page_id))
-            elif file_role == "work":
-                saved_blend = blend_io.save_work_blend(work_dir)
-                if saved_blend:
-                    saved_path = str(paths.work_blend_path(work_dir))
-            else:
-                raise RuntimeError("現在の作品ファイル種別を判定できません")
+            from ..utils import lifecycle_checkpoint
+
+            checkpoint = lifecycle_checkpoint.checkpoint_current(
+                context,
+                reason="explicit work save",
+                force_native=True,
+            )
+            saved_blend = checkpoint.succeeded
+            saved_path = checkpoint.filepath
+            if not saved_blend:
+                raise RuntimeError(checkpoint.error or "作品を保存できませんでした")
         except Exception as exc:  # noqa: BLE001
             _logger.exception("work_save failed")
             self.report({"ERROR"}, f"保存失敗: {exc}")
@@ -690,7 +748,7 @@ class BMANGA_OT_work_save(Operator):
 
 
 class BMANGA_OT_work_close(Operator):
-    """作品を閉じる (データをメモリから解放、ディスクは触らない)."""
+    """作品をcheckpointして閉じ、新しい空のBlenderファイルへ戻る。"""
 
     bl_idname = "bmanga.work_close"
     bl_label = "作品を閉じる"
@@ -702,35 +760,21 @@ class BMANGA_OT_work_close(Operator):
         return bool(work and work.loaded)
 
     def execute(self, context):
-        work = get_work(context)
-        try:
-            from . import raster_layer_op
+        from ..bmanga_core.lifecycle import LifecycleTarget
+        from ..utils import lifecycle_checkpoint, lifecycle_coordinator
 
-            raster_layer_op.purge_all_raster_runtime(context.scene)
-        except Exception:  # noqa: BLE001
-            _logger.exception("work_close: raster runtime purge failed")
-        raster_layers = getattr(context.scene, "bmanga_raster_layers", None)
-        if raster_layers is not None:
-            raster_layers.clear()
-        if hasattr(context.scene, "bmanga_active_raster_layer_index"):
-            context.scene.bmanga_active_raster_layer_index = -1
-        try:
-            layer_object_model.remove_all_layer_objects()
-            gp_utils.remove_all_page_gpencils()
-        except Exception:  # noqa: BLE001
-            _logger.exception("work_close: page collection cleanup failed")
-        work.pages.clear()
-        for attr in ("shared_balloons", "shared_texts", "shared_comas", "layer_folders"):
-            coll = getattr(work, attr, None)
-            if coll is not None:
-                coll.clear()
-        work.active_page_index = -1
-        work.loaded = False
-        work.work_dir = ""
-        set_mode(MODE_PAGE, context)
-        context.scene.bmanga_current_page_id = ""
-        context.scene.bmanga_current_coma_id = ""
-        context.scene.bmanga_current_coma_page_id = ""
+        outcome = lifecycle_coordinator.run_transition(
+            context,
+            LifecycleTarget(role="home"),
+            checkpoint=lambda: lifecycle_checkpoint.checkpoint_succeeded(
+                context,
+                reason="close work",
+            ),
+            open_target=lambda: bool(blend_io.read_homefile()),
+        )
+        if not outcome.succeeded:
+            self.report({"ERROR"}, f"作品を閉じられませんでした: {outcome.error}")
+            return {"CANCELLED"}
         self.report({"INFO"}, "作品を閉じました")
         return {"FINISHED"}
 

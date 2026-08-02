@@ -220,6 +220,18 @@ def schedule_sync_all() -> None:
         return None
 
     try:
-        bpy.app.timers.register(_run, first_interval=0.05)
+        from . import lifecycle_scheduler
+
+        lifecycle_scheduler.schedule(
+            "coma.visibility.sync",
+            _run,
+            first_interval=0.05,
+            on_cancel=_cancel_scheduled_sync,
+        )
     except Exception:  # noqa: BLE001
         _SYNC_SCHEDULED = False
+
+
+def _cancel_scheduled_sync() -> None:
+    global _SYNC_SCHEDULED
+    _SYNC_SCHEDULED = False

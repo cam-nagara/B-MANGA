@@ -454,7 +454,11 @@ def _apply_cut_to_coma(
     )
     try:
         transaction.apply_native()
-        new_entry = page.comas.add()
+        page.comas.add()
+        # add() によるCollectionProperty再配置後の古いRNA参照は、
+        # Blender本体のaccess violationを起こすため必ず取り直す。
+        panel = page.comas[coma_idx]
+        new_entry = page.comas[len(page.comas) - 1]
         _copy_coma_entry(panel, new_entry)
         new_entry.coma_id = new_stem
         new_entry.id = new_stem

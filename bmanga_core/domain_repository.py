@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import tempfile
 import uuid
 from contextlib import nullcontext
@@ -24,6 +25,12 @@ from .domain_model import (
     canonical_json_bytes,
 )
 from .faults import FaultPoint, check_fault
+from .file_identity import (
+    ArtifactCommitHook,
+    FileIdentity,
+    identity_from_written_handle,
+    matches_file_identity,
+)
 
 
 PROJECT_FILE_NAME = "project.json"
@@ -34,6 +41,11 @@ JOURNAL_SCHEMA_VERSION = 1
 MIN_CHECKPOINT_FREE_SPACE_BYTES = 1024 * 1024
 _TRANSACTION_UID_RE = re.compile(r"^[0-9a-f]{32}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _is_reparse_stat(value: os.stat_result) -> bool:
+    flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    return bool(int(getattr(value, "st_file_attributes", 0) or 0) & flag)
 
 
 class RepositoryError(RuntimeError):
@@ -75,6 +87,7 @@ class _Entry:
     before_exists: bool
     before_hash: str
     after_hash: str
+    after_identity: FileIdentity | None = None
     installed: bool = False
 
     def to_dict(self, root: Path) -> dict[str, object]:
@@ -158,31 +171,97 @@ class ProjectRepository:
             self._remember(path)
             return result
 
-    def validate_project_pages(self, project: ProjectDocument) -> None:
-        """一覧画面でも全page.jsonの存在・schema・所属を検証する。"""
+    def assert_project_page_files(self, project: ProjectDocument) -> None:
+        """一覧読込ではpage.jsonの存在と物理境界だけを検査する。
+
+        schemaとproject UIDは対象ページを開く時の``load_page``で検査する。
+        一覧表示で全ページ本文を解析するとページ数に比例してopenが遅くなる
+        ため、ここでは詳細をRAMへ読み込まない。
+        """
         project.validate()
-        for summary in project.pages:
-            page = self.load_page(summary.uid)
-            if page.project_uid != project.project_uid:
-                raise RepositoryError(
-                    f"page belongs to another project: {summary.uid}"
-                )
+        pages_root = self.root / PAGES_DIR_NAME
+        self._assert_physical_target(pages_root)
+        expected = {summary.uid for summary in project.pages}
+        found: set[str] = set()
+        try:
+            entries = os.scandir(pages_root)
+        except FileNotFoundError as exc:
+            raise RepositoryError(
+                f"required directory is missing: {pages_root}"
+            ) from exc
+        with entries:
+            for entry in entries:
+                if entry.name not in expected:
+                    continue
+                entry_stat = entry.stat(follow_symlinks=False)
+                if (
+                    entry.is_symlink()
+                    or not entry.is_dir(follow_symlinks=False)
+                    or _is_reparse_stat(entry_stat)
+                ):
+                    raise RepositoryError(
+                        "page directory is not a physical directory: "
+                        f"{entry.path}"
+                    )
+                page_path = Path(entry.path) / PAGE_FILE_NAME
+                try:
+                    page_stat = page_path.lstat()
+                except FileNotFoundError as exc:
+                    raise RepositoryError(
+                        f"required file is missing: {page_path}"
+                    ) from exc
+                if (
+                    page_path.is_symlink()
+                    or not stat.S_ISREG(page_stat.st_mode)
+                    or _is_reparse_stat(page_stat)
+                ):
+                    raise RepositoryError(
+                        f"page file is not a physical file: {page_path}"
+                    )
+                found.add(entry.name)
+        missing = sorted(expected - found)
+        if missing:
+            raise RepositoryError(
+                "required page files are missing: " + ", ".join(missing)
+            )
+
+    def assert_observations_current(
+        self,
+        paths: Iterable[str | os.PathLike[str]],
+    ) -> None:
+        """書込み対象外を含むSession観測が外部更新されていないか確認する。"""
+
+        with self._lock_factory():
+            targets: dict[Path, bytes] = {}
+            for value in paths:
+                path = Path(value).resolve(strict=False)
+                self._assert_physical_target(path)
+                if not self._is_repository_target(path):
+                    raise RepositoryError(
+                        f"not a repository target: {path}"
+                    )
+                targets[path] = b""
+            self._assert_no_conflicts(targets)
 
     def checkpoint(
         self,
         project: ProjectDocument,
         pages: Iterable[PageDocument] = (),
         *,
+        include_project: bool = True,
         native_checkpoint: Callable[[], bool] | None = None,
         phase_hook: PhaseHook | None = None,
+        artifact_commit_hook: ArtifactCommitHook | None = None,
     ) -> str:
         self.initialize_layout()
         with self._lock_factory():
             return self._checkpoint_locked(
                 project,
                 pages,
+                include_project=include_project,
                 native_checkpoint=native_checkpoint,
                 phase_hook=phase_hook,
+                artifact_commit_hook=artifact_commit_hook,
             )
 
     def _checkpoint_locked(
@@ -190,16 +269,24 @@ class ProjectRepository:
         project: ProjectDocument,
         pages: Iterable[PageDocument],
         *,
+        include_project: bool,
         native_checkpoint: Callable[[], bool] | None,
         phase_hook: PhaseHook | None,
+        artifact_commit_hook: ArtifactCommitHook | None,
     ) -> str:
         project.validate()
         page_list = list(pages)
         self._validate_page_set(project, page_list)
-        payloads = {self.project_path: canonical_json_bytes(project)}
+        payloads = (
+            {self.project_path: canonical_json_bytes(project)}
+            if include_project
+            else {}
+        )
         payloads.update(
             {self.page_path(page.page_uid): canonical_json_bytes(page) for page in page_list}
         )
+        if not payloads:
+            return ""
         for target in payloads:
             self._assert_physical_target(target)
         self._assert_no_conflicts(payloads)
@@ -222,6 +309,14 @@ class ProjectRepository:
         self._cleanup(journal_path, entries)
         for path in payloads:
             self._remember(path)
+        if artifact_commit_hook is not None:
+            for entry in entries:
+                identity = entry.after_identity
+                if identity is None:
+                    raise RepositoryError(
+                        "checkpoint生成物の物理IDがありません"
+                    )
+                artifact_commit_hook(entry.target, identity)
         return txid
 
     def recover(self) -> int:
@@ -249,6 +344,11 @@ class ProjectRepository:
                     and path.parent.parent.name == PAGES_DIR_NAME
                 ):
                     self._remember(path)
+
+    def observed_project_hash(self) -> str:
+        """最後に厳格読込またはcheckpointしたproject.jsonのSHA-256."""
+
+        return self._observed_hashes.get(self.project_path, "")
 
     def _recover_locked(self) -> int:
         if not self.journal_dir.is_dir():
@@ -281,9 +381,14 @@ class ProjectRepository:
                 staged = target.with_name(f".{target.name}.stage-{txid}")
                 backup = target.with_name(f".{target.name}.backup-{txid}")
                 staged_paths.append(staged)
-                _write_bytes(staged, payload)
+                after_identity = _write_bytes(staged, payload)
                 before_exists = target.is_file()
                 before_hash = _file_hash(target) if before_exists else ""
+                after_hash = _bytes_hash(payload)
+                if after_identity.sha256 != after_hash:
+                    raise RepositoryError(
+                        "checkpoint stageの内容hashが一致しません"
+                    )
                 entries.append(
                     _Entry(
                         target,
@@ -291,7 +396,8 @@ class ProjectRepository:
                         backup,
                         before_exists,
                         before_hash,
-                        _bytes_hash(payload),
+                        after_hash,
+                        after_identity,
                     )
                 )
             self._write_journal(journal_path, txid, JournalState.PREPARED, entries)
@@ -333,6 +439,16 @@ class ProjectRepository:
                 shutil.copy2(entry.target, entry.backup)
                 _fsync_file(entry.backup)
             os.replace(entry.staged, entry.target)
+            if (
+                entry.after_identity is None
+                or not matches_file_identity(
+                    entry.target,
+                    entry.after_identity,
+                )
+            ):
+                raise RepositoryError(
+                    "checkpoint install直後の物理IDが一致しません"
+                )
             entry.installed = True
             self._write_journal(journal_path, txid, JournalState.INSTALLING, entries)
             check_fault(FaultPoint.CHECKPOINT_AFTER_INSTALL, path=str(entry.target))
@@ -624,11 +740,15 @@ def _atomic_json(path: Path, payload: Mapping[str, object]) -> None:
         raise
 
 
-def _write_bytes(path: Path, payload: bytes) -> None:
+def _write_bytes(path: Path, payload: bytes) -> FileIdentity:
     with open(path, "wb") as handle:
         handle.write(payload)
         handle.flush()
         os.fsync(handle.fileno())
+        return identity_from_written_handle(
+            handle,
+            _bytes_hash(payload),
+        )
 
 
 def _fsync_file(path: Path) -> None:

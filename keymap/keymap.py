@@ -1402,21 +1402,23 @@ def _apply_visibility_state(state: KeymapState, enabled: bool) -> None:
 
 
 def _register_watcher() -> None:
-    if bpy.app.timers.is_registered(_watch_bmanga_tab):
+    from ..utils import lifecycle_scheduler
+
+    if lifecycle_scheduler.is_scheduled("keymap.visibility_watch"):
         return
-    bpy.app.timers.register(
+    lifecycle_scheduler.schedule(
+        "keymap.visibility_watch",
         _watch_bmanga_tab,
         first_interval=_WATCH_INTERVAL,
         persistent=True,
+        restart_on_invalidate=True,
     )
 
 
 def _unregister_watcher() -> None:
-    if bpy.app.timers.is_registered(_watch_bmanga_tab):
-        try:
-            bpy.app.timers.unregister(_watch_bmanga_tab)
-        except ValueError:
-            pass
+    from ..utils import lifecycle_scheduler
+
+    lifecycle_scheduler.cancel("keymap.visibility_watch")
 
 
 def register() -> None:
@@ -1467,12 +1469,14 @@ def register() -> None:
     _apply_visibility_state(_state, bool(keymap_enabled and _any_bmanga_tab_active()))
     # watcher は preferences.keymap_enabled の動的トグルへの追従専用
     _register_watcher()
+    from ..utils import lifecycle_scheduler
+
     _logger.info(
         "keymap registered (enabled=%s, items=%d, overrides=%d, watcher=%s)",
         keymap_enabled,
         len(_state.bmanga_items),
         len(_state.saved),
-        bpy.app.timers.is_registered(_watch_bmanga_tab),
+        lifecycle_scheduler.is_scheduled("keymap.visibility_watch"),
     )
 
 

@@ -40,6 +40,13 @@ def _on_image_path_changed(_self, context) -> None:
 
 def _on_image_path_title_changed(_self, context) -> None:
     _on_image_path_changed(_self, context)
+    try:
+        from ..utils import image_path_object
+
+        if image_path_object.auto_sync_suspended():
+            return
+    except Exception:  # noqa: BLE001
+        pass
     if not str(getattr(_self, "id", "") or "").strip():
         return
     try:

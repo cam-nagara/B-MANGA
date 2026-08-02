@@ -10,6 +10,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+from ..bmanga_core.file_identity import ArtifactCommitHook
 from ..bmanga_core.domain_ids import UIDKind, derived_uid
 from ..utils import log, paths
 from . import domain_projection, domain_runtime, page_io, schema
@@ -66,11 +67,23 @@ def allocate_new_coma_id(work_dir: Path, page_id: str, *, page=None) -> str:
 # ---------- page.json内のコマDomain ----------
 
 
-def save_coma_meta(work_dir: Path, page_id: str, entry) -> Path:
+def save_coma_meta(
+    work_dir: Path,
+    page_id: str,
+    entry,
+    *,
+    on_committed: ArtifactCommitHook | None = None,
+) -> Path:
     """コマ単独sidecarを作らず、所有pageのDomain checkpointへ集約する。"""
 
     page = _owning_page(entry, page_id)
-    return page_io.save_page_json(Path(work_dir), page)
+    if on_committed is None:
+        return page_io.save_page_json(Path(work_dir), page)
+    return page_io.save_page_json(
+        Path(work_dir),
+        page,
+        on_committed=on_committed,
+    )
 
 
 def load_coma_meta(work_dir: Path, page_id: str, coma_id: str, entry) -> dict:

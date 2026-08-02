@@ -3,6 +3,35 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.2 LTS 専用です。
 
+## 2026-08-02 — 全体リファクタリングPhase 4のLifecycleを統合 (B-MANGA Next v0.6.604)
+
+### 症状
+- 作品、ページ、コマの保存・読込、Undo／Redo、Outliner監視、遅延timerが別々の世代管理と副作用順序を持ち、切替失敗時に古いtimerや表示状態が残る余地があった。
+- 保存のたびに全Objectと派生表示を再走査し、変更のないDomain投影でもrevisionとJSONを書き直していた。
+- `loaded`、ページ詳細読込済み、レイヤー一覧等の実行時cacheが`.blend`へ保存され、80ページ一覧でも古い詳細状態を再利用できた。
+- B-MANGA外の未保存`.blend`から作品を開く場合や、新規作品作成中に同名の外部ファイルが現れた場合に、ユーザーデータを破棄する余地があった。
+
+### 原因
+- ファイルLifecycleを表す単一の状態機械と、名前・世代・task identityを持つSchedulerがなく、各moduleが独自timerと切替guardを所有していた。
+- UI投影の差分、未checkpointのDomain Store、Outliner／Object変更を一つの確定単位として判定していなかった。
+- 正本Domainと再構築可能なSession Stateの保存境界がRNA定義へ反映されていなかった。
+- 新規作品rollbackは生成物のパスだけを記録し、生成時点と削除時点で同じファイルかを証明する安定identityを持っていなかった。
+
+### 修正
+- `PREPARING`、`SAVING_SOURCE`、`OPENING_TARGET`、`HYDRATING`、`ROLLING_BACK`の状態機械とLifecycle Coordinatorを追加し、作品→ページ→コマ→ページ→作品、作品切替、終了、Undo／Redoを同じ順序へ統合した。物理path、project/page/coma UID、アクティブ表示を完了時に照合し、任意phaseの失敗時は元ファイルと表示へ戻す。
+- 全Lifecycle timerを一つの世代付きSchedulerへ移し、世代変更、同名置換、callback内再予約のいずれでも旧callbackが新taskを実行・削除しないようtask identityまで照合する。
+- depsgraph変更をOutliner Change Collectorへ集約し、即時保存では収集済みObjectだけ、周期監視だけ全体を再照合する。保存前の全mirrorを廃止し、共通checkpointでDomain、ラスター、必要なnative mainfileだけを確定する。
+- 同一投影はrevisionとJSONを変更しない。書込み対象外sidecarも観測hashを照合し、Storeに未checkpoint変更があれば投影差分が空でも保存する。
+- `work.loaded`、`page.detail_loaded`、レイヤー一覧・選択・折畳みcacheを`SKIP_SAVE`へ変更した。work一覧はページsummaryとoverlayだけを保持し、現在対象以外の詳細を読まない。
+- コマテンプレート初回作成の同一target再読込を一つのhydrate phaseとして許可し、既存コマへの適用済みフラグをtarget open前にpage sidecarへ確定する。
+- 保存前のdirtyな非B-MANGAファイルは作品切替を拒否する。新規作品作成は、Domainをstageした書込みhandleとnative保存直後から取得したdevice／inode／size／mtime／SHA-256を耐久markerへ記録し、同じidentityを二重照合できる生成物だけをrollbackで削除する。
+- 未保存ラスターを圧縮snapshotと耐久journalへ保存し、保存処理中にBlenderが終了しても次回起動時に画素を復元する。見開きworkerは最初のmainfile読込前に通常handlerとSchedulerを停止し、rollback完了時はpathだけでなくproject／page／coma UIDとroleを照合する。
+
+### 検証（Blender 5.2 LTS実機）
+- 状態機械単体9件、Domain／Repository関連を含む単体38件、作品→ページ→コマ→ページ→作品、全4phase障害注入、旧timer失効、同名置換、callback内再予約、project UID不一致拒否、Undo境界、80ページ詳細非読込を合格させた。
+- 未保存ラスターの別プロセスクラッシュ復元、外部ファイルの途中挿入、Domain／native保存直後の同名差替え、dirtyな非B-MANGA作品切替、見開きworker隔離、同一path別UID rollback拒否を実機回帰テスト化した。
+- 統一認定は469/469、必須436/436、failure／timeout／crash／予期しないskip 0。独立最終レビューは重大0・高0。証跡は`_verify/2026-08-02_phase4_final_identity_highfix_full5`。
+
 ## 2026-07-29 — 全体リファクタリングPhase 3の新Domain・UID・Repositoryを導入 (B-MANGA Next v0.6.603 / Render Next v0.1.39 / Liner Next v0.3.203)
 
 ### 症状

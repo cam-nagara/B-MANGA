@@ -401,6 +401,7 @@ def main() -> None:
         # 直接「作品に戻る」経路も、保存成功を確認するまで現在ファイルに留まる。
         coma_filepath = str(bpy.data.filepath)
         opened_targets = []
+        from bmanga_dev_page_panel_role.utils import file_transition_runtime
 
         def _call_direct_work_return():
             try:
@@ -415,6 +416,12 @@ def main() -> None:
         mode_op.blend_io.save_current_as = lambda _path, **_kwargs: False
         mode_op.blend_io.open_work_blend = lambda _path: opened_targets.append(True) or True
         try:
+            # Phase 4 checkpointはdirtyなnativeデータだけを保存する。失敗注入を
+            # 実際の保存経路へ到達させるため、編集中sceneを明示的にdirty化する。
+            file_transition_runtime.mark_scene_dirty(
+                context.scene,
+                reason="panel-role-save-failure-injection",
+            )
             result = _call_direct_work_return()
             assert result == {"CANCELLED"}, result
             assert not opened_targets, "コマ保存失敗後に作品ファイルを開いています"
@@ -423,19 +430,22 @@ def main() -> None:
             mode_op.blend_io.save_current_as = original_save_current_as
             mode_op.blend_io.open_work_blend = original_open_work_blend
 
-        original_work_blend_exists = mode_op.blend_io.work_blend_exists
-        original_open_page_blend = mode_op.blend_io.open_page_blend
-        mode_op.blend_io.save_current_as = lambda _path, **_kwargs: True
-        mode_op.blend_io.work_blend_exists = lambda _path: False
-        mode_op.blend_io.open_page_blend = lambda *_args: opened_targets.append("page") or True
+        work_blend_path = mode_op.paths.work_blend_path(
+            Path(context.scene.bmanga_work.work_dir)
+        )
+        work_blend_payload = work_blend_path.read_bytes()
+        work_blend_path.unlink()
+        mode_op.blend_io.open_work_blend = (
+            lambda _path: opened_targets.append("missing_work") or True
+        )
         try:
             result = _call_direct_work_return()
             assert result == {"CANCELLED"}, result
-            assert "page" not in opened_targets, "作品ファイル欠落時にページへ誤遷移しています"
+            assert "missing_work" not in opened_targets, "作品ファイル欠落後にopenを実行しています"
+            assert str(bpy.data.filepath) == coma_filepath, "作品ファイル欠落後に現在ファイルが変わっています"
         finally:
-            mode_op.blend_io.save_current_as = original_save_current_as
-            mode_op.blend_io.work_blend_exists = original_work_blend_exists
-            mode_op.blend_io.open_page_blend = original_open_page_blend
+            work_blend_path.write_bytes(work_blend_payload)
+            mode_op.blend_io.open_work_blend = original_open_work_blend
 
         mode_op.blend_io.save_current_as = lambda _path, **_kwargs: True
         mode_op.blend_io.open_work_blend = lambda _path: False

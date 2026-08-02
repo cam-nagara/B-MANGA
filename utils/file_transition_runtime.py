@@ -10,6 +10,7 @@ from bpy.app.handlers import persistent
 
 
 _switch_depth = 0
+_pending_load_dirty_reason = ""
 _armed_scene_key = 0
 _dirty_scene_keys: set[int] = set()
 _dirty_reasons: dict[int, str] = {}
@@ -99,6 +100,17 @@ def mark_scene_dirty(scene=None, *, reason: str = "") -> None:
             _dirty_reasons[key] = str(reason)
 
 
+def mark_scene_dirty_after_load(scene=None, *, reason: str) -> None:
+    """load handler順に依存せず、hydrateで生じた変更を新sceneへ残す。"""
+
+    global _pending_load_dirty_reason
+    scene = scene or getattr(bpy.context, "scene", None)
+    if tracking_armed(scene):
+        mark_scene_dirty(scene, reason=reason)
+        return
+    _pending_load_dirty_reason = str(reason or "post_load_change")
+
+
 def mark_scene_clean(scene=None) -> None:
     scene = scene or getattr(bpy.context, "scene", None)
     key = _scene_key(scene)
@@ -113,13 +125,17 @@ def mark_scene_clean(scene=None) -> None:
 def arm_scene(scene=None) -> None:
     """読込後のsceneを基準状態として追跡開始する。"""
 
-    global _armed_scene_key
+    global _armed_scene_key, _pending_load_dirty_reason
     scene = scene or getattr(bpy.context, "scene", None)
+    pending_reason = _pending_load_dirty_reason
+    _pending_load_dirty_reason = ""
     _dirty_scene_keys.clear()
     _dirty_reasons.clear()
     _clean_fingerprints.clear()
     _armed_scene_key = _scene_key(scene)
     mark_scene_clean(scene)
+    if pending_reason:
+        mark_scene_dirty(scene, reason=pending_reason)
 
 
 def _simple_rna_value(value):
@@ -250,8 +266,7 @@ def _content_update_reason(scene, depsgraph) -> str:
     return ""
 
 
-@persistent
-def _on_load_post(*_args) -> None:
+def on_lifecycle_load() -> None:
     arm_scene()
 
 
@@ -264,39 +279,42 @@ def _on_depsgraph_update_post(scene, depsgraph) -> None:
         mark_scene_dirty(scene, reason=reason)
 
 
-@persistent
-def _on_save_post(*_args) -> None:
+def on_lifecycle_save_post() -> None:
     if not switch_in_progress():
         mark_scene_clean()
 
 
-def _remove_named_handler(handlers, name: str) -> None:
+def _remove_owned_handler(handlers, name: str) -> None:
     for handler in list(handlers):
-        if getattr(handler, "__name__", "") == name:
+        if (
+            getattr(handler, "__name__", "") == name
+            and str(getattr(handler, "__module__", "")).endswith(
+                ".file_transition_runtime"
+            )
+        ):
             handlers.remove(handler)
 
 
 def register() -> None:
-    _remove_named_handler(bpy.app.handlers.load_post, _on_load_post.__name__)
-    _remove_named_handler(
+    _remove_owned_handler(bpy.app.handlers.load_post, "_on_load_post")
+    _remove_owned_handler(
         bpy.app.handlers.depsgraph_update_post,
         _on_depsgraph_update_post.__name__,
     )
-    _remove_named_handler(bpy.app.handlers.save_post, _on_save_post.__name__)
-    bpy.app.handlers.load_post.append(_on_load_post)
+    _remove_owned_handler(bpy.app.handlers.save_post, "_on_save_post")
     bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph_update_post)
-    bpy.app.handlers.save_post.append(_on_save_post)
 
 
 def unregister() -> None:
-    global _armed_scene_key, _switch_depth
-    _remove_named_handler(bpy.app.handlers.load_post, _on_load_post.__name__)
-    _remove_named_handler(
+    global _armed_scene_key, _pending_load_dirty_reason, _switch_depth
+    _remove_owned_handler(bpy.app.handlers.load_post, "_on_load_post")
+    _remove_owned_handler(
         bpy.app.handlers.depsgraph_update_post,
         _on_depsgraph_update_post.__name__,
     )
-    _remove_named_handler(bpy.app.handlers.save_post, _on_save_post.__name__)
+    _remove_owned_handler(bpy.app.handlers.save_post, "_on_save_post")
     _armed_scene_key = 0
+    _pending_load_dirty_reason = ""
     _switch_depth = 0
     _dirty_scene_keys.clear()
     _dirty_reasons.clear()

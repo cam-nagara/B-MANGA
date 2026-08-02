@@ -537,7 +537,7 @@ def assign_per_page_z_ranks(scene, work) -> int:
     page_groups: dict[str, list] = {}
     coma_items: dict[str, list] = {}
     comas_by_key = _coma_lookup(work)
-    for obj in bpy.data.objects:
+    for obj in getattr(scene, "objects", ()) or ():
         if not bool(obj.get(on.PROP_MANAGED, False)):
             continue
         page_id = _resolve_page_id_for_object(obj)
@@ -761,7 +761,7 @@ def _saved_runtime_objects_look_current(
     plane_owners: set[str] = set()
     plane_objects_by_owner: dict[str, bpy.types.Object] = {}
     border_owners: set[str] = set()
-    for obj in bpy.data.objects:
+    for obj in getattr(scene, "objects", ()) or ():
         kind = str(obj.get(on.PROP_KIND, "") or "")
         bmanga_id = str(obj.get(on.PROP_ID, "") or "")
         if kind and bmanga_id:
@@ -912,6 +912,7 @@ def mirror_work_to_outliner(
     work,
     *,
     allow_object_writeback: bool = True,
+    sync_work_previews: bool = True,
 ) -> None:
     """``work`` の page/coma/folder 配列から Collection 階層を生成・整合.
 
@@ -948,13 +949,13 @@ def mirror_work_to_outliner(
                 om.ensure_root_collection(scene)
                 om.ensure_outside_collection(scene)
                 page_file_scene.purge_work_list_runtime_data(scene)
-                try:
-                    from . import page_preview_object
+                if sync_work_previews:
+                    try:
+                        from . import page_preview_object
 
-                    page_preview_object.sync_page_previews(bpy.context, work)
-                    page_file_scene.purge_work_list_runtime_data(scene)
-                except Exception:  # noqa: BLE001
-                    _logger.exception("work list page previews failed")
+                        page_preview_object.sync_page_previews(bpy.context, work)
+                    except Exception:  # noqa: BLE001
+                        _logger.exception("work list page previews failed")
                 try:
                     from . import outliner_watch as _outliner_watch
 
@@ -1000,7 +1001,10 @@ def mirror_work_to_outliner(
                 from . import history_runtime, object_state_sync
 
                 if not history_runtime.is_restoring():
-                    for obj in bpy.data.objects:
+                    # sync_from_blender_object() は不整合実体の修復でCollectionを
+                    # 変更し得る。RNAのlive iteratorを変更後も進めるとBlender側で
+                    # 解放済みObjectを参照し得るため、走査対象を先に固定する。
+                    for obj in tuple(getattr(scene, "objects", ()) or ()):
                         object_state_sync.sync_from_blender_object(scene, obj)
             except Exception:  # noqa: BLE001
                 _logger.exception("mirror pre object state sync failed")
@@ -1286,7 +1290,10 @@ def stamp_layer_object(
     update_snapshot(obj)
 
 
-def detect_outliner_changes(scene: bpy.types.Scene) -> list[tuple[bpy.types.Object, str, str]]:
+def detect_outliner_changes(
+    scene: bpy.types.Scene,
+    objects=None,
+) -> list[tuple[bpy.types.Object, str, str]]:
     """B-MANGA 管理 Object のうち、現所属 Collection が ``parent_key`` と
     乖離しているものを返す.
 
@@ -1299,7 +1306,20 @@ def detect_outliner_changes(scene: bpy.types.Scene) -> list[tuple[bpy.types.Obje
     if _SYNC_IN_PROGRESS:
         return []
     changes: list[tuple[bpy.types.Object, str, str]] = []
-    for obj in on.iter_managed_objects():
+    candidates = (
+        (
+            obj
+            for obj in tuple(getattr(scene, "objects", ()) or ())
+            if bool(obj.get(on.PROP_MANAGED, False))
+        )
+        if objects is None
+        else (
+            obj
+            for obj in objects
+            if bool(obj.get(on.PROP_MANAGED, False))
+        )
+    )
+    for obj in candidates:
         if not has_changed(obj):
             continue
         parent_coll = om.find_managed_parent_collection(obj)

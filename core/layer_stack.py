@@ -158,28 +158,49 @@ def _on_active_layer_stack_visible_index_changed(_self, context) -> None:
 def register() -> None:
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
-    bpy.types.Scene.bmanga_layer_stack = CollectionProperty(type=BMangaLayerStackItem)
+    bpy.types.Scene.bmanga_layer_stack = CollectionProperty(
+        type=BMangaLayerStackItem,
+        options={"SKIP_SAVE"},
+    )
     bpy.types.Scene.bmanga_active_layer_stack_index = IntProperty(
         default=-1,
         min=-1,
         update=_on_active_layer_stack_index_changed,
+        options={"SKIP_SAVE"},
     )
-    bpy.types.Scene.bmanga_layer_stack_visible = CollectionProperty(type=BMangaLayerStackItem)
+    bpy.types.Scene.bmanga_layer_stack_visible = CollectionProperty(
+        type=BMangaLayerStackItem,
+        options={"SKIP_SAVE"},
+    )
     bpy.types.Scene.bmanga_active_layer_stack_visible_index = IntProperty(
         default=-1,
         min=-1,
         update=_on_active_layer_stack_visible_index_changed,
+        options={"SKIP_SAVE"},
     )
     bpy.types.Scene.bmanga_active_layer_kind = EnumProperty(
         name="アクティブレイヤー種別",
         description="現在アクティブなレイヤーの種別 (内部状態)",
         items=ACTIVE_LAYER_KIND_ITEMS,
         default="gp",
+        options={"SKIP_SAVE"},
     )
-    bpy.types.Scene.bmanga_active_layer_folder_key = StringProperty(default="")
-    bpy.types.Scene.bmanga_active_effect_layer_name = StringProperty(default="")
-    bpy.types.Scene.bmanga_layer_stack_inline_edit_uid = StringProperty(default="")
-    bpy.types.Scene.bmanga_collapsed_balloon_group_keys = StringProperty(default="", options={"HIDDEN"})
+    bpy.types.Scene.bmanga_active_layer_folder_key = StringProperty(
+        default="",
+        options={"SKIP_SAVE"},
+    )
+    bpy.types.Scene.bmanga_active_effect_layer_name = StringProperty(
+        default="",
+        options={"SKIP_SAVE"},
+    )
+    bpy.types.Scene.bmanga_layer_stack_inline_edit_uid = StringProperty(
+        default="",
+        options={"SKIP_SAVE"},
+    )
+    bpy.types.Scene.bmanga_collapsed_balloon_group_keys = StringProperty(
+        default="",
+        options={"HIDDEN", "SKIP_SAVE"},
+    )
     _logger.debug("layer_stack registered")
 
 

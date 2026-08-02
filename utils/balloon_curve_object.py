@@ -1982,14 +1982,25 @@ def request_band_rebuild_from_edit(scene, obj: bpy.types.Object | None) -> None:
             return
         _EDIT_REBUILD_TIMER_ACTIVE = True
         try:
-            bpy.app.timers.register(
-                _edit_rebuild_tick, first_interval=_EDIT_REBUILD_DELAY_SEC
+            from . import lifecycle_scheduler
+
+            lifecycle_scheduler.schedule(
+                "balloon.edit_rebuild",
+                _edit_rebuild_tick,
+                first_interval=_EDIT_REBUILD_DELAY_SEC,
+                on_cancel=_cancel_edit_rebuild,
             )
         except Exception:  # noqa: BLE001
             _EDIT_REBUILD_TIMER_ACTIVE = False
             _logger.exception("balloon: edit rebuild timer register failed")
     except Exception:  # noqa: BLE001
         _logger.exception("balloon: request_band_rebuild_from_edit failed")
+
+
+def _cancel_edit_rebuild() -> None:
+    global _EDIT_REBUILD_TIMER_ACTIVE
+    _EDIT_REBUILD_TIMER_ACTIVE = False
+    _EDIT_REBUILD_DIRTY_IDS.clear()
 
 
 def _edit_rebuild_tick() -> float | None:

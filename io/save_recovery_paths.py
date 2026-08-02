@@ -83,6 +83,15 @@ def sidecar_base(work: Path) -> Path:
     )
 
 
+def raster_snapshot_base(work: Path) -> Path:
+    root = recovery_root(work)
+    return _checked_base(
+        work,
+        root / "raster-snapshots",
+        label="ラスター保存復旧先",
+    )
+
+
 def native_bases(work: Path) -> tuple[Path, ...]:
     return (native_base(work),)
 
@@ -163,6 +172,7 @@ __all__ = [
     "prune_empty_base",
     "remove_recovery_tree",
     "recovery_root",
+    "raster_snapshot_base",
     "sidecar_base",
     "sidecar_bases",
 ]

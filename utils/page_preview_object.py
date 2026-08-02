@@ -1326,7 +1326,7 @@ def _schedule_deferred_preview_renders(
     global _DEFERRED_RENDER_VARIANT
     global _DEFERRED_RENDER_WORK_DIR
     if not queued:
-        _DEFERRED_RENDER_QUEUE.clear()
+        _cancel_deferred_preview_render()
         return
     try:
         scene_key = int(scene.as_pointer())
@@ -1337,13 +1337,39 @@ def _schedule_deferred_preview_renders(
     _DEFERRED_RENDER_VARIANT = _preview_render_variant(scene)
     _DEFERRED_RENDER_WORK_DIR = str(getattr(work, "work_dir", "") or "")
     try:
-        if not bpy.app.timers.is_registered(_run_deferred_preview_render):
-            bpy.app.timers.register(
+        from . import lifecycle_scheduler
+
+        if not lifecycle_scheduler.is_scheduled("page_preview.render"):
+            lifecycle_scheduler.schedule(
+                "page_preview.render",
                 _run_deferred_preview_render,
-                first_interval=0.15,
+                # 欠けた非優先ページの生成はアイドル仕事。直後のページ遷移を
+                # 阻害せず、保存済み/優先プレビューを先に操作可能にする。
+                first_interval=1.0,
+                on_cancel=_clear_deferred_preview_render_state,
             )
     except Exception:  # noqa: BLE001
         pass
+
+
+def _clear_deferred_preview_render_state() -> None:
+    global _DEFERRED_RENDER_SCENE_KEY
+    global _DEFERRED_RENDER_VARIANT
+    global _DEFERRED_RENDER_WORK_DIR
+    _DEFERRED_RENDER_QUEUE.clear()
+    _DEFERRED_RENDER_SCENE_KEY = 0
+    _DEFERRED_RENDER_VARIANT = ""
+    _DEFERRED_RENDER_WORK_DIR = ""
+
+
+def _cancel_deferred_preview_render() -> None:
+    try:
+        from . import lifecycle_scheduler
+
+        lifecycle_scheduler.cancel("page_preview.render")
+    except Exception:  # noqa: BLE001
+        pass
+    _clear_deferred_preview_render_state()
 
 
 def _run_deferred_preview_render():
@@ -1423,7 +1449,13 @@ def sync_page_previews(context=None, work=None, *, force: bool = False) -> int:
             page_index,
             scene,
         ))
-        if needs_update and (force or page_index in priority_indices):
+        if needs_update and (
+            force
+            or (
+                role != "work"
+                and page_index in priority_indices
+            )
+        ):
             ensure_preview_png(
                 work,
                 page,
@@ -1470,11 +1502,20 @@ def schedule_sync_page_previews(*, force: bool = False, delay: float = 0.2) -> N
     global _DEFERRED_SYNC_FORCE
     _DEFERRED_SYNC_FORCE = bool(_DEFERRED_SYNC_FORCE or force)
     try:
-        if bpy.app.timers.is_registered(_run_deferred_sync_page_previews):
+        from . import lifecycle_scheduler
+
+        if lifecycle_scheduler.is_scheduled("page_preview.sync"):
             return
-        bpy.app.timers.register(
+        lifecycle_scheduler.schedule(
+            "page_preview.sync",
             _run_deferred_sync_page_previews,
             first_interval=max(0.01, float(delay)),
+            on_cancel=_cancel_deferred_sync_state,
         )
     except Exception:  # noqa: BLE001
         _logger.exception("page preview deferred sync registration failed")
+
+
+def _cancel_deferred_sync_state() -> None:
+    global _DEFERRED_SYNC_FORCE
+    _DEFERRED_SYNC_FORCE = False

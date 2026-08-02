@@ -50,6 +50,7 @@ _SPACEBAR_PRESET_ITEMS = (
 _USERPREF_SAVE_PENDING = False
 _USERPREF_SAVE_SUSPENDED = 0
 _MELDEX_UPDATE_DEPTH = 0
+_PREFERENCES_SAVE_TASK = "preferences.save_user_preferences"
 
 
 def _save_user_preferences_timer():
@@ -72,7 +73,14 @@ def request_user_preferences_save() -> None:
         return
     _USERPREF_SAVE_PENDING = True
     try:
-        bpy.app.timers.register(_save_user_preferences_timer, first_interval=0.8)
+        from .utils import lifecycle_scheduler
+
+        lifecycle_scheduler.schedule(
+            _PREFERENCES_SAVE_TASK,
+            _save_user_preferences_timer,
+            first_interval=0.8,
+            restart_on_invalidate=True,
+        )
     except Exception:  # noqa: BLE001
         _save_user_preferences_timer()
 
@@ -647,6 +655,14 @@ def register() -> None:
 
 
 def unregister() -> None:
+    global _USERPREF_SAVE_PENDING
+    try:
+        from .utils import lifecycle_scheduler
+
+        lifecycle_scheduler.cancel(_PREFERENCES_SAVE_TASK)
+    except Exception:  # noqa: BLE001
+        pass
+    _USERPREF_SAVE_PENDING = False
     for cls in reversed(_CLASSES):
         try:
             bpy.utils.unregister_class(cls)

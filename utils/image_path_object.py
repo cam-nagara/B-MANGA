@@ -891,11 +891,19 @@ def sync_all_image_path_objects(scene: bpy.types.Scene, work) -> int:
     if coll is None:
         return 0
     count = 0
-    for entry in coll:
-        page = page_for_entry(scene, work, entry)
-        if ensure_image_path_object(scene=scene, entry=entry, page=page) is not None:
-            count += 1
-    cleanup_orphan_image_path_objects(scene)
+    # Domain→Object投影中のdepsgraph更新をChange Collectorがユーザー編集と
+    # 誤認すると、中心化前の座標をDomainへ逆書戻しする。投影全体を既存の
+    # 双方向同期guardで囲み、確定後のObjectだけを次の差分基準にする。
+    with los.suppress_sync():
+        for entry in coll:
+            page = page_for_entry(scene, work, entry)
+            if ensure_image_path_object(
+                scene=scene,
+                entry=entry,
+                page=page,
+            ) is not None:
+                count += 1
+        cleanup_orphan_image_path_objects(scene)
     return count
 
 

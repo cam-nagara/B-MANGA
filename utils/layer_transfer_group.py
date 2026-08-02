@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import shutil
 
@@ -747,6 +748,11 @@ def recover_interrupted_transfers(work_dir: Path) -> tuple[Path, ...]:
     root = Path(work_dir).resolve()
     if not root.is_dir():
         return ()
+    if not _has_transfer_recovery_root(root):
+        # source変更前に停止したprepared stageはユーザーデータを失わない。
+        # 実rollback資料がある時だけblocking復旧を行い、全ページのstaged
+        # sidecar走査は通常openのクリティカルパスへ入れない。
+        return ()
     from ..io.project_file_lock import work_lock
 
     restored: set[Path] = set()
@@ -791,6 +797,28 @@ def recover_interrupted_transfers(work_dir: Path) -> tuple[Path, ...]:
                 _logger.exception("interrupted transfer recovery failed: %s", manifest_path)
         _remove_orphan_prepared_stages(root, journal_ids)
     return tuple(sorted(restored, key=str))
+
+
+def _has_transfer_recovery_root(work_dir: Path) -> bool:
+    pages_root = Path(work_dir) / paths.PAGES_DIR_NAME
+    try:
+        entries = os.scandir(pages_root)
+    except OSError:
+        return False
+    with entries:
+        for entry in entries:
+            if (
+                not paths.is_valid_page_uid(entry.name)
+                or entry.is_symlink()
+                or not entry.is_dir(follow_symlinks=False)
+            ):
+                continue
+            try:
+                if (Path(entry.path) / _RECOVERY_DIR_NAME).is_dir():
+                    return True
+            except OSError:
+                return True
+    return False
 
 
 def _load_recovery_files(

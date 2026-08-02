@@ -57,9 +57,21 @@ def schedule_apply(context=None) -> None:
         return None
 
     try:
-        bpy.app.timers.register(_run, first_interval=0.05)
+        from . import lifecycle_scheduler
+
+        lifecycle_scheduler.schedule(
+            "page_content.visibility",
+            _run,
+            first_interval=0.05,
+            on_cancel=_cancel_scheduled_apply,
+        )
     except Exception:  # noqa: BLE001
         _APPLY_SCHEDULED = False
+
+
+def _cancel_scheduled_apply() -> None:
+    global _APPLY_SCHEDULED
+    _APPLY_SCHEDULED = False
 
 
 def _detail_page_ids(work) -> set[str]:

@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import sys
+import traceback
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -175,6 +176,25 @@ def _press_event_for_page(work, page_index: int):
     )
 
 
+def _stable_press_event_for_page(work, page_index: int):
+    mode_op = _sub("operators.mode_op")
+    observed = None
+    for _attempt in range(3):
+        _fit_view_to_pages(work, [max(0, page_index - 1), page_index])
+        _redraw(4)
+        event = _press_event_for_page(work, page_index)
+        observed = mode_op.page_preview_index_from_viewport_event(
+            bpy.context,
+            event,
+        )
+        if observed == page_index:
+            return event
+    raise AssertionError(
+        "ページプレビューのクリック座標が安定しません: "
+        f"expected={page_index} observed={observed}"
+    )
+
+
 def _screenshot() -> tuple[int, int]:
     view = _view3d_context()
     if view is None:
@@ -239,7 +259,15 @@ def _run() -> None:
     _configure_pages(work)
     bpy.ops.bmanga.work_save()
     bpy.ops.bmanga.open_page_file(index=4)
-    bpy.app.timers.register(_after_page_open, first_interval=1.0)
+    bpy.app.timers.register(_after_page_open_checked, first_interval=1.0)
+
+
+def _after_page_open_checked() -> None:
+    try:
+        _after_page_open()
+    except Exception:  # noqa: BLE001
+        traceback.print_exc()
+        os._exit(1)
 
 
 def _after_page_open() -> None:
@@ -257,9 +285,8 @@ def _after_page_open() -> None:
     page_op = _sub("operators.page_op")
 
     updated = page_preview_object.sync_page_previews(bpy.context, work, force=True)
-    _fit_view_to_pages(work, [current_index, target_index])
     page_op._clear_page_open_click_state()
-    event = _press_event_for_page(work, target_index)
+    event = _stable_press_event_for_page(work, target_index)
     view = _view3d_context()
     window, screen, area, region, space, rv3d = view
     fake_op = SimpleNamespace(report=lambda *_a, **_k: None)

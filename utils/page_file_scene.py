@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import hashlib
 import json
 from pathlib import Path
@@ -16,6 +17,23 @@ ROLE_PAGE = "page"
 ROLE_COMA = "coma"
 ROLE_UNKNOWN = "unknown"
 PAGE_RUNTIME_SIGNATURE_PROP = "bmanga_page_runtime_signature_v1"
+_ROLE_CACHE_DEPTH = 0
+_ROLE_CACHE: dict[tuple[str, str], tuple[str, str, str]] = {}
+
+
+@contextmanager
+def role_resolution_cache():
+    """単一hydrate中だけ同じBlendの役割判定を再利用する."""
+
+    global _ROLE_CACHE_DEPTH
+    _ROLE_CACHE_DEPTH += 1
+    try:
+        yield
+    finally:
+        _ROLE_CACHE_DEPTH -= 1
+        if _ROLE_CACHE_DEPTH <= 0:
+            _ROLE_CACHE_DEPTH = 0
+            _ROLE_CACHE.clear()
 
 
 def find_work_root(blend_path: Path) -> Path | None:
@@ -73,11 +91,20 @@ def role_from_parts(parts: tuple[str, ...]) -> tuple[str, str, str]:
 
 def role_from_path(blend_path: Path, work_dir: Path | None = None) -> tuple[str, str, str]:
     root = Path(work_dir) if work_dir is not None else find_work_root(blend_path)
+    cache_key = (
+        str(Path(blend_path).absolute()),
+        str(root.absolute()) if root is not None else "",
+    )
+    if _ROLE_CACHE_DEPTH > 0 and cache_key in _ROLE_CACHE:
+        return _ROLE_CACHE[cache_key]
     role, page_ref, coma_ref = role_from_parts(
         relative_parts(Path(blend_path), root)
     )
     if root is None or role not in {ROLE_PAGE, ROLE_COMA}:
-        return role, page_ref, coma_ref
+        result = (role, page_ref, coma_ref)
+        if _ROLE_CACHE_DEPTH > 0:
+            _ROLE_CACHE[cache_key] = result
+        return result
     try:
         page_id = paths.page_display_id(root, page_ref)
         coma_id = (
@@ -85,9 +112,12 @@ def role_from_path(blend_path: Path, work_dir: Path | None = None) -> tuple[str,
             if role == ROLE_COMA
             else ""
         )
-        return role, page_id, coma_id
+        result = (role, page_id, coma_id)
     except (FileNotFoundError, KeyError, ValueError):
-        return ROLE_UNKNOWN, "", ""
+        result = (ROLE_UNKNOWN, "", "")
+    if _ROLE_CACHE_DEPTH > 0:
+        _ROLE_CACHE[cache_key] = result
+    return result
 
 
 def canonical_role_from_path(
@@ -429,7 +459,13 @@ def _object_is_coma_runtime(obj) -> bool:
     return any(str(obj.get(prop, "") or "") for prop in _COMA_RUNTIME_KIND_PROPS | _COMA_RUNTIME_OWNER_PROPS)
 
 
-def _remove_object_with_data(obj) -> int:
+def _remove_object_with_data(obj, scene=None) -> int:
+    if scene is not None:
+        try:
+            if any(owner != scene for owner in getattr(obj, "users_scene", ()) or ()):
+                return 0
+        except Exception:  # noqa: BLE001
+            return 0
     data = getattr(obj, "data", None)
     try:
         bpy.data.objects.remove(obj, do_unlink=True)
@@ -451,14 +487,38 @@ def _remove_object_with_data(obj) -> int:
     return 1
 
 
+def _scene_collections(scene) -> list:
+    """SceneのMaster Collection配下だけを子優先で返す。"""
+
+    if scene is None:
+        return []
+    collected: list = []
+
+    def _visit(parent) -> None:
+        for child in tuple(getattr(parent, "children", ()) or ()):
+            _visit(child)
+            collected.append(child)
+
+    _visit(getattr(scene, "collection", None))
+    return collected
+
+
+def _collection_shared_with_other_scene(coll, scene) -> bool:
+    for candidate in getattr(bpy.data, "scenes", ()) or ():
+        if candidate == scene:
+            continue
+        if any(owned == coll for owned in _scene_collections(candidate)):
+            return True
+    return False
+
+
 def purge_coma_runtime_data(scene, keep_page_ids: set[str] | None) -> int:
     """許可ページ以外のコマ枠実体を完全に取り除く."""
-    _ = scene
-    if keep_page_ids is None:
+    if scene is None or keep_page_ids is None:
         return 0
     keep = {str(page_id) for page_id in keep_page_ids if paths.is_valid_page_id(str(page_id))}
     removed = 0
-    for obj in list(bpy.data.objects):
+    for obj in list(getattr(scene, "objects", ()) or ()):
         if not _object_is_coma_runtime(obj):
             continue
         owner_page = _object_page_id(obj)
@@ -473,7 +533,7 @@ def purge_coma_runtime_data(scene, keep_page_ids: set[str] | None) -> int:
             for prop in _COMA_RUNTIME_OWNER_PROPS
         ):
             continue
-        removed += _remove_object_with_data(obj)
+        removed += _remove_object_with_data(obj, scene)
     return removed
 
 
@@ -487,29 +547,12 @@ def purge_page_content_data(scene, keep_page_id: str = "") -> int:
     if keep_page_id and not paths.is_valid_page_id(keep_page_id):
         return 0
     removed = 0
-    for obj in list(bpy.data.objects):
+    for obj in list(getattr(scene, "objects", ()) or ()):
         if not _object_is_page_content(obj):
             continue
         obj_page_id = _object_page_id(obj)
         if not keep_page_id or (obj_page_id and obj_page_id != keep_page_id):
-            data = getattr(obj, "data", None)
-            try:
-                bpy.data.objects.remove(obj, do_unlink=True)
-                removed += 1
-            except Exception:  # noqa: BLE001
-                continue
-            if data is not None and getattr(data, "users", 0) == 0:
-                for datablocks in (
-                    bpy.data.meshes,
-                    bpy.data.curves,
-                    getattr(bpy.data, "grease_pencils", []),
-                ):
-                    try:
-                        if data.name in datablocks:
-                            datablocks.remove(data)
-                            break
-                    except Exception:  # noqa: BLE001
-                        pass
+            removed += _remove_object_with_data(obj, scene)
     return removed
 
 
@@ -539,12 +582,16 @@ def purge_other_page_data(scene, page_id: str) -> int:
         return ""
 
     collections = sorted(
-        list(bpy.data.collections),
+        _scene_collections(scene),
         key=lambda coll: 1 if str(coll.get("bmanga_kind", "") or "") == "page" else 0,
     )
     for coll in collections:
         coll_page_id = _collection_page_id(coll)
-        if coll_page_id and coll_page_id != page_id:
+        if (
+            coll_page_id
+            and coll_page_id != page_id
+            and not _collection_shared_with_other_scene(coll, scene)
+        ):
             try:
                 bpy.data.collections.remove(coll, do_unlink=True)
                 removed += 1
@@ -636,6 +683,29 @@ def page_runtime_objects_current(scene, work, page_id: str) -> bool:
     return bool(has_paper and has_guides)
 
 
+def record_page_runtime_signature(scene, work, page_id: str) -> bool:
+    """現在ページの保存実体が揃う時だけ、次回open用署名を更新する。"""
+
+    if scene is None or work is None or not paths.is_valid_page_id(page_id):
+        return False
+    has_paper = any(
+        str(obj.get("bmanga_paper_bg_page_id", "") or "") == page_id
+        for obj in getattr(scene, "objects", ()) or ()
+    )
+    has_guides = any(
+        str(obj.get("bmanga_paper_guide_page_id", "") or "") == page_id
+        for obj in getattr(scene, "objects", ()) or ()
+    )
+    signature = page_runtime_signature(work, page_id)
+    if not signature or not has_paper or not has_guides:
+        return False
+    try:
+        scene[PAGE_RUNTIME_SIGNATURE_PROP] = signature
+    except Exception:  # noqa: BLE001
+        return False
+    return True
+
+
 _WORK_LIST_RUNTIME_KIND_PROPS = {
     "bmanga_coma_plane_kind",
     "bmanga_coma_mask_kind",
@@ -705,34 +775,19 @@ def purge_work_list_runtime_data(scene) -> int:
     if role == ROLE_WORK:
         clear_work_list_page_details(scene)
     removed = purge_coma_runtime_data(scene, set())
-    for obj in list(bpy.data.objects):
+    for obj in list(getattr(scene, "objects", ()) or ()):
         if not _object_is_work_list_runtime(obj):
             continue
-        data = getattr(obj, "data", None)
-        try:
-            bpy.data.objects.remove(obj, do_unlink=True)
-            removed += 1
-        except Exception:  # noqa: BLE001
-            continue
-        if data is not None and getattr(data, "users", 0) == 0:
-            for datablocks in (
-                bpy.data.meshes,
-                bpy.data.curves,
-                getattr(bpy.data, "grease_pencils", []),
-                bpy.data.fonts,
-            ):
-                try:
-                    if data.name in datablocks:
-                        datablocks.remove(data)
-                        break
-                except Exception:  # noqa: BLE001
-                    pass
+        removed += _remove_object_with_data(obj, scene)
     collections = sorted(
-        list(bpy.data.collections),
+        _scene_collections(scene),
         key=lambda coll: 1 if str(coll.get("bmanga_kind", "") or "") == "page" else 0,
     )
     for coll in collections:
-        if not _collection_is_work_list_runtime(coll):
+        if (
+            not _collection_is_work_list_runtime(coll)
+            or _collection_shared_with_other_scene(coll, scene)
+        ):
             continue
         try:
             bpy.data.collections.remove(coll, do_unlink=True)

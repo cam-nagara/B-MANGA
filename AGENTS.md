@@ -44,6 +44,8 @@
 
 ### 2.1 完了済みの大型移行
 
+- **(Phase 4完了 / 2026-08-02 Codex, B-MANGA Next v0.6.604)** 全体リファクタリングのLifecycle統合。作品／ページ／コマの保存・読込・失敗復元、Undo／Redo、遅延処理を状態機械と世代付きSchedulerへ集約した。保存前は差分収集済みObjectだけをDomainへ反映し、レイヤー一覧等の派生cacheを非保存化した。作品→ページ→コマ→ページ→作品、全phase障害注入、旧timer失効、80ページ一覧の詳細非読込、未保存ラスターのプロセスクラッシュ復元、外部ファイルを消さない新規作品rollbackをBlender 5.2 LTSで検証した。統一認定469/469・必須436/436、独立最終レビュー重大0・高0で合格。計画: [`docs/bmanga_full_refactoring_plan_2026-07-28.md`](docs/bmanga_full_refactoring_plan_2026-07-28.md)
+
 - **(Phase 3完了 / 2026-07-31 Codex, B-MANGA Next v0.6.603 / Render Next v0.1.39 / Liner Next v0.3.203)** 作品正本を新Domainへ統一。`project.json`、`pages/<page_uid>/page.json`、`comas/<coma_uid>/scene.blend`と安定UID／tree／link graphを採用し、PropertyGroupは一方向UI投影とした。Command／Event／Store／Repository／write-ahead journal、hash競合検知、起動時recoveryを導入し、旧形式変換・migration Operator・5.1以前のAPI分岐を削除した。必須429/429、current source hash欠落0、独立最終レビュー重大0・高0で合格。計画: [`docs/bmanga_full_refactoring_plan_2026-07-28.md`](docs/bmanga_full_refactoring_plan_2026-07-28.md)
 
 - **(Phase 1〜4実装済み／ユーザー実機合否待ち / 2026-07-28 Codex, v0.6.594)** ページ編集用の2D合成プレビューを試験導入。PNG書き出しと同じレイヤー順で全体をGPUオーバーレイ表示し、GP／効果線／ラスター編集中は背面合成・編集実体・前面合成へ分割する。72dpi以下を即時表示し150ms後に設定解像度へ更新、512MiB LRU、未保存ラスター反映、保存時の一時Image除去、Undo／Redo再合成を実装。レイヤー移動／オブジェクト移動中は切り出したGPU画像だけを動かし、確定時にデータを一括反映する。v0.6.593で高解像度時の自動縮小、保存失敗復帰、ラスター編集、ドラッグ確定失敗、Alt+D&D強制終了時の復旧を強化し、v0.6.594で焼き込み済み効果線Meshと生成図形／画像線を2D合成・PNG／PSDへ反映した。従来3D表示への切替を残し、ユーザー実機確認が通るまでは「2D合成表示（試験）」を既定オフとする。

@@ -122,6 +122,29 @@ def backgrounds_current(scene, signature: str, marker_prop: str) -> bool:
     return False
 
 
+def has_recorded_backgrounds(scene, marker_prop: str) -> bool:
+    """保存済み署名と下絵が揃っているかを、全ページ走査なしで判定する。"""
+
+    if scene is None:
+        return False
+    try:
+        if not str(scene.get(SCENE_SIGNATURE_PROP, "") or ""):
+            return False
+        camera = getattr(scene, "camera", None)
+        backgrounds = getattr(
+            getattr(camera, "data", None),
+            "background_images",
+            (),
+        )
+        return any(
+            getattr(background, "image", None) is not None
+            and bool(background.image.get(marker_prop, False))
+            for background in backgrounds or ()
+        )
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def record(scene, signature: str) -> None:
     if scene is None or not signature:
         return

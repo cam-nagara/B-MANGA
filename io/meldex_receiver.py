@@ -45,6 +45,33 @@ class _MeldexHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):  # noqa: A003
         _logger.debug("meldex http: " + format, *args)
 
+    def _discard_rejected_body(self) -> None:
+        """Drain a bounded body so Windows does not replace the HTTP rejection with RST."""
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except (TypeError, ValueError):
+            return
+        if length <= 0 or length > MAX_BODY_BYTES:
+            return
+        previous_timeout = self.connection.gettimeout()
+        try:
+            self.connection.settimeout(0.25)
+            remaining = length
+            while remaining > 0:
+                chunk = self.rfile.read(min(remaining, 64 * 1024))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+        except OSError:
+            pass
+        finally:
+            self.connection.settimeout(previous_timeout)
+
+    def _reject_request(self, status: int, code: str) -> bool:
+        self._discard_rejected_body()
+        self._json_response(status, code)
+        return False
+
     def _json_response(self, status: int, code: str, payload: dict | None = None) -> None:
         response = payload if payload is not None else {"status": code}
         body = json.dumps(response, separators=(",", ":")).encode("ascii")
@@ -56,15 +83,12 @@ class _MeldexHandler(BaseHTTPRequestHandler):
 
     def _request_allowed(self) -> bool:
         if self.client_address[0] != "127.0.0.1":
-            self._json_response(403, "forbidden")
-            return False
+            return self._reject_request(403, "forbidden")
         if "Origin" in self.headers:
-            self._json_response(403, "origin-rejected")
-            return False
+            return self._reject_request(403, "origin-rejected")
         supplied = str(self.headers.get(TOKEN_HEADER, "") or "")
         if not supplied or not hmac.compare_digest(supplied, self.server.token):
-            self._json_response(401, "unauthorized")
-            return False
+            return self._reject_request(401, "unauthorized")
         return True
 
     def do_GET(self) -> None:  # noqa: N802
@@ -137,8 +161,22 @@ def start(port: int = DEFAULT_PORT, token: str = "") -> bool:
     _server_thread = threading.Thread(target=_server.serve_forever, name="BManga-MeldexReceiver", daemon=True)
     _server_thread.start()
     if not _timer_registered:
-        bpy.app.timers.register(_poll_queue, first_interval=0.1, persistent=True)
-        _timer_registered = True
+        try:
+            from ..utils import lifecycle_scheduler
+
+            lifecycle_scheduler.schedule(
+                "meldex.poll_queue",
+                _poll_queue,
+                first_interval=0.1,
+                persistent=True,
+                restart_on_invalidate=True,
+                on_cancel=_mark_timer_stopped,
+            )
+            _timer_registered = True
+        except Exception:  # noqa: BLE001
+            _logger.exception("Meldex receiver queue timer failed")
+            stop()
+            return False
     _logger.info("Meldex receiver started on the configured local port")
     return True
 
@@ -155,8 +193,10 @@ def stop() -> None:
         thread.join(timeout=3.0)
     if _timer_registered:
         try:
-            bpy.app.timers.unregister(_poll_queue)
-        except (ValueError, KeyError):
+            from ..utils import lifecycle_scheduler
+
+            lifecycle_scheduler.cancel("meldex.poll_queue")
+        except Exception:  # noqa: BLE001
             pass
         _timer_registered = False
     _clear_queue()
@@ -175,6 +215,11 @@ def restart_from_preferences(context=None) -> bool:
 
 def is_running() -> bool:
     return _server is not None and _server_thread is not None and _server_thread.is_alive()
+
+
+def _mark_timer_stopped() -> None:
+    global _timer_registered
+    _timer_registered = False
 
 
 def _clear_queue() -> None:

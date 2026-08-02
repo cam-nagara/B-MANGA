@@ -3472,7 +3472,7 @@
       "visibility_conditions": []
     }
   ],
-  "field_registry_digest": "58631f3dee936e2cb2f27a5f8b9556ea71072c1d457e96c72de145d867328184",
+  "field_registry_digest": "c4108e187cb527de4ee748180fc2e3abe483dd6c03b2bd2e95c5a8dcc4716453",
   "generator": "tools.settings_contract.ui_scan",
   "schema_version": 1
 }

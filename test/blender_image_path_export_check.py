@@ -158,7 +158,7 @@ def main() -> None:
 
         src_path = temp_root / "ribbon_src.png"
         PILImage.new("RGBA", (16, 16), (0, 200, 0, 255)).save(src_path)
-        _add_path_entry(
+        ribbon_entry = _add_path_entry(
             scene,
             "path_ribbon01",
             [(40.0, 100.0), (140.0, 100.0)],
@@ -169,10 +169,24 @@ def main() -> None:
             parent_kind="page",
             parent_key=str(page.id),
         )
+        from bmanga_dev_image_path_export.io import export_image_path
+
+        ribbon_layer = export_image_path.render_image_path_layer(
+            ribbon_entry,
+            int(round(work.paper.canvas_height_mm / 25.4 * dpi)),
+            dpi,
+        )
+        assert ribbon_layer is not None, (
+            f"リボン書き出しレイヤーを生成できません: "
+            f"filepath={ribbon_entry.filepath!r}"
+        )
         img2 = export_pipeline.render_page(work, page, options)
         ribbon_px = _px_at(img2, 90.0, 100.0, dpi)
         assert ribbon_px[1] > 120 and ribbon_px[0] < 120, (
-            f"リボンの画像色 (緑) がパス上に出力されていません: {ribbon_px}"
+            f"リボンの画像色 (緑) がパス上に出力されていません: "
+            f"pixel={ribbon_px}, layer_box={ribbon_layer.image.getbbox()}, "
+            f"offset=({ribbon_layer.left}, {ribbon_layer.top}), "
+            f"points={ribbon_entry.path_points_json}"
         )
 
         # --- 3. コマ配下のコママスク ---

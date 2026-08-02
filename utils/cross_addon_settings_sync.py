@@ -20,7 +20,6 @@
 from __future__ import annotations
 
 import bpy
-from bpy.app.handlers import persistent
 
 from . import log, runtime_activity
 
@@ -176,8 +175,7 @@ def _timer() -> float:
     return _TICK
 
 
-@persistent
-def _on_load_post(_filepath) -> None:
+def on_lifecycle_load() -> None:
     global _last_scene_ptr
     _snapshot.clear()
     _last_scene_ptr = None
@@ -194,11 +192,17 @@ def register() -> None:
     global _last_scene_ptr
     _snapshot.clear()
     _last_scene_ptr = None
-    if _on_load_post not in bpy.app.handlers.load_post:
-        bpy.app.handlers.load_post.append(_on_load_post)
+    _remove_legacy_load_handler()
     try:
-        if not bpy.app.timers.is_registered(_timer):
-            bpy.app.timers.register(_timer, first_interval=_TICK)
+        from . import lifecycle_scheduler
+
+        if not lifecycle_scheduler.is_scheduled("cross_addon.settings"):
+            lifecycle_scheduler.schedule(
+                "cross_addon.settings",
+                _timer,
+                first_interval=_TICK,
+                restart_on_invalidate=True,
+            )
     except Exception:  # noqa: BLE001
         _logger.debug("cross-addon settings timer not scheduled")
 
@@ -207,13 +211,21 @@ def unregister() -> None:
     global _last_scene_ptr
     _last_scene_ptr = None
     try:
-        if bpy.app.timers.is_registered(_timer):
-            bpy.app.timers.unregister(_timer)
+        from . import lifecycle_scheduler
+
+        lifecycle_scheduler.cancel("cross_addon.settings")
     except Exception:  # noqa: BLE001
         pass
-    if _on_load_post in bpy.app.handlers.load_post:
-        try:
-            bpy.app.handlers.load_post.remove(_on_load_post)
-        except ValueError:
-            pass
+    _remove_legacy_load_handler()
     _snapshot.clear()
+
+
+def _remove_legacy_load_handler() -> None:
+    for handler in list(bpy.app.handlers.load_post):
+        if (
+            getattr(handler, "__name__", "") == "_on_load_post"
+            and str(getattr(handler, "__module__", "")).endswith(
+                ".cross_addon_settings_sync"
+            )
+        ):
+            bpy.app.handlers.load_post.remove(handler)

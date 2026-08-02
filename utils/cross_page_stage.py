@@ -903,6 +903,16 @@ def _process_staged_imports_locked(context, work_dir: Path, page, page_id: str, 
         },
     )
     created = effect_created + gp_created + asset_created
+    if created or processed_links:
+        # load_postはLifecycleのblend_switch境界内で実行されるため、通常の
+        # depsgraph dirty検出は抑止される。復元した実体／リンクを次の
+        # checkpointがnative保存対象として扱えるよう明示する。
+        from . import file_transition_runtime
+
+        file_transition_runtime.mark_scene_dirty_after_load(
+            getattr(context, "scene", None),
+            reason="staged_import",
+        )
     if created:
         try:
             from . import layer_stack

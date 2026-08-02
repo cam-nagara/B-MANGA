@@ -74,12 +74,14 @@ def _set_top_view() -> None:
 def _screenshot() -> Path:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     path = OUT_DIR / "effect_line_handle_single.png"
-    bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=8)
-    result = bpy.ops.screen.screenshot(
-        "EXEC_DEFAULT",
-        filepath=str(path),
-        check_existing=False,
-    )
+    with _view3d_override():
+        if bpy.ops.wm.redraw_timer.poll():
+            bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=8)
+        result = bpy.ops.screen.screenshot(
+            "EXEC_DEFAULT",
+            filepath=str(path),
+            check_existing=False,
+        )
     if "FINISHED" not in result or not path.is_file():
         raise RuntimeError(f"viewport screenshot failed: {result}")
     return path

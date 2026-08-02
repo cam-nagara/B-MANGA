@@ -274,9 +274,13 @@ def _create_linked_balloon_duplicate(context, item) -> bool:
     if collection is None:
         return False
     source_uid = _balloon_uid(page, src)
+    # Blender may reallocate every CollectionProperty item on add().  Snapshot
+    # the source before growing the same collection; dereferencing ``src``
+    # afterwards can otherwise read an empty/corrupt PropertyGroup.
+    source_data = schema.balloon_entry_to_dict(src)
     dst = collection.add()
     with balloon_curve_object.suspend_auto_sync():
-        schema.balloon_entry_from_dict(dst, schema.balloon_entry_to_dict(src))
+        schema.balloon_entry_from_dict(dst, source_data)
         if page is None:
             dst.id = _allocate_balloon_id_from_collection(collection, "shared_balloon")
             dst.parent_kind = "none"

@@ -25,7 +25,15 @@ def register() -> None:
         return
     _registered = True
     try:
-        bpy.app.timers.register(_timer, first_interval=_TIMER_INTERVAL, persistent=True)
+        from . import lifecycle_scheduler
+
+        lifecycle_scheduler.schedule(
+            "asset_drop.poll",
+            _timer,
+            first_interval=_TIMER_INTERVAL,
+            persistent=True,
+            restart_on_invalidate=True,
+        )
     except Exception:  # noqa: BLE001
         _registered = False
         _logger.exception("B-MANGA asset drop timer register failed")
@@ -35,7 +43,8 @@ def unregister() -> None:
     global _registered
     _registered = False
     try:
-        if bpy.app.timers.is_registered(_timer):
-            bpy.app.timers.unregister(_timer)
+        from . import lifecycle_scheduler
+
+        lifecycle_scheduler.cancel("asset_drop.poll")
     except Exception:  # noqa: BLE001
         pass

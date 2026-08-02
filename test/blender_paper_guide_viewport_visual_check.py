@@ -36,19 +36,38 @@ def _load_addon():
 
 
 def _view3d_context():
-    screen = bpy.context.screen
-    for area in screen.areas:
-        if area.type != "VIEW_3D":
+    windows = list(bpy.context.window_manager.windows)
+    current = getattr(bpy.context, "window", None)
+    if current is not None:
+        windows = [current, *[window for window in windows if window != current]]
+    for window in windows:
+        screen = getattr(window, "screen", None)
+        if screen is None:
             continue
-        for region in area.regions:
-            if region.type == "WINDOW":
-                return area, region, area.spaces.active.region_3d
-    raise RuntimeError("VIEW_3D が見つかりません")
+        for area in screen.areas:
+            if area.type != "VIEW_3D":
+                continue
+            region = next((item for item in area.regions if item.type == "WINDOW"), None)
+            space = area.spaces.active
+            rv3d = getattr(space, "region_3d", None)
+            if region is not None and rv3d is not None:
+                return window, screen, area, region, space, rv3d
+    return None
 
 
-def _view3d_override():
-    area, region, _rv3d = _view3d_context()
-    return bpy.context.temp_override(area=area, region=region)
+def _view3d_override() -> dict:
+    view = _view3d_context()
+    if view is None:
+        raise RuntimeError("VIEW_3D が見つかりません")
+    window, screen, area, region, space, rv3d = view
+    return {
+        "window": window,
+        "screen": screen,
+        "area": area,
+        "region": region,
+        "space_data": space,
+        "region_data": rv3d,
+    }
 
 
 def _redraw(iterations: int = 5) -> None:
@@ -61,8 +80,9 @@ def _redraw(iterations: int = 5) -> None:
 def _screenshot(name: str) -> Path:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     path = OUT_DIR / name
-    _redraw(8)
-    result = bpy.ops.screen.screenshot("EXEC_DEFAULT", filepath=str(path), check_existing=False)
+    with bpy.context.temp_override(**_view3d_override()):
+        _redraw(8)
+        result = bpy.ops.screen.screenshot("EXEC_DEFAULT", filepath=str(path), check_existing=False)
     if "FINISHED" not in result:
         raise RuntimeError(f"screenshot failed: {result}")
     return path
@@ -128,9 +148,8 @@ def _run_visual_check() -> None:
         paper.show_inner_frame = True
         paper.show_safe_line = True
         paper.show_trim_marks = True
-        overlay.apply_bmanga_shading_mode(context)
-
-        with _view3d_override():
+        with bpy.context.temp_override(**_view3d_override()):
+            overlay.apply_bmanga_shading_mode(bpy.context)
             bpy.ops.view3d.view_axis(type="TOP", align_active=False)
             space = bpy.context.space_data
             rv3d = space.region_3d

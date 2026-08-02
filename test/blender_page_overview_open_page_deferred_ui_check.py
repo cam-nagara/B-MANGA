@@ -32,19 +32,38 @@ def _load_addon():
 
 
 def _view3d_context():
-    window = next(iter(bpy.context.window_manager.windows), None)
-    screen = getattr(window, "screen", None)
-    if window is None or screen is None:
-        return None
-    for area in screen.areas:
-        if area.type != "VIEW_3D":
+    windows = list(bpy.context.window_manager.windows)
+    current = getattr(bpy.context, "window", None)
+    if current is not None:
+        windows = [current, *[window for window in windows if window != current]]
+    for window in windows:
+        screen = getattr(window, "screen", None)
+        if screen is None:
             continue
-        region = next((r for r in area.regions if r.type == "WINDOW"), None)
-        space = area.spaces.active
-        rv3d = getattr(space, "region_3d", None)
-        if region is not None and rv3d is not None:
-            return window, screen, area, region, space, rv3d
+        for area in screen.areas:
+            if area.type != "VIEW_3D":
+                continue
+            region = next((r for r in area.regions if r.type == "WINDOW"), None)
+            space = area.spaces.active
+            rv3d = getattr(space, "region_3d", None)
+            if region is not None and rv3d is not None:
+                return window, screen, area, region, space, rv3d
     return None
+
+
+def _view3d_override() -> dict:
+    view = _view3d_context()
+    if view is None:
+        raise RuntimeError("VIEW_3D が見つかりません")
+    window, screen, area, region, space, rv3d = view
+    return {
+        "window": window,
+        "screen": screen,
+        "area": area,
+        "region": region,
+        "space_data": space,
+        "region_data": rv3d,
+    }
 
 
 def _double_click_event_for_page(page_index: int):
@@ -123,14 +142,15 @@ def _start_check(temp_root: Path) -> Path:
     event = _double_click_event_for_page(1)
     from bmanga_dev_page_overview_open_ui.operators import mode_op
 
-    resolved = mode_op.page_file_index_from_viewport_event(bpy.context, event)
-    assert resolved == 1, resolved
-    fake_operator = SimpleNamespace()
-    result = mode_op.BMANGA_OT_enter_coma_mode_from_viewport.invoke(
-        fake_operator,
-        bpy.context,
-        event,
-    )
+    with bpy.context.temp_override(**_view3d_override()):
+        resolved = mode_op.page_file_index_from_viewport_event(bpy.context, event)
+        assert resolved == 1, resolved
+        fake_operator = SimpleNamespace()
+        result = mode_op.BMANGA_OT_enter_coma_mode_from_viewport.invoke(
+            fake_operator,
+            bpy.context,
+            event,
+        )
     assert result == {"FINISHED"}, result
     assert Path(bpy.data.filepath).resolve() == work_path, "イベント中にページファイルを開いています"
     return expected

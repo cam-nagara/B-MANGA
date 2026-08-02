@@ -32,6 +32,8 @@ def _validate_case(case: Case) -> list[str]:
         errors.append(f"{case.source}: unstable test_id")
     if not 1 <= case.timeout_seconds <= 3600:
         errors.append(f"{case.source}: invalid timeout {case.timeout_seconds}")
+    if not 0 <= case.run_order <= 1000:
+        errors.append(f"{case.source}: invalid run order {case.run_order}")
     if case.mode in NON_EXECUTED_MODES:
         if case.required:
             errors.append(f"{case.source}: non-executed case cannot be required")

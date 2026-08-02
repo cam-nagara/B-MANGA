@@ -115,7 +115,10 @@ def _run_all(
             report(result)
         return results
     parallel_cases = [case for case in cases if not case.mode.startswith("blender_")]
-    blender_cases = [case for case in cases if case.mode.startswith("blender_")]
+    blender_cases = sorted(
+        (case for case in cases if case.mode.startswith("blender_")),
+        key=lambda case: (case.run_order, case.source),
+    )
     results: list[Result] = []
     with ThreadPoolExecutor(max_workers=jobs) as pool:
         futures = {

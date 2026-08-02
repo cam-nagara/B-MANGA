@@ -121,6 +121,7 @@ def _default_case(
         "mode": mode,
         "required": required,
         "timeout_seconds": _timeout(python_rows.get(scanned.source), scanned.source),
+        "run_order": 100,
         "completion_token": token,
         "args": [],
         "blender_args": (

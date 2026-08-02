@@ -142,7 +142,7 @@ class BMangaPageEntry(bpy.types.PropertyGroup):
     # 書き出さない (空データでの上書き防止)。
     detail_loaded: BoolProperty(  # type: ignore[valid-type]
         default=False,
-        options={"HIDDEN"},
+        options={"HIDDEN", "SKIP_SAVE"},
     )
 
     # --- コマ一覧 ---

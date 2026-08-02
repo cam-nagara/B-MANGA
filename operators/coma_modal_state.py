@@ -171,9 +171,21 @@ def _schedule_object_tool_resume() -> None:
         return None
 
     try:
-        bpy.app.timers.register(_resume, first_interval=0.1)
+        from ..utils import lifecycle_scheduler
+
+        lifecycle_scheduler.schedule(
+            "modal.object_tool_resume",
+            _resume,
+            first_interval=0.1,
+            on_cancel=_cancel_object_tool_resume,
+        )
     except Exception:  # noqa: BLE001
         _object_tool_resume_scheduled = False
+
+
+def _cancel_object_tool_resume() -> None:
+    global _object_tool_resume_scheduled
+    _object_tool_resume_scheduled = False
 
 
 def clear_active(tool_name: str, op=None, context=None) -> None:

@@ -25,6 +25,7 @@ class Case:
     mode: str
     required: bool
     timeout_seconds: int
+    run_order: int = 100
     completion_token: str = ""
     args: tuple[str, ...] = ()
     blender_args: tuple[str, ...] = ()
@@ -43,6 +44,7 @@ class Case:
             mode=str(raw["mode"]),
             required=bool(raw["required"]),
             timeout_seconds=int(raw["timeout_seconds"]),
+            run_order=int(raw.get("run_order", 100)),
             completion_token=str(raw.get("completion_token", "")),
             args=tuple(str(value) for value in raw.get("args", ())),
             blender_args=tuple(

@@ -910,7 +910,14 @@ def _schedule_object_tool_relaunch(
         return None
 
     try:
-        bpy.app.timers.register(_relaunch, first_interval=max(0.05, float(delay_seconds)), persistent=True)
+        from ..utils import lifecycle_scheduler
+
+        lifecycle_scheduler.schedule(
+            "object_tool.relaunch",
+            _relaunch,
+            first_interval=max(0.05, float(delay_seconds)),
+            persistent=True,
+        )
     except Exception:  # noqa: BLE001
         _logger.exception("object tool relaunch scheduling failed")
 

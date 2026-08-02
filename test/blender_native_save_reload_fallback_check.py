@@ -171,10 +171,9 @@ def _case_retry_before_limit(handlers, work_blend: Path, page: Path) -> None:
     """(B) 存在しないpage.blendは上限未満ならリトライ間隔を返し、何も開かない."""
 
     _open(work_blend, "work")
-    generation = handlers._native_save_reload_generation
     state = {"attempts": 0}
     assert not page.is_file()
-    result = handlers._native_save_reload_tick(page, generation, state)
+    result = handlers._native_save_reload_tick(page, state)
     _check(
         result == handlers._NATIVE_SAVE_RELOAD_RETRY_INTERVAL,
         "リトライ間隔が返っていません",
@@ -190,10 +189,9 @@ def _case_fallback_opens_work_blend_at_limit(handlers, work_blend: Path, page: P
     """(C) 上限到達でフォールバック(work.blend)を開く."""
 
     _open(work_blend, "work")
-    generation = handlers._native_save_reload_generation
     state = {"attempts": handlers._NATIVE_SAVE_RELOAD_MAX_ATTEMPTS - 1}
     assert not page.is_file()
-    result = handlers._native_save_reload_tick(page, generation, state)
+    result = handlers._native_save_reload_tick(page, state)
     _check(result is None, "上限到達時の戻り値がNoneではありません")
     _check(
         Path(bpy.data.filepath).resolve() == work_blend.resolve(),
@@ -202,12 +200,23 @@ def _case_fallback_opens_work_blend_at_limit(handlers, work_blend: Path, page: P
 
 
 def _case_generation_mismatch_does_nothing(handlers, work_blend: Path, page: Path) -> None:
-    """(D) 世代不一致なら何も開かずNoneを返す."""
+    """(D) Scheduler旧世代のtickなら何も開かずNoneを返す."""
 
     _open(work_blend, "work")
-    stale_generation = handlers._native_save_reload_generation + 1
     state = {"attempts": 0}
-    result = handlers._native_save_reload_tick(page, stale_generation, state)
+    lifecycle_scheduler = importlib.import_module(
+        f"{MODULE_NAME}.utils.lifecycle_scheduler"
+    )
+    lifecycle_scheduler.schedule(
+        "native_reload_stale_probe",
+        lambda: handlers._native_save_reload_tick(page, state),
+        first_interval=60.0,
+    )
+    stale_tick = lifecycle_scheduler.SCHEDULER._tasks[
+        "native_reload_stale_probe"
+    ].tick
+    lifecycle_scheduler.invalidate(reason="native reload stale probe")
+    result = stale_tick()
     _check(result is None, "世代不一致時の戻り値がNoneではありません")
     _check(
         Path(bpy.data.filepath).resolve() == work_blend.resolve(),
@@ -222,10 +231,9 @@ def _case_existing_target_is_opened(handlers, work_blend: Path, page: Path) -> N
     page.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(work_blend, page)
     _open(work_blend, "work")
-    generation = handlers._native_save_reload_generation
     state = {"attempts": 0}
     assert page.is_file()
-    result = handlers._native_save_reload_tick(page, generation, state)
+    result = handlers._native_save_reload_tick(page, state)
     _check(result is None, "存在するファイルの再読込後の戻り値がNoneではありません")
     _check(
         Path(bpy.data.filepath).resolve() == page.resolve(),
@@ -241,9 +249,7 @@ def _case_changed_file_cancels_stale_timer(handlers, work_blend: Path, page: Pat
     shutil.copy2(work_blend, other)
     _open(other, "work")
     state = {"attempts": 0, "origin": str(work_blend)}
-    result = handlers._native_save_reload_tick(
-        page, handlers._native_save_reload_generation, state,
-    )
+    result = handlers._native_save_reload_tick(page, state)
     _check(result is None, "別ファイル移動後も古いタイマーが継続しました")
     _check(state["attempts"] == 0, "別ファイル移動後にattemptsが加算されました")
     _check(Path(bpy.data.filepath).resolve() == other.resolve(), "古いタイマーが別ファイルを開きました")
@@ -262,17 +268,13 @@ def _case_transient_open_failure_retries(handlers, work_blend: Path, page: Path)
     handlers._open_native_reload_target = _fail_once
     try:
         state = {"attempts": 0, "origin": str(work_blend)}
-        result = handlers._native_save_reload_tick(
-            page, handlers._native_save_reload_generation, state,
-        )
+        result = handlers._native_save_reload_tick(page, state)
     finally:
         handlers._open_native_reload_target = original
     _check(result == handlers._NATIVE_SAVE_RELOAD_RETRY_INTERVAL, "一時読込失敗を再試行しません")
     _check(state["attempts"] == 1, "一時読込失敗でattemptsが加算されません")
     _check(Path(bpy.data.filepath).resolve() == work_blend.resolve(), "一時失敗中に画面が移動しました")
-    result = handlers._native_save_reload_tick(
-        page, handlers._native_save_reload_generation, state,
-    )
+    result = handlers._native_save_reload_tick(page, state)
     _check(result is None, "再試行成功後の戻り値がNoneではありません")
     _check(Path(bpy.data.filepath).resolve() == page.resolve(), "再試行で対象を開けません")
 

@@ -107,8 +107,9 @@ def claim_worker_runtime(worker_token: str) -> None:
 
 
 def suspend_addon_handlers() -> None:
-    """ワーカー生成物の保存・再読込から通常UI用handlerを隔離する。"""
+    """ワーカー生成物の変換・保存・再読込から通常UI runtimeを隔離する。"""
     import bpy
+    import sys
 
     handler_lists = (
         "load_post",
@@ -119,6 +120,7 @@ def suspend_addon_handlers() -> None:
         "redo_pre",
         "undo_post",
         "redo_post",
+        "depsgraph_update_post",
     )
     for list_name in handler_lists:
         callbacks = getattr(bpy.app.handlers, list_name, None)
@@ -126,8 +128,61 @@ def suspend_addon_handlers() -> None:
             continue
         for callback in tuple(callbacks):
             module_name = str(getattr(callback, "__module__", "") or "")
-            if module_name.endswith(".utils.handlers"):
+            if module_name.startswith("bmanga_"):
                 callbacks.remove(callback)
+    for module_name, module in tuple(sys.modules.items()):
+        if not (
+            module_name.startswith("bmanga_")
+            and module_name.endswith(".utils.lifecycle_scheduler")
+        ):
+            continue
+        unregister = getattr(module, "unregister", None)
+        if callable(unregister):
+            unregister()
+
+
+def assert_addon_handlers_suspended() -> None:
+    """変換callback開始前に通常UI handler/timerが残っていないことを保証する。"""
+
+    import bpy
+    import sys
+
+    active_callbacks = []
+    for list_name in (
+        "load_post",
+        "save_pre",
+        "save_post",
+        "save_post_fail",
+        "undo_pre",
+        "redo_pre",
+        "undo_post",
+        "redo_post",
+        "depsgraph_update_post",
+    ):
+        callbacks = getattr(bpy.app.handlers, list_name, ()) or ()
+        active_callbacks.extend(
+            f"{list_name}:{getattr(callback, '__module__', '')}"
+            for callback in callbacks
+            if str(getattr(callback, "__module__", "") or "").startswith(
+                "bmanga_"
+            )
+        )
+    active_tasks = []
+    for module_name, module in tuple(sys.modules.items()):
+        if not (
+            module_name.startswith("bmanga_")
+            and module_name.endswith(".utils.lifecycle_scheduler")
+        ):
+            continue
+        scheduler = getattr(module, "SCHEDULER", None)
+        tasks = getattr(scheduler, "_tasks", {}) if scheduler is not None else {}
+        if tasks:
+            active_tasks.append(f"{module_name}:{len(tasks)}")
+    if active_callbacks or active_tasks:
+        raise RuntimeError(
+            "Blender worker isolation failed: "
+            f"handlers={active_callbacks}, tasks={active_tasks}"
+        )
 
 
 def worker_main(
@@ -151,6 +206,8 @@ def worker_main(
     try:
         claim_worker_runtime(args.worker_token)
         ensure_runtime()
+        suspend_addon_handlers()
+        assert_addon_handlers_suspended()
         path = Path(args.page_path).resolve(strict=True)
         if args.mode == "inspect":
             payload = inspect_callback(args.page_id, path)
@@ -194,6 +251,7 @@ __all__ = (
     "WORKER_CLAIM_ENV",
     "WORKER_TOKEN_ENV",
     "claim_worker_runtime",
+    "assert_addon_handlers_suspended",
     "read_json",
     "run_worker",
     "suspend_addon_handlers",

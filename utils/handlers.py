@@ -11,10 +11,11 @@ bmanga_current_coma_id を自動推定する。
 
 from __future__ import annotations
 
-import functools
 from contextlib import contextmanager
 import os
 from pathlib import Path
+import zlib
+from array import array
 
 import bpy
 from bpy.app.handlers import persistent
@@ -23,11 +24,9 @@ from . import log, paths
 
 _logger = log.get_logger(__name__)
 
-_current_file_sync_generation = 0
 _saving_work_metadata = False
 _suppress_work_metadata_save_depth = 0
 _native_save_token = None
-_native_save_reload_generation = 0
 _trusted_native_save_targets: list[str] = []
 # 保存トランザクションの一時退避と再読込タイマーが重なる競合窓を吸収する
 # ためのリトライ回数・間隔。上限到達後は作品ファイルへフォールバックする。
@@ -168,11 +167,9 @@ def _reload_missing_target(path: Path, state: dict, *, last_error: str = "") -> 
     return None
 
 
-def _native_save_reload_tick(path: Path, generation: int, state: dict) -> float | None:
+def _native_save_reload_tick(path: Path, state: dict) -> float | None:
     """予約された再読込を1回分実行する (クロージャでなくモジュール関数化してテスト可能に)."""
 
-    if generation != _native_save_reload_generation:
-        return None
     origin = str(state.get("origin", "") or "")
     current = str(getattr(bpy.data, "filepath", "") or "")
     if origin and current:
@@ -194,9 +191,6 @@ def _native_save_reload_tick(path: Path, generation: int, state: dict) -> float 
 def _schedule_native_save_reload(path: Path, *, notice: bool = True) -> None:
     """旧画面の保存結果を戻した後、復旧済みファイルを安全に再読込する."""
 
-    global _native_save_reload_generation
-    _native_save_reload_generation += 1
-    generation = _native_save_reload_generation
     if notice:
         _show_native_save_notice(
             title="最新の作品データを保護しました",
@@ -213,8 +207,11 @@ def _schedule_native_save_reload(path: Path, *, notice: bool = True) -> None:
         "attempts": 0,
         "origin": str(getattr(bpy.data, "filepath", "") or ""),
     }
-    bpy.app.timers.register(
-        functools.partial(_native_save_reload_tick, path, generation, state),
+    from . import lifecycle_scheduler
+
+    lifecycle_scheduler.schedule(
+        "native_save_reload",
+        lambda: _native_save_reload_tick(path, state),
         first_interval=_NATIVE_SAVE_RELOAD_FIRST_INTERVAL,
     )
 
@@ -233,13 +230,22 @@ def _begin_native_save_guard(filepath_arg=None) -> bool | None:
     force_current_restore = False
     if _native_save_token is not None:
         # 例外的に前回のsave_postが届かなかった場合も、ロックを残さない。
+        previous_token = _native_save_token
         previous_source = (
-            _native_save_token.reload_path or _native_save_token.source
+            previous_token.reload_path or previous_token.source
         )
         previous = native_save_guard.finish_native_save(
-            _native_save_token
+            previous_token
         )
         _native_save_token = None
+        _finalize_pending_native_checkpoint(
+            previous_token,
+            committed=bool(
+                previous.metadata_saved
+                and previous.native_save_succeeded
+                and not previous.restored
+            ),
+        )
         if previous.reload_required:
             _schedule_native_save_reload(previous_source)
             # save_preのreturn/例外では今回のBlender本体保存は止まらない。
@@ -328,6 +334,8 @@ def _begin_native_save_guard(filepath_arg=None) -> bool | None:
 def _mark_native_save_metadata_result(succeeded: bool, *, error: str = "") -> None:
     from ..io import native_save_guard
 
+    if succeeded is not True and _native_save_token is not None:
+        _capture_pending_raster_snapshots(_native_save_token.work_dir)
     native_save_guard.mark_native_save_metadata_result(
         _native_save_token,
         succeeded,
@@ -350,14 +358,327 @@ def _finish_native_save_guard(*, native_save_succeeded: bool = True):
         ), None
     source = token.source
     reload_source = token.reload_path or source
-    result = native_save_guard.finish_native_save(
+    if (
+        token.requires_restore
+        or not native_save_succeeded
+        or (
+            token.sidecar_token is not None
+            and token.metadata_saved is not True
+        )
+    ):
+        _capture_pending_raster_snapshots(token.work_dir)
+    try:
+        result = native_save_guard.finish_native_save(
+            token,
+            native_save_succeeded=native_save_succeeded,
+        )
+    except BaseException:
+        _finalize_pending_native_checkpoint(token, committed=False)
+        raise
+    _finalize_pending_native_checkpoint(
         token,
-        native_save_succeeded=native_save_succeeded,
+        committed=bool(
+            result.metadata_saved
+            and result.native_save_succeeded
+            and not result.restored
+        ),
     )
     from ..io import native_save_outcome
 
     native_save_outcome.record(source, result)
     return result, reload_source
+
+
+def _redirty_raster_ids(raster_ids: tuple[str, ...]) -> None:
+    if not raster_ids:
+        return
+    from ..operators import raster_layer_op
+
+    wanted = set(raster_ids)
+    scene = getattr(bpy.context, "scene", None)
+    for entry in getattr(scene, "bmanga_raster_layers", ()) or ():
+        if str(getattr(entry, "id", "") or "") in wanted:
+            raster_layer_op.mark_raster_dirty(entry)
+
+
+def _capture_pending_raster_snapshots(work_dir: Path) -> None:
+    from ..io import native_checkpoint_runtime
+    from ..operators import raster_layer_op
+
+    pending = native_checkpoint_runtime.pending_for(work_dir)
+    if pending is None:
+        return
+    missing = tuple(
+        raster_id
+        for raster_id in pending.raster_ids
+        if raster_id not in pending.raster_snapshots
+    )
+    if not missing:
+        return
+    try:
+        snapshots = raster_layer_op.capture_raster_pixel_snapshots(
+            bpy.context,
+            missing,
+            snapshot_dir=pending.snapshot_dir,
+        )
+    except Exception:  # noqa: BLE001
+        # payloadを作れないImageは触らない。旧ディスクPNGで上書きすると、
+        # 保存できなかった未保存画素まで失うため、復旧対象へ追加しない。
+        _logger.exception("native rollback raster capture failed")
+        return
+    native_checkpoint_runtime.preserve_raster_snapshots(
+        work_dir,
+        snapshots,
+    )
+
+
+def _restore_pending_raster_pixels(
+    pending,
+    *,
+    strict: bool = False,
+) -> tuple[str, ...]:
+    if not pending.raster_snapshots:
+        return ()
+    from ..operators import raster_layer_op
+
+    scene = getattr(bpy.context, "scene", None)
+    entries = {
+        str(getattr(entry, "id", "") or ""): entry
+        for entry in getattr(scene, "bmanga_raster_layers", ()) or ()
+    }
+    restored: list[str] = []
+    failures: list[str] = []
+    for raster_id, snapshot in pending.raster_snapshots.items():
+        entry = entries.get(raster_id)
+        if entry is None:
+            failures.append(raster_id)
+            continue
+        try:
+            image = raster_layer_op.ensure_raster_image(
+                bpy.context,
+                entry,
+                create_missing=False,
+            )
+            if image is None:
+                raise RuntimeError("raster image is not loaded")
+            _validate_raster_snapshot_before_restore(
+                snapshot,
+                entry=entry,
+                image=image,
+            )
+            expected = (
+                int(snapshot.width)
+                * int(snapshot.height)
+                * int(snapshot.channels)
+            )
+            if tuple(image.size) != (snapshot.width, snapshot.height):
+                image.scale(snapshot.width, snapshot.height)
+            _restore_raster_snapshot_stream(image, snapshot, expected)
+            image.update()
+            restored.append(raster_id)
+        except Exception:  # noqa: BLE001
+            failures.append(raster_id)
+            _logger.exception(
+                "native rollback raster pixels restore failed: %s",
+                raster_id,
+            )
+    if strict and failures:
+        raise RuntimeError(
+            "未保存ラスター画素を復旧できませんでした: "
+            + ", ".join(sorted(failures))
+        )
+    return tuple(restored)
+
+
+def _validate_raster_snapshot_before_restore(
+    snapshot,
+    *,
+    entry,
+    image,
+) -> None:
+    """寸法・容量・圧縮hashを検証してからImageの再確保を許可する。"""
+
+    import hashlib
+
+    from ..io import native_checkpoint_runtime
+    from ..operators import raster_layer_op
+
+    width = int(snapshot.width)
+    height = int(snapshot.height)
+    channels = int(snapshot.channels)
+    raw_bytes = int(snapshot.raw_byte_count)
+    if (
+        width <= 0
+        or height <= 0
+        or width > native_checkpoint_runtime.MAX_RASTER_SNAPSHOT_DIMENSION
+        or height > native_checkpoint_runtime.MAX_RASTER_SNAPSHOT_DIMENSION
+        or channels <= 0
+        or channels > native_checkpoint_runtime.MAX_RASTER_SNAPSHOT_CHANNELS
+        or raw_bytes <= 0
+        or raw_bytes > native_checkpoint_runtime.MAX_RASTER_SNAPSHOT_RAW_BYTES
+        or raw_bytes != width * height * channels * 4
+    ):
+        raise RuntimeError("raster rollback snapshot dimensions are invalid")
+    work = getattr(getattr(bpy.context, "scene", None), "bmanga_work", None)
+    dpi = max(1, min(1200, int(getattr(entry, "dpi", 300) or 300)))
+    paper_size = (
+        raster_layer_op._raster_size_px(work, dpi)
+        if work is not None
+        else (0, 0)
+    )
+    current_size = tuple(int(value) for value in image.size)
+    if (width, height) not in {tuple(paper_size), current_size}:
+        raise RuntimeError("raster rollback snapshot size is not owned by layer")
+    source = Path(snapshot.compressed_path)
+    if not source.is_file():
+        raise RuntimeError("raster rollback snapshot is missing")
+    compressed_size = source.stat().st_size
+    if compressed_size <= 0 or compressed_size > raw_bytes + 1024 * 1024:
+        raise RuntimeError("raster rollback compressed size is invalid")
+    digest = hashlib.sha256()
+    with source.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    if digest.hexdigest() != str(snapshot.compressed_sha256):
+        raise RuntimeError("raster rollback snapshot digest is invalid")
+
+
+def _restore_raster_snapshot_stream(image, snapshot, expected: int) -> None:
+    """圧縮snapshotを固定サイズで展開し、Imageへ範囲代入する。"""
+
+    import hashlib
+
+    source = Path(snapshot.compressed_path)
+    if not source.is_file():
+        raise RuntimeError("raster rollback snapshot is missing")
+    digest = hashlib.sha256()
+    decompressor = zlib.decompressobj()
+    carry = bytearray()
+    value_offset = 0
+    raw_byte_count = 0
+
+    def _apply_raw(raw: bytes) -> None:
+        nonlocal carry, value_offset, raw_byte_count
+        if not raw:
+            return
+        raw_byte_count += len(raw)
+        carry.extend(raw)
+        aligned = len(carry) - (len(carry) % 4)
+        if aligned <= 0:
+            return
+        pixels = array("f")
+        pixels.frombytes(carry[:aligned])
+        del carry[:aligned]
+        stop = value_offset + len(pixels)
+        if stop > expected:
+            raise RuntimeError("raster rollback pixel buffer is oversized")
+        image.pixels[value_offset:stop] = pixels
+        value_offset = stop
+
+    with source.open("rb") as handle:
+        while compressed := handle.read(1024 * 1024):
+            digest.update(compressed)
+            pending = compressed
+            while pending:
+                raw = decompressor.decompress(
+                    pending,
+                    _RASTER_RESTORE_CHUNK_BYTES,
+                )
+                pending = decompressor.unconsumed_tail
+                _apply_raw(raw)
+                if not pending and raw:
+                    while True:
+                        buffered = decompressor.decompress(
+                            b"",
+                            _RASTER_RESTORE_CHUNK_BYTES,
+                        )
+                        if not buffered:
+                            break
+                        _apply_raw(buffered)
+        _apply_raw(decompressor.flush())
+    if (
+        not decompressor.eof
+        or carry
+        or value_offset != expected
+        or raw_byte_count != int(snapshot.raw_byte_count)
+        or digest.hexdigest() != str(snapshot.compressed_sha256)
+    ):
+        raise RuntimeError("raster rollback pixel snapshot is invalid")
+
+
+_RASTER_RESTORE_CHUNK_BYTES = 1024 * 1024
+
+
+def _finalize_pending_native_checkpoint(token, *, committed: bool) -> None:
+    """Native成否と同時にだけDomain/Rasterのclean状態を確定する。"""
+
+    from ..io import (
+        domain_runtime,
+        native_checkpoint_runtime,
+    )
+
+    pending = native_checkpoint_runtime.take(token.work_dir)
+    if pending is None:
+        return
+    try:
+        if committed:
+            store = domain_runtime.store_for(pending.work_dir)
+            store.mark_checkpointed(
+                project=pending.project_changed,
+                page_uids=tuple(pending.page_uids),
+            )
+            native_checkpoint_runtime.cleanup_recovered_snapshot_transactions(
+                pending.work_dir,
+                token.source,
+            )
+            return
+        _restore_pending_raster_pixels(pending)
+        _redirty_raster_ids(pending.raster_ids)
+        repository = domain_runtime.repository_for(pending.work_dir)
+        repository.accept_recovered_files(pending.repository_paths)
+    finally:
+        native_checkpoint_runtime.cleanup_snapshot_transaction(
+            pending.work_dir,
+            pending.snapshot_dir,
+        )
+
+
+def _recover_crashed_raster_snapshots(
+    work_dir: Path,
+    blend_path: Path,
+) -> tuple[str, ...]:
+    """前回保存中断時の未保存画素を現在Imageへ戻し、dirtyを維持する。"""
+
+    from ..io import native_checkpoint_runtime
+
+    restored: list[str] = []
+    for transaction in (
+        native_checkpoint_runtime.recoverable_snapshot_transactions(
+            work_dir,
+            blend_path,
+        )
+    ):
+        pending = native_checkpoint_runtime.PendingNativeCheckpoint(
+            transaction.work_dir,
+            (),
+            tuple(transaction.raster_snapshots),
+            raster_snapshots=transaction.raster_snapshots,
+            snapshot_dir=transaction.snapshot_dir,
+        )
+        restored_ids = _restore_pending_raster_pixels(
+            pending,
+            strict=True,
+        )
+        if set(restored_ids) != set(transaction.raster_snapshots):
+            raise RuntimeError(
+                "未保存ラスターsnapshotを全件復旧できませんでした"
+            )
+        _redirty_raster_ids(tuple(transaction.raster_snapshots))
+        native_checkpoint_runtime.mark_recoverable_snapshot_hydrated(
+            transaction
+        )
+        restored.extend(restored_ids)
+    return tuple(restored)
 
 
 def _find_work_root(blend_path: Path) -> Path | None:
@@ -484,16 +805,59 @@ def _capture_native_save_baseline(work, work_dir: Path, blend_path: Path) -> Non
 
 def _prepare_native_save_sidecars() -> None:
     from ..core.work import get_work
-    from ..io import native_save_guard
+    from ..io import native_checkpoint_runtime, native_save_guard
+    from ..operators import raster_layer_op
 
     work = get_work(bpy.context)
     work_dir = Path(str(getattr(work, "work_dir", "") or ""))
     if work is None or not work_dir.is_dir():
         raise RuntimeError("作品情報の保存先がありません")
+    sidecar_paths = _native_sidecar_paths(work, work_dir)
     native_save_guard.prepare_native_save_sidecars(
         _native_save_token,
-        _native_sidecar_paths(work, work_dir),
+        sidecar_paths,
     )
+    raster_ids = raster_layer_op.dirty_raster_ids(bpy.context)
+    # 最初の本番PNG書込みより前に全dirty Imageを符号化する。複数枚の
+    # 途中で1枚だけ保存失敗しても、未書込み側を旧PNGで上書きしない。
+    transaction_id = str(
+        getattr(_native_save_token, "transaction_id", "") or ""
+    )
+    snapshot_dir = native_checkpoint_runtime.create_snapshot_transaction(
+        work_dir,
+        transaction_id,
+        source_path=getattr(_native_save_token, "source", None),
+    )
+    try:
+        raster_snapshots = raster_layer_op.capture_raster_pixel_snapshots(
+            bpy.context,
+            raster_ids,
+            snapshot_dir=snapshot_dir,
+        )
+        native_checkpoint_runtime.seal_snapshot_transaction(
+            snapshot_dir,
+            raster_snapshots,
+        )
+        native_checkpoint_runtime.begin(
+            work_dir,
+            repository_paths=(
+                path
+                for path in sidecar_paths
+                if path.name in {"project.json", "page.json"}
+            ),
+            raster_ids=raster_ids,
+            snapshot_dir=snapshot_dir,
+        )
+        native_checkpoint_runtime.preserve_raster_snapshots(
+            work_dir,
+            raster_snapshots,
+        )
+    except BaseException:
+        native_checkpoint_runtime.cleanup_snapshot_transaction(
+            work_dir,
+            snapshot_dir,
+        )
+        raise
 
 
 def _sync_active_from_blend_path(
@@ -670,10 +1034,38 @@ def _filter_embedded_page_details(work) -> None:
         return
     for page_entry in getattr(work, "pages", []) or []:
         page_id = str(getattr(page_entry, "id", "") or "")
-        if page_id not in detail_filter and bool(
-            getattr(page_entry, "detail_loaded", False)
-        ):
+        if page_id not in detail_filter:
             page_detail.clear_page_detail(page_entry)
+        else:
+            # detail_loadedはPhase 4から非保存cache。正規のpage/coma blendで
+            # sidecar hashが一致した場合だけ、埋込済み詳細を現在世代として扱う。
+            page_entry.detail_loaded = True
+
+
+def _bind_embedded_domain_identifiers(
+    work,
+    project_document,
+    page_documents,
+) -> None:
+    """Repositoryと一致済みの埋込cacheへ最新UID/revisionだけを束縛する."""
+
+    from ..io import domain_projection
+
+    domain_projection.bind_project_document(work, project_document)
+    pages_by_display_id = {
+        str(getattr(page, "id", "") or ""): page
+        for page in getattr(work, "pages", ())
+    }
+    display_ids_by_uid = {
+        summary.uid: summary.display_id
+        for summary in project_document.pages
+    }
+    for document in page_documents:
+        page = pages_by_display_id.get(
+            display_ids_by_uid.get(document.page_uid, "")
+        )
+        if page is not None:
+            domain_projection.bind_page_document(page, document)
 
 
 def sync_scene_work_from_disk(context, work_dir: Path):
@@ -737,6 +1129,13 @@ def save_scene_work_to_disk(
     通常の .blend 保存フックからも呼ぶため、ここでは .blend 保存は行わない。
     """
     global _saving_work_metadata
+    from . import history_runtime
+
+    if history_runtime.is_restoring() or history_runtime.is_blocked():
+        _logger.error(
+            "B-MANGA metadata save blocked during history reconciliation"
+        )
+        return False
     if _saving_work_metadata:
         return False
     if _suppress_work_metadata_save_depth:
@@ -765,17 +1164,15 @@ def save_scene_work_to_disk(
     _saving_work_metadata = True
     try:
         try:
-            from . import object_state_sync
+            from . import outliner_change_collector
 
-            scene = getattr(context, "scene", None)
-            if scene is not None:
-                for obj in bpy.data.objects:
-                    object_state_sync.sync_from_blender_object(scene, obj)
-        except Exception:  # noqa: BLE001
-            _logger.exception("object state save writeback failed")
-            raise RuntimeError(
-                "Blenderオブジェクトの状態をDomainへ取り込めませんでした"
+            outliner_change_collector.flush(
+                getattr(context, "scene", None),
             )
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(
+                "Blenderオブジェクトの変更をDomainへ取り込めませんでした"
+            ) from exc
         page_range.update_page_range_visibility(work)
         try:
             from . import view_settings
@@ -823,6 +1220,12 @@ def save_scene_work_to_disk(
             )
         except Exception:  # noqa: BLE001
             _logger.exception("sidecar load signature record failed")
+        if page is not None and current_page_id:
+            page_file_scene.record_page_runtime_signature(
+                getattr(context, "scene", None),
+                work,
+                current_page_id,
+            )
         _logger.info("B-MANGA metadata saved%s", f" ({reason})" if reason else "")
         # Phase 1: 保存契機で Outliner mirror を最新化する。page/coma 追加削除
         # 直後に save_scene_work_to_disk が呼ばれるため、ここでミラーを更新
@@ -851,7 +1254,7 @@ def save_scene_work_to_disk(
         _saving_work_metadata = False
 
 
-def _hide_legacy_overlay_objects() -> None:
+def _hide_legacy_overlay_objects(scene) -> None:
     _PREFIXES = (
         "page_paper_guide_",
         "page_safe_area_fill_",
@@ -859,7 +1262,7 @@ def _hide_legacy_overlay_objects() -> None:
         "work_info_text_",
         "page_preview_",
     )
-    for obj in bpy.data.objects:
+    for obj in getattr(scene, "objects", ()) or ():
         name = obj.name
         if any(name.startswith(p) for p in _PREFIXES):
             try:
@@ -889,7 +1292,7 @@ def _reconcile_gpencil_collections(context, work, *, include_page_content: bool 
     except Exception:  # noqa: BLE001
         _logger.exception("load_post: apply_page_collection_transforms failed")
     try:
-        _hide_legacy_overlay_objects()
+        _hide_legacy_overlay_objects(scene)
     except Exception:  # noqa: BLE001
         _logger.exception("load_post: hide legacy overlay objects failed")
     if include_page_content:
@@ -941,8 +1344,7 @@ def _refresh_legacy_material_render_methods() -> None:
         _logger.exception("load_post: legacy material render method refresh failed")
 
 
-@persistent
-def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender handlers
+def _hydrate_current_file(filepath_arg) -> bool:
     """.blend ロード直後に B-MANGA 作品のメタ情報を再同期."""
     try:
         # ファイル切替前のツール modal が残っているとイベントを奪ったままになる
@@ -1064,8 +1466,7 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
                     repository=repository,
                 )
                 project_document = repository.load_project()
-                if file_role == page_file_scene.ROLE_WORK:
-                    repository.validate_project_pages(project_document)
+                repository.assert_project_page_files(project_document)
             except Exception:  # noqa: BLE001
                 _logger.exception(
                     "load_post: embedded Domain recovery failed"
@@ -1127,8 +1528,13 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
             work = embedded_work
             work.work_dir = str(work_dir.resolve())
             work.loaded = True
+            _bind_embedded_domain_identifiers(
+                work,
+                project_document,
+                page_documents,
+            )
             _filter_embedded_page_details(work)
-            _logger.info("load_post: unchanged sidecars reused from blend")
+            _logger.debug("load_post: unchanged sidecars reused from blend")
         else:
             work = sync_scene_work_from_disk(bpy.context, work_dir)
         if work is None:
@@ -1195,7 +1601,15 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
             try:
                 from . import layer_object_sync as _los
 
-                _los.mirror_work_to_outliner(scene, work)
+                _los.mirror_work_to_outliner(
+                    scene,
+                    work,
+                    # work一覧は直後のpage-grid整合でGPU previewを同期する。
+                    # ここでも同期すると全55ページの署名検査を二重実行する。
+                    sync_work_previews=(
+                        file_role != page_file_scene.ROLE_WORK
+                    ),
+                )
             except Exception:  # noqa: BLE001
                 _logger.exception("load_post: outliner mirror failed")
         # work.blend / cNN.blend ごとに Scene の整合を補正する。
@@ -1347,12 +1761,33 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
         except (KeyError, ValueError):
             _logger.exception("load_post: file role reconciliation failed")
         try:
-            from . import file_transition_runtime
-
-            file_transition_runtime.arm_scene(scene)
+            restored_rasters = _recover_crashed_raster_snapshots(
+                work_dir,
+                blend_path,
+            )
         except Exception:  # noqa: BLE001
-            _logger.exception("load_post: file transition tracking arm failed")
-        _logger.info("B-MANGA: load_post synced for %s", blend_path)
+            _logger.exception(
+                "load_post: interrupted raster save recovery failed"
+            )
+            work.loaded = False
+            _show_native_save_notice(
+                title="未保存ラスターの復旧に失敗しました",
+                lines=(
+                    "この画面では保存せず、Blenderを閉じて"
+                    "作品を開き直してください。",
+                ),
+            )
+            return False
+        if restored_rasters:
+            _show_native_save_notice(
+                title="未保存ラスターを復旧しました",
+                lines=(
+                    "前回の保存中断直前のラスターを戻しました。",
+                    "内容を確認して、もう一度保存してください。",
+                ),
+            )
+        _logger.debug("B-MANGA: load_post synced for %s", blend_path)
+        return True
     except Exception:  # noqa: BLE001
         _logger.exception("B-MANGA load_post handler failed")
         try:
@@ -1372,14 +1807,86 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
                 "この画面では保存せず、作品を開き直してください。",
             ),
         )
+        return False
+
+
+def _hydrate_with_path_cache(filepath_arg) -> bool:
+    from . import page_file_scene
+
+    with paths.path_resolution_cache(), page_file_scene.role_resolution_cache():
+        return _hydrate_current_file(filepath_arg)
+
+
+@persistent
+def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender handlers
+    """型付きload EventをCoordinatorへ渡す唯一のload handler。"""
+
+    from ..bmanga_core.lifecycle import LifecycleEvent, LifecycleEventKind
+    from . import lifecycle_coordinator, page_file_scene
+
+    filepath = str(getattr(bpy.data, "filepath", "") or "")
+    try:
+        with paths.path_resolution_cache(), page_file_scene.role_resolution_cache():
+            lifecycle_coordinator.handle_handler_event(
+                LifecycleEvent(
+                    LifecycleEventKind.LOAD,
+                    filepath,
+                    {"handler_arg": str(filepath_arg or "")},
+                ),
+                primary=lambda: _hydrate_current_file(filepath_arg),
+            )
+    except Exception:  # noqa: BLE001
+        _logger.exception("B-MANGA lifecycle load handler failed")
 
 
 @persistent
 def _bmanga_on_save_pre(filepath_arg) -> None:  # signature: (str,) in Blender handlers
+    """型付きsave EventをCoordinatorへ渡す唯一のsave_pre handler。"""
+
+    from ..bmanga_core.lifecycle import LifecycleEvent, LifecycleEventKind
+    from . import lifecycle_coordinator
+
+    try:
+        lifecycle_coordinator.handle_handler_event(
+            LifecycleEvent(
+                LifecycleEventKind.SAVE_PRE,
+                str(getattr(bpy.data, "filepath", "") or ""),
+                {"handler_arg": str(filepath_arg or "")},
+            ),
+            primary=lambda: _save_pre_impl(filepath_arg),
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("B-MANGA lifecycle save_pre handler failed")
+
+
+def _save_pre_impl(filepath_arg) -> None:
     """通常の .blend 保存前に B-MANGA の JSON メタデータも同期する."""
     try:
         guard_started = _begin_native_save_guard(filepath_arg)
         if guard_started is None:
+            return
+        from . import lifecycle_coordinator
+        from ..bmanga_core.lifecycle import LifecycleState
+
+        from . import history_runtime
+
+        history_blocked = (
+            history_runtime.is_restoring()
+            or history_runtime.is_blocked()
+        )
+        if (
+            lifecycle_coordinator.MACHINE.state is LifecycleState.ROLLING_BACK
+            or history_blocked
+        ):
+            from ..io import native_save_guard
+
+            native_save_guard.force_native_save_restore(
+                _native_save_token,
+                reason=(
+                    "作品の復元処理が完了していないため、"
+                    "この画面からは保存できません"
+                ),
+            )
             return
         if not guard_started:
             # Blenderはsave_pre例外を無視して本体保存を続行する。既存ファイルは
@@ -1448,13 +1955,13 @@ def _bmanga_on_save_pre(filepath_arg) -> None:  # signature: (str,) in Blender h
                     )
         except Exception:  # noqa: BLE001
             _logger.exception("B-MANGA thumb output save_pre sync failed")
-        from . import file_transition_runtime
-
         metadata_saved = save_scene_work_to_disk(
             bpy.context,
             reason="save_pre",
             strict_rasters=True,
-            refresh_runtime=not file_transition_runtime.switch_in_progress(),
+            # 保存はDomain確定とNative Snapshotの準備だけを行う。
+            # Outliner派生表示の全再構築はload/明示変更時へ限定する。
+            refresh_runtime=False,
         )
         _mark_native_save_metadata_result(
             metadata_saved,
@@ -1475,6 +1982,25 @@ def _bmanga_on_save_pre(filepath_arg) -> None:  # signature: (str,) in Blender h
 
 @persistent
 def _bmanga_on_save_post(filepath_arg) -> None:  # signature: (str,) in Blender handlers
+    """型付きsave EventをCoordinatorへ渡す唯一のsave_post handler。"""
+
+    from ..bmanga_core.lifecycle import LifecycleEvent, LifecycleEventKind
+    from . import lifecycle_coordinator
+
+    try:
+        lifecycle_coordinator.handle_handler_event(
+            LifecycleEvent(
+                LifecycleEventKind.SAVE_POST,
+                str(getattr(bpy.data, "filepath", "") or ""),
+                {"handler_arg": str(filepath_arg or "")},
+            ),
+            primary=lambda: _save_post_impl(filepath_arg),
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("B-MANGA lifecycle save_post handler failed")
+
+
+def _save_post_impl(filepath_arg) -> None:
     """保存後にページ一覧用の軽量表示を戻す."""
     try:
         save_result, source = _finish_native_save_guard(
@@ -1511,7 +2037,25 @@ def _bmanga_on_save_post(filepath_arg) -> None:  # signature: (str,) in Blender 
 
 
 @persistent
-def _bmanga_on_save_post_fail(*_args) -> None:
+def _bmanga_on_save_post_fail(*args) -> None:
+    """型付きsave EventをCoordinatorへ渡す唯一のsave_fail handler。"""
+
+    from ..bmanga_core.lifecycle import LifecycleEvent, LifecycleEventKind
+    from . import lifecycle_coordinator
+
+    try:
+        lifecycle_coordinator.handle_handler_event(
+            LifecycleEvent(
+                LifecycleEventKind.SAVE_FAIL,
+                str(getattr(bpy.data, "filepath", "") or ""),
+            ),
+            primary=lambda: _save_post_fail_impl(*args),
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("B-MANGA lifecycle save_fail handler failed")
+
+
+def _save_post_fail_impl(*_args) -> None:
     """保存失敗時も作品ロックを解放し、退避した最新ファイルを戻す."""
 
     try:
@@ -1542,6 +2086,35 @@ def _remove_named_handler(handler_list, name: str) -> None:
 @persistent
 def _bmanga_on_undo_pre(*_args) -> None:
     """Undo/Redo が RNA を差し替える前に監視とモーダル参照を止める."""
+    _bmanga_on_history_pre(is_redo=False)
+
+
+@persistent
+def _bmanga_on_redo_pre(*_args) -> None:
+    _bmanga_on_history_pre(is_redo=True)
+
+
+def _bmanga_on_history_pre(*, is_redo: bool) -> None:
+    from ..bmanga_core.lifecycle import LifecycleEvent, LifecycleEventKind
+    from . import lifecycle_coordinator
+
+    try:
+        lifecycle_coordinator.handle_handler_event(
+            LifecycleEvent(
+                (
+                    LifecycleEventKind.REDO_PRE
+                    if is_redo
+                    else LifecycleEventKind.UNDO_PRE
+                ),
+                str(getattr(bpy.data, "filepath", "") or ""),
+            ),
+            primary=_history_pre_impl,
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("undo_pre: Coordinator dispatch failed")
+
+
+def _history_pre_impl() -> None:
     try:
         from ..operators import coma_modal_state as _modal_state
         from . import history_runtime
@@ -1557,6 +2130,35 @@ def _bmanga_on_undo_pre(*_args) -> None:
 @persistent
 def _bmanga_on_undo_post(*_args) -> None:
     """Undo/Redo 後の次イベントループで B-MANGA 実体を再同期する."""
+    _bmanga_on_history_post(is_redo=False)
+
+
+@persistent
+def _bmanga_on_redo_post(*_args) -> None:
+    _bmanga_on_history_post(is_redo=True)
+
+
+def _bmanga_on_history_post(*, is_redo: bool) -> None:
+    from ..bmanga_core.lifecycle import LifecycleEvent, LifecycleEventKind
+    from . import lifecycle_coordinator
+
+    try:
+        lifecycle_coordinator.handle_handler_event(
+            LifecycleEvent(
+                (
+                    LifecycleEventKind.REDO_POST
+                    if is_redo
+                    else LifecycleEventKind.UNDO_POST
+                ),
+                str(getattr(bpy.data, "filepath", "") or ""),
+            ),
+            primary=_history_post_impl,
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("undo_post: Coordinator dispatch failed")
+
+
+def _history_post_impl() -> None:
     try:
         from ..operators import coma_modal_state as _modal_state
         from . import history_runtime
@@ -1588,47 +2190,55 @@ def register() -> None:
         _remove_named_handler(save_post_fail, _bmanga_on_save_post_fail.__name__)
     _remove_named_handler(bpy.app.handlers.undo_pre, _bmanga_on_undo_pre.__name__)
     _remove_named_handler(bpy.app.handlers.redo_pre, _bmanga_on_undo_pre.__name__)
+    _remove_named_handler(bpy.app.handlers.redo_pre, _bmanga_on_redo_pre.__name__)
     _remove_named_handler(bpy.app.handlers.undo_post, _bmanga_on_undo_post.__name__)
     _remove_named_handler(bpy.app.handlers.redo_post, _bmanga_on_undo_post.__name__)
+    _remove_named_handler(bpy.app.handlers.redo_post, _bmanga_on_redo_post.__name__)
     bpy.app.handlers.load_post.append(_bmanga_on_load_post)
     bpy.app.handlers.save_pre.append(_bmanga_on_save_pre)
     bpy.app.handlers.save_post.append(_bmanga_on_save_post)
     if save_post_fail is not None:
         save_post_fail.append(_bmanga_on_save_post_fail)
     bpy.app.handlers.undo_pre.append(_bmanga_on_undo_pre)
-    bpy.app.handlers.redo_pre.append(_bmanga_on_undo_pre)
+    bpy.app.handlers.redo_pre.append(_bmanga_on_redo_pre)
     bpy.app.handlers.undo_post.append(_bmanga_on_undo_post)
-    bpy.app.handlers.redo_post.append(_bmanga_on_undo_post)
+    bpy.app.handlers.redo_post.append(_bmanga_on_redo_post)
     _logger.debug("handlers registered")
 
 
 def schedule_current_file_sync(retries: int = 3, interval: float = 0.15) -> None:
     """アドオン再読込時に、現在開いている B-MANGA .blend を load_post 相当に同期する."""
-    global _current_file_sync_generation
-    _current_file_sync_generation += 1
-    generation = _current_file_sync_generation
     state = {"left": max(1, int(retries))}
 
     def _tick():
-        if generation != _current_file_sync_generation:
-            return None
         try:
-            _bmanga_on_load_post(str(getattr(bpy.data, "filepath", "") or ""))
+            # これは実ファイルloadではなくアドオン再登録後の再hydrate。
+            # load Eventを偽装するとScheduler自身をinvalidateし、残りの
+            # retryまで旧世代として消してしまう。
+            from . import lifecycle_coordinator
+
+            filepath = str(getattr(bpy.data, "filepath", "") or "")
+            lifecycle_coordinator.finalize_load_hydration(
+                _hydrate_with_path_cache(filepath)
+            )
         except Exception:  # noqa: BLE001
             _logger.exception("scheduled current file sync failed")
         state["left"] -= 1
         return interval if state["left"] > 0 else None
 
     try:
-        bpy.app.timers.register(_tick, first_interval=interval)
+        from . import lifecycle_scheduler
+
+        lifecycle_scheduler.schedule(
+            "current_file_sync",
+            _tick,
+            first_interval=interval,
+        )
     except Exception:  # noqa: BLE001
         _logger.exception("schedule current file sync failed")
 
 
 def unregister() -> None:
-    global _current_file_sync_generation, _native_save_reload_generation
-    _current_file_sync_generation += 1
-    _native_save_reload_generation += 1
     try:
         _finish_native_save_guard()
     except Exception:  # noqa: BLE001
@@ -1651,6 +2261,8 @@ def unregister() -> None:
         _remove_named_handler(save_post_fail, _bmanga_on_save_post_fail.__name__)
     _remove_named_handler(bpy.app.handlers.undo_pre, _bmanga_on_undo_pre.__name__)
     _remove_named_handler(bpy.app.handlers.redo_pre, _bmanga_on_undo_pre.__name__)
+    _remove_named_handler(bpy.app.handlers.redo_pre, _bmanga_on_redo_pre.__name__)
     _remove_named_handler(bpy.app.handlers.undo_post, _bmanga_on_undo_post.__name__)
     _remove_named_handler(bpy.app.handlers.redo_post, _bmanga_on_undo_post.__name__)
+    _remove_named_handler(bpy.app.handlers.redo_post, _bmanga_on_redo_post.__name__)
     _logger.debug("handlers unregistered")

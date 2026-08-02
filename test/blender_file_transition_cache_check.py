@@ -118,6 +118,36 @@ def _assert_sidecar_change_invalidates(work_dir: Path) -> None:
     assert cache.current(scene, work_dir, blend_path)
 
 
+def _assert_embedded_revision_binding(work_dir: Path, work, page) -> None:
+    domain_projection = _module("io.domain_projection")
+    domain_runtime = _module("io.domain_runtime")
+    handlers = _module("utils.handlers")
+    repository = domain_runtime.repository_for(work_dir)
+    project_document = repository.load_project()
+    page_uid = domain_projection.ensure_page_uid(
+        page,
+        project_document.project_uid,
+    )
+    page_document = repository.load_page(page_uid)
+    work[domain_projection.PROJECT_REVISION_PROP] = (
+        project_document.revision + 100
+    )
+    page[domain_projection.PAGE_REVISION_PROP] = page_document.revision + 100
+    handlers._bind_embedded_domain_identifiers(  # noqa: SLF001
+        work,
+        project_document,
+        (page_document,),
+    )
+    assert (
+        int(work.get(domain_projection.PROJECT_REVISION_PROP, -1))
+        == project_document.revision
+    )
+    assert (
+        int(page.get(domain_projection.PAGE_REVISION_PROP, -1))
+        == page_document.revision
+    )
+
+
 def main() -> None:
     module = None
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_transition_cache_"))
@@ -134,6 +164,7 @@ def main() -> None:
         _assert_preview_variants(work, page)
         assert bpy.ops.bmanga.work_save() == {"FINISHED"}
         _assert_sidecar_change_invalidates(work_dir)
+        _assert_embedded_revision_binding(work_dir, work, page)
 
         runtime = _module("utils.file_transition_runtime")
         runtime.arm_scene(bpy.context.scene)

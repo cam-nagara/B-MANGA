@@ -57,9 +57,8 @@ def store_for(
 
 def hydrate_page(work_dir: str | Path, page: PageDocument) -> DomainStore:
     current = store_for(work_dir)
-    pages = current.pages
-    pages[page.page_uid] = page
-    return install_store(work_dir, current.project, tuple(pages.values()))
+    current.hydrate_page(page)
+    return current
 
 
 def forget_repository(work_dir: str | Path) -> None:

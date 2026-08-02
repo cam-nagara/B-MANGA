@@ -343,8 +343,7 @@ def _on_depsgraph_update_post(scene, depsgraph) -> None:
     _sync()
 
 
-@persistent
-def _on_load_post(_filepath: str) -> None:
+def on_lifecycle_load() -> None:
     global _LAST_SYNCED
     _LAST_SYNCED = ("", "")
     _resubscribe_msgbus()
@@ -377,8 +376,18 @@ def register() -> None:
     _resubscribe_msgbus()
     if _on_depsgraph_update_post not in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph_update_post)
-    if _on_load_post not in bpy.app.handlers.load_post:
-        bpy.app.handlers.load_post.append(_on_load_post)
+    _remove_legacy_load_handler()
+
+
+def _remove_legacy_load_handler() -> None:
+    for handler in list(bpy.app.handlers.load_post):
+        if (
+            getattr(handler, "__name__", "") == "_on_load_post"
+            and str(getattr(handler, "__module__", "")).endswith(
+                ".active_collection_sync"
+            )
+        ):
+            bpy.app.handlers.load_post.remove(handler)
 
 
 def unregister() -> None:
@@ -390,7 +399,4 @@ def unregister() -> None:
         bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph_update_post)
     except (ValueError, RuntimeError):
         pass
-    try:
-        bpy.app.handlers.load_post.remove(_on_load_post)
-    except (ValueError, RuntimeError):
-        pass
+    _remove_legacy_load_handler()

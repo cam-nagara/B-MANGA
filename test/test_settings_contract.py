@@ -133,13 +133,17 @@ def test_new_schema_explicitly_excludes_runtime_and_derived_legacy_fields():
             FieldCategory.DERIVED_DISPLAY,
             "exclude_derived_display",
         ),
-        "BMangaPageEntry.detail_loaded": (
-            FieldCategory.SESSION_STATE,
-            "exclude_session_state",
-        ),
-        "BMangaWorkData.active_page_index": (
-            FieldCategory.SESSION_STATE,
-            "exclude_session_state",
+            "BMangaPageEntry.detail_loaded": (
+                FieldCategory.SESSION_STATE,
+                "exclude_session_state",
+            ),
+            "BMangaWorkData.loaded": (
+                FieldCategory.SESSION_STATE,
+                "exclude_session_state",
+            ),
+            "BMangaWorkData.active_page_index": (
+                FieldCategory.SESSION_STATE,
+                "exclude_session_state",
         ),
         "BMangaWorkData.work_dir": (
             FieldCategory.SESSION_STATE,
@@ -160,7 +164,11 @@ def test_new_schema_explicitly_excludes_runtime_and_derived_legacy_fields():
         for spec in registry.specs
         if spec.legacy_save_policy == "rna_skip_save"
     ]
-    assert len(skip_save) == 9
+    assert len(skip_save) == 11
+    assert {
+        "BMangaPageEntry.detail_loaded",
+        "BMangaWorkData.loaded",
+    } <= {spec.symbol for spec in skip_save}
     assert all(spec.category is FieldCategory.SESSION_STATE for spec in skip_save)
 
 

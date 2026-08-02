@@ -9,6 +9,7 @@ from ..bmanga_core.domain_store import (
     ApplyProjectPatch,
     project_patch,
 )
+from ..bmanga_core.file_identity import ArtifactCommitHook
 from ..utils import log, paths
 from . import (
     coma_move_recovery,
@@ -51,28 +52,40 @@ def create_bmanga_skeleton(work_dir: Path) -> None:
 # ---------- project.json ----------
 
 
-def save_work_json(work_dir: Path, work) -> Path:
+def save_work_json(
+    work_dir: Path,
+    work,
+    *,
+    on_committed: ArtifactCommitHook | None = None,
+) -> Path:
     """UI投影をCommand境界でDomainへ取り込み、project.jsonへ確定する。"""
     work_dir = Path(work_dir)
     repository = domain_runtime.repository_for(work_dir)
     is_new = not repository.project_path.exists()
     if is_new:
         initialize_new_work_baseline(work_dir)
+    repository.assert_observations_current((repository.project_path,))
     projected = domain_projection.project_document_from_work(work)
     store = domain_runtime.store_for(work_dir, initial_project=projected)
     projected = domain_projection.preserve_project_projection(
         store.project,
         projected,
     )
+    patch = project_patch(store.project, projected)
+    project_changed = is_new or store.dirty_project or not patch.is_empty
     with store.transaction():
-        store.execute(
-            ApplyProjectPatch(project_patch(store.project, projected))
-        )
+        if not patch.is_empty:
+            store.execute(ApplyProjectPatch(patch))
         document = store.project
-        repository.checkpoint(document)
-    record_successful_write(repository.project_path)
+        if project_changed:
+            repository.checkpoint(
+                document,
+                artifact_commit_hook=on_committed,
+            )
+    if project_changed:
+        record_successful_write(repository.project_path)
     domain_projection.bind_project_document(work, document)
-    store.mark_checkpointed(project=True, page_uids=())
+    store.mark_checkpointed(project=project_changed, page_uids=())
     _logger.debug("project.json saved: %s", repository.project_path)
     return repository.project_path
 
@@ -91,10 +104,10 @@ def load_work_json(work_dir: Path, work) -> dict[str, Any]:
         repository=repository,
     )
     document = repository.load_project()
-    repository.validate_project_pages(document)
+    repository.assert_project_page_files(document)
     domain_runtime.install_store(work_dir, document)
     domain_projection.apply_project_document(work, document)
     work.work_dir = str(Path(work_dir).resolve())
     work.loaded = True
-    _logger.info("project.json loaded: %s", repository.project_path)
+    _logger.debug("project.json loaded: %s", repository.project_path)
     return document.to_dict()

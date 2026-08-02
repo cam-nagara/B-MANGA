@@ -48,6 +48,7 @@ def main() -> None:
     mod = _load_addon()
     from bmanga_dev_startup_repair.keymap import keymap as keymap_mod
     from bmanga_dev_startup_repair.keymap import startup_repair
+    from bmanga_dev_startup_repair.utils import lifecycle_scheduler
 
     wm = bpy.context.window_manager
     kc_user = wm.keyconfigs.user
@@ -60,7 +61,7 @@ def main() -> None:
     created = []
     try:
         # register がタイマーを登録していること
-        assert bpy.app.timers.is_registered(startup_repair._repair_tick), (
+        assert lifecycle_scheduler.is_scheduled("keymap.startup_repair"), (
             "遅延修復タイマーが register で登録されていません"
         )
 
@@ -108,7 +109,7 @@ def main() -> None:
         # ---- 再度焼き付いても次回 register (=次回起動) で再修復されること ----
         kmi_n.active = False
         startup_repair.register()
-        assert bpy.app.timers.is_registered(startup_repair._repair_tick)
+        assert lifecycle_scheduler.is_scheduled("keymap.startup_repair")
         interval = startup_repair._repair_tick()
         assert bool(kmi_n.active), "再 register 後の遅延修復が働きません"
         assert interval == 8.0
@@ -121,7 +122,7 @@ def main() -> None:
                 pass
 
     # unregister でタイマーが確実に消えていること
-    assert not bpy.app.timers.is_registered(startup_repair._repair_tick), (
+    assert not lifecycle_scheduler.is_scheduled("keymap.startup_repair"), (
         "unregister 後も遅延修復タイマーが残っています"
     )
 

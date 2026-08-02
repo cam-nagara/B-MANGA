@@ -5,14 +5,13 @@ B-MANGA 作品 (ページモード) では全ページ一覧モードを ON に�
 ビューポート枠にフィット表示する。カメラビュー以外の通常視点へ手動で
 切り替えたら、自動 ON する前の一覧モード状態へ戻す。
 
-msgbus の notify 内で直接ビュー操作はできないため、bpy.app.timers で
+msgbus の notify 内で直接ビュー操作はできないため、Lifecycle Schedulerで
 1 回だけ遅延実行する。
 """
 
 from __future__ import annotations
 
 import bpy
-from bpy.app.handlers import persistent
 
 from ..core.mode import MODE_PAGE, get_mode
 from ..core.work import get_work
@@ -131,9 +130,21 @@ def _schedule() -> None:
         return
     _PENDING = True
     try:
-        bpy.app.timers.register(_timer, first_interval=0.0)
+        from . import lifecycle_scheduler
+
+        lifecycle_scheduler.schedule(
+            "camera.overview",
+            _timer,
+            first_interval=0.0,
+            on_cancel=_cancel_pending,
+        )
     except Exception:  # noqa: BLE001
         _apply()
+
+
+def _cancel_pending() -> None:
+    global _PENDING
+    _PENDING = False
 
 
 def _timer():
@@ -164,8 +175,7 @@ def _resubscribe() -> None:
         _logger.debug("camera-overview msgbus subscribe skipped: %s", exc)
 
 
-@persistent
-def _on_load_post(_filepath: str) -> None:
+def on_lifecycle_load() -> None:
     global _PREV_OVERVIEW
     _PREV_OVERVIEW = None
     _resubscribe()
@@ -173,8 +183,18 @@ def _on_load_post(_filepath: str) -> None:
 
 def register() -> None:
     _resubscribe()
-    if _on_load_post not in bpy.app.handlers.load_post:
-        bpy.app.handlers.load_post.append(_on_load_post)
+    _remove_legacy_load_handler()
+
+
+def _remove_legacy_load_handler() -> None:
+    for handler in list(bpy.app.handlers.load_post):
+        if (
+            getattr(handler, "__name__", "") == "_on_load_post"
+            and str(getattr(handler, "__module__", "")).endswith(
+                ".camera_overview_sync"
+            )
+        ):
+            bpy.app.handlers.load_post.remove(handler)
 
 
 def unregister() -> None:
@@ -184,7 +204,4 @@ def unregister() -> None:
         bpy.msgbus.clear_by_owner(_OWNER)
     except Exception:  # noqa: BLE001
         pass
-    try:
-        bpy.app.handlers.load_post.remove(_on_load_post)
-    except (ValueError, Exception):  # noqa: BLE001
-        pass
+    _remove_legacy_load_handler()

@@ -77,6 +77,16 @@ def _set_collection_color_tag(coll: bpy.types.Collection, tag: str) -> None:
         pass
 
 
+def _find_scene_collection_by_name(
+    scene: bpy.types.Scene,
+    name: str,
+) -> Optional[bpy.types.Collection]:
+    for collection in on.iter_scene_collections(scene):
+        if str(getattr(collection, "name", "") or "") == name:
+            return collection
+    return None
+
+
 def _move_child_collection_to_top(parent: bpy.types.Collection, child: bpy.types.Collection) -> None:
     """parent.children 内で child を先頭に寄せる。未対応環境では何もしない。"""
     try:
@@ -146,9 +156,21 @@ def _set_child_collection_order(
 def order_root_collections(scene: bpy.types.Scene) -> None:
     """B-MANGA 直下の主要 Collection を UI で読みやすい順に整える."""
     root = ensure_root_collection(scene)
-    text = on.find_collection_by_bmanga_id(TEXT_COLLECTION_BMANGA_ID, kind="text_root")
-    outside = on.find_collection_by_bmanga_id(OUTSIDE_BMANGA_ID, kind="outside")
-    workinfo = on.find_collection_by_bmanga_id(WORK_INFO_COLLECTION_BMANGA_ID, kind="workinfo_root")
+    text = on.find_collection_by_bmanga_id(
+        TEXT_COLLECTION_BMANGA_ID,
+        kind="text_root",
+        scene=scene,
+    )
+    outside = on.find_collection_by_bmanga_id(
+        OUTSIDE_BMANGA_ID,
+        kind="outside",
+        scene=scene,
+    )
+    workinfo = on.find_collection_by_bmanga_id(
+        WORK_INFO_COLLECTION_BMANGA_ID,
+        kind="workinfo_root",
+        scene=scene,
+    )
     pages = sorted(
         [
             coll for coll in root.children
@@ -174,9 +196,13 @@ def ensure_root_collection(scene: bpy.types.Scene) -> bpy.types.Collection:
     別目的で ``B-MANGA`` 名の Collection を作っていても、bmanga_id 同一の
     管理下 Collection を優先採用する。
     """
-    coll = on.find_collection_by_bmanga_id(ROOT_BMANGA_ID, kind="root")
+    coll = on.find_collection_by_bmanga_id(
+        ROOT_BMANGA_ID,
+        kind="root",
+        scene=scene,
+    )
     if coll is None:
-        coll = bpy.data.collections.get(ROOT_COLLECTION_NAME)
+        coll = _find_scene_collection_by_name(scene, ROOT_COLLECTION_NAME)
         if coll is None:
             coll = bpy.data.collections.new(ROOT_COLLECTION_NAME)
     if scene is not None:
@@ -199,7 +225,11 @@ def ensure_root_collection(scene: bpy.types.Scene) -> bpy.types.Collection:
 def ensure_outside_collection(scene: bpy.types.Scene) -> bpy.types.Collection:
     """``P0000__outside__ページ外`` Collection を確保."""
     root = ensure_root_collection(scene)
-    existing = on.find_collection_by_bmanga_id(OUTSIDE_BMANGA_ID, kind="outside")
+    existing = on.find_collection_by_bmanga_id(
+        OUTSIDE_BMANGA_ID,
+        kind="outside",
+        scene=scene,
+    )
     if existing is None:
         existing = bpy.data.collections.new("P0000__outside__ページ外")
     on.stamp_identity(
@@ -224,12 +254,16 @@ def ensure_text_collection(scene: bpy.types.Scene) -> bpy.types.Collection:
     なるよう大きい値を割り当てる。
     """
     root = ensure_root_collection(scene)
-    coll = on.find_collection_by_bmanga_id(TEXT_COLLECTION_BMANGA_ID, kind="text_root")
+    coll = on.find_collection_by_bmanga_id(
+        TEXT_COLLECTION_BMANGA_ID,
+        kind="text_root",
+        scene=scene,
+    )
     if coll is None:
-        coll = bpy.data.collections.get(TEXT_COLLECTION_NAME)
+        coll = _find_scene_collection_by_name(scene, TEXT_COLLECTION_NAME)
         if coll is None:
             for legacy_name in LEGACY_TEXT_COLLECTION_NAMES:
-                coll = bpy.data.collections.get(legacy_name)
+                coll = _find_scene_collection_by_name(scene, legacy_name)
                 if coll is not None:
                     break
         if coll is None:
@@ -252,9 +286,13 @@ def ensure_text_collection(scene: bpy.types.Scene) -> bpy.types.Collection:
 def ensure_work_info_collection(scene: bpy.types.Scene) -> bpy.types.Collection:
     """作品情報の実体オブジェクトをまとめる Collection を確保する."""
     root = ensure_root_collection(scene)
-    coll = on.find_collection_by_bmanga_id(WORK_INFO_COLLECTION_BMANGA_ID, kind="workinfo_root")
+    coll = on.find_collection_by_bmanga_id(
+        WORK_INFO_COLLECTION_BMANGA_ID,
+        kind="workinfo_root",
+        scene=scene,
+    )
     if coll is None:
-        coll = bpy.data.collections.get(WORK_INFO_COLLECTION_NAME)
+        coll = _find_scene_collection_by_name(scene, WORK_INFO_COLLECTION_NAME)
         if coll is None:
             coll = bpy.data.collections.new(WORK_INFO_COLLECTION_NAME)
     on.stamp_identity(
@@ -277,7 +315,11 @@ def ensure_page_collection(
     if not page_id:
         return None
     root = ensure_root_collection(scene)
-    coll = on.find_collection_by_bmanga_id(page_id, kind="page")
+    coll = on.find_collection_by_bmanga_id(
+        page_id,
+        kind="page",
+        scene=scene,
+    )
     if coll is None:
         z = on.page_id_to_z_number(page_id)
         canonical, _ = on.make_canonical_name("page", z, page_id, title or page_id)
@@ -313,7 +355,11 @@ def ensure_coma_collection(
     if page_coll is None:
         return None
     coma_bmanga_id = f"{page_id}:{coma_id}"
-    coll = on.find_collection_by_bmanga_id(coma_bmanga_id, kind="coma")
+    coll = on.find_collection_by_bmanga_id(
+        coma_bmanga_id,
+        kind="coma",
+        scene=scene,
+    )
     if coll is None:
         # 新規生成は coma_id を直接名前に。Blender が同名衝突時に .001 を
         # 付加するが、bmanga_id で逆引きするので問題ない。
@@ -356,7 +402,11 @@ def ensure_folder_collection(
     """汎用フォルダ Collection を確保."""
     if not folder_id:
         return None
-    coll = on.find_collection_by_bmanga_id(folder_id, kind="folder")
+    coll = on.find_collection_by_bmanga_id(
+        folder_id,
+        kind="folder",
+        scene=scene,
+    )
     if coll is None:
         # シンプル名: title 優先、なければ folder_id
         coll = bpy.data.collections.new(title or folder_id)
@@ -390,7 +440,11 @@ def _resolve_parent_collection(
         page_id, coma_id = parent_key.split(":", 1)
         return ensure_coma_collection(scene, page_id, coma_id)
     if parent_kind == "folder":
-        return on.find_collection_by_bmanga_id(parent_key, kind="folder")
+        return on.find_collection_by_bmanga_id(
+            parent_key,
+            kind="folder",
+            scene=scene,
+        )
     return None
 
 
@@ -408,7 +462,12 @@ def _iter_potential_parent_collections(
         if sc is not None:
             seen.add(id(sc))
             yield sc
-    for c in bpy.data.collections:
+    collections = (
+        on.iter_scene_collections(scene)
+        if scene is not None
+        else bpy.data.collections
+    )
+    for c in collections:
         if id(c) in seen:
             continue
         seen.add(id(c))
@@ -474,7 +533,11 @@ def link_object_to_parent(
     if str(obj.get(on.PROP_KIND, "") or "") == "text":
         target = ensure_text_collection(scene)
     elif folder_id:
-        target = on.find_collection_by_bmanga_id(folder_id, kind="folder")
+        target = on.find_collection_by_bmanga_id(
+            folder_id,
+            kind="folder",
+            scene=scene,
+        )
     else:
         target = _resolve_parent_collection(scene, parent_kind, parent_key)
     if target is None:

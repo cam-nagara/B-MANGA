@@ -94,11 +94,15 @@ def _start_panel_category_normalizer() -> None:
     _CATEGORY_NORMALIZER_ENABLED = True
     _normalize_bmanga_panel_categories()
     try:
-        if not bpy.app.timers.is_registered(_run_panel_category_normalizer):
-            bpy.app.timers.register(
+        from ..utils import lifecycle_scheduler
+
+        if not lifecycle_scheduler.is_scheduled("panels.category_normalizer"):
+            lifecycle_scheduler.schedule(
+                "panels.category_normalizer",
                 _run_panel_category_normalizer,
                 first_interval=_CATEGORY_NORMALIZER_INTERVAL,
                 persistent=True,
+                restart_on_invalidate=True,
             )
     except Exception:
         pass
@@ -108,8 +112,9 @@ def _stop_panel_category_normalizer() -> None:
     global _CATEGORY_NORMALIZER_ENABLED
     _CATEGORY_NORMALIZER_ENABLED = False
     try:
-        if bpy.app.timers.is_registered(_run_panel_category_normalizer):
-            bpy.app.timers.unregister(_run_panel_category_normalizer)
+        from ..utils import lifecycle_scheduler
+
+        lifecycle_scheduler.cancel("panels.category_normalizer")
     except Exception:
         pass
 

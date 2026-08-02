@@ -540,6 +540,10 @@ class BMANGA_OT_pages_merge_spread(Operator):
                     merged,
                     outcome["domainPage"],
                 )
+                # このOperatorは作品一覧だけで実行できる。UID/revisionを実体へ
+                # 束縛し終えたら、保存済みpage detailを一覧のSession Stateへ
+                # 持ち越さず、coma_countだけをsummaryとして残す。
+                page_detail.clear_page_detail(merged)
         except Exception:  # noqa: BLE001
             _logger.exception("spread: committed page metadata could not refresh in memory")
             self.report({"WARNING"}, "見開きは保存済みです。作品を開き直してください")
@@ -548,7 +552,9 @@ class BMANGA_OT_pages_merge_spread(Operator):
         self.report(
             {"INFO"},
             f"見開き統合: {spread_id} "
-            f"(コマ {len(merged.comas)} / フキダシ {len(merged.balloons)} / テキスト {len(merged.texts)})",
+            f"(コマ {len(outcome['pageData'].get('comas', []))} / "
+            f"フキダシ {len(outcome['pageData'].get('balloons', []))} / "
+            f"テキスト {len(outcome['pageData'].get('texts', []))})",
         )
         return {"FINISHED"}
 
@@ -791,6 +797,7 @@ class BMANGA_OT_pages_split_spread(Operator):
                         entry,
                         page_documents[page_id],
                     )
+                    page_detail.clear_page_detail(entry)
         except Exception:  # noqa: BLE001
             _logger.exception("spread: committed split metadata could not refresh in memory")
             self.report({"WARNING"}, "見開き解除は保存済みです。作品を開き直してください")

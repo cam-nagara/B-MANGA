@@ -31,6 +31,13 @@ from . import (  # noqa: E402,F401
 def register() -> None:
     log.register()
     handlers.register()
+    from . import lifecycle_coordinator
+    from ..bmanga_core.lifecycle import LifecycleEvent, LifecycleEventKind
+
+    lifecycle_coordinator.reset()
+    lifecycle_coordinator.dispatch_event(
+        LifecycleEvent(LifecycleEventKind.REGISTER)
+    )
     from . import file_transition_runtime
 
     file_transition_runtime.register()
@@ -50,6 +57,16 @@ def register() -> None:
 
 
 def unregister() -> None:
+    try:
+        from . import lifecycle_coordinator, lifecycle_scheduler
+        from ..bmanga_core.lifecycle import LifecycleEvent, LifecycleEventKind
+
+        lifecycle_coordinator.dispatch_event(
+            LifecycleEvent(LifecycleEventKind.UNREGISTER)
+        )
+        lifecycle_scheduler.unregister()
+    except Exception:  # noqa: BLE001
+        pass
     try:
         from . import file_transition_runtime
 

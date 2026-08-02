@@ -77,7 +77,7 @@ def _check_fill(context) -> None:
     assert _apply("gradient", "固定グラデ", "fill", first.id) == {"CANCELLED"}
 
 
-def _check_text(context, page) -> None:
+def _check_text(context, page):
     from bmanga_dev_detail_preset_apply.io import text_presets
 
     work = context.scene.bmanga_work
@@ -90,7 +90,14 @@ def _check_text(context, page) -> None:
     second.id = "fixed_text_b"
     second.body = "B"
     second.line_height = 1.4
+    first_id = str(first.id)
+    second_id = str(second.id)
     assert bpy.ops.bmanga.page_add("EXEC_DEFAULT") == {"FINISHED"}
+    # CollectionProperty.add()は親pagesの再配置で既存のpage/text RNA参照を
+    # 無効化し得る。詳細設定と同じ安定IDから対象を取り直して検証する。
+    page = next(candidate for candidate in work.pages if candidate.id == page_id)
+    first = next(entry for entry in page.texts if entry.id == first_id)
+    second = next(entry for entry in page.texts if entry.id == second_id)
     other_page = work.pages[-1]
     duplicate = other_page.texts.add()
     duplicate.id = first.id
@@ -107,6 +114,7 @@ def _check_text(context, page) -> None:
     assert abs(first.line_height - 2.25) < 1e-5
     assert abs(second.line_height - 1.4) < 1e-5, "アクティブな別テキストが変更された"
     assert abs(duplicate.line_height - 1.8) < 1e-5, "別ページの同名テキストが変更された"
+    return page
 
 
 def _check_image_path(context) -> None:
@@ -346,11 +354,16 @@ def main() -> None:
         addon = _load_addon()
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "FixedPreset.bmanga"))
         assert result == {"FINISHED"}, result
+        # work.blendはページ一覧専用でページ詳細を保持しない。詳細設定の
+        # プリセット検証は、実際のユーザー操作と同じpage.blend上で行う。
+        assert bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0) == {
+            "FINISHED"
+        }
         context = bpy.context
         work = context.scene.bmanga_work
         page = work.pages[0]
         _check_fill(context)
-        _check_text(context, page)
+        page = _check_text(context, page)
         _check_image_path(context)
         _check_balloon(context, page, temp_root)
         _check_border(context, page, Path(work.work_dir))

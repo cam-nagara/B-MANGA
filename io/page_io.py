@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+from ..bmanga_core.file_identity import ArtifactCommitHook
 from ..bmanga_core.domain_store import (
     ApplyPagePatch,
     ApplyProjectPatch,
@@ -12,7 +13,7 @@ from ..bmanga_core.domain_store import (
     project_patch,
 )
 from ..utils import log, paths
-from . import domain_projection, domain_runtime
+from . import domain_projection, domain_runtime, native_checkpoint_runtime
 from .save_baseline import record_successful_tree_change, record_successful_write
 
 _logger = log.get_logger(__name__)
@@ -27,14 +28,25 @@ def invalidate_page_json_write_cache(
     """Repositoryはhash基準を持つため旧差分cacheの破棄は不要。"""
 
 
-def save_page_json(work_dir: Path, page_entry) -> Path:
+def save_page_json(
+    work_dir: Path,
+    page_entry,
+    *,
+    on_committed: ArtifactCommitHook | None = None,
+) -> Path:
     work = _work_from_page(page_entry)
     if work is None:
         raise RuntimeError("page projection has no owning work")
+    kwargs = (
+        {}
+        if on_committed is None
+        else {"on_committed": on_committed}
+    )
     _project_path, page_path = save_work_projection(
         work_dir,
         work,
         page_entry=page_entry,
+        **kwargs,
     )
     if page_path is None:
         raise RuntimeError("page projection was not checkpointed")
@@ -46,10 +58,12 @@ def save_work_projection(
     work,
     *,
     page_entry=None,
+    on_committed: ArtifactCommitHook | None = None,
 ) -> tuple[Path, Path | None]:
     """projectと編集中pageを同じRepository checkpointで確定する。"""
 
     repository = domain_runtime.repository_for(work_dir)
+    observation_paths = [repository.project_path]
     projected_project = domain_projection.project_document_from_work(work)
     store = domain_runtime.store_for(
         work_dir,
@@ -61,6 +75,7 @@ def save_work_projection(
             page_entry,
             projected_project.project_uid,
         )
+        observation_paths.append(repository.page_path(page_uid))
         if (
             page_uid not in store.pages
             and repository.page_path(page_uid).is_file()
@@ -69,11 +84,21 @@ def save_work_projection(
                 work_dir,
                 repository.load_page(page_uid),
             )
+    repository.assert_observations_current(observation_paths)
     projected_project = domain_projection.preserve_project_projection(
         store.project,
         projected_project,
     )
+    project_missing = not repository.project_path.is_file()
+    project_delta = project_patch(store.project, projected_project)
+    project_changed = (
+        project_missing
+        or store.dirty_project
+        or not project_delta.is_empty
+    )
     projected_page = None
+    page_delta = None
+    page_changed = False
     if page_entry is not None:
         current_page = store.pages.get(page_uid)
         projected_page = domain_projection.page_document_from_projection(
@@ -86,30 +111,38 @@ def save_work_projection(
             current_page,
             projected_page,
         )
-    with store.transaction():
-        store.execute(
-            ApplyProjectPatch(
-                project_patch(store.project, projected_project)
-            )
+        page_delta = page_patch(current_page, projected_page)
+        page_changed = (
+            current_page is None
+            or not repository.page_path(page_uid).is_file()
+            or page_uid in store.dirty_page_uids
+            or not page_delta.is_empty
         )
-        if projected_page is not None:
-            store.execute(
-                ApplyPagePatch(
-                    page_patch(store.pages.get(page_uid), projected_page)
-                )
-            )
+    with store.transaction():
+        if not project_delta.is_empty:
+            store.execute(ApplyProjectPatch(project_delta))
+        if page_delta is not None and not page_delta.is_empty:
+            store.execute(ApplyPagePatch(page_delta))
         project = store.project
         page = (
             store.pages[projected_page.page_uid]
             if projected_page is not None
             else None
         )
-        repository.checkpoint(project, [page] if page is not None else ())
-    record_successful_write(repository.project_path)
+        if project_changed or page_changed:
+            repository.checkpoint(
+                project,
+                [page] if page is not None and page_changed else (),
+                include_project=project_changed,
+                artifact_commit_hook=on_committed,
+            )
+    if project_changed:
+        record_successful_write(repository.project_path)
     page_path = None
     if page is not None:
         page_path = repository.page_path(page.page_uid)
-        record_successful_write(page_path)
+        if page_changed:
+            record_successful_write(page_path)
     # 保存はUI projectionからDomainへの一方向Commandである。ここでDomainを
     # scene全体へ再投影すると、別ページへ移した直後のscene-ownedレイヤーが
     # 「保存したページに属さない」という理由で消える。保存済みUID/revisionだけ
@@ -117,11 +150,83 @@ def save_work_projection(
     if page_entry is not None and page is not None:
         domain_projection.bind_page_document(page_entry, page)
     domain_projection.bind_project_document(work, project)
-    store.mark_checkpointed(
-        project=True,
-        page_uids=(page.page_uid,) if page is not None else (),
+    checkpoint_page_uids = (
+        (page.page_uid,) if page is not None and page_changed else ()
     )
+    if native_checkpoint_runtime.is_pending(work_dir):
+        native_checkpoint_runtime.note_domain_write(
+            work_dir,
+            project_changed=project_changed,
+            page_uids=checkpoint_page_uids,
+        )
+    else:
+        store.mark_checkpointed(
+            project=project_changed,
+            page_uids=checkpoint_page_uids,
+        )
     return repository.project_path, page_path
+
+
+def reconcile_work_projection(
+    work_dir: Path,
+    work,
+    *,
+    page_entry=None,
+    context=None,
+) -> None:
+    """Undo/Redo後のBlender状態をdiskへ書かずDomainへCommand反映する。"""
+
+    projected_project = domain_projection.project_document_from_work(work)
+    store = domain_runtime.store_for(
+        work_dir,
+        initial_project=projected_project,
+    )
+    projected_project = domain_projection.preserve_project_projection(
+        store.project,
+        projected_project,
+    )
+    project_delta = project_patch(
+        store.project,
+        projected_project,
+        require_candidate_revision=False,
+    )
+    page_delta = None
+    if page_entry is not None:
+        page_uid = domain_projection.ensure_page_uid(
+            page_entry,
+            projected_project.project_uid,
+        )
+        current_page = store.pages.get(page_uid)
+        projected_page = domain_projection.page_document_from_projection(
+            work,
+            page_entry,
+            context=context,
+            preserve_document=current_page,
+        )
+        projected_page = domain_projection.preserve_page_projection(
+            current_page,
+            projected_page,
+        )
+        page_delta = page_patch(
+            current_page,
+            projected_page,
+            require_candidate_revision=False,
+        )
+    with store.transaction():
+        if not project_delta.is_empty:
+            store.execute(ApplyProjectPatch(project_delta))
+        if page_delta is not None and not page_delta.is_empty:
+            store.execute(ApplyPagePatch(page_delta))
+    project = store.project
+    domain_projection.bind_project_document(work, project)
+    if page_entry is not None:
+        page = store.pages[
+            domain_projection.ensure_page_uid(
+                page_entry,
+                project.project_uid,
+            )
+        ]
+        domain_projection.bind_page_document(page_entry, page)
 
 
 def load_page_json(
@@ -165,23 +270,40 @@ def load_page_json(
 # ---------- pages.json ----------
 
 
-def save_pages_json(work_dir: Path, work) -> Path:
+def save_pages_json(
+    work_dir: Path,
+    work,
+    *,
+    on_committed: ArtifactCommitHook | None = None,
+) -> Path:
     repository = domain_runtime.repository_for(work_dir)
+    repository.assert_observations_current((repository.project_path,))
     projected = domain_projection.project_document_from_work(work)
     store = domain_runtime.store_for(work_dir, initial_project=projected)
     projected = domain_projection.preserve_project_projection(
         store.project,
         projected,
     )
+    project_missing = not repository.project_path.is_file()
+    patch = project_patch(store.project, projected)
+    project_changed = (
+        project_missing
+        or store.dirty_project
+        or not patch.is_empty
+    )
     with store.transaction():
-        store.execute(
-            ApplyProjectPatch(project_patch(store.project, projected))
-        )
+        if not patch.is_empty:
+            store.execute(ApplyProjectPatch(patch))
         project = store.project
-        repository.checkpoint(project)
-    record_successful_write(repository.project_path)
+        if project_changed:
+            repository.checkpoint(
+                project,
+                artifact_commit_hook=on_committed,
+            )
+    if project_changed:
+        record_successful_write(repository.project_path)
     domain_projection.bind_project_document(work, project)
-    store.mark_checkpointed(project=True, page_uids=())
+    store.mark_checkpointed(project=project_changed, page_uids=())
     _logger.debug("project page order saved: %s (%d pages)", repository.project_path, len(work.pages))
     return repository.project_path
 

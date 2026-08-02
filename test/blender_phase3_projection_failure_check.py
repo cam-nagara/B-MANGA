@@ -58,12 +58,14 @@ def main() -> None:
             domain_projection,
             domain_projection_preservation,
             page_io,
+            save_baseline,
         )
         from bmanga_phase3_projection_failure.utils import (
             handlers,
             layer_links,
             layer_object_model,
-            object_state_sync,
+            outliner_change_collector,
+            outliner_watch,
             paths,
         )
 
@@ -340,13 +342,13 @@ def main() -> None:
             assert extension_link_uid in unlinked.links
             before = page_path.read_bytes()
 
-            original_sync = object_state_sync.sync_from_blender_object
+            original_flush = outliner_change_collector.flush
             original_log_exception = handlers._logger.exception
             try:
                 handlers._logger.exception = lambda *_args, **_kwargs: None
-                object_state_sync.sync_from_blender_object = (
+                outliner_change_collector.flush = (
                     lambda *_args: (_ for _ in ()).throw(
-                        RuntimeError("object fault")
+                        RuntimeError("collector fault")
                     )
                 )
                 assert not handlers.save_scene_work_to_disk(
@@ -354,27 +356,39 @@ def main() -> None:
                     reason="projection fault test",
                 )
             finally:
-                object_state_sync.sync_from_blender_object = original_sync
+                outliner_change_collector.flush = original_flush
                 handlers._logger.exception = original_log_exception
             assert page_path.read_bytes() == before
 
             # save_pre内のDomain失敗はBlender本体保存の成功扱いへ漏らさず、
             # 呼び出し元へFalseを返して新規page.blendもrollbackする。
+            save_baseline.capture_loaded_baseline(
+                work_dir,
+                Path(bpy.data.filepath),
+                page_json_paths=(page_path,),
+            )
             page_blend = paths.page_blend_path(work_dir, page.id)
             page_blend.unlink(missing_ok=True)
-            original_sync = object_state_sync.sync_from_blender_object
+            original_flush = outliner_change_collector.flush
             original_log_exception = handlers._logger.exception
+            original_watch_log_exception = outliner_watch._logger.exception
             try:
                 handlers._logger.exception = lambda *_args, **_kwargs: None
-                object_state_sync.sync_from_blender_object = (
+                outliner_watch._logger.exception = (
+                    lambda *_args, **_kwargs: None
+                )
+                outliner_change_collector.flush = (
                     lambda *_args: (_ for _ in ()).throw(
-                        RuntimeError("native object fault")
+                        RuntimeError("native collector fault")
                     )
                 )
                 assert not blend_io.save_page_blend(work_dir, page.id)
             finally:
-                object_state_sync.sync_from_blender_object = original_sync
+                outliner_change_collector.flush = original_flush
                 handlers._logger.exception = original_log_exception
+                outliner_watch._logger.exception = (
+                    original_watch_log_exception
+                )
             assert not page_blend.exists()
             assert page_path.read_bytes() == before
 

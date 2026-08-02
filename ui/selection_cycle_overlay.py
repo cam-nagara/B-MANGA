@@ -58,6 +58,9 @@ def show(
     if region is None or not label or total < 2:
         clear()
         return
+    from ..utils import lifecycle_scheduler
+
+    lifecycle_scheduler.cancel("ui.selection_cycle.expire")
     _state.generation += 1
     generation = _state.generation
     _state.label = f"{label}  {max(1, int(index))}/{max(1, int(total))}"
@@ -69,16 +72,31 @@ def show(
 
     def _expire():
         if generation == _state.generation and time.monotonic() >= _state.expires_at:
-            clear()
+            _clear_overlay_state()
         return None
 
     try:
-        bpy.app.timers.register(_expire, first_interval=max(0.1, float(duration)))
+        lifecycle_scheduler.schedule(
+            "ui.selection_cycle.expire",
+            _expire,
+            first_interval=max(0.1, float(duration)),
+            on_cancel=_clear_overlay_state,
+        )
     except Exception:  # noqa: BLE001
         _logger.exception("selection cycle overlay timer registration failed")
 
 
 def clear() -> None:
+    try:
+        from ..utils import lifecycle_scheduler
+
+        lifecycle_scheduler.cancel("ui.selection_cycle.expire")
+    except Exception:  # noqa: BLE001
+        pass
+    _clear_overlay_state()
+
+
+def _clear_overlay_state() -> None:
     changed = bool(_state.label)
     _state.generation += 1
     _state.label = ""

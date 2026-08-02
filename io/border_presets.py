@@ -39,6 +39,9 @@ class BorderPreset:
     data: dict[str, Any]
 
 
+_GLOBAL_PRESET_CACHE: tuple[BorderPreset, ...] | None = None
+
+
 def _string_list(value: Any) -> list[str]:
     if not isinstance(value, (list, tuple)):
         return []
@@ -143,7 +146,15 @@ def _order_presets(preset_list: list[BorderPreset], order: list[str]) -> list[Bo
 
 
 def list_global_presets() -> list[BorderPreset]:
-    return _order_presets(_list_in_dir(GLOBAL_BORDERS_DIR, source="global"), [])
+    global _GLOBAL_PRESET_CACHE
+    if _GLOBAL_PRESET_CACHE is None:
+        _GLOBAL_PRESET_CACHE = tuple(
+            _order_presets(
+                _list_in_dir(GLOBAL_BORDERS_DIR, source="global"),
+                [],
+            )
+        )
+    return list(_GLOBAL_PRESET_CACHE)
 
 
 def list_local_presets(work_dir: Path) -> list[BorderPreset]:

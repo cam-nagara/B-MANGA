@@ -204,6 +204,106 @@ def _create_page_blend(work_dir: Path, page_id: str) -> bool:
     return blend_io.save_page_blend(work_dir, page_id)
 
 
+def _checkpoint_before_page_transition(
+    context,
+    *,
+    preview_variant: str | None = None,
+) -> bool:
+    from ..utils import lifecycle_checkpoint
+
+    work = get_work(context)
+    role, page_id, _coma_id = page_file_scene.current_role(context)
+    dirty = file_transition_runtime.scene_content_dirty(context.scene)
+    if not lifecycle_checkpoint.checkpoint_succeeded(
+        context,
+        reason="page transition",
+    ):
+        return False
+    if (
+        preview_variant is not None
+        and role == page_file_scene.ROLE_PAGE
+        and work is not None
+        and paths.is_valid_page_id(page_id)
+    ):
+        _update_page_preview_png(
+            work,
+            page_id,
+            force=dirty,
+            variant=preview_variant,
+        )
+    return True
+
+
+def _open_or_create_page(work_dir: Path, page_id: str) -> bool:
+    if blend_io.page_blend_exists(work_dir, page_id):
+        return bool(blend_io.open_page_blend(work_dir, page_id))
+    if not _create_page_blend(work_dir, page_id):
+        return False
+    return bool(blend_io.open_page_blend(work_dir, page_id))
+
+
+def _transition_to_page(context, work_dir: Path, page_id: str):
+    from ..utils import lifecycle_coordinator, page_preview_object
+
+    target_path = paths.page_blend_path(work_dir, page_id)
+    target = lifecycle_coordinator.target_for_path(
+        target_path,
+        work_root=work_dir,
+        context=context,
+    )
+    return lifecycle_coordinator.run_transition(
+        context,
+        target,
+        prepare=lambda: bool(page_io.ensure_page_dir(work_dir, page_id)),
+        checkpoint=lambda: _checkpoint_before_page_transition(
+            context,
+            preview_variant=(
+                page_preview_object.PREVIEW_RENDER_VARIANT_WORK
+                if page_file_scene.current_role(context)[0]
+                == page_file_scene.ROLE_PAGE
+                else None
+            ),
+        ),
+        open_target=lambda: _open_or_create_page(work_dir, page_id),
+    )
+
+
+def _transition_to_work(context, work_dir: Path):
+    from ..utils import lifecycle_coordinator, page_preview_object
+
+    target_path = paths.work_blend_path(work_dir)
+    target = lifecycle_coordinator.target_for_path(
+        target_path,
+        work_root=work_dir,
+        context=context,
+    )
+    return lifecycle_coordinator.run_transition(
+        context,
+        target,
+        prepare=lambda: target_path.is_file(),
+        checkpoint=lambda: _checkpoint_before_page_transition(
+            context,
+            preview_variant=page_preview_object.PREVIEW_RENDER_VARIANT_WORK,
+        ),
+        open_target=lambda: bool(blend_io.open_work_blend(work_dir)),
+    )
+
+
+def _schedule_page_ui_after_open() -> None:
+    try:
+        from ..ui import sidebar as _sidebar
+
+        _sidebar.schedule_open_bmanga_sidebar()
+    except Exception:  # noqa: BLE001
+        _logger.exception("page transition: B-MANGA sidebar open failed")
+    try:
+        from . import view_op
+
+        view_op.schedule_fit_active_page()
+    except Exception:  # noqa: BLE001
+        _logger.exception("page transition: fit page scheduling failed")
+
+
 class BMANGA_OT_open_page_file(Operator):
     """選択ページのページ用blendファイルを開く."""
 
@@ -229,59 +329,28 @@ class BMANGA_OT_open_page_file(Operator):
         if work is None or not work.loaded or not work.work_dir:
             self.report({"ERROR"}, "作品が開かれていません")
             return {"CANCELLED"}
-        if 0 <= int(self.index) < len(work.pages):
-            work.active_page_index = int(self.index)
-        if not (0 <= work.active_page_index < len(work.pages)):
+        target_index = (
+            int(self.index)
+            if 0 <= int(self.index) < len(work.pages)
+            else int(work.active_page_index)
+        )
+        if not (0 <= target_index < len(work.pages)):
             self.report({"ERROR"}, "ページが選択されていません")
             return {"CANCELLED"}
-        page = work.pages[work.active_page_index]
+        page = work.pages[target_index]
         page_id = str(getattr(page, "id", "") or "")
         if not paths.is_valid_page_id(page_id):
             self.report({"ERROR"}, "ページを開けません")
             return {"CANCELLED"}
         work_dir = Path(work.work_dir)
-        try:
-            page_io.ensure_page_dir(work_dir, page_id)
-            with file_transition_runtime.blend_switch():
-                if not _save_current_blend_if_bmanga(context, work_dir):
-                    self.report({"ERROR"}, "作品情報の保存に失敗しました")
-                    return {"CANCELLED"}
-                if blend_io.page_blend_exists(work_dir, page_id):
-                    if not blend_io.open_page_blend(work_dir, page_id):
-                        self.report({"ERROR"}, "ページを開けませんでした")
-                        return {"CANCELLED"}
-                else:
-                    if not _create_page_blend(work_dir, page_id):
-                        self.report({"ERROR"}, "ページ用blendファイルの作成に失敗しました")
-                        try:
-                            blend_io.open_work_blend(work_dir)
-                        except Exception:  # noqa: BLE001
-                            pass
-                        return {"CANCELLED"}
-                    # save_as_mainfile だけでは直前ファイルの Undo 履歴が残る場合が
-                    # ある。保存したページを open_mainfile で開き直し、ファイル境界
-                    # と履歴境界を一致させる。
-                    if not blend_io.open_page_blend(work_dir, page_id):
-                        self.report({"ERROR"}, "作成したページ用blendファイルを開けませんでした")
-                        return {"CANCELLED"}
-            context = bpy.context
-            work = get_work(context)
-        except Exception as exc:  # noqa: BLE001
-            _logger.exception("open_page_file failed")
-            self.report({"ERROR"}, f"ページを開けませんでした: {exc}")
+        outcome = _transition_to_page(context, work_dir, page_id)
+        if not outcome.succeeded:
+            self.report(
+                {"ERROR"},
+                f"ページを開けませんでした: {outcome.error}",
+            )
             return {"CANCELLED"}
-        try:
-            from ..ui import sidebar as _sidebar
-
-            _sidebar.schedule_open_bmanga_sidebar()
-        except Exception:  # noqa: BLE001
-            _logger.exception("open_page_file: B-MANGA sidebar open failed")
-        try:
-            from . import view_op
-
-            view_op.schedule_fit_active_page()
-        except Exception:  # noqa: BLE001
-            _logger.exception("open_page_file: fit page scheduling failed")
+        _schedule_page_ui_after_open()
         self.report({"INFO"}, "ページを開きました")
         return {"FINISHED"}
 
@@ -309,29 +378,12 @@ class BMANGA_OT_exit_page_file(Operator):
         if role != page_file_scene.ROLE_PAGE or not paths.is_valid_page_id(page_id):
             self.report({"ERROR"}, "ページ用blendファイルではありません")
             return {"CANCELLED"}
-        try:
-            page_dirty = file_transition_runtime.scene_content_dirty(context.scene)
-            with file_transition_runtime.blend_switch():
-                if not blend_io.save_page_blend(work_dir, page_id):
-                    self.report({"ERROR"}, "ページファイルを保存できませんでした")
-                    return {"CANCELLED"}
-                from ..utils import page_preview_object
-
-                _update_page_preview_png(
-                    work,
-                    page_id,
-                    force=page_dirty,
-                    variant=page_preview_object.PREVIEW_RENDER_VARIANT_WORK,
-                )
-                if not blend_io.work_blend_exists(work_dir):
-                    self.report({"ERROR"}, "ページ一覧ファイルが見つかりません")
-                    return {"CANCELLED"}
-                if not blend_io.open_work_blend(work_dir):
-                    self.report({"ERROR"}, "ページ一覧へ戻れませんでした")
-                    return {"CANCELLED"}
-        except Exception as exc:  # noqa: BLE001
-            _logger.exception("exit_page_file failed")
-            self.report({"ERROR"}, f"ページ一覧へ戻れませんでした: {exc}")
+        outcome = _transition_to_work(context, work_dir)
+        if not outcome.succeeded:
+            self.report(
+                {"ERROR"},
+                f"ページ一覧へ戻れませんでした: {outcome.error}",
+            )
             return {"CANCELLED"}
         ctx = bpy.context
         set_mode(MODE_PAGE, ctx)
@@ -383,42 +435,14 @@ class BMANGA_OT_page_file_next(Operator):
             self.report({"WARNING"}, "次のページが見つかりません")
             return {"CANCELLED"}
         work_dir = Path(work.work_dir)
-        try:
-            page_io.ensure_page_dir(work_dir, next_page_id)
-            cur_page_id = page_file_scene.current_page_id()
-            page_dirty = file_transition_runtime.scene_content_dirty(context.scene)
-            work.active_page_index = new_idx
-            with file_transition_runtime.blend_switch():
-                if cur_page_id and not blend_io.save_page_blend(work_dir, cur_page_id):
-                    raise RuntimeError("現在のページを保存できませんでした")
-                if cur_page_id:
-                    from ..utils import page_preview_object
-
-                    _update_page_preview_png(
-                        work,
-                        cur_page_id,
-                        force=page_dirty,
-                        variant=page_preview_object.PREVIEW_RENDER_VARIANT_WORK,
-                    )
-                if blend_io.page_blend_exists(work_dir, next_page_id):
-                    if not blend_io.open_page_blend(work_dir, next_page_id):
-                        raise RuntimeError("次のページを開けませんでした")
-                elif not _create_page_blend(work_dir, next_page_id):
-                    raise RuntimeError("次のページを作成できませんでした")
-        except Exception as exc:  # noqa: BLE001
-            _logger.exception("page_file_next failed")
-            self.report({"ERROR"}, f"次のページを開けませんでした: {exc}")
+        outcome = _transition_to_page(context, work_dir, next_page_id)
+        if not outcome.succeeded:
+            self.report(
+                {"ERROR"},
+                f"次のページを開けませんでした: {outcome.error}",
+            )
             return {"CANCELLED"}
-        try:
-            from ..ui import sidebar as _sidebar
-            _sidebar.schedule_open_bmanga_sidebar()
-        except Exception:  # noqa: BLE001
-            pass
-        try:
-            from . import view_op
-            view_op.schedule_fit_active_page()
-        except Exception:  # noqa: BLE001
-            pass
+        _schedule_page_ui_after_open()
         self.report({"INFO"}, "次のページを開きました")
         return {"FINISHED"}
 
@@ -455,42 +479,14 @@ class BMANGA_OT_page_file_prev(Operator):
             self.report({"WARNING"}, "前のページが見つかりません")
             return {"CANCELLED"}
         work_dir = Path(work.work_dir)
-        try:
-            page_io.ensure_page_dir(work_dir, prev_page_id)
-            cur_page_id = page_file_scene.current_page_id()
-            page_dirty = file_transition_runtime.scene_content_dirty(context.scene)
-            work.active_page_index = new_idx
-            with file_transition_runtime.blend_switch():
-                if cur_page_id and not blend_io.save_page_blend(work_dir, cur_page_id):
-                    raise RuntimeError("現在のページを保存できませんでした")
-                if cur_page_id:
-                    from ..utils import page_preview_object
-
-                    _update_page_preview_png(
-                        work,
-                        cur_page_id,
-                        force=page_dirty,
-                        variant=page_preview_object.PREVIEW_RENDER_VARIANT_WORK,
-                    )
-                if blend_io.page_blend_exists(work_dir, prev_page_id):
-                    if not blend_io.open_page_blend(work_dir, prev_page_id):
-                        raise RuntimeError("前のページを開けませんでした")
-                elif not _create_page_blend(work_dir, prev_page_id):
-                    raise RuntimeError("前のページを作成できませんでした")
-        except Exception as exc:  # noqa: BLE001
-            _logger.exception("page_file_prev failed")
-            self.report({"ERROR"}, f"前のページを開けませんでした: {exc}")
+        outcome = _transition_to_page(context, work_dir, prev_page_id)
+        if not outcome.succeeded:
+            self.report(
+                {"ERROR"},
+                f"前のページを開けませんでした: {outcome.error}",
+            )
             return {"CANCELLED"}
-        try:
-            from ..ui import sidebar as _sidebar
-            _sidebar.schedule_open_bmanga_sidebar()
-        except Exception:  # noqa: BLE001
-            pass
-        try:
-            from . import view_op
-            view_op.schedule_fit_active_page()
-        except Exception:  # noqa: BLE001
-            pass
+        _schedule_page_ui_after_open()
         self.report({"INFO"}, "前のページを開きました")
         return {"FINISHED"}
 

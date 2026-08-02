@@ -1,4 +1,4 @@
-"""Blender 5.1: Meldex receiver security boundary."""
+"""Blender 5.2: Meldex receiver security boundary."""
 
 from __future__ import annotations
 
@@ -97,7 +97,7 @@ def main() -> None:
         assert advertised["versions"] == [1, 2]
         assert advertised["features"]["presentationRuby"] is True
         assert _post(port, "wrong") == 401
-        assert _post(port, token, origin=True) == 403
+        assert all(_post(port, token, origin=True) == 403 for _index in range(16))
         assert _post(port, token, content_type="text/plain") == 415
         assert _post_declared_length(port, token, receiver.MAX_BODY_BYTES + 1) == 413
         assert _post(port, token, body=b"{}") == 400

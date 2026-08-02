@@ -10,6 +10,7 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty
 from bpy.types import Operator
 
+from ..bmanga_core.file_identity import ArtifactCommitHook
 from ..core.work import get_active_page, get_work
 from ..io import (
     coma_move_transaction,
@@ -383,6 +384,8 @@ def create_rect_coma(
     width_mm: float,
     height_mm: float,
     title: str | None = None,
+    *,
+    on_committed: ArtifactCommitHook | None = None,
 ):
     """指定矩形の新規コマを page.comas に追加し、cNN.json と page.json を保存.
 
@@ -410,8 +413,21 @@ def create_rect_coma(
     )
     entry.z_order = max_z + 1
     page.active_coma_index = len(page.comas) - 1
-    coma_io.save_coma_meta(work_dir, page.id, entry)
-    page_io.save_page_json(work_dir, page)
+    if on_committed is None:
+        coma_io.save_coma_meta(work_dir, page.id, entry)
+        page_io.save_page_json(work_dir, page)
+    else:
+        coma_io.save_coma_meta(
+            work_dir,
+            page.id,
+            entry,
+            on_committed=on_committed,
+        )
+        page_io.save_page_json(
+            work_dir,
+            page,
+            on_committed=on_committed,
+        )
     page.coma_count = len(page.comas)
     # コマ平面 Mesh (背景色 + マスク兼用) を即時 ensure。 これが無いと、
     # 次セーブ (mirror_work_to_outliner) まで coma_plane が未生成で、
@@ -438,7 +454,13 @@ def create_rect_coma(
     return entry
 
 
-def create_basic_frame_coma(work, page, work_dir: Path):
+def create_basic_frame_coma(
+    work,
+    page,
+    work_dir: Path,
+    *,
+    on_committed: ArtifactCommitHook | None = None,
+):
     """基本枠 (用紙の inner_frame) サイズの矩形コマを 1 個生成して返す.
 
     見開きページの場合は左右ページの基本枠を結合した全幅コマを生成する。
@@ -455,7 +477,7 @@ def create_basic_frame_coma(work, page, work_dir: Path):
         x_mm = (p.canvas_width_mm - p.inner_frame_width_mm) / 2.0 + p.inner_frame_offset_x_mm
         width_mm = p.inner_frame_width_mm
     y_mm = (p.canvas_height_mm - p.inner_frame_height_mm) / 2.0 + p.inner_frame_offset_y_mm
-    return create_rect_coma(
+    args = (
         work,
         page,
         work_dir,
@@ -463,6 +485,12 @@ def create_basic_frame_coma(work, page, work_dir: Path):
         y_mm,
         width_mm,
         p.inner_frame_height_mm,
+    )
+    if on_committed is None:
+        return create_rect_coma(*args)
+    return create_rect_coma(
+        *args,
+        on_committed=on_committed,
     )
 
 
@@ -500,6 +528,48 @@ class BMANGA_OT_coma_add(Operator):
         return {"FINISHED"}
 
 
+def remove_coma_entry(context, work, page, index: int) -> str:
+    """指定コマをUI Operatorに依存しない共通Commandとして削除する。"""
+
+    if work is None or page is None or not (0 <= index < len(page.comas)):
+        raise ValueError("削除対象のコマが見つかりません")
+    entry = page.comas[index]
+    stem = str(entry.coma_id)
+    transaction = coma_operation_transaction.ComaOperationTransaction(
+        context,
+        work,
+        page,
+        remove_ids=(stem,),
+    )
+    try:
+        transaction.apply_native()
+        parent_key = layer_stack_utils.gp_parent_key_for_coma(page, entry)
+        layer_stack_utils.delete_gp_layers_for_parent_keys(
+            context,
+            {parent_key},
+        )
+        layer_stack_utils.delete_effect_layers_for_parent_keys(
+            context,
+            {parent_key},
+        )
+        page.comas.remove(index)
+        page.active_coma_index = (
+            -1 if not page.comas else min(index, len(page.comas) - 1)
+        )
+        transaction.commit()
+        _sync_layer_stack_after_coma_change(context)
+    except Exception:
+        transaction.abort()
+        raise
+    try:
+        from ..utils import coma_plane as _cp
+
+        _cp.remove_coma_plane(page.id, stem)
+    except Exception:  # noqa: BLE001
+        _logger.exception("coma_remove: remove_coma_plane failed")
+    return stem
+
+
 class BMANGA_OT_coma_remove(Operator):
     """選択中のコマを削除."""
 
@@ -522,41 +592,9 @@ class BMANGA_OT_coma_remove(Operator):
         idx = page.active_coma_index
         if not (0 <= idx < len(page.comas)):
             return {"CANCELLED"}
-        entry = page.comas[idx]
-        stem = entry.coma_id
-        work_dir = Path(work.work_dir)
-        transaction = None
         try:
-            transaction = coma_operation_transaction.ComaOperationTransaction(
-                context,
-                work,
-                page,
-                remove_ids=(stem,),
-            )
-            transaction.apply_native()
-            layer_stack_utils.delete_gp_layers_for_parent_keys(
-                context, {layer_stack_utils.gp_parent_key_for_coma(page, entry)}
-            )
-            layer_stack_utils.delete_effect_layers_for_parent_keys(
-                context, {layer_stack_utils.gp_parent_key_for_coma(page, entry)}
-            )
-            page.comas.remove(idx)
-            if len(page.comas) == 0:
-                page.active_coma_index = -1
-            elif idx >= len(page.comas):
-                page.active_coma_index = len(page.comas) - 1
-            transaction.commit()
-            _sync_layer_stack_after_coma_change(context)
-            # 削除コマの coma_plane Mesh / Material も即時掃除
-            try:
-                from ..utils import coma_plane as _cp
-
-                _cp.remove_coma_plane(page.id, stem)
-            except Exception:  # noqa: BLE001
-                _logger.exception("coma_remove: remove_coma_plane failed")
+            stem = remove_coma_entry(context, work, page, idx)
         except Exception as exc:  # noqa: BLE001
-            if transaction is not None:
-                transaction.abort()
             _logger.exception("panel_remove failed")
             self.report({"ERROR"}, f"コマ削除失敗: {exc}")
             return {"CANCELLED"}
@@ -582,6 +620,7 @@ class BMANGA_OT_coma_duplicate(Operator):
             return {"CANCELLED"}
         idx = page.active_coma_index
         src = page.comas[idx]
+        src_stem = str(src.coma_id)
         work_dir = Path(work.work_dir)
         transaction = None
         try:
@@ -590,11 +629,14 @@ class BMANGA_OT_coma_duplicate(Operator):
                 context,
                 work,
                 page,
-                copy_pairs=((str(src.coma_id), new_stem),),
+                copy_pairs=((src_stem, new_stem),),
             )
             transaction.apply_native()
             # entry を複製
-            new_entry = page.comas.add()
+            page.comas.add()
+            # CollectionProperty.add() 後は追加前の参照を再利用しない。
+            src = page.comas[idx]
+            new_entry = page.comas[len(page.comas) - 1]
             _copy_coma_entry(src, new_entry)
             new_entry.coma_id = new_stem
             new_entry.id = new_stem
@@ -607,6 +649,8 @@ class BMANGA_OT_coma_duplicate(Operator):
             if new_index != idx + 1:
                 page.comas.move(new_index, idx + 1)
             page.active_coma_index = idx + 1
+            # move() も内部配列を並べ替えるため、後段へ渡す参照を再取得する。
+            new_entry = page.comas[idx + 1]
             if hasattr(context.scene, "bmanga_active_layer_kind"):
                 context.scene.bmanga_active_layer_kind = "coma"
             transaction.commit()
@@ -626,7 +670,7 @@ class BMANGA_OT_coma_duplicate(Operator):
             _logger.exception("panel_duplicate failed")
             self.report({"ERROR"}, f"コマ複製失敗: {exc}")
             return {"CANCELLED"}
-        self.report({"INFO"}, f"コマ複製: {src.coma_id} → {new_stem}")
+        self.report({"INFO"}, f"コマ複製: {src_stem} → {new_stem}")
         return {"FINISHED"}
 
 

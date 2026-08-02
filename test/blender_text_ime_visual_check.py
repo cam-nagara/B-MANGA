@@ -127,6 +127,9 @@ def _create_work_scene() -> None:
         result = bpy.ops.bmanga.work_new(filepath=str(_TEMP_ROOT / "Text_IME_Visual.bmanga"))
     if "FINISHED" not in result:
         raise RuntimeError(f"work_new failed: {result}")
+    # work_new は mainfile を切り替えるため、切替前の Screen/Area/Region は
+    # Blender RNA 上で無効になる。ページを開く直前に現在の文脈を取り直す。
+    override = _view3d_override()
     if override:
         with bpy.context.temp_override(**override):
             result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)

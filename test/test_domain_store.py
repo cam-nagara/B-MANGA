@@ -97,6 +97,21 @@ def test_transaction_rolls_back_all_commands_as_one_unit():
     assert store.drain_events() == ()
 
 
+def test_page_hydration_preserves_store_identity_dirty_state_and_events():
+    store = DomainStore(_project(), {PAGE_UID: _page()})
+    event = store.execute(SetProjectSetting("title", "dirty project"))
+    candidate = _page()
+    candidate.settings["loaded"] = "disk"
+
+    store.hydrate_page(candidate)
+
+    assert store.project.settings["title"] == "dirty project"
+    assert store.pages[PAGE_UID].settings["loaded"] == "disk"
+    assert store.dirty_project
+    assert PAGE_UID not in store.dirty_page_uids
+    assert store.drain_events() == (event,)
+
+
 def test_single_member_link_group_remains_valid_for_future_relinking():
     page = _page()
     link_uid = derived_uid(UIDKind.LINK, PAGE_UID, "single")
@@ -170,6 +185,26 @@ def test_project_projection_commit_rejects_stale_revision_without_mutation():
     with pytest.raises(CommandError, match="stale project patch"):
         store.execute(ApplyProjectPatch(patch))
     assert store.project.to_dict() == committed
+
+
+def test_identical_projection_is_a_noop_without_revision_or_dirty_state():
+    store = DomainStore(_project(), {PAGE_UID: _page()})
+
+    project_event = store.execute(
+        ApplyProjectPatch(project_patch(store.project, store.project))
+    )
+    page_event = store.execute(
+        ApplyPagePatch(
+            page_patch(store.pages[PAGE_UID], store.pages[PAGE_UID])
+        )
+    )
+
+    assert project_event.event_type == "project.patch.noop"
+    assert page_event.event_type == "page.patch.noop"
+    assert project_event.revision == 0
+    assert page_event.revision == 0
+    assert not store.dirty_project
+    assert not store.dirty_page_uids
 
 
 def test_page_projection_commit_rejects_stale_revision_without_mutation():

@@ -240,8 +240,11 @@ def _draw_fingerprint(effect_inout_curve, state_adapters, params):
             for name, request in effect_inout_curve._LIVE_PROFILE_REQUESTS.items()
         )
     )
-    timer_registered = bpy.app.timers.is_registered(
-        effect_inout_curve._live_profile_sync_tick
+    lifecycle_scheduler = sys.modules[
+        f"{effect_inout_curve.__package__}.lifecycle_scheduler"
+    ]
+    timer_registered = lifecycle_scheduler.is_scheduled(
+        "effect_inout.live_profile"
     )
     return (
         state_adapters.snapshot_rna_state(params),

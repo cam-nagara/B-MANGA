@@ -56,6 +56,9 @@ class TailPreset:
     sort_order: int = 999
 
 
+_GLOBAL_PRESET_CACHE: tuple[TailPreset, ...] | None = None
+
+
 def _list_in_dir(base: Path, *, source: str) -> list[TailPreset]:
     if not base.is_dir():
         return []
@@ -76,7 +79,12 @@ def _list_in_dir(base: Path, *, source: str) -> list[TailPreset]:
 
 
 def list_global_presets() -> list[TailPreset]:
-    return _list_in_dir(GLOBAL_TAILS_DIR, source="global")
+    global _GLOBAL_PRESET_CACHE
+    if _GLOBAL_PRESET_CACHE is None:
+        _GLOBAL_PRESET_CACHE = tuple(
+            _list_in_dir(GLOBAL_TAILS_DIR, source="global")
+        )
+    return list(_GLOBAL_PRESET_CACHE)
 
 
 def list_local_presets(work_dir: Path) -> list[TailPreset]:

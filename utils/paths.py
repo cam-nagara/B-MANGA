@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import json
 import re
 from pathlib import Path
@@ -50,11 +51,46 @@ class WorkPathBoundaryError(RuntimeError):
     """作品root外へ解決される物理パスを拒否する。"""
 
 
+_PATH_CACHE_DEPTH = 0
+_OWNED_PATH_CACHE: dict[tuple[str, str], Path] = {}
+_DOMAIN_JSON_CACHE: dict[
+    tuple[str, str, int, int],
+    dict,
+] = {}
+
+
+@contextmanager
+def path_resolution_cache():
+    """単一hydrate中だけ物理path/JSON検査結果を再利用する。
+
+    file openの一回のread-only処理内では同じpathを数百回参照する。境界検査を
+    省かず最初の一回だけ実施し、hydrateを抜けた時点で必ず破棄することで、
+    後続の書込みや外部junction差替えへ古い判定を持ち越さない。
+    """
+
+    global _PATH_CACHE_DEPTH
+    _PATH_CACHE_DEPTH += 1
+    try:
+        yield
+    finally:
+        _PATH_CACHE_DEPTH -= 1
+        if _PATH_CACHE_DEPTH <= 0:
+            _PATH_CACHE_DEPTH = 0
+            _OWNED_PATH_CACHE.clear()
+            _DOMAIN_JSON_CACHE.clear()
+
+
 def assert_work_owned_path(work_dir: Path, path: Path) -> Path:
     """junction/symlink解決後も``path``が作品root内であることを保証する。"""
 
-    root = Path(work_dir).resolve(strict=False)
     candidate = Path(path)
+    cache_key = (
+        str(Path(work_dir).absolute()),
+        str(candidate.absolute()),
+    )
+    if _PATH_CACHE_DEPTH > 0 and cache_key in _OWNED_PATH_CACHE:
+        return candidate
+    root = Path(work_dir).resolve(strict=False)
     try:
         resolved = candidate.resolve(strict=False)
         resolved.relative_to(root)
@@ -62,6 +98,8 @@ def assert_work_owned_path(work_dir: Path, path: Path) -> Path:
         raise WorkPathBoundaryError(
             f"work path escapes project root: {candidate}"
         ) from exc
+    if _PATH_CACHE_DEPTH > 0:
+        _OWNED_PATH_CACHE[cache_key] = resolved
     return candidate
 
 
@@ -404,6 +442,15 @@ def _read_domain_json(
 ) -> dict:
     target = assert_work_owned_path(work_dir, path).resolve(strict=False)
     try:
+        file_stat = target.stat()
+        cache_key = (
+            str(target),
+            expected_schema,
+            int(file_stat.st_mtime_ns),
+            int(file_stat.st_size),
+        )
+        if _PATH_CACHE_DEPTH > 0 and cache_key in _DOMAIN_JSON_CACHE:
+            return _DOMAIN_JSON_CACHE[cache_key]
         raw = target.read_bytes()
     except FileNotFoundError as exc:
         raise FileNotFoundError(f"required Domain file is missing: {path}") from exc
@@ -414,6 +461,8 @@ def _read_domain_json(
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"invalid Domain JSON: {path}") from exc
     _validate_domain_json(data, target, expected_schema)
+    if _PATH_CACHE_DEPTH > 0:
+        _DOMAIN_JSON_CACHE[cache_key] = data
     return data
 
 

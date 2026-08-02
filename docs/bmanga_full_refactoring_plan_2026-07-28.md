@@ -2,7 +2,7 @@
 
 作成日: 2026-07-28
 セッション種別: 開発
-状態: **Phase 0〜3合格。Phase 0〜2個別コミット完了、Phase 3個別コミット準備完了。次はPhase 4**
+状態: **Phase 0〜4合格・個別コミット完了。次はPhase 5**
 対象: B-MANGA / B-MANGA Render / B-MANGA Line
 基準環境: **Blender 5.2 LTS のみ**
 
@@ -725,6 +725,13 @@ Dropboxやユーザーの実作品を必須fixtureにしない。
 - `active_page_uid`と実際に開いているpageが常に一致する。
 - 80ページ作品でも現在対象以外の詳細を読まない。
 - Undo/Redo後にDomain、Object、Outliner、合成が一致する。
+
+完了記録（2026-08-02）:
+
+- Lifecycle状態機械、世代付きScheduler、Lifecycle Coordinator、Outliner Change Collector、非保存cache、軽量作品一覧を実装した。
+- 未保存ラスターの別プロセスクラッシュ復元、dirtyな非B-MANGAファイルの切替拒否、外部差替えを削除しない新規作品rollbackを追加した。
+- Blender 5.2 LTS統一認定469/469、必須436/436、failure／timeout／crash／予期しないskip 0。証跡は`_verify/2026-08-02_phase4_final_identity_highfix_full5`。
+- 独立最終レビューは重大0・高0。Phase 4個別コミット後だけPhase 5へ進む。
 
 ### Phase 5 — Layer tree・リンク・移送
 

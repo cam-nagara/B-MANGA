@@ -3502,7 +3502,18 @@ def delete_stack_index(context, index: int) -> bool:
         if not select_stack_index(context, index):
             return False
         try:
-            return "FINISHED" in bpy.ops.bmanga.coma_remove("EXEC_DEFAULT")
+            from ..operators import coma_op
+
+            work = get_work(context)
+            target_page = resolved.get("page")
+            target_index = int(resolved.get("index", -1))
+            coma_op.remove_coma_entry(
+                context,
+                work,
+                target_page,
+                target_index,
+            )
+            return True
         except Exception:  # noqa: BLE001
             _logger.exception("delete panel from layer stack failed")
             return False
@@ -3713,6 +3724,21 @@ def schedule_layer_stack_sync(
         return None
 
     try:
-        bpy.app.timers.register(_tick, first_interval=interval)
+        from . import lifecycle_scheduler
+
+        lifecycle_scheduler.schedule(
+            "layer_stack.sync",
+            _tick,
+            first_interval=interval,
+            on_cancel=_cancel_layer_stack_sync,
+        )
     except Exception:  # noqa: BLE001
+        _cancel_layer_stack_sync()
         _logger.exception("schedule layer stack sync failed")
+
+
+def _cancel_layer_stack_sync() -> None:
+    global _sync_order_moved_uid, _sync_scheduled, _sync_should_apply_order
+    _sync_scheduled = False
+    _sync_should_apply_order = False
+    _sync_order_moved_uid = ""

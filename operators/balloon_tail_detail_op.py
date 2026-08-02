@@ -81,12 +81,14 @@ def restore_tail_preset_selector(context) -> None:
     value = str(getattr(prefs, "last_tail_preset", "") or "") if prefs is not None else ""
     if not value:
         return
+    if str(getattr(wm, "bmanga_tail_preset_selector", "") or "") == value:
+        return
     try:
         valid = {str(item[0]) for item in _tail_preset_enum_items(None, context)}
     except Exception:  # noqa: BLE001
         _logger.debug("tail preset restore items failed", exc_info=True)
         return
-    if value not in valid or str(getattr(wm, "bmanga_tail_preset_selector", "") or "") == value:
+    if value not in valid:
         return
     _SUPPRESS_TAIL_PRESET_REMEMBER = True
     try:

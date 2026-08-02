@@ -197,7 +197,12 @@ def _do_split(
     )
     try:
         transaction.apply_native()
-        new_entry = page.comas.add()
+        page.comas.add()
+        # CollectionProperty.add() は内部配列を再配置し得る。追加前の
+        # PropertyGroup参照を使い続けるとBlender本体がaccess violationに
+        # なるため、元コマと追加コマを必ずcollectionから取り直す。
+        panel = page.comas[coma_idx]
+        new_entry = page.comas[len(page.comas) - 1]
         _copy_coma_entry(panel, new_entry)
         new_entry.coma_id = new_stem
         new_entry.id = new_stem

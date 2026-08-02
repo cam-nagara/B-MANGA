@@ -126,15 +126,15 @@ def sync_paper_preset_selector(context) -> None:
     name = (getattr(work.paper, "preset_name", "") or "").strip()
     if not name:
         return
-    work_dir = Path(work.work_dir) if work.work_dir else None
-    preset = presets.load_preset_by_name(name, work_dir)
-    if preset is None:
-        return
     wm = getattr(context, "window_manager", None)
     if wm is None or not hasattr(wm, "bmanga_paper_preset_selector"):
         return
     cur = getattr(wm, "bmanga_paper_preset_selector", "")
     if cur == name:
+        return
+    work_dir = Path(work.work_dir) if work.work_dir else None
+    preset = presets.load_preset_by_name(name, work_dir)
+    if preset is None:
         return
     _preset_enum_items(None, context)
     _SUPPRESS_SELECTOR_UPDATE = True
@@ -233,11 +233,12 @@ class BMANGA_OT_paper_preset_save_local(Operator):
 # ---------- 枠線プリセット (枠線 + フチ) ----------
 
 _BORDER_PRESET_ENUM_CACHE: list[tuple[str, str, str]] = []
+_BORDER_PRESET_ENUM_WORK_DIR = ""
 _SUPPRESS_BORDER_SELECTOR_UPDATE = False
 
 
 def _border_preset_enum_items(_self, context):
-    global _BORDER_PRESET_ENUM_CACHE
+    global _BORDER_PRESET_ENUM_CACHE, _BORDER_PRESET_ENUM_WORK_DIR
     work = get_work(context)
     work_dir = Path(work.work_dir) if (work and work.loaded and work.work_dir) else None
     preset_list = list(border_presets.list_all_presets(work_dir))
@@ -248,6 +249,7 @@ def _border_preset_enum_items(_self, context):
     if not cache:
         cache.append(("", "(プリセットなし)", ""))
     _BORDER_PRESET_ENUM_CACHE = cache
+    _BORDER_PRESET_ENUM_WORK_DIR = str(work_dir or "")
     return _BORDER_PRESET_ENUM_CACHE
 
 
@@ -607,11 +609,21 @@ def sync_border_preset_selector(context) -> None:
         return
     if not name:
         return
-    # セレクタの enum に存在しない名前 (削除済みプリセット等) は無視する。
-    items = _border_preset_enum_items(None, context)
-    if name not in {item[0] for item in items}:
-        return
     if getattr(wm, "bmanga_border_preset_selector", "") == name:
+        return
+    # 同じ作品を再読込しただけなら、直前に構築した列挙を再利用する。作品が
+    # 変わる場合は旧作品内プリセット移行の機会を失わないよう必ず再走査する。
+    current_work_dir = str(_border_preset_work_dir(context) or "")
+    items = (
+        _BORDER_PRESET_ENUM_CACHE
+        if (
+            _BORDER_PRESET_ENUM_CACHE
+            and _BORDER_PRESET_ENUM_WORK_DIR == current_work_dir
+        )
+        else _border_preset_enum_items(None, context)
+    )
+    # セレクタの enum に存在しない名前 (削除済みプリセット等) は無視する。
+    if name not in {item[0] for item in items}:
         return
     _SUPPRESS_BORDER_SELECTOR_UPDATE = True
     try:

@@ -86,6 +86,18 @@ def _balloon_uid(page, entry) -> str:
     return layer_stack.target_uid("balloon", f"{page_key}:{entry.id}")
 
 
+def _balloon_by_id(page, balloon_id: str):
+    collection = (
+        bpy.context.scene.bmanga_work.shared_balloons
+        if page is None
+        else page.balloons
+    )
+    for entry in collection:
+        if str(getattr(entry, "id", "") or "") == balloon_id:
+            return entry
+    raise AssertionError(f"フキダシが見つかりません: {balloon_id}")
+
+
 def _assert_pair(value, expected, label: str) -> None:
     actual = (round(float(value[0]), 6), round(float(value[1]), 6))
     exp = (round(float(expected[0]), 6), round(float(expected[1]), 6))
@@ -172,16 +184,21 @@ def _test_balloon_link_duplicate(page) -> None:
         },
         enabled=True,
     )
+    source_id = str(source.id)
 
-    _select_stack("balloon", f":{source.id}")
+    _select_stack("balloon", f":{source_id}")
     assert bpy.ops.bmanga.layer_stack_duplicate("EXEC_DEFAULT") == {"FINISHED"}
-    normal = page.balloons[-1]
+    normal_id = str(page.balloons[-1].id)
+    source = _balloon_by_id(page, source_id)
+    normal = _balloon_by_id(page, normal_id)
     if abs(float(normal.x_mm) - 32.0) > 1.0e-6 or abs(float(normal.y_mm) - 44.0) > 1.0e-6:
         raise AssertionError("フキダシの通常複製で位置がずれています")
 
-    _select_stack("balloon", f":{source.id}")
+    _select_stack("balloon", f":{source_id}")
     assert bpy.ops.bmanga.layer_stack_link_duplicate("EXEC_DEFAULT") == {"FINISHED"}
-    linked = page.balloons[-1]
+    linked_id = str(page.balloons[-1].id)
+    source = _balloon_by_id(page, source_id)
+    linked = _balloon_by_id(page, linked_id)
     if abs(float(linked.x_mm) - float(source.x_mm)) > 1.0e-6 or abs(float(linked.y_mm) - float(source.y_mm)) > 1.0e-6:
         raise AssertionError("フキダシのリンク複製で位置がずれています")
     linked_uids = layer_links.linked_uids_for_uid(bpy.context, _balloon_uid(page, source))
@@ -255,6 +272,7 @@ def _test_balloon_link_duplicate(page) -> None:
         parent_kind="page",
         parent_key="",
     )
+    manual_a_id = str(manual_a.id)
     manual_b = balloon_op._create_balloon_entry(
         bpy.context,
         page,
@@ -266,6 +284,9 @@ def _test_balloon_link_duplicate(page) -> None:
         parent_kind="page",
         parent_key="",
     )
+    manual_b_id = str(manual_b.id)
+    manual_a = _balloon_by_id(page, manual_a_id)
+    manual_b = _balloon_by_id(page, manual_b_id)
     manual_a.rotation_deg = 18.0
     manual_a.center_offset_x_mm = 5.0
     manual_a.center_offset_y_mm = -6.0
@@ -305,9 +326,12 @@ def _test_balloon_link_duplicate(page) -> None:
     shared.height_mm = 20.0
     shared.parent_kind = "none"
     shared.parent_key = ""
+    shared_id = str(shared.id)
     _select_stack_uid(_balloon_uid(None, shared))
     assert bpy.ops.bmanga.layer_stack_link_duplicate("EXEC_DEFAULT") == {"FINISHED"}
-    shared_linked = work.shared_balloons[-1]
+    shared_linked_id = str(work.shared_balloons[-1].id)
+    shared = _balloon_by_id(None, shared_id)
+    shared_linked = _balloon_by_id(None, shared_linked_id)
     if shared_linked is shared or not str(getattr(shared_linked, "id", "") or "").startswith("shared_balloon"):
         raise AssertionError("ページ外フキダシのリンク複製が作成されていません")
     if abs(float(shared_linked.x_mm) - float(shared.x_mm)) > 1.0e-6 or abs(float(shared_linked.y_mm) - float(shared.y_mm)) > 1.0e-6:

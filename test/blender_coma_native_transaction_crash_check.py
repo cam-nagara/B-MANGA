@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MODULE_NAME = "bmanga_coma_native_crash_test"
 OPERATIONS = ("duplicate", "delete", "merge", "template", "split", "knife")
 ADDITION_OPERATIONS = {"duplicate", "split", "knife"}
+DERIVED_PAGE_PREVIEWS = {"page_preview.png", "page_preview.detail.png"}
 
 
 def _load_addon():
@@ -42,6 +43,9 @@ def _persistent_digest(work_dir: Path) -> dict[str, str]:
         ).hexdigest()
         for path in sorted(work_dir.rglob("*"))
         if path.is_file()
+        # ページ一覧previewはDomainから再生成できる非永続cacheであり、
+        # crash rollbackが一致を保証する作品データには含めない。
+        and path.name not in DERIVED_PAGE_PREVIEWS
         and (
             path.name == "project.json"
             or path.relative_to(work_dir).parts[0] in {"pages", "assets"}
@@ -304,7 +308,21 @@ def _exercise_operation(
         work_dir,
         repository=repository,
     ) == 1
-    assert _persistent_digest(work_dir) == before
+    after = _persistent_digest(work_dir)
+    assert after == before, json.dumps(
+        {
+            "operation": operation,
+            "added": sorted(after.keys() - before.keys()),
+            "removed": sorted(before.keys() - after.keys()),
+            "changed": sorted(
+                path
+                for path in after.keys() & before.keys()
+                if after[path] != before[path]
+            ),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
     assert not tuple((work_dir / "journal").glob("native-op-*.json"))
     assert not tuple((work_dir / "journal").glob(".coma-operation-*"))
 

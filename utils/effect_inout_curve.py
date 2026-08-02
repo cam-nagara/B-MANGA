@@ -471,7 +471,14 @@ def request_live_profile_sync(
         return
     _LIVE_PROFILE_RUNNING = True
     try:
-        bpy.app.timers.register(_live_profile_sync_tick, first_interval=0.15)
+        from . import lifecycle_scheduler
+
+        lifecycle_scheduler.schedule(
+            "effect_inout.live_profile",
+            _live_profile_sync_tick,
+            first_interval=0.15,
+            on_cancel=_cancel_live_profile_sync,
+        )
     except Exception:  # noqa: BLE001
         _LIVE_PROFILE_RUNNING = False
 
@@ -491,10 +498,17 @@ def release_live_profile_sync(params) -> None:
     if bpy is None:
         return
     try:
-        if bpy.app.timers.is_registered(_live_profile_sync_tick):
-            bpy.app.timers.unregister(_live_profile_sync_tick)
+        from . import lifecycle_scheduler
+
+        lifecycle_scheduler.cancel("effect_inout.live_profile")
     except Exception:  # noqa: BLE001
         pass
+
+
+def _cancel_live_profile_sync() -> None:
+    global _LIVE_PROFILE_RUNNING
+    _LIVE_PROFILE_RUNNING = False
+    _LIVE_PROFILE_REQUESTS.clear()
 
 
 def sync_ui_nodes_to_params(params) -> bool:

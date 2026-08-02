@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import bpy
 
 from . import log
@@ -10,7 +12,9 @@ from . import log
 _logger = log.get_logger(__name__)
 _restoring = False
 _relaunch_object_tool = False
-_generation = 0
+_blocked_error = ""
+_MAX_RECONCILE_ATTEMPTS = 3
+_RECONCILE_RETRY_SECONDS = 0.05
 
 
 def is_restoring() -> bool:
@@ -19,11 +23,31 @@ def is_restoring() -> bool:
     return _restoring
 
 
+def is_blocked() -> bool:
+    """Undo/Redo投影が有限回retry後も一致しなかったか。"""
+
+    return bool(_blocked_error)
+
+
+def blocked_error() -> str:
+    return _blocked_error
+
+
+def reset_after_file_load() -> None:
+    """別mainfileの厳格hydrate開始時だけ履歴fail-closedを解除する。"""
+
+    global _restoring, _relaunch_object_tool, _blocked_error
+    _restoring = False
+    _relaunch_object_tool = False
+    _blocked_error = ""
+
+
 def begin_restore(*, relaunch_object_tool: bool = False) -> None:
     """監視系を止める復元区間を開始する."""
 
-    global _restoring, _relaunch_object_tool
+    global _restoring, _relaunch_object_tool, _blocked_error
     _restoring = True
+    _blocked_error = ""
     _relaunch_object_tool = _relaunch_object_tool or bool(relaunch_object_tool)
 
 
@@ -59,6 +83,28 @@ def _reconcile_current_state() -> None:
     from . import layer_object_sync, page_file_scene
 
     role, page_id, _coma_id = page_file_scene.current_role(context)
+    page = None
+    if role == page_file_scene.ROLE_PAGE and page_id:
+        page = next(
+            (
+                entry
+                for entry in getattr(work, "pages", ())
+                if str(getattr(entry, "id", "") or "") == page_id
+            ),
+            None,
+        )
+    try:
+        from ..io import page_io
+
+        page_io.reconcile_work_projection(
+            Path(str(getattr(work, "work_dir", "") or "")),
+            work,
+            page_entry=page,
+            context=context if page is not None else None,
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("history reconcile: Domain projection failed")
+        raise
     # work.blend のプレビュー再生成は PNG 作成を伴い得るため、履歴復元からは
     # 呼ばない。Blender が復元した実体を正として監視キャッシュだけ更新する。
     if role == page_file_scene.ROLE_PAGE and page_id:
@@ -90,25 +136,45 @@ def _reconcile_current_state() -> None:
 def schedule_reconcile(*, delay_seconds: float = 0.0) -> None:
     """Undo/Redo post の次イベントループで安全に再同期する."""
 
-    global _generation, _restoring
-    _generation += 1
-    generation = _generation
+    global _restoring, _blocked_error
+    attempts = 0
 
     def _tick():
-        global _restoring, _relaunch_object_tool
-        if generation != _generation:
-            return None
+        nonlocal attempts
+        global _restoring, _relaunch_object_tool, _blocked_error
         relaunch = _relaunch_object_tool
         try:
+            attempts += 1
             _reconcile_current_state()
-        except Exception:  # noqa: BLE001
-            _logger.exception("history reconcile failed")
-        finally:
-            _restoring = False
+        except Exception as exc:  # noqa: BLE001
+            _logger.exception(
+                "history reconcile failed (%d/%d)",
+                attempts,
+                _MAX_RECONCILE_ATTEMPTS,
+            )
+            if attempts < _MAX_RECONCILE_ATTEMPTS:
+                return _RECONCILE_RETRY_SECONDS
+            _blocked_error = str(exc) or type(exc).__name__
+            _restoring = True
             _relaunch_object_tool = False
+            return None
+        _restoring = False
+        _relaunch_object_tool = False
+        _blocked_error = ""
+        try:
+            from . import lifecycle_coordinator
+
+            lifecycle_coordinator.finish_history_restore()
+        except Exception:  # noqa: BLE001
+            _blocked_error = "履歴復元の完了状態を確認できませんでした"
+            _restoring = True
+            _logger.exception("history lifecycle completion failed")
+            return None
         if relaunch:
             try:
-                from ..operators.object_tool_op import _schedule_object_tool_relaunch
+                from ..operators.object_tool_op import (
+                    _schedule_object_tool_relaunch,
+                )
 
                 _schedule_object_tool_relaunch(delay_seconds=0.05)
             except Exception:  # noqa: BLE001
@@ -116,10 +182,14 @@ def schedule_reconcile(*, delay_seconds: float = 0.0) -> None:
         return None
 
     try:
-        bpy.app.timers.register(
+        from . import lifecycle_scheduler
+
+        lifecycle_scheduler.schedule(
+            "history_reconcile",
             _tick,
             first_interval=max(0.0, float(delay_seconds)),
         )
-    except Exception:  # noqa: BLE001
-        _restoring = False
+    except Exception as exc:  # noqa: BLE001
+        _restoring = True
+        _blocked_error = str(exc) or type(exc).__name__
         _logger.exception("history reconcile scheduling failed")

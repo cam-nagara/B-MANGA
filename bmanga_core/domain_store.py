@@ -42,6 +42,14 @@ class ProjectPatch:
     settings_remove: tuple[str, ...] = ()
     pages: tuple[PageSummary, ...] | None = None
 
+    @property
+    def is_empty(self) -> bool:
+        return not (
+            self.settings_upsert
+            or self.settings_remove
+            or self.pages is not None
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class PagePatch:
@@ -57,6 +65,20 @@ class PagePatch:
     children_remove: tuple[str, ...] = ()
     links_upsert: dict[str, DomainLink] = field(default_factory=dict)
     links_remove: tuple[str, ...] = ()
+
+    @property
+    def is_empty(self) -> bool:
+        return not (
+            self.root_uid is not None
+            or self.settings_upsert
+            or self.settings_remove
+            or self.nodes_upsert
+            or self.nodes_remove
+            or self.children_upsert
+            or self.children_remove
+            or self.links_upsert
+            or self.links_remove
+        )
 
 
 def project_patch(
@@ -160,6 +182,12 @@ class ApplyProjectPatch:
             raise CommandError("project patch belongs to another project")
         if patch.expected_revision != current.revision:
             raise CommandError("stale project patch")
+        if patch.is_empty:
+            return DomainEvent(
+                "project.patch.noop",
+                current.project_uid,
+                current.revision,
+            )
         candidate = copy.deepcopy(current)
         _apply_mapping_delta(
             candidate.settings,
@@ -201,6 +229,8 @@ class ApplyPagePatch:
         if current is None:
             if patch.expected_revision is not None:
                 raise CommandError("stale page patch")
+            if patch.is_empty:
+                raise CommandError("new page patch is empty")
             candidate = PageDocument(
                 project_uid=patch.project_uid,
                 page_uid=patch.page_uid,
@@ -214,6 +244,12 @@ class ApplyPagePatch:
         else:
             if patch.expected_revision != current.revision:
                 raise CommandError("stale page patch")
+            if patch.is_empty:
+                return DomainEvent(
+                    "page.patch.noop",
+                    current.page_uid,
+                    current.revision,
+                )
             candidate = copy.deepcopy(current)
             candidate.revision += 1
         if patch.root_uid is not None:
@@ -301,14 +337,16 @@ class SetProjectSetting:
         key = str(self.key or "").strip()
         if not key:
             raise CommandError("setting key is required")
-        store._project.settings[key] = copy.deepcopy(self.value)
-        store._project.revision += 1
-        store._project.validate()
+        candidate = copy.deepcopy(store._project)
+        candidate.settings[key] = copy.deepcopy(self.value)
+        candidate.revision += 1
+        candidate.validate()
+        store._project = candidate
         store._dirty_project = True
         return DomainEvent(
             "project.setting.changed",
-            store._project.project_uid,
-            store._project.revision,
+            candidate.project_uid,
+            candidate.revision,
             (key,),
         )
 
@@ -319,15 +357,16 @@ class SetPageLinks:
     links: dict[str, DomainLink]
 
     def apply(self, store: "DomainStore") -> DomainEvent:
-        page = store.require_page(self.page_uid)
-        page.links = copy.deepcopy(self.links)
-        page.revision += 1
-        page.validate()
-        store._dirty_pages.add(page.page_uid)
+        candidate = copy.deepcopy(store.require_page(self.page_uid))
+        candidate.links = copy.deepcopy(self.links)
+        candidate.revision += 1
+        candidate.validate()
+        store._pages[candidate.page_uid] = candidate
+        store._dirty_pages.add(candidate.page_uid)
         return DomainEvent(
             "page.links.changed",
-            page.page_uid,
-            page.revision,
+            candidate.page_uid,
+            candidate.revision,
             ("links",),
         )
 
@@ -373,6 +412,13 @@ class DomainStore:
 
     def validate(self) -> None:
         self._project.validate()
+        self._validate_index()
+        for page in self._pages.values():
+            page.validate()
+
+    def _validate_index(self) -> None:
+        """Commandが検証済み文書を差し替えた後のStore索引だけを検査する。"""
+
         expected = {page.uid for page in self._project.pages}
         if not set(self._pages) <= expected:
             raise DomainValidationError("store contains page outside project")
@@ -381,7 +427,6 @@ class DomainStore:
                 raise DomainValidationError("page key/UID mismatch")
             if page.project_uid != self._project.project_uid:
                 raise DomainValidationError("page project UID mismatch")
-            page.validate()
 
     def require_page(self, page_uid: str) -> PageDocument:
         try:
@@ -393,7 +438,10 @@ class DomainStore:
         snapshot = self._snapshot()
         try:
             event = command.apply(self)
-            self.validate()
+            # 組込みCommandは変更したProject/Pageをapply内で検証し、
+            # 既存文書をcopy-on-writeで差し替える。全ページ再検証は
+            # 55/80ページの単一ページ編集を二次時間化するため索引に限定する。
+            self._validate_index()
         except BaseException:
             self._restore(snapshot)
             raise
@@ -406,7 +454,7 @@ class DomainStore:
         self._transaction_depth += 1
         try:
             yield self
-            self.validate()
+            self._validate_index()
         except BaseException:
             self._restore(snapshot)
             raise
@@ -432,10 +480,25 @@ class DomainStore:
             for uid in page_uids:
                 self._dirty_pages.discard(uid)
 
+    def hydrate_page(self, page: PageDocument) -> None:
+        """読込済み一ページだけをStoreへ載せ、他のdirty/Eventを保つ。"""
+
+        page.validate()
+        expected = {summary.uid for summary in self._project.pages}
+        if page.page_uid not in expected:
+            raise DomainValidationError("hydrated page is outside project")
+        if page.project_uid != self._project.project_uid:
+            raise DomainValidationError("hydrated page belongs to another project")
+        self._pages[page.page_uid] = copy.deepcopy(page)
+        self._dirty_pages.discard(page.page_uid)
+
     def _snapshot(self) -> _Snapshot:
+        # 組込みCommandはProject/Pageを必ずcopy-on-writeで差し替える。
+        # 参照の浅い退避でrollbackでき、単一ページ変更のたびに全ページを
+        # deepcopyする二次時間化を避けられる。
         return _Snapshot(
-            project=copy.deepcopy(self._project),
-            pages=copy.deepcopy(self._pages),
+            project=self._project,
+            pages=dict(self._pages),
             dirty_project=self._dirty_project,
             dirty_pages=set(self._dirty_pages),
             events=list(self._events),

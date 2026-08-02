@@ -23270,7 +23270,7 @@
       "cache_policy": "no_persistent_cache",
       "cancel_contract": "無効値をRNA制約で拒否し、直前の有効値を維持する",
       "category": "session_state",
-      "classification_reason": "ページ詳細の実行時読込状態",
+      "classification_reason": "RNA SKIP_SAVEで宣言された一時状態",
       "codec_bindings": [
         "session:not_saved:BMangaPageEntry.detail_loaded"
       ],
@@ -23283,7 +23283,7 @@
       "field_id": "field:bmanga:property.group.73524857f35bcd75.39264e13ee63:detail.loaded.ef3953915e0b",
       "field_name": "detail_loaded",
       "input_contract": "persistent_domainのRNA UI値（型=BoolProperty, 制約={'default': False}）",
-      "legacy_save_policy": "domain_codec",
+      "legacy_save_policy": "rna_skip_save",
       "maximum": "",
       "minimum": "",
       "owner_name": "BMangaPageEntry",
@@ -49319,7 +49319,7 @@
       "cache_policy": "no_persistent_cache",
       "cancel_contract": "無効値をRNA制約で拒否し、直前の有効値を維持する",
       "category": "session_state",
-      "classification_reason": "作品の実行時読込状態",
+      "classification_reason": "RNA SKIP_SAVEで宣言された一時状態",
       "codec_bindings": [
         "session:not_saved:BMangaWorkData.loaded"
       ],
@@ -49332,7 +49332,7 @@
       "field_id": "field:bmanga:property.group.ba01f487faf303dc.ac3e91b725af:loaded.2cab953f2b36",
       "field_name": "loaded",
       "input_contract": "persistent_domainのRNA UI値（型=BoolProperty, 制約={'default': False}）",
-      "legacy_save_policy": "domain_codec",
+      "legacy_save_policy": "rna_skip_save",
       "maximum": "",
       "minimum": "",
       "owner_name": "BMangaWorkData",

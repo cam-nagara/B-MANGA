@@ -148,7 +148,7 @@ def ensure_coma_camera_scene(
     resync_coma_camera_output_layout(context)
     view_camera_in_viewports(context)
     schedule_coma_view_camera()
-    _add_page_overview_backgrounds(scene, work)
+    _restore_or_schedule_page_overview_backgrounds(scene, work)
 
 
 def _restore_scene_camera(scene, camera) -> None:
@@ -1110,7 +1110,13 @@ def schedule_coma_view_camera(retries: int = 8, interval: float = 0.15) -> None:
         return interval if state["left"] > 0 else None
 
     try:
-        bpy.app.timers.register(_tick, first_interval=interval)
+        from . import lifecycle_scheduler
+
+        lifecycle_scheduler.schedule(
+            "coma.camera_view",
+            _tick,
+            first_interval=interval,
+        )
     except Exception:  # noqa: BLE001
         pass
 
@@ -1283,9 +1289,75 @@ def _ensure_coma_overlay_objects(scene, work) -> None:
 
 # ── コマファイル ページ概要表示（カメラ下絵方式） ─────────────────
 _PAGE_OVERVIEW_BG_PROP = "_bmanga_page_overview_bg"
+_PAGE_OVERVIEW_REFRESH_TASK = "coma.page_overview_refresh"
 
 
-def _add_page_overview_backgrounds(scene, work, *, force: bool = False) -> None:
+def _restore_or_schedule_page_overview_backgrounds(scene, work) -> None:
+    """保存済み下絵を即表示し、重い全ページ照合だけをload後へ送る。"""
+
+    if scene is None or work is None:
+        return
+    from . import coma_overview_cache
+
+    if not coma_overview_cache.has_recorded_backgrounds(
+        scene,
+        _PAGE_OVERVIEW_BG_PROP,
+    ):
+        _add_page_overview_backgrounds(scene, work)
+        return
+    apply_coma_overlay_background_visibility(scene=scene)
+    try:
+        scene_key = int(scene.as_pointer())
+    except Exception:  # noqa: BLE001
+        scene_key = id(scene)
+    work_dir = str(getattr(work, "work_dir", "") or "")
+
+    def _refresh_saved_backgrounds():
+        current_scene = getattr(bpy.context, "scene", None)
+        current_work = (
+            getattr(current_scene, "bmanga_work", None)
+            if current_scene is not None
+            else None
+        )
+        try:
+            current_scene_key = (
+                int(current_scene.as_pointer())
+                if current_scene is not None
+                else 0
+            )
+        except Exception:  # noqa: BLE001
+            current_scene_key = id(current_scene) if current_scene is not None else 0
+        if (
+            current_scene is None
+            or current_work is None
+            or current_scene_key != scene_key
+            or str(getattr(current_work, "work_dir", "") or "") != work_dir
+        ):
+            return None
+        _add_page_overview_backgrounds(current_scene, current_work)
+        return None
+
+    try:
+        from . import lifecycle_scheduler
+
+        lifecycle_scheduler.schedule(
+            _PAGE_OVERVIEW_REFRESH_TASK,
+            _refresh_saved_backgrounds,
+            # 保存済み下絵は既に表示済み。連続したファイル遷移へ割り込まず、
+            # ユーザー操作が落ち着いた時だけ全ページ署名を照合する。
+            first_interval=1.0,
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("page overview deferred validation schedule failed")
+
+
+def _add_page_overview_backgrounds(
+    scene,
+    work,
+    *,
+    force: bool = False,
+    expected_signature: str = "",
+) -> None:
     """ページプレビュー画像を個別カメラ下絵として追加する.
 
     各ページ画像を scale=1.0 で追加し、出力解像度にピッタリ合わせる。
@@ -1301,7 +1373,10 @@ def _add_page_overview_backgrounds(scene, work, *, force: bool = False) -> None:
         return
     from . import coma_overview_cache
 
-    expected_signature = coma_overview_cache.build_signature(scene, work)
+    expected_signature = (
+        expected_signature
+        or coma_overview_cache.build_signature(scene, work)
+    )
     if not force and coma_overview_cache.backgrounds_current(
         scene,
         expected_signature,

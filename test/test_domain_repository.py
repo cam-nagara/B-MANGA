@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -60,6 +61,51 @@ def test_new_repository_roundtrip_is_exact_and_uses_uid_paths(tmp_path):
     assert list(repository.journal_dir.iterdir()) == []
 
 
+def test_observed_project_hash_tracks_loaded_and_checkpointed_generation(tmp_path):
+    repository = ProjectRepository(tmp_path / "Work.bmanga")
+    project, page = _documents()
+    assert repository.observed_project_hash() == ""
+    repository.checkpoint(project, [page])
+    expected = hashlib.sha256(repository.project_path.read_bytes()).hexdigest()
+    assert repository.observed_project_hash() == expected
+
+    project.settings["name"] = "更新"
+    project.revision += 1
+    repository.checkpoint(project, [page])
+    updated = hashlib.sha256(repository.project_path.read_bytes()).hexdigest()
+    assert updated != expected
+    assert repository.observed_project_hash() == updated
+
+
+def test_page_only_checkpoint_does_not_rewrite_unchanged_project(tmp_path):
+    repository = ProjectRepository(tmp_path / "Work.bmanga")
+    project, page = _documents()
+    repository.checkpoint(project, [page])
+    project_before = repository.project_path.read_bytes()
+    project_mtime_before = repository.project_path.stat().st_mtime_ns
+    page.settings["offsetXMm"] = 42.0
+    page.revision += 1
+
+    repository.checkpoint(project, [page], include_project=False)
+
+    assert repository.project_path.read_bytes() == project_before
+    assert repository.project_path.stat().st_mtime_ns == project_mtime_before
+    assert repository.load_page(PAGE_UID).settings["offsetXMm"] == 42.0
+
+
+def test_read_only_observation_check_detects_external_project_update(tmp_path):
+    repository = ProjectRepository(tmp_path / "Work.bmanga")
+    project, page = _documents()
+    repository.checkpoint(project, [page])
+    repository.load_project()
+    repository.project_path.write_bytes(
+        repository.project_path.read_bytes() + b" "
+    )
+
+    with pytest.raises(RepositoryConflictError, match="別のBlender画面"):
+        repository.assert_observations_current((repository.project_path,))
+
+
 def test_old_layout_is_rejected_with_an_explicit_error(tmp_path):
     root = tmp_path / "Legacy.bmanga"
     root.mkdir()
@@ -116,7 +162,7 @@ def test_partial_prepare_failure_removes_all_stages(tmp_path, monkeypatch):
         if calls == 2:
             path.write_bytes(payload[:8])
             raise OSError("prepare failed")
-        original_write(path, payload)
+        return original_write(path, payload)
 
     monkeypatch.setattr(domain_repository, "_write_bytes", fail_second_stage)
     with pytest.raises(OSError, match="prepare failed"):

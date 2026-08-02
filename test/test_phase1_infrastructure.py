@@ -44,11 +44,11 @@ def _hash(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _case(source: Path, **updates) -> Case:
+def _case(path: Path, **updates) -> Case:
     values = {
         "test_id": "test:test.sample",
         "source": "test/sample.py",
-        "source_sha256": _hash(source),
+        "source_sha256": _hash(path),
         "mode": "python_script",
         "required": True,
         "timeout_seconds": 10,
@@ -435,6 +435,7 @@ def test_certification_serializes_all_blender_after_parallel_cases(
 ):
     active = {"python": 0, "blender": 0}
     overlap: list[str] = []
+    blender_order: list[str] = []
     lock = threading.Lock()
 
     def _fake_run_case(_root, _out, case, _blender):
@@ -442,6 +443,8 @@ def test_certification_serializes_all_blender_after_parallel_cases(
         with lock:
             if kind == "blender" and (active["python"] or active["blender"]):
                 overlap.append(case.source)
+            if kind == "blender":
+                blender_order.append(case.source)
             active[kind] += 1
         time.sleep(0.02)
         with lock:
@@ -468,9 +471,19 @@ def test_certification_serializes_all_blender_after_parallel_cases(
     cases = [
         _case(tmp_path / "python-a.py", mode="python_script"),
         _case(tmp_path / "python-b.py", mode="python_pytest"),
-        _case(tmp_path / "headless.py", mode="blender_headless"),
+        _case(
+            tmp_path / "headless.py",
+            mode="blender_headless",
+            source="test/headless.py",
+            run_order=100,
+        ),
         _case(tmp_path / "wrapper.py", mode="blender_wrapper"),
-        _case(tmp_path / "ui.py", mode="blender_ui"),
+        _case(
+            tmp_path / "ui.py",
+            mode="blender_ui",
+            source="test/ui.py",
+            run_order=0,
+        ),
     ]
     results = certification_cli._run_all(
         tmp_path,
@@ -481,6 +494,7 @@ def test_certification_serializes_all_blender_after_parallel_cases(
     )
     assert len(results) == 5
     assert overlap == []
+    assert blender_order == ["test/ui.py", "test/headless.py", "test/sample.py"]
 
 
 def test_golden_requires_separate_approval_and_detects_changes(tmp_path: Path):

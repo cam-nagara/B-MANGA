@@ -27,12 +27,6 @@ _logger = log.get_logger(__name__)
 # あるため 5 秒以上推奨」としている。
 SCAN_INTERVAL_SECONDS = 5.0
 
-# scan の世代番号 (アドオン unregister 時に既存タイマーを失効させるため)
-_scan_generation = 0
-
-# 現世代の tick 関数参照 (timers.unregister 用)
-_active_tick = None
-
 # 前回 scan 時の entry 数 (page / coma / folder) スナップショット。
 # (page_count, coma_total_count, folder_count) で表現し、追加削除を検出する。
 _LAST_ENTRY_COUNTS: tuple[int, int, int] = (0, 0, 0)
@@ -61,6 +55,9 @@ def mark_entry_counts_synced(scene=None) -> None:
     try:
         target_scene = scene if scene is not None else getattr(bpy.context, "scene", None)
         _LAST_ENTRY_COUNTS = _collect_entry_counts(target_scene)
+        from . import outliner_change_collector
+
+        outliner_change_collector.rebase()
     except Exception:  # noqa: BLE001
         pass
 
@@ -166,7 +163,11 @@ def _writeback_raster_parent(scene, obj, new_kind: str, new_key: str) -> bool:
     return True
 
 
-def _resolve_parent_kind_key_folder(new_kind: str, new_key: str) -> tuple[str, str, str]:
+def _resolve_parent_kind_key_folder(
+    scene,
+    new_kind: str,
+    new_key: str,
+) -> tuple[str, str, str]:
     """Outliner の new_kind/new_key を ``(parent_kind, parent_key, folder_key)``
     に変換する共通ヘルパ.
 
@@ -183,9 +184,13 @@ def _resolve_parent_kind_key_folder(new_kind: str, new_key: str) -> tuple[str, s
     if new_kind == "coma":
         return "coma", new_key, ""
     if new_kind == "folder":
-        folder_coll = on.find_collection_by_bmanga_id(new_key, kind="folder")
+        folder_coll = on.find_collection_by_bmanga_id(
+            new_key,
+            kind="folder",
+            scene=scene,
+        )
         if folder_coll is not None:
-            for parent_coll in bpy.data.collections:
+            for parent_coll in on.iter_scene_collections(scene):
                 if any(cc is folder_coll for cc in parent_coll.children):
                     pkind = on.get_kind(parent_coll)
                     if pkind in {"page", "coma"}:
@@ -226,7 +231,11 @@ def _writeback_empty_layer_parent(
     if kind == "image" and _entry_targets_other_page(scene, entry):
         los.update_snapshot(obj)
         return False
-    new_pk, new_pkey, new_fk = _resolve_parent_kind_key_folder(new_kind, new_key)
+    new_pk, new_pkey, new_fk = _resolve_parent_kind_key_folder(
+        scene,
+        new_kind,
+        new_key,
+    )
     if not new_pk:
         return False
     if (
@@ -263,7 +272,11 @@ def _writeback_image_path_parent(scene, obj, new_kind: str, new_key: str) -> boo
     entry = image_path_object.find_image_path_entry(scene, bid)
     if entry is None:
         return False
-    new_pk, new_pkey, new_fk = _resolve_parent_kind_key_folder(new_kind, new_key)
+    new_pk, new_pkey, new_fk = _resolve_parent_kind_key_folder(
+        scene,
+        new_kind,
+        new_key,
+    )
     if not new_pk:
         return False
     if (
@@ -308,7 +321,11 @@ def _writeback_effect_parent(scene, obj, new_kind: str, new_key: str) -> bool:
     (``bmanga_parent_key``) のみが正。watch 検出時に Object 側を最新化する
     だけで write-back 完了。
     """
-    new_pk, new_pkey, new_fk = _resolve_parent_kind_key_folder(new_kind, new_key)
+    new_pk, new_pkey, new_fk = _resolve_parent_kind_key_folder(
+        scene,
+        new_kind,
+        new_key,
+    )
     if not new_pk:
         return False
     if (
@@ -338,7 +355,7 @@ def _writeback_effect_parent(scene, obj, new_kind: str, new_key: str) -> bool:
     return True
 
 
-def _writeback_outliner_changes(scene) -> int:
+def _writeback_outliner_changes(scene, *, objects=None) -> int:
     """Outliner で D&D された Object の Collection 移動を実 entry に書戻し.
 
     detect_outliner_changes が見つけた差分を kind ごとに対応する write-back
@@ -352,7 +369,7 @@ def _writeback_outliner_changes(scene) -> int:
 
     if scene is None or history_runtime.is_restoring():
         return 0
-    changes = los.detect_outliner_changes(scene)
+    changes = los.detect_outliner_changes(scene, objects=objects)
     if not changes:
         return 0
     n = 0
@@ -376,6 +393,12 @@ def _writeback_outliner_changes(scene) -> int:
         if ok:
             n += 1
     return n
+
+
+def writeback_collected_changes(scene, *, objects=None) -> int:
+    """Change Collectorが集約したObjectだけをDomain投影へ戻す。"""
+
+    return _writeback_outliner_changes(scene, objects=objects)
 
 
 def _scan_once() -> float | None:
@@ -409,34 +432,12 @@ def _scan_once() -> float | None:
                 except Exception:  # noqa: BLE001
                     _logger.exception("outliner watch: mirror failed")
             _LAST_ENTRY_COUNTS = current_counts
-        _writeback_outliner_changes(scene)
-        # Empty Object (image/text) の location 変化を entry.x_mm/y_mm に
-        # 書戻し (オーバーレイ描画位置に連動)
-        try:
-            from . import object_state_sync
+        from . import outliner_change_collector
 
-            for obj in bpy.data.objects:
-                object_state_sync.sync_from_blender_object(scene, obj)
-        except Exception:  # noqa: BLE001
-            _logger.exception("Blender object state → entry sync failed")
+        outliner_change_collector.flush(scene, full=True)
     except Exception:  # noqa: BLE001
         _logger.exception("outliner watch scan failed")
     return SCAN_INTERVAL_SECONDS
-
-
-def _make_tick(generation: int):
-    def _tick():
-        if generation != _scan_generation:
-            return None
-        return _scan_once()
-
-    return _tick
-
-
-@persistent
-def _on_load_post(_filepath: str) -> None:
-    """.blend ロード後に scan timer を再起動 (load_post で世代が変わるため)."""
-    schedule_watch_timer()
 
 
 @persistent
@@ -461,114 +462,88 @@ def _on_depsgraph_update_post(scene, depsgraph) -> None:
     if scene is None:
         return
     try:
-        from . import object_state_sync
+        from . import outliner_change_collector
 
+        outliner_change_collector.collect_depsgraph(depsgraph)
         for update in depsgraph.updates:
-            if not update.is_updated_transform and not update.is_updated_geometry:
+            if not update.is_updated_geometry or update.is_updated_transform:
                 continue
             obj_id = update.id
             if not isinstance(obj_id, bpy.types.Object):
                 continue
-            if update.is_updated_geometry and not update.is_updated_transform:
-                geom_kind = str(obj_id.get("bmanga_kind", "") or "")
-                if geom_kind == "balloon":
-                    # フキダシ本体カーブを Blender の編集モードで手編集した
-                    # (制御点の移動・追加・削除) → 主線・フチ・多重線・塗りの
-                    # 帯メッシュを現在の制御点から作り直す (デバウンス予約)。
-                    real_curve = bpy.data.objects.get(obj_id.name)
-                    if real_curve is not None and getattr(real_curve, "type", "") == "CURVE":
-                        try:
-                            from . import balloon_curve_object as _bco
+            if str(obj_id.get("bmanga_kind", "") or "") != "balloon":
+                continue
+            real_curve = bpy.data.objects.get(obj_id.name)
+            if real_curve is None or getattr(real_curve, "type", "") != "CURVE":
+                continue
+            from . import balloon_curve_object as _bco
 
-                            _bco.request_band_rebuild_from_edit(scene, real_curve)
-                        except Exception:  # noqa: BLE001
-                            _logger.exception(
-                                "depsgraph_update_post balloon edit rebuild request failed"
-                            )
-                    continue
-                if geom_kind != "effect_base_path":
-                    continue
-            if not object_state_sync.is_sync_candidate(obj_id):
-                continue
-            # 名前で生 Object を引き直す (depsgraph の id は eval 版の場合あり)
-            real_obj = bpy.data.objects.get(obj_id.name)
-            if real_obj is None:
-                continue
-            if not object_state_sync.is_sync_candidate(real_obj):
-                continue
-            object_state_sync.sync_from_blender_object(scene, real_obj)
+            _bco.request_band_rebuild_from_edit(scene, real_curve)
+        outliner_change_collector.flush(scene)
     except Exception:  # noqa: BLE001
-        _logger.exception("depsgraph_update_post object state sync failed")
-
-    # Collection 移動の即時検出 → mask 自動追従
-    try:
-        _writeback_outliner_changes(scene)
-    except Exception:  # noqa: BLE001
-        _logger.exception("depsgraph_update_post outliner writeback failed")
+        _logger.exception("depsgraph_update_post change collection failed")
 
 
 def schedule_watch_timer() -> None:
-    """timer を起動 (既存 timer は世代カウンタ + 明示 unregister で停止)."""
-    global _scan_generation, _active_tick, _LAST_ENTRY_COUNTS
-    # 既存 tick を unregister
-    if _active_tick is not None:
-        try:
-            if bpy.app.timers.is_registered(_active_tick):
-                bpy.app.timers.unregister(_active_tick)
-        except Exception:  # noqa: BLE001
-            pass
-        _active_tick = None
+    """周期scanをLifecycle Schedulerの現世代へ登録する。"""
+    global _LAST_ENTRY_COUNTS
     # entry 件数の基準を「いま」の値で初期化する。これをしないと _LAST_ENTRY_COUNTS が
     # 初期値 (0,0,0) のままで、ファイルを開いた直後の最初の scan が必ず件数差を検出し、
     # load_post で済んでいる mirror_work_to_outliner を冗長に再実行する。その mirror が
     # ビューポートを連続再描画させ、用紙ガイド線・効果線などの細線がちらつく原因になる。
     try:
         _LAST_ENTRY_COUNTS = _collect_entry_counts(getattr(bpy.context, "scene", None))
+        from . import outliner_change_collector
+
+        outliner_change_collector.rebase()
     except Exception:  # noqa: BLE001
         pass
-    _scan_generation += 1
-    gen = _scan_generation
-    tick = _make_tick(gen)
-    _active_tick = tick
     try:
-        bpy.app.timers.register(
-            tick,
+        from . import lifecycle_scheduler
+
+        lifecycle_scheduler.schedule(
+            "outliner.watch",
+            _scan_once,
             first_interval=SCAN_INTERVAL_SECONDS,
             persistent=True,
+            restart_on_invalidate=True,
         )
     except Exception:  # noqa: BLE001
         _logger.exception("outliner watch timer register failed")
 
 
 def cancel_watch_timer() -> None:
-    """既存 timer を実 unregister + 世代カウンタで失効させる."""
-    global _scan_generation, _active_tick
-    _scan_generation += 1
-    if _active_tick is not None:
-        try:
-            if bpy.app.timers.is_registered(_active_tick):
-                bpy.app.timers.unregister(_active_tick)
-        except Exception:  # noqa: BLE001
-            pass
-        _active_tick = None
+    """周期scanをSchedulerから除去する。"""
+    from . import lifecycle_scheduler, outliner_change_collector
+
+    lifecycle_scheduler.cancel("outliner.watch")
+    outliner_change_collector.clear()
     los.clear_snapshots()
 
 
 def register() -> None:
-    if _on_load_post not in bpy.app.handlers.load_post:
-        bpy.app.handlers.load_post.append(_on_load_post)
+    _remove_legacy_load_handler()
     if _on_depsgraph_update_post not in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph_update_post)
     schedule_watch_timer()
 
 
+def _remove_legacy_load_handler() -> None:
+    for handler in list(bpy.app.handlers.load_post):
+        # Phase 4よりload_post再登録はLifecycle Coordinatorが一元管理する。
+        # hot reload前の旧handlerだけを名前で清掃する。
+        if (
+            getattr(handler, "__name__", "") == "_on_load_post"
+            and str(getattr(handler, "__module__", "")).endswith(
+                ".outliner_watch"
+            )
+        ):
+            bpy.app.handlers.load_post.remove(handler)
+
+
 def unregister() -> None:
     cancel_watch_timer()
-    if _on_load_post in bpy.app.handlers.load_post:
-        try:
-            bpy.app.handlers.load_post.remove(_on_load_post)
-        except ValueError:
-            pass
+    _remove_legacy_load_handler()
     if _on_depsgraph_update_post in bpy.app.handlers.depsgraph_update_post:
         try:
             bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph_update_post)

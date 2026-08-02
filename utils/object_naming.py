@@ -215,14 +215,25 @@ def get_kind(obj) -> str:
     return str(obj.get(PROP_KIND, "") or "")
 
 
-def find_object_by_bmanga_id(bmanga_id: str, kind: str = "") -> Optional[bpy.types.Object]:
+def find_object_by_bmanga_id(
+    bmanga_id: str,
+    kind: str = "",
+    *,
+    scene: bpy.types.Scene | None = None,
+) -> Optional[bpy.types.Object]:
     """``bmanga_id`` から Object を逆引きする (``.001`` 付き名にも対応).
 
     同 ``bmanga_id`` を持つ Object が複数あれば最初に見つかったもの。
     """
     if not bmanga_id:
         return None
-    for obj in bpy.data.objects:
+    target_scene = scene or getattr(bpy.context, "scene", None)
+    objects = (
+        tuple(getattr(target_scene, "objects", ()) or ())
+        if target_scene is not None
+        else bpy.data.objects
+    )
+    for obj in objects:
         if obj.get(PROP_ID) != bmanga_id:
             continue
         if kind and obj.get(PROP_KIND) != kind:
@@ -233,13 +244,44 @@ def find_object_by_bmanga_id(bmanga_id: str, kind: str = "") -> Optional[bpy.typ
     return None
 
 
+def iter_scene_collections(
+    scene: bpy.types.Scene | None,
+) -> Iterable[bpy.types.Collection]:
+    """SceneのCollection treeだけをidentity重複なしで列挙する。"""
+
+    if scene is None:
+        return
+    root = getattr(scene, "collection", None)
+    if root is None:
+        return
+    seen: set[int] = set()
+    stack = [root]
+    while stack:
+        collection = stack.pop()
+        pointer = int(collection.as_pointer())
+        if pointer in seen:
+            continue
+        seen.add(pointer)
+        yield collection
+        stack.extend(tuple(collection.children))
+
+
 def find_collection_by_bmanga_id(
-    bmanga_id: str, kind: str = ""
+    bmanga_id: str,
+    kind: str = "",
+    *,
+    scene: bpy.types.Scene | None = None,
 ) -> Optional[bpy.types.Collection]:
     """``bmanga_id`` から Collection を逆引きする."""
     if not bmanga_id:
         return None
-    for coll in bpy.data.collections:
+    target_scene = scene or getattr(bpy.context, "scene", None)
+    collections = (
+        iter_scene_collections(target_scene)
+        if target_scene is not None
+        else bpy.data.collections
+    )
+    for coll in collections:
         if coll.get(PROP_ID) != bmanga_id:
             continue
         if kind and coll.get(PROP_KIND) != kind:

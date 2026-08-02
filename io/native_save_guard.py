@@ -105,6 +105,7 @@ class NativeSaveResult:
 
 _active_lock = threading.RLock()
 _active_tokens: dict[str, NativeSaveToken] = {}
+_no_recovery_evidence: set[str] = set()
 
 
 def _active_key(work: Path) -> str:
@@ -162,6 +163,7 @@ def begin_native_save(
     work = find_work_root(source)
     if work is None or not work.is_dir() or not (work / "project.json").is_file():
         return None
+    _no_recovery_evidence.discard(os.path.normcase(str(work.resolve(strict=True))))
     _validate_source(source, work)
     lock_context = work_lock(work, blocking=True)
     lock_context.__enter__()
@@ -626,6 +628,11 @@ def recover_pending_native_saves(
 ) -> tuple[Path, ...]:
     """load時用。異常終了で残った退避版をblockingロック下で戻す。"""
     work = Path(expected_work_dir).resolve(strict=True)
+    if not _has_recovery_evidence(work):
+        # 本体/sidecarの実ファイルへ触る前に、必ず中央recovery rootへ
+        # durable journalを作る契約である。通常openでは既知のNative配置だけを
+        # 軽量走査し、中央資料も孤立guardも無い場合だけ厳格復旧を省略する。
+        return ()
     restored: list[Path] = []
     with work_lock(work, blocking=True):
         # native側のcommit_decided記録が残っている間にsidecarの確定/復元を
@@ -649,6 +656,17 @@ def recover_pending_native_saves(
                 token = _token_from_journal(journal_path, journal, work)
                 token.lock_context = _NoopContext()
                 if status == "commit_decided":
+                    from . import native_checkpoint_runtime
+
+                    native_checkpoint_runtime.mark_snapshot_native_result(
+                        work,
+                        token.transaction_id,
+                        committed=True,
+                    )
+                    native_checkpoint_runtime.cleanup_recovered_snapshot_transactions(
+                        work,
+                        token.source,
+                    )
                     if token.recovery_path is not None:
                         token.recovery_path.unlink(missing_ok=True)
                     if token.creation_marker is not None:
@@ -660,14 +678,92 @@ def recover_pending_native_saves(
                         ignore_errors=True,
                     )
                     continue
-                if _restore_token(token):
+                token_restored = _restore_token(token)
+                from . import native_checkpoint_runtime
+
+                native_checkpoint_runtime.mark_snapshot_native_result(
+                    work,
+                    token.transaction_id,
+                    committed=False,
+                )
+                if token_restored:
                     restored.append(token.source)
             _prune_base(work, base)
         # 復旧処理と同じロック下で、実書込み未着手の古いトランザクション
         # 残骸 (native/sidecar 双方) も一掃する。
         cleanup_stale_transactions(work)
         _sidecar.cleanup_stale_transactions(work)
+        try:
+            from . import native_checkpoint_runtime
+
+            native_checkpoint_runtime.cleanup_stale_snapshot_transactions(
+                work
+            )
+        except Exception:
+            # 画素snapshotは本体/sidecar復旧の成否に影響させない。
+            pass
     return tuple(restored)
+
+
+def _has_recovery_root_entries(work: Path) -> bool:
+    root = work / _recovery_paths.RECOVERY_ROOT_NAME
+    try:
+        if root.is_symlink() or getattr(root, "is_junction", lambda: False)():
+            return True
+        if not root.is_dir():
+            return False
+        with os.scandir(root) as entries:
+            return next(entries, None) is not None
+    except OSError:
+        # 読めない復旧領域は「資料あり」として厳格復旧へ流す。
+        return True
+
+
+def _has_recovery_evidence(work: Path) -> bool:
+    if _has_recovery_root_entries(work):
+        return True
+    work_key = os.path.normcase(str(work.resolve(strict=True)))
+    if work_key in _no_recovery_evidence:
+        return False
+    guard_names = (_RECOVERY_GUARD_NAME, _CREATED_GUARD_NAME)
+    if any((work / name).exists() for name in guard_names):
+        return True
+    pages_dir = work / "pages"
+    try:
+        with os.scandir(pages_dir) as page_entries:
+            for page_entry in page_entries:
+                if (
+                    _PAGE_UID_RE.fullmatch(page_entry.name) is None
+                    or not page_entry.is_dir(follow_symlinks=False)
+                ):
+                    continue
+                page_dir = Path(page_entry.path)
+                if any((page_dir / name).exists() for name in guard_names):
+                    return True
+                comas_dir = page_dir / "comas"
+                try:
+                    with os.scandir(comas_dir) as coma_entries:
+                        for coma_entry in coma_entries:
+                            if (
+                                _COMA_UID_RE.fullmatch(coma_entry.name) is None
+                                or not coma_entry.is_dir(follow_symlinks=False)
+                            ):
+                                continue
+                            coma_dir = Path(coma_entry.path)
+                            if any(
+                                (coma_dir / name).exists()
+                                for name in guard_names
+                            ):
+                                return True
+                except FileNotFoundError:
+                    continue
+    except FileNotFoundError:
+        return False
+    except OSError:
+        # 読めない既知配置は「資料あり」として厳格復旧へ流す。
+        return True
+    _no_recovery_evidence.add(work_key)
+    return False
 
 
 def find_pending_native_save_journals(

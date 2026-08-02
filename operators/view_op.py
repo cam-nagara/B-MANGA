@@ -98,7 +98,13 @@ def schedule_fit_active_page(retries: int = 8, interval: float = 0.15) -> None:
         return interval if state["left"] > 0 else None
 
     try:
-        bpy.app.timers.register(_tick, first_interval=interval)
+        from ..utils import lifecycle_scheduler
+
+        lifecycle_scheduler.schedule(
+            "view.fit_active_page",
+            _tick,
+            first_interval=interval,
+        )
     except Exception:  # noqa: BLE001
         pass
 
@@ -872,16 +878,22 @@ def register() -> None:
     )
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
-    if not bpy.app.timers.is_registered(_page_browser_fit_watcher):
-        bpy.app.timers.register(_page_browser_fit_watcher, first_interval=0.5, persistent=True)
+    from ..utils import lifecycle_scheduler
+
+    if not lifecycle_scheduler.is_scheduled("view.page_browser_fit"):
+        lifecycle_scheduler.schedule(
+            "view.page_browser_fit",
+            _page_browser_fit_watcher,
+            first_interval=0.5,
+            persistent=True,
+            restart_on_invalidate=True,
+        )
 
 
 def unregister() -> None:
-    if bpy.app.timers.is_registered(_page_browser_fit_watcher):
-        try:
-            bpy.app.timers.unregister(_page_browser_fit_watcher)
-        except ValueError:
-            pass
+    from ..utils import lifecycle_scheduler
+
+    lifecycle_scheduler.cancel("view.page_browser_fit")
     _PAGE_BROWSER_AREA_SIZES.clear()
     page_browser.restore_all_view_settings(restore_region_visibility=False)
     for cls in reversed(_CLASSES):

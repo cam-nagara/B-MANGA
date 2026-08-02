@@ -527,6 +527,19 @@ class BMANGA_OT_page_pick_viewport(Operator):
                 page_index, coma_index = panel_hit
             else:
                 page_index = coma_picker.find_page_at_event(context, event)
+                if page_index is None:
+                    from . import mode_op
+
+                    role, _page_id, _coma_id = page_file_scene.current_role(
+                        context
+                    )
+                    if role == page_file_scene.ROLE_PAGE:
+                        page_index = (
+                            mode_op.page_preview_index_from_viewport_event(
+                                context,
+                                event,
+                            )
+                        )
                 coma_index = None
         except Exception:  # noqa: BLE001
             _logger.exception("page_pick_viewport failed")

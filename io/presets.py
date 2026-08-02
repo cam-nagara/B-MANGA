@@ -35,11 +35,19 @@ class PaperPreset:
     data: dict[str, Any]
 
 
+_GLOBAL_PRESET_CACHE: tuple[PaperPreset, ...] | None = None
+
+
 # ---------- 列挙 ----------
 
 
 def list_global_presets() -> list[PaperPreset]:
-    return _list_presets_in_dir(GLOBAL_PRESETS_DIR, source="global")
+    global _GLOBAL_PRESET_CACHE
+    if _GLOBAL_PRESET_CACHE is None:
+        _GLOBAL_PRESET_CACHE = tuple(
+            _list_presets_in_dir(GLOBAL_PRESETS_DIR, source="global")
+        )
+    return list(_GLOBAL_PRESET_CACHE)
 
 
 def list_local_presets(work_dir: Path) -> list[PaperPreset]:

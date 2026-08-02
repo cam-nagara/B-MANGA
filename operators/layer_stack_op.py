@@ -319,7 +319,8 @@ def _unique_shared_id(coll, prefix: str) -> str:
             return candidate
         i += 1
 
-def _copy_image_entry(src, dst) -> None:
+def _image_entry_snapshot(src) -> dict[str, object]:
+    snapshot: dict[str, object] = {}
     for attr in (
         "title", "filepath", "x_mm", "y_mm", "width_mm", "height_mm",
         "rotation_deg", "flip_x", "flip_y", "visible", "locked", "opacity",
@@ -327,7 +328,18 @@ def _copy_image_entry(src, dst) -> None:
         "binarize_threshold", "tint_color", "parent_kind", "parent_key", "folder_key",
     ):
         try:
-            setattr(dst, attr, getattr(src, attr))
+            value = getattr(src, attr)
+            if attr == "tint_color":
+                value = tuple(value)
+            snapshot[attr] = value
+        except Exception:  # noqa: BLE001
+            pass
+    return snapshot
+
+def _apply_image_entry_snapshot(snapshot: dict[str, object], dst) -> None:
+    for attr, value in snapshot.items():
+        try:
+            setattr(dst, attr, value)
         except Exception:  # noqa: BLE001
             pass
 
@@ -1240,16 +1252,22 @@ class BMANGA_OT_layer_stack_duplicate(Operator):
         folders = getattr(work, "layer_folders", None) if work is not None else None
         if src is None or folders is None:
             return False
+        src_title = str(getattr(src, "title", "") or "フォルダ")
+        src_parent_key = str(getattr(src, "parent_key", "") or OUTSIDE_STACK_KEY)
+        src_expanded = bool(getattr(src, "expanded", True))
+        src_visible = bool(getattr(src, "visible", True))
+        src_locked = bool(getattr(src, "locked", False))
+        existing_titles = {str(getattr(folder, "title", "") or "") for folder in folders}
         dst = folders.add()
         dst.id = layer_folder_utils.ensure_unique_folder_id(work)
         dst.title = _unique_name(
-            {str(getattr(folder, "title", "") or "") for folder in folders if folder is not dst},
-            f"{getattr(src, 'title', '') or 'フォルダ'} 複製",
+            existing_titles,
+            f"{src_title} 複製",
         )
-        dst.parent_key = str(getattr(src, "parent_key", "") or OUTSIDE_STACK_KEY)
-        dst.expanded = bool(getattr(src, "expanded", True))
-        dst.visible = bool(getattr(src, "visible", True))
-        dst.locked = bool(getattr(src, "locked", False))
+        dst.parent_key = src_parent_key
+        dst.expanded = src_expanded
+        dst.visible = src_visible
+        dst.locked = src_locked
         context.scene.bmanga_active_layer_kind = "layer_folder"
         if hasattr(context.scene, "bmanga_active_layer_folder_key"):
             context.scene.bmanga_active_layer_folder_key = dst.id
@@ -1265,10 +1283,13 @@ class BMANGA_OT_layer_stack_duplicate(Operator):
         i = 1
         while f"image_{i:04d}" in used:
             i += 1
+        source_data = _image_entry_snapshot(src)
+        source_title = str(source_data.get("title", "") or "画像")
+        existing_titles = {str(getattr(entry, "title", "") or "") for entry in coll}
         dst = coll.add()
         dst.id = f"image_{i:04d}"
-        _copy_image_entry(src, dst)
-        dst.title = _unique_name({entry.title for entry in coll if entry is not dst}, f"{src.title} 複製")
+        _apply_image_entry_snapshot(source_data, dst)
+        dst.title = _unique_name(existing_titles, f"{source_title} 複製")
         context.scene.bmanga_active_image_layer_index = len(coll) - 1
         context.scene.bmanga_active_layer_kind = "image"
         return True
@@ -1282,8 +1303,9 @@ class BMANGA_OT_layer_stack_duplicate(Operator):
         page = resolved.get("page") if resolved is not None else None
         if src is None or page is None:
             return False
+        source_data = schema.balloon_entry_to_dict(src)
         dst = page.balloons.add()
-        schema.balloon_entry_from_dict(dst, schema.balloon_entry_to_dict(src))
+        schema.balloon_entry_from_dict(dst, source_data)
         dst.id = _allocate_balloon_id(page)
         page.active_balloon_index = len(page.balloons) - 1
         context.scene.bmanga_active_layer_kind = "balloon"
@@ -1298,8 +1320,9 @@ class BMANGA_OT_layer_stack_duplicate(Operator):
         page = resolved.get("page") if resolved is not None else None
         if src is None or page is None:
             return False
+        source_data = schema.text_entry_to_dict(src)
         dst = page.texts.add()
-        schema.text_entry_from_dict(dst, schema.text_entry_to_dict(src))
+        schema.text_entry_from_dict(dst, source_data)
         dst.id = _allocate_text_id(page)
         dst.x_mm += 5.0
         dst.y_mm -= 5.0
@@ -1320,13 +1343,16 @@ class BMANGA_OT_layer_stack_duplicate(Operator):
         i = 1
         while f"fill_{i:04d}" in used:
             i += 1
+        source_data = schema.fill_layer_to_dict(src)
+        source_title = str(getattr(src, "title", "") or "塗り")
+        existing_titles = {str(getattr(entry, "title", "") or "") for entry in coll}
         dst = coll.add()
         with fill_real_object.suspend_auto_sync():
-            schema.fill_layer_from_dict(dst, schema.fill_layer_to_dict(src))
+            schema.fill_layer_from_dict(dst, source_data)
             dst.id = f"fill_{i:04d}"
             dst.title = _unique_name(
-                {entry.title for entry in coll if entry is not dst},
-                f"{getattr(src, 'title', '') or '塗り'} 複製",
+                existing_titles,
+                f"{source_title} 複製",
             )
         fill_real_object.on_fill_entry_changed(dst)
         context.scene.bmanga_active_fill_layer_index = len(coll) - 1

@@ -17,6 +17,10 @@ import tempfile
 import bpy
 
 from ..bmanga_core.faults import FaultInjectedError, FaultPoint, check_fault
+from ..bmanga_core.file_identity import (
+    ArtifactCommitHook,
+    capture_file_identity,
+)
 from ..bmanga_core.observability import observed_operation
 from ..utils import log, paths
 from .project_file_lock import guard_path_write
@@ -92,7 +96,11 @@ def _restore_after_open_failure(
     return opened_target
 
 
-def save_current_as(blend_path: Path) -> bool:
+def save_current_as(
+    blend_path: Path,
+    *,
+    on_committed: ArtifactCommitHook | None = None,
+) -> bool:
     """現在の mainfile を指定パスに save_as_mainfile で保存する.
 
     親ディレクトリは自動生成。成功時 True、失敗時 False を返す。
@@ -111,6 +119,7 @@ def save_current_as(blend_path: Path) -> bool:
                 )
             if "FINISHED" not in result or not blend_path.is_file():
                 raise RuntimeError("Blender本体の保存が完了しませんでした")
+            committed_identity = capture_file_identity(blend_path)
             from . import native_save_outcome
 
             native_result = native_save_outcome.consume(blend_path)
@@ -120,6 +129,8 @@ def save_current_as(blend_path: Path) -> bool:
                     "作品情報とBlenderファイルを同じ世代で保存できませんでした"
                 )
             record_successful_write(blend_path)
+            if on_committed is not None:
+                on_committed(blend_path, committed_identity)
         _logger.info("mainfile saved: %s", blend_path)
         return True
     except Exception as exc:  # noqa: BLE001
@@ -213,9 +224,16 @@ def read_homefile() -> bool:
 # ---------- work.blend (マスター) ----------
 
 
-def save_work_blend(work_dir: Path) -> bool:
+def save_work_blend(
+    work_dir: Path,
+    *,
+    on_committed: ArtifactCommitHook | None = None,
+) -> bool:
     """現在の mainfile を ``<work>.bmanga/work.blend`` に保存."""
-    return save_current_as(paths.work_blend_path(Path(work_dir)))
+    return save_current_as(
+        paths.work_blend_path(Path(work_dir)),
+        on_committed=on_committed,
+    )
 
 
 def open_work_blend(work_dir: Path) -> bool:

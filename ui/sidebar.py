@@ -58,7 +58,13 @@ def schedule_open_bmanga_sidebar(retries: int = 8, interval: float = 0.15) -> No
         return interval if state["left"] > 0 else None
 
     try:
-        bpy.app.timers.register(_tick, first_interval=interval)
+        from ..utils import lifecycle_scheduler
+
+        lifecycle_scheduler.schedule(
+            "ui.sidebar.open",
+            _tick,
+            first_interval=interval,
+        )
     except Exception:  # noqa: BLE001
         pass
 
