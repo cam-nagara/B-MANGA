@@ -9,7 +9,7 @@ from pathlib import Path
 
 from tools.refactor_certification.ids import test_id
 
-from .model import RUN_MODES, Case
+from .model import PRODUCTS, RUN_MODES, Case
 
 
 DEFAULT_MANIFEST = Path("test/certification_manifest.json")
@@ -28,6 +28,8 @@ def _validate_case(case: Case) -> list[str]:
     errors: list[str] = []
     if case.mode not in RUN_MODES:
         errors.append(f"{case.source}: unknown mode {case.mode}")
+    if case.product not in PRODUCTS:
+        errors.append(f"{case.source}: unknown product {case.product}")
     if case.test_id != test_id(case.source):
         errors.append(f"{case.source}: unstable test_id")
     if not 1 <= case.timeout_seconds <= 3600:
@@ -118,6 +120,16 @@ def load_manifest(
         raise ValueError("certification manifest needs golden registries")
     if any(not isinstance(path, str) or not path for path in golden_registries):
         raise ValueError("invalid golden registry path")
+    product_scope = raw.get("product_scope")
+    if not isinstance(product_scope, dict) or set(product_scope) != PRODUCTS:
+        raise ValueError("certification manifest needs complete product scope")
+    for product, decision in product_scope.items():
+        if not isinstance(decision, dict):
+            raise ValueError(f"invalid product scope: {product}")
+        if decision.get("decision") not in {"included", "excluded"}:
+            raise ValueError(f"invalid product scope decision: {product}")
+        if not str(decision.get("reason", "")).strip():
+            raise ValueError(f"product scope needs reason: {product}")
     cases = [Case.from_dict(item) for item in raw.get("cases", ())]
     validate_manifest(root, cases)
     return raw, cases

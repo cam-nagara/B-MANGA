@@ -1,6 +1,32 @@
 {
   "schema_version": 1,
   "cases": {
+    "test/blender_coma_camera_render_panel_migration_check.py": {
+      "product": "cross_product"
+    },
+    "test/blender_phase0_next_config_isolation_check.py": {
+      "product": "cross_product",
+      "mode": "historical",
+      "required": false,
+      "completion_token": "",
+      "reason": "旧三製品Next隔離テスト。本体限定計画ではRender/Liner製品ソースをmainと一致させるため、test_next_extension_identity.pyの本体単独隔離契約へ置き換えた",
+      "review": "core-stabilization-r0-scope-audit-2026-08-08"
+    },
+    "test/blender_phase0_runtime_catalog_check.py": {
+      "product": "cross_product"
+    },
+    "test/blender_phase1_operator_signature_check.py": {
+      "product": "cross_product"
+    },
+    "test/blender_recent_fixes_visual_audit.py": {
+      "product": "cross_product"
+    },
+    "test/blender_ui_tooltip_cleanup_check.py": {
+      "product": "cross_product"
+    },
+    "test/bmanga_ai_audit_runner.py": {
+      "product": "cross_product"
+    },
     "test/blender_asset_extended_layers_check.py": {
       "mode": "blender_wrapper",
       "expected_tracebacks": [
@@ -41,6 +67,17 @@
       ],
       "reason": "native blend保存中のDomain投影失敗を意図的に注入し、blendとJSONの不一致世代を公開しないことを検証する負系テスト",
       "review": "phase3-native-save-atomicity-audit-2026-07-30"
+    },
+    "test/blender_phase5_layer_command_check.py": {
+      "mode": "blender_wrapper",
+      "expected_tracebacks": [
+        {
+          "pattern": "^RuntimeError: phase5 injected command failure$",
+          "count": 5
+        }
+      ],
+      "reason": "通常レイヤーの新規作成・複製とラスターの新規作成・複製・削除でDomain Command失敗を注入し、正式状態・Native実体・PNG・保存基準が完全rollbackされ、無関係な外部PNGを削除しないことを検証するPhase 5負系テスト",
+      "review": "phase5-layer-command-file-atomicity-audit-2026-08-02"
     },
     "test/blender_lifecycle_coordinator_check.py": {
       "mode": "blender_wrapper",
@@ -181,13 +218,6 @@
       "reason": "表示順変更に合わせてpNNNN/cNNの実IDとパスを一括改名する旧運用の監査。新設計は安定UIDと表示番号を分離し並べ替え・再採番でパスを変えないため、現行の順序契約はpage_selection_reorder_checkとcoma_renumber_reading_order_checkへ移管する",
       "review": "phase1-stable-uid-audit-2026-07-29"
     },
-    "test/blender_layer_folder_check.py": {
-      "mode": "historical",
-      "required": false,
-      "completion_token": "",
-      "reason": "work.blendへ2ページ分の全レイヤーを同時常駐させてPropertyGroupを直接移動する旧二段構成の複合監査。現行のフォルダ・親子・ページ間移送はlayer_stack_dnd_reparent_check、transfer_group_alt_dnd_check、cross_page_transfer_durability_checkが永続化込みで認定する",
-      "review": "phase1-three-stage-audit-2026-07-29"
-    },
     "test/blender_layer_panel_page_list_check.py": {
       "mode": "historical",
       "required": false,
@@ -224,15 +254,10 @@
       "review": "phase1-three-stage-audit-2026-07-29"
     },
     "test/blender_layer_stack_dnd_reparent_check.py": {
-      "mode": "blender_wrapper",
-      "expected_tracebacks": [
-        {
-          "pattern": "^OSError: simulated source write failure$",
-          "count": 1
-        }
-      ],
-      "reason": "ページ間移動の保存失敗を意図的に注入し、元データと移動先をrollbackする負系テスト",
-      "review": "phase1-expected-failure-audit-2026-07-29"
+      "mode": "blender_headless",
+      "expected_tracebacks": [],
+      "reason": "Phase 5のUIList D&Dが同一ページLayer Commandと別ページTransferGroupを使い分け、保存再読込後も移送先Domainへ残ることを検証する",
+      "review": "phase5-final-high3-fix-2026-08-03"
     },
     "test/blender_meldex_scenario_import_transaction_check.py": {
       "mode": "blender_wrapper",
@@ -316,7 +341,19 @@
       "mode": "blender_wrapper",
       "expected_tracebacks": [
         {
+          "pattern": "^OSError: phase5 injected raster save failure$",
+          "count": 1
+        },
+        {
+          "pattern": "^RuntimeError: ラスターの最新画素を保存できないため素材化を中止しました$",
+          "count": 1
+        },
+        {
           "pattern": "^RuntimeError: source recovery point save failed$",
+          "count": 1
+        },
+        {
+          "pattern": "^RuntimeError: destination staging commit failed$",
           "count": 1
         },
         {
@@ -324,8 +361,8 @@
           "count": 1
         }
       ],
-      "reason": "ページ間グループ移動の復旧点保存失敗と破損journalを意図的に作り、安全停止・復元を検証する負系テスト",
-      "review": "phase1-expected-failure-audit-2026-07-29"
+      "reason": "ラスター保存失敗、ページ間グループ移動の復旧点・転送先commit・rollback失敗、破損journalを意図的に作り、保存を遮断して正式状態・stage・生成物を復元できることを検証する負系テスト",
+      "review": "phase5-transfer-fail-closed-audit-2026-08-03"
     },
     "test/blender_legacy_migration_check.py": {
       "mode": "historical",
@@ -381,6 +418,22 @@
       "timeout_seconds": 900,
       "reason": "決定的UI操作マトリクスを実画面で逐次検証する必須E2Eであり、180秒では正常経路も打ち切るため専用上限を与える",
       "review": "phase1-timeout-audit-2026-07-29"
+    },
+    "test/blender_transfer_recovery_fail_closed_check.py": {
+      "mode": "blender_headless",
+      "required": true,
+      "completion_token": "BMANGA_TRANSFER_RECOVERY_FAIL_CLOSED_OK",
+      "reason": "ページ間移送の復旧資料と保存遮断をBlender実機の決定的故障注入で検証する",
+      "review": "phase5-transfer-recovery-highfix-2026-08-03"
+    },
+    "test/test_refactor_certification_catalog.py": {
+      "product": "cross_product",
+      "timeout_seconds": 300,
+      "reason": "全PropertyGroup・登録点・codec契約を横断する必須カタログ検査で、単独実測168秒に対して並列認定時のI/O変動を含めても検査を完遂できる上限を与える",
+      "review": "phase5-catalog-timeout-audit-2026-08-03"
+    },
+    "test/test_phase3_architecture.py": {
+      "product": "cross_product"
     }
   }
 }

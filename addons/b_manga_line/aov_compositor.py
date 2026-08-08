@@ -272,9 +272,9 @@ def _build_bump_line_socket(
     """標準Normalパス + Cryptomatte(Object) からバンプ線のRGBAソケットを作る.
 
     戻り値は色が既にマスクで乗算済み・アルファ=マスクの合成済みイメージ
-    （他線種のAOV入力と同じ形）。ノード構築はBlender 5.2のAPI契約を
+    （他線種のAOV入力と同じ形）。ノード構築は Blender 5.1 のAPI変更を
     踏まえたレシピ（_verify/2026-07-09_bml_bump_line_probe/results.md
-    Blender 5.2 LTS実機で確認済みの契約に従う:
+    「Blender 5.1 API上の注意点」節で実証済み）に従う:
       - CompositorNodeFilter は filter_type ではなく
         inputs["Type"].default_value = "Sobel"（Menuソケット）
       - CompositorNodeDilateErode は distance ではなく
@@ -438,7 +438,7 @@ def _ensure_bump_passthrough(
 def sync_bump_line_render_composite(scene: bpy.types.Scene) -> bool:
     """バンプ線をレンダー画像(最終コンポジット結果)へアルファオーバー合成する.
 
-    Blender 5.2のコンポジターでは、シーンの最終出力は
+    Blender 5.1 の新コンポジターアーキテクチャでは、シーンの最終出力は
     CompositorNodeComposite ノード（廃止された）ではなく、
     scene.compositing_node_group の「最初のOUTPUTインターフェースソケット」
     へ NodeGroupOutput 経由で繋いだ画像になる（RenderSettings.use_compositing
@@ -448,7 +448,7 @@ def sync_bump_line_render_composite(scene: bpy.types.Scene) -> bool:
     追加した処理ノード（Cryptomatte・エッジ検出等の重い部分）を撤去する。
     ただし一度でも最初のOUTPUTソケットを自分が占有した後は、そのソケットと
     RenderLayers→GroupOutputの直結（素のCombinedパス）だけは残す —
-    Blender 5.2では「OUTPUTソケットは存在するがGroupOutputノードが無い/
+    Blender 5.1では「OUTPUTソケットは存在するがGroupOutputノードが無い/
     何も繋がっていない」状態の compositing_node_group をシーンに割り当てると
     bpy.ops.render.render(write_still=True) が例外を出さずにファイルを
     一切保存しなくなることを実機確認したため（2026-07-09）。「オフ時は
@@ -527,7 +527,7 @@ def sync_bump_line_render_composite(scene: bpy.types.Scene) -> bool:
         tree, "CompositorNodeAlphaOver", "AlphaOver", (700.0, -600.0),
         prefix=BUMP_COMPOSITE_NODE_PREFIX,
     )
-    # 注意: Blender 5.2のCompositorNodeAlphaOverはソケット順が
+    # 注意: このBlender 5.1ビルドのCompositorNodeAlphaOverはソケット順が
     # (Background, Foreground, Factor) で、Fac/Image/Imageという旧来の
     # 想定順ではない（実機確認済み、2026-07-09）。名前で明示的に指定する。
     tree.links.new(_socket(rlayers, "outputs", "Image"), _socket(alpha_over, "inputs", "Background"))

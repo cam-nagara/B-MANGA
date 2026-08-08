@@ -368,6 +368,24 @@ def test_repository_inventory_includes_registered_and_suffix_tests() -> None:
     assert execution_kind(support) == "support"
 
 
+def test_product_presets_ignore_test_temporary_directories(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    shutil.copytree(FIXTURE, repository)
+    leaked = repository / ".phase_tmp" / "presets" / "leaked.json"
+    leaked.parent.mkdir(parents=True)
+    leaked.write_text(
+        '{"presetName": "Temporary Leak"}',
+        encoding="utf-8",
+    )
+    catalog = build_catalog(repository)
+    labels = {
+        feature["label"]
+        for feature in catalog["features"]
+        if feature["kind"] == "preset"
+    }
+    assert "Temporary Leak" not in labels
+
+
 def test_render_builtin_presets_are_items_not_crud_entries() -> None:
     catalog = build_catalog(ROOT)
     presets = [

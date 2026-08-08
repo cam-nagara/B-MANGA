@@ -1,4 +1,4 @@
-"""Phase 0のB-MANGA Next隔離識別子が3アドオンで一致することを検査する。"""
+"""本体Nextだけを隔離し、Render/Linerを通常版のまま保つ契約を検査する。"""
 
 from __future__ import annotations
 
@@ -11,16 +11,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ADDONS = (
-    (ROOT, "b_manga_next", "B-MANGA Next"),
+    (ROOT, "b_manga_next", "B-MANGA Next", True),
     (
         ROOT / "addons" / "b_manga_render",
-        "b_manga_render_next",
-        "B-MANGA Render Next",
+        "b_manga_render",
+        "B-MANGA Render",
+        False,
     ),
     (
         ROOT / "addons" / "b_manga_line",
-        "b_manga_line_next",
-        "B-MANGA Liner Next",
+        "b_manga_line",
+        "B-MANGA Liner",
+        False,
     ),
 )
 NORMAL_STORE_NAMES = {
@@ -43,8 +45,8 @@ def _bl_info_name(path: Path) -> str:
 
 
 class NextExtensionIdentityTest(unittest.TestCase):
-    def test_all_extension_ids_and_names_are_isolated(self) -> None:
-        for root, expected_id, expected_name in ADDONS:
+    def test_only_core_extension_id_and_name_are_isolated(self) -> None:
+        for root, expected_id, expected_name, _is_next in ADDONS:
             with self.subTest(addon=root.name):
                 manifest = tomllib.loads(
                     (root / "blender_manifest.toml").read_text(encoding="utf-8")
@@ -54,24 +56,37 @@ class NextExtensionIdentityTest(unittest.TestCase):
                 self.assertEqual(_bl_info_name(root / "__init__.py"), expected_name)
 
     def test_next_ids_are_unique(self) -> None:
-        ids = [expected_id for _root, expected_id, _name in ADDONS]
+        ids = [expected_id for _root, expected_id, _name, _is_next in ADDONS]
         self.assertEqual(len(ids), len(set(ids)))
-        self.assertTrue(all(item.endswith("_next") for item in ids))
+        next_flags = {
+            expected_id: is_next
+            for _root, expected_id, _name, is_next in ADDONS
+        }
+        self.assertEqual(next_flags["b_manga_next"], True)
+        self.assertEqual(next_flags["b_manga_render"], False)
+        self.assertEqual(next_flags["b_manga_line"], False)
 
-    def test_next_config_identities_do_not_reuse_normal_names(self) -> None:
-        source_paths = (
-            ROOT / "io" / "shared_presets.py",
-            ROOT / "addons" / "b_manga_render" / "defaults_store.py",
-            ROOT / "addons" / "b_manga_line" / "presets.py",
+    def test_only_core_config_identity_avoids_normal_store(self) -> None:
+        core_source = (ROOT / "io" / "shared_presets.py").read_text(
+            encoding="utf-8"
         )
-        sources = "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
         assigned_strings = set(
-            re.findall(r"^(?:CONFIG_DIR_NAME|_STORE_FILE_NAME|_FILE_NAME)\s*=\s*\"([^\"]+)\"", sources, re.MULTILINE)
+            re.findall(
+                r"^(?:CONFIG_DIR_NAME|_STORE_FILE_NAME|_FILE_NAME)\s*=\s*\"([^\"]+)\"",
+                core_source,
+                re.MULTILINE,
+            )
         )
         self.assertTrue(assigned_strings.isdisjoint(NORMAL_STORE_NAMES))
-        self.assertIn("b_manga_line_next_presets.json", assigned_strings)
-        self.assertIn("b_manga_render_next_preset_defaults.json", assigned_strings)
-        self.assertIn("tomllib.load(stream).get(\"id\")", sources)
+
+        render_source = (
+            ROOT / "addons" / "b_manga_render" / "defaults_store.py"
+        ).read_text(encoding="utf-8")
+        line_source = (
+            ROOT / "addons" / "b_manga_line" / "presets.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"b_manga_render_preset_defaults.json"', render_source)
+        self.assertIn('"b_manga_line_presets.json"', line_source)
 
     def test_preferences_lookup_is_not_fixed_to_normal_package(self) -> None:
         source = (ROOT / "ui" / "overlay_text.py").read_text(encoding="utf-8")

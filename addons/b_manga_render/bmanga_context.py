@@ -104,8 +104,6 @@ def _page_id_from_blend_path(path: Path) -> str:
 def _passes_dir_from_blend(path: Path | None, coma_id: str) -> Path | None:
     if path is None or not coma_id:
         return None
-    if path.name == "scene.blend" and path.parent.parent.name == "comas":
-        return path.parent / "passes"
     if path.parent.name != coma_id:
         return None
     return path.parent / "passes"

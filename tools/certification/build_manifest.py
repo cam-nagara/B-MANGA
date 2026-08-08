@@ -17,6 +17,25 @@ from tools.refactor_certification.test_scan import scan_tests
 TOKEN_PATTERN = re.compile(r"\b[A-Z][A-Z0-9_]*(?:_OK|_DONE|_PASS)\b")
 REVIEW_ID = "phase1-manifest-audit-2026-07-29"
 
+PRODUCT_SCOPE = {
+    "bmanga": {
+        "decision": "included",
+        "reason": "B-MANGA本体のR0〜R4認定対象",
+    },
+    "render": {
+        "decision": "excluded",
+        "reason": "B-MANGA Render固有機能は本体限定認定の対象外",
+    },
+    "line": {
+        "decision": "excluded",
+        "reason": "B-MANGA Liner固有機能は本体限定認定の対象外",
+    },
+    "cross_product": {
+        "decision": "excluded",
+        "reason": "三製品横断テストは本体full suiteから除外し、必要なregister smokeを別途実行",
+    },
+}
+
 
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -72,6 +91,16 @@ def _timeout(previous: dict[str, Any] | None, source: str) -> int:
     if any(token in source for token in ("performance", "full_visual", "large_audit")):
         value = max(value, 900)
     return min(value, 1800)
+
+
+def _product(source: str) -> str:
+    """テスト名の製品接頭辞から既定の認定対象を決める。"""
+    name = Path(source).name.lower()
+    if "b_manga_line" in name or name.startswith(("bml_", "line_aov")):
+        return "line"
+    if "b_manga_render" in name or name.startswith("render_batch"):
+        return "render"
+    return "bmanga"
 
 
 def _python_mode(
@@ -130,6 +159,7 @@ def _default_case(
         "reason": "",
         "review": "",
         "phase0_category": category or "new",
+        "product": _product(scanned.source),
         "artifacts": [],
         "expected_tracebacks": [],
     }
@@ -184,6 +214,7 @@ def build_manifest(root: Path, override_path: Path) -> dict[str, Any]:
     return {
         "schema_version": 1,
         "review": REVIEW_ID,
+        "product_scope": PRODUCT_SCOPE,
         "golden_registries": golden_registries,
         "cases": sorted(rows, key=lambda row: row["source"]),
     }

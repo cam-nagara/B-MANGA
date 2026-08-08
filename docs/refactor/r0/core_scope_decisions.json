@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "phase": "R0",
+  "date": "2026-08-08",
+  "product_scope": {
+    "bmanga": {
+      "decision": "included",
+      "case_count": 377
+    },
+    "render": {
+      "decision": "excluded",
+      "case_count": 12,
+      "reason": "Render固有機能は本体限定認定の対象外"
+    },
+    "line": {
+      "decision": "excluded",
+      "case_count": 77,
+      "reason": "Liner固有機能は本体限定認定の対象外"
+    },
+    "cross_product": {
+      "decision": "excluded",
+      "case_count": 9,
+      "reason": "三製品横断認定は行わず、必要なregister smokeだけをR3で実行"
+    }
+  },
+  "external_product_source": {
+    "main_diff_count": 0,
+    "restored_file_count": 11
+  },
+  "phase_commit_decisions": [
+    {
+      "commit": "c1bd3471",
+      "phase": "0",
+      "decision": "keep_core_shrink_external",
+      "reason": "本体Next隔離、Feature Catalog、基準証拠は再発防止に有効。Render/LinerのNext化だけを撤回"
+    },
+    {
+      "commit": "5d06f3a5",
+      "phase": "1",
+      "decision": "keep_core",
+      "reason": "認定runner、故障注入、golden gate、観測基盤はR1〜R4の判定に必要"
+    },
+    {
+      "commit": "26c0de19",
+      "phase": "2",
+      "decision": "keep_core",
+      "reason": "設定所有権とUI契約の機械化はUI凍結と保存境界の検証に必要"
+    },
+    {
+      "commit": "ce39653d",
+      "phase": "3",
+      "decision": "keep_core",
+      "reason": "Domain/Repository、stable UID、原子的保存はclean break後の本体正本としてR1が依存"
+    },
+    {
+      "commit": "8530aa76",
+      "phase": "4",
+      "decision": "keep_core",
+      "reason": "Lifecycle、checkpoint、Undo/Redo、失敗復旧の集中管理はデータ損失防止に必要"
+    }
+  ],
+  "ui_contract": {
+    "gate": "pass",
+    "added": 0,
+    "removed_approved": 6,
+    "changed_approved": 2,
+    "approvals": "docs/refactor/r0/ui_contract_approvals.json",
+    "evidence": "_verify/2026-08-08_core_stabilization_r0/ui_contract_diff.json"
+  },
+  "targeted_tests": {
+    "passed": 51,
+    "subtests_passed": 3,
+    "failed": 0,
+    "unexpected_skip": 0
+  },
+  "next_phase": "R1"
+}

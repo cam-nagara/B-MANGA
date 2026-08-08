@@ -102,6 +102,29 @@ def test_manifest_rejects_unregistered_and_changed_sources(tmp_path: Path):
         validate_manifest(tmp_path, [case])
 
 
+def test_manifest_rejects_unknown_product(tmp_path: Path):
+    test_dir = tmp_path / "test"
+    test_dir.mkdir()
+    source = test_dir / "sample.py"
+    source.write_text("print('SAMPLE_OK')\n", encoding="utf-8")
+    case = _case(source, product="unknown")
+    with pytest.raises(ValueError, match="unknown product"):
+        validate_manifest(tmp_path, [case])
+
+
+def test_certification_selector_isolates_bmanga_product(tmp_path: Path):
+    source = tmp_path / "sample.py"
+    source.write_text("print('SAMPLE_OK')\n", encoding="utf-8")
+    cases = [
+        _case(source, source="test/core.py", product="bmanga"),
+        _case(source, source="test/render.py", product="render"),
+        _case(source, source="test/line.py", product="line"),
+        _case(source, source="test/cross.py", product="cross_product"),
+    ]
+    selected = certification_cli._selected(cases, "", product="bmanga")
+    assert [case.source for case in selected] == ["test/core.py"]
+
+
 @pytest.mark.parametrize(
     ("returncode", "output", "counts", "expected"),
     [
@@ -495,6 +518,59 @@ def test_certification_serializes_all_blender_after_parallel_cases(
     assert len(results) == 5
     assert overlap == []
     assert blender_order == ["test/ui.py", "test/headless.py", "test/sample.py"]
+
+
+def test_certification_serial_run_honors_run_order(
+    tmp_path: Path,
+    monkeypatch,
+):
+    observed: list[str] = []
+
+    def _fake_run_case(_root, _out, case, _blender):
+        observed.append(case.source)
+        return Result(
+            case.test_id,
+            case.source,
+            case.mode,
+            True,
+            "passed",
+            0.0,
+            case.source_sha256,
+        )
+
+    monkeypatch.setattr(certification_cli, "run_case", _fake_run_case)
+    for name in ("early.py", "normal-a.py", "normal-b.py"):
+        (tmp_path / name).write_text("pass\n", encoding="utf-8")
+    early = _case(
+        tmp_path / "early.py",
+        source="test/z-early.py",
+        run_order=0,
+    )
+    normal_a = _case(
+        tmp_path / "normal-a.py",
+        source="test/a-normal.py",
+        run_order=100,
+    )
+    normal_b = _case(
+        tmp_path / "normal-b.py",
+        source="test/b-normal.py",
+        run_order=100,
+    )
+
+    results = certification_cli._run_all(
+        tmp_path,
+        tmp_path / "out",
+        [normal_b, normal_a, early],
+        Path("blender"),
+        jobs=1,
+    )
+
+    assert len(results) == 3
+    assert observed == [
+        "test/z-early.py",
+        "test/a-normal.py",
+        "test/b-normal.py",
+    ]
 
 
 def test_golden_requires_separate_approval_and_detects_changes(tmp_path: Path):

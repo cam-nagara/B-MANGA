@@ -24,6 +24,7 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--only", default="")
     parser.add_argument("--category", default="")
     parser.add_argument("--mode", default="")
+    parser.add_argument("--product", default="")
     return parser.parse_args()
 
 
@@ -36,10 +37,12 @@ def _selected(
     only: str,
     category: str = "",
     mode: str = "",
+    product: str = "",
 ) -> list[Case]:
     tokens = {token.strip() for token in only.split(",") if token.strip()}
     categories = _tokens(category)
     modes = _tokens(mode)
+    products = _tokens(product)
     selected = [
         case
         for case in cases
@@ -51,8 +54,9 @@ def _selected(
         )
         and (not categories or case.phase0_category in categories)
         and (not modes or case.mode in modes)
+        and (not products or case.product in products)
     ]
-    if (tokens or categories or modes) and not selected:
+    if (tokens or categories or modes or products) and not selected:
         raise ValueError("certification selector matched no cases")
     return selected
 
@@ -109,7 +113,10 @@ def _run_all(
 
     if jobs <= 1:
         results = []
-        for case in cases:
+        for case in sorted(
+            cases,
+            key=lambda case: (case.run_order, case.source),
+        ):
             result = run_case(root, out, case, blender)
             results.append(result)
             report(result)
@@ -145,7 +152,13 @@ def main() -> int:
         raise ValueError("--jobs must be positive")
     root = args.root.resolve()
     manifest, all_cases = load_manifest(root, args.manifest)
-    cases = _selected(all_cases, args.only, args.category, args.mode)
+    cases = _selected(
+        all_cases,
+        args.only,
+        args.category,
+        args.mode,
+        args.product,
+    )
     results = _run_all(root, args.out.resolve(), cases, args.blender, args.jobs)
     summary = build_summary(
         cases,

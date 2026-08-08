@@ -83,14 +83,10 @@ def product_python_files(root: Path) -> list[Path]:
 def product_preset_json_files(root: Path) -> list[Path]:
     candidates: list[Path] = []
     for _, relative in TARGET_ROOTS:
-        base = root / relative
+        base = root / relative / "presets"
         if not base.exists():
             continue
-        candidates.extend(
-            path
-            for path in base.rglob("*.json")
-            if any(part.lower() == "presets" for part in path.parts)
-        )
+        candidates.extend(base.rglob("*.json"))
     return sorted(
         {
             path

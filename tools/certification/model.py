@@ -16,6 +16,8 @@ RUN_MODES = {
     "historical",
 }
 
+PRODUCTS = {"bmanga", "render", "line", "cross_product"}
+
 
 @dataclass(frozen=True)
 class Case:
@@ -32,6 +34,7 @@ class Case:
     reason: str = ""
     review: str = ""
     phase0_category: str = ""
+    product: str = "bmanga"
     artifacts: tuple[dict[str, Any], ...] = ()
     expected_tracebacks: tuple[dict[str, Any], ...] = ()
 
@@ -53,6 +56,7 @@ class Case:
             reason=str(raw.get("reason", "")),
             review=str(raw.get("review", "")),
             phase0_category=str(raw.get("phase0_category", "")),
+            product=str(raw.get("product", "")),
             artifacts=tuple(raw.get("artifacts", ())),
             expected_tracebacks=tuple(raw.get("expected_tracebacks", ())),
         )

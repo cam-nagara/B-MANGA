@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import tomllib
 from pathlib import Path
 
 import bpy
@@ -22,7 +21,7 @@ from bpy.props import (
 from . import core, modifier_stack, registration
 
 
-_STORE_FILE_NAME = "b_manga_line_next_presets.json"
+_STORE_FILE_NAME = "b_manga_line_presets.json"
 _STORE_VERSION = 1
 _loaded_scene_pointers: set[int] = set()
 _saving_scene_snapshots: dict[int, tuple[object, list[dict], int, str]] = {}
@@ -124,23 +123,11 @@ def _selected_meshes(context) -> list[bpy.types.Object]:
     return [obj for obj in context.selected_objects if obj.type == "MESH"]
 
 
-def _manifest_id() -> str:
-    manifest = Path(__file__).with_name("blender_manifest.toml")
-    with manifest.open("rb") as stream:
-        value = tomllib.load(stream).get("id")
-    if not isinstance(value, str) or not value.strip():
-        raise RuntimeError(f"拡張機能IDを取得できません: {manifest}")
-    return value.strip()
-
-
-_CONFIG_DIR_NAME = _manifest_id()
-
-
 def _store_path() -> Path:
     override = os.environ.get("BMANGA_LINE_PRESET_STORE_DIR", "").strip()
     if override:
         return Path(override) / _STORE_FILE_NAME
-    cfg = bpy.utils.user_resource("CONFIG", path=_CONFIG_DIR_NAME, create=True)
+    cfg = bpy.utils.user_resource("CONFIG", create=True)
     return Path(cfg) / _STORE_FILE_NAME
 
 

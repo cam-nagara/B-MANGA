@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "added": {},
+  "removed": {
+    "feature:operator:bmanga:bmanga.coma.enter.from.list.f4fef0dcc203": "mainでも登録直後に明示解除される旧コマ一覧パネル専用operatorのdead code削除",
+    "feature:operator:bmanga:bmanga.detail.data.migrate.be459874b861": "実作品開始前の一回限りのclean breakで旧作品変換を対象外としたため削除",
+    "feature:panel:bmanga:bmanga.pt.comas.4bad789489c7": "mainでも登録直後に明示解除される旧コマ一覧パネルのdead code削除",
+    "feature:property:bmanga:bmanga.coma.enter.from.list.index.1d3f39cd6207": "削除済み旧コマ一覧operatorの内部引数",
+    "feature:property:bmanga:bmanga.detail.data.migrate.work.dir.f2bd3894a023": "対象外とした旧作品変換operatorの内部引数",
+    "feature:property:bmanga:property.group.ba01f487faf303dc.detail.data.version.f92a40f88a37": "旧作品形式互換を持たないclean breakにより不要となった非表示の内部版番号"
+  },
+  "changed": {
+    "feature:property:bmanga:property.group.73524857f35bcd75.detail.loaded.98dd0aa6ab34": "ページ詳細の読込済みフラグをblendへ保存しない内部安全化。HIDDEN、名称、既定値、UIは不変",
+    "feature:property:bmanga:property.group.ba01f487faf303dc.loaded.1a1938f9c104": "作品の読込済みフラグをblendへ保存しない内部安全化。名称、既定値、UIは不変"
+  }
+}
