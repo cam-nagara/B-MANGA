@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "phase": "R5",
+  "date": "2026-08-09",
+  "product": "bmanga",
+  "candidate_name": "B-MANGA本体安定版候補",
+  "version": "0.6.608",
+  "source_commit": "8c1e0c54bf23f7f67312a2d105df939d23d888d7",
+  "normal_extension_deployed": true,
+  "full_suite": {
+    "status": "passed",
+    "runs_after_final_source_freeze": 1,
+    "case_count": 380,
+    "result_count": 380,
+    "required": 359,
+    "required_passed": 359,
+    "historical": 12,
+    "support": 9,
+    "unexpected_skip": 0,
+    "crash": 0,
+    "timeout": 0,
+    "golden_errors": 0,
+    "seconds": 5430.52,
+    "manifest_sha256": "ef84e5344218272e2e06d8a32ba42b198710953750e3f71ea613f1f53cf83202",
+    "results_sha256": "4bc68e0292f580368332489d682b470a2d787d4d046265cca06fe4e908bf1213",
+    "evidence": "_verify/2026-08-08_r5_full_v608_final"
+  },
+  "targeted_runtime": {
+    "status": "passed",
+    "covered": [
+      "single_z_x_undo_redo_twice",
+      "blender_5_2_post_redo_stability",
+      "unsaved_raster_undo_redo_save_reload",
+      "paper_and_coma_border_derived_visual_undo_redo_save_reload"
+    ]
+  },
+  "golden_gate": {
+    "status": "passed",
+    "artifact_count": 2,
+    "approved_bytes_and_sha256_unchanged": true,
+    "repository_fixtures": [
+      "test/golden/refactor_phase1/page_preview_00.png",
+      "test/golden/refactor_phase1/product_page_q95_00.jpg"
+    ]
+  },
+  "review": {
+    "status": "passed",
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "evidence": "docs/refactor/r5/review.md"
+  },
+  "deployment": {
+    "extension_id": "b_manga",
+    "version": "0.6.608",
+    "package_sha256": "09c2927d8b22ac444e3939d5bdc534596e4fc5ea577b30def521da36cea32a09",
+    "register_unregister": "passed",
+    "saved_work_reload": "passed"
+  },
+  "external_product_diff": {
+    "addons/b_manga_render": 0,
+    "addons/b_manga_line": 0
+  },
+  "remaining_risk": "自動化したBlender 5.2操作とfixtureで未列挙の実作品固有データ、端末固有入力、非自明な操作組合せは残る。ゼロバグ保証ではない。"
+}

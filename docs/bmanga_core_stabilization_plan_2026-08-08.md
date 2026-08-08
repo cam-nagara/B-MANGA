@@ -1,6 +1,6 @@
 # B-MANGA本体限定・安定化最終認定計画
 
-実施結果（2026-08-08）: Phase R0〜R4は順番に全合格。B-MANGA Next v0.6.607を「B-MANGA本体安定版候補」として認定した。Render／Liner固有機能は対象外、通常版v0.6.599は未配備のまま。最終証拠は[`docs/refactor/r4/certification.json`](refactor/r4/certification.json)を参照。
+実施結果（2026-08-09）: Phase R0〜R4と配備前R5は順番に全合格。B-MANGA v0.6.608を「B-MANGA本体安定版候補」として通常Extensionへ配備した。最終ソース固定後のfull suiteは380/380、必須359/359、予期しないskip／crash／timeout／golden不整合0。Render／Liner固有機能は対象外。最終証拠は[`docs/refactor/r5/certification.json`](refactor/r5/certification.json)を参照。
 
 - 作成日: 2026-08-08
 - 状態: **2026-07-28版の三製品全面改修計画を置き換える正本**
@@ -122,7 +122,7 @@ UI、操作、見た目、保存結果を意図的に変える必要が生じた
 - 直近full runは194/474まで失敗0で停止しており、**完走証拠ではない**。Phase 5合格・コミット済みとは扱わない。
 - Phase 5は差分を盲目的に完成させず、利用者価値、UI凍結、安全性、テスト結果から「維持して完成」「縮小」「不要部分を戻す」を機能単位で判断する。
 
-### 4.3 通常版
+### 4.3 計画開始時の通常版
 
 ユーザー用Blender 5.2の通常Extensionはmain v0.6.599と製品ファイル437/437のhash一致を確認済みで、Next変更は入っていない。通常版で制作を試す場合は、新規または複製した作品と通常のバックアップを使う。
 

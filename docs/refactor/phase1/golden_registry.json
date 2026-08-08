@@ -6,12 +6,12 @@
   "artifacts": [
     {
       "bytes": 2761337,
-      "path": "_verify/2026-07-28_full_refactor_phase0/visual_probe/gpu/page_preview_00.png",
+      "path": "test/golden/refactor_phase1/page_preview_00.png",
       "sha256": "344aa75d0bdd84624d204f6876deff9bbe2f4f69e3042a5b98f75db1e6988879"
     },
     {
       "bytes": 18802,
-      "path": "_verify/2026-07-28_full_refactor_phase0/visual_probe/product_jpeg/product_page_q95_00.jpg",
+      "path": "test/golden/refactor_phase1/product_page_q95_00.jpg",
       "sha256": "aa0b9d4916cd057c50607f3a6aac41b0d5ae43a2ee3f247dd1dd45690db79c2a"
     }
   ],
