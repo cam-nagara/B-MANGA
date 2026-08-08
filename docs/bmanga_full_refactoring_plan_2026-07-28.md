@@ -1,5 +1,7 @@
 # B-MANGA 全体リファクタリング・安定版認定計画
 
+> **2026-08-08 廃止・実行禁止:** この計画はB-MANGA Render / Liner、人間QA 2名、複数GPU、5営業日soakまで含み、ユーザーの本来の成果意図に対して過剰だった。以後はB-MANGA本体限定の [`bmanga_core_stabilization_plan_2026-08-08.md`](bmanga_core_stabilization_plan_2026-08-08.md) を正本とする。Phase 5以降をこの旧計画に沿って再開しない。
+
 作成日: 2026-07-28
 セッション種別: 開発
 状態: **Phase 0〜4合格・個別コミット完了。次はPhase 5**
