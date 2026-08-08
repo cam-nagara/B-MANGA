@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "phase": "R2",
+  "date": "2026-08-08",
+  "product": "bmanga",
+  "version": "0.6.605",
+  "normal_extension_deployed": false,
+  "product_code_changed": false,
+  "settings_contract": {
+    "status": "passed",
+    "fields": 1567,
+    "bindings": 1642,
+    "schema": 840,
+    "preset": 631,
+    "ui": 210
+  },
+  "ui_contract": {
+    "status": "passed",
+    "main_features": 2142,
+    "next_features": 2136,
+    "added": 0,
+    "removed": 6,
+    "changed": 2,
+    "unexpected": 0,
+    "obsolete_approvals": 0,
+    "evidence": "_verify/2026-08-08_r2_contract/ui_contract_diff.json"
+  },
+  "tests": [
+    {
+      "group": "settings_and_detail_contracts",
+      "status": "passed",
+      "passed": 91,
+      "failed": 0
+    },
+    {
+      "group": "r2_core_matrix",
+      "status": "passed",
+      "results": 39,
+      "required": 38,
+      "required_passed": 38,
+      "support": 1,
+      "unexpected_skip": 0,
+      "evidence": "_verify/2026-08-08_r2_core_matrix"
+    },
+    {
+      "group": "visual_evidence_retake",
+      "status": "passed",
+      "required": 2,
+      "passed": 2,
+      "evidence": "_verify/2026-08-08_r2_visual_patch_cert"
+    }
+  ],
+  "visual_audit": {
+    "status": "passed",
+    "ui_inventory": {
+      "items": 1614,
+      "missing": 0
+    },
+    "detail_settings": {
+      "items": 34,
+      "failed": 0
+    },
+    "micro_behavior": {
+      "items": 279,
+      "failed": 0
+    },
+    "manual_image_review": {
+      "reviewed": true,
+      "in_scope_mismatch": 0,
+      "evidence": "_verify/2026-08-08_r2_visual_review"
+    }
+  },
+  "golden_gate": {
+    "status": "passed",
+    "errors": 0
+  },
+  "review": {
+    "required": false,
+    "reason": "製品コード差分なし。テスト証跡から初回起動画面を除く局所補強のみ"
+  },
+  "external_product_diff": {
+    "addons/b_manga_render": 0,
+    "addons/b_manga_line": 0
+  }
+}

@@ -44,6 +44,7 @@
 
 ### 2.1 完了済みの大型移行
 
+- **(本体安定化Phase R2完了 / 2026-08-08 Codex, B-MANGA Next v0.6.605)** UI／操作を変更せず、選択、変形、Alt移送、IME、ナビゲーション、コマ枠、テキスト、フキダシ、効果線、画像、ラスター、塗り、グラデーション、パターンカーブ、GPの設定分岐と画面対基本出力を認定した。設定契約、詳細設定91件、R2必須38件、UI inventory 1614項目、詳細設定34項目、微細挙動279項目、承認Goldenは全緑。実画像の遮蔽物を除くためテストだけを補強し、再認定2/2合格。製品コード変更なし、Render／Liner差分0、通常版は未配備。証拠: [`docs/refactor/r2/certification.json`](docs/refactor/r2/certification.json)
 - **(本体安定化Phase R1完了 / 2026-08-08 Codex, B-MANGA Next v0.6.605)** 未完了だったレイヤー操作差分を監査・縮小し、作成、複製、削除、リンク、順序、親変更、Alt+D&D、ページ間移送、Undo／Redoを一回のDomain Command境界へ統一した。通常複製／削除は選択中の1件、フォルダ削除は子を維持する既存UI契約を固定し、失敗時はPropertyGroup、Domain、native実体、余剰を含む実Object、ラスターPNG、保存基準を完全rollbackする。復旧失敗は保存禁止のfail-closedへ移る。対象Blender回帰とUI認定は全緑、独立レビュー重大0・高0、Render／Liner差分0。通常版は未配備。計画: [`docs/bmanga_core_stabilization_plan_2026-08-08.md`](docs/bmanga_core_stabilization_plan_2026-08-08.md)
 
 - **(Phase 4完了 / 2026-08-02 Codex, B-MANGA Next v0.6.604)** 全体リファクタリングのLifecycle統合。作品／ページ／コマの保存・読込・失敗復元、Undo／Redo、遅延処理を状態機械と世代付きSchedulerへ集約した。保存前は差分収集済みObjectだけをDomainへ反映し、レイヤー一覧等の派生cacheを非保存化した。作品→ページ→コマ→ページ→作品、全phase障害注入、旧timer失効、80ページ一覧の詳細非読込、未保存ラスターのプロセスクラッシュ復元、外部ファイルを消さない新規作品rollbackをBlender 5.2 LTSで検証した。統一認定469/469・必須436/436、独立最終レビュー重大0・高0で合格。計画: [`docs/bmanga_full_refactoring_plan_2026-07-28.md`](docs/bmanga_full_refactoring_plan_2026-07-28.md)

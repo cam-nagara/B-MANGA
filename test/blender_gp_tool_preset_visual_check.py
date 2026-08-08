@@ -321,6 +321,9 @@ def _setup_work() -> None:
 def _run() -> None:
     if bpy.app.background:
         raise RuntimeError("この検証はBlender通常画面で実行してください")
+    # --factory-startup ではイベントループ開始時に Quick Setup が開く。
+    # 撮影対象を覆うため、最初のタイマー登録より前に抑止する。
+    bpy.context.preferences.view.show_splash = False
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     _setup_work()
 

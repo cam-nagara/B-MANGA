@@ -4709,7 +4709,7 @@
       "review": "",
       "run_order": 100,
       "source": "test/blender_gp_tool_preset_visual_check.py",
-      "source_sha256": "87615f11487a85ec5c101c3865fb0a4930e511e9b5e8ff7acba187c7d40fe8ff",
+      "source_sha256": "c0178aa166a1c95047aed9a96689742d1481e6966f67d9eea560099f6991fd48",
       "test_id": "test:test.blender.gp.tool.preset.visual.check",
       "timeout_seconds": 180
     },
@@ -7307,7 +7307,7 @@
       "review": "",
       "run_order": 100,
       "source": "test/blender_text_edit_input_matrix_visual_check.py",
-      "source_sha256": "a278822ce85c77fbc134785cb6bc1e8919d3bace86a3e89c213bc9ad643cb13c",
+      "source_sha256": "817042eda8d599fe68adf2d9cc4fcedb007dcc7d06ae4f4bb5fbd3b22ab4fec2",
       "test_id": "test:test.blender.text.edit.input.matrix.visual.check",
       "timeout_seconds": 180
     },

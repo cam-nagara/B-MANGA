@@ -131,6 +131,9 @@ def _screenshot(name: str) -> str:
 def _setup() -> None:
     global _MOD, _TEMP_ROOT, _PROBE
     bpy.ops.wm.read_factory_settings(use_empty=True)
+    # factory settings読込後のイベントループでQuick Setupが開くと、
+    # 選択・IME・装飾の証跡画像を覆うため、読込直後に抑止する。
+    bpy.context.preferences.view.show_splash = False
     _MOD = _load_addon()
     _TEMP_ROOT = OUT_DIR / "Text_Edit_Matrix_work"
     if _TEMP_ROOT.exists():
