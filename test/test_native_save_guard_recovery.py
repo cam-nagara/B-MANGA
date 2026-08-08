@@ -354,6 +354,23 @@ def test_cleanup_removes_only_expired_journal_less_transaction(tmp_path):
     assert recent.is_dir()
 
 
+def test_cleanup_preserves_copying_name_outside_native_save_directories(tmp_path):
+    work, _project, _blend = _work(tmp_path, "CopyingScope")
+    native_copy = work / NATIVE._NATIVE_COPYING_NAME
+    unrelated_copy = work / "assets" / NATIVE._NATIVE_COPYING_NAME
+    _write(native_copy, b"interrupted-native-copy")
+    _write(unrelated_copy, b"user-data")
+    old_timestamp = (datetime.now(timezone.utc) - timedelta(hours=25)).timestamp()
+    os.utime(native_copy, (old_timestamp, old_timestamp))
+    os.utime(unrelated_copy, (old_timestamp, old_timestamp))
+
+    removed = NATIVE.cleanup_stale_transactions(work)
+
+    assert native_copy in removed
+    assert not native_copy.exists()
+    assert unrelated_copy.read_bytes() == b"user-data"
+
+
 def test_cleanup_rejects_junction_recovery_base_outside_work(tmp_path):
     work, _project, _blend = _work(tmp_path, "JunctionBase")
     outside = tmp_path / "outside-native"

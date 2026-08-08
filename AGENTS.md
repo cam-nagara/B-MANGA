@@ -2,7 +2,7 @@
 
 このファイルは **Claude Code / Codex / Gemini CLI など複数の AI コーディングツールで本プロジェクトを共有開発する** ための連携ハブです。**新しいセッションを開始したらまずこのファイルを読み、最後に「コミット前チェックリスト」を満たしてから書き込みを行ってください。**
 
-最終更新: 2026-07-31 (Codex)
+最終更新: 2026-08-08 (Codex)
 
 ---
 
@@ -44,6 +44,7 @@
 
 ### 2.1 完了済みの大型移行
 
+- **(本体安定化Phase R4最終認定完了 / 2026-08-08 Codex, B-MANGA Next v0.6.607)** mainからの本体全差分を独立reviewerがデータ損失、保存、Undo、UI、テスト、セキュリティの観点で確認し、最終結論は重大0・高0。古い`.bmanga-t`清掃を正規native保存先の隣だけへ限定し、配布manifestから検証物、別製品、作品データを機械的に除外した。本体full suiteは380/380、必須359/359、予期しないskip／crash／timeout／golden不整合0。headed UI 38件、外部reader、性能fixtureを含む。公式builderのv0.6.607 ZIPは468項目で禁止物／秘密情報0、公式validate／隔離install合格。Render／Liner製品差分0、通常版v0.6.599は未配備のまま。本成果は「B-MANGA本体安定版候補」であり、Render／Linerの固有機能認定ではない。証拠: [`docs/refactor/r4/certification.json`](docs/refactor/r4/certification.json)
 - **(本体安定化Phase R3完了 / 2026-08-08 Codex, B-MANGA Next v0.6.606)** 新規作品、作品→ページ→コマ→ページ→作品、保存／Save As、Undo／Redo、障害注入、再起動復旧、Meldex、Asset Browserを対象認定し、必須43/43を合格させた。本体UIの単一／複数／見開き分割PNG／JPEG／TIFF／PSD／PDFを独立readerで再読込し、寸法、DPI、色、PSDレイヤー／mask／順序／名前、PDFページ数を確認。欠落していたDPIを全形式へ保持し、分割PSDもatomic確定へ統一した。独立レビュー重大0・高0、Render／Linerは同時register／unregister smoke 1/1のみ、製品差分0。通常版は未配備。証拠: [`docs/refactor/r3/certification.json`](docs/refactor/r3/certification.json)
 - **(本体安定化Phase R2完了 / 2026-08-08 Codex, B-MANGA Next v0.6.605)** UI／操作を変更せず、選択、変形、Alt移送、IME、ナビゲーション、コマ枠、テキスト、フキダシ、効果線、画像、ラスター、塗り、グラデーション、パターンカーブ、GPの設定分岐と画面対基本出力を認定した。設定契約、詳細設定91件、R2必須38件、UI inventory 1614項目、詳細設定34項目、微細挙動279項目、承認Goldenは全緑。実画像の遮蔽物を除くためテストだけを補強し、再認定2/2合格。製品コード変更なし、Render／Liner差分0、通常版は未配備。証拠: [`docs/refactor/r2/certification.json`](docs/refactor/r2/certification.json)
 - **(本体安定化Phase R1完了 / 2026-08-08 Codex, B-MANGA Next v0.6.605)** 未完了だったレイヤー操作差分を監査・縮小し、作成、複製、削除、リンク、順序、親変更、Alt+D&D、ページ間移送、Undo／Redoを一回のDomain Command境界へ統一した。通常複製／削除は選択中の1件、フォルダ削除は子を維持する既存UI契約を固定し、失敗時はPropertyGroup、Domain、native実体、余剰を含む実Object、ラスターPNG、保存基準を完全rollbackする。復旧失敗は保存禁止のfail-closedへ移る。対象Blender回帰とUI認定は全緑、独立レビュー重大0・高0、Render／Liner差分0。通常版は未配備。計画: [`docs/bmanga_core_stabilization_plan_2026-08-08.md`](docs/bmanga_core_stabilization_plan_2026-08-08.md)

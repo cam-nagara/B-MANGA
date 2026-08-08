@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "phase": "R4",
+  "date": "2026-08-08",
+  "product": "bmanga",
+  "candidate_name": "B-MANGA本体安定版候補",
+  "version": "0.6.607",
+  "baseline_main": "c8ad0d70c8e68315c8e3453516374dbe343ec989",
+  "r3_parent": "727c656cfdd55c59df587455188127423a701e8e",
+  "normal_extension_deployed": false,
+  "normal_extension": {
+    "id": "b_manga",
+    "version": "0.6.599",
+    "manifest_last_write": "2026-07-28T11:25:29.3866095+09:00"
+  },
+  "ui_contract": {
+    "status": "frozen",
+    "intentional_ui_changes": 0,
+    "intentional_operation_entrypoint_changes": 0,
+    "headed_cases_passed": 38,
+    "covered": [
+      "major_screens",
+      "click",
+      "double_click",
+      "drag",
+      "selection",
+      "ime",
+      "navigation",
+      "undo_redo",
+      "save",
+      "visual_output"
+    ]
+  },
+  "full_suite": {
+    "status": "passed",
+    "runs_after_final_source_freeze": 1,
+    "case_count": 380,
+    "result_count": 380,
+    "required": 359,
+    "required_passed": 359,
+    "historical": 12,
+    "support": 9,
+    "unexpected_skip": 0,
+    "crash": 0,
+    "timeout": 0,
+    "golden_errors": 0,
+    "seconds": 5389.854,
+    "modes": {
+      "blender_headless": 219,
+      "blender_ui": 38,
+      "blender_wrapper": 65,
+      "python_pytest": 37
+    },
+    "manifest_sha256": "6b6198711b8b207f129a9f4593c1b1d9005ca75e27864e1614f0fa5e16e7d0cf",
+    "results_sha256": "541fb54bf0a67e90aef7f2ca93782ca889d54ae60336c7bf57f743c38866c15a",
+    "evidence": "_verify/2026-08-08_r4_full_v607"
+  },
+  "review": {
+    "status": "passed",
+    "critical": 0,
+    "high": 0,
+    "known_in_scope_user_bugs": 0,
+    "fixed_findings": [
+      "配布ZIPへ検証物・別製品・作品データが混入し得る境界",
+      "作品内の非native配置にある古い.bmanga-tを削除し得る境界"
+    ],
+    "evidence": "docs/refactor/r4/review.md"
+  },
+  "distribution": {
+    "status": "passed",
+    "artifact": "_verify/2026-08-08_r4_distribution_final/b_manga_next-0.6.607.zip",
+    "sha256": "2e1636317155587d712b394641ad2ac727ad9a247328453274f822303cbbf438",
+    "bytes": 47342167,
+    "entries": 468,
+    "official_builder": "Blender 5.2 blender_ext.py build",
+    "official_validate": "passed",
+    "isolated_install": "passed",
+    "unexpected_top_roots": 0,
+    "forbidden_entries": 0,
+    "missing_required_entries": 0,
+    "duplicate_entries": 0,
+    "path_traversal_entries": 0,
+    "secret_hits": 0,
+    "license": "GPL-2.0-or-later",
+    "license_sha256": "a3ade2b6d18c7c30d89faec2ba913283fb2d56370137ea90cfa20891414492f8"
+  },
+  "external_product_diff": {
+    "addons/b_manga_render": 0,
+    "addons/b_manga_line": 0
+  },
+  "major_fixture_flow": {
+    "status": "passed",
+    "covered": [
+      "work_creation",
+      "work_page_coma_page_work",
+      "save_and_restart_recovery",
+      "headed_ui_operations",
+      "png_jpeg_tiff_psd_pdf_export",
+      "independent_external_reread",
+      "performance_fixture"
+    ]
+  },
+  "unverified": [
+    "通常版v0.6.599への配備とユーザー実作品での制作確認は依頼どおり未実施",
+    "Render／Liner固有機能は本体限定認定の対象外"
+  ],
+  "remaining_risk": "自動化したBlender 5.2操作とfixtureで確認した範囲外の実作品固有データ、端末固有入力、未列挙の操作組合せは残るが、既知のin-scope不具合は0"
+}

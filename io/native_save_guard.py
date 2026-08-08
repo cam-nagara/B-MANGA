@@ -597,7 +597,7 @@ def _cleanup_transaction_base(
 
 
 def _cleanup_stale_copying_files(work: Path, now: datetime) -> list[Path]:
-    """rename失敗後の検証copy中に異常終了した部分ファイルだけを掃除する."""
+    """既知のnative保存先で異常終了した検証copyだけを掃除する."""
 
     removed: list[Path] = []
     try:
@@ -606,8 +606,11 @@ def _cleanup_stale_copying_files(work: Path, now: datetime) -> list[Path]:
         return removed
     for candidate in candidates:
         try:
+            source = _source_for_guard(candidate, work)
             if (
-                candidate.is_symlink()
+                source is None
+                or not source.is_file()
+                or candidate.is_symlink()
                 or not candidate.is_file()
                 or candidate.name != _NATIVE_COPYING_NAME
             ):

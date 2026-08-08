@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "b_manga_next"
-version = "0.6.606"
+version = "0.6.607"
 name = "B-MANGA Next"
 tagline = "Blender manga name/storyboard authoring addon"
 maintainer = "B-MANGA Project"
@@ -9,7 +9,7 @@ type = "add-on"
 
 blender_version_min = "5.2.0"
 
-# Blender API (GPL) に依存するため GPL を仮置き。後段で再検討可。
+# Blender API (GPL) に依存するため GPL-2.0-or-later を適用。
 license = [
     "SPDX:GPL-2.0-or-later",
 ]
@@ -40,3 +40,35 @@ platforms = ["windows-x64"]
 [permissions]
 network = "同期・外部連携でネットワーク接続を使用するため"
 files = "作品ファイル、画像、コマ用blendファイルを読み書きするため"
+
+[build]
+# 開発用の検証成果物、別製品、作品データを配布ZIPへ混入させない。
+# この一覧を宣言するとBlender既定の除外規則を置き換えるため、既定分も明記する。
+paths_exclude_pattern = [
+    "__pycache__/",
+    ".*",
+    "*.pyc",
+    "*.pyo",
+    "/*.zip",
+    "*.blend",
+    "*.blend[1-9]",
+    "/*.log",
+    "/*.pid",
+    "/*.out",
+    "/*.err",
+    "/*.xml",
+    "/_verify/",
+    "/addons/",
+    "/cache/",
+    "/docs/",
+    "/journal/",
+    "/pages/",
+    "/p[0-9][0-9][0-9][0-9]/",
+    "/test/",
+    "/tools/",
+    "/wheels/_installed/",
+    "/AGENTS.md",
+    "/AGENT_INBOX.md",
+    "/CHANGELOG.md",
+    "/project.json",
+]
