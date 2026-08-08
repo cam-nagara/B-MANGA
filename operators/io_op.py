@@ -27,8 +27,11 @@ from ..utils import detail_popup, log, page_range, paths
 
 
 @observed_operation("export.write")
-def _save_image(img, out_path: Path, image_format: str) -> None:
+def _save_image(img, out_path: Path, image_format: str, *, dpi: int = 0) -> None:
     """Pillow Image を format 別の互換モードで保存."""
+    save_kwargs = {}
+    if int(dpi) > 0:
+        save_kwargs["dpi"] = (float(dpi), float(dpi))
     with staged_export_write(out_path, image_format=image_format) as staged:
         if image_format == "jpeg":
             # JPEG は RGB / L / CMYK のみサポート。RGBA / "1" は RGB に変換
@@ -38,15 +41,15 @@ def _save_image(img, out_path: Path, image_format: str) -> None:
                 img = bg.convert("RGB")
             elif img.mode not in ("RGB", "L", "CMYK"):
                 img = img.convert("RGB")
-            img.save(str(staged), quality=95)
+            img.save(str(staged), quality=95, **save_kwargs)
         elif image_format == "tiff":
-            img.save(str(staged))
+            img.save(str(staged), **save_kwargs)
         elif image_format == "psd":
-            ok = export_pipeline.save_as_psd(img, staged)
+            ok = export_pipeline.save_as_psd(img, staged, dpi=dpi)
             if not ok:
                 raise RuntimeError("PSD 保存に失敗しました")
         else:
-            img.save(str(staged))
+            img.save(str(staged), **save_kwargs)
 
 _logger = log.get_logger(__name__)
 
@@ -277,7 +280,7 @@ def _export_all_page_unit(
     )
     if img is None:
         return False
-    _save_image(img, out, output_format)
+    _save_image(img, out, output_format, dpi=options.dpi_override)
     return True
 
 
@@ -431,7 +434,7 @@ class BMANGA_OT_export_page(Operator):
                 img = export_pipeline.render_page(work, page, options)
                 if img is None:
                     return {"CANCELLED"}
-                _save_image(img, out, self.format)
+                _save_image(img, out, self.format, dpi=options.dpi_override)
         except Exception as exc:  # noqa: BLE001
             _logger.exception("export_page failed")
             self.report({"ERROR"}, f"書き出し失敗: {exc}")
@@ -671,7 +674,7 @@ class BMANGA_OT_export_pdf(Operator):
                     continue
                 name = _unit_filename("{workName}_{episode}_{page}", work, unit)
                 tmp = out_dir / f"_tmp_{name}.png"
-                _save_image(img, tmp, "png")
+                _save_image(img, tmp, "png", dpi=options.dpi_override)
                 tmp_images.append(tmp)
             except Exception:  # noqa: BLE001
                 _logger.exception("pdf intermediate render failed for %s", getattr(unit.page, "id", "?"))
@@ -680,7 +683,7 @@ class BMANGA_OT_export_pdf(Operator):
             self.report({"ERROR"}, "書き出せるページがありません")
             return {"CANCELLED"}
         pdf_path = out_dir / f"{work.work_info.work_name or 'work'}.pdf"
-        ok = export_pipeline.merge_pdf(tmp_images, pdf_path)
+        ok = export_pipeline.merge_pdf(tmp_images, pdf_path, dpi=options.dpi_override)
         # 中間 PNG を削除
         for p in tmp_images:
             try:
@@ -783,7 +786,7 @@ class BMANGA_OT_export_current_page(Operator):
                 if img is None:
                     self.report({"ERROR"}, "レンダリングに失敗しました")
                     return {"CANCELLED"}
-                _save_image(img, out, self.format)
+                _save_image(img, out, self.format, dpi=options.dpi_override)
         except Exception as exc:  # noqa: BLE001
             _logger.exception("export_current_page failed")
             self.report({"ERROR"}, f"書き出し失敗: {exc}")
@@ -906,7 +909,7 @@ class BMANGA_OT_export_current_coma(Operator):
                 if img is None:
                     self.report({"ERROR"}, "レンダリングに失敗しました")
                     return {"CANCELLED"}
-                _save_image(img, out, self.format)
+                _save_image(img, out, self.format, dpi=options.dpi_override)
         except Exception as exc:  # noqa: BLE001
             _logger.exception("export_current_coma failed")
             self.report({"ERROR"}, f"書き出し失敗: {exc}")

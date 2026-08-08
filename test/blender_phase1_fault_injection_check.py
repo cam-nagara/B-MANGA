@@ -445,16 +445,20 @@ def main() -> None:
 
         export_path = root / "never-written.png"
         arm_fault(FaultPoint.EXPORT_WRITE)
-        _expect_injected(lambda: io_op._save_image(None, export_path, "png"))
+        _expect_injected(lambda: io_op._save_image(None, export_path, "png", dpi=144))
         assert not export_path.exists()
         image = io_op.export_pipeline.Image.new("RGBA", (8, 8), (10, 20, 30, 255))
         arm_fault(FaultPoint.EXPORT_WRITE_AFTER_STAGE)
-        _expect_injected(lambda: io_op._save_image(image, export_path, "png"))
+        _expect_injected(lambda: io_op._save_image(image, export_path, "png", dpi=144))
         assert not export_path.exists()
-        io_op._save_image(image, export_path, "png")
+        io_op._save_image(image, export_path, "png", dpi=144)
+        with io_op.export_pipeline.Image.open(export_path) as saved_image:
+            saved_dpi = saved_image.info.get("dpi")
+            assert saved_dpi is not None
+            assert all(abs(float(value) - 144.0) <= 0.2 for value in saved_dpi)
         original_export = export_path.read_bytes()
         arm_fault(FaultPoint.EXPORT_WRITE_AFTER_COMMIT)
-        _expect_injected(lambda: io_op._save_image(image, export_path, "png"))
+        _expect_injected(lambda: io_op._save_image(image, export_path, "png", dpi=144))
         assert export_path.read_bytes() == original_export
 
         faults = fault_snapshot()

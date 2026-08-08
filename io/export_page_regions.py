@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ..bmanga_core.file_transaction import staged_export_write
 from . import export_group_masks, export_pipeline, export_psd
 from .export_pipeline import ExportLayer, ExportOptions
 
@@ -161,7 +162,14 @@ def save_page_region_as_psd(
     ]
     if not layers:
         layers = [ExportLayer("empty", export_pipeline._empty_rgba(size), 0, 0)]
-    ok = export_psd.save_layers_as_psd(layers, size, out_path, group_masks=masks)
-    if not ok:
-        raise RuntimeError("PSD 保存に失敗しました")
+    with staged_export_write(out_path, image_format="psd") as staged:
+        ok = export_psd.save_layers_as_psd(
+            layers,
+            size,
+            staged,
+            group_masks=masks,
+            dpi=options.dpi_override,
+        )
+        if not ok:
+            raise RuntimeError("PSD 保存に失敗しました")
     return True

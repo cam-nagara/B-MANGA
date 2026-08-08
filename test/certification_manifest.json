@@ -3923,6 +3923,24 @@
       "args": [],
       "artifacts": [],
       "blender_args": [],
+      "completion_token": "BMANGA_CROSS_PRODUCT_REGISTER_SMOKE_OK",
+      "expected_tracebacks": [],
+      "mode": "blender_headless",
+      "phase0_category": "new",
+      "product": "cross_product",
+      "reason": "R3本体安定化では外部製品機能を認定せず、本体・Render・Linerの同時register/unregister互換性だけを確認する",
+      "required": true,
+      "review": "core-stabilization-r3-cross-product-boundary-2026-08-08",
+      "run_order": 100,
+      "source": "test/blender_cross_product_register_smoke_check.py",
+      "source_sha256": "fd8ba9670f66d8e7d8845be33fb46edd8a3f7726f74f0a58c9df0b29f029f70c",
+      "test_id": "test:test.blender.cross.product.register.smoke.check",
+      "timeout_seconds": 180
+    },
+    {
+      "args": [],
+      "artifacts": [],
+      "blender_args": [],
       "completion_token": "BMANGA_CURRENT_PAGE_OUTLINE_OK",
       "expected_tracebacks": [],
       "mode": "blender_ui",
@@ -6310,7 +6328,7 @@
       "review": "",
       "run_order": 100,
       "source": "test/blender_phase0_jpeg_export_check.py",
-      "source_sha256": "82ed696e8373b91eff307be988c775c50d73ff1584d11d5b3ff19827861c85fe",
+      "source_sha256": "0df5b5dc430130a26071b52247e0de40bae6ece2775cf5e2d3686fe502584012",
       "test_id": "test:test.blender.phase0.jpeg.export.check",
       "timeout_seconds": 180
     },
@@ -6387,7 +6405,7 @@
       "review": "phase3-asset-atomicity-audit-2026-07-30",
       "run_order": 100,
       "source": "test/blender_phase1_fault_injection_check.py",
-      "source_sha256": "058741dcdb1ead67103cd0d6f1b9c8e7b006e719f1bc49f4618600471ee7f2e6",
+      "source_sha256": "a4908ddcae362eada802f8bf762b9c552d639d6f9174ce7ac4e5d1f35f8db4f8",
       "test_id": "test:test.blender.phase1.fault.injection.check",
       "timeout_seconds": 180
     },
@@ -6620,6 +6638,37 @@
       "source": "test/blender_preview_propagation_visual_audit.py",
       "source_sha256": "482c164023ff805500050dec1ef0a9ab0e483582239c6680b0fee7cc301ebb75",
       "test_id": "test:test.blender.preview.propagation.visual.audit",
+      "timeout_seconds": 180
+    },
+    {
+      "args": [],
+      "artifacts": [
+        {
+          "path": "_verify/2026-08-08_r3_output_external_reader/reader_report.json"
+        },
+        {
+          "path": "_verify/2026-08-08_r3_output_external_reader/single.psd"
+        },
+        {
+          "path": "_verify/2026-08-08_r3_output_external_reader/pdf_whole.pdf"
+        },
+        {
+          "path": "_verify/2026-08-08_r3_output_external_reader/pdf_split.pdf"
+        }
+      ],
+      "blender_args": [],
+      "completion_token": "BMANGA_R3_OUTPUT_EXTERNAL_READER_OK",
+      "expected_tracebacks": [],
+      "mode": "blender_headless",
+      "phase0_category": "new",
+      "product": "bmanga",
+      "reason": "",
+      "required": true,
+      "review": "",
+      "run_order": 100,
+      "source": "test/blender_r3_output_external_reader_check.py",
+      "source_sha256": "7227cf3296a71593b23c2f009d74fa66454d3bf37b6840835f169065533533dd",
+      "test_id": "test:test.blender.r3.output.external.reader.check",
       "timeout_seconds": 180
     },
     {
@@ -7965,6 +8014,24 @@
       "source": "test/detail_dialog_public_test_support.py",
       "source_sha256": "6d4ef42e48dc8393066cdf580864c44a07faf7324b0c369cd0d63bd0dad2d1f4",
       "test_id": "test:test.detail.dialog.public.test.support",
+      "timeout_seconds": 180
+    },
+    {
+      "args": [],
+      "artifacts": [],
+      "blender_args": [],
+      "completion_token": "",
+      "expected_tracebacks": [],
+      "mode": "support",
+      "phase0_category": "new",
+      "product": "bmanga",
+      "reason": "test支援・runner moduleであり、単独の製品検査ではない",
+      "required": false,
+      "review": "phase1-manifest-audit-2026-07-29",
+      "run_order": 100,
+      "source": "test/output_external_reader.py",
+      "source_sha256": "28801efe230fac067239814ac8bc75172e637515b4b21f89aaccc2e8c41bc096",
+      "test_id": "test:test.output.external.reader",
       "timeout_seconds": 180
     },
     {

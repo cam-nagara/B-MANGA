@@ -1,6 +1,27 @@
 {
   "schema_version": 1,
   "cases": {
+    "test/blender_cross_product_register_smoke_check.py": {
+      "product": "cross_product",
+      "reason": "R3本体安定化では外部製品機能を認定せず、本体・Render・Linerの同時register/unregister互換性だけを確認する",
+      "review": "core-stabilization-r3-cross-product-boundary-2026-08-08"
+    },
+    "test/blender_r3_output_external_reader_check.py": {
+      "artifacts": [
+        {
+          "path": "_verify/2026-08-08_r3_output_external_reader/reader_report.json"
+        },
+        {
+          "path": "_verify/2026-08-08_r3_output_external_reader/single.psd"
+        },
+        {
+          "path": "_verify/2026-08-08_r3_output_external_reader/pdf_whole.pdf"
+        },
+        {
+          "path": "_verify/2026-08-08_r3_output_external_reader/pdf_split.pdf"
+        }
+      ]
+    },
     "test/blender_coma_camera_render_panel_migration_check.py": {
       "product": "cross_product"
     },

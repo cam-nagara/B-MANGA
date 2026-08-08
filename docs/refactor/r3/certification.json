@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "phase": "R3",
+  "date": "2026-08-08",
+  "product": "bmanga",
+  "version": "0.6.606",
+  "normal_extension_deployed": false,
+  "product_code_changed": true,
+  "ui_contract": {
+    "status": "frozen",
+    "ui_definition_changed": false,
+    "operation_entrypoints_changed": false
+  },
+  "output_contract": {
+    "status": "passed",
+    "dpi": 144,
+    "formats": [
+      "png",
+      "jpeg",
+      "tiff",
+      "psd",
+      "pdf"
+    ],
+    "units": [
+      "single",
+      "multiple",
+      "spread_split"
+    ],
+    "external_reader_checks": [
+      "format",
+      "pixel_dimensions",
+      "physical_resolution",
+      "color_mode",
+      "psd_layer_names",
+      "psd_layer_order",
+      "psd_mask_alpha",
+      "pdf_page_count",
+      "pdf_media_box"
+    ],
+    "evidence": "_verify/2026-08-08_r3_output_external_reader/reader_report.json"
+  },
+  "tests": [
+    {
+      "group": "r3_core_matrix",
+      "status": "passed",
+      "results": 43,
+      "required": 43,
+      "required_passed": 43,
+      "unexpected_skip": 0,
+      "crash": 0,
+      "timeout": 0,
+      "artifact_mismatch": 0,
+      "evidence": "_verify/2026-08-08_r3_core_matrix_final"
+    },
+    {
+      "group": "cross_product_register_smoke",
+      "status": "passed",
+      "results": 1,
+      "required": 1,
+      "required_passed": 1,
+      "evidence": "_verify/2026-08-08_r3_cross_product_smoke"
+    },
+    {
+      "group": "certification_catalog",
+      "status": "passed",
+      "passed": 27,
+      "failed": 0,
+      "evidence": "_verify/2026-08-08_r3_catalog_pytest_v2"
+    }
+  ],
+  "save_and_transition": {
+    "status": "passed",
+    "covered": [
+      "new_work",
+      "work_page_coma_page_work",
+      "save",
+      "save_as",
+      "undo_redo",
+      "fault_rollback",
+      "restart_recovery",
+      "cross_work_isolation"
+    ]
+  },
+  "meldex": {
+    "status": "passed",
+    "covered": [
+      "file_import",
+      "direct_receive",
+      "resend",
+      "transaction_rollback",
+      "presentation_settings_boundary",
+      "http_security"
+    ]
+  },
+  "asset_browser": {
+    "status": "passed",
+    "covered": [
+      "register",
+      "generate",
+      "reload",
+      "failure_nonmutation"
+    ]
+  },
+  "golden_gate": {
+    "status": "passed",
+    "errors": 0,
+    "jpeg_metadata_change": {
+      "old_sha256": "86274c623aed1d84f6286b4bbbb753000876fd123410455515c4421d829276fb",
+      "new_sha256": "aa0b9d4916cd057c50607f3a6aac41b0d5ae43a2ee3f247dd1dd45690db79c2a",
+      "decoded_pixels_equal": true,
+      "evidence": "_verify/2026-08-08_r3_golden_dpi_review/report.json"
+    }
+  },
+  "review": {
+    "status": "passed",
+    "critical": 0,
+    "high": 0,
+    "scope": "DPI propagation, PSD resource preservation, atomic output, compatibility, independent readers, golden identity"
+  },
+  "external_product_diff": {
+    "addons/b_manga_render": 0,
+    "addons/b_manga_line": 0
+  }
+}

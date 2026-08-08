@@ -136,6 +136,10 @@ def _payload(source: Path, outputs: list[Path]) -> dict[str, object]:
     modes = {str(record["mode"]) for record in records}
     if len(sizes) != 1 or modes != {"RGB"}:
         raise AssertionError(f"JPEG reader contract不一致: sizes={sizes}, modes={modes}")
+    for record in records:
+        dpi = record["dpi"]
+        if dpi is None or any(abs(float(value) - REQUESTED_DPI) > 0.2 for value in dpi):
+            raise AssertionError(f"JPEG DPI contract不一致: {record}")
     return {
         "schema_version": 1,
         "producer": "bpy.ops.bmanga.export_page",
@@ -143,11 +147,7 @@ def _payload(source: Path, outputs: list[Path]) -> dict[str, object]:
         "quality": 95,
         "source_png": _reader_record(source),
         "jpeg_outputs": records,
-        "dpi_contract_status": (
-            "present"
-            if all(record["dpi"] is not None for record in records)
-            else "missing_in_current_product_output"
-        ),
+        "dpi_contract_status": "present",
         "icc_contract_status": (
             "present"
             if all(record["icc_present"] for record in records)

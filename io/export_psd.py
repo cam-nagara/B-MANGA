@@ -116,6 +116,71 @@ def _pad_even(data: bytes) -> bytes:
     return data if len(data) % 2 == 0 else data + b"\0"
 
 
+def _resolution_resource(dpi: int) -> bytes:
+    fixed_dpi = _p32(round(float(dpi) * 65536.0))
+    payload = (
+        fixed_dpi
+        + _p16(1)
+        + _p16(1)
+        + fixed_dpi
+        + _p16(1)
+        + _p16(1)
+    )
+    return b"8BIM" + _p16(1005) + b"\0\0" + _p32(len(payload)) + _pad_even(payload)
+
+
+def _resource_blocks_without_resolution(resources: bytes) -> bytes:
+    kept: list[bytes] = []
+    offset = 0
+    while offset < len(resources):
+        start = offset
+        if offset + 7 > len(resources) or resources[offset : offset + 4] != b"8BIM":
+            raise ValueError("PSD image resource section is malformed")
+        resource_id = struct.unpack_from(">H", resources, offset + 4)[0]
+        offset += 6
+        name_size = resources[offset]
+        offset += 1 + name_size
+        if offset % 2:
+            offset += 1
+        if offset + 4 > len(resources):
+            raise ValueError("PSD image resource size is truncated")
+        data_size = struct.unpack_from(">I", resources, offset)[0]
+        offset += 4 + data_size
+        if offset % 2:
+            offset += 1
+        if offset > len(resources):
+            raise ValueError("PSD image resource data is truncated")
+        if resource_id != 1005:
+            kept.append(resources[start:offset])
+    return b"".join(kept)
+
+
+def _set_psd_resolution(out_path: Path, dpi: int) -> None:
+    if int(dpi) <= 0:
+        return
+    data = out_path.read_bytes()
+    if len(data) < 34 or data[:4] != b"8BPS":
+        raise ValueError("PSD header is missing")
+    color_data_size = struct.unpack_from(">I", data, 26)[0]
+    resources_size_offset = 30 + color_data_size
+    if resources_size_offset + 4 > len(data):
+        raise ValueError("PSD color mode data is truncated")
+    resources_size = struct.unpack_from(">I", data, resources_size_offset)[0]
+    resources_start = resources_size_offset + 4
+    resources_end = resources_start + resources_size
+    if resources_end > len(data):
+        raise ValueError("PSD image resources are truncated")
+    resources = _resource_blocks_without_resolution(data[resources_start:resources_end])
+    resources += _resolution_resource(int(dpi))
+    updated = (
+        data[:resources_size_offset]
+        + _p32(len(resources))
+        + resources
+        + data[resources_end:]
+    )
+    out_path.write_bytes(updated)
+
+
 def _pad4(data: bytes) -> bytes:
     padding = (-len(data)) % 4
     return data + (b"\0" * padding)
@@ -430,6 +495,7 @@ def _save_layers_with_builtin_writer(
     size: tuple[int, int],
     out_path: Path,
     group_masks: dict[tuple[str, ...], Any] | None,
+    dpi: int,
 ) -> bool:
     try:
         psd_layers = _prepare_fallback_layers(layers, size, group_masks)
@@ -437,6 +503,7 @@ def _save_layers_with_builtin_writer(
             psd_layers = [_empty_psd_layer(size)]
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_bytes(_psd_body(psd_layers, size))
+        _set_psd_resolution(out_path, dpi)
         return True
     except Exception as exc:  # noqa: BLE001
         _logger.exception("built-in layered psd save failed: %s", exc)
@@ -448,6 +515,8 @@ def save_layers_as_psd(
     size: tuple[int, int],
     out_path: Path,
     group_masks: dict[tuple[str, ...], Any] | None = None,
+    *,
+    dpi: int = 0,
 ) -> bool:
     if _HAS_PSD:
         try:
@@ -486,13 +555,14 @@ def save_layers_as_psd(
                         continue
                     group.create_mask(mask.image, top=int(mask.top), left=int(mask.left))
             psd.save(str(out_path))
+            _set_psd_resolution(out_path, dpi)
             return True
         except Exception as exc:  # noqa: BLE001
             _logger.exception("psd-tools layered save failed, fallback to built-in writer: %s", exc)
-    return _save_layers_with_builtin_writer(layers, size, out_path, group_masks)
+    return _save_layers_with_builtin_writer(layers, size, out_path, group_masks, dpi)
 
 
-def save_flat_image_as_psd(img, out_path: Path) -> bool:
+def save_flat_image_as_psd(img, out_path: Path, *, dpi: int = 0) -> bool:
     from types import SimpleNamespace
 
     layer = SimpleNamespace(
@@ -505,4 +575,4 @@ def save_flat_image_as_psd(img, out_path: Path) -> bool:
         opacity=255,
         blend_mode="normal",
     )
-    return save_layers_as_psd([layer], img.size, out_path)
+    return save_layers_as_psd([layer], img.size, out_path, dpi=dpi)

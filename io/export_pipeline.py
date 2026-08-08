@@ -2316,7 +2316,7 @@ def render_page(work, page, options: ExportOptions) -> Any:
 
 
 @observed_operation("export.write")
-def merge_pdf(page_image_paths: list[Path], out_path: Path) -> bool:
+def merge_pdf(page_image_paths: list[Path], out_path: Path, *, dpi: int = 0) -> bool:
     if not _HAS_PIL or not page_image_paths:
         return False
     try:
@@ -2337,7 +2337,10 @@ def merge_pdf(page_image_paths: list[Path], out_path: Path) -> bool:
     try:
         with staged_export_write(out_path, image_format="pdf") as staged:
             first, rest = images[0], images[1:]
-            first.save(str(staged), save_all=True, append_images=rest)
+            save_kwargs = {"save_all": True, "append_images": rest}
+            if int(dpi) > 0:
+                save_kwargs["resolution"] = float(dpi)
+            first.save(str(staged), **save_kwargs)
         return True
     except FaultInjectedError:
         raise
@@ -2371,6 +2374,7 @@ def save_page_as_psd(work, page, options: ExportOptions, out_path: Path) -> bool
             size,
             staged,
             group_masks=group_masks,
+            dpi=options.dpi_override,
         )
         if not ok:
             raise RuntimeError("PSD 保存に失敗しました")
@@ -2378,11 +2382,11 @@ def save_page_as_psd(work, page, options: ExportOptions, out_path: Path) -> bool
 
 
 @observed_operation("export.write")
-def save_as_psd(img, out_path: Path) -> bool:
+def save_as_psd(img, out_path: Path, *, dpi: int = 0) -> bool:
     if not _HAS_PIL:
         return False
     with staged_export_write(out_path, image_format="psd") as staged:
-        ok = export_psd.save_flat_image_as_psd(img, staged)
+        ok = export_psd.save_flat_image_as_psd(img, staged, dpi=dpi)
         if not ok:
             raise RuntimeError("PSD 保存に失敗しました")
     return True
@@ -2437,6 +2441,7 @@ def save_coma_as_psd(work, page, coma_entry, options: ExportOptions, crop_box: t
             size,
             staged,
             group_masks=group_masks,
+            dpi=options.dpi_override,
         )
         if not ok:
             raise RuntimeError("PSD 保存に失敗しました")
