@@ -30,6 +30,7 @@ from .layer_hierarchy import split_child_key
 _logger = log.get_logger(__name__)
 
 _STAGED_IMPORTS_NAME = cross_page_stage.STAGED_IMPORTS_NAME
+StagedImportRollbackError = cross_page_stage.StagedImportRollbackError
 
 _SUPPORTED_KINDS = frozenset({"balloon", "text", "effect", "gp"})
 _UNSUPPORTED_KINDS = frozenset({"image", "raster", "fill", "layer_folder"})

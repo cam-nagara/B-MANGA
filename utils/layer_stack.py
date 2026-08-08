@@ -1491,6 +1491,12 @@ def _apply_stack_drop_hint(context, moved_uid: str, *, nesting_delta: int = 0) -
     old_parent_key = str(getattr(item, "parent_key", "") or "")
     if parent_key and not _parent_key_exists_for_child(context, kind, parent_key):
         return False
+    from . import layer_stack_dnd
+    cross_page_changed = layer_stack_dnd.apply_cross_page_parent_drop(
+        context, item, parent_key
+    )
+    if cross_page_changed is not None:
+        return cross_page_changed
     if layer_folder_utils.is_folder_key(context, parent_key):
         if kind == LAYER_FOLDER_KIND:
             changed = layer_folder_utils.set_folder_parent(context, str(getattr(item, "key", "") or ""), parent_key)
@@ -1518,8 +1524,6 @@ def _apply_stack_drop_hint(context, moved_uid: str, *, nesting_delta: int = 0) -
             item.depth = int(getattr(parent, "depth", -1)) + 1 if parent is not None else 0
         return changed
     try:
-        from . import layer_stack_dnd
-
         if (
             layer_stack_dnd.child_can_use_semantic_parent(kind)
             and layer_stack_dnd.is_semantic_parent_key(context, parent_key)
@@ -1612,6 +1616,11 @@ def _is_single_row_reorder(
 
 def apply_stack_order_if_ui_changed(context, *, moved_uid: str = "") -> bool:
     """UIList の D&D で変わった Collection 順を、同期で戻る前に実データへ適用する."""
+    from . import layer_stack_command_runtime
+
+    if layer_stack_command_runtime.commits_suppressed():
+        _remember_stack_signature(context)
+        return False
     scene = getattr(context, "scene", None)
     if scene is None or getattr(scene, "bmanga_layer_stack", None) is None:
         return False
@@ -1641,10 +1650,15 @@ def apply_stack_order_if_ui_changed(context, *, moved_uid: str = "") -> bool:
         _apply_stack_drop_hint(context, moved_uid)
     apply_stack_order(context)
     _remember_stack_signature(context)
-    return True
+    return commit_stack_order(context)
 
 
-def _sync_real_objects_after_stack_order(context) -> None:
+def _sync_real_objects_after_stack_order(
+    context,
+    *,
+    allow_object_writeback: bool = True,
+    strict: bool = False,
+) -> None:
     """レイヤー一覧 D&D 後の実体オブジェクトを最新化する."""
     scene = getattr(context, "scene", None)
     work = get_work(context)
@@ -1653,11 +1667,41 @@ def _sync_real_objects_after_stack_order(context) -> None:
     try:
         from . import layer_object_sync
 
-        layer_object_sync.mirror_work_to_outliner(scene, work)
+        layer_object_sync.mirror_work_to_outliner(
+            scene,
+            work,
+            allow_object_writeback=allow_object_writeback,
+            require_exact_runtime_objects=strict,
+        )
         with layer_object_sync.suppress_sync():
             layer_object_sync.assign_per_page_z_ranks(scene, work)
+        if strict:
+            layer_object_sync.assert_runtime_objects_current(scene, work)
     except Exception:  # noqa: BLE001
         _logger.exception("layer stack real object sync failed")
+        if strict:
+            raise
+
+
+def commit_stack_order(context) -> bool:
+    """現在の一覧順を一度だけLayer Commandへ確定する。"""
+
+    from . import layer_stack_command_runtime
+
+    return layer_stack_command_runtime.commit_order(context)
+
+
+def _finish_stack_move(
+    context,
+    moved_uid: str,
+    *,
+    commit: bool,
+) -> bool:
+    sync_layer_stack(context, preserve_active_index=True)
+    remember_layer_stack_signature(context)
+    _select_stack_item_after_move(context, moved_uid)
+    remember_layer_stack_signature(context)
+    return commit_stack_order(context) if commit else True
 
 
 def sync_layer_stack_after_data_change(
@@ -1666,6 +1710,8 @@ def sync_layer_stack_after_data_change(
     align_page_order: bool = False,
     align_coma_order: bool = False,
     stack_already_synced: bool = False,
+    allow_object_writeback: bool = True,
+    strict: bool = False,
 ) -> None:
     """Operator で実データを更新した直後に、UIList と既知シグネチャを揃える."""
     try:
@@ -1676,10 +1722,16 @@ def sync_layer_stack_after_data_change(
                 align_coma_order=align_coma_order,
             )
         _remember_stack_signature(context)
-        _sync_real_objects_after_stack_order(context)
+        _sync_real_objects_after_stack_order(
+            context,
+            allow_object_writeback=allow_object_writeback,
+            strict=strict,
+        )
         tag_view3d_redraw(context)
     except Exception:  # noqa: BLE001
         _logger.exception("layer stack sync after data change failed")
+        if strict:
+            raise
     try:
         from . import preview_composite
 
@@ -2993,6 +3045,7 @@ def move_stack_item(
     to_index: int | None = None,
     *,
     direction: str = "",
+    commit: bool = True,
 ) -> bool:
     stack = sync_layer_stack(context, preserve_active_index=True)
     if stack is None or len(stack) == 0:
@@ -3032,11 +3085,7 @@ def move_stack_item(
     # 既知シグネチャの記録を済ませる。後回しにすると、コールバック内の
     # apply_stack_order_if_ui_changed が順序ボタンの移動を UIList D&D と誤認し、
     # _apply_stack_drop_hint が二重に走って想定外の親変更を招く。
-    sync_layer_stack(context, preserve_active_index=True)
-    remember_layer_stack_signature(context)
-    _select_stack_item_after_move(context, moved_uid)
-    remember_layer_stack_signature(context)
-    return True
+    return _finish_stack_move(context, moved_uid, commit=commit)
 
 
 def _reorder_collection(coll, desired_back_to_front: list[str], key_fn) -> None:
@@ -3465,6 +3514,27 @@ def apply_stack_order(context) -> None:
         pass
 
 
+def is_pending_transfer_target_folder(context, item) -> bool:
+    """初回保存前の移送先として参照中のfolderか返す."""
+
+    if str(getattr(item, "kind", "") or "") != LAYER_FOLDER_KIND:
+        return False
+    work = get_work(context)
+    if work is None or not getattr(work, "work_dir", ""):
+        return False
+    from . import cross_page_stage, layer_transfer_ownership
+
+    owner = layer_transfer_ownership.resolve_item_owner(context, item)
+    return (
+        owner.scope == "page"
+        and cross_page_stage.has_pending_transfer_target_folder(
+            work.work_dir,
+            owner.page_id,
+            str(getattr(item, "key", "") or ""),
+        )
+    )
+
+
 def delete_stack_index(context, index: int) -> bool:
     stack = sync_layer_stack(context, preserve_active_index=True)
     if stack is None or not (0 <= index < len(stack)):
@@ -3525,7 +3595,15 @@ def delete_stack_index(context, index: int) -> bool:
             return False
     elif kind == LAYER_FOLDER_KIND:
         work = get_work(context)
-        if work is None or not layer_folder_utils.remove_folder_preserve_children(work, item.key):
+        if work is None:
+            return False
+        if is_pending_transfer_target_folder(context, item):
+            _logger.warning(
+                "pending transfer target folder cannot be deleted: %s",
+                item.key,
+            )
+            return False
+        if not layer_folder_utils.remove_folder_preserve_children(work, item.key):
             return False
         if hasattr(scene, "bmanga_active_layer_folder_key"):
             scene.bmanga_active_layer_folder_key = ""

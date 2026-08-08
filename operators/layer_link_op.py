@@ -113,6 +113,8 @@ class BMANGA_OT_layer_stack_link_selected(Operator):
         return layer_links.selected_linkable_count(context) >= 1
 
     def execute(self, context):
+        from ..utils import layer_command_runtime
+
         stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
         uids = layer_links.selected_linkable_uids(context, stack=stack)
         # 選択がすべて「リンク済み」(グループ or テキスト⇔フキダシ紐付け) の
@@ -130,17 +132,40 @@ class BMANGA_OT_layer_stack_link_selected(Operator):
             return bool(item is not None and layer_links.item_has_link(context, item))
 
         if uids and all(_has_link(uid) for uid in uids):
-            removed = layer_links.unlink_selected_full(context, uids, stack=stack)
+            items = tuple(item_by_uid[uid] for uid in uids if uid in item_by_uid)
+            removed = layer_command_runtime.execute(
+                context,
+                items=items,
+                operation="unlink",
+                mutate=lambda: layer_links.unlink_selected_full(
+                    context,
+                    uids,
+                    stack=stack,
+                ),
+            )
             if removed:
                 layer_stack_utils.tag_view3d_redraw(context)
                 self.report({"INFO"}, f"{removed}件のレイヤーのリンクを解除しました")
                 return {"FINISHED"}
-        _group_id, count = layer_links.link_uids(context, uids)
+        items = tuple(item_by_uid[uid] for uid in uids if uid in item_by_uid)
+
+        def _link() -> int:
+            _group_id, count = layer_links.link_uids(context, uids)
+            if count < 2:
+                return 0
+            _sync_new_link_transforms(context, stack, uids)
+            layer_links.expand_linked_selection(context, stack=stack)
+            return count
+
+        count = layer_command_runtime.execute(
+            context,
+            items=items,
+            operation="link",
+            mutate=_link,
+        )
         if count < 2:
             self.report({"WARNING"}, "リンクするレイヤーを2つ以上選択してください")
             return {"CANCELLED"}
-        _sync_new_link_transforms(context, stack, uids)
-        layer_links.expand_linked_selection(context, stack=stack)
         layer_stack_utils.tag_view3d_redraw(context)
         self.report({"INFO"}, f"{count}件のレイヤーをリンクしました")
         return {"FINISHED"}
@@ -160,9 +185,22 @@ class BMANGA_OT_layer_stack_unlink_selected(Operator):
         return layer_links.selected_any_related(context)
 
     def execute(self, context):
+        from ..utils import layer_command_runtime
+
         stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
         uids = layer_links.selected_linkable_uids(context, stack=stack)
-        removed = layer_links.unlink_selected_full(context, uids, stack=stack)
+        item_by_uid = _selected_link_items(context, stack, uids)
+        items = tuple(item_by_uid[uid] for uid in uids if uid in item_by_uid)
+        removed = layer_command_runtime.execute(
+            context,
+            items=items,
+            operation="unlink",
+            mutate=lambda: layer_links.unlink_selected_full(
+                context,
+                uids,
+                stack=stack,
+            ),
+        )
         if not removed:
             self.report({"WARNING"}, "リンクされているレイヤーが選択されていません")
             return {"CANCELLED"}

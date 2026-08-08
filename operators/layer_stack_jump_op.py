@@ -58,10 +58,17 @@ class BMANGA_OT_layer_stack_move_ten(Operator):
                 context,
                 current_index,
                 direction=self.direction,
+                commit=False,
             ):
                 break
             moved_count += 1
-        return {"FINISHED"} if moved_count else {"CANCELLED"}
+        if not moved_count:
+            return {"CANCELLED"}
+        return (
+            {"FINISHED"}
+            if layer_stack_utils.commit_stack_order(context)
+            else {"CANCELLED"}
+        )
 
 
 _CLASSES = (BMANGA_OT_layer_stack_move_ten,)

@@ -1086,7 +1086,26 @@ def ensure_all_raster_runtime(context) -> int:
 
 def purge_raster_runtime(entry) -> None:
     raster_id = str(getattr(entry, "id", "") or "")
+    _purge_raster_runtime_by_id(
+        raster_id,
+        str(getattr(entry, "image_name", "") or ""),
+    )
+
+
+def _purge_raster_runtime_by_id(
+    raster_id: str,
+    image_name: str = "",
+) -> None:
+    """PropertyGroup消失後も固定IDだけでラスター実体を除去する。"""
+
+    raster_id = str(raster_id or "")
+    if not raster_id:
+        return
     obj = bpy.data.objects.get(raster_plane_name(raster_id))
+    if obj is None:
+        from ..utils import object_naming
+
+        obj = object_naming.find_object_by_bmanga_id(raster_id, kind="raster")
     if obj is not None:
         mesh = obj.data
         bpy.data.objects.remove(obj, do_unlink=True)
@@ -1095,9 +1114,31 @@ def purge_raster_runtime(entry) -> None:
     mat = bpy.data.materials.get(raster_material_name(raster_id))
     if mat is not None:
         bpy.data.materials.remove(mat, do_unlink=True)
-    image = bpy.data.images.get(str(getattr(entry, "image_name", "") or raster_image_name(raster_id)))
+    image = bpy.data.images.get(str(image_name or raster_image_name(raster_id)))
     if image is not None:
         bpy.data.images.remove(image, do_unlink=True)
+
+
+def cleanup_orphan_raster_runtime(context) -> int:
+    """正式なRaster PropertyGroupを持たない実Object/Datablockを除去する。"""
+
+    scene = getattr(context, "scene", None)
+    coll = _raster_collection(scene) if scene is not None else None
+    valid = {
+        str(getattr(entry, "id", "") or "")
+        for entry in (coll or ())
+        if str(getattr(entry, "id", "") or "")
+    }
+    orphans = {
+        str(obj.get("bmanga_id", "") or "")
+        for obj in tuple(getattr(scene, "objects", ()) or ())
+        if str(obj.get("bmanga_kind", "") or "") == "raster"
+        and str(obj.get("bmanga_id", "") or "")
+        and str(obj.get("bmanga_id", "") or "") not in valid
+    }
+    for raster_id in sorted(orphans):
+        _purge_raster_runtime_by_id(raster_id)
+    return len(orphans)
 
 
 def purge_all_raster_runtime(scene) -> int:
@@ -1298,13 +1339,21 @@ class BMANGA_OT_raster_layer_add(Operator):
         context.scene.bmanga_active_raster_layer_index = len(coll) - 1
         context.scene.bmanga_active_layer_kind = "raster"
         if ensure_raster_plane(context, entry) is None:
+            purge_raster_runtime(entry)
             coll.remove(len(coll) - 1)
             self.report({"ERROR"}, "ラスター実体の作成に失敗しました")
             return {"CANCELLED"}
         try:
             save_raster_png(context, entry, force=True)
-        except Exception:  # noqa: BLE001
-            _logger.exception("raster_layer_add: initial PNG save failed (non-fatal)")
+        except Exception as exc:  # noqa: BLE001
+            _logger.exception("raster_layer_add: initial PNG save failed")
+            purge_raster_runtime(entry)
+            coll.remove(len(coll) - 1)
+            context.scene.bmanga_active_raster_layer_index = (
+                len(coll) - 1 if len(coll) else -1
+            )
+            self.report({"ERROR"}, f"ラスター画像を保存できませんでした: {exc}")
+            return {"CANCELLED"}
         layer_stack_utils.sync_layer_stack_after_data_change(context)
         stack = getattr(context.scene, "bmanga_layer_stack", None)
         uid = layer_stack_utils.target_uid("raster", raster_id)

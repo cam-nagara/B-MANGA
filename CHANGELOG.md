@@ -3,6 +3,30 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.2 LTS 専用です。
 
+## 2026-08-08 — 本体安定化Phase R1のレイヤー操作を確定 (B-MANGA Next v0.6.605)
+
+### 症状
+- レイヤーの作成、複製、削除、リンク、並べ替え、親変更、ページ間移送がPropertyGroup、Blender実体、Domain、保存JSONへ個別に反映され、途中失敗やUndo／Redoで世代が分かれる余地があった。
+- Alt+D&Dの準備中や移送先未保存時に正式データを早く変更し、強制終了後の復旧対象・所有ページ・リンク集合を取り違える余地があった。
+- Domain確定失敗後の復元で、余剰の画像パス等の実Object、ラスターPNG、保存基準のいずれかだけが残っても成功扱いできた。
+
+### 原因
+- 利用者操作を一回のDomain Commandへ確定する共通Transaction境界と、PropertyGroup／Object／native fileを同じ操作前snapshotへ戻す厳密なrollbackがなかった。
+- ページ間移送のstage、journal、履歴が、転送対象の所有権と移送先初回保存の完了を共通IDで照合していなかった。
+- 復元後の実Object検査が不足だけを見ており、操作中に生成された余剰Objectを検出していなかった。
+
+### 修正
+- レイヤー操作をsnapshot→変更→Domain Command確定の一取引へ統一し、通常の複製／削除は選択中の1件だけ、リンク複製だけ明示的なリンク操作、フォルダ削除は子を維持する従来UI契約を固定した。
+- 全レイヤー種別の順序、親子、リンク、設定、選択をDomain投影と照合し、Alt+D&Dは確定前に正式データを変更しないstage方式へ統一した。ページ間移送は所有権、転送対象、初回保存、Undo／Redoのgroup履歴を耐久journalで照合する。
+- Command失敗時はPropertyGroup、Domain binding、native GP／効果線、実Object、ラスターPNG、保存基準を操作前へ戻す。余剰・欠損Objectを完全一致で検査し、PNGを先に復旧してから実体を再生成する。復旧自体が失敗した場合は作品を未読込状態へ移し、追加編集と保存を止める。
+- Phase 5由来の未使用な複製／削除Command抽象化を削り、既存UIから到達する操作だけを残した。
+
+### 検証（Blender 5.2 LTS実機）
+- Domain／順序／移送契約の純Pythonテスト12件を合格させた。
+- Phase 5最終履歴補償と全レイヤーCommand rollbackの統一認定2/2、Undo／Redo UI認定1/1、跨種別表示・ツール操作UI認定2/2を合格させた。
+- このほか、フォルダ、D&D親変更、障害注入、Domain投影失敗、Alt+D&D移送、強制終了復旧、リンク複製の対象Blender回帰7本を合格させた。期待する失敗注入tracebackもmanifestの件数と一致した。
+- 独立レビューは重大0・高0。Render／Linerの製品差分0、通常Extension未配備を確認した。
+
 ## 2026-08-02 — 全体リファクタリングPhase 4のLifecycleを統合 (B-MANGA Next v0.6.604)
 
 ### 症状

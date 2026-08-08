@@ -1,992 +1,988 @@
-"""Blender 実機用: レイヤーリスト D&D 親変更のデータ移送確認."""
+"""Blender 5.2実機: UIList D&Dの同一ページCommand／別ページTransferGroup。"""
 
 from __future__ import annotations
 
-import copy
+import hashlib
 import importlib.util
 import json
+from pathlib import Path
 import shutil
 import sys
 import tempfile
-import threading
-from pathlib import Path
-from types import SimpleNamespace
 
 import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
+PKG = "bmanga_dev"
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bmanga_dev",
+        PKG,
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["bmanga_dev"] = mod
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[PKG] = module
     assert spec.loader is not None
-    spec.loader.exec_module(mod)
-    mod.register()
-    return mod
+    spec.loader.exec_module(module)
+    module.register()
+    return module
 
 
-def _page_summary(work, page_id: str):
-    page = next(page for page in work.pages if str(page.id) == page_id)
-    return page
+def _stack():
+    from bmanga_dev.utils import layer_stack
+
+    result = layer_stack.sync_layer_stack(
+        bpy.context,
+        preserve_active_index=True,
+    )
+    assert result is not None
+    layer_stack.remember_layer_stack_signature(bpy.context)
+    return result
 
 
-def _page_dir(work, page_id: str) -> Path:
-    from bmanga_dev.io import domain_projection
+def _row(uid: str):
+    from bmanga_dev.utils import layer_stack
 
-    page = _page_summary(work, page_id)
-    project_uid = domain_projection.ensure_project_uid(work)
-    page_uid = domain_projection.ensure_page_uid(page, project_uid)
-    return Path(work.work_dir) / "pages" / page_uid
+    return next(
+        item
+        for item in _stack()
+        if layer_stack.stack_item_uid(item) == uid
+    )
 
 
-def _load_page_projection(work_dir: Path, page_id: str):
+def _move_below(uid: str, parent_uid: str) -> None:
+    from bmanga_dev.utils import layer_stack
+
+    stack = _stack()
+    source = next(
+        index
+        for index, item in enumerate(stack)
+        if layer_stack.stack_item_uid(item) == uid
+    )
+    parent = next(
+        index
+        for index, item in enumerate(stack)
+        if layer_stack.stack_item_uid(item) == parent_uid
+    )
+    target = parent + 1
+    if source < target:
+        target -= 1
+    stack.move(source, target)
+    assert layer_stack.apply_stack_order_if_ui_changed(
+        bpy.context,
+        moved_uid=uid,
+    )
+
+
+def _delete_uid(uid: str):
+    from bmanga_dev.utils import layer_stack
+
+    stack = _stack()
+    index = next(
+        i for i, item in enumerate(stack)
+        if layer_stack.stack_item_uid(item) == uid
+    )
+    layer_stack.clear_all_selection(bpy.context)
+    assert layer_stack.select_stack_index(bpy.context, index)
+    return bpy.ops.bmanga.layer_stack_delete("EXEC_DEFAULT")
+
+
+def _page_document(work_dir: Path, display_id: str):
     from bmanga_dev.bmanga_core.domain_repository import ProjectRepository
-    from bmanga_dev.io import domain_projection
 
     repository = ProjectRepository(work_dir)
     project = repository.load_project()
-    summary = next(page for page in project.pages if page.display_id == page_id)
-    document = repository.load_page(summary.uid)
-    payload = domain_projection.page_payload_from_document(
-        document,
-        display_id=summary.display_id,
-        title=summary.title,
-        spread=summary.spread,
+    summary = next(
+        page for page in project.pages if page.display_id == display_id
     )
-    return repository, project, document, payload
+    return repository.load_page(summary.uid)
 
 
-def _stack(context):
-    from bmanga_dev.utils import layer_stack as layer_stack_utils
-
-    stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
-    assert stack is not None
-    layer_stack_utils.remember_layer_stack_signature(context)
-    return stack
-
-
-def _move_uid_below_parent(context, uid: str, parent_uid: str) -> None:
-    from bmanga_dev.utils import layer_stack as layer_stack_utils
-
-    stack = _stack(context)
-    from_index = next(i for i, item in enumerate(stack) if layer_stack_utils.stack_item_uid(item) == uid)
-    parent_index = next(i for i, item in enumerate(stack) if layer_stack_utils.stack_item_uid(item) == parent_uid)
-    target_index = parent_index + 1
-    if from_index < target_index:
-        target_index -= 1
-    stack.move(from_index, max(0, min(len(stack) - 1, target_index)))
-    layer_stack_utils.apply_stack_order_if_ui_changed(context, moved_uid=uid)
-    layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
+def _display_ids(document) -> set[str]:
+    return {
+        str(node.display_id)
+        for node in document.nodes.values()
+        if str(node.display_id)
+    }
 
 
-def _assert_visible_object(obj, label: str) -> None:
-    if obj is None:
-        raise AssertionError(f"{label}: object missing")
-    if getattr(obj, "hide_viewport", False):
-        raise AssertionError(f"{label}: object hidden")
-    if not list(getattr(obj, "users_collection", []) or []):
-        raise AssertionError(f"{label}: object is not linked")
-
-
-def _add_balloon(page, bid: str, parent_key: str):
-    entry = page.balloons.add()
-    entry.id = bid
-    entry.shape = "rect"
-    entry.x_mm = 10.0
-    entry.y_mm = 20.0
-    entry.width_mm = 30.0
-    entry.height_mm = 18.0
-    entry.parent_kind = "coma" if ":" in parent_key else "page"
-    entry.parent_key = parent_key
-    return entry
-
-
-def _add_text(page, tid: str, parent_key: str, parent_balloon_id: str = ""):
+def _add_text(page, display_id: str, parent_key: str):
     entry = page.texts.add()
-    entry.id = tid
-    entry.body = tid
-    entry.x_mm = 14.0
-    entry.y_mm = 24.0
-    entry.width_mm = 20.0
-    entry.height_mm = 10.0
-    entry.parent_balloon_id = parent_balloon_id
+    entry.id = display_id
+    entry.body = display_id
+    entry.x_mm = 12.0
+    entry.y_mm = 18.0
+    entry.width_mm = 24.0
+    entry.height_mm = 12.0
     entry.parent_kind = "coma" if ":" in parent_key else "page"
     entry.parent_key = parent_key
     return entry
 
 
-def _add_image(context, image_id: str, parent_key: str):
-    entry = context.scene.bmanga_image_layers.add()
-    entry.id = image_id
-    entry.title = image_id
-    entry.parent_kind = "coma" if ":" in parent_key else "page"
-    entry.parent_key = parent_key
-    return entry
+def _assert_ready_stage(work_dir: Path, page_id: str, display_id: str) -> str:
+    from bmanga_dev.utils import cross_page_stage
+
+    path = cross_page_stage.staged_path(work_dir, page_id)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    entries = data.get(cross_page_stage.ASSET_ENTRIES_KEY, [])
+    ready = [
+        entry
+        for entry in entries
+        if entry.get("state") == "ready"
+        and any(
+            item.get("source_id") == display_id
+            or item.get("data", {}).get("id") == display_id
+            for item in entry.get("payload", {}).get("entries", [])
+        )
+    ]
+    assert len(ready) == 1, entries
+    return str(ready[0]["stage_id"])
 
 
-def _add_raster(context, raster_id: str, parent_key: str):
-    entry = context.scene.bmanga_raster_layers.add()
-    entry.id = raster_id
-    entry.title = raster_id
-    entry.scope = "page"
-    entry.parent_kind = "coma" if ":" in parent_key else "page"
-    entry.parent_key = parent_key
-    return entry
+def _assert_folder_stage(
+    work_dir: Path,
+    page_id: str,
+    display_id: str,
+    target_folder_key: str,
+) -> str:
+    from bmanga_dev.utils import cross_page_stage
+
+    path = cross_page_stage.staged_path(work_dir, page_id)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    entries = data.get(cross_page_stage.ASSET_ENTRIES_KEY, [])
+    ready = [
+        entry
+        for entry in entries
+        if entry.get("state") == "ready"
+        and entry.get("payload", {}).get("transfer", {}).get(
+            "targetFolderKey"
+        ) == target_folder_key
+        and any(
+            item.get("source_id") == display_id
+            or item.get("data", {}).get("id") == display_id
+            for item in entry.get("payload", {}).get("entries", [])
+        )
+    ]
+    assert len(ready) == 1, entries
+    transfer = ready[0]["payload"]["transfer"]
+    assert transfer["targetPageId"] == page_id
+    assert transfer["targetFolderOwnerPageId"] == page_id
+    return str(ready[0]["stage_id"])
 
 
-def _add_gp_layer(context, name: str, parent_key: str):
-    from bmanga_dev.utils import gp_object_layer, gpencil, layer_object_model
+def _ready_folder_stage_exists(
+    work_dir: Path,
+    page_id: str,
+    stage_id: str,
+    target_folder_key: str,
+) -> bool:
+    from bmanga_dev.utils import cross_page_stage
 
-    obj = gp_object_layer.create_layer_gp_object(
-        scene=context.scene,
-        bmanga_id=layer_object_model.make_stable_id("gp"),
-        title=name,
-        z_index=210,
-        parent_kind="coma" if ":" in parent_key else "page",
-        parent_key=parent_key,
+    data = cross_page_stage._read(
+        cross_page_stage.staged_path(work_dir, page_id)
     )
-    assert obj is not None
-    layer = layer_object_model.content_layer(obj)
-    assert layer is not None
-    if hasattr(layer, "tint_color"):
-        tint_values = (0.13, 0.24, 0.35, 0.46)
-        layer.tint_color = tint_values[: len(tuple(layer.tint_color))]
-    frame = gpencil.ensure_active_frame(layer)
-    assert frame is not None and getattr(frame, "drawing", None) is not None
-    assert gpencil.add_stroke_to_drawing(
-        frame.drawing,
-        [(0.012, 0.034, 0.0), (0.024, 0.046, 0.0)],
-        curve_type="BEZIER",
-        bezier_smooth=True,
+    return any(
+        isinstance(entry, dict)
+        and entry.get("stage_id") == stage_id
+        and entry.get("state") == "ready"
+        and entry.get("payload", {}).get("transfer", {}).get(
+            "targetFolderKey"
+        ) == target_folder_key
+        for entry in data.get(cross_page_stage.ASSET_ENTRIES_KEY, ())
     )
-    stroke = frame.drawing.strokes[0]
-    stroke.aspect_ratio = 1.35
-    stroke.fill_opacity = 0.27
-    stroke.softness = 0.18
-    first = stroke.points[0]
-    first.rotation = 0.31
-    first.vertex_color = (0.2, 0.3, 0.4, 0.5)
-    first.handle_left.position = (0.009, 0.031, 0.0)
-    first.handle_left.select = False
-    first.handle_right.position = (0.016, 0.037, 0.0)
-    first.handle_right.select = True
-    return obj
 
 
-def _first_gp_point_position(obj) -> tuple[float, float, float]:
-    from bmanga_dev.utils import gp_layer_parenting, layer_object_model
+def _add_folder(anchor_uid: str, title: str) -> tuple[str, str]:
+    from bmanga_dev.utils import layer_stack
 
-    layer = layer_object_model.content_layer(obj)
-    assert layer is not None
-    point = next(iter(gp_layer_parenting.iter_points(layer)), None)
-    assert point is not None
-    return tuple(float(value) for value in point.position)
-
-
-def _assert_local_gp_point(obj) -> None:
-    actual = _first_gp_point_position(obj)
-    expected = (0.012, 0.034, 0.0)
-    assert all(abs(value - wanted) <= 1.0e-6 for value, wanted in zip(actual, expected, strict=True))
-
-
-def _assert_gp_mask(obj) -> None:
-    layers = getattr(getattr(obj, "data", None), "layers", None)
-    assert layers is not None, f"手描きレイヤーがありません: {obj.name}"
-    mask_layer = layers.get("__bmanga_mask")
-    assert mask_layer is not None, f"コマの手描きマスクがありません: {obj.name}"
-    assert bool(getattr(mask_layer, "hide", False)), f"手描きマスクが表示されています: {obj.name}"
-    content_layers = [layer for layer in layers if getattr(layer, "name", "") != "__bmanga_mask"]
-    assert content_layers, f"マスク対象の手描きがありません: {obj.name}"
-    for layer in content_layers:
-        assert bool(getattr(layer, "use_masks", False)), f"手描きマスクが無効です: {obj.name}"
-        mask_names = [
-            str(getattr(item, "name", "") or "")
-            for item in getattr(layer, "mask_layers", []) or []
-        ]
-        assert "__bmanga_mask" in mask_names, f"手描きマスク参照がありません: {obj.name}"
+    assert bpy.ops.bmanga.layer_stack_add(
+        "EXEC_DEFAULT",
+        kind="layer_folder",
+        anchor_uid=anchor_uid,
+    ) == {"FINISHED"}
+    row = bpy.context.scene.bmanga_layer_stack[
+        bpy.context.scene.bmanga_active_layer_stack_index
+    ]
+    assert row.kind == "layer_folder"
+    resolved = layer_stack.resolve_stack_item(bpy.context, row)
+    resolved["target"].title = title
+    return str(resolved["target"].id), layer_stack.stack_item_uid(row)
 
 
-def _gp_page_relative_signature(context, obj, parent_key: str) -> tuple:
-    from mathutils import Matrix, Vector
+def _cross_page_text() -> tuple[Path, str, str]:
+    from bmanga_dev.utils import layer_stack, paths
+    from bmanga_dev.utils.layer_hierarchy import page_stack_key
 
-    from bmanga_dev.utils import layer_object_model, page_grid
-    from bmanga_dev.utils.geom import mm_to_m
-
+    context = bpy.context
     work = context.scene.bmanga_work
-    page_id = parent_key.split(":", 1)[0]
-    page_index = next(i for i, page in enumerate(work.pages) if page.id == page_id)
-    ox_mm, oy_mm = page_grid.page_total_offset_mm(work, context.scene, page_index)
-    relative = Matrix.Translation((-mm_to_m(ox_mm), -mm_to_m(oy_mm), 0.0)) @ obj.matrix_world
-    relative.translation.z = 0.0  # Zは移動先のレイヤー順で再採番される。
-    layer = layer_object_model.content_layer(obj)
-    stroke = layer.frames[0].drawing.strokes[0]
-    point = stroke.points[0]
+    source = work.pages[0]
+    target = work.pages[1]
+    source_id = str(source.id)
+    target_id = str(target.id)
+    source_key = page_stack_key(source)
+    target_key = page_stack_key(target)
+    entry = _add_text(source, "dnd_transfer_text", source_key)
+    uid = layer_stack.target_uid("text", f"{source_key}:{entry.id}")
+    target_uid = layer_stack.target_uid("page", target_key)
+    work_dir = Path(work.work_dir)
 
-    def transformed(value) -> tuple[float, float, float]:
-        result = relative @ Vector(value)
-        return tuple(round(float(component), 6) for component in result)
+    _move_below(uid, target_uid)
 
-    return (
-        tuple(round(float(value), 6) for row in relative for value in row),
-        transformed(point.position),
-        transformed(point.handle_left.position),
-        transformed(point.handle_right.position),
-        round(float(point.rotation), 6),
-        tuple(round(float(value), 6) for value in point.vertex_color),
-        int(point.handle_left.type),
-        bool(point.handle_left.select),
-        int(point.handle_right.type),
-        bool(point.handle_right.select),
-        round(float(stroke.aspect_ratio), 6),
-        round(float(stroke.fill_opacity), 6),
-        round(float(stroke.softness), 6),
-        tuple(round(float(value), 6) for value in getattr(layer, "tint_color", ())),
+    work = bpy.context.scene.bmanga_work
+    source = next(page for page in work.pages if page.id == source_id)
+    assert not any(text.id == "dnd_transfer_text" for text in source.texts)
+    source_doc = _page_document(work_dir, source_id)
+    assert "dnd_transfer_text" not in _display_ids(source_doc)
+    stage_id = _assert_ready_stage(
+        work_dir,
+        target_id,
+        "dnd_transfer_text",
+    )
+    recovery = paths.page_dir(work_dir, source_id) / "_transfer_recovery"
+    assert (recovery / stage_id / "transaction.json").is_file()
+    return work_dir, source_id, target_id
+
+
+def _open_and_assert_target(
+    work_dir: Path,
+    target_id: str,
+    bodies: set[str],
+) -> None:
+    work = bpy.context.scene.bmanga_work
+    index = next(
+        index
+        for index, page in enumerate(work.pages)
+        if page.id == target_id
+    )
+    assert bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=index) == {
+        "FINISHED"
+    }
+    work = bpy.context.scene.bmanga_work
+    target = next(page for page in work.pages if page.id == target_id)
+    actual = {text.body for text in target.texts}
+    assert bodies <= actual
+
+
+def _same_page_command(target_id: str) -> None:
+    from bmanga_dev.io import domain_projection, domain_runtime
+    from bmanga_dev.utils import layer_stack
+    from bmanga_dev.utils.layer_hierarchy import coma_stack_key, page_stack_key
+
+    work = bpy.context.scene.bmanga_work
+    target = next(page for page in work.pages if page.id == target_id)
+    page_key = page_stack_key(target)
+    coma_key = coma_stack_key(target, target.comas[0])
+    entry = _add_text(target, "dnd_same_page_text", page_key)
+    uid = layer_stack.target_uid("text", f"{page_key}:{entry.id}")
+    coma_uid = layer_stack.target_uid("coma", coma_key)
+    store = domain_runtime.store_for(Path(work.work_dir))
+    domain_page_uid = domain_projection.ensure_page_uid(
+        target,
+        store.project.project_uid,
+    )
+    before = store.pages[domain_page_uid].revision
+
+    _move_below(uid, coma_uid)
+
+    resolved = layer_stack.resolve_stack_item(bpy.context, _row(uid))
+    assert resolved["target"].parent_key == coma_key
+    assert store.pages[domain_page_uid].revision == before + 1
+
+    page_row_uid = layer_stack.target_uid("page", page_key)
+    folder_id, folder_uid = _add_folder(
+        page_row_uid,
+        "同一ページフォルダー",
+    )
+    folder_child = _add_text(
+        target,
+        "dnd_same_page_folder_text",
+        page_key,
+    )
+    folder_child.body = "dnd_same_page_folder_text"
+    child_uid = layer_stack.target_uid(
+        "text",
+        f"{page_key}:{folder_child.id}",
+    )
+    before_folder_drop = store.pages[domain_page_uid].revision
+    _move_below(child_uid, folder_uid)
+    resolved = layer_stack.resolve_stack_item(
+        bpy.context,
+        _row(child_uid),
+    )
+    assert resolved["target"].folder_key == folder_id
+    assert store.pages[domain_page_uid].revision == before_folder_drop + 1
+
+
+def _cross_page_folder(
+    work_dir: Path,
+    source_id: str,
+    target_id: str,
+) -> None:
+    from bmanga_dev.utils import layer_stack
+    from bmanga_dev.utils.layer_hierarchy import page_stack_key
+
+    work = bpy.context.scene.bmanga_work
+    source_index = next(
+        index
+        for index, page in enumerate(work.pages)
+        if page.id == source_id
+    )
+    assert bpy.ops.bmanga.open_page_file(
+        "EXEC_DEFAULT",
+        index=source_index,
+    ) == {"FINISHED"}
+    work = bpy.context.scene.bmanga_work
+    source = next(page for page in work.pages if page.id == source_id)
+    target = next(page for page in work.pages if page.id == target_id)
+    page_uid = layer_stack.target_uid("page", page_stack_key(source))
+    assert bpy.ops.bmanga.layer_stack_add(
+        "EXEC_DEFAULT",
+        kind="layer_folder",
+        anchor_uid=page_uid,
+    ) == {"FINISHED"}
+    folder = _row(
+        layer_stack.stack_item_uid(
+            bpy.context.scene.bmanga_layer_stack[
+                bpy.context.scene.bmanga_active_layer_stack_index
+            ]
+        )
+    )
+    assert folder.kind == "layer_folder"
+    folder_uid = layer_stack.stack_item_uid(folder)
+    assert bpy.ops.bmanga.layer_stack_add(
+        "EXEC_DEFAULT",
+        kind="text",
+        anchor_uid=folder_uid,
+    ) == {"FINISHED"}
+    child = bpy.context.scene.bmanga_layer_stack[
+        bpy.context.scene.bmanga_active_layer_stack_index
+    ]
+    child_target = layer_stack.resolve_stack_item(bpy.context, child)["target"]
+    child_target.body = "dnd_folder_child"
+    child_id = str(child_target.id)
+    target_uid = layer_stack.target_uid("page", page_stack_key(target))
+
+    _move_below(folder_uid, target_uid)
+
+    work = bpy.context.scene.bmanga_work
+    assert not any(folder.id == str(folder.key) for folder in work.layer_folders)
+    _assert_ready_stage(work_dir, target_id, child_id)
+    _open_and_assert_target(
+        work_dir,
+        target_id,
+        {"dnd_transfer_text", "dnd_folder_child"},
     )
 
 
-def _add_effect_layer(context, parent_key: str):
-    from bmanga_dev.operators import effect_line_op
+def _assert_existing_folder_members(
+    target_id: str,
+    target_folder_id: str,
+) -> None:
+    from bmanga_dev.utils import layer_folder
+    from bmanga_dev.utils.layer_hierarchy import page_stack_key
 
-    obj, _layer = effect_line_op._create_effect_layer(
+    work = bpy.context.scene.bmanga_work
+    target = next(page for page in work.pages if page.id == target_id)
+    target_folder = layer_folder.find_folder(work, target_folder_id)
+    assert target_folder is not None
+    assert (
+        layer_folder.semantic_parent_key_for_folder(work, target_folder_id)
+        == page_stack_key(target)
+    )
+    direct = next(
+        text for text in target.texts
+        if text.body == "dnd_existing_folder_child"
+    )
+    assert direct.folder_key == target_folder_id
+    assert direct.parent_key == page_stack_key(target)
+    moved = next(
+        folder for folder in work.layer_folders
+        if folder.title == "移送ルート"
+    )
+    nested = next(
+        folder for folder in work.layer_folders
+        if folder.title == "移送ネスト"
+    )
+    assert moved.parent_key == target_folder_id
+    assert nested.parent_key == moved.id
+    nested_child = next(
+        text for text in target.texts
+        if text.body == "dnd_nested_folder_child"
+    )
+    assert nested_child.folder_key == nested.id
+    assert nested_child.parent_key == page_stack_key(target)
+
+
+def _delete_target_folder_after_materialization(
+    work_dir: Path,
+    source_id: str,
+    target_id: str,
+    target_folder_id: str,
+) -> None:
+    from bmanga_dev.utils import layer_folder, layer_stack, paths
+    from bmanga_dev.utils.layer_hierarchy import page_stack_key
+    work = bpy.context.scene.bmanga_work
+    source_index = next(
+        index for index, page in enumerate(work.pages) if page.id == source_id
+    )
+    assert bpy.ops.bmanga.open_page_file(
+        "EXEC_DEFAULT", index=source_index) == {"FINISHED"}
+    work = bpy.context.scene.bmanga_work
+    source = next(page for page in work.pages if page.id == source_id)
+    target = next(page for page in work.pages if page.id == target_id)
+    source_uid = layer_stack.target_uid("page", page_stack_key(source))
+    assert bpy.ops.bmanga.layer_stack_add(
+        "EXEC_DEFAULT",
+        kind="text",
+        anchor_uid=source_uid,
+    ) == {"FINISHED"}
+    child_row = bpy.context.scene.bmanga_layer_stack[
+        bpy.context.scene.bmanga_active_layer_stack_index
+    ]
+    child = layer_stack.resolve_stack_item(bpy.context, child_row)["target"]
+    child.body = "dnd_delete_pending_folder_child"
+    child_id = str(child.id)
+    mirror = layer_folder.find_folder(work, target_folder_id)
+    if mirror is None:
+        mirror = work.layer_folders.add()
+        mirror.id = target_folder_id
+        mirror.title = "移送先既存フォルダー"
+        mirror.parent_key = page_stack_key(target)
+    folder_uid = layer_stack.target_uid("layer_folder", target_folder_id)
+    _move_below(layer_stack.stack_item_uid(child_row), folder_uid)
+    stage_id = _assert_folder_stage(
+        work_dir, target_id, child_id, target_folder_id
+    )
+    recovery_dir = paths.page_dir(work_dir, source_id)
+    recovery_dir = recovery_dir / "_transfer_recovery" / stage_id
+    assert recovery_dir.is_dir()
+    _open_and_assert_target(
+        work_dir, target_id, {"dnd_delete_pending_folder_child"})
+    work = bpy.context.scene.bmanga_work
+    target = next(page for page in work.pages if page.id == target_id)
+    transferred = next(text for text in target.texts
+                       if text.body == "dnd_delete_pending_folder_child")
+    assert transferred.folder_key == target_folder_id
+    assert _delete_uid(folder_uid) == {"CANCELLED"}
+    assert layer_folder.find_folder(work, target_folder_id) is not None
+    assert transferred.folder_key == target_folder_id
+    # 初回保存まではtarget folder削除を拒否し、保存後にだけ解禁する。
+    assert bpy.ops.bmanga.open_page_file(
+        "EXEC_DEFAULT", index=source_index) == {"FINISHED"}
+    assert not recovery_dir.exists()
+    assert not _ready_folder_stage_exists(
+        work_dir, target_id, stage_id, target_folder_id)
+    _open_and_assert_target(
+        work_dir, target_id, {"dnd_delete_pending_folder_child"})
+    work = bpy.context.scene.bmanga_work
+    target = next(page for page in work.pages if page.id == target_id)
+    assert _delete_uid(folder_uid) == {"FINISHED"}
+    assert bpy.ops.bmanga.open_page_file(
+        "EXEC_DEFAULT", index=source_index) == {"FINISHED"}
+    _open_and_assert_target(
+        work_dir, target_id, {"dnd_delete_pending_folder_child"})
+    work = bpy.context.scene.bmanga_work
+    target = next(page for page in work.pages if page.id == target_id)
+    transferred = next(text for text in target.texts
+                       if text.body == "dnd_delete_pending_folder_child")
+    assert layer_folder.find_folder(work, target_folder_id) is None
+    assert not transferred.folder_key
+    assert transferred.parent_key == page_stack_key(target)
+
+
+def _cross_page_into_existing_folder(
+    work_dir: Path,
+    source_id: str,
+    target_id: str,
+) -> None:
+    from bmanga_dev.utils import layer_stack
+    from bmanga_dev.utils.layer_hierarchy import page_stack_key
+
+    work = bpy.context.scene.bmanga_work
+    target = next(page for page in work.pages if page.id == target_id)
+    target_page_uid = layer_stack.target_uid(
+        "page",
+        page_stack_key(target),
+    )
+    target_folder_id, _target_folder_uid = _add_folder(
+        target_page_uid,
+        "移送先既存フォルダー",
+    )
+    source_index = next(
+        index for index, page in enumerate(work.pages)
+        if page.id == source_id
+    )
+    assert bpy.ops.bmanga.open_page_file(
+        "EXEC_DEFAULT",
+        index=source_index,
+    ) == {"FINISHED"}
+    work = bpy.context.scene.bmanga_work
+    source = next(page for page in work.pages if page.id == source_id)
+    target = next(page for page in work.pages if page.id == target_id)
+    # page切替では非アクティブページのfolder投影を外す。UIList上の別ページ
+    # folder行を再現するため、対象repositoryへ保存済みの同じUIDを再投影する。
+    mirror = work.layer_folders.add()
+    mirror.id = target_folder_id
+    mirror.title = "移送先既存フォルダー"
+    mirror.parent_key = page_stack_key(target)
+    target_folder_uid = layer_stack.target_uid(
+        "layer_folder",
+        target_folder_id,
+    )
+    _stack()
+    source_page_key = page_stack_key(source)
+    direct = _add_text(
+        source,
+        "dnd_existing_folder_child",
+        source_page_key,
+    )
+    direct.body = "dnd_existing_folder_child"
+    direct_uid = layer_stack.target_uid(
+        "text",
+        f"{source_page_key}:{direct.id}",
+    )
+
+    _move_below(direct_uid, target_folder_uid)
+
+    work = bpy.context.scene.bmanga_work
+    source = next(page for page in work.pages if page.id == source_id)
+    assert not any(
+        text.body == "dnd_existing_folder_child"
+        for text in source.texts
+    )
+    direct_stage_id = _assert_folder_stage(
+        work_dir,
+        target_id,
+        "dnd_existing_folder_child",
+        target_folder_id,
+    )
+    from bmanga_dev.utils import layer_transfer_history
+
+    tokens = layer_transfer_history._tokens(bpy.context.scene)
+    assert tokens and tokens[-1] == direct_stage_id
+    layer_transfer_history.begin_restore(bpy.context)
+    layer_transfer_history._set_tokens(
+        bpy.context.scene,
+        tokens[:-1],
+    )
+    assert layer_transfer_history.reconcile(bpy.context)
+    source_doc = _page_document(work_dir, source_id)
+    assert "dnd_existing_folder_child" in _display_ids(source_doc)
+    assert not _ready_folder_stage_exists(
+        work_dir,
+        target_id,
+        direct_stage_id,
+        target_folder_id,
+    )
+    layer_transfer_history.begin_restore(bpy.context)
+    layer_transfer_history._set_tokens(bpy.context.scene, tokens)
+    assert layer_transfer_history.reconcile(bpy.context)
+    source_doc = _page_document(work_dir, source_id)
+    assert "dnd_existing_folder_child" not in _display_ids(source_doc)
+    assert _ready_folder_stage_exists(
+        work_dir,
+        target_id,
+        direct_stage_id,
+        target_folder_id,
+    )
+
+    work = bpy.context.scene.bmanga_work
+    source = next(page for page in work.pages if page.id == source_id)
+    target = next(page for page in work.pages if page.id == target_id)
+    _assert_owner_mismatch_does_not_remove_source(
+        work_dir,
+        source,
+        target,
+        target_folder_id,
+    )
+
+    source_page_uid = layer_stack.target_uid(
+        "page",
+        page_stack_key(source),
+    )
+    root_id, root_uid = _add_folder(source_page_uid, "移送ルート")
+    _nested_id, nested_uid = _add_folder(root_uid, "移送ネスト")
+    assert bpy.ops.bmanga.layer_stack_add(
+        "EXEC_DEFAULT",
+        kind="text",
+        anchor_uid=nested_uid,
+    ) == {"FINISHED"}
+    nested_row = bpy.context.scene.bmanga_layer_stack[
+        bpy.context.scene.bmanga_active_layer_stack_index
+    ]
+    nested_text = layer_stack.resolve_stack_item(
+        bpy.context,
+        nested_row,
+    )["target"]
+    nested_text.body = "dnd_nested_folder_child"
+    nested_text_id = str(nested_text.id)
+
+    _move_below(root_uid, target_folder_uid)
+
+    work = bpy.context.scene.bmanga_work
+    assert not any(folder.id == root_id for folder in work.layer_folders)
+    _assert_folder_stage(
+        work_dir,
+        target_id,
+        nested_text_id,
+        target_folder_id,
+    )
+    _open_and_assert_target(
+        work_dir,
+        target_id,
+        {
+            "dnd_existing_folder_child",
+            "dnd_nested_folder_child",
+        },
+    )
+    _assert_existing_folder_members(target_id, target_folder_id)
+
+    work = bpy.context.scene.bmanga_work
+    source_index = next(
+        index for index, page in enumerate(work.pages)
+        if page.id == source_id
+    )
+    target_index = next(
+        index for index, page in enumerate(work.pages)
+        if page.id == target_id
+    )
+    assert bpy.ops.bmanga.open_page_file(
+        "EXEC_DEFAULT",
+        index=source_index,
+    ) == {"FINISHED"}
+    assert bpy.ops.bmanga.open_page_file(
+        "EXEC_DEFAULT",
+        index=target_index,
+    ) == {"FINISHED"}
+    _assert_existing_folder_members(target_id, target_folder_id)
+    _delete_target_folder_after_materialization(
+        work_dir,
+        source_id,
+        target_id,
+        target_folder_id,
+    )
+
+
+def _assert_owner_mismatch_does_not_remove_source(
+    work_dir: Path,
+    source,
+    target,
+    target_folder_id: str,
+) -> None:
+    from bmanga_dev.utils import layer_stack, layer_transfer_group, page_grid
+    from bmanga_dev.utils.layer_reparent import ClickTarget
+
+    source_key = str(source.id)
+    probe = _add_text(
+        source,
+        "dnd_owner_mismatch_probe",
+        source_key,
+    )
+    probe.body = "dnd_owner_mismatch_probe"
+    probe_uid = layer_stack.target_uid(
+        "text",
+        f"{source_key}:{probe.id}",
+    )
+    probe_row = _row(probe_uid)
+    work = bpy.context.scene.bmanga_work
+    target_index = next(
+        index for index, page in enumerate(work.pages)
+        if page.id == target.id
+    )
+    offset = page_grid.page_total_offset_mm(
+        work,
+        bpy.context.scene,
+        target_index,
+    )
+    target_click = ClickTarget(
+        "page",
+        target,
+        None,
+        target_index,
+        offset,
+        (0.0, 0.0),
+        # target_pageと一致しないsource側folderを模擬するため、実在する
+        # source page root UIDをfolder UIDとして渡して開始前検証を落とす。
+        target_folder_id + "_missing",
+    )
+    assert layer_transfer_group.transfer_group_to_page(
+        bpy.context,
+        target_click,
+        anchor_item=probe_row,
+    ) == 0
+    assert any(
+        text.body == "dnd_owner_mismatch_probe"
+        for text in source.texts
+    )
+    assert "dnd_owner_mismatch_probe" in _display_ids(
+        _page_document(work_dir, str(source.id))
+    ) or any(
+        text.body == "dnd_owner_mismatch_probe"
+        for text in source.texts
+    )
+    layer_stack.clear_all_selection(bpy.context)
+
+
+def _all_folder_child_kinds_use_existing_target() -> None:
+    from bmanga_dev.utils import asset_bundle, layer_folder
+
+    for kind in layer_folder.FOLDER_CHILD_KINDS:
+        assert asset_bundle._target_folder_for_payload_entry(
+            kind,
+            "",
+            set(),
+            {},
+            "target_folder",
+        ) == "target_folder"
+        assert asset_bundle._target_folder_for_payload_entry(
+            kind,
+            "source_nested",
+            {"source_nested"},
+            {"source_nested": "new_nested"},
+            "target_folder",
+        ) == "new_nested"
+    assert asset_bundle._target_folder_for_payload_entry(
+        "layer_folder",
+        "",
+        set(),
+        {},
+        "target_folder",
+    ) == ""
+
+
+def _file_snapshot(root: Path) -> dict[str, tuple[int, str]]:
+    snapshot = {}
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(root).as_posix()
+        data = path.read_bytes()
+        snapshot[relative] = (len(data), hashlib.sha256(data).hexdigest())
+    return snapshot
+
+
+def _memory_snapshot() -> str:
+    from bmanga_dev.io import schema
+    from bmanga_dev.utils import layer_links
+
+    payload = {
+        "work": schema.work_to_dict(bpy.context.scene.bmanga_work),
+        "links": layer_links._load_map(bpy.context),
+    }
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+
+def _assert_rejected_without_changes(
+    work_dir: Path,
+    source_row,
+    target,
+    *,
+    target_folder_key: str = "",
+) -> None:
+    from bmanga_dev.utils import layer_transfer_group, page_grid, paths
+    from bmanga_dev.utils.layer_reparent import ClickTarget
+
+    work = bpy.context.scene.bmanga_work
+    target_index = next(
+        index
+        for index, page in enumerate(work.pages)
+        if str(page.id) == str(target.id)
+    )
+    offset = page_grid.page_total_offset_mm(
+        work,
+        bpy.context.scene,
+        target_index,
+    )
+    click = ClickTarget(
+        "page",
+        target,
+        None,
+        target_index,
+        offset,
+        (0.0, 0.0),
+        target_folder_key,
+    )
+    disk_before = _file_snapshot(work_dir)
+    memory_before = _memory_snapshot()
+    assert layer_transfer_group.transfer_group_to_page(
+        bpy.context,
+        click,
+        anchor_item=source_row,
+    ) == 0
+    assert _memory_snapshot() == memory_before
+    assert _file_snapshot(work_dir) == disk_before
+    for page in work.pages:
+        assert not (
+            paths.page_dir(work_dir, str(page.id)) / "_transfer_recovery"
+        ).exists()
+
+
+def _mixed_source_groups_are_rejected() -> None:
+    """Ctrl選択・link閉包・同名coma・target folder混入を開始前拒否する。"""
+
+    from bmanga_dev.utils import (
+        cross_page_stage,
+        layer_links,
+        layer_stack,
+        paths,
+    )
+    from bmanga_dev.utils.layer_hierarchy import page_stack_key
+
+    context = bpy.context
+    work = context.scene.bmanga_work
+    assert len(work.pages) >= 3
+    source, target, third = work.pages[:3]
+    work_dir = Path(work.work_dir)
+    page_keys = [page_stack_key(page) for page in (source, target, third)]
+    texts = []
+    for index, (page, parent_key) in enumerate(
+        zip((source, target, third), page_keys, strict=True),
+        start=1,
+    ):
+        text = _add_text(page, f"mixed_owner_text_{index}", parent_key)
+        text.body = f"mixed_owner_text_{index}"
+        texts.append(text)
+
+    target_folder = work.layer_folders.add()
+    target_folder.id = "mixed_owner_target_folder"
+    target_folder.title = "混在拒否移送先"
+    target_folder.parent_key = page_keys[1]
+    layer_stack.sync_layer_stack_after_data_change(context)
+    row_uids = [
+        layer_stack.target_uid("text", f"{page_keys[index]}:{text.id}")
+        for index, text in enumerate(texts)
+    ]
+    target_folder_uid = layer_stack.target_uid(
+        "layer_folder",
+        target_folder.id,
+    )
+
+    # 三ページの同名c01が存在しても、stack上のparent名ではなく実所有pageで
+    # 判定する。標準コマが無い構成では専用同名コマを追加する。
+    for page in (source, target, third):
+        if not any(
+            str(getattr(coma, "coma_id", "") or getattr(coma, "id", "") or "")
+            == "c01"
+            for coma in page.comas
+        ):
+            coma = page.comas.add()
+            coma.id = "c01"
+            coma.coma_id = "c01"
+    layer_stack.sync_layer_stack_after_data_change(context)
+    foreign_coma_uid = layer_stack.target_uid(
+        "coma",
+        f"{page_keys[1]}:c01",
+    )
+    # 三ページすべてにnative scene.blendを置き、直接再現ケースの全ディスク
+    # snapshotが同名c01の実体path/hashも確実に含むようにする。page Domain JSON
+    # がコマsidecarの正本なので、こちらも存在を必須にする。
+    for index, page in enumerate((source, target, third), start=1):
+        coma_blend = paths.coma_blend_path(work_dir, str(page.id), "c01")
+        coma_blend.parent.mkdir(parents=True, exist_ok=True)
+        if not coma_blend.is_file():
+            coma_blend.write_bytes(f"mixed-owner-c01-{index}".encode())
+        assert paths.page_meta_path(work_dir, str(page.id)).is_file()
+
+    def select(*selected_uids):
+        layer_stack.clear_all_selection(context)
+        for uid in selected_uids:
+            row = _row(uid)
+            assert layer_stack.set_item_selected(context, row, True)
+        stack = layer_stack.sync_layer_stack(
+            context,
+            preserve_active_index=True,
+        )
+        source_index = next(
+            index
+            for index, item in enumerate(stack)
+            if layer_stack.stack_item_uid(item) == row_uids[0]
+        )
+        layer_stack.set_active_stack_index_silently(context, source_index)
+        return _row(row_uids[0])
+
+    # 異ページCtrl選択（p1 + p2、両方に同名c01）。
+    source_row = select(row_uids[0], row_uids[1])
+    _assert_rejected_without_changes(work_dir, source_row, target)
+
+    # Criticalの直接再現: p1レイヤーと、同名IDを持つp2/c01コマを同時選択。
+    # p1/c01 nativeへ誤ってsource固定して移送してはならない。
+    source_row = select(row_uids[0], foreign_coma_uid)
+    _assert_rejected_without_changes(work_dir, source_row, target)
+
+    # 選択はp1だけでも、p3へのlayer_link閉包後の最終集合を拒否する。
+    source_row = select(row_uids[0])
+    source_uid = row_uids[0]
+    third_uid = row_uids[2]
+    group_id, linked_count = layer_links.link_uids(
         context,
-        (10.0, 10.0, 20.0, 20.0),
-        parent_key=parent_key,
+        [source_uid, third_uid],
     )
-    return obj
+    assert group_id and linked_count == 2
+    _assert_rejected_without_changes(work_dir, source_row, target)
+    assert layer_links.unlink_uids(context, [source_uid, third_uid]) == 2
+
+    # 移送先folder自体が選択集合へ混ざった場合もstage作成前に拒否する。
+    source_row = select(row_uids[0], target_folder_uid)
+    _assert_rejected_without_changes(
+        work_dir,
+        source_row,
+        target,
+        target_folder_key=target_folder.id,
+    )
+    assert not any(
+        cross_page_stage.staged_path(work_dir, str(page.id)).is_file()
+        for page in (source, target, third)
+    )
+    layer_stack.clear_all_selection(context)
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_layer_stack_dnd_reparent_"))
-    mod = None
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_layer_dnd_transfer_"))
+    module = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
-        mod = _load_addon()
-        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "LayerStackDnd.bmanga"))
-        assert "FINISHED" in result, result
-        assert "FINISHED" in bpy.ops.bmanga.page_add("EXEC_DEFAULT")
-        # 移動先を先に一度作成し、後のオープンが「新規作成直後の自動保存」に
-        # ならないようにする。これで保存前の復元保持を検証できる。
-        assert bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=1) == {"FINISHED"}
-        # v0.6.279 以降、レイヤーリストの内容行はページ編集シーンにのみ
-        # 並ぶため、ページを開いてから D&D 親変更を検証する
-        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
-        assert result == {"FINISHED"}, result
+        module = _load_addon()
+        _all_folder_child_kinds_use_existing_target()
+        assert bpy.ops.bmanga.work_new(
+            filepath=str(temp_root / "DndTransfer.bmanga")
+        ) == {"FINISHED"}
+        assert bpy.ops.bmanga.page_add("EXEC_DEFAULT") == {"FINISHED"}
+        assert bpy.ops.bmanga.page_add("EXEC_DEFAULT") == {"FINISHED"}
+        assert bpy.ops.bmanga.open_page_file(
+            "EXEC_DEFAULT",
+            index=2,
+        ) == {"FINISHED"}
+        assert bpy.ops.bmanga.open_page_file(
+            "EXEC_DEFAULT",
+            index=1,
+        ) == {"FINISHED"}
+        assert bpy.ops.bmanga.open_page_file(
+            "EXEC_DEFAULT",
+            index=0,
+        ) == {"FINISHED"}
 
-        from bmanga_dev.utils import layer_stack as layer_stack_utils
-        from bmanga_dev.utils.layer_hierarchy import (
-            COMA_KIND,
-            OUTSIDE_KIND,
-            OUTSIDE_STACK_KEY,
-            coma_stack_key,
-            outside_child_key,
-            page_stack_key,
+        _mixed_source_groups_are_rejected()
+        work_dir, source_id, target_id = _cross_page_text()
+        _open_and_assert_target(
+            work_dir,
+            target_id,
+            {"dnd_transfer_text"},
         )
-
-        context = bpy.context
-        work = context.scene.bmanga_work
-        page1 = work.pages[0]
-        page2 = work.pages[1]
-        page1_key = page_stack_key(page1)
-        page2_key = page_stack_key(page2)
-        page1_coma_key = coma_stack_key(page1, page1.comas[0])
-        page2_uid = layer_stack_utils.target_uid("page", page2_key)
-        outside_uid = layer_stack_utils.target_uid(OUTSIDE_KIND, OUTSIDE_STACK_KEY)
-        # 自ページ以外の詳細 (コマ等) は未読込
-        assert len(page2.comas) == 0, "ページ用 blend が他ページの詳細を保持しています"
-
-        text = _add_text(page1, "dnd_cross_text", page1_key)
-        text_uid = layer_stack_utils.target_uid("text", f"{page1_key}:{text.id}")
-        _move_uid_below_parent(context, text_uid, page2_uid)
-        assert len(page1.texts) == 0
-        # 別ページへの移送で移送先の詳細がその場で読み込まれる (保存消失防止)
-        assert bool(page2.detail_loaded), "移送先ページの詳細が読み込まれていません"
-        assert len(page2.comas) >= 1, "移送先ページのコマが読み込まれていません"
-        moved_text = next(t for t in page2.texts if t.id == "dnd_cross_text")
-        assert moved_text.parent_kind == "page" and moved_text.parent_key == page2_key
-        page2_coma_key = coma_stack_key(page2, page2.comas[0])
-        page2_coma_uid = layer_stack_utils.target_uid(COMA_KIND, page2_coma_key)
-
-        # 別画面相当の同時追記は、移動トランザクション完了後に最新JSONへ合流する。
-        from bmanga_dev.utils import cross_page_transfer
-        from bmanga_dev.io import domain_projection
-        from bmanga_dev.io.project_file_lock import work_lock
-
-        parallel_entry = _add_text(page1, "dnd_parallel_primary", page1_key)
-        work_dir_path = Path(work.work_dir)
-        target_meta = _page_dir(work, page2_key) / "page.json"
-        original_read_target = cross_page_transfer._read_target_page_json
-        worker_errors: list[Exception] = []
-        worker_threads: list[threading.Thread] = []
-
-        def parallel_append() -> None:
-            try:
-                with work_lock(work_dir_path, blocking=True):
-                    repository, project, document, latest = _load_page_projection(
-                        work_dir_path,
-                        page2_key,
-                    )
-                    latest.setdefault("texts", []).append(
-                        {
-                            "id": "dnd_parallel_secondary",
-                            "body": "parallel",
-                            "parent_kind": "page",
-                            "parent_key": page2_key,
-                        }
-                    )
-                    replacement = domain_projection.replace_page_projection_payload(
-                        document,
-                        latest,
-                    )
-                    repository.checkpoint(project, [replacement])
-                    from bmanga_dev.io.save_baseline import record_successful_write
-
-                    record_successful_write(repository.project_path)
-                    record_successful_write(repository.page_path(replacement.page_uid))
-            except Exception as exc:  # noqa: BLE001
-                worker_errors.append(exc)
-
-        def read_and_start_worker(work_dir, target_page_id):
-            data = original_read_target(work_dir, target_page_id)
-            worker = threading.Thread(target=parallel_append, daemon=True)
-            worker_threads.append(worker)
-            worker.start()
-            return data
-
-        cross_page_transfer._read_target_page_json = read_and_start_worker
-        try:
-            moved = cross_page_transfer.transfer_layers_to_page(
-                context,
-                work,
-                page1,
-                page2_key,
-                [SimpleNamespace(kind="text", key=f"{page1_key}:{parallel_entry.id}")],
-            )
-        finally:
-            cross_page_transfer._read_target_page_json = original_read_target
-        assert moved == 1
-        for worker in worker_threads:
-            worker.join(timeout=10.0)
-            assert not worker.is_alive(), "別画面相当の追記が作品ロックで停止したままです"
-        assert not worker_errors, worker_errors
-        _repository, _project, _document, merged_target = _load_page_projection(
-            work_dir_path,
-            page2_key,
+        _same_page_command(target_id)
+        _cross_page_folder(work_dir, source_id, target_id)
+        _cross_page_into_existing_folder(
+            work_dir,
+            source_id,
+            target_id,
         )
-        merged_ids = {str(item.get("id", "") or "") for item in merged_target.get("texts", [])}
-        assert {"dnd_parallel_primary", "dnd_parallel_secondary"} <= merged_ids
-
-        # 同一IDの別画像が移動先にあっても上書きせず、新IDのPNGへ複製する。
-        from bmanga_dev.utils import paths
-        from bmanga_dev.io.project_file_lock import guard_path_write
-        from bmanga_dev.io.save_baseline import record_successful_write
-
-        collision_id = "abcdef123456"
-        existing_png = paths.raster_png_path(work_dir_path, collision_id)
-        existing_png.parent.mkdir(parents=True, exist_ok=True)
-        with guard_path_write(existing_png):
-            existing_png.write_bytes(b"target-raster-content")
-            record_successful_write(existing_png)
-        legacy_source = _page_dir(work, page1_key) / "legacy" / "source.png"
-        legacy_source.parent.mkdir(parents=True, exist_ok=True)
-        with guard_path_write(legacy_source):
-            legacy_source.write_bytes(b"source-raster-content")
-            record_successful_write(legacy_source)
-        raster_dict = {
-            "id": collision_id,
-            "title": "collision",
-            "image_name": f"raster_{collision_id}",
-            "filepath_rel": "legacy/source.png",
-        }
-        raster_target = {
-            "rasterLayers": [
-                {
-                    "id": collision_id,
-                    "filepath_rel": f"raster/{collision_id}.png",
-                }
-            ]
-        }
-        copied_png = cross_page_transfer._copy_raster_image(
-            work_dir_path,
-            page1_key,
-            raster_dict,
-            raster_target,
-        )
-        assert copied_png is not None and copied_png.read_bytes() == b"source-raster-content"
-        assert raster_dict["id"] != collision_id
-        assert raster_dict["filepath_rel"] == f"raster/{raster_dict['id']}.png"
-        assert existing_png.read_bytes() == b"target-raster-content"
-        cross_page_transfer._cleanup_new_rasters([copied_png])
-        assert not copied_png.exists(), "転送中止PNGが基準追跡後に削除されていません"
-
-        # target/source/Object削除の各失敗で、JSON・stage・元実体を全て戻す。
-        from bmanga_dev.io import page_io
-        from bmanga_dev.utils import cross_page_gp_transfer, cross_page_stage, layer_object_model
-
-        failure_text = _add_text(page1, "dnd_transaction_failure_text", page1_key)
-        failure_text_id = str(failure_text.id)
-        failure_gp = _add_gp_layer(context, "transaction failure gp", page1_key)
-        failure_gp_id = layer_object_model.stable_id(failure_gp)
-        failure_effect = _add_effect_layer(context, page1_key)
-        failure_effect_id = layer_object_model.stable_id(failure_effect)
-        failure_items = [
-            SimpleNamespace(kind="text", key=f"{page1_key}:{failure_text_id}"),
-            SimpleNamespace(kind="effect", key=failure_effect_id),
-            SimpleNamespace(kind="gp", key=failure_gp_id),
-        ]
-        failure_stage = cross_page_stage.staged_path(
-            work_dir_path,
-            page2_key,
-        )
-        failure_target_before = target_meta.read_bytes()
-        failure_stage_before = failure_stage.read_bytes() if failure_stage.exists() else None
-        raster_files_before = {
-            path.name for path in (work_dir_path / "raster").glob("*.png")
-        }
-
-        def assert_transaction_rolled_back(label: str) -> None:
-            assert any(text.id == failure_text_id for text in page1.texts), label
-            current_gp = layer_object_model.find_layer_object("gp", failure_gp_id)
-            assert current_gp is not None and layer_object_model.parent_key(current_gp) == page1_key, label
-            assert sum(
-                layer_object_model.stable_id(obj) == failure_gp_id
-                for obj in layer_object_model.iter_layer_objects("gp")
-            ) == 1, label
-            current_effect = layer_object_model.find_layer_object("effect", failure_effect_id)
-            assert current_effect is not None and layer_object_model.parent_key(current_effect) == page1_key, label
-            assert sum(
-                layer_object_model.stable_id(obj) == failure_effect_id
-                for obj in layer_object_model.iter_layer_objects("effect")
-            ) == 1, label
-            assert target_meta.read_bytes() == failure_target_before, label
-            current_stage = failure_stage.read_bytes() if failure_stage.exists() else None
-            assert current_stage == failure_stage_before, label
-            assert {
-                path.name for path in (work_dir_path / "raster").glob("*.png")
-            } == raster_files_before, label
-
-        original_stage_gp = cross_page_stage.stage_gp
-        cross_page_stage.stage_gp = lambda _work_dir, _page_id, _entry: False
-        try:
-            assert cross_page_transfer.transfer_layers_to_page(
-                context, work, page1, page2_key, failure_items
-            ) == 0
-        finally:
-            cross_page_stage.stage_gp = original_stage_gp
-        assert_transaction_rolled_back("stage準備失敗で移動元実体が重複しました")
-
-        original_write_target = cross_page_transfer._write_target_page_json
-        target_write_calls = 0
-
-        def fail_target_once(work_dir, target_page_id, data):
-            nonlocal target_write_calls
-            target_write_calls += 1
-            if target_write_calls == 1:
-                return False
-            return original_write_target(work_dir, target_page_id, data)
-
-        cross_page_transfer._write_target_page_json = fail_target_once
-        try:
-            assert cross_page_transfer.transfer_layers_to_page(
-                context, work, page1, page2_key, failure_items
-            ) == 0
-        finally:
-            cross_page_transfer._write_target_page_json = original_write_target
-        assert_transaction_rolled_back("target書込失敗で転送状態が残りました")
-
-        original_save_source = page_io.save_page_json
-        source_save_calls = 0
-
-        def fail_source_once(work_dir, page):
-            nonlocal source_save_calls
-            source_save_calls += 1
-            if source_save_calls == 1:
-                raise OSError("simulated source write failure")
-            return original_save_source(work_dir, page)
-
-        page_io.save_page_json = fail_source_once
-        try:
-            assert cross_page_transfer.transfer_layers_to_page(
-                context, work, page1, page2_key, failure_items
-            ) == 0
-        finally:
-            page_io.save_page_json = original_save_source
-        assert_transaction_rolled_back("source書込失敗で転送状態が残りました")
-
-        original_remove_gp = cross_page_gp_transfer.remove_object
-        cross_page_gp_transfer.remove_object = lambda _bmanga_id: False
-        try:
-            assert cross_page_transfer.transfer_layers_to_page(
-                context, work, page1, page2_key, failure_items
-            ) == 0
-        finally:
-            cross_page_gp_transfer.remove_object = original_remove_gp
-        assert_transaction_rolled_back("移動元Object削除失敗が成功扱いになりました")
-
-        original_remove_effect = cross_page_transfer._remove_effect_objects
-        cross_page_transfer._remove_effect_objects = lambda _bmanga_id: False
-        try:
-            assert cross_page_transfer.transfer_layers_to_page(
-                context, work, page1, page2_key, failure_items
-            ) == 0
-        finally:
-            cross_page_transfer._remove_effect_objects = original_remove_effect
-        assert_transaction_rolled_back("移動元効果線削除失敗が成功扱いになりました")
-
-        balloon = _add_balloon(page1, "dnd_cross_balloon", page1_key)
-        child = _add_text(page1, "dnd_cross_child", page1_key, parent_balloon_id=balloon.id)
-        balloon_id = str(balloon.id)
-        child_id = str(child.id)
-        balloon_uid = layer_stack_utils.target_uid("balloon", f"{page1_key}:{balloon_id}")
-        _move_uid_below_parent(context, balloon_uid, page2_coma_uid)
-        assert len(page1.balloons) == 0
-        assert len(page2.balloons) == 1
-        assert not any(getattr(t, "id", "") == child_id for t in page1.texts)
-        moved_balloon = page2.balloons[0]
-        moved_child = next(t for t in page2.texts if t.id == child_id)
-        assert moved_balloon.parent_kind == "coma" and moved_balloon.parent_key == page2_coma_key
-        assert moved_child.parent_balloon_id == moved_balloon.id
-        assert moved_child.parent_kind == "coma" and moved_child.parent_key == page2_coma_key
-
-        # 子テキストだけを別ページへ移した場合、元の親IDと同じ無関係な
-        # フキダシが移動先にあっても、そこへ誤接続せず単独テキストにする。
-        collision_balloon_id = "dnd_cross_unrelated_balloon"
-        _add_balloon(page2, collision_balloon_id, page2_key)
-        page_io.save_page_json(work_dir_path, page2)
-        source_parent = _add_balloon(page1, collision_balloon_id, page1_key)
-        detached_child = _add_text(
-            page1,
-            "dnd_cross_detached_child",
-            page1_key,
-            parent_balloon_id=source_parent.id,
-        )
-        detached_child_id = str(detached_child.id)
-        assert cross_page_transfer.transfer_layers_to_page(
-            context,
-            work,
-            page1,
-            page2_key,
-            [SimpleNamespace(kind="text", key=f"{page1_key}:{detached_child_id}")],
-        ) == 1
-        _repository, _project, _document, detached_target = _load_page_projection(
-            work_dir_path,
-            page2_key,
-        )
-        detached_target_text = next(
-            entry
-            for entry in detached_target.get("texts", [])
-            if entry.get("id") == detached_child_id
-        )
-        assert detached_target_text.get("parentBalloonId", "") == ""
-        assert any(balloon.id == collision_balloon_id for balloon in page1.balloons)
-        assert not any(text.id == detached_child_id for text in page1.texts)
-
-        moved_text_id = str(moved_text.id)
-        moved_text_uid = layer_stack_utils.target_uid("text", f"{page2_key}:{moved_text_id}")
-        _move_uid_below_parent(context, moved_text_uid, outside_uid)
-        assert not any(getattr(t, "id", "") == moved_text_id for t in page2.texts)
-        assert any(getattr(t, "id", "") == moved_text_id for t in work.shared_texts)
-        from bmanga_dev.operators import object_tool_selection
-        from bmanga_dev.utils import object_naming as on
-        from bmanga_dev.utils import object_selection
-        from bmanga_dev.utils import text_real_object
-
-        shared_text = next(t for t in work.shared_texts if t.id == moved_text_id)
-        shared_text_bmanga_id = text_real_object.text_object_bmanga_id_for_values(
-            text_real_object.OUTSIDE_PAGE_ID,
-            moved_text_id,
-        )
-        shared_text_obj = on.find_object_by_bmanga_id(shared_text_bmanga_id, kind="text")
-        _assert_visible_object(shared_text_obj, "shared text after layer-stack D&D")
-        shared_key = object_selection.text_key(None, shared_text)
-        shared_rect = object_tool_selection.selection_bounds_for_key(context, shared_key)
-        assert shared_rect is not None
-        assert abs(shared_rect.x - float(shared_text.x_mm)) <= 1.0e-4
-        hit = object_tool_selection.hit_shared_text_at_world(
-            context,
-            float(shared_text.x_mm) + 1.0,
-            float(shared_text.y_mm) + 1.0,
-        )
-        assert hit is not None and hit["key"] == shared_key
-        object_selection.set_keys(context, [shared_key])
-        object_tool_selection.sync_outliner_selection_for_keys(context, [shared_key])
-        assert shared_text_obj.select_get()
-        shared_text_uid = layer_stack_utils.target_uid("text", outside_child_key(moved_text_id))
-        _move_uid_below_parent(context, shared_text_uid, page2_uid)
-        assert not any(getattr(t, "id", "") == moved_text_id for t in work.shared_texts)
-        restored_text = next(t for t in page2.texts if t.id == moved_text_id)
-        assert restored_text.parent_kind == "page" and restored_text.parent_key == page2_key
-
-        from bmanga_dev.utils import layer_object_model
-
-        gp_obj = _add_gp_layer(context, "dnd_cross_gp", page1_key)
-        from bmanga_dev.utils import page_grid
-
-        gp_obj.location.x += 0.017
-        gp_obj.location.y -= 0.009
-        gp_obj.rotation_euler = (0.12, -0.08, 0.37)
-        gp_obj.scale = (1.2, 0.8, 1.1)
-        gp_obj[page_grid.SUBPAGE_OFFSET_X_PROP] = 17.0
-        gp_obj[page_grid.SUBPAGE_OFFSET_Y_PROP] = -9.0
-        context.view_layer.update()
-        gp_expected_signature = _gp_page_relative_signature(context, gp_obj, page1_key)
-        gp_id = layer_object_model.stable_id(gp_obj)
-        gp_uid = layer_stack_utils.target_uid("gp", gp_id)
-        _move_uid_below_parent(context, gp_uid, page2_coma_uid)
-        gp_obj = layer_object_model.find_layer_object("gp", gp_id)
-        assert gp_obj is None, "別ページへ移した手描きが移動元に残っています"
-        from bmanga_dev.utils import cross_page_stage
-
-        staged_path = cross_page_stage.staged_path(
-            Path(work.work_dir),
-            page2_key,
-        )
-        staged = json.loads(staged_path.read_text(encoding="utf-8"))
-        staged_gp = next(
-            entry for entry in staged.get("gp_layers", [])
-            if entry.get("source_bmanga_id") == gp_id
-        )
-        moved_gp_id = str(staged_gp.get("bmanga_id", "") or "")
-        assert moved_gp_id and moved_gp_id != gp_id
-        staged_pos = staged_gp["layers"][0]["frames"][0]["strokes"][0]["points"][0]["pos"]
-        assert all(
-            abs(float(value) - expected) <= 1.0e-7
-            for value, expected in zip(staged_pos, (0.012, 0.034, 0.0), strict=True)
-        ), "ページ移動で手描き点が変換されています"
-
-        # 元ページのフォルダーIDは移動先では意味を持たない。Alt+D&D相当の
-        # 個別移動で、手描き／効果線とも移動先の直下へ揃える。
-        source_folder_id = "folder_source_page_only"
-        folder_gp = _add_gp_layer(context, "dnd_cross_folder_gp", page1_key)
-        folder_effect = _add_effect_layer(context, page1_key)
-        folder_gp_id = layer_object_model.stable_id(folder_gp)
-        folder_effect_id = layer_object_model.stable_id(folder_effect)
-        assert layer_object_model.set_folder_id(folder_gp, source_folder_id)
-        assert layer_object_model.set_folder_id(folder_effect, source_folder_id)
-        assert cross_page_transfer.transfer_layers_to_page(
-            context,
-            work,
-            page1,
-            page2_key,
-            [
-                SimpleNamespace(kind="gp", key=folder_gp_id),
-                SimpleNamespace(kind="effect", key=folder_effect_id),
-            ],
-            target_parent_kind="coma",
-            target_coma_id=page2.comas[0].id,
-        ) == 2
-        staged = json.loads(staged_path.read_text(encoding="utf-8"))
-        staged_folder_gp = next(
-            entry for entry in staged.get("gp_layers", [])
-            if entry.get("source_bmanga_id") == folder_gp_id
-        )
-        staged_folder_effect = next(
-            entry for entry in staged.get("effects", [])
-            if entry.get("source_bmanga_id") == folder_effect_id
-        )
-        moved_folder_gp_id = str(staged_folder_gp.get("bmanga_id", "") or "")
-        moved_folder_effect_id = str(staged_folder_effect.get("bmanga_id", "") or "")
-        assert moved_folder_gp_id and moved_folder_gp_id != folder_gp_id
-        assert moved_folder_effect_id and moved_folder_effect_id != folder_effect_id
-        assert staged_folder_gp.get("folder_id", "") == ""
-        assert staged_folder_effect.get("folder_id", "") == ""
-
-        effect_obj = _add_effect_layer(context, page1_key)
-        effect_id = layer_object_model.stable_id(effect_obj)
-        effect_uid = layer_stack_utils.target_uid("effect", effect_id)
-        _move_uid_below_parent(context, effect_uid, outside_uid)
-        effect_obj = layer_object_model.find_layer_object("effect", effect_id)
-        assert effect_obj is not None
-        assert layer_object_model.parent_key(effect_obj) == ""
-
-        image = _add_image(context, "dnd_cross_image", page1_key)
-        image_uid = layer_stack_utils.target_uid("image", image.id)
-        _move_uid_below_parent(context, image_uid, page2_coma_uid)
-        assert image.parent_kind == "coma" and image.parent_key == page2_coma_key
-
-        raster = _add_raster(context, "dnd_cross_raster", page1_key)
-        raster_uid = layer_stack_utils.target_uid("raster", raster.id)
-        _move_uid_below_parent(context, raster_uid, page2_uid)
-        assert raster.scope == "page" and raster.parent_kind == "page" and raster.parent_key == page2_key
-        _move_uid_below_parent(context, raster_uid, outside_uid)
-        assert raster.scope == "master" and raster.parent_kind == "none" and raster.parent_key == ""
-
-        coma_balloon = _add_balloon(page1, "dnd_coma_child_balloon", page1_coma_key)
-        coma_child = _add_text(
-            page1,
-            "dnd_coma_child_text",
-            page1_coma_key,
-            parent_balloon_id=coma_balloon.id,
-        )
-        coma_text = _add_text(page1, "dnd_coma_direct_text", page1_coma_key)
-        coma_image = _add_image(context, "dnd_coma_child_image", page1_coma_key)
-        coma_raster = _add_raster(context, "dnd_coma_child_raster", page1_coma_key)
-        coma_gp = _add_gp_layer(context, "dnd_coma_child_gp", page1_coma_key)
-        coma_effect = _add_effect_layer(context, page1_coma_key)
-        coma_gp_id = layer_object_model.stable_id(coma_gp)
-        coma_effect_id = layer_object_model.stable_id(coma_effect)
-        coma_balloon_id = str(coma_balloon.id)
-        coma_child_id = str(coma_child.id)
-        coma_text_id = str(coma_text.id)
-        coma_image_id = str(coma_image.id)
-        coma_raster_id = str(coma_raster.id)
-        assert any(
-            balloon.id == coma_balloon_id for balloon in page1.balloons
-        ), [balloon.id for balloon in page1.balloons]
-
-        page1_coma_uid = layer_stack_utils.target_uid(COMA_KIND, page1_coma_key)
-        before_page2_comas = len(page2.comas)
-        before_page2_coma_keys = {coma_stack_key(page2, panel) for panel in page2.comas}
-        _move_uid_below_parent(context, page1_coma_uid, page2_uid)
-        assert len(page1.comas) == 0
-        assert len(page2.comas) == before_page2_comas + 1
-        moved_coma_key = next(
-            coma_stack_key(page2, panel)
-            for panel in page2.comas
-            if coma_stack_key(page2, panel) not in before_page2_coma_keys
-        )
-        assert any(b.id == coma_balloon_id for b in page2.balloons), {
-            "source": [
-                (b.id, b.parent_key) for b in page1.balloons
-            ],
-            "target": [
-                (b.id, b.parent_key) for b in page2.balloons
-            ],
-            "oldParent": page1_coma_key,
-            "newParent": moved_coma_key,
-        }
-        moved_coma_balloon = next(b for b in page2.balloons if b.id == coma_balloon_id)
-        moved_coma_child = next(t for t in page2.texts if t.id == coma_child_id)
-        moved_coma_text = next(t for t in page2.texts if t.id == coma_text_id)
-        moved_coma_image = next(
-            entry
-            for entry in context.scene.bmanga_image_layers
-            if entry.id == coma_image_id
-        )
-        moved_coma_raster = next(
-            entry
-            for entry in context.scene.bmanga_raster_layers
-            if entry.id == coma_raster_id
-        )
-        assert not any(getattr(b, "id", "") == coma_balloon_id for b in page1.balloons)
-        assert not any(getattr(t, "id", "") == coma_child_id for t in page1.texts)
-        assert moved_coma_balloon.parent_kind == "coma" and moved_coma_balloon.parent_key == moved_coma_key, {
-            "actualKind": moved_coma_balloon.parent_kind,
-            "actualKey": moved_coma_balloon.parent_key,
-            "expectedKey": moved_coma_key,
-            "targetComas": [
-                (
-                    str(getattr(panel, "id", "") or ""),
-                    str(getattr(panel, "coma_id", "") or ""),
-                    coma_stack_key(page2, panel),
-                )
-                for panel in page2.comas
-            ],
-        }
-        assert moved_coma_child.parent_balloon_id == moved_coma_balloon.id
-        assert moved_coma_child.parent_kind == "coma" and moved_coma_child.parent_key == moved_coma_key
-        assert moved_coma_text.parent_kind == "coma" and moved_coma_text.parent_key == moved_coma_key
-        assert moved_coma_image.parent_kind == "coma" and moved_coma_image.parent_key == moved_coma_key
-        assert moved_coma_raster.scope == "page" and moved_coma_raster.parent_kind == "coma"
-        assert moved_coma_raster.parent_key == moved_coma_key
-        coma_gp = layer_object_model.find_layer_object("gp", coma_gp_id)
-        coma_effect = layer_object_model.find_layer_object("effect", coma_effect_id)
-        assert coma_gp is None, "移動済みコマの手描きが移動元に残っています"
-        assert coma_effect is None, "移動済みコマの効果線が移動元に残っています"
-
-        staged = json.loads(staged_path.read_text(encoding="utf-8"))
-        staged_gp_ids = {entry.get("bmanga_id") for entry in staged.get("gp_layers", [])}
-        staged_effect_ids = {entry.get("bmanga_id") for entry in staged.get("effects", [])}
-        moved_coma_gp_id = str(next(
-            entry.get("bmanga_id", "")
-            for entry in staged.get("gp_layers", [])
-            if entry.get("source_bmanga_id") == coma_gp_id
-        ))
-        moved_coma_effect_id = str(next(
-            entry.get("bmanga_id", "")
-            for entry in staged.get("effects", [])
-            if entry.get("source_bmanga_id") == coma_effect_id
-        ))
-        assert moved_coma_gp_id and moved_coma_gp_id != coma_gp_id
-        assert moved_coma_effect_id and moved_coma_effect_id != coma_effect_id
-        assert {moved_gp_id, moved_coma_gp_id} <= staged_gp_ids
-        assert moved_coma_effect_id in staged_effect_ids
-
-        # 移動先ページを実際に開くと、退避データが同じ安定ID・親で復元される。
-        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=1)
-        assert result == {"FINISHED"}, result
-        context = bpy.context
-        work = context.scene.bmanga_work
-        restored_gp = layer_object_model.find_layer_object("gp", moved_gp_id)
-        restored_coma_gp = layer_object_model.find_layer_object("gp", moved_coma_gp_id)
-        restored_coma_effect = layer_object_model.find_layer_object("effect", moved_coma_effect_id)
-        restored_folder_gp = layer_object_model.find_layer_object("gp", moved_folder_gp_id)
-        restored_folder_effect = layer_object_model.find_layer_object("effect", moved_folder_effect_id)
-        assert restored_gp is not None
-        assert layer_object_model.parent_key(restored_gp) == page2_coma_key
-        _assert_local_gp_point(restored_gp)
-        _assert_gp_mask(restored_gp)
-        restored_signature = _gp_page_relative_signature(context, restored_gp, page2_coma_key)
-        assert restored_signature == gp_expected_signature, (gp_expected_signature, restored_signature)
-        assert restored_coma_gp is not None
-        assert layer_object_model.parent_key(restored_coma_gp) == moved_coma_key
-        _assert_local_gp_point(restored_coma_gp)
-        _assert_gp_mask(restored_coma_gp)
-        assert restored_coma_effect is not None
-        assert layer_object_model.parent_key(restored_coma_effect) == moved_coma_key
-        assert restored_folder_gp is not None and restored_folder_effect is not None
-        assert layer_object_model.parent_key(restored_folder_gp) == page2_coma_key
-        assert layer_object_model.parent_key(restored_folder_effect) == page2_coma_key
-        assert layer_object_model.folder_id(restored_folder_gp) == ""
-        assert layer_object_model.folder_id(restored_folder_effect) == ""
-        _assert_gp_mask(restored_folder_gp)
-        assert layer_object_model.validate_single_content_layer(restored_gp)[0]
-        assert layer_object_model.validate_single_content_layer(restored_coma_gp)[0]
-        assert staged_path.exists(), "ページ保存前に退避ファイルが消えています"
-
-        # 同じページ上で復元処理が二重に呼ばれても、同じ安定IDは一つだけ。
-        from bmanga_dev.utils import cross_page_transfer
-        # 確定待ちの読込後に別画面が追記・同一ID更新しても、最新内容を消さない。
-        probe_page_id = "p0999"
-        probe_original = {"bmanga_id": "effect_probe", "parent_key": probe_page_id, "value": 1}
-        probe_replacement = {"bmanga_id": "effect_probe", "parent_key": probe_page_id, "value": 2}
-        probe_append = {"bmanga_id": "effect_append", "parent_key": probe_page_id, "value": 3}
-        assert cross_page_stage.stage_effect(Path(work.work_dir), probe_page_id, probe_original)
-        processed_token = cross_page_stage._entry_token("effect", probe_original)
-        assert cross_page_stage.stage_effect(Path(work.work_dir), probe_page_id, probe_replacement)
-        assert cross_page_stage.stage_effect(Path(work.work_dir), probe_page_id, probe_append)
-        cross_page_stage._remove_processed_entries(
-            Path(work.work_dir),
-            probe_page_id,
-            {"effect": {processed_token}},
-        )
-        probe_path = cross_page_stage.staged_path(Path(work.work_dir), probe_page_id)
-        probe_latest = json.loads(probe_path.read_text(encoding="utf-8"))
-        probe_values = {
-            entry["bmanga_id"]: entry["value"]
-            for entry in probe_latest.get("effects", [])
-        }
-        assert probe_values == {"effect_probe": 2, "effect_append": 3}
-        with guard_path_write(probe_path):
-            probe_path.unlink()
-            record_successful_write(probe_path)
-
-        before_ids = {
-            (layer_object_model.layer_kind(obj), layer_object_model.stable_id(obj))
-            for obj in layer_object_model.iter_layer_objects()
-            if layer_object_model.layer_kind(obj) in {"gp", "effect"}
-        }
-        assert cross_page_transfer.process_staged_imports(context, page_id=page2_key) == 0
-        after_ids = {
-            (layer_object_model.layer_kind(obj), layer_object_model.stable_id(obj))
-            for obj in layer_object_model.iter_layer_objects()
-            if layer_object_model.layer_kind(obj) in {"gp", "effect"}
-        }
-        assert after_ids == before_ids, "復元処理の再呼出しでレイヤーが重複しました"
-        assert staged_path.exists(), "ページ保存前の再呼出しで退避ファイルが消えています"
-
-        # 保存せずにページを再読込すると未保存実体は消えるが、退避から一度だけ再試行できる。
-        page2_blend = _page_dir(work, page2_key) / "page.blend"
-        bpy.ops.wm.open_mainfile(filepath=str(page2_blend), load_ui=False)
-        context = bpy.context
-        work = context.scene.bmanga_work
-        restored_gp = layer_object_model.find_layer_object("gp", moved_gp_id)
-        restored_coma_gp = layer_object_model.find_layer_object("gp", moved_coma_gp_id)
-        restored_coma_effect = layer_object_model.find_layer_object("effect", moved_coma_effect_id)
-        assert restored_gp is not None and restored_coma_gp is not None and restored_coma_effect is not None
-        assert staged_path.exists(), "保存せず再読込したとき退避ファイルが失われました"
-
-        # 復元後〜保存確定の間に同一IDの内容が差し替わった場合、新しい版は確定対象外。
-        before_commit_stage = json.loads(staged_path.read_text(encoding="utf-8"))
-        original_gp_stage = next(
-            entry
-            for entry in before_commit_stage.get("gp_layers", [])
-            if entry.get("bmanga_id") == moved_gp_id
-        )
-        replacement_gp_stage = copy.deepcopy(original_gp_stage)
-        replacement_gp_stage["concurrent_revision"] = "newer"
-        replacement_gp_token = cross_page_stage._entry_token("gp", replacement_gp_stage)
-        assert cross_page_stage.stage_gp(
-            Path(work.work_dir),
-            page2_key,
-            replacement_gp_stage,
-        )
-        original_effect_stage = next(
-            entry
-            for entry in before_commit_stage.get("effects", [])
-            if entry.get("bmanga_id") == moved_coma_effect_id
-        )
-        replacement_effect_stage = copy.deepcopy(original_effect_stage)
-        replacement_effect_stage["concurrent_revision"] = "newer"
-        replacement_effect_token = cross_page_stage._entry_token(
-            "effect",
-            replacement_effect_stage,
-        )
-        assert cross_page_stage.stage_effect(
-            Path(work.work_dir),
-            page2_key,
-            replacement_effect_stage,
-        )
-
-        # ネイティブ保存成功後にだけ確定し、次回ロードでも同じ安定IDが一つずつ残る。
-        bpy.ops.wm.save_as_mainfile(filepath=str(page2_blend), check_existing=False, compress=True)
-        assert cross_page_transfer.commit_staged_imports_after_save(
-            context,
-            blend_path=page2_blend,
-            metadata_saved=False,
-        ) == 0
-        assert staged_path.exists(), "ページ情報の保存失敗時に退避が消えています"
-        cross_page_transfer.commit_staged_imports_after_save(
-            context,
-            blend_path=page2_blend,
-            metadata_saved=True,
-        )
-        committed_stage = json.loads(staged_path.read_text(encoding="utf-8"))
-        remaining_gp = committed_stage.get("gp_layers", [])
-        assert len(remaining_gp) == 1 and remaining_gp[0].get("concurrent_revision") == "newer"
-        remaining_effects = committed_stage.get("effects", [])
-        assert len(remaining_effects) == 1 and remaining_effects[0].get("concurrent_revision") == "newer"
-        assert cross_page_transfer.process_staged_imports(context, page_id=page2_key) == 2
-        replaced_gp = layer_object_model.find_layer_object("gp", moved_gp_id)
-        replaced_effect = layer_object_model.find_layer_object("effect", moved_coma_effect_id)
-        assert replaced_gp is not None and replaced_effect is not None
-        assert replaced_gp.get(cross_page_stage.STAGE_OBJECT_PROP) == replacement_gp_token
-        assert replaced_effect.get(cross_page_stage.STAGE_OBJECT_PROP) == replacement_effect_token
-        assert staged_path.exists(), "同一IDの新しい版が保存前に消えています"
-        bpy.ops.wm.save_as_mainfile(filepath=str(page2_blend), check_existing=False, compress=True)
-        replacement_commit_count = cross_page_transfer.commit_staged_imports_after_save(
-            context,
-            blend_path=page2_blend,
-            metadata_saved=True,
-        )
-        assert replacement_commit_count == 2 or not staged_path.exists()
-        assert not staged_path.exists(), "同一IDの新しい版を再処理・保存後も退避が残っています"
-        bpy.ops.wm.open_mainfile(filepath=str(page2_blend), load_ui=False)
-        assert layer_object_model.find_layer_object("gp", moved_gp_id) is not None
-        assert layer_object_model.find_layer_object("gp", moved_coma_gp_id) is not None
-        assert layer_object_model.find_layer_object("effect", moved_coma_effect_id) is not None
-        for kind, stable_id in (
-            ("gp", moved_gp_id),
-            ("gp", moved_coma_gp_id),
-            ("effect", moved_coma_effect_id),
-        ):
-            matches = [
-                obj for obj in layer_object_model.iter_layer_objects(kind)
-                if layer_object_model.stable_id(obj) == stable_id
-            ]
-            assert len(matches) == 1, f"{kind}:{stable_id} が保存後に重複しています"
-
         print("BMANGA_LAYER_STACK_DND_REPARENT_OK", flush=True)
     finally:
-        if mod is not None:
+        if module is not None:
             try:
-                mod.unregister()
+                module.unregister()
             except Exception:
                 pass
         bpy.ops.wm.read_factory_settings(use_empty=True)

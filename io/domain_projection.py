@@ -19,6 +19,7 @@ from ..utils import layer_uid, log
 from . import (
     domain_projection_binding,
     domain_projection_ids,
+    domain_projection_ownership,
     domain_projection_preservation,
     domain_projection_tree,
     schema,
@@ -42,13 +43,6 @@ _custom_get = domain_projection_ids.custom_get
 _custom_set = domain_projection_ids.custom_set
 
 _PROJECT_CONTROL_FIELDS = {"schemaVersion"}
-_PAGE_OWNED_PROJECT_FIELDS = {
-    "raster_layers",
-    "image_layers",
-    "fill_layers",
-    "image_path_layers",
-    "layer_folders",
-}
 _PAGE_ROOT_FIELDS = {
     "schemaVersion",
     "id",
@@ -57,6 +51,11 @@ _PAGE_ROOT_FIELDS = {
     "comas",
     "balloons",
     "texts",
+}
+_PAGE_SESSION_FIELDS = {
+    "activeComaIndex",
+    "activeBalloonIndex",
+    "activeTextIndex",
 }
 _NODE_STRUCTURAL_FIELDS = {
     "id",
@@ -95,8 +94,14 @@ def project_document_from_work(work) -> ProjectDocument:
         for page in getattr(work, "pages", ())
     ]
     settings = schema.work_to_dict(work)
-    for key in _PROJECT_CONTROL_FIELDS | _PAGE_OWNED_PROJECT_FIELDS:
+    for key in _PROJECT_CONTROL_FIELDS:
         settings.pop(key, None)
+    settings.update(
+        domain_projection_ownership.project_owned_payloads(
+            settings,
+            set(page_uids),
+        )
+    )
     revision = int(_custom_get(work, PROJECT_REVISION_PROP, 0) or 0)
     return ProjectDocument(project_uid, max(0, revision), settings, pages)
 
@@ -183,7 +188,7 @@ def project_document_from_payload(
     """明示的なCommand境界用projection payloadをDomainへ変換する。"""
 
     settings = copy.deepcopy(dict(work_payload))
-    for key in _PROJECT_CONTROL_FIELDS | _PAGE_OWNED_PROJECT_FIELDS:
+    for key in _PROJECT_CONTROL_FIELDS:
         settings.pop(key, None)
     raw_pages = pages_payload.get("pages")
     if not isinstance(raw_pages, list):
@@ -217,6 +222,12 @@ def project_document_from_payload(
                 settings=raw,
             )
         )
+    settings.update(
+        domain_projection_ownership.project_owned_payloads(
+            settings,
+            {summary.display_id for summary in summaries},
+        )
+    )
     return ProjectDocument(
         project_uid=project_uid,
         revision=max(0, int(revision)),
@@ -245,7 +256,7 @@ def page_document_from_payload(
     settings = {
         key: copy.deepcopy(value)
         for key, value in raw.items()
-        if key not in _PAGE_ROOT_FIELDS
+        if key not in _PAGE_ROOT_FIELDS | _PAGE_SESSION_FIELDS
     }
     root_uid = derived_uid(UIDKind.NODE, page_uid, "root")
     root = DomainNode(
@@ -258,19 +269,33 @@ def page_document_from_payload(
     parent_keys: dict[str, str] = {}
     aliases: dict[str, str] = {}
     ordered: list[str] = []
-    owned = _owned_work_payloads(dict(work_payload), raw)
+    owned = domain_projection_ownership.page_owned_payloads(
+        dict(work_payload),
+        raw,
+    )
     coma_uid_map = dict(coma_uids or {})
+    # ``children`` は front-to-back。保存済みDomain順序がまだ無い初回変換でも、
+    # レイヤー一覧の既定契約（ページ直下レイヤーはコマより前面）と一致させる。
+    # parent alias は全node収集後に解決するため、コマを最後にしてもコマ配下
+    # レイヤーの親解決には影響しない。
+    native_by_kind = dict(native_payloads)
     collections: list[tuple[str, Iterable[Mapping[str, Any]]]] = [
-        ("coma", raw.get("comas", ())),
-        ("balloon", raw.get("balloons", ())),
-        ("text", raw.get("texts", ())),
         ("folder", owned["layer_folders"]),
+        ("gp", native_by_kind.get("gp", ())),
+        ("effect", native_by_kind.get("effect", ())),
         ("raster", owned["raster_layers"]),
         ("image", owned["image_layers"]),
-        ("fill", owned["fill_layers"]),
         ("image_path", owned["image_path_layers"]),
+        ("fill", owned["fill_layers"]),
+        ("balloon", raw.get("balloons", ())),
+        ("text", raw.get("texts", ())),
+        ("coma", raw.get("comas", ())),
     ]
-    collections.extend(native_payloads)
+    collections.extend(
+        (kind, values)
+        for kind, values in native_payloads
+        if kind not in {"gp", "effect"}
+    )
     for kind, values in collections:
         for value in values:
             payload = copy.deepcopy(dict(value))
@@ -312,72 +337,6 @@ def page_document_from_payload(
     )
     document.validate()
     return document
-
-
-def _owned_work_payloads(
-    work_payload: Mapping[str, Any],
-    page_payload: Mapping[str, Any],
-) -> dict[str, list[dict[str, Any]]]:
-    page_id = str(page_payload.get("id", "") or "")
-    owner_keys = {page_id}
-    owner_keys.update(
-        f"{page_id}:{str(coma.get('comaId') or coma.get('id') or '')}"
-        for coma in page_payload.get("comas", ())
-        if isinstance(coma, Mapping)
-    )
-    folders = [
-        copy.deepcopy(dict(value))
-        for value in work_payload.get("layer_folders", ())
-        if isinstance(value, Mapping)
-    ]
-    selected_folders: list[dict[str, Any]] = []
-    remaining = folders
-    while remaining:
-        accepted: list[dict[str, Any]] = []
-        pending: list[dict[str, Any]] = []
-        for folder in remaining:
-            parent = _payload_parent_key(folder)
-            if parent in owner_keys or parent.split(":", 1)[0] == page_id:
-                accepted.append(folder)
-            else:
-                pending.append(folder)
-        if not accepted:
-            break
-        selected_folders.extend(accepted)
-        owner_keys.update(
-            str(folder.get("id", "") or "")
-            for folder in accepted
-            if str(folder.get("id", "") or "")
-        )
-        remaining = pending
-
-    result = {"layer_folders": selected_folders}
-    for key in (
-        "raster_layers",
-        "image_layers",
-        "fill_layers",
-        "image_path_layers",
-    ):
-        result[key] = [
-            copy.deepcopy(dict(value))
-            for value in work_payload.get(key, ())
-            if isinstance(value, Mapping)
-            and (
-                _payload_parent_key(value) in owner_keys
-                or _payload_parent_key(value).split(":", 1)[0] == page_id
-                or str(value.get("folderKey", "") or "") in owner_keys
-            )
-        ]
-    return result
-
-
-def _payload_parent_key(value: Mapping[str, Any]) -> str:
-    return str(
-        value.get("folderKey")
-        or value.get("parentKey")
-        or value.get("parent_key")
-        or ""
-    )
 
 
 def apply_project_document(work, document: ProjectDocument) -> None:
@@ -548,6 +507,7 @@ def page_document_from_projection(
     *,
     context=None,
     preserve_document: PageDocument | None = None,
+    preserve_missing_projection: bool = True,
 ) -> PageDocument:
     project_uid = ensure_project_uid(work)
     page_uid = ensure_page_uid(page, project_uid)
@@ -569,7 +529,7 @@ def page_document_from_projection(
         for entry in getattr(page, "comas", ())
     }
     work_payload = schema.work_to_dict(work)
-    if preserved is not None:
+    if preserved is not None and preserve_missing_projection:
         domain_projection_preservation.preserve_work_payloads(
             work_payload,
             preserved,
@@ -580,7 +540,7 @@ def page_document_from_projection(
         str(getattr(page, "id", "") or ""),
         NODE_UID_PROP,
     )
-    if preserved is not None:
+    if preserved is not None and preserve_missing_projection:
         native_by_kind = dict(native_payloads)
         native_payloads = tuple(
             (
@@ -605,6 +565,10 @@ def page_document_from_projection(
     for node in document.nodes.values():
         aliases[node.display_id] = node.uid
         aliases[f"{node.kind}:{node.display_id}"] = node.uid
+    if preserved is not None:
+        for node in preserved.nodes.values():
+            aliases.setdefault(node.display_id, node.uid)
+            aliases.setdefault(f"{node.kind}:{node.display_id}", node.uid)
     current_links = _links_from_context(context, page_uid, aliases)
     if preserved is not None and context is None:
         document.links = copy.deepcopy(preserved.links)
@@ -616,6 +580,10 @@ def page_document_from_projection(
     else:
         document.links = current_links
     document = preserve_page_projection(preserved, document)
+    if context is not None:
+        from . import domain_layer_order
+
+        document = domain_layer_order.capture_stack_order(context, document)
     document.validate()
     return document
 
@@ -646,10 +614,20 @@ def preserve_page_projection(
                 **copy.deepcopy(old.settings),
                 **copy.deepcopy(node.settings),
             }
+    preserved_link_members = {
+        member_uid
+        for link_uid, link in authoritative.links.items()
+        if link_uid in result.links
+        for member_uid in link.members
+    }
     unknown_uids = {
         uid
         for uid, node in authoritative.nodes.items()
-        if uid not in result.nodes and node.kind not in _PROJECTED_NODE_KINDS
+        if uid not in result.nodes
+        and (
+            node.kind not in _PROJECTED_NODE_KINDS
+            or uid in preserved_link_members
+        )
     }
     for uid in unknown_uids:
         result.nodes[uid] = copy.deepcopy(authoritative.nodes[uid])
@@ -800,6 +778,22 @@ def _resolve_projection_link_uid(
 
 def apply_page_document(page, document: PageDocument, *, context=None) -> None:
     document.validate()
+    active_coma_id = _active_projection_entry_id(
+        page,
+        "comas",
+        "active_coma_index",
+        coma=True,
+    )
+    active_balloon_id = _active_projection_entry_id(
+        page,
+        "balloons",
+        "active_balloon_index",
+    )
+    active_text_id = _active_projection_entry_id(
+        page,
+        "texts",
+        "active_text_index",
+    )
     # page本体だけでなくscene-ownedレイヤー、UID、リンクまでを1つの投影
     # 区間として扱う。途中の画像タイトルupdate等からlayer stack/previewが
     # 走ると、同じpage.jsonのオンデマンド再読込が再入して外側のcollection
@@ -820,6 +814,26 @@ def apply_page_document(page, document: PageDocument, *, context=None) -> None:
             }
         )
         schema.page_from_dict(page, payload)
+        _restore_projection_active_index(
+            page,
+            "comas",
+            "active_coma_index",
+            active_coma_id,
+            coma=True,
+            default_first=True,
+        )
+        _restore_projection_active_index(
+            page,
+            "balloons",
+            "active_balloon_index",
+            active_balloon_id,
+        )
+        _restore_projection_active_index(
+            page,
+            "texts",
+            "active_text_index",
+            active_text_id,
+        )
         coma_nodes = {
             node.display_id: node
             for node in document.nodes.values()
@@ -839,6 +853,57 @@ def apply_page_document(page, document: PageDocument, *, context=None) -> None:
             context=context,
         )
         domain_projection_binding.apply_link_projection(page, document, context)
+        if context is not None:
+            from . import domain_layer_order
+
+            domain_layer_order.project_document_order(context, document)
+
+
+def _active_projection_entry_id(
+    page,
+    collection_name: str,
+    index_name: str,
+    *,
+    coma: bool = False,
+) -> str:
+    collection = getattr(page, collection_name, ())
+    index = int(getattr(page, index_name, -1))
+    if not 0 <= index < len(collection):
+        return ""
+    entry = collection[index]
+    return str(
+        (getattr(entry, "coma_id", "") if coma else "")
+        or getattr(entry, "id", "")
+        or ""
+    )
+
+
+def _restore_projection_active_index(
+    page,
+    collection_name: str,
+    index_name: str,
+    display_id: str,
+    *,
+    coma: bool = False,
+    default_first: bool = False,
+) -> None:
+    collection = getattr(page, collection_name, ())
+    index = next(
+        (
+            candidate
+            for candidate, entry in enumerate(collection)
+            if str(
+                (getattr(entry, "coma_id", "") if coma else "")
+                or getattr(entry, "id", "")
+                or ""
+            )
+            == display_id
+        ),
+        -1,
+    )
+    if index < 0 and default_first and len(collection):
+        index = 0
+    setattr(page, index_name, index)
 
 
 def _payloads_for_kind(document: PageDocument, kind: str) -> list[dict[str, Any]]:
@@ -911,10 +976,12 @@ def _projection_parent(
 
 def _apply_page_owned_collections(page, document: PageDocument) -> None:
     work = _work_from_page(page)
+    project_owned = _project_owned_projection_payloads(work)
     if work is not None and hasattr(work, "layer_folders"):
         _replace_collection(
             work.layer_folders,
-            _payloads_for_kind(document, "folder"),
+            project_owned["layer_folders"]
+            + _payloads_for_kind(document, "folder"),
             schema.layer_folder_from_dict,
         )
     scene = getattr(page, "id_data", None)
@@ -922,31 +989,51 @@ def _apply_page_owned_collections(page, document: PageDocument) -> None:
         return
     _replace_collection(
         getattr(scene, "bmanga_raster_layers", None),
-        _payloads_for_kind(document, "raster"),
+        project_owned["raster_layers"]
+        + _payloads_for_kind(document, "raster"),
         lambda entry, data: schema.raster_layer_from_dict(
             entry, data, opacity_percent=True
         ),
     )
     _replace_collection(
         getattr(scene, "bmanga_image_layers", None),
-        _payloads_for_kind(document, "image"),
+        project_owned["image_layers"]
+        + _payloads_for_kind(document, "image"),
         lambda entry, data: schema.image_layer_from_dict(
             entry, data, opacity_percent=True
         ),
     )
     _replace_collection(
         getattr(scene, "bmanga_fill_layers", None),
-        _payloads_for_kind(document, "fill"),
+        project_owned["fill_layers"]
+        + _payloads_for_kind(document, "fill"),
         lambda entry, data: schema.fill_layer_from_dict(
             entry, data, opacity_percent=True
         ),
     )
     _replace_collection(
         getattr(scene, "bmanga_image_path_layers", None),
-        _payloads_for_kind(document, "image_path"),
+        project_owned["image_path_layers"]
+        + _payloads_for_kind(document, "image_path"),
         lambda entry, data: schema.image_path_layer_from_dict(
             entry, data, opacity_percent=True
         ),
+    )
+
+
+def _project_owned_projection_payloads(work) -> dict[str, list[dict[str, Any]]]:
+    if work is None:
+        return {
+            field: []
+            for field in domain_projection_ownership.WORK_LAYER_FIELDS
+        }
+    return domain_projection_ownership.project_owned_payloads(
+        schema.work_to_dict(work),
+        {
+            str(getattr(page, "id", "") or "")
+            for page in getattr(work, "pages", ())
+            if str(getattr(page, "id", "") or "")
+        },
     )
 
 

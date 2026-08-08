@@ -41,18 +41,37 @@ def _find_coma(page, parent_key: str, child_id: str):
 
 
 def semantic_parent_target(context, parent_key: str):
-    """page / coma / outside の parent_key を ClickTarget へ変換する."""
+    """page / coma / folder / outside の parent_key を ClickTarget へ変換する."""
     from ..core.work import get_work
-    from . import layer_reparent
+    from . import layer_folder, layer_reparent
 
     parent_key = str(parent_key or "")
     if not parent_key or parent_key == OUTSIDE_STACK_KEY:
         return layer_reparent.ClickTarget("outside", None, None, -1, None, None)
 
+    work = get_work(context)
+    folder = layer_folder.find_folder(work, parent_key)
+    if folder is not None:
+        semantic_parent = layer_folder.semantic_parent_key_for_folder(
+            work,
+            parent_key,
+        )
+        target = semantic_parent_target(context, semantic_parent)
+        if target is None or target.kind not in {"page", "coma"}:
+            return None
+        return layer_reparent.ClickTarget(
+            target.kind,
+            target.page,
+            target.panel,
+            target.page_index,
+            target.world_xy_mm,
+            target.local_xy_mm,
+            parent_key,
+        )
+
     page_key, child_id = split_child_key(parent_key)
     if page_key == OUTSIDE_STACK_KEY:
         return None
-    work = get_work(context)
     page_index, page = _find_page(work, page_key)
     if page is None:
         return None
@@ -66,6 +85,21 @@ def semantic_parent_target(context, parent_key: str):
 
 def is_semantic_parent_key(context, parent_key: str) -> bool:
     return semantic_parent_target(context, parent_key) is not None
+
+
+def apply_cross_page_parent_drop(context, item, parent_key: str) -> bool | None:
+    """別ページ行へのD&Dだけを共通TransferGroupへ渡す."""
+    from . import layer_transfer_group
+
+    target = semantic_parent_target(context, parent_key)
+    if target is None:
+        return None
+    result = layer_transfer_group.transfer_group_to_page(
+        context,
+        target,
+        anchor_item=item,
+    )
+    return None if result is None else bool(result)
 
 
 def apply_semantic_parent_drop(context, item, parent_key: str) -> bool:

@@ -21,7 +21,7 @@ from . import (
 from . import page_grid
 from .asset_instantiation_transaction import atomic_asset_instantiation
 from .geom import m_to_mm, mm_to_m
-from .layer_hierarchy import coma_containing_point, coma_stack_key
+from .layer_hierarchy import coma_containing_point, coma_stack_key, split_child_key
 
 _logger = log.get_logger(__name__)
 
@@ -37,6 +37,10 @@ SUPPORTED_LAYER_KINDS = {
     "coma", "layer_folder", "balloon", "text", "effect",
     "raster", "image", "image_path", "fill", "gp",
 }
+
+
+class AssetBundleTargetOwnershipError(RuntimeError):
+    """移送先フォルダーの恒久identity/所有権不一致。"""
 
 
 @dataclass(frozen=True)
@@ -123,14 +127,18 @@ def register_selected_objects_as_asset(context, *, name: str = "", event=None) -
 def build_payload(context, items, *, name: str = "") -> dict:
     entries: list[dict] = []
     source_uids: list[str] = []
-    for item in items:
+    parent_orders: dict[str, list[str]] = {}
+    for source_order, item in enumerate(items):
         entry = _serialize_stack_item(context, item)
         if entry is None:
             continue
         source_uid = layer_stack_utils.stack_item_uid(item)
         entry["source_uid"] = source_uid
+        entry["source_order"] = source_order
         source_uids.append(source_uid)
         entries.append(entry)
+        parent_key = str(getattr(item, "parent_key", "") or "")
+        parent_orders.setdefault(parent_key, []).append(source_uid)
     if not entries:
         raise RuntimeError("登録できるレイヤーがありません")
     # 参照先を先に生成する。特にテキストは生成時に parent_balloon_id を
@@ -144,6 +152,10 @@ def build_payload(context, items, *, name: str = "") -> dict:
         "origin": {"x": origin[0], "y": origin[1]},
         "entries": entries,
         "links": _linked_groups_for_uids(context, source_uids),
+        "parent_orders": [
+            {"parent_key": parent_key, "children": children}
+            for parent_key, children in parent_orders.items()
+        ],
     }
 
 
@@ -336,9 +348,28 @@ def instantiate_payload(
     dx = drop_local[0] - float(origin.get("x", 0.0) or 0.0)
     dy = drop_local[1] - float(origin.get("y", 0.0) or 0.0)
     parent_kind, parent_key = _parent_for_point(page, drop_local[0], drop_local[1])
+    target_folder_key = _validated_transfer_target_folder(
+        work,
+        page,
+        payload,
+    )
+    if target_folder_key:
+        from . import layer_folder
+
+        parent_key = layer_folder.semantic_parent_key_for_folder(
+            work,
+            target_folder_key,
+        )
+        parent_kind = "coma" if ":" in parent_key else "page"
     id_map: dict[str, str] = {}
     parent_key_map: dict[str, str] = {}
     folder_key_map: dict[str, str] = {}
+    selected_folder_ids = {
+        str(entry.get("source_id", "") or "")
+        for entry in payload.get("entries", []) or []
+        if isinstance(entry, dict)
+        and str(entry.get("kind", "") or "") == "layer_folder"
+    }
     new_uids_by_source: dict[str, str] = {}
     made: list[object] = []
     newly_made: list[object] = []
@@ -366,7 +397,13 @@ def instantiate_payload(
             parent_key_map,
         )
         source_folder_key = asset_bundle_extended.source_folder_key(entry)
-        target_folder_key = folder_key_map.get(source_folder_key, "")
+        entry_target_folder_key = _target_folder_for_payload_entry(
+            kind,
+            source_folder_key,
+            selected_folder_ids,
+            folder_key_map,
+            target_folder_key,
+        )
         obj = _find_staged_asset_entry(context, page, stage_id, entry_index, kind)
         was_created = False
         if obj is None and kind == "coma":
@@ -392,7 +429,7 @@ def instantiate_payload(
                 dy,
                 entry_parent_kind,
                 entry_parent_key,
-                folder_id=target_folder_key,
+                folder_id=entry_target_folder_key,
             )
             was_created = obj is not None
         elif obj is None and kind == "text":
@@ -405,11 +442,18 @@ def instantiate_payload(
                 entry_parent_kind,
                 entry_parent_key,
                 id_map,
-                folder_id=target_folder_key,
+                folder_id=entry_target_folder_key,
             )
             was_created = obj is not None
         elif obj is None and kind == "effect":
-            obj = _instantiate_effect(context, entry, dx, dy, entry_parent_key)
+            obj = _instantiate_effect(
+                context,
+                entry,
+                dx,
+                dy,
+                entry_parent_key,
+                folder_id=entry_target_folder_key,
+            )
             was_created = obj is not None
         elif obj is None:
             obj = asset_bundle_extended.instantiate_extended_entry(
@@ -423,6 +467,8 @@ def instantiate_payload(
                 entry_parent_key,
                 parent_key_map,
                 folder_key_map,
+                folder_id=entry_target_folder_key,
+                root_folder_parent_key=target_folder_key,
             )
             was_created = obj is not None
         if obj is None:
@@ -471,6 +517,7 @@ def instantiate_payload(
     _link_drop_target_text_to_new_balloons(page, newly_made, drop_local)
     _link_overlapping_texts_to_new_balloons(page, newly_made)
     layer_stack_utils.sync_layer_stack_after_data_change(context)
+    _restore_payload_layer_order(context, payload, new_uids_by_source)
     try:
         check_fault(
             FaultPoint.ASSET_INSTANTIATE_AFTER_COMMIT,
@@ -722,15 +769,17 @@ def _serialize_stack_item(context, item) -> dict | None:
             "center": list(center or (0.0, 0.0)),
             "meta": meta if isinstance(meta, dict) else {},
             "parent_key": gp_parent.parent_key(layer) or str(obj.get(on.PROP_PARENT_KEY, "") or ""),
+            "data": {"folder_key": layer_object_model.folder_id(obj)},
         }
     return None
 
 
 def _pg_to_dict(pg) -> dict:
     data: dict = {}
+    derived = _derived_property_names(pg)
     for prop in getattr(pg.bl_rna, "properties", []) or []:
         ident = prop.identifier
-        if ident == "rna_type" or ident == "selected":
+        if ident == "rna_type" or ident == "selected" or ident in derived:
             continue
         try:
             value = getattr(pg, ident)
@@ -755,8 +804,14 @@ def _pg_to_dict(pg) -> dict:
     return data
 
 
-def _dict_to_pg(pg, data: dict, *, skip: set[str] | None = None) -> None:
-    skip = skip or set()
+def _dict_to_pg(
+    pg,
+    data: dict,
+    *,
+    skip: set[str] | None = None,
+    raw_scalars: bool = False,
+) -> None:
+    skip = (skip or set()) | _derived_property_names(pg)
     if not isinstance(data, dict):
         return
     props = {prop.identifier: prop for prop in getattr(pg.bl_rna, "properties", []) or []}
@@ -770,13 +825,53 @@ def _dict_to_pg(pg, data: dict, *, skip: set[str] | None = None) -> None:
                 coll.clear()
                 for item_data in value or []:
                     item = coll.add()
-                    _dict_to_pg(item, item_data)
+                    _dict_to_pg(
+                        item,
+                        item_data,
+                        raw_scalars=raw_scalars,
+                    )
             elif prop.type == "POINTER":
-                _dict_to_pg(getattr(pg, ident), value)
+                _dict_to_pg(
+                    getattr(pg, ident),
+                    value,
+                    raw_scalars=raw_scalars,
+                )
+            elif raw_scalars:
+                _set_scalar_without_update(pg, prop, ident, value)
             else:
                 setattr(pg, ident, value)
         except Exception:  # noqa: BLE001
             continue
+
+
+def _derived_property_names(pg) -> set[str]:
+    """保存値から決まる表示専用RNA propertyをsnapshot対象外にする。"""
+
+    rna = getattr(pg, "bl_rna", None)
+    if str(getattr(rna, "identifier", "") or "") == "BMangaComaEntry":
+        return {"coma_number"}
+    return set()
+
+
+def _set_scalar_without_update(pg, prop, ident: str, value) -> None:
+    """rollback時だけRNA update callbackを通さず保存値を厳密に戻す。"""
+
+    if prop.type == "ENUM":
+        items = getattr(prop, "enum_items", ())
+        enum_item = next(
+            (
+                item
+                for item in items
+                if str(getattr(item, "identifier", "") or "") == str(value)
+            ),
+            None,
+        )
+        if enum_item is None:
+            setattr(pg, ident, value)
+            return
+        pg[ident] = int(enum_item.value)
+        return
+    pg[ident] = value
 
 
 def _payload_origin(entries: list[dict]) -> tuple[float, float]:
@@ -813,6 +908,54 @@ def _parent_for_point(page, x_mm: float, y_mm: float) -> tuple[str, str]:
     if panel is not None:
         return "coma", coma_stack_key(page, panel)
     return "page", str(getattr(page, "id", "") or "")
+
+
+def _validated_transfer_target_folder(work, page, payload: dict) -> str:
+    transfer = payload.get("transfer")
+    if not isinstance(transfer, dict):
+        return ""
+    folder_key = str(transfer.get("targetFolderKey", "") or "")
+    if not folder_key:
+        return ""
+    from . import layer_folder
+
+    page_id = str(getattr(page, "id", "") or "")
+    if (
+        str(transfer.get("targetPageId", "") or "") != page_id
+        or str(transfer.get("targetFolderOwnerPageId", "") or "") != page_id
+        or layer_folder.find_folder(work, folder_key) is None
+    ):
+        raise AssetBundleTargetOwnershipError(
+            "移送先レイヤーフォルダを確認できません"
+        )
+    semantic_parent = layer_folder.semantic_parent_key_for_folder(
+        work,
+        folder_key,
+    )
+    owner_page_id, _child_id = split_child_key(semantic_parent)
+    if owner_page_id != page_id:
+        raise AssetBundleTargetOwnershipError(
+            "移送先レイヤーフォルダの所有ページが一致しません"
+        )
+    return folder_key
+
+
+def _target_folder_for_payload_entry(
+    kind: str,
+    source_folder_key: str,
+    selected_folder_ids: set[str],
+    folder_key_map: dict[str, str],
+    target_folder_key: str,
+) -> str:
+    mapped = folder_key_map.get(str(source_folder_key or ""), "")
+    if mapped:
+        return mapped
+    if (
+        str(kind or "") != "layer_folder"
+        and str(source_folder_key or "") not in selected_folder_ids
+    ):
+        return str(target_folder_key or "")
+    return ""
 
 
 def _parent_for_payload_entry(
@@ -891,7 +1034,15 @@ def _instantiate_text(
     return new_entry
 
 
-def _instantiate_effect(context, entry: dict, dx: float, dy: float, parent_key: str):
+def _instantiate_effect(
+    context,
+    entry: dict,
+    dx: float,
+    dy: float,
+    parent_key: str,
+    *,
+    folder_id: str = "",
+):
     from ..core import effect_line
     from ..operators import effect_line_op
 
@@ -910,6 +1061,7 @@ def _instantiate_effect(context, entry: dict, dx: float, dy: float, parent_key: 
     from . import layer_object_model
 
     layer_object_model.set_display_title(obj, str(entry.get("title", "") or "効果線"))
+    layer_object_model.set_folder_id(obj, folder_id)
     stored = effect_line_op._effect_meta(obj)
     key = effect_line_op._layer_meta_key(layer)
     current = dict(stored.get(key) or {})
@@ -947,6 +1099,48 @@ def _restore_layer_links(context, payload: dict, new_uids_by_source: dict[str, s
         mapped = [uid for uid in mapped if uid]
         if len(mapped) >= 2:
             layer_links.link_uids(context, mapped)
+
+
+def _restore_payload_layer_order(
+    context,
+    payload: dict,
+    new_uids_by_source: dict[str, str],
+) -> None:
+    """生成依存順とは別に、親が所有する元の兄弟順を一覧へ戻す."""
+
+    stack = getattr(getattr(context, "scene", None), "bmanga_layer_stack", None)
+    if stack is None:
+        return
+    for raw in payload.get("parent_orders", ()) or ():
+        if not isinstance(raw, dict):
+            continue
+        desired = [
+            new_uids_by_source.get(str(source_uid or ""), "")
+            for source_uid in raw.get("children", ()) or ()
+        ]
+        desired = [uid for uid in desired if uid]
+        if len(desired) < 2:
+            continue
+        current_uids = [
+            layer_stack_utils.stack_item_uid(item)
+            for item in stack
+        ]
+        slots = [
+            index
+            for index, uid in enumerate(current_uids)
+            if uid in set(desired)
+        ]
+        if len(slots) != len(desired):
+            raise RuntimeError("素材の兄弟順を固定IDへ解決できませんでした")
+        for slot, uid in zip(slots, desired, strict=True):
+            current_uids = [
+                layer_stack_utils.stack_item_uid(item)
+                for item in stack
+            ]
+            current_index = current_uids.index(uid)
+            if current_index != slot:
+                stack.move(current_index, slot)
+    layer_stack_utils.remember_layer_stack_signature(context)
 
 
 def _link_overlapping_texts_to_new_balloons(page, made: list[object]) -> None:

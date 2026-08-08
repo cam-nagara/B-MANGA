@@ -609,14 +609,24 @@ def instantiate_extended_entry(
     parent_key: str,
     parent_key_map: dict[str, str],
     folder_key_map: dict[str, str],
+    *,
+    folder_id: str = "",
+    root_folder_parent_key: str = "",
 ):
     """コマ／フキダシ／テキスト／効果線以外の素材を生成する."""
-    folder_id = folder_key_map.get(source_folder_key(entry), "")
+    folder_id = folder_key_map.get(source_folder_key(entry), folder_id)
     if kind == "layer_folder":
+        source_parent = source_parent_key(entry)
         created = instantiate_layer_folder(
             context,
             entry,
-            parent_key_map.get(source_parent_key(entry), parent_key),
+            folder_key_map.get(
+                source_parent,
+                parent_key_map.get(
+                    source_parent,
+                    str(root_folder_parent_key or "") or parent_key,
+                ),
+            ),
         )
         old_id = str(entry.get("source_id", "") or "")
         if created is not None and old_id:
@@ -639,7 +649,21 @@ def instantiate_extended_entry(
             context, page, entry, dx, dy, parent_kind, parent_key, folder_id=folder_id
         )
     if kind == "gp":
-        return instantiate_gp_layer(context, page, entry, dx, dy, parent_kind, parent_key)
+        created = instantiate_gp_layer(
+            context,
+            page,
+            entry,
+            dx,
+            dy,
+            parent_kind,
+            parent_key,
+        )
+        if created is not None:
+            from . import layer_object_model
+
+            obj = created[0] if isinstance(created, tuple) else created
+            layer_object_model.set_folder_id(obj, folder_id)
+        return created
     return None
 
 
@@ -679,18 +703,28 @@ def _serialize_raster(context, item) -> dict | None:
     if raster is None:
         return None
     try:
-        raster_layer_op.save_raster_png(context, raster, force=True)
-    except Exception:  # noqa: BLE001
-        pass
-    png_b64 = ""
+        saved = raster_layer_op.save_raster_png(context, raster, force=True)
+    except Exception as exc:
+        raise RuntimeError(
+            "ラスターの最新画素を保存できないため素材化を中止しました"
+        ) from exc
+    if not saved:
+        raise RuntimeError(
+            "ラスターの最新画素を保存できないため素材化を中止しました"
+        )
     try:
         work = get_work(context)
         rel = str(getattr(raster, "filepath_rel", "") or raster_layer_op.raster_filepath_rel(raster.id))
         path = Path(work.work_dir) / rel if work is not None else None
-        if path is not None and path.is_file():
-            png_b64 = base64.b64encode(path.read_bytes()).decode("ascii")
-    except Exception:  # noqa: BLE001
-        png_b64 = ""
+        if path is None or not path.is_file():
+            raise FileNotFoundError(path)
+        png_payload = path.read_bytes()
+        _validate_png_bytes(png_payload)
+        png_b64 = base64.b64encode(png_payload).decode("ascii")
+    except Exception as exc:
+        raise RuntimeError(
+            "ラスターPNGを検証できないため素材化を中止しました"
+        ) from exc
     return {
         "kind": "raster",
         "source_id": str(getattr(raster, "id", "") or ""),
@@ -807,6 +841,7 @@ def _serialize_gp_layer(context, item) -> dict | None:
         "kind": "gp",
         "source_id": layer_object_model.stable_id(obj),
         "source_parent_key": parent_key,
+        "data": {"folder_key": layer_object_model.folder_id(obj)},
         "title": layer_object_model.display_title(obj) or "レイヤー",
         "bounds": bounds,
         "frames": frames,

@@ -73,10 +73,10 @@
       "expected_tracebacks": [
         {
           "pattern": "^RuntimeError: phase5 injected command failure$",
-          "count": 5
+          "count": 6
         }
       ],
-      "reason": "通常レイヤーの新規作成・複製とラスターの新規作成・複製・削除でDomain Command失敗を注入し、正式状態・Native実体・PNG・保存基準が完全rollbackされ、無関係な外部PNGを削除しないことを検証するPhase 5負系テスト",
+      "reason": "通常レイヤーの新規作成・複製、画像パスの実Object複製、ラスターの新規作成・複製・削除でDomain Command失敗を注入し、正式状態・余剰を含む実Object・PNG・保存基準が完全rollbackされ、無関係な外部PNGを削除しないことを検証するPhase 5負系テスト",
       "review": "phase5-layer-command-file-atomicity-audit-2026-08-02"
     },
     "test/blender_lifecycle_coordinator_check.py": {

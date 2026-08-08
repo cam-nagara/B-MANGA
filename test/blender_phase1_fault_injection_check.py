@@ -65,7 +65,12 @@ def main() -> None:
         snapshot_baseline_registry,
     )
     from bmanga_phase1_fault.operators import io_op
-    from bmanga_phase1_fault.utils import asset_bundle, json_io, paths
+    from bmanga_phase1_fault.utils import (
+        asset_bundle,
+        asset_instantiation_transaction,
+        json_io,
+        paths,
+    )
 
     reset_observability()
     with isolated_faults(), tempfile.TemporaryDirectory(
@@ -184,6 +189,32 @@ def main() -> None:
         work_io.save_work_json(asset_work_dir, work)
         page_io.save_page_json(asset_work_dir, page)
         page_io.load_page_json(asset_work_dir, page)
+
+        # 素材生成とrollbackの二重故障は、呼出側が通常の生成失敗と区別して
+        # ページ全体snapshotを復元できる専用例外へ変換する。
+        original_asset_rollback = asset_instantiation_transaction._rollback
+
+        def fail_asset_rollback(*_args, **_kwargs):
+            raise RuntimeError("phase5 injected asset rollback failure")
+
+        asset_instantiation_transaction._rollback = fail_asset_rollback
+        arm_fault(FaultPoint.ASSET_INSTANTIATE)
+        try:
+            asset_bundle.instantiate_payload(
+                bpy.context,
+                {"name": "rollback-failure", "entries": []},
+                target_page=page,
+                defer_to_page_file=False,
+            )
+        except asset_instantiation_transaction.AssetInstantiationRollbackError as exc:
+            assert "rollback" in str(exc)
+            assert isinstance(exc.operation_error, RuntimeError)
+            assert isinstance(exc.rollback_error, RuntimeError)
+        else:
+            raise AssertionError("素材rollback二重故障が専用例外になりませんでした")
+        finally:
+            asset_instantiation_transaction._rollback = original_asset_rollback
+
         arm_fault(FaultPoint.ASSET_INSTANTIATE_AFTER_STAGE)
         _expect_injected(
             lambda: asset_bundle.instantiate_payload(
@@ -448,6 +479,7 @@ def main() -> None:
         assert expected_points <= set(faults["injections"])
         repeated_points = {
             FaultPoint.ASSET_CREATE_AFTER_COMMIT.value: 3,
+            FaultPoint.ASSET_INSTANTIATE.value: 2,
             FaultPoint.ASSET_INSTANTIATE_AFTER_COMMIT.value: 2,
             FaultPoint.OPEN_MAINFILE_AFTER_COMMIT.value: 2,
         }
@@ -465,7 +497,7 @@ def main() -> None:
     assert counters["json.read.success"] >= 2
     assert counters["asset.create.failure"] == 5
     assert counters["asset.create.success"] == 1
-    assert counters["asset.instantiate.failure"] == 7
+    assert counters["asset.instantiate.failure"] == 8
     assert counters["asset.instantiate.success"] == 1
     assert counters["open.mainfile.failure"] == 5
     assert counters["open.mainfile.success"] == 1

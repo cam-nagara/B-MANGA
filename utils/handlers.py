@@ -33,6 +33,8 @@ _trusted_native_save_targets: list[str] = []
 _NATIVE_SAVE_RELOAD_MAX_ATTEMPTS = 10
 _NATIVE_SAVE_RELOAD_RETRY_INTERVAL = 0.2
 _NATIVE_SAVE_RELOAD_FIRST_INTERVAL = 0.15
+_TRANSFER_ORPHAN_RECOVERY_TASK = "layer_transfer_orphan_recovery"
+_TRANSFER_ORPHAN_RECOVERY_FIRST_INTERVAL = 0.25
 
 
 @contextmanager
@@ -102,6 +104,60 @@ def _show_native_save_notice(*, title: str, lines: tuple[str, ...]) -> None:
         bpy.context.window_manager.popup_menu(_draw, title=title, icon="ERROR")
     except Exception:  # noqa: BLE001
         _logger.exception("native save notice failed")
+
+
+def _mark_transfer_recovery_failed(scene) -> None:
+    try:
+        scene.bmanga_work.loaded = False
+    except Exception:  # noqa: BLE001
+        _logger.exception("load_post: transfer recovery fail-closed failed")
+    _show_native_save_notice(
+        title="ページ間移動の復旧に失敗しました",
+        lines=(
+            "この画面では保存せず、Blenderを閉じて作品を開き直してください。",
+        ),
+    )
+
+
+def _schedule_transfer_orphan_recovery(work_dir: Path) -> None:
+    """通常openを止めず、journal未作成のprepared stageだけ後で清掃する."""
+
+    from . import lifecycle_scheduler, layer_transfer_group
+
+    expected_root = Path(work_dir).resolve()
+
+    def _recover() -> None:
+        try:
+            restored_paths = layer_transfer_group.recover_interrupted_transfers(
+                expected_root
+            )
+        except Exception:  # noqa: BLE001
+            _logger.exception(
+                "deferred page transfer recovery failed: %s",
+                expected_root,
+            )
+            current_path = Path(str(getattr(bpy.data, "filepath", "") or ""))
+            current_root = _find_work_root(current_path)
+            if current_root is not None and current_root.resolve() == expected_root:
+                scene = getattr(bpy.context, "scene", None)
+                if scene is not None:
+                    _mark_transfer_recovery_failed(scene)
+            return None
+        current_path = Path(str(getattr(bpy.data, "filepath", "") or ""))
+        if (
+            current_path.is_file()
+            and current_path.resolve() in {
+                path.resolve() for path in restored_paths
+            }
+        ):
+            _schedule_native_save_reload(current_path, notice=True)
+        return None
+
+    lifecycle_scheduler.schedule(
+        _TRANSFER_ORPHAN_RECOVERY_TASK,
+        _recover,
+        first_interval=_TRANSFER_ORPHAN_RECOVERY_FIRST_INTERVAL,
+    )
 
 
 def _reload_fallback_target(path: Path) -> Path | None:
@@ -916,6 +972,15 @@ def _sync_active_from_blend_path(
         for i, pg in enumerate(work.pages):
             if pg.id == page_id:
                 work.active_page_index = i
+                for coma_index, coma in enumerate(pg.comas):
+                    entry_id = str(
+                        getattr(coma, "coma_id", "")
+                        or getattr(coma, "id", "")
+                        or ""
+                    )
+                    if entry_id == coma_id:
+                        pg.active_coma_index = coma_index
+                        break
                 break
         scene.bmanga_current_coma_id = coma_id
         scene.bmanga_current_coma_page_id = page_id
@@ -1407,17 +1472,19 @@ def _hydrate_current_file(filepath_arg) -> bool:
         try:
             from . import layer_transfer_group
 
-            transfer_restored = layer_transfer_group.recover_interrupted_transfers(
-                work_dir
-            )
+            if layer_transfer_group.has_transfer_recovery_journal(work_dir):
+                transfer_restored = (
+                    layer_transfer_group.recover_interrupted_transfers(work_dir)
+                )
+            else:
+                # journalを伴う中断はopen前に同期復旧する。journal作成前に
+                # 残り得るprepared stageは確定対象ではないため、通常openの
+                # 全ページ走査を避け、load完了後の一回限りタスクで清掃する。
+                transfer_restored = ()
+                _schedule_transfer_orphan_recovery(work_dir)
         except Exception:  # noqa: BLE001
             _logger.exception("load_post: page transfer recovery failed")
-            _show_native_save_notice(
-                title="ページ間移動の復旧に失敗しました",
-                lines=(
-                    "この画面では保存せず、Blenderを閉じて作品を開き直してください。",
-                ),
-            )
+            _mark_transfer_recovery_failed(scene)
             return
         if blend_path.resolve() in {
             path.resolve() for path in transfer_restored
@@ -1707,6 +1774,12 @@ def _hydrate_current_file(filepath_arg) -> bool:
                     n = cross_page_transfer.process_staged_imports(bpy.context)
                     if n > 0:
                         _logger.info("load_post: imported %d staged effects", n)
+                except cross_page_transfer.StagedImportRollbackError:
+                    _logger.exception(
+                        "load_post: staged import rollback failed; "
+                        "the work remains fail-closed"
+                    )
+                    raise
                 except Exception:  # noqa: BLE001
                     _logger.exception("load_post: staged import processing failed")
                 try:
@@ -2117,9 +2190,10 @@ def _bmanga_on_history_pre(*, is_redo: bool) -> None:
 def _history_pre_impl() -> None:
     try:
         from ..operators import coma_modal_state as _modal_state
-        from . import history_runtime
+        from . import history_runtime, layer_transfer_history
 
         count = _modal_state.mark_all_externally_finished()
+        layer_transfer_history.begin_restore(bpy.context)
         history_runtime.begin_restore(relaunch_object_tool=count > 0)
         if count > 0:
             _logger.debug("undo_pre: marked %d modals as finished", count)

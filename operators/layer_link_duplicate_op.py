@@ -306,6 +306,21 @@ def _create_linked_balloon_duplicate(context, item) -> bool:
     return True
 
 
+def _create_linked_effect_duplicate(context) -> bool:
+    from . import effect_line_link_op, effect_line_op
+
+    obj, source_layer, bounds = effect_line_op.active_effect_layer_bounds(context)
+    if obj is None or source_layer is None or bounds is None:
+        return False
+    _dest_obj, linked_layer = effect_line_link_op.duplicate_effect_entry(
+        context,
+        obj,
+        source_layer,
+        linked=True,
+    )
+    return linked_layer is not None
+
+
 class BMANGA_OT_layer_stack_link_duplicate(Operator):
     bl_idname = "bmanga.layer_stack_link_duplicate"
     bl_label = "リンク複製"
@@ -320,15 +335,28 @@ class BMANGA_OT_layer_stack_link_duplicate(Operator):
     def execute(self, context):
         item = _active_stack_item(context)
         kind = str(getattr(item, "kind", "") or "") if item is not None else ""
-        if kind == "balloon":
-            if _create_linked_balloon_duplicate(context, item):
-                self.report({"INFO"}, "リンク複製しました")
-                return {"FINISHED"}
-            self.report({"ERROR"}, "リンク複製するフキダシが見つかりません")
+        if kind not in {"balloon", "effect"}:
             return {"CANCELLED"}
-        if kind == "effect":
-            return bpy.ops.bmanga.effect_line_create_linked("EXEC_DEFAULT")
-        return {"CANCELLED"}
+        from ..utils import layer_command_runtime
+
+        def mutate():
+            if kind == "balloon":
+                return int(_create_linked_balloon_duplicate(context, item))
+            return int(_create_linked_effect_duplicate(context))
+
+        changed = layer_command_runtime.execute(
+            context,
+            items=(item,),
+            operation="link_duplicate",
+            mutate=mutate,
+        )
+        if changed <= 0:
+            message = "フキダシ" if kind == "balloon" else "効果線"
+            self.report({"ERROR"}, f"リンク複製する{message}が見つかりません")
+            return {"CANCELLED"}
+        message = "リンク複製しました" if kind == "balloon" else "リンク効果線を作成しました"
+        self.report({"INFO"}, message)
+        return {"FINISHED"}
 
 
 _CLASSES = (BMANGA_OT_layer_stack_link_duplicate,)

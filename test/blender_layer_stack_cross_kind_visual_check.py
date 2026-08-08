@@ -267,7 +267,6 @@ def _run() -> None:
             _redraw(6)
 
             report: dict[str, object] = {"ok": True}
-
             # --- A. 取込直後: テキストがコマより前面 (文字が見える) -----------
             stage = "capture_a"
             _mark(stage)

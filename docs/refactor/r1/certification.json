@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "phase": "R1",
+  "date": "2026-08-08",
+  "product": "bmanga",
+  "version": "0.6.605",
+  "normal_extension_deployed": false,
+  "ui_contract": {
+    "status": "frozen",
+    "standard_duplicate": "active_item_only_unlinked",
+    "standard_delete": "active_item_only",
+    "folder_delete": "preserve_children"
+  },
+  "tests": [
+    {
+      "group": "domain_and_transfer_contracts",
+      "status": "passed",
+      "passed": 12,
+      "failed": 0
+    },
+    {
+      "group": "phase5_final_and_layer_command",
+      "status": "passed",
+      "required": 2,
+      "passed": 2,
+      "evidence": "_verify/2026-08-08_r1_phase5_final"
+    },
+    {
+      "group": "undo_redo_ui",
+      "status": "passed",
+      "required": 1,
+      "passed": 1,
+      "evidence": "_verify/2026-08-08_r1_undo_redo"
+    },
+    {
+      "group": "layer_ui_visual",
+      "status": "passed",
+      "required": 2,
+      "passed": 2,
+      "evidence": "_verify/2026-08-08_r1_ui_final"
+    },
+    {
+      "group": "targeted_blender_regressions",
+      "status": "passed",
+      "passed": 7,
+      "failed": 0
+    }
+  ],
+  "review": {
+    "status": "passed",
+    "critical": 0,
+    "high": 0,
+    "scope": "layer command rollback, runtime object exactness, raster file ordering, UI freeze"
+  },
+  "external_product_diff": {
+    "addons/b_manga_render": 0,
+    "addons/b_manga_line": 0
+  }
+}

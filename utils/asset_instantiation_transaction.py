@@ -9,6 +9,22 @@ from ..core.work import get_active_page, get_work
 from . import layer_links
 
 
+class AssetInstantiationRollbackError(RuntimeError):
+    """素材生成失敗に加えてrollbackも完遂できなかった。"""
+
+    def __init__(
+        self,
+        operation_error: BaseException,
+        rollback_error: BaseException,
+    ) -> None:
+        self.operation_error = operation_error
+        self.rollback_error = rollback_error
+        super().__init__(
+            "素材生成失敗後のrollbackを完遂できませんでした: "
+            f"{type(rollback_error).__name__}: {rollback_error}"
+        )
+
+
 def _identity(kind: str, target) -> str:
     if kind in {"gp", "effect"}:
         from . import layer_object_model
@@ -40,9 +56,19 @@ def _asset_identities(context, page) -> set[tuple[str, str]]:
     return identities
 
 
+def _datablock_pointers() -> dict[str, set[int]]:
+    import bpy
+
+    return {
+        name: {int(item.as_pointer()) for item in getattr(bpy.data, name)}
+        for name in ("objects", "meshes", "curves", "materials", "images")
+    }
+
+
 def _snapshot(context, page) -> dict[str, object]:
     return {
         "identities": _asset_identities(context, page),
+        "datablocks": _datablock_pointers(),
         "text_parents": {
             str(getattr(text, "id", "") or ""): str(
                 getattr(text, "parent_balloon_id", "") or ""
@@ -56,6 +82,39 @@ def _snapshot(context, page) -> dict[str, object]:
             int(getattr(page, "active_text_index", -1)),
         ),
     }
+
+
+def _rollback_datablocks(snapshot: dict[str, object]) -> None:
+    import bpy
+
+    before = snapshot.get("datablocks", {})
+    if not isinstance(before, dict):
+        return
+    failures: list[str] = []
+    for name in ("objects", "meshes", "curves", "materials", "images"):
+        collection = getattr(bpy.data, name)
+        preserved = before.get(name, set())
+        for item in tuple(collection):
+            try:
+                pointer = int(item.as_pointer())
+            except ReferenceError:
+                continue
+            if pointer in preserved:
+                continue
+            try:
+                collection.remove(item, do_unlink=True)
+            except TypeError:
+                try:
+                    collection.remove(item)
+                except (ReferenceError, RuntimeError):
+                    failures.append(name)
+            except (ReferenceError, RuntimeError):
+                failures.append(name)
+    if failures:
+        raise RuntimeError(
+            "生成Datablockのrollbackに失敗しました: "
+            + ", ".join(sorted(set(failures)))
+        )
 
 
 def _rollback(context, page, snapshot: dict[str, object]) -> None:
@@ -78,14 +137,26 @@ def _rollback(context, page, snapshot: dict[str, object]) -> None:
         _asset_identities(context, page) - before,
         key=lambda item: creation_order.get(item[0], 100),
     )
-    asset_bundle._rollback_instantiated_asset(  # noqa: SLF001
-        context,
-        page,
-        created,
-        snapshot["text_parents"],
-        snapshot["link_json"],
-        snapshot["active_indexes"],
-    )
+    failures: list[BaseException] = []
+    try:
+        asset_bundle._rollback_instantiated_asset(  # noqa: SLF001
+            context,
+            page,
+            created,
+            snapshot["text_parents"],
+            snapshot["link_json"],
+            snapshot["active_indexes"],
+        )
+    except BaseException as exc:  # rollbackは後続掃除を必ず続行する
+        failures.append(exc)
+    try:
+        _rollback_datablocks(snapshot)
+    except BaseException as exc:  # rollbackは全Datablock種別を必ず試行する
+        failures.append(exc)
+    if failures:
+        raise RuntimeError(
+            f"素材生成rollbackの{len(failures)}段階に失敗しました"
+        ) from failures[0]
 
 
 def _persist(context, page) -> None:
@@ -113,11 +184,20 @@ def atomic_asset_instantiation(function):
             ):
                 _persist(context, page)
             return result
-        except BaseException:
-            _rollback(context, page, snapshot)
+        except BaseException as operation_error:
+            try:
+                _rollback(context, page, snapshot)
+            except BaseException as rollback_error:
+                raise AssetInstantiationRollbackError(
+                    operation_error,
+                    rollback_error,
+                ) from rollback_error
             raise
 
     return wrapped
 
 
-__all__ = ["atomic_asset_instantiation"]
+__all__ = [
+    "AssetInstantiationRollbackError",
+    "atomic_asset_instantiation",
+]

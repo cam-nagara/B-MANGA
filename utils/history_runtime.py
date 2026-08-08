@@ -33,13 +33,38 @@ def blocked_error() -> str:
     return _blocked_error
 
 
+def mutation_blocked(context=None) -> bool:
+    """履歴復元中・復元失敗・作品fail-closedなら書込みを拒否する。"""
+
+    if is_restoring() or is_blocked():
+        return True
+    ctx = context or bpy.context
+    work = getattr(getattr(ctx, "scene", None), "bmanga_work", None)
+    return work is not None and not bool(getattr(work, "loaded", False))
+
+
+def _fail_closed(context, error: BaseException | str) -> None:
+    global _restoring, _blocked_error
+    _blocked_error = str(error) or type(error).__name__
+    _restoring = True
+    work = getattr(getattr(context, "scene", None), "bmanga_work", None)
+    try:
+        if work is not None:
+            work.loaded = False
+    except Exception:  # noqa: BLE001
+        _logger.exception("history fail-closed work state could not be recorded")
+
+
 def reset_after_file_load() -> None:
     """別mainfileの厳格hydrate開始時だけ履歴fail-closedを解除する。"""
 
     global _restoring, _relaunch_object_tool, _blocked_error
+    from . import layer_transfer_history
+
     _restoring = False
     _relaunch_object_tool = False
     _blocked_error = ""
+    layer_transfer_history.reset_after_file_load(bpy.context)
 
 
 def begin_restore(*, relaunch_object_tool: bool = False) -> None:
@@ -47,7 +72,8 @@ def begin_restore(*, relaunch_object_tool: bool = False) -> None:
 
     global _restoring, _relaunch_object_tool, _blocked_error
     _restoring = True
-    _blocked_error = ""
+    if _blocked_error:
+        return
     _relaunch_object_tool = _relaunch_object_tool or bool(relaunch_object_tool)
 
 
@@ -75,6 +101,9 @@ def _reconcile_current_state() -> None:
     """復元後の Scene/Work を取り直し、外部ファイルへ書かず実体だけ揃える."""
 
     context = bpy.context
+    from . import layer_transfer_history
+
+    layer_transfer_history.reconcile(context)
     scene = getattr(context, "scene", None)
     work = getattr(scene, "bmanga_work", None) if scene is not None else None
     if scene is None or work is None or not bool(getattr(work, "loaded", False)):
@@ -137,6 +166,10 @@ def schedule_reconcile(*, delay_seconds: float = 0.0) -> None:
     """Undo/Redo post の次イベントループで安全に再同期する."""
 
     global _restoring, _blocked_error
+    if _blocked_error:
+        _restoring = True
+        return
+    context = bpy.context
     attempts = 0
 
     def _tick():
@@ -154,8 +187,7 @@ def schedule_reconcile(*, delay_seconds: float = 0.0) -> None:
             )
             if attempts < _MAX_RECONCILE_ATTEMPTS:
                 return _RECONCILE_RETRY_SECONDS
-            _blocked_error = str(exc) or type(exc).__name__
-            _restoring = True
+            _fail_closed(context, exc)
             _relaunch_object_tool = False
             return None
         _restoring = False
@@ -166,8 +198,7 @@ def schedule_reconcile(*, delay_seconds: float = 0.0) -> None:
 
             lifecycle_coordinator.finish_history_restore()
         except Exception:  # noqa: BLE001
-            _blocked_error = "履歴復元の完了状態を確認できませんでした"
-            _restoring = True
+            _fail_closed(context, "履歴復元の完了状態を確認できませんでした")
             _logger.exception("history lifecycle completion failed")
             return None
         if relaunch:
@@ -190,6 +221,5 @@ def schedule_reconcile(*, delay_seconds: float = 0.0) -> None:
             first_interval=max(0.0, float(delay_seconds)),
         )
     except Exception as exc:  # noqa: BLE001
-        _restoring = True
-        _blocked_error = str(exc) or type(exc).__name__
+        _fail_closed(context, exc)
         _logger.exception("history reconcile scheduling failed")

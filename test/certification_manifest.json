@@ -4853,7 +4853,7 @@
       "review": "",
       "run_order": 100,
       "source": "test/blender_layer_folder_check.py",
-      "source_sha256": "ebdcf0ee2bb1dfe61d71bc02b2e0759d49060f80a5fdcad399c8a2b9ebb59072",
+      "source_sha256": "4d6e699cce4465944aaf0f348d541b645e0d8c4b6de333e31e23b3a366fbc743",
       "test_id": "test:test.blender.layer.folder.check",
       "timeout_seconds": 180
     },
@@ -6475,19 +6475,19 @@
       "completion_token": "BMANGA_PHASE5_LAYER_COMMAND_OK",
       "expected_tracebacks": [
         {
-          "count": 5,
+          "count": 6,
           "pattern": "^RuntimeError: phase5 injected command failure$"
         }
       ],
       "mode": "blender_wrapper",
       "phase0_category": "new",
       "product": "bmanga",
-      "reason": "通常レイヤーの新規作成・複製とラスターの新規作成・複製・削除でDomain Command失敗を注入し、正式状態・Native実体・PNG・保存基準が完全rollbackされ、無関係な外部PNGを削除しないことを検証するPhase 5負系テスト",
+      "reason": "通常レイヤーの新規作成・複製、画像パスの実Object複製、ラスターの新規作成・複製・削除でDomain Command失敗を注入し、正式状態・余剰を含む実Object・PNG・保存基準が完全rollbackされ、無関係な外部PNGを削除しないことを検証するPhase 5負系テスト",
       "required": true,
       "review": "phase5-layer-command-file-atomicity-audit-2026-08-02",
       "run_order": 100,
       "source": "test/blender_phase5_layer_command_check.py",
-      "source_sha256": "b4a1da223c0058b0cacb307fbd4b75d16e6c55ff105f9a76739295af5af04725",
+      "source_sha256": "7a186978b6be1544aa4f5e066fc9f1207ebf9b63eee333bfb15a2da12bcae8f7",
       "test_id": "test:test.blender.phase5.layer.command.check",
       "timeout_seconds": 180
     },
@@ -8215,7 +8215,7 @@
       "review": "",
       "run_order": 100,
       "source": "test/test_layer_commands.py",
-      "source_sha256": "f592e463835199c23f85f0a6a04fb0cdde56e479aff3bf51d759d684bf16f97f",
+      "source_sha256": "c269ff69e3ecfcd28b9e19198602d37b937c695e027e04c6981f1231bf3a2848",
       "test_id": "test:test.test.layer.commands",
       "timeout_seconds": 180
     },

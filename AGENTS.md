@@ -44,6 +44,8 @@
 
 ### 2.1 完了済みの大型移行
 
+- **(本体安定化Phase R1完了 / 2026-08-08 Codex, B-MANGA Next v0.6.605)** 未完了だったレイヤー操作差分を監査・縮小し、作成、複製、削除、リンク、順序、親変更、Alt+D&D、ページ間移送、Undo／Redoを一回のDomain Command境界へ統一した。通常複製／削除は選択中の1件、フォルダ削除は子を維持する既存UI契約を固定し、失敗時はPropertyGroup、Domain、native実体、余剰を含む実Object、ラスターPNG、保存基準を完全rollbackする。復旧失敗は保存禁止のfail-closedへ移る。対象Blender回帰とUI認定は全緑、独立レビュー重大0・高0、Render／Liner差分0。通常版は未配備。計画: [`docs/bmanga_core_stabilization_plan_2026-08-08.md`](docs/bmanga_core_stabilization_plan_2026-08-08.md)
+
 - **(Phase 4完了 / 2026-08-02 Codex, B-MANGA Next v0.6.604)** 全体リファクタリングのLifecycle統合。作品／ページ／コマの保存・読込・失敗復元、Undo／Redo、遅延処理を状態機械と世代付きSchedulerへ集約した。保存前は差分収集済みObjectだけをDomainへ反映し、レイヤー一覧等の派生cacheを非保存化した。作品→ページ→コマ→ページ→作品、全phase障害注入、旧timer失効、80ページ一覧の詳細非読込、未保存ラスターのプロセスクラッシュ復元、外部ファイルを消さない新規作品rollbackをBlender 5.2 LTSで検証した。統一認定469/469・必須436/436、独立最終レビュー重大0・高0で合格。計画: [`docs/bmanga_full_refactoring_plan_2026-07-28.md`](docs/bmanga_full_refactoring_plan_2026-07-28.md)
 
 - **(Phase 3完了 / 2026-07-31 Codex, B-MANGA Next v0.6.603 / Render Next v0.1.39 / Liner Next v0.3.203)** 作品正本を新Domainへ統一。`project.json`、`pages/<page_uid>/page.json`、`comas/<coma_uid>/scene.blend`と安定UID／tree／link graphを採用し、PropertyGroupは一方向UI投影とした。Command／Event／Store／Repository／write-ahead journal、hash競合検知、起動時recoveryを導入し、旧形式変換・migration Operator・5.1以前のAPI分岐を削除した。必須429/429、current source hash欠落0、独立最終レビュー重大0・高0で合格。計画: [`docs/bmanga_full_refactoring_plan_2026-07-28.md`](docs/bmanga_full_refactoring_plan_2026-07-28.md)

@@ -211,10 +211,13 @@ def shortcut_file_scope_allowed(context=None) -> bool:
     try:
         from ..core.mode import MODE_PAGE, get_mode
         from ..core.work import get_work
+        from . import history_runtime
 
         if current_blend_is_coma_blend():
             return False
         ctx = context or bpy.context
+        if history_runtime.mutation_blocked(ctx):
+            return False
         work = get_work(ctx)
         if work is None or not bool(getattr(work, "loaded", False)):
             return False

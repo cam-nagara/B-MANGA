@@ -5,7 +5,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from ..core.work import get_work
+from . import log
 from .layer_hierarchy import OUTSIDE_STACK_KEY, outside_child_key, page_stack_key, split_child_key
+
+_logger = log.get_logger(__name__)
 
 LAYER_FOLDER_KIND = "layer_folder"
 FOLDER_CHILD_KINDS = {
@@ -308,11 +311,20 @@ def assign_item_to_folder(context, item, destination_folder_key: str) -> bool:
     try:
         from . import layer_stack_dnd
 
-        if current_parent != semantic_parent and layer_stack_dnd.is_semantic_parent_key(context, semantic_parent):
+        if current_parent != semantic_parent:
+            if not layer_stack_dnd.is_semantic_parent_key(context, semantic_parent):
+                set_item_folder_key(context, item, old_folder_key)
+                return False
             if not layer_stack_dnd.apply_semantic_parent_drop(context, item, semantic_parent):
                 set_item_folder_key(context, item, old_folder_key)
                 return False
     except Exception:  # noqa: BLE001
+        _logger.exception(
+            "folder assignment parent transfer failed: kind=%s key=%s destination=%s",
+            kind,
+            str(getattr(item, "key", "") or ""),
+            destination_folder_key,
+        )
         set_item_folder_key(context, item, old_folder_key)
         return False
     return True

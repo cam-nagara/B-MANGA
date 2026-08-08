@@ -20,11 +20,9 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from typing import Optional
 
 import bpy
-from bpy_extras.view3d_utils import region_2d_to_location_3d
 
 from . import gp_layer_parenting as gp_parent
 from . import layer_stack as layer_stack_utils
@@ -33,189 +31,20 @@ from .layer_hierarchy import (
     COMA_KIND,
     OUTSIDE_STACK_KEY,
     PAGE_KIND,
-    coma_containing_point,
-    coma_polygon,
     coma_stack_key,
-    outside_child_key,
     page_stack_key,
-    point_in_polygon,
     split_child_key,
+)
+from .layer_reparent_target import (
+    ClickTarget,
+    current_parent_key,
+    find_click_target,
+    find_target_for_drop,
+    parent_key_for_target,
+    shallower_target_for_item,
 )
 
 _logger = log.get_logger(__name__)
-
-
-# ---------- データクラス ----------
-
-
-@dataclass(frozen=True)
-class ClickTarget:
-    """カーソル位置から解決した「reparent ターゲット候補」.
-
-    kind: "coma" | "page" | "outside"
-        outside はフェーズ B 用 (page も含まない work 直下)
-    page: 対象ページ (kind == "outside" のとき None)
-    panel: 対象コマ (kind == "coma" のときのみ非 None)
-    page_index: ページのインデックス (kind == "outside" のとき -1)
-    world_xy_mm: ワールド座標 (mm)
-    local_xy_mm: ページローカル座標 (kind が "outside" のとき None)
-    """
-
-    kind: str
-    page: Optional[object]
-    panel: Optional[object]
-    page_index: int
-    world_xy_mm: Optional[tuple[float, float]]
-    local_xy_mm: Optional[tuple[float, float]]
-
-
-# ---------- 内部ヘルパ ----------
-
-
-def _world_xy_mm_from_event(context, event) -> Optional[tuple[float, float]]:
-    """event から世界座標 mm を返す (View3D 領域外なら None)."""
-    from ..operators import view_event_region
-    from . import geom
-
-    view = view_event_region.view3d_window_under_event(context, event)
-    if view is None:
-        return None
-    _area, region, rv3d, mx, my = view
-    loc = region_2d_to_location_3d(region, rv3d, (mx, my), (0.0, 0.0, 0.0))
-    if loc is None:
-        return None
-    return (geom.m_to_mm(loc.x), geom.m_to_mm(loc.y))
-
-
-def _resolve_local_xy_mm(context, world_x_mm: float, world_y_mm: float):
-    """world (mm) → (page_index, page, local_x_mm, local_y_mm).
-
-    ヒットしないときは (-1, None, None, None).
-    """
-    from ..core.work import get_work
-    from . import page_grid
-
-    work = get_work(context)
-    if work is None or not getattr(work, "loaded", False):
-        return -1, None, None, None
-    scene = context.scene
-    page_idx = page_grid.page_index_at_world_mm(work, scene, world_x_mm, world_y_mm)
-    if page_idx is None or not (0 <= page_idx < len(work.pages)):
-        return -1, None, None, None
-    page = work.pages[page_idx]
-    ox, oy = page_grid.page_total_offset_mm(work, scene, page_idx)
-    return page_idx, page, world_x_mm - ox, world_y_mm - oy
-
-
-# ---------- 公開関数: ターゲット解決 ----------
-
-
-def find_click_target(context, event) -> ClickTarget:
-    """event の位置から「最深のコンテナ候補」を返す.
-
-    最深 = まずコマを探し、無ければページ。どのページにも乗っていなければ
-    kind="outside" (フェーズ A では未対応扱い)。
-    """
-    world = _world_xy_mm_from_event(context, event)
-    if world is None:
-        return ClickTarget("outside", None, None, -1, None, None)
-    wx, wy = world
-    page_index, page, lx, ly = _resolve_local_xy_mm(context, wx, wy)
-    if page is None or lx is None or ly is None:
-        return ClickTarget("outside", None, None, -1, world, None)
-    panel = coma_containing_point(page, lx, ly)
-    if panel is not None:
-        return ClickTarget("coma", page, panel, page_index, world, (lx, ly))
-    return ClickTarget("page", page, None, page_index, world, (lx, ly))
-
-
-def find_target_for_drop(context, event) -> ClickTarget:
-    """Alt+ドラッグのドロップ位置から、置きたい親候補を返す.
-
-    ページファイル上のプレビューサムネイルも有効なドロップ先として扱う。
-    """
-    target = find_click_target(context, event)
-    if target.kind != "outside":
-        return target
-    from . import page_file_scene, page_preview_object
-
-    role, _cur_page_id, _ = page_file_scene.current_role(context)
-    if role != page_file_scene.ROLE_PAGE:
-        return target
-    world = _world_xy_mm_from_event(context, event)
-    if world is None:
-        return target
-    from ..core.work import get_work
-
-    work = get_work(context)
-    scene = getattr(context, "scene", None)
-    if work is None or scene is None:
-        return target
-    preview_idx = page_preview_object.page_index_at_world_mm(
-        scene, work, world[0], world[1]
-    )
-    if preview_idx is None or not (0 <= preview_idx < len(work.pages)):
-        return target
-    page = work.pages[preview_idx]
-    from . import page_grid
-
-    ox, oy = page_grid.page_total_offset_mm(work, scene, preview_idx)
-    local = (float(world[0]) - ox, float(world[1]) - oy)
-    panel = coma_containing_point(page, local[0], local[1])
-    if panel is not None:
-        return ClickTarget("coma", page, panel, preview_idx, world, local)
-    return ClickTarget("page", page, None, preview_idx, world, local)
-
-
-# ---------- 公開関数: 親キー解決 ----------
-
-
-def parent_key_for_target(target: ClickTarget) -> str:
-    """ClickTarget を ``parent_key`` 文字列に変換する.
-
-    - kind="coma" → ``"<page_id>:<coma_id>"``
-    - kind="page" → ``"<page_id>"``
-    - kind="outside" → ``""`` (実データでは parent_kind="none")
-    """
-    if target.kind == "coma" and target.page is not None and target.panel is not None:
-        return coma_stack_key(target.page, target.panel)
-    if target.kind == "coma" and target.page is None and target.panel is not None:
-        stem = str(getattr(target.panel, "coma_id", "") or getattr(target.panel, "id", "") or "")
-        return outside_child_key(stem)
-    if target.kind == "page" and target.page is not None:
-        return page_stack_key(target.page)
-    return ""
-
-
-def current_parent_key(item) -> str:
-    """layer_stack item の現在の親キーを返す."""
-    return str(getattr(item, "parent_key", "") or "")
-
-
-def shallower_target_for_item(context, item, click_target: ClickTarget) -> Optional[ClickTarget]:
-    """item から見て 1 段浅い親候補を返す.
-
-    - item が coma 配下 → そのページが親 (= page-level に昇格)
-    - item が page 直下 → "outside"
-    - item の親が "outside" → さらに浅い親なし → None
-    """
-    parent_key = current_parent_key(item)
-    if not parent_key or parent_key == OUTSIDE_STACK_KEY:
-        return None
-    page_id, child_id = split_child_key(parent_key)
-    if child_id:
-        # コマ直下 → ページに昇格
-        from ..core.work import get_work
-
-        work = get_work(context)
-        if work is None:
-            return None
-        for i, page in enumerate(work.pages):
-            if page_stack_key(page) == page_id:
-                return ClickTarget("page", page, None, i, click_target.world_xy_mm, click_target.local_xy_mm)
-        return None
-    # ページ直下 → 上は "outside" (Phase B 範囲)
-    return ClickTarget("outside", None, None, -1, click_target.world_xy_mm, click_target.local_xy_mm)
 
 
 # ---------- 公開関数: reparent 実行 ----------
@@ -295,47 +124,52 @@ def reparent_selected(
 
     アクティブ行 + ``selected`` フラグが立っている行を対象。
     """
-    scene = getattr(context, "scene", None)
-    stack = getattr(scene, "bmanga_layer_stack", None) if scene is not None else None
-    if stack is None:
-        return 0
-    selected_uids: list[str] = []
-    active_idx = int(getattr(scene, "bmanga_active_layer_stack_index", -1))
-    for i, item in enumerate(stack):
-        if i == active_idx or layer_stack_utils.is_item_selected(context, item):
-            selected_uids.append(layer_stack_utils.stack_item_uid(item))
-    if not selected_uids:
-        return 0
-    changed = 0
-    for uid in selected_uids:
-        # stack の参照が並び替えで変わる可能性があるので毎回再解決
-        for item in (getattr(scene, "bmanga_layer_stack", None) or []):
-            if layer_stack_utils.stack_item_uid(item) == uid:
-                if reparent_stack_item(
-                    context,
-                    item,
-                    target=target,
-                    new_world_xy_mm=new_world_xy_mm,
-                ):
-                    changed += 1
-                break
-    if changed:
-        layer_stack_utils.apply_stack_order(context)
-        layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
-        layer_stack_utils.tag_view3d_redraw(context)
-        # Phase 1: reparent 完了時に Outliner mirror も最新化する。
-        # mirror は冪等なので連続呼出でも安全。
-        try:
-            from . import layer_object_sync as _los
-            from ..core.work import get_work
+    from . import layer_command_runtime, layer_transfer_group
 
-            scene = getattr(context, "scene", None)
-            work = get_work(context)
-            if scene is not None and work is not None:
-                _los.mirror_work_to_outliner(scene, work)
-        except Exception:  # noqa: BLE001
-            pass
-    return changed
+    group = layer_transfer_group.build_transfer_group(
+        context,
+        require_anchor_world=False,
+    )
+    if group is None:
+        return 0
+    roots = layer_command_runtime.execution_roots(context, group.items)
+    root_uids = tuple(layer_stack_utils.stack_item_uid(item) for item in roots)
+
+    def _mutate() -> int:
+        changed = 0
+        for uid in root_uids:
+            item = next(
+                (
+                    candidate
+                    for candidate in getattr(context.scene, "bmanga_layer_stack", ())
+                    if layer_stack_utils.stack_item_uid(candidate) == uid
+                ),
+                None,
+            )
+            if item is None:
+                raise RuntimeError(f"layer command target disappeared: {uid}")
+            if reparent_stack_item(
+                context,
+                item,
+                target=target,
+                new_world_xy_mm=new_world_xy_mm,
+            ):
+                changed += 1
+        if changed:
+            layer_stack_utils.apply_stack_order(context)
+            layer_stack_utils.sync_layer_stack(
+                context,
+                preserve_active_index=True,
+            )
+            layer_stack_utils.tag_view3d_redraw(context)
+        return changed
+
+    return layer_command_runtime.execute(
+        context,
+        items=group.items,
+        operation="reparent",
+        mutate=_mutate,
+    )
 
 
 # ---------- 個別 reparent (private) ----------

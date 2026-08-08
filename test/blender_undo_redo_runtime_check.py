@@ -35,6 +35,7 @@ TEXT_ORIGINAL_X = 70.0
 DELTA_X = 0.01
 _addon = None
 _artifact_baseline: dict[str, int] = {}
+_transfer_state: dict[str, object] = {}
 _stage = "setup"
 
 
@@ -236,6 +237,110 @@ def _commit_return_to_origin() -> None:
     _run_in_view3d(_drag)
 
 
+def _setup_cross_page_transfer() -> None:
+    global _transfer_state
+
+    assert bpy.ops.bmanga.page_add("EXEC_DEFAULT") == {"FINISHED"}
+
+    def _transfer(context):
+        from bmanga_dev_undo_runtime.utils import (
+            layer_stack,
+            layer_transfer_group,
+            page_grid,
+            paths,
+            undo_transaction,
+        )
+        from bmanga_dev_undo_runtime.utils.layer_reparent import ClickTarget
+
+        work, page, balloon, _text = _find_entries()
+        assert len(work.pages) == 2
+        target = work.pages[1]
+        stack = layer_stack.sync_layer_stack(context, preserve_active_index=True)
+        balloon_uid = layer_stack.target_uid(
+            "balloon",
+            f"{page.id}:{balloon.id}",
+        )
+        layer_stack.clear_all_selection(context)
+        index = next(
+            index
+            for index, item in enumerate(stack)
+            if layer_stack.stack_item_uid(item) == balloon_uid
+        )
+        assert layer_stack.select_stack_index(context, index)
+        target_index = 1
+        offset = page_grid.page_total_offset_mm(
+            work,
+            context.scene,
+            target_index,
+        )
+        drop = (offset[0] + 105.0, offset[1] + 140.0)
+        click_target = ClickTarget(
+            "page",
+            target,
+            None,
+            target_index,
+            drop,
+            (105.0, 140.0),
+        )
+        changed = layer_transfer_group.transfer_group_to_page(
+            context,
+            click_target,
+            drop_world_xy_mm=drop,
+        )
+        assert changed == 2, changed
+        assert undo_transaction.push_undo(
+            "B-MANGA: Phase5 cross-page transfer",
+        )
+        _transfer_state.clear()
+        _transfer_state.update({
+            "work_dir": Path(work.work_dir),
+            "source_page_id": str(page.id),
+            "target_page_id": str(target.id),
+            "source_page_path": paths.page_meta_path(
+                Path(work.work_dir),
+                str(page.id),
+            ),
+            "stage_path": layer_transfer_group.cross_page_stage.staged_path(
+                Path(work.work_dir),
+                str(target.id),
+            ),
+        })
+        _assert_transfer_files(applied=True)
+
+    _run_in_view3d(_transfer)
+
+
+def _assert_transfer_files(*, applied: bool) -> None:
+    from bmanga_dev_undo_runtime.utils import cross_page_stage, history_runtime
+
+    page_data = json.loads(
+        Path(_transfer_state["source_page_path"]).read_text(encoding="utf-8")
+    )
+    nodes = page_data["tree"]["nodes"].values()
+    source_present = {
+        (node.get("kind"), node.get("displayId"))
+        for node in nodes
+    }
+    expected = {
+        ("balloon", BALLOON_ID),
+        ("text", TEXT_ID),
+    }
+    stage_path = Path(_transfer_state["stage_path"])
+    stage = cross_page_stage._read(stage_path)
+    ready = any(
+        isinstance(entry, dict)
+        and str(entry.get("state", "") or "") == "ready"
+        for entry in stage.get(cross_page_stage.ASSET_ENTRIES_KEY, ())
+    )
+    if applied:
+        assert not (source_present & expected), source_present
+        assert ready
+    else:
+        assert expected <= source_present, source_present
+        assert not ready
+    assert not history_runtime.is_blocked(), history_runtime.blocked_error()
+
+
 def _tick():
     global _stage, _artifact_baseline
     try:
@@ -268,12 +373,36 @@ def _tick():
             _assert_page_state(0.0, check_domain=True)
             work, _page, _balloon, _text = _find_entries()
             assert _artifact_mtimes(Path(work.work_dir)) == _artifact_baseline
+            _setup_cross_page_transfer()
+            _stage = "transfer_undo"
+            return 0.15
+        if _stage == "transfer_undo":
+            assert _run_history_operator(bpy.ops.ed.undo) == {"FINISHED"}
+            _stage = "check_transfer_undo"
+            return 0.5
+        if _stage == "check_transfer_undo":
+            _assert_transfer_files(applied=False)
+            _assert_page_state(0.0, check_domain=True)
+            assert _run_history_operator(bpy.ops.ed.redo) == {"FINISHED"}
+            _stage = "check_transfer_redo"
+            return 0.5
+        if _stage == "check_transfer_redo":
+            _assert_transfer_files(applied=True)
+            work = bpy.context.scene.bmanga_work
+            source = next(
+                page
+                for page in work.pages
+                if page.id == _transfer_state["source_page_id"]
+            )
+            assert not any(entry.id == BALLOON_ID for entry in source.balloons)
+            assert not any(entry.id == TEXT_ID for entry in source.texts)
             _stage = "done"
             _write_status(
                 True,
                 micro_delta_mm=DELTA_X,
                 filepath=bpy.data.filepath,
                 artifacts_checked=sorted(_artifact_baseline),
+                cross_page_undo_redo=True,
             )
             print("BMANGA_UNDO_REDO_RUNTIME_OK")
             bpy.ops.wm.quit_blender()
@@ -316,6 +445,7 @@ def main() -> None:
         text.height_mm = 20.0
         text.parent_kind = "page"
         text.parent_key = str(page.id)
+        text.parent_balloon_id = entry.id
         assert bpy.ops.bmanga.work_save() == {"FINISHED"}
         from bmanga_dev_undo_runtime.io import blend_io
 

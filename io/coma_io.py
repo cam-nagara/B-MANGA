@@ -20,6 +20,14 @@ from .save_baseline import record_successful_tree_change
 _logger = log.get_logger(__name__)
 
 
+class ComaFileMoveError(RuntimeError):
+    """コマ実体の移動後に後処理が失敗したことを呼び出し元へ伝える。"""
+
+    def __init__(self, message: str, *, moved_to_destination: bool) -> None:
+        super().__init__(message)
+        self.moved_to_destination = bool(moved_to_destination)
+
+
 # ---------- 採番 ----------
 
 
@@ -153,10 +161,19 @@ def move_coma_files(
         if dst_dir.exists():
             raise FileExistsError(f"destination already exists: {dst_dir}")
         dst_dir.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(src_dir), str(dst_dir))
-        moved = _rename_coma_artifacts(dst_dir, src_coma_id, dst_coma_id)
-        moved.append(dst_dir)
-        record_successful_tree_change(src_dir, dst_dir)
+        try:
+            shutil.move(str(src_dir), str(dst_dir))
+            moved = _rename_coma_artifacts(dst_dir, src_coma_id, dst_coma_id)
+            moved.append(dst_dir)
+            record_successful_tree_change(src_dir, dst_dir)
+        except Exception as exc:
+            moved_to_destination = dst_dir.is_dir() and not src_dir.exists()
+            if not moved_to_destination:
+                raise
+            raise ComaFileMoveError(
+                "コマ実体の移動後に記録処理が失敗しました",
+                moved_to_destination=True,
+            ) from exc
     _logger.info(
         "coma moved: %s/%s -> %s/%s (%d paths)",
         src_page_id, src_coma_id, dst_page_id, dst_coma_id, len(moved),

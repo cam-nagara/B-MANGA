@@ -683,6 +683,7 @@ def _mirror_image_text_objects(scene, work, page_filter: set[str] | None = None)
         from . import image_path_object as ipo
         from . import image_real_object as iro
         from . import text_real_object as tro
+        from ..operators import raster_layer_op
 
         # 旧 Plane 方式の Object/Mesh/Material/Image を掃除 (Empty 化移行)
         try:
@@ -736,6 +737,18 @@ def _mirror_image_text_objects(scene, work, page_filter: set[str] | None = None)
                 page = fro.page_for_entry(scene, work, entry)
                 fro.ensure_fill_real_object(scene=scene, entry=entry, page=page)
             fro.cleanup_orphan_fill_objects(scene)
+
+        # Rasterは通常の全件ensure関数がレイヤー一覧同期を再入させるため、
+        # mirror境界では対象entryだけを直接ensureして孤児を除去する。
+        for entry in getattr(scene, "bmanga_raster_layers", []) or []:
+            if not _entry_in_page_filter(entry, work, page_filter):
+                continue
+            raster_layer_op.ensure_raster_plane(
+                bpy.context,
+                entry,
+                mark_missing=True,
+            )
+        raster_layer_op.cleanup_orphan_raster_runtime(bpy.context)
     except Exception:  # noqa: BLE001
         _logger.exception("mirror image/text/fill/image path objects failed")
 
@@ -745,6 +758,9 @@ def _saved_runtime_objects_look_current(
     work,
     page_filter: set[str] | None = None,
     coma_page_filter: set[str] | None = None,
+    *,
+    exact: bool = False,
+    mismatches: list[str] | None = None,
 ) -> bool:
     """保存済み実体が揃っているなら、読み込み直後の全件再生成を省く."""
     if scene is None or work is None:
@@ -844,30 +860,64 @@ def _saved_runtime_objects_look_current(
                 expected_comas.add(owner_id)
                 border = getattr(coma, "border", None)
                 _track_expected_border(owner_id, border)
-    if expected_comas and not expected_comas.issubset(plane_owners):
+    def _ids_match(expected: set[str], actual: set[str]) -> bool:
+        return expected == actual if exact else expected.issubset(actual)
+
+    def _record_ids(label: str, expected: set[str], actual: set[str]) -> None:
+        if mismatches is None:
+            return
+        missing = sorted(expected - actual)
+        extra = sorted(actual - expected) if exact else []
+        mismatches.append(f"{label}: missing={missing} extra={extra}")
+
+    if not _ids_match(expected_comas, plane_owners):
+        _record_ids("coma planes", expected_comas, plane_owners)
         return False
-    if expected_borders and not expected_borders.issubset(border_owners):
+    if not _ids_match(expected_borders, border_owners):
+        _record_ids("coma borders", expected_borders, border_owners)
         return False
     if expected_brush_borders and expected_brush_borders.intersection(border_owners):
+        if mismatches is not None:
+            mismatches.append("brush coma has an unexpected border object")
         return False
     for owner_id in expected_brush_soft_masks:
         plane_obj = plane_objects_by_owner.get(owner_id)
         mesh = getattr(plane_obj, "data", None)
         attrs = getattr(mesh, "attributes", None)
         if attrs is None or attrs.get(_cp.COMA_PLANE_SOFT_MASK_ATTR) is None:
+            if mismatches is not None:
+                mismatches.append(f"coma soft mask is missing: {owner_id}")
             return False
-    if expected_balloons and not expected_balloons.issubset(object_ids_by_kind.get("balloon", set())):
+    if not _ids_match(
+        expected_balloons,
+        object_ids_by_kind.get("balloon", set()),
+    ):
+        _record_ids(
+            "balloons",
+            expected_balloons,
+            object_ids_by_kind.get("balloon", set()),
+        )
         return False
-    if expected_texts and not expected_texts.issubset(object_ids_by_kind.get("text", set())):
+    if not _ids_match(
+        expected_texts,
+        object_ids_by_kind.get("text", set()),
+    ):
+        _record_ids(
+            "texts",
+            expected_texts,
+            object_ids_by_kind.get("text", set()),
+        )
         return False
     for full_id, entry in expected_text_entries:
         if not _tro.text_real_object_geometry_looks_current(
             objects_by_kind_id.get(("text", full_id)),
             entry,
         ):
+            if mismatches is not None:
+                mismatches.append(f"text geometry differs: {full_id}")
             return False
 
-    if page_filter is None or page_filter:
+    if exact or page_filter is None or page_filter:
         scene_raster_layers = getattr(scene, "bmanga_raster_layers", None)
         expected_rasters = {
             str(getattr(entry, "id", "") or "")
@@ -875,7 +925,15 @@ def _saved_runtime_objects_look_current(
             if str(getattr(entry, "id", "") or "")
             and _entry_in_page_filter(entry, work, page_filter)
         }
-        if expected_rasters and not expected_rasters.issubset(object_ids_by_kind.get("raster", set())):
+        if not _ids_match(
+            expected_rasters,
+            object_ids_by_kind.get("raster", set()),
+        ):
+            _record_ids(
+                "rasters",
+                expected_rasters,
+                object_ids_by_kind.get("raster", set()),
+            )
             return False
         scene_image_layers = getattr(scene, "bmanga_image_layers", None)
         expected_images = {
@@ -884,7 +942,15 @@ def _saved_runtime_objects_look_current(
             if str(getattr(entry, "id", "") or "")
             and _entry_in_page_filter(entry, work, page_filter)
         }
-        if expected_images and not expected_images.issubset(object_ids_by_kind.get("image", set())):
+        if not _ids_match(
+            expected_images,
+            object_ids_by_kind.get("image", set()),
+        ):
+            _record_ids(
+                "images",
+                expected_images,
+                object_ids_by_kind.get("image", set()),
+            )
             return False
         scene_image_path_layers = getattr(scene, "bmanga_image_path_layers", None)
         expected_image_paths = {
@@ -893,7 +959,15 @@ def _saved_runtime_objects_look_current(
             if str(getattr(entry, "id", "") or "")
             and _entry_in_page_filter(entry, work, page_filter)
         }
-        if expected_image_paths and not expected_image_paths.issubset(object_ids_by_kind.get("image_path", set())):
+        if not _ids_match(
+            expected_image_paths,
+            object_ids_by_kind.get("image_path", set()),
+        ):
+            _record_ids(
+                "image paths",
+                expected_image_paths,
+                object_ids_by_kind.get("image_path", set()),
+            )
             return False
         scene_fill_layers = getattr(scene, "bmanga_fill_layers", None)
         expected_fills = {
@@ -902,9 +976,43 @@ def _saved_runtime_objects_look_current(
             if str(getattr(entry, "id", "") or "")
             and _entry_in_page_filter(entry, work, page_filter)
         }
-        if expected_fills and not expected_fills.issubset(object_ids_by_kind.get("fill", set())):
+        if not _ids_match(
+            expected_fills,
+            object_ids_by_kind.get("fill", set()),
+        ):
+            _record_ids(
+                "fills",
+                expected_fills,
+                object_ids_by_kind.get("fill", set()),
+            )
             return False
     return True
+
+
+def assert_runtime_objects_current(scene: bpy.types.Scene, work) -> None:
+    """正式投影に必要な実Objectがすべて復元済みであることを保証する。
+
+    通常mirrorは個別要素の生成失敗をログへ残して後続要素の同期を続ける。
+    rollback境界では部分復元を成功扱いにできないため、mirror後に同じ完全性
+    判定を再実行し、不足が1件でもあれば呼出元をfail-closedへ進める。
+    """
+
+    structure_page_filter, content_page_filter = _page_filter_for_scene(scene)
+    coma_runtime_page_filter = _coma_runtime_page_filter_for_scene(scene)
+    structure_work = _work_for_page_filter(work, structure_page_filter)
+    mismatches: list[str] = []
+    if not _saved_runtime_objects_look_current(
+        scene,
+        structure_work,
+        content_page_filter,
+        coma_runtime_page_filter,
+        exact=True,
+        mismatches=mismatches,
+    ):
+        raise RuntimeError(
+            "layer rollback runtime objects differ from the formal projection: "
+            + "; ".join(mismatches or ("unknown mismatch",))
+        )
 
 
 def mirror_work_to_outliner(
@@ -913,6 +1021,7 @@ def mirror_work_to_outliner(
     *,
     allow_object_writeback: bool = True,
     sync_work_previews: bool = True,
+    require_exact_runtime_objects: bool = False,
 ) -> None:
     """``work`` の page/coma/folder 配列から Collection 階層を生成・整合.
 
@@ -975,6 +1084,7 @@ def mirror_work_to_outliner(
         structure_work,
         content_page_filter,
         coma_runtime_page_filter,
+        exact=require_exact_runtime_objects,
     ):
         try:
             from . import page_file_scene

@@ -157,6 +157,9 @@ def _finalize_page_scene(context, work, page_id: str) -> bool:
         )
         if restored > 0:
             _logger.info("page file: restored %d staged layers", restored)
+    except cross_page_transfer.StagedImportRollbackError:
+        _logger.exception("page file: staged layer rollback failed")
+        return False
     except Exception:  # noqa: BLE001
         _logger.exception("page file: staged layer restore failed")
     try:

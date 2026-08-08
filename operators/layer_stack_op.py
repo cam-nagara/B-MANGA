@@ -300,6 +300,14 @@ def _place_new_item(context, new_uid: str, anchor_uid: str) -> bool:
             return True
     return False
 
+def _stack_uid_set(context) -> set[str]:
+    stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
+    return {
+        layer_stack_utils.stack_item_uid(item)
+        for item in stack or ()
+        if layer_stack_utils.stack_item_uid(item)
+    }
+
 def _unique_name(existing: set[str], base: str) -> str:
     if base not in existing:
         return base
@@ -318,30 +326,6 @@ def _unique_shared_id(coll, prefix: str) -> str:
         if candidate not in used:
             return candidate
         i += 1
-
-def _image_entry_snapshot(src) -> dict[str, object]:
-    snapshot: dict[str, object] = {}
-    for attr in (
-        "title", "filepath", "x_mm", "y_mm", "width_mm", "height_mm",
-        "rotation_deg", "flip_x", "flip_y", "visible", "locked", "opacity",
-        "blend_mode", "brightness", "contrast", "binarize_enabled",
-        "binarize_threshold", "tint_color", "parent_kind", "parent_key", "folder_key",
-    ):
-        try:
-            value = getattr(src, attr)
-            if attr == "tint_color":
-                value = tuple(value)
-            snapshot[attr] = value
-        except Exception:  # noqa: BLE001
-            pass
-    return snapshot
-
-def _apply_image_entry_snapshot(snapshot: dict[str, object], dst) -> None:
-    for attr, value in snapshot.items():
-        try:
-            setattr(dst, attr, value)
-        except Exception:  # noqa: BLE001
-            pass
 
 def _active_row_in_visible_subtree(stack, active_index: int, parent_index: int) -> bool:
     if active_index <= parent_index or not (0 <= active_index < len(stack)):
@@ -720,6 +704,25 @@ class BMANGA_OT_layer_stack_add(Operator, ImportHelper):
 
     def execute(self, context):
         anchor_uid = self.anchor_uid or _placement_anchor_uid(context, self.kind)
+        if self.kind in {PAGE_KIND, COMA_KIND}:
+            return self._execute_add(context, anchor_uid)
+        from ..utils import layer_stack_command_runtime
+
+        def mutate():
+            return int(self._execute_add(context, anchor_uid) == {"FINISHED"})
+
+        changed = layer_stack_command_runtime.execute(
+            context,
+            items=(),
+            operation="create",
+            mutate=mutate,
+            tracks_raster_files=self.kind == "raster",
+        )
+        if changed <= 0:
+            return {"CANCELLED"}
+        return {"FINISHED"}
+
+    def _execute_add(self, context, anchor_uid: str):
         try:
             new_uid = self._add_by_kind(context, anchor_uid)
         except Exception as exc:  # noqa: BLE001
@@ -1142,15 +1145,49 @@ class BMANGA_OT_layer_stack_duplicate(Operator):
         idx = int(getattr(context.scene, "bmanga_active_layer_stack_index", -1))
         if stack is None or not (0 <= idx < len(stack)):
             return {"CANCELLED"}
-        anchor_uid = layer_stack_utils.stack_item_uid(stack[idx])
-        before = {layer_stack_utils.stack_item_uid(item) for item in stack}
-        if not self._duplicate_item(context, stack[idx]):
+        item = stack[idx]
+        anchor_uid = layer_stack_utils.stack_item_uid(item)
+        before = _stack_uid_set(context)
+        if item.kind in {PAGE_KIND, COMA_KIND}:
+            return (
+                {"FINISHED"}
+                if self._execute_existing_duplicate(context, item, anchor_uid, before)
+                else {"CANCELLED"}
+            )
+        from ..utils import layer_stack_command_runtime
+
+        def mutate():
+            if not self._duplicate_item(context, item):
+                return 0
+            layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
+            new_uid = self._new_uid_after_duplicate(context, before)
+            if not new_uid or new_uid in before:
+                return 0
+            return int(_place_new_item(context, new_uid, anchor_uid))
+
+        changed = layer_stack_command_runtime.execute(
+            context,
+            items=(item,),
+            operation="duplicate",
+            mutate=mutate,
+            tracks_raster_files=item.kind == "raster",
+        )
+        if changed <= 0:
             return {"CANCELLED"}
+        return {"FINISHED"}
+
+    def _execute_existing_duplicate(
+        self,
+        context,
+        item,
+        anchor_uid: str,
+        before: set[str],
+    ) -> bool:
+        if not self._duplicate_item(context, item):
+            return False
         layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
         new_uid = self._new_uid_after_duplicate(context, before)
-        if new_uid:
-            _place_new_item(context, new_uid, anchor_uid)
-        return {"FINISHED"}
+        return not new_uid or _place_new_item(context, new_uid, anchor_uid)
 
     def _new_uid_after_duplicate(self, context, before: set[str]) -> str:
         stack = getattr(context.scene, "bmanga_layer_stack", None)
@@ -1171,193 +1208,9 @@ class BMANGA_OT_layer_stack_duplicate(Operator):
                 return False
             op_name = "page_duplicate" if item.kind == PAGE_KIND else "coma_duplicate"
             return "FINISHED" in getattr(bpy.ops.bmanga, op_name)("EXEC_DEFAULT")
-        if item.kind in {"gp", "effect"}:
-            return self._duplicate_gp_layer(context, item)
-        if item.kind == "layer_folder":
-            return self._duplicate_layer_folder(context, item)
-        if item.kind == "image":
-            return self._duplicate_image(context, item)
-        if item.kind == "raster":
-            from .layer_clipboard_op import duplicate_raster_item
+        from ..utils import layer_stack_duplicate
 
-            return duplicate_raster_item(context, item)
-        if item.kind == "balloon":
-            return self._duplicate_balloon(context, item)
-        if item.kind == "text":
-            return self._duplicate_text(context, item)
-        if item.kind == "fill":
-            return self._duplicate_fill(context, item)
-        return False
-
-    def _duplicate_gp_layer(self, context, item) -> bool:
-        if not layer_stack_utils.select_stack_index(
-            context,
-            int(getattr(context.scene, "bmanga_active_layer_stack_index", -1)),
-        ):
-            return False
-        try:
-            parent_key = str(getattr(item, "parent_key", "") or "")
-            source_obj = None
-            source_layer = None
-            if item.kind == "effect":
-                resolved = layer_stack_utils.resolve_stack_item(context, item)
-                source_obj = resolved.get("object") if resolved is not None else None
-                source_layer = resolved.get("target") if resolved is not None else None
-                from . import effect_line_link_op
-
-                _dest_obj, dest_layer = effect_line_link_op.duplicate_effect_entry(
-                    context,
-                    source_obj,
-                    source_layer,
-                    linked=False,
-                    ui_parent_key=parent_key,
-                )
-                return dest_layer is not None
-            resolved = layer_stack_utils.resolve_stack_item(context, item)
-            source_obj = resolved.get("object") if resolved is not None else None
-            if source_obj is None:
-                return False
-            from ..utils import layer_object_model
-
-            title = _unique_name(
-                {
-                    layer_object_model.display_title(obj)
-                    for obj in layer_object_model.iter_layer_objects("gp")
-                },
-                f"{layer_object_model.display_title(source_obj)} 複製",
-            )
-            duplicate = layer_object_model.duplicate_gp_object(
-                source_obj,
-                bmanga_id=layer_object_model.make_stable_id("gp"),
-                title=title,
-                z_order=layer_object_model.z_index(source_obj) + 1,
-            )
-            if duplicate is None:
-                return False
-            try:
-                context.view_layer.objects.active = duplicate
-                duplicate.select_set(True)
-            except Exception:  # noqa: BLE001
-                pass
-            return True
-        except Exception:  # noqa: BLE001
-            return False
-
-    def _duplicate_layer_folder(self, context, item) -> bool:
-        from ..core.work import get_work
-
-        work = get_work(context)
-        resolved = layer_stack_utils.resolve_stack_item(context, item)
-        src = resolved.get("target") if resolved is not None else None
-        folders = getattr(work, "layer_folders", None) if work is not None else None
-        if src is None or folders is None:
-            return False
-        src_title = str(getattr(src, "title", "") or "フォルダ")
-        src_parent_key = str(getattr(src, "parent_key", "") or OUTSIDE_STACK_KEY)
-        src_expanded = bool(getattr(src, "expanded", True))
-        src_visible = bool(getattr(src, "visible", True))
-        src_locked = bool(getattr(src, "locked", False))
-        existing_titles = {str(getattr(folder, "title", "") or "") for folder in folders}
-        dst = folders.add()
-        dst.id = layer_folder_utils.ensure_unique_folder_id(work)
-        dst.title = _unique_name(
-            existing_titles,
-            f"{src_title} 複製",
-        )
-        dst.parent_key = src_parent_key
-        dst.expanded = src_expanded
-        dst.visible = src_visible
-        dst.locked = src_locked
-        context.scene.bmanga_active_layer_kind = "layer_folder"
-        if hasattr(context.scene, "bmanga_active_layer_folder_key"):
-            context.scene.bmanga_active_layer_folder_key = dst.id
-        return True
-
-    def _duplicate_image(self, context, item) -> bool:
-        resolved = layer_stack_utils.resolve_stack_item(context, item)
-        src = resolved.get("target") if resolved is not None else None
-        coll = getattr(context.scene, "bmanga_image_layers", None)
-        if src is None or coll is None:
-            return False
-        used = {entry.id for entry in coll}
-        i = 1
-        while f"image_{i:04d}" in used:
-            i += 1
-        source_data = _image_entry_snapshot(src)
-        source_title = str(source_data.get("title", "") or "画像")
-        existing_titles = {str(getattr(entry, "title", "") or "") for entry in coll}
-        dst = coll.add()
-        dst.id = f"image_{i:04d}"
-        _apply_image_entry_snapshot(source_data, dst)
-        dst.title = _unique_name(existing_titles, f"{source_title} 複製")
-        context.scene.bmanga_active_image_layer_index = len(coll) - 1
-        context.scene.bmanga_active_layer_kind = "image"
-        return True
-
-    def _duplicate_balloon(self, context, item) -> bool:
-        from ..io import schema
-        from .balloon_op import _allocate_balloon_id
-
-        resolved = layer_stack_utils.resolve_stack_item(context, item)
-        src = resolved.get("target") if resolved is not None else None
-        page = resolved.get("page") if resolved is not None else None
-        if src is None or page is None:
-            return False
-        source_data = schema.balloon_entry_to_dict(src)
-        dst = page.balloons.add()
-        schema.balloon_entry_from_dict(dst, source_data)
-        dst.id = _allocate_balloon_id(page)
-        page.active_balloon_index = len(page.balloons) - 1
-        context.scene.bmanga_active_layer_kind = "balloon"
-        return True
-
-    def _duplicate_text(self, context, item) -> bool:
-        from ..io import schema
-        from .text_op import _allocate_text_id
-
-        resolved = layer_stack_utils.resolve_stack_item(context, item)
-        src = resolved.get("target") if resolved is not None else None
-        page = resolved.get("page") if resolved is not None else None
-        if src is None or page is None:
-            return False
-        source_data = schema.text_entry_to_dict(src)
-        dst = page.texts.add()
-        schema.text_entry_from_dict(dst, source_data)
-        dst.id = _allocate_text_id(page)
-        dst.x_mm += 5.0
-        dst.y_mm -= 5.0
-        page.active_text_index = len(page.texts) - 1
-        context.scene.bmanga_active_layer_kind = "text"
-        return True
-
-    def _duplicate_fill(self, context, item) -> bool:
-        from ..io import schema
-        from ..utils import fill_real_object
-
-        resolved = layer_stack_utils.resolve_stack_item(context, item)
-        src = resolved.get("target") if resolved is not None else None
-        coll = getattr(context.scene, "bmanga_fill_layers", None)
-        if src is None or coll is None:
-            return False
-        used = {entry.id for entry in coll}
-        i = 1
-        while f"fill_{i:04d}" in used:
-            i += 1
-        source_data = schema.fill_layer_to_dict(src)
-        source_title = str(getattr(src, "title", "") or "塗り")
-        existing_titles = {str(getattr(entry, "title", "") or "") for entry in coll}
-        dst = coll.add()
-        with fill_real_object.suspend_auto_sync():
-            schema.fill_layer_from_dict(dst, source_data)
-            dst.id = f"fill_{i:04d}"
-            dst.title = _unique_name(
-                existing_titles,
-                f"{source_title} 複製",
-            )
-        fill_real_object.on_fill_entry_changed(dst)
-        context.scene.bmanga_active_fill_layer_index = len(coll) - 1
-        context.scene.bmanga_active_layer_kind = "fill"
-        return True
+        return layer_stack_duplicate.duplicate_item(context, item)
 
 
 class BMANGA_OT_layer_stack_toggle_visibility(Operator):
@@ -1494,8 +1347,47 @@ class BMANGA_OT_layer_stack_delete(Operator):
         return detail_popup.invoke_confirm(context, event, self)
 
     def execute(self, context):
+        stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
         idx = int(getattr(context.scene, "bmanga_active_layer_stack_index", -1))
-        if not layer_stack_utils.delete_stack_index(context, idx):
+        if stack is None or not (0 <= idx < len(stack)):
+            return {"CANCELLED"}
+        item = stack[idx]
+        if item.kind in {PAGE_KIND, COMA_KIND}:
+            return (
+                {"FINISHED"}
+                if layer_stack_utils.delete_stack_index(context, idx)
+                else {"CANCELLED"}
+            )
+        if (
+            item.kind == "layer_folder"
+            and layer_stack_utils.is_pending_transfer_target_folder(
+                context,
+                item,
+            )
+        ):
+            self.report(
+                {"WARNING"},
+                "移動したレイヤーを保存してからフォルダーを削除してください",
+            )
+            return {"CANCELLED"}
+        from ..utils import layer_links, layer_stack_command_runtime
+
+        uid = layer_stack_utils.stack_item_uid(item)
+
+        def mutate():
+            if not layer_stack_utils.delete_stack_index(context, idx):
+                return 0
+            layer_links.unlink_uids(context, [uid])
+            return 1
+
+        changed = layer_stack_command_runtime.execute(
+            context,
+            items=(item,),
+            operation="delete",
+            mutate=mutate,
+            tracks_raster_files=item.kind == "raster",
+        )
+        if changed <= 0:
             return {"CANCELLED"}
         return {"FINISHED"}
 

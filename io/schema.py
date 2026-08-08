@@ -106,6 +106,19 @@ def _suspend_load_property_side_effects():
         except Exception:  # noqa: BLE001
             pass
         try:
+            from . import coma_io, page_io, work_io
+
+            # Property setterからの自動保存は、投影を一括復元している途中の
+            # 不完全な状態をDomain正本やnative JSONへ確定してしまう。
+            # 読込区間を抜けた後の明示checkpointだけを許可する。
+            _patch(page_io, "save_page_json")
+            _patch(page_io, "save_pages_json")
+            _patch(page_io, "save_work_projection")
+            _patch(coma_io, "save_coma_meta")
+            _patch(work_io, "save_work_json")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
             yield
         finally:
             for module, name, original in reversed(patches):
@@ -588,8 +601,12 @@ def raster_layer_from_dict(entry, data: dict[str, Any], *, opacity_percent: bool
     entry.visible = bool(data.get("visible", True))
     entry.locked = bool(data.get("locked", False))
     entry.scope = data.get("scope", "page")
-    entry.parent_kind = data.get("parent_kind", "page")
-    entry.parent_key = str(data.get("parent_key", "") or "")
+    entry.parent_kind = str(
+        data.get("parentKind", data.get("parent_kind", "page")) or "page"
+    )
+    entry.parent_key = str(
+        data.get("parentKey", data.get("parent_key", "")) or ""
+    )
     if hasattr(entry, "folder_key"):
         entry.folder_key = str(data.get("folderKey", data.get("folder_key", "")) or "")
 

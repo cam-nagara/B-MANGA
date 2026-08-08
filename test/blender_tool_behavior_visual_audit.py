@@ -332,6 +332,10 @@ def _setup_scene(temp_root: Path):
             pixels[offset:offset + 4] = [0.0, 0.0, 0.0, 1.0]
     raster_image.pixels[:] = pixels
     raster_image.update()
+    # Direct pixel writes bypass Blender's paint dirty callback.  Keep this
+    # fixture equivalent to a real unsaved paint stroke so a deferred layer
+    # sync cannot replace the in-memory marker with the blank on-disk PNG.
+    raster_layer_op.mark_raster_dirty(raster)
 
     image_path = temp_root / "visual_image.png"
     _create_png(image_path)

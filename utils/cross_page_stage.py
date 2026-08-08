@@ -45,6 +45,25 @@ _ASSET_SUPPORTED_KINDS = frozenset(
 )
 
 
+class StagedImportRollbackError(RuntimeError):
+    """移送先ページの復元を完了できず、作品をfail-closedにした。"""
+
+
+class StagedImportIntegrityError(StagedImportRollbackError):
+    """移送先identity/所有権不一致のため作品をfail-closedにした。"""
+
+
+class StagedImportCleanupError(RuntimeError):
+    """保存済みstageの耐久削除を完了できなかった。"""
+
+
+def _mark_staged_import_fail_closed(work) -> None:
+    try:
+        work.loaded = False
+    except Exception:  # noqa: BLE001
+        _logger.exception("staged import fail-closed state could not be recorded")
+
+
 def staged_path(work_dir: Path, page_id: str) -> Path:
     return paths.page_dir(Path(work_dir), page_id) / STAGED_IMPORTS_NAME
 
@@ -56,7 +75,12 @@ def _read(path: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def _write_or_remove(path: Path, data: dict) -> None:
+def _write_or_remove(
+    path: Path,
+    data: dict,
+    *,
+    strict: bool = False,
+) -> None:
     populated = any(
         isinstance(data.get(key), list) and bool(data[key])
         for key in ("effects", "gp_layers", ASSET_ENTRIES_KEY, LINK_ENTRIES_KEY)
@@ -71,8 +95,12 @@ def _write_or_remove(path: Path, data: dict) -> None:
         with guard_path_write(path):
             path.unlink(missing_ok=True)
             record_successful_write(path)
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         _logger.exception("completed staged imports cleanup failed: %s", path)
+        if strict:
+            raise StagedImportCleanupError(
+                f"completed staged imports cleanup failed: {path}"
+            ) from exc
 
 
 def _append_unique(work_dir: Path, page_id: str, key: str, entry: dict, identity: str) -> bool:
@@ -218,6 +246,74 @@ def mark_asset_bundle_ready(work_dir: Path, page_id: str, stage_id: str) -> bool
         return False
 
 
+def has_pending_transfer_target_folder(
+    work_dir: Path,
+    page_id: str,
+    folder_key: str,
+) -> bool:
+    """未確定ready transferが参照中の移送先folderか返す."""
+
+    key = str(folder_key or "")
+    if not key:
+        return False
+    data = _read(staged_path(Path(work_dir), str(page_id or "")))
+    entries = data.get(ASSET_ENTRIES_KEY, [])
+    if not isinstance(entries, list):
+        return False
+    return any(
+        isinstance(entry, dict)
+        and str(entry.get("state", "") or "") == "ready"
+        and isinstance(entry.get("payload"), dict)
+        and isinstance(entry["payload"].get("transfer"), dict)
+        and str(
+            entry["payload"]["transfer"].get("targetFolderKey", "") or ""
+        ) == key
+        for entry in entries
+    )
+
+
+def discard_asset_bundle_stage_strict(
+    work_dir: Path,
+    page_id: str,
+    stage_id: str,
+    *,
+    lock_held: bool = False,
+) -> bool:
+    """ready asset stageを耐久削除し、再読込でも消えたことを検証する."""
+
+    root = Path(work_dir)
+    path = staged_path(root, page_id)
+
+    def remove() -> bool:
+        data = _read(path)
+        entries = data.get(ASSET_ENTRIES_KEY, [])
+        if not isinstance(entries, list):
+            raise StagedImportCleanupError("asset stage list is malformed")
+        matches = [
+            entry for entry in entries
+            if isinstance(entry, dict)
+            and str(entry.get("stage_id", "") or "") == str(stage_id or "")
+        ]
+        if not matches:
+            return False
+        if len(matches) != 1:
+            raise StagedImportCleanupError("asset stage identity is duplicated")
+        data[ASSET_ENTRIES_KEY] = [
+            entry for entry in entries if entry is not matches[0]
+        ]
+        _write_or_remove(path, data, strict=True)
+        if asset_entry_snapshot(root, page_id, stage_id) is not None:
+            raise StagedImportCleanupError("asset stage remained after cleanup")
+        return True
+
+    if lock_held:
+        return remove()
+    from ..io.project_file_lock import work_lock
+
+    with work_lock(root, blocking=True):
+        return remove()
+
+
 def _runtime_keys(context) -> set[str]:
     wm = getattr(context, "window_manager", None)
     if wm is None:
@@ -269,12 +365,96 @@ def _entry_token(kind: str, entry: dict) -> str:
         encoded = json.dumps(
             entry,
             ensure_ascii=False,
+            allow_nan=False,
             sort_keys=True,
             separators=(",", ":"),
         ).encode("utf-8")
     except (TypeError, ValueError):
         return ""
     return f"{identity}:{hashlib.sha256(encoded).hexdigest()}"
+
+
+def asset_entry_snapshot(
+    work_dir: Path,
+    page_id: str,
+    stage_id: str,
+) -> dict | None:
+    """stage entry全体をcanonical identity付きで取得する。"""
+
+    data = _read(staged_path(work_dir, page_id))
+    entries = data.get(ASSET_ENTRIES_KEY, [])
+    if not isinstance(entries, list):
+        return None
+    matches = [
+        copy.deepcopy(entry)
+        for entry in entries if isinstance(entry, dict)
+        and str(entry.get("stage_id", "") or "") == str(stage_id or "")
+    ]
+    if len(matches) != 1:
+        return None
+    return asset_entry_identity(matches[0])
+
+
+def asset_entry_identity(entry: dict) -> dict | None:
+    """asset stage entry全体の決定的identityを返す。"""
+
+    if not isinstance(entry, dict):
+        return None
+    entry = copy.deepcopy(entry)
+    token = _entry_token("asset", entry)
+    if not token:
+        return None
+    encoded = json.dumps(
+        entry,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return {
+        "entry": entry,
+        "entry_hash": hashlib.sha256(encoded).hexdigest(),
+        "entry_token": token,
+    }
+
+
+def asset_entry_matches_snapshot(
+    work_dir: Path,
+    page_id: str,
+    stage_id: str,
+    expected: dict,
+    *,
+    state: str,
+) -> bool:
+    """stateだけ指定値へ遷移した完全同一stage entryか判定する。"""
+
+    if not isinstance(expected, dict) or set(expected) != {
+        "entry",
+        "entry_hash",
+        "entry_token",
+    }:
+        return False
+    source = expected.get("entry")
+    if not isinstance(source, dict):
+        return False
+    wanted = copy.deepcopy(source)
+    wanted["state"] = state
+    current = asset_entry_snapshot(work_dir, page_id, stage_id)
+    if current is None:
+        return False
+    encoded = json.dumps(
+        wanted,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    wanted_hash = hashlib.sha256(encoded).hexdigest()
+    return (
+        current["entry"] == wanted
+        and current["entry_hash"] == wanted_hash
+        and current["entry_token"] == _entry_token("asset", wanted)
+    )
 
 
 def _remove_processed_entries(
@@ -784,13 +964,18 @@ def asset_stage_complete(context, page, payload: dict, stage_id: str) -> bool:
 
 
 def _process_assets(context, page, entries: list) -> tuple[int, set[str]]:
-    from . import asset_bundle
+    from . import asset_bundle, asset_instantiation_transaction
 
     runtime = _runtime_keys(context)
     created = 0
     processed: set[str] = set()
     for entry in entries:
         if not isinstance(entry, dict):
+            continue
+        # Asset transfer entries are always written with an explicit two-phase
+        # state.  Missing/unknown values are malformed and must never be
+        # interpreted as committed data.
+        if str(entry.get("state", "") or "") != "ready":
             continue
         stage_id = str(entry.get("stage_id", "") or "")
         payload = entry.get("payload")
@@ -812,6 +997,22 @@ def _process_assets(context, page, entries: list) -> tuple[int, set[str]]:
                 stage_id=stage_id,
                 target_page=page,
             )
+        except asset_bundle.AssetBundleTargetOwnershipError as exc:
+            _logger.exception(
+                "staged asset target ownership is invalid: %s",
+                stage_id,
+            )
+            raise StagedImportIntegrityError(
+                "移送先レイヤーフォルダの所有権が変更されています"
+            ) from exc
+        except asset_instantiation_transaction.AssetInstantiationRollbackError:
+            # 個別素材rollbackまで失敗した二重故障は再試行可能エラーではない。
+            # 外側のページ全体snapshot復元へ必ず伝播させる。
+            _logger.exception(
+                "staged asset rollback failed; restoring page snapshot: %s",
+                stage_id,
+            )
+            raise
         except Exception:  # noqa: BLE001
             _logger.exception("staged asset creation failed: %s", stage_id)
             continue
@@ -823,6 +1024,10 @@ def _process_assets(context, page, entries: list) -> tuple[int, set[str]]:
             _stamp_asset_token(context, page, payload, stage_id, token)
         token_matches = _asset_token_matches(context, page, payload, stage_id, token)
         if was_complete and new_count == 0 and token not in runtime and token_matches:
+            if isinstance(payload.get("transfer"), dict):
+                # ページ間移送はjournalのtarget_saved相と同じ保存境界でだけ
+                # stageを消す。再openで実体が見えても先にstageを消さない。
+                continue
             _clear_asset_manifest(context, {stage_id})
             if token:
                 processed.add(token)
@@ -867,20 +1072,48 @@ def process_staged_imports(context, *, page_id: str = "") -> int:
         return 0
     try:
         from ..io.project_file_lock import work_lock
+        from . import cross_page_stage_command
 
         with work_lock(work_dir, blocking=True):
-            return _process_staged_imports_locked(context, work_dir, page, page_id, path)
+            snapshot = cross_page_stage_command.capture(context)
+            try:
+                return _process_staged_imports_locked(
+                    context,
+                    work_dir,
+                    page,
+                    page_id,
+                    path,
+                )
+            except Exception as process_error:  # noqa: BLE001
+                _logger.exception("staged import processing failed: %s", path)
+                try:
+                    cross_page_stage_command.restore(context, snapshot)
+                except Exception as rollback_error:  # noqa: BLE001
+                    _logger.exception("staged import rollback failed: %s", path)
+                    _mark_staged_import_fail_closed(work)
+                    raise StagedImportRollbackError(
+                        "移送先ページの復元を完了できませんでした"
+                    ) from rollback_error
+                if isinstance(process_error, StagedImportIntegrityError):
+                    _mark_staged_import_fail_closed(work)
+                    raise
+                return 0
+    except StagedImportRollbackError:
+        raise
     except Exception:  # noqa: BLE001
         _logger.exception("staged import processing failed: %s", path)
         return 0
 
 
 def _process_staged_imports_locked(context, work_dir: Path, page, page_id: str, path: Path) -> int:
+    from . import layer_links
+
     data = _read(path)
     effects = data.get("effects", []) if isinstance(data.get("effects"), list) else []
     gp_layers = data.get("gp_layers", []) if isinstance(data.get("gp_layers"), list) else []
     assets = data.get(ASSET_ENTRIES_KEY, []) if isinstance(data.get(ASSET_ENTRIES_KEY), list) else []
     links = data.get(LINK_ENTRIES_KEY, []) if isinstance(data.get(LINK_ENTRIES_KEY), list) else []
+    links_before = str(context.scene.get(layer_links.LINK_PROP, "") or "")
     effect_created, processed_effects = _process_layers(context, page_id, "effect", effects)
     gp_created, processed_gp = _process_layers(context, page_id, "gp", gp_layers)
     asset_created, processed_assets = _process_assets(context, page, assets)
@@ -903,24 +1136,39 @@ def _process_staged_imports_locked(context, work_dir: Path, page, page_id: str, 
         },
     )
     created = effect_created + gp_created + asset_created
-    if created or processed_links:
-        # load_postはLifecycleのblend_switch境界内で実行されるため、通常の
-        # depsgraph dirty検出は抑止される。復元した実体／リンクを次の
-        # checkpointがnative保存対象として扱えるよう明示する。
-        from . import file_transition_runtime
-
-        file_transition_runtime.mark_scene_dirty_after_load(
-            getattr(context, "scene", None),
-            reason="staged_import",
-        )
-    if created:
-        try:
-            from . import layer_stack
-
-            layer_stack.sync_layer_stack_after_data_change(context)
-        except Exception:  # noqa: BLE001
-            _logger.exception("staged layer stack sync failed")
+    links_changed = str(context.scene.get(layer_links.LINK_PROP, "") or "") != links_before
+    needs_commit = bool(
+        created
+        or links_changed
+        or processed_effects
+        or processed_gp
+        or processed_assets
+        or processed_links
+    )
+    _finalize_staged_mutation(context, created, needs_commit)
     return created
+
+
+def _finalize_staged_mutation(context, created: int, needs_commit: bool) -> None:
+    if not needs_commit:
+        return
+    # load_postはLifecycle境界内で動くため、復元した実体を明示的にdirty化する。
+    from . import file_transition_runtime
+
+    file_transition_runtime.mark_scene_dirty_after_load(
+        getattr(context, "scene", None),
+        reason="staged_import",
+    )
+    if created:
+        from . import layer_stack
+
+        layer_stack.sync_layer_stack_after_data_change(context)
+    from . import layer_command_runtime
+
+    layer_command_runtime.commit_projection(
+        context,
+        operation="transfer.target",
+    )
 
 
 def _saved_page_id(context, work_dir: Path, blend_path: str | Path) -> str:
@@ -991,6 +1239,7 @@ def commit_staged_imports_after_save(
             source_assets = data.get(ASSET_ENTRIES_KEY, []) if isinstance(data.get(ASSET_ENTRIES_KEY), list) else []
             keep_assets = []
             removed_asset_stage_ids: set[str] = set()
+            transfer_asset_stage_ids: set[str] = set()
             for entry in source_assets:
                 stage_id = str(entry.get("stage_id", "") or "") if isinstance(entry, dict) else ""
                 payload = entry.get("payload") if isinstance(entry, dict) else None
@@ -1002,13 +1251,38 @@ def commit_staged_imports_after_save(
                     and asset_stage_complete(ctx, page, payload, stage_id)
                     and _asset_token_matches(ctx, page, payload, stage_id, token)
                 ):
+                    transfer = payload.get("transfer")
+                    if isinstance(transfer, dict):
+                        from . import layer_transfer_group
+
+                        layer_transfer_group.mark_target_transfer_stage_saved(
+                            work_dir,
+                            page_id,
+                            stage_id,
+                            target_saved=True,
+                        )
+                        transfer_asset_stage_ids.add(stage_id)
                     removed += 1
                     removed_keys.add(token)
                     removed_asset_stage_ids.add(stage_id)
                 else:
                     keep_assets.append(entry)
             data[ASSET_ENTRIES_KEY] = keep_assets
-            _write_or_remove(path, data)
+            _write_or_remove(path, data, strict=True)
+            for stage_id in removed_asset_stage_ids:
+                if asset_entry_snapshot(work_dir, page_id, stage_id) is not None:
+                    raise StagedImportCleanupError(
+                        f"asset stage remained after target save: {stage_id}"
+                    )
+            for stage_id in transfer_asset_stage_ids:
+                from . import layer_transfer_group
+
+                layer_transfer_group.finalize_target_transfer_stage(
+                    work_dir,
+                    page_id,
+                    stage_id,
+                    target_saved=True,
+                )
         _clear_runtime(ctx, removed_keys)
         _clear_asset_manifest(ctx, removed_asset_stage_ids)
         return removed
@@ -1024,10 +1298,15 @@ __all__ = [
     "ASSET_STAGE_TOKEN_PROP",
     "LINK_ENTRIES_KEY",
     "STAGED_IMPORTS_NAME",
+    "StagedImportCleanupError",
+    "StagedImportIntegrityError",
+    "StagedImportRollbackError",
     "asset_stage_complete",
     "commit_staged_imports_after_save",
     "discard_asset_bundle_stage",
+    "discard_asset_bundle_stage_strict",
     "find_asset_created",
+    "has_pending_transfer_target_folder",
     "mark_asset_bundle_ready",
     "process_staged_imports",
     "stage_asset_bundle",
