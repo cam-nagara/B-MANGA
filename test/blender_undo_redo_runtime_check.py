@@ -1,4 +1,4 @@
-"""Blender 5.1 UI: ページ内0.01mm編集の Undo/Redo 境界を実機検証する.
+"""Blender 5.2 UI: ページ内0.01mm編集の Undo/Redo 境界を実機検証する.
 
 ``--background`` では ``bpy.ops.ed.undo`` の UI poll が成立しないため、通常画面で
 起動し timer から実行する。合否は ``BMANGA_UNDO_TEST_STATUS`` の JSON に書く。
@@ -14,8 +14,10 @@ import shutil
 import sys
 import tempfile
 import traceback
+from types import SimpleNamespace
 
 import bpy
+from bpy.app.handlers import persistent
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,9 +35,16 @@ TEXT_ID = "text_undo_runtime"
 ORIGINAL_X = 24.0
 TEXT_ORIGINAL_X = 70.0
 DELTA_X = 0.01
+RASTER_PIXEL = (96.0 / 255.0, 96.0 / 255.0, 96.0 / 255.0, 1.0)
+PAPER_BASE_COLOR = (1.0, 1.0, 1.0, 1.0)
+PAPER_CHANGED_COLOR = (0.2, 0.45, 0.7, 1.0)
+BORDER_BASE_WIDTH_MM = 0.5
+BORDER_CHANGED_WIDTH_MM = 1.25
 _addon = None
 _artifact_baseline: dict[str, int] = {}
 _transfer_state: dict[str, object] = {}
+_raster_state: dict[str, object] = {}
+_derived_state: dict[str, object] = {}
 _stage = "setup"
 
 
@@ -62,6 +71,14 @@ def _run_in_view3d(callback):
 def _run_history_operator(operator):
     """有効なウィンドウ文脈でUndo/Redoを実行する."""
     return _run_in_view3d(lambda _context: operator("EXEC_DEFAULT"))
+
+
+def _invoke_history_shortcut(operator_type, key: str):
+    """実キーと同じinvoke分岐からlifecycle timerへ履歴操作を予約する."""
+    event = SimpleNamespace(type=key, value="PRESS", ctrl=False, alt=False)
+    return _run_in_view3d(
+        lambda context: operator_type.invoke(SimpleNamespace(), context, event)
+    )
 
 
 def _write_status(ok: bool, **details) -> None:
@@ -100,6 +117,171 @@ def _find_entries():
         if balloon is not None and text is not None:
             return work, page, balloon, text
     raise AssertionError("検証用フキダシ／テキストが見つかりません")
+
+
+def _find_raster():
+    raster_id = str(_raster_state.get("id", "") or "")
+    entry = next(
+        (
+            item
+            for item in bpy.context.scene.bmanga_raster_layers
+            if str(item.id) == raster_id
+        ),
+        None,
+    )
+    if entry is None:
+        raise AssertionError("検証用ラスターが見つかりません")
+    return entry
+
+
+def _find_coma():
+    coma_id = str(_derived_state.get("coma_id", "") or "")
+    _work, page, _balloon, _text = _find_entries()
+    coma = next(
+        (
+            item
+            for item in page.comas
+            if str(getattr(item, "id", "") or getattr(item, "coma_id", ""))
+            == coma_id
+        ),
+        None,
+    )
+    if coma is None:
+        raise AssertionError("検証用コマが見つかりません")
+    return page, coma
+
+
+def _pixel_at(image, x: int, y: int) -> tuple[float, float, float, float]:
+    offset = (y * int(image.size[0]) + x) * 4
+    return tuple(float(value) for value in image.pixels[offset : offset + 4])
+
+
+def _assert_rgba(actual, expected, *, tolerance: float = 1.0e-5) -> None:
+    assert all(
+        abs(float(left) - float(right)) <= tolerance
+        for left, right in zip(actual, expected, strict=True)
+    ), (tuple(actual), tuple(expected), tolerance)
+
+
+def _paint_raster_probe() -> None:
+    from bmanga_dev_undo_runtime.operators import raster_layer_op
+
+    entry = _find_raster()
+    image = bpy.data.images.get(entry.image_name)
+    assert image is not None
+    x = int(image.size[0]) // 2
+    y = int(image.size[1]) // 2
+    offset = (y * int(image.size[0]) + x) * 4
+    image.pixels[offset : offset + 4] = RASTER_PIXEL
+    image.update()
+    raster_layer_op.mark_raster_dirty(entry)
+    assert raster_layer_op._entry_has_unsaved_pixels(entry, image)
+    _raster_state["xy"] = (x, y)
+    _assert_rgba(_pixel_at(image, x, y), RASTER_PIXEL)
+
+
+def _assert_raster_probe(*, reloaded: bool = False) -> None:
+    entry = _find_raster()
+    image = bpy.data.images.get(entry.image_name)
+    assert image is not None, entry.image_name
+    x, y = _raster_state["xy"]
+    tolerance = 0.02 if reloaded else 1.0e-5
+    _assert_rgba(_pixel_at(image, int(x), int(y)), RASTER_PIXEL, tolerance=tolerance)
+
+
+def _assert_saved_raster_probe(work_dir: Path) -> None:
+    entry = _find_raster()
+    path = work_dir / entry.filepath_rel
+    assert path.is_file(), path
+    saved = bpy.data.images.load(str(path), check_existing=False)
+    try:
+        x, y = _raster_state["xy"]
+        _assert_rgba(
+            _pixel_at(saved, int(x), int(y)),
+            RASTER_PIXEL,
+            tolerance=0.02,
+        )
+    finally:
+        bpy.data.images.remove(saved)
+
+
+def _paper_signature() -> tuple[float, ...]:
+    from bmanga_dev_undo_runtime.utils import paper_bg_object
+
+    mat = bpy.data.materials.get(paper_bg_object.PAPER_BG_MATERIAL_NAME)
+    assert mat is not None
+    _work, page, _balloon, _text = _find_entries()
+    obj = next(
+        (
+            item
+            for item in bpy.data.objects
+            if item.get(paper_bg_object.PROP_BG_KIND) == "page"
+            and str(item.get(paper_bg_object.PROP_BG_OWNER_ID, "")) == str(page.id)
+        ),
+        None,
+    )
+    assert obj is not None
+    assert obj.data.materials and obj.data.materials[0] is mat
+    return tuple(round(float(value), 6) for value in mat.diffuse_color)
+
+
+def _border_signature() -> tuple[object, ...]:
+    from bmanga_dev_undo_runtime.utils import coma_border_object
+
+    page, coma = _find_coma()
+    owner = f"{page.id}:{getattr(coma, 'id', '') or coma.coma_id}"
+    obj = next(
+        (
+            item
+            for item in bpy.data.objects
+            if str(item.get(coma_border_object.PROP_COMA_BORDER_OWNER_ID, ""))
+            == owner
+        ),
+        None,
+    )
+    assert obj is not None and not obj.hide_viewport
+    if obj.type == "CURVE":
+        return ("CURVE", round(float(obj.data.bevel_depth), 9), len(obj.data.splines))
+    coords = [component for vertex in obj.data.vertices for component in vertex.co[:2]]
+    assert coords
+    return (
+        "MESH",
+        len(obj.data.vertices),
+        len(obj.data.polygons),
+        round(min(coords), 9),
+        round(max(coords), 9),
+        round(sum(coords), 9),
+    )
+
+
+def _prepare_derived_change() -> None:
+    from bmanga_dev_undo_runtime.utils import undo_transaction
+
+    work, _page, _balloon, _text = _find_entries()
+    _page, coma = _find_coma()
+    _derived_state["base_paper"] = _paper_signature()
+    _derived_state["base_border"] = _border_signature()
+    work.paper.paper_color = PAPER_CHANGED_COLOR
+    coma.border.width_mm = BORDER_CHANGED_WIDTH_MM
+    bpy.context.view_layer.update()
+    _derived_state["changed_paper"] = _paper_signature()
+    _derived_state["changed_border"] = _border_signature()
+    assert _derived_state["changed_paper"] != _derived_state["base_paper"]
+    assert _derived_state["changed_border"] != _derived_state["base_border"]
+    assert undo_transaction.push_undo("B-MANGA: derived visual persistence")
+
+
+def _assert_derived_state(*, changed: bool) -> None:
+    work, _page, _balloon, _text = _find_entries()
+    _page, coma = _find_coma()
+    expected_color = PAPER_CHANGED_COLOR if changed else PAPER_BASE_COLOR
+    expected_width = BORDER_CHANGED_WIDTH_MM if changed else BORDER_BASE_WIDTH_MM
+    _assert_rgba(tuple(work.paper.paper_color), expected_color)
+    assert abs(float(coma.border.width_mm) - expected_width) < 1.0e-5
+    key = "changed" if changed else "base"
+    assert _paper_signature() == _derived_state[f"{key}_paper"]
+    assert _border_signature() == _derived_state[f"{key}_border"]
+    _assert_raster_probe(reloaded=changed and bool(_derived_state.get("reloaded")))
 
 
 def _artifact_mtimes(work_dir: Path) -> dict[str, int]:
@@ -150,6 +332,7 @@ def _assert_page_state(
             float(nodes[("text", TEXT_ID)].settings["xMm"])
             - (TEXT_ORIGINAL_X + expected_delta)
         ) < 1.0e-5
+    _assert_raster_probe()
 
 
 def _commit_micro_move() -> None:
@@ -341,6 +524,14 @@ def _assert_transfer_files(*, applied: bool) -> None:
     assert not history_runtime.is_blocked(), history_runtime.blocked_error()
 
 
+@persistent
+def _resume_after_reload(_dummy) -> None:
+    if _stage != "reloaded_check":
+        return
+    if not bpy.app.timers.is_registered(_tick):
+        bpy.app.timers.register(_tick, first_interval=0.8)
+
+
 def _tick():
     global _stage, _artifact_baseline
     try:
@@ -353,12 +544,18 @@ def _tick():
             _stage = "undo"
             return 0.15
         if _stage == "undo":
-            assert _run_history_operator(bpy.ops.ed.undo) == {"FINISHED"}
+            # 単独Zの実経路を通す。REGISTER付きのラッパー自身がredo履歴を
+            # 壊す回帰もここで検出する。
+            from bmanga_dev_undo_runtime.operators.shortcut_op import BMANGA_OT_undo
+
+            assert _invoke_history_shortcut(BMANGA_OT_undo, "Z") == {"FINISHED"}
             _stage = "check_undo"
             return 0.35
         if _stage == "check_undo":
             _assert_page_state(0.0, check_domain=True)
-            assert _run_history_operator(bpy.ops.ed.redo) == {"FINISHED"}
+            from bmanga_dev_undo_runtime.operators.shortcut_op import BMANGA_OT_redo
+
+            assert _invoke_history_shortcut(BMANGA_OT_redo, "X") == {"FINISHED"}
             _stage = "check_redo"
             return 0.35
         if _stage == "check_redo":
@@ -373,6 +570,34 @@ def _tick():
             _assert_page_state(0.0, check_domain=True)
             work, _page, _balloon, _text = _find_entries()
             assert _artifact_mtimes(Path(work.work_dir)) == _artifact_baseline
+            _prepare_derived_change()
+            _assert_derived_state(changed=True)
+            _stage = "derived_undo"
+            return 0.15
+        if _stage == "derived_undo":
+            assert _run_history_operator(bpy.ops.ed.undo) == {"FINISHED"}
+            _stage = "check_derived_undo"
+            return 0.5
+        if _stage == "check_derived_undo":
+            _assert_derived_state(changed=False)
+            assert _run_history_operator(bpy.ops.ed.redo) == {"FINISHED"}
+            _stage = "check_derived_redo"
+            return 0.5
+        if _stage == "check_derived_redo":
+            _assert_derived_state(changed=True)
+            work, page, _balloon, _text = _find_entries()
+            work_dir = Path(work.work_dir)
+            page_id = str(page.id)
+            assert bpy.ops.bmanga.work_save() == {"FINISHED"}
+            _assert_saved_raster_probe(work_dir)
+            from bmanga_dev_undo_runtime.io import blend_io
+
+            _stage = "reloaded_check"
+            assert blend_io.open_page_blend(work_dir, page_id)
+            return None
+        if _stage == "reloaded_check":
+            _derived_state["reloaded"] = True
+            _assert_derived_state(changed=True)
             _setup_cross_page_transfer()
             _stage = "transfer_undo"
             return 0.15
@@ -403,6 +628,8 @@ def _tick():
                 filepath=bpy.data.filepath,
                 artifacts_checked=sorted(_artifact_baseline),
                 cross_page_undo_redo=True,
+                unsaved_raster_undo_redo_save_reload=True,
+                derived_visual_undo_redo_save_reload=True,
             )
             print("BMANGA_UNDO_REDO_RUNTIME_OK")
             bpy.ops.wm.quit_blender()
@@ -446,15 +673,78 @@ def main() -> None:
         text.parent_kind = "page"
         text.parent_key = str(page.id)
         text.parent_balloon_id = entry.id
+        work.paper.paper_color = PAPER_BASE_COLOR
+        assert bpy.ops.bmanga.raster_layer_add(
+            "EXEC_DEFAULT",
+            dpi_preset="custom",
+            dpi=30,
+            bit_depth="gray8",
+            enter_paint=False,
+        ) == {"FINISHED"}
+        _raster_state["id"] = str(
+            bpy.context.scene.bmanga_raster_layers[-1].id
+        )
+        assert bpy.ops.bmanga.coma_add("EXEC_DEFAULT") == {"FINISHED"}
+        coma = page.comas[-1]
+        _derived_state["coma_id"] = str(
+            getattr(coma, "id", "") or getattr(coma, "coma_id", "")
+        )
+        coma.border.style = "solid"
+        coma.border.visible = True
+        coma.border.width_mm = BORDER_BASE_WIDTH_MM
         assert bpy.ops.bmanga.work_save() == {"FINISHED"}
         from bmanga_dev_undo_runtime.io import blend_io
 
         assert blend_io.open_page_blend(Path(work.work_dir), str(page.id))
+        from bmanga_dev_undo_runtime.operators import raster_layer_op
+        from bmanga_dev_undo_runtime.utils import (
+            history_runtime,
+            layer_object_sync,
+            page_file_scene,
+        )
+
+        original_mirror = layer_object_sync.mirror_work_to_outliner
+        original_purge = page_file_scene.purge_other_page_data
+        original_resync = page_file_scene.resync_page_runtime_objects
+        original_raster_ensure = raster_layer_op.ensure_all_raster_runtime
+
+        def _reject_history_mutation(label, operation):
+            def _guard(*args, **kwargs):
+                if history_runtime.is_restoring():
+                    raise AssertionError(
+                        f"Undo/Redo後に{label}を再構築してはいけません"
+                    )
+                return operation(*args, **kwargs)
+
+            return _guard
+
+        layer_object_sync.mirror_work_to_outliner = _reject_history_mutation(
+            "Outliner全投影",
+            original_mirror,
+        )
+        page_file_scene.purge_other_page_data = _reject_history_mutation(
+            "ページ外実体",
+            original_purge,
+        )
+        page_file_scene.resync_page_runtime_objects = _reject_history_mutation(
+            "ページ派生実体",
+            original_resync,
+        )
+        raster_layer_op.ensure_all_raster_runtime = _reject_history_mutation(
+            "ラスター実体",
+            original_raster_ensure,
+        )
+        _paint_raster_probe()
+        if _resume_after_reload not in bpy.app.handlers.load_post:
+            bpy.app.handlers.load_post.append(_resume_after_reload)
+        # load/明示変更時の再構築は許可しつつ、履歴post境界でIDを削除・
+        # 再生成する回帰だけを実機テスト内で決定的に検出する。
         _stage = "move"
         bpy.app.timers.register(_tick, first_interval=0.8)
     except Exception as exc:  # noqa: BLE001
         _write_status(False, error=str(exc), traceback=traceback.format_exc())
-        raise
+        traceback.print_exc()
+        bpy.ops.wm.quit_blender()
 
 
 if __name__ == "__main__":

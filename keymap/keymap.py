@@ -321,13 +321,15 @@ class KeymapState:
         _add("bmanga.brush_size_drag", "LEFTMOUSE", ctrl=True, alt=True)
 
     def _populate_object_mode_overrides(self, kc) -> None:
-        """Object Mode (mode keymap) にも Alt+drag / Alt+Shift+click を登録.
+        """Mode keymap に優先度が必要な操作を登録.
 
         Blender のキーマップは Tool > Mode > Space > Window の優先度で評価される。
         "3D View" は Space 層なので、Tool keymap (例: Select Box の Alt+LEFTMOUSE
         → paint.face_select_loop) が先に消費する場合がある。Object Mode (Mode 層)
         に登録すると Tool 層の poll 失敗時の fall-through で確実に発火し、また
-        どのツールが active でも Alt+drag が動くようになる.
+        どのツールが active でも Alt+drag が動くようになる。同じ理由で、
+        Object Mode にある単独 X の削除より B-MANGA Undo／Redo を先に
+        評価させるため、Mode 層へも同じラッパーを登録する。
         """
         target_keymaps = (
             "Object Mode",
@@ -347,6 +349,19 @@ class KeymapState:
                 except Exception:  # noqa: BLE001
                     continue
             self.bmanga_keymaps.append(km)
+            if km_name == "Object Mode":
+                for op_id, key in (("bmanga.undo", "Z"), ("bmanga.redo", "X")):
+                    try:
+                        kmi = km.keymap_items.new(
+                            op_id,
+                            key,
+                            "PRESS",
+                            head=True,
+                        )
+                        self.bmanga_items.append(kmi)
+                        print(f"[B-MANGA][KEYMAP] + {op_id} ({km_name}) {key}")
+                    except Exception as exc:  # noqa: BLE001
+                        print(f"[B-MANGA][KEYMAP] {km_name} {key} override failed: {exc!r}")
             try:
                 kmi = km.keymap_items.new(
                     "bmanga.alt_reparent_drag",
@@ -676,6 +691,15 @@ class KeymapState:
             return True
         return any(token in name for token in ("3D View", "Object", "Mesh", "Grease Pencil", "Image Paint"))
 
+    @classmethod
+    def _is_object_delete_redo_conflict(cls, kmi) -> bool:
+        """Object Mode の単独 X 削除だけを Redo の競合として扱う."""
+        return (
+            str(getattr(kmi, "idname", "") or "") == "object.delete"
+            and str(getattr(kmi, "value", "PRESS")) == "PRESS"
+            and cls._combo_for_kmi(kmi) == ("X", False, False, False, False)
+        )
+
     def _exclusive_conflict_combos(self) -> set[tuple[str, bool, bool, bool, bool]]:
         """現在の B-MANGA キー設定から退避すべきキー組み合わせを作る."""
         target_idnames = set(self._BMANGA_EXCLUSIVE_IDNAMES)
@@ -750,7 +774,10 @@ class KeymapState:
                             continue
                         if str(getattr(kmi, "value", "PRESS")) != "PRESS":
                             continue
-                        if self._combo_for_kmi(kmi) not in target_combos:
+                        if (
+                            self._combo_for_kmi(kmi) not in target_combos
+                            and not self._is_object_delete_redo_conflict(kmi)
+                        ):
                             continue
                         sig = self._signature_for_kmi(km.name, kmi)
                         if sig in saved_keys:

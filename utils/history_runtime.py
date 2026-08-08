@@ -1,4 +1,4 @@
-"""Undo/Redo 復元中の監視抑止と、次イベントループでの実体再同期."""
+"""Undo/Redo 復元中の監視抑止と、次イベントループでの整合確認."""
 
 from __future__ import annotations
 
@@ -98,7 +98,7 @@ def _refresh_object_snapshots(scene) -> None:
 
 
 def _reconcile_current_state() -> None:
-    """復元後の Scene/Work を取り直し、外部ファイルへ書かず実体だけ揃える."""
+    """復元後の Scene/Work を取り直し、外部ファイルやIDを変えず整合を確認する."""
 
     context = bpy.context
     from . import layer_transfer_history
@@ -109,7 +109,7 @@ def _reconcile_current_state() -> None:
     if scene is None or work is None or not bool(getattr(work, "loaded", False)):
         return
 
-    from . import layer_object_sync, page_file_scene
+    from . import page_file_scene
 
     role, page_id, _coma_id = page_file_scene.current_role(context)
     page = None
@@ -134,24 +134,11 @@ def _reconcile_current_state() -> None:
     except Exception:  # noqa: BLE001
         _logger.exception("history reconcile: Domain projection failed")
         raise
-    # work.blend のプレビュー再生成は PNG 作成を伴い得るため、履歴復元からは
-    # 呼ばない。Blender が復元した実体を正として監視キャッシュだけ更新する。
-    if role == page_file_scene.ROLE_PAGE and page_id:
-        with layer_object_sync.suppress_sync():
-            layer_object_sync.clear_snapshots()
-            layer_object_sync.mirror_work_to_outliner(
-                scene,
-                work,
-                allow_object_writeback=False,
-            )
-            page_file_scene.purge_other_page_data(scene, page_id)
-            page_file_scene.resync_page_runtime_objects(scene, work, page_id)
-            try:
-                from ..operators import raster_layer_op
-
-                raster_layer_op.ensure_all_raster_runtime(context)
-            except Exception:  # noqa: BLE001
-                _logger.exception("history reconcile: raster runtime failed")
+    # Blender標準Undo/RedoはPropertyGroupだけでなくCollection/Object/Dataも
+    # 同じ履歴状態へ戻す。post handler直後に派生MeshやImageを削除・再生成すると、
+    # Outliner・Panelが旧RNA/IDを描画しているBlender 5.2で解放済み参照が残り、
+    # 次のRedoまたは再描画で本体が落ち得る。履歴境界ではDomain投影と監視
+    # snapshotの更新だけに留め、実体再生成はload/明示変更境界へ限定する。
 
     _refresh_object_snapshots(scene)
     try:

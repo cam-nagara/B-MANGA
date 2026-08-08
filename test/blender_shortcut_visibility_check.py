@@ -70,8 +70,14 @@ def main() -> None:
     from bmanga_dev_shortcut_visibility.keymap import keymap as keymap_mod
     from bmanga_dev_shortcut_visibility.keymap import viewport_ops
     from bmanga_dev_shortcut_visibility.operators import coma_modal_state
+    from bmanga_dev_shortcut_visibility.operators import shortcut_op
     from bmanga_dev_shortcut_visibility.panels import work_panel
-    from bmanga_dev_shortcut_visibility.utils import page_browser, runtime_activity, shortcut_visibility
+    from bmanga_dev_shortcut_visibility.utils import (
+        lifecycle_scheduler,
+        page_browser,
+        runtime_activity,
+        shortcut_visibility,
+    )
 
     work = bpy.context.scene.bmanga_work
     work.loaded = True
@@ -177,7 +183,9 @@ def main() -> None:
         kc = bpy.context.window_manager.keyconfigs.addon
         conflict_km = kc.keymaps.new(name="B-MANGA Test Object Conflict", space_type="EMPTY", region_type="WINDOW")
         conflict_kmi = conflict_km.keymap_items.new("wm.call_menu", "F", "PRESS")
+        conflict_x_kmi = conflict_km.keymap_items.new("object.delete", "X", "PRESS")
         assert bool(conflict_kmi.active), "競合確認用キーが作成直後に無効です"
+        assert bool(conflict_x_kmi.active), "削除競合確認用キーが作成直後に無効です"
 
         shortcut_visibility.bmanga_panel_visible = lambda _context=None: False
         shortcut_visibility.any_bmanga_panel_visible = lambda _context=None: False
@@ -185,12 +193,25 @@ def main() -> None:
         keymap_mod._watch_bmanga_tab()
         assert _active_bmanga_items(keymap_mod) == 0, "B-MANGAタブ非表示扱いでショートカットが有効です"
         assert bool(conflict_kmi.active), "B-MANGAタブ非表示扱いで他のショートカットが無効化されています"
+        assert bool(conflict_x_kmi.active), "B-MANGAタブ非表示扱いで削除キーが無効化されています"
 
         shortcut_visibility.bmanga_panel_visible = lambda _context=None: True
         shortcut_visibility.any_bmanga_panel_visible = lambda _context=None: True
         keymap_mod._watch_bmanga_tab()
         assert _active_bmanga_items(keymap_mod) > 0, "B-MANGAタブ表示扱いでショートカットが有効になりません"
         state = keymap_mod.get_state()
+        mode_pairs = {
+            (str(getattr(kmi, "idname", "")), str(getattr(kmi, "type", "")))
+            for km in getattr(state, "bmanga_keymaps", []) or []
+            if str(getattr(km, "name", "")) == "Object Mode"
+            for kmi in getattr(km, "keymap_items", []) or []
+        }
+        assert ("bmanga.undo", "Z") in mode_pairs, (
+            "Object Mode の標準操作より先に評価する Undo がありません"
+        )
+        assert ("bmanga.redo", "X") in mode_pairs, (
+            "Object Mode の削除より先に評価する Redo がありません"
+        )
         has_context_menu_key = any(
             str(getattr(kmi, "idname", "") or "") == "bmanga.view_context_menu"
             and str(getattr(kmi, "type", "") or "") == "RIGHTMOUSE"
@@ -198,6 +219,7 @@ def main() -> None:
         )
         assert has_context_menu_key, "B-MANGA右クリックメニューのキーマップがありません"
         assert not bool(conflict_kmi.active), "B-MANGAタブ表示中に競合ショートカットが退避されません"
+        assert not bool(conflict_x_kmi.active), "B-MANGAタブ表示中にXの削除競合が退避されません"
 
         class _DummyModal:
             def __init__(self):
@@ -228,15 +250,18 @@ def main() -> None:
         keymap_mod.suspend_visibility_updates(seconds=1.0, reason="test blend switch")
         assert _active_bmanga_items(keymap_mod) == 0, "blend切替待機中にB-MANGAキーが有効です"
         assert bool(conflict_kmi.active), "blend切替待機中に他のショートカットが退避されています"
+        assert bool(conflict_x_kmi.active), "blend切替待機中に削除キーが退避されています"
         keymap_mod._SUSPEND_UNTIL = 0.0
         keymap_mod._watch_bmanga_tab()
         assert _active_bmanga_items(keymap_mod) > 0, "blend切替待機後にB-MANGAキーが有効になりません"
         assert not bool(conflict_kmi.active), "blend切替待機後に競合ショートカットが退避されません"
+        assert not bool(conflict_x_kmi.active), "blend切替待機後にXの削除競合が退避されません"
 
         bpy.context.scene.bmanga_mode = "COMA"
         keymap_mod._watch_bmanga_tab()
         assert _active_bmanga_items(keymap_mod) == 0, "コマ用blendファイル扱いでB-MANGAキーが有効です"
         assert bool(conflict_kmi.active), "コマ用blendファイル扱いで他のショートカットが退避されています"
+        assert bool(conflict_x_kmi.active), "コマ用blendファイル扱いで削除キーが退避されています"
         assert not shortcut_visibility.shortcuts_allowed(bpy.context), (
             "コマ用blendファイル扱いでB-MANGAショートカットの実行判定が有効です"
         )
@@ -253,6 +278,7 @@ def main() -> None:
         keymap_mod._watch_bmanga_tab()
         assert _active_bmanga_items(keymap_mod) > 0, "ページ一覧ファイル扱いへ戻してもB-MANGAキーが有効になりません"
         assert not bool(conflict_kmi.active), "ページ一覧ファイル扱いへ戻しても競合ショートカットが退避されません"
+        assert not bool(conflict_x_kmi.active), "ページ一覧へ戻した後にXの削除競合が退避されません"
 
         dummy_mode = _DummyModal()
         coma_modal_state.set_active("balloon_tool", dummy_mode, bpy.context)
@@ -269,6 +295,7 @@ def main() -> None:
         keymap_mod._watch_bmanga_tab()
         assert _active_bmanga_items(keymap_mod) == 0, "B-MANGAタブ非表示へ戻した後もショートカットが有効です"
         assert bool(conflict_kmi.active), "B-MANGAタブ非表示へ戻した後も他のショートカットが退避されたままです"
+        assert bool(conflict_x_kmi.active), "B-MANGAタブ非表示後も削除キーが退避されたままです"
 
         keymap_mod.rebuild_keymap_from_prefs()
         assert _active_bmanga_items(keymap_mod) == 0, "キーマップ再構築後にB-MANGAタブ非表示扱いが崩れています"
@@ -277,6 +304,64 @@ def main() -> None:
         assert not viewport_ops._shortcuts_allowed(bpy.context), "B-MANGAタブ非表示扱いでナビゲート判定が有効です"
 
         shortcut_visibility.shortcuts_allowed = lambda _context=None: True
+        original_schedule = lifecycle_scheduler.schedule
+        original_is_scheduled = lifecycle_scheduler.is_scheduled
+        original_history_step = shortcut_op._run_standard_history_step
+        scheduled_history = []
+        history_task_pending = False
+
+        def _capture_schedule(name, callback, **kwargs):
+            nonlocal history_task_pending
+            history_task_pending = True
+            scheduled_history.append((name, callback, kwargs))
+            return 0
+
+        lifecycle_scheduler.schedule = lambda name, callback, **kwargs: (
+            _capture_schedule(name, callback, **kwargs)
+        )
+        lifecycle_scheduler.is_scheduled = lambda _name: history_task_pending
+        try:
+            fake_operator = SimpleNamespace()
+            undo_result = shortcut_op.BMANGA_OT_undo.invoke(
+                fake_operator,
+                bpy.context,
+                SimpleNamespace(type="Z", value="PRESS", ctrl=False, alt=False),
+            )
+            redo_result = shortcut_op.BMANGA_OT_redo.invoke(
+                fake_operator,
+                bpy.context,
+                SimpleNamespace(type="X", value="PRESS", ctrl=False, alt=False),
+            )
+            second_redo_result = shortcut_op.BMANGA_OT_redo.invoke(
+                fake_operator,
+                bpy.context,
+                SimpleNamespace(type="X", value="PRESS", ctrl=False, alt=False),
+            )
+        finally:
+            lifecycle_scheduler.schedule = original_schedule
+            lifecycle_scheduler.is_scheduled = original_is_scheduled
+        assert (
+            undo_result == {"FINISHED"}
+            and redo_result == {"FINISHED"}
+            and second_redo_result == {"FINISHED"}
+        ), (
+            "単独Z／Xがイベントを消費しません"
+        )
+        assert [item[0] for item in scheduled_history] == ["shortcut.history.queue"], (
+            "連続したUndo／Redoが一つの遅延キューへ集約されません"
+        )
+        assert shortcut_op._HISTORY_STEP_QUEUE == [False, True, True], (
+            "Undo／Redoの連続入力順が保持されません"
+        )
+        drained_steps = []
+        shortcut_op._run_standard_history_step = lambda *, redo: drained_steps.append(redo)
+        try:
+            scheduled_history[0][1]()
+        finally:
+            shortcut_op._run_standard_history_step = original_history_step
+        assert drained_steps == [False, True, True], "遅延キューが連打分を失っています"
+        assert not shortcut_op._HISTORY_STEP_QUEUE, "実行後も履歴キューが残っています"
+
         bpy.ops.object.select_all(action="DESELECT")
         bpy.context.view_layer.objects.active = None
         # background 実行には modal_handler を受け取る VIEW_3D ウィンドウが

@@ -7171,7 +7171,7 @@
       "review": "",
       "run_order": 100,
       "source": "test/blender_shortcut_visibility_check.py",
-      "source_sha256": "92d9110fab642cac3aa358fe35b80c987cbe0b804c6ee08dac9b2660f0018bbb",
+      "source_sha256": "fe1f38ac8a200f593e6f492454318b0ff7cde097e94b22f1940b8193f03e4068",
       "test_id": "test:test.blender.shortcut.visibility.check",
       "timeout_seconds": 180
     },
@@ -7796,7 +7796,7 @@
       "review": "",
       "run_order": 100,
       "source": "test/blender_undo_redo_runtime_check.py",
-      "source_sha256": "9338fb90ba120a49c3ba84c919f38ae506060ebe54caec47f87281a68fe915e7",
+      "source_sha256": "0d89804454ed3313855ba42789a3d91662ddc6f40fffc860a1e26f054fdee8a4",
       "test_id": "test:test.blender.undo.redo.runtime.check",
       "timeout_seconds": 180
     },

@@ -29,6 +29,53 @@ from ..utils.page_grid import (
 from . import coma_modal_state
 
 _logger = log.get_logger(__name__)
+_HISTORY_STEP_QUEUE: list[bool] = []
+
+
+def _run_standard_history_step(*, redo: bool) -> None:
+    operation = bpy.ops.ed.redo if redo else bpy.ops.ed.undo
+    if operation.poll():
+        operation()
+
+
+def _drain_scheduled_history_steps():
+    """予約済みのUndo/Redoを入力順に一括実行する."""
+
+    # 最初のUndo/Redoがlifecycleをinvalidateしても、すでに受け取った連打分を
+    # 失わないよう、実行前にローカルへ退避する。外部invalidate時はon_cancelが
+    # グローバル側だけを消すため、別ファイルへ古い入力を持ち越さない。
+    queued_steps = tuple(_HISTORY_STEP_QUEUE)
+    _HISTORY_STEP_QUEUE.clear()
+    for redo in queued_steps:
+        try:
+            _run_standard_history_step(redo=redo)
+        except Exception:  # noqa: BLE001
+            _logger.exception("deferred bmanga %s failed", "redo" if redo else "undo")
+    return None
+
+
+def _schedule_history_step(*, redo: bool) -> bool:
+    """現在のキーイベントを抜けた直後に Blender 標準 Undo/Redo を実行."""
+
+    _HISTORY_STEP_QUEUE.append(bool(redo))
+
+    try:
+        from ..utils import lifecycle_scheduler
+
+        task_name = "shortcut.history.queue"
+        if lifecycle_scheduler.is_scheduled(task_name):
+            return True
+        lifecycle_scheduler.schedule(
+            task_name,
+            _drain_scheduled_history_steps,
+            first_interval=0.0,
+            on_cancel=_HISTORY_STEP_QUEUE.clear,
+        )
+    except Exception:  # noqa: BLE001
+        _HISTORY_STEP_QUEUE.clear()
+        _logger.exception("bmanga history scheduling failed")
+        return False
+    return True
 
 _GP_ERASER_HARD_ASSET = (
     "brushes/essentials_brushes-gp_draw.blend/Brush/Eraser Hard"
@@ -288,7 +335,6 @@ class BMANGA_OT_undo(Operator):
 
     bl_idname = "bmanga.undo"
     bl_label = "戻る"
-    bl_options = {"REGISTER"}
 
     def _run(self, context):
         if not bpy.ops.ed.undo.poll():
@@ -310,7 +356,11 @@ class BMANGA_OT_undo(Operator):
             return {"CANCELLED"}
         if not _bmanga_work_loaded(context):
             return {"PASS_THROUGH"}
-        return self._run(context)
+        # キーマップから起動中の Python Operator 内で ed.undo() を入れ子に
+        # 呼ぶと、履歴post handler実行中にBlender本体が落ちる場合がある。
+        # 現在イベントを完了してから標準Undoを呼び、入力自体はここで消費する。
+        _schedule_history_step(redo=False)
+        return {"FINISHED"}
 
     def execute(self, context):
         if not _bmanga_work_loaded(context):
@@ -323,7 +373,6 @@ class BMANGA_OT_redo(Operator):
 
     bl_idname = "bmanga.redo"
     bl_label = "進む"
-    bl_options = {"REGISTER"}
 
     def _run(self, context):
         if not bpy.ops.ed.redo.poll():
@@ -343,7 +392,10 @@ class BMANGA_OT_redo(Operator):
             return {"CANCELLED"}
         if not _bmanga_work_loaded(context):
             return {"PASS_THROUGH"}
-        return self._run(context)
+        # Undoと同様に、現在のPython Operatorを抜けてから標準Redoを呼ぶ。
+        # 履歴が無い場合も入力を消費し、標準の削除へフォールスルーさせない。
+        _schedule_history_step(redo=True)
+        return {"FINISHED"}
 
     def execute(self, context):
         if not _bmanga_work_loaded(context):
